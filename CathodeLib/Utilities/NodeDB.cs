@@ -7,15 +7,12 @@ using System.Threading.Tasks;
 
 namespace CATHODE
 {
-    /*
     public class ShortGUIDDescriptor
     {
         public byte[] ID;
         public string Description;
     }
-    */
 
-    /*
     public class NodeDB
     {
         static NodeDB()
@@ -68,5 +65,4 @@ namespace CATHODE
         private static List<ShortGUIDDescriptor> cathode_id_map;
         private static List<ShortGUIDDescriptor> node_friendly_names;
     }
-    */
 }

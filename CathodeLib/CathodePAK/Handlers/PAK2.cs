@@ -10,7 +10,7 @@ namespace CATHODE
      * Allows write/read of a PAK2 archive. Completed!
      * 
     */
-    public class PAK2 : CathodePAK
+    public class PAK2 : AssetPAK
     {
         private List<EntryPAK2> Pak2Files = new List<EntryPAK2>();
         private int OffsetListBegin = -1;

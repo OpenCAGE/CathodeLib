@@ -11,7 +11,7 @@ namespace CATHODE
      * More work needs to be done to understand the broken formats and to allow importing for files with only V1.
      * 
     */
-    public class TexturePAK : CathodePAK
+    public class TexturePAK : AssetPAK
     {
         private List<TEX4> TextureEntries = new List<TEX4>();
         private int HeaderListBeginBIN = -1;

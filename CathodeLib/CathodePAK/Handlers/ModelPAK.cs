@@ -11,7 +11,7 @@ namespace CATHODE
      * Also needs to verify the PAK version number, etc.
      * 
     */
-    public class ModelPAK : CathodePAK
+    public class ModelPAK : AssetPAK
     {
         List<CS2> ModelEntries = new List<CS2>();
         int TableCountPt1 = -1;

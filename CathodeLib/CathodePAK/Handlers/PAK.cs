@@ -11,7 +11,7 @@ namespace CATHODE
     */
     class PAK
     {
-        CathodePAK PAKHandler;
+        AssetPAK PAKHandler;
         public PAKType Format = PAKType.UNRECOGNISED;
 
         /* Open a PAK archive */

@@ -12,7 +12,7 @@ namespace CATHODE
      * Work needs to be done on parsing the _BIN and how that links to the initial PAK.
      * 
     */
-    public class ShaderPAK : CathodePAK
+    public class ShaderPAK : AssetPAK
     {
         List<CathodeShaderHeader> HeaderDump = new List<CathodeShaderHeader>();
 

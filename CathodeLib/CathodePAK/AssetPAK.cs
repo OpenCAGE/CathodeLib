@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace CATHODE
 {
-    public class CathodePAK
+    public class AssetPAK
     {
         protected string FilePathPAK = "";
         protected string FilePathBIN = "";
