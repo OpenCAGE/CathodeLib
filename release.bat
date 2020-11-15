@@ -1,0 +1,1 @@
+dotnet nuget push %1 --source "github"
