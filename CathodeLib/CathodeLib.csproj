@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>netstandard2.0</TargetFramework>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <RepositoryUrl>https://github.com/OpenCAGE/CathodeLib</RepositoryUrl>
     <PackageProjectUrl>https://github.com/MattFiler/OpenCAGE/</PackageProjectUrl>
@@ -10,7 +10,7 @@
     <Authors>Matt Filer</Authors>
     <Description>Provides support for parsing and writing common Alien: Isolation formats from the Cathode engine.</Description>
     <Copyright>Matt Filer 2020</Copyright>
-    <Version>0.0.5</Version>
+    <Version>0.0.6</Version>
   </PropertyGroup>
 
   <ItemGroup>
