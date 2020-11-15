@@ -1,12 +1,12 @@
 ﻿using System.Collections.Generic;
 using System.IO;
+using CATHODE;
 
-namespace CATHODE
+namespace CathodeLib
 {
     /*
      *
      * Generic PAK handler.
-     * This can probably be depreciated when all handlers are as complete as the PAK2 implementation.
      * 
     */
     class PAK

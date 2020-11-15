@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CATHODE
+namespace CathodeLib
 {
     public enum TextureCapability : uint
     {
