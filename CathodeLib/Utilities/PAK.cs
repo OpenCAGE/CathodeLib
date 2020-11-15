@@ -9,7 +9,7 @@ namespace CathodeLib
      * Generic PAK handler.
      * 
     */
-    class PAK
+    public class PAK
     {
         AssetPAK PAKHandler;
         public PAKType Format = PAKType.UNRECOGNISED;

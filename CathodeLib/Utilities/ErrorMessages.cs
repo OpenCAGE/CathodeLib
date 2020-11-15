@@ -2,7 +2,7 @@
 
 namespace CathodeLib
 {
-    class ErrorMessages
+    public class ErrorMessages
     {
         public string ErrorMessageBody(PAKReturnType ReturnType)
         {

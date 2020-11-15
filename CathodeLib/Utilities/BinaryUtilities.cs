@@ -15,7 +15,7 @@ namespace CathodeLib
      * This will probably be expanded over time as required.
      *
     */
-    class BigEndianUtils
+    public class BigEndianUtils
     {
         public int ReadInt32(BinaryReader Reader)
         {
@@ -48,7 +48,7 @@ namespace CathodeLib
             return ThisEndian;
         }
     }
-    class ExtraBinaryUtils
+    public class ExtraBinaryUtils
     {
         //Gets a string from a byte array (at position) by reading chars until a null is hit
         public string GetStringFromByteArray(byte[] byte_array, int position)

@@ -11,7 +11,7 @@ namespace CathodeLib
      * This parses imported DDS files to remove the header and pull required information.
      *
     */
-    class DDSReader
+    public class DDSReader
     {
         public TextureFormat Format;
         public int Width = -1;
