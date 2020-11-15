@@ -6,7 +6,7 @@ namespace CathodeLib
 {
     /*
      *
-     * Generic PAK handler.
+     * Generic PAK handler for AssetPAK formats.
      * 
     */
     public class PAK
@@ -34,10 +34,10 @@ namespace CathodeLib
                     PAKHandler = new MaterialMapPAK(FilePath);
                     Format = PAKType.PAK_MATERIALMAPS;
                     break;
-                case "COMMANDS.PAK":
+                //case "COMMANDS.PAK":
                     //PAKHandler = new CommandsPAK(FilePath);
                     //Format = PAKType.PAK_SCRIPTS;
-                    break;
+                    //break;
                 case "LEVEL_SHADERS_DX11.PAK":
                 case "BESPOKESHADERS_DX11.PAK":
                 case "DEFERREDSHADERS_DX11.PAK":

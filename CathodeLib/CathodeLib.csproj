@@ -10,7 +10,7 @@
     <Authors>Matt Filer</Authors>
     <Description>Provides support for parsing and writing common Alien: Isolation formats from the Cathode engine.</Description>
     <Copyright>Matt Filer 2020</Copyright>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
