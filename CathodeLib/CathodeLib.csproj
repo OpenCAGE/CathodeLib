@@ -10,7 +10,7 @@
     <Authors>Matt Filer</Authors>
     <Description>Provides support for parsing and writing common Alien: Isolation formats from the Cathode engine.</Description>
     <Copyright>Matt Filer 2020</Copyright>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -27,6 +27,12 @@
     <None Remove="Resources\NodeDBs\cathode_id_map.bin" />
     <None Remove="Resources\NodeDBs\cathode_id_map_DUMP_ONLY.bin" />
     <None Remove="Resources\NodeDBs\node_friendly_names.bin" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\AlienBML\AlienBML\AlienBML.cs" Link="Utilities\AlienBML.cs" />
+    <Compile Include="..\AlienBML\AlienBML\BML.cs" Link="BML.cs" />
+    <Compile Include="..\AlienBML\AlienBML\BMLString.cs" Link="BMLString.cs" />
   </ItemGroup>
 
   <ItemGroup>
