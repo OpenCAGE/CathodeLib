@@ -11,16 +11,18 @@ namespace TestProject.File_Handlers.Models
 {
     class ModelPAK
     {
-        public static List<alien_pak_model> Load(alien_pak PAK)
+        public static alien_pak_model Load(string FullFilePath)
         {
-            List<alien_pak_model> Models = new List<alien_pak_model>(PAK.Header.EntryCount);
+            alien_pak_model Result = new alien_pak_model();
+            Result.PAK = File_Handlers.PAK.PAK.Load(FullFilePath, true);
+            Result.Models = new List<alien_pak_model_entry>(Result.PAK.Header.EntryCount);
 
-            for (int EntryIndex = 0; EntryIndex < PAK.Header.EntryCount; ++EntryIndex)
+            for (int EntryIndex = 0; EntryIndex < Result.PAK.Header.EntryCount; ++EntryIndex)
             {
-                byte[] EntryBuffer = PAK.EntryDatas[EntryIndex];
+                byte[] EntryBuffer = Result.PAK.EntryDatas[EntryIndex];
                 BinaryReader Stream = new BinaryReader(new MemoryStream(EntryBuffer));
 
-                alien_pak_model Model = new alien_pak_model();
+                alien_pak_model_entry Model = new alien_pak_model_entry();
 
                 // TODO: Maybe this stuff can be moved to AlienLoadPAK, probably using an 'alien_pak_entry' value to check if
                 //  it is an array of entries.
@@ -39,16 +41,17 @@ namespace TestProject.File_Handlers.Models
                     ChunkInfo.BINIndex = BinaryPrimitives.ReverseEndianness(ChunkInfo.BINIndex);
                     ChunkInfo.Offset = BinaryPrimitives.ReverseEndianness(ChunkInfo.Offset);
                     ChunkInfo.Size = BinaryPrimitives.ReverseEndianness(ChunkInfo.Size);
+                    Model.ChunkInfos[ChunkIndex] = ChunkInfo;
 
                     Stream.BaseStream.Position = ChunkInfo.Offset;
                     byte[] Chunk = Stream.ReadBytes(ChunkInfo.Size);
                     Model.Chunks.Add(Chunk);
                 }
 
-                Models.Add(Model);
+                Result.Models.Add(Model);
             }
 
-            return Models;
+            return Result;
         }
     }
 }
@@ -70,9 +73,15 @@ struct alien_pak_model_chunk_info
     public int _Unknown1; // NOTE: Probably struct padding
 };
 
-struct alien_pak_model
+struct alien_pak_model_entry
 {
     public alien_pak_model_entry_header Header;
     public List<alien_pak_model_chunk_info> ChunkInfos;
     public List<byte[]> Chunks;
 };
+
+struct alien_pak_model
+{
+    public alien_pak PAK;
+    public List<alien_pak_model_entry> Models;
+}

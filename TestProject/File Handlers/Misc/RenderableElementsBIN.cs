@@ -1,0 +1,48 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace TestProject.File_Handlers.Misc
+{
+    //REnDerable elementS
+    class RenderableElementsBIN
+    {
+        public static alien_reds_bin Load(string FullFilePath)
+        {
+            alien_reds_bin Result = new alien_reds_bin();
+            BinaryReader Stream = new BinaryReader(File.OpenRead(FullFilePath));
+
+            Result.Header = Utilities.Consume<alien_reds_header>(Stream);
+            // TODO: Seems to be varying length or something weirder.
+            Result.Entries = Utilities.ConsumeArray<alien_reds_entry>(Stream, Result.Header.EntryCount);
+
+            return Result;
+        }
+    }
+}
+
+struct alien_reds_header
+{
+    public int EntryCount;
+};
+
+struct alien_reds_entry
+{
+    public int UnknownZeros0_;
+    public int ModelIndex;
+    public byte UnknownZeroByte0_;
+    public int UnknownZeros1_;
+    public int MaterialLibraryIndex;
+    public byte UnknownZeroByte1_;
+    public int ModelLODIndex; // NOTE: Not sure, looks like it.
+    public byte ModelLODPrimitiveCount; // NOTE: Sure it is primitive count, not sure about the ModelLOD part.
+};
+
+struct alien_reds_bin
+{
+    public alien_reds_header Header;
+    public List<alien_reds_entry> Entries;
+};

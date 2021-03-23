@@ -105,6 +105,53 @@ struct alien_model_bin_model_info
 
 struct Vector4
 {
+    public Vector4(int _a)
+    {
+        x = _a;
+        y = _a;
+        z = _a;
+        w = _a;
+    }
+    public Vector4(float _x, float _y, float _z, float _w)
+    {
+        x = _x;
+        y = _y;
+        z = _z;
+        w = _w;
+    }
+    public Vector4(byte[] _b)
+    {
+        x = _b[0];
+        y = _b[1];
+        z = _b[2];
+        w = _b[3];
+    }
+    public Vector4(Vector3 _v)
+    {
+        x = _v.x;
+        y = _v.y;
+        z = _v.z;
+        w = 0;
+    }
+
+    public static Vector4 operator / (Vector4 _v, float _d)
+    {
+        return new Vector4(_v.x / _d, _v.y / _d, _v.z / _d, _v.w / _d);
+    }
+    public static Vector4 operator - (Vector4 _v, float _d)
+    {
+        return new Vector4(_v.x - _d, _v.y - _d, _v.z - _d, _v.w - _d);
+    }
+
+    public void Normalise()
+    {
+        float l = (float)Math.Sqrt(Math.Pow(x, 2) + Math.Pow(y, 2) + Math.Pow(z, 2) + Math.Pow(w, 2));
+        x = x / l;
+        y = y / l;
+        z = z / l;
+        w = w / l;
+    }
+
     public float x;
     public float y;
     public float z;
@@ -112,12 +159,38 @@ struct Vector4
 }
 struct Vector3
 {
+    public Vector3(Vector4 _v)
+    {
+        x = _v.x;
+        y = _v.y;
+        z = _v.z;
+    }
+
+    public void Normalise()
+    {
+        float l = (float)Math.Sqrt(Math.Pow(x, 2) + Math.Pow(y, 2) + Math.Pow(z, 2));
+        x = x / l;
+        y = y / l;
+        z = z / l;
+    }
+
     public float x;
     public float y;
     public float z;
 }
 struct Vector2
 {
+    public Vector2(float _x, float _y)
+    {
+        x = _x;
+        y = _y;
+    }
+
+    public static Vector2 operator /(Vector2 _v, float _d)
+    {
+        return new Vector2(_v.x / _d, _v.y / _d);
+    }
+
     public float x;
     public float y;
 }

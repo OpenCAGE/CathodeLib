@@ -120,7 +120,8 @@ namespace CATHODE
                     byte[] UnknownHeaderTrail_1 = ArchiveFile.ReadBytes(18);
 
                     //Find the entry
-                    TEX4 TextureEntry = TextureEntries[BigEndian.ReadInt16(ArchiveFile)];
+                    int index = BigEndian.ReadInt16(ArchiveFile);
+                    TEX4 TextureEntry = TextureEntries[index];
                     TEX4_Part TexturePart = (!TextureEntry.Texture_V1.Saved) ? TextureEntry.Texture_V1 : TextureEntry.Texture_V2;
 
                     //Write out the info

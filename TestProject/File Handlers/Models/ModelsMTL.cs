@@ -28,12 +28,18 @@ namespace TestProject.File_Handlers.Models
             Result.Header = Header;
             Result.Materials = Utilities.ConsumeArray<alien_mtl_material>(Stream, Header.MaterialCount);
 
-            //load csv and parse this
-            //Result.Datas1 = (f32*)(CST.Data + Header.Unknown1_[0]);
-            //Result.Datas2 = (f32*)(CST.Data + Header.Unknown1_[1]);
-            //Result.Datas3 = (f32*)(CST.Data + Header.Unknown1_[2]);
-            //Result.Datas4 = (f32*)(CST.Data + Header.Unknown1_[3]);
-            //Result.Datas5 = (f32*)(CST.Data + Header.Unknown1_[4]);
+            BinaryReader cstReader = new BinaryReader(new MemoryStream(CST));
+            cstReader.BaseStream.Position = Header._Unknown[0];
+            Result.Datas1 = cstReader.ReadSingle();
+            cstReader.BaseStream.Position = Header._Unknown[1];
+            Result.Datas2 = cstReader.ReadSingle();
+            cstReader.BaseStream.Position = Header._Unknown[2];
+            Result.Datas3 = cstReader.ReadSingle();
+            cstReader.BaseStream.Position = Header._Unknown[3];
+            Result.Datas4 = cstReader.ReadSingle();
+            cstReader.BaseStream.Position = Header._Unknown[4];
+            Result.Datas5 = cstReader.ReadSingle();
+            cstReader.Close();
 
             Result.TextureReferenceCounts = new List<int>(Result.Header.MaterialCount);
             for (int MaterialIndex = 0; MaterialIndex < Header.MaterialCount; ++MaterialIndex)

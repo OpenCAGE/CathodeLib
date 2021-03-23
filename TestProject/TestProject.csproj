@@ -137,12 +137,15 @@
       <Link>Types.cs</Link>
     </Compile>
     <Compile Include="File Handlers\AlienLevel.cs" />
+    <Compile Include="File Handlers\Misc\PhysicsMAP.cs" />
+    <Compile Include="File Handlers\Misc\RenderableElementsBIN.cs" />
+    <Compile Include="File Handlers\Misc\ResourcesBIN.cs" />
     <Compile Include="File Handlers\Models\ModelBIN.cs" />
     <Compile Include="File Handlers\Generic\PAK.cs" />
     <Compile Include="File Handlers\Models\ModelPAK.cs" />
     <Compile Include="File Handlers\Models\ModelsMTL.cs" />
-    <Compile Include="File Handlers\Models\ModelsMVR.cs" />
     <Compile Include="File Handlers\Shaders\IDXRemap.cs" />
+    <Compile Include="File Handlers\Shaders\ShadersBIN.cs" />
     <Compile Include="File Handlers\Shaders\ShadersPAK.cs" />
     <Compile Include="File Handlers\Textures\TextureBIN.cs" />
     <Compile Include="File Handlers\Textures\TexturePAK.cs" />
