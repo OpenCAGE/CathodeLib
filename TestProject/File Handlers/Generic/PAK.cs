@@ -9,14 +9,14 @@ using System.Threading.Tasks;
 
 namespace TestProject.File_Handlers.PAK
 {
-    class PAK
+    public class PAK
     {
         public static alien_pak Load(string filepath, bool BigEndian)
         {
             alien_pak Result = new alien_pak();
             BinaryReader Stream = new BinaryReader(File.OpenRead(filepath));
 
-            alien_pak_header Header = Utilities.Consume<alien_pak_header>(Stream);
+            alien_pak_header Header = Utilities.Consume<alien_pak_header>(ref Stream);
             if (BigEndian)
             {
                 Header.Version = BinaryPrimitives.ReverseEndianness(Header.Version);
@@ -24,14 +24,14 @@ namespace TestProject.File_Handlers.PAK
                 Header.EntryCount = BinaryPrimitives.ReverseEndianness(Header.EntryCount);
             }
 
+            List<alien_pak_entry> Entries = Utilities.ConsumeArray<alien_pak_entry>(ref Stream, Header.MaxEntryCount);
+
             //todo-mattf; remove the need for this
             long resetpos = Stream.BaseStream.Position;
             byte[] DataStart = Stream.ReadBytes((int)Stream.BaseStream.Length - (int)resetpos);
             Stream.BaseStream.Position = resetpos;
 
-            List<alien_pak_entry> Entries = Utilities.ConsumeArray<alien_pak_entry>(Stream, Header.MaxEntryCount);
             List<byte[]> EntryDatas = new List<byte[]>(Header.MaxEntryCount);
-
             for (int EntryIndex = 0; EntryIndex < Header.MaxEntryCount; ++EntryIndex)
             {
                 if (BigEndian)
@@ -61,7 +61,7 @@ namespace TestProject.File_Handlers.PAK
 
 
 //Length: 32 bytes
-struct alien_pak_header
+public struct alien_pak_header
 {
     public int _Unknown1;
     public int _Unknown2;
@@ -74,7 +74,7 @@ struct alien_pak_header
 };
 
 //Length: 48 bytes
-struct alien_pak_entry
+public struct alien_pak_entry
 {
     public int _Unknown1; //TODO: Is 'alien_pak_header' 40 bytes long instead?
     public int _Unknown2;
@@ -91,7 +91,7 @@ struct alien_pak_entry
     public int _Unknown8;
 };
 
-struct alien_pak
+public struct alien_pak
 {
     public alien_pak_header Header;
     public List<alien_pak_entry> Entries;

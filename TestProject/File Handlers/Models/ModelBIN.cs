@@ -8,14 +8,14 @@ using System.Threading.Tasks;
 
 namespace TestProject.File_Handlers.Models
 {
-    class ModelBIN
+    public class ModelBIN
     {
         public static alien_model_bin Load(string filepath)
         {
             alien_model_bin Result = new alien_model_bin();
             BinaryReader Stream = new BinaryReader(File.OpenRead(filepath));
 
-            alien_model_bin_header Header = Utilities.Consume<alien_model_bin_header>(Stream);
+            alien_model_bin_header Header = Utilities.Consume<alien_model_bin_header>(ref Stream);
 
             Result.VertexBufferFormats = new List<alien_vertex_buffer_format>(Header.VertexInputCount);
             for (int EntryIndex = 0; EntryIndex < Header.VertexInputCount; ++EntryIndex)
@@ -31,7 +31,7 @@ namespace TestProject.File_Handlers.Models
 
                 alien_vertex_buffer_format VertexInput = new alien_vertex_buffer_format();
                 VertexInput.ElementCount = count;
-                VertexInput.Elements = Utilities.ConsumeArray<alien_vertex_buffer_format_element>(Stream, VertexInput.ElementCount);
+                VertexInput.Elements = Utilities.ConsumeArray<alien_vertex_buffer_format_element>(ref Stream, VertexInput.ElementCount);
                 Result.VertexBufferFormats.Add(VertexInput);
             }
 
@@ -41,7 +41,7 @@ namespace TestProject.File_Handlers.Models
             List<string> ModelFilePaths = new List<string>(Header.ModelCount);
             List<string> ModelPartNames = new List<string>(Header.ModelCount);
 
-            List<alien_model_bin_model_info> ModelInfos = Utilities.ConsumeArray<alien_model_bin_model_info>(Stream, Header.ModelCount);
+            List<alien_model_bin_model_info> ModelInfos = Utilities.ConsumeArray<alien_model_bin_model_info>(ref Stream, Header.ModelCount);
             for (int EntryIndex = 0; EntryIndex < Header.ModelCount; ++EntryIndex)
             {
                 alien_model_bin_model_info ModelInfo = ModelInfos[EntryIndex];
@@ -50,7 +50,7 @@ namespace TestProject.File_Handlers.Models
             }
 
             int BoneBufferCount = Stream.ReadInt32();
-            byte[] BoneBuffer = Utilities.ConsumeArray<byte>(Stream, BoneBufferCount).ToArray();
+            byte[] BoneBuffer = Utilities.ConsumeArray<byte>(ref Stream, BoneBufferCount).ToArray();
 
             //TODO: implement bone parsing
 
@@ -64,7 +64,7 @@ namespace TestProject.File_Handlers.Models
     }
 }
 
-struct alien_model_bin_header
+public struct alien_model_bin_header
 {
     public fourcc FourCC;
     public int ModelCount;
@@ -74,15 +74,15 @@ struct alien_model_bin_header
 };
 
 //Length: 96
-struct alien_model_bin_model_info
+public struct alien_model_bin_model_info
 {
     public int FileNameOffset;
     public int UnknownZero_; // NOTE: Always 0 on starting area.
     public int ModelPartNameOffset;
     public float UnknownValue0_; // NOTE: Always 0 on starting area.
-    public Vector3 AABBMin;
+    public V3 AABBMin;
     public float LODMinDistance_;
-    public Vector3 AABBMax;
+    public V3 AABBMax;
     public float LODMaxDistance_;
     public int NextInLODGroup_;
     public int FirstModelInGroupForNextLOD_;
@@ -103,30 +103,30 @@ struct alien_model_bin_model_info
     public Int16 BoneCount;
 };
 
-struct Vector4
+public struct V4
 {
-    public Vector4(int _a)
+    public V4(int _a)
     {
         x = _a;
         y = _a;
         z = _a;
         w = _a;
     }
-    public Vector4(float _x, float _y, float _z, float _w)
+    public V4(float _x, float _y, float _z, float _w)
     {
         x = _x;
         y = _y;
         z = _z;
         w = _w;
     }
-    public Vector4(byte[] _b)
+    public V4(byte[] _b)
     {
         x = _b[0];
         y = _b[1];
         z = _b[2];
         w = _b[3];
     }
-    public Vector4(Vector3 _v)
+    public V4(V3 _v)
     {
         x = _v.x;
         y = _v.y;
@@ -134,13 +134,13 @@ struct Vector4
         w = 0;
     }
 
-    public static Vector4 operator / (Vector4 _v, float _d)
+    public static V4 operator / (V4 _v, float _d)
     {
-        return new Vector4(_v.x / _d, _v.y / _d, _v.z / _d, _v.w / _d);
+        return new V4(_v.x / _d, _v.y / _d, _v.z / _d, _v.w / _d);
     }
-    public static Vector4 operator - (Vector4 _v, float _d)
+    public static V4 operator - (V4 _v, float _d)
     {
-        return new Vector4(_v.x - _d, _v.y - _d, _v.z - _d, _v.w - _d);
+        return new V4(_v.x - _d, _v.y - _d, _v.z - _d, _v.w - _d);
     }
 
     public void Normalise()
@@ -157,9 +157,9 @@ struct Vector4
     public float z;
     public float w;
 }
-struct Vector3
+public struct V3
 {
-    public Vector3(Vector4 _v)
+    public V3(V4 _v)
     {
         x = _v.x;
         y = _v.y;
@@ -178,24 +178,24 @@ struct Vector3
     public float y;
     public float z;
 }
-struct Vector2
+public struct V2
 {
-    public Vector2(float _x, float _y)
+    public V2(float _x, float _y)
     {
         x = _x;
         y = _y;
     }
 
-    public static Vector2 operator /(Vector2 _v, float _d)
+    public static V2 operator /(V2 _v, float _d)
     {
-        return new Vector2(_v.x / _d, _v.y / _d);
+        return new V2(_v.x / _d, _v.y / _d);
     }
 
     public float x;
     public float y;
 }
 
-enum alien_vertex_input_type
+public enum alien_vertex_input_type
 {
     AlienVertexInputType_v3 = 0x03,
     // TODO: Present at 'bsp_torrens' but I haven't seen models that contain that being rendered yet.
@@ -209,7 +209,7 @@ enum alien_vertex_input_type
     AlienVertexInputType_u16 = 0x13,
 };
 
-enum alien_vertex_input_slot
+public enum alien_vertex_input_slot
 {
     AlienVertexInputSlot_P = 0x01,
     AlienVertexInputSlot_BW = 0x02, // NOTE: Bone Weights
@@ -221,7 +221,7 @@ enum alien_vertex_input_slot
     AlienVertexInputSlot_C = 0x0A, // NOTE: Color? Specular? What is this?
 };
 
-struct alien_vertex_buffer_format_element
+public struct alien_vertex_buffer_format_element
 {
     public int ArrayIndex;
     public int Offset; // NOTE: Offset within data structure, generally not important.
@@ -231,13 +231,13 @@ struct alien_vertex_buffer_format_element
     public int Unknown_; // NOTE: Seems to be always 2?
 };
 
-struct alien_vertex_buffer_format
+public struct alien_vertex_buffer_format
 {
     public int ElementCount;
     public List<alien_vertex_buffer_format_element> Elements;
 };
 
-struct alien_model_bin
+public struct alien_model_bin
 {
     public byte[] Buffer;
     public alien_model_bin_header Header;
@@ -247,7 +247,7 @@ struct alien_model_bin
     public List<string> ModelLODPartNames;
 };
 
-struct fourcc
+public struct fourcc
 {
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
     public char[] V; //4

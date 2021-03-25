@@ -8,25 +8,25 @@ using System.Threading.Tasks;
 
 namespace TestProject.File_Handlers.Models
 {
-    class ModelsMTL
+    public class ModelsMTL
     {
         public static alien_mtl Load(string FullFilePath, byte[] CST = null)
         {
             alien_mtl Result = new alien_mtl();
             BinaryReader Stream = new BinaryReader(File.OpenRead(FullFilePath));
 
-            alien_mtl_header Header = Utilities.Consume<alien_mtl_header>(Stream);
+            alien_mtl_header Header = Utilities.Consume<alien_mtl_header>(ref Stream);
 
             Result.MaterialNames = new List<string>(Header.MaterialCount);
             for (int MaterialIndex = 0; MaterialIndex < Header.MaterialCount; ++MaterialIndex)
             {
-                Result.MaterialNames.Add(Utilities.ReadString(Stream));
+                Result.MaterialNames.Add(Utilities.ReadString(ref Stream));
             }
 
-            Stream.BaseStream.Position += Header.FirstMaterialOffset - Marshal.SizeOf(Header.BytesRemainingAfterThis);
+            Stream.BaseStream.Position = Header.FirstMaterialOffset + Marshal.SizeOf(Header.BytesRemainingAfterThis);
 
             Result.Header = Header;
-            Result.Materials = Utilities.ConsumeArray<alien_mtl_material>(Stream, Header.MaterialCount);
+            Result.Materials = Utilities.ConsumeArray<alien_mtl_material>(ref Stream, Header.MaterialCount);
 
             BinaryReader cstReader = new BinaryReader(new MemoryStream(CST));
             cstReader.BaseStream.Position = Header._Unknown[0];
@@ -41,18 +41,15 @@ namespace TestProject.File_Handlers.Models
             Result.Datas5 = cstReader.ReadSingle();
             cstReader.Close();
 
-            Result.TextureReferenceCounts = new List<int>(Result.Header.MaterialCount);
-            for (int MaterialIndex = 0; MaterialIndex < Header.MaterialCount; ++MaterialIndex)
+            foreach (alien_mtl_material material in Result.Materials)
             {
-                alien_mtl_material Material = Result.Materials[MaterialIndex];
-
-                int count = 0;
-                for (int I = 0; I < Material.TextureReferences.Length; ++I)
+                for (int i =0; i < material.TextureReferences.Length; i++)
                 {
-                    alien_mtl_texture_reference Pair = Material.TextureReferences[I];
-                    if (Pair.TextureTableIndex != -1) count++;
+                    if(material.TextureReferences[i].TextureTableIndex != 0 && material.TextureReferences[i].TextureTableIndex != 2 && material.TextureReferences[i].TextureTableIndex != -1)
+                    {
+                        string sfddf = "";
+                    }
                 }
-                Result.TextureReferenceCounts.Add(count);
             }
 
             return Result;
@@ -61,7 +58,7 @@ namespace TestProject.File_Handlers.Models
 }
 
 //Length: 44
-struct alien_mtl_header
+public struct alien_mtl_header
 {
     public int BytesRemainingAfterThis; // TODO: Weird, is there any case where this is not true? Assert!
     public int Unknown0_;
@@ -72,14 +69,14 @@ struct alien_mtl_header
     public Int16 Unknown2_;
 };
 
-struct alien_mtl_texture_reference
+public struct alien_mtl_texture_reference
 {
     public Int16 TextureIndex; // NOTE: Entry index in texture BIN file. Max value seen matches the BIN file entry count;
     public Int16 TextureTableIndex; // NOTE: Only seen as -1, 0 or 2 so far.
 };
 
 //Length: 296
-struct alien_mtl_material
+public struct alien_mtl_material
 {
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 12)]
     public alien_mtl_texture_reference[] TextureReferences; //12
@@ -106,7 +103,7 @@ struct alien_mtl_material
     public int[] UnknownZeros2_; //3
 };
 
-struct alien_mtl
+public struct alien_mtl
 {
     public alien_mtl_header Header;
     public List<alien_mtl_material> Materials;

@@ -9,9 +9,9 @@ using System.Threading.Tasks;
 
 namespace TestProject
 {
-    class Utilities
+    public class Utilities
     {
-        public static T Consume<T>(BinaryReader reader)
+        public static T Consume<T>(ref BinaryReader reader)
         {
             byte[] bytes = reader.ReadBytes(Marshal.SizeOf(typeof(T)));
             return Consume<T>(bytes);
@@ -24,10 +24,10 @@ namespace TestProject
             return theStructure;
         }
 
-        public static List<T> ConsumeArray<T>(BinaryReader reader, int count)
+        public static List<T> ConsumeArray<T>(ref BinaryReader reader, int count)
         {
             List<T> toReturn = new List<T>();
-            for (int i = 0; i < count; i++) toReturn.Add(Consume<T>(reader));
+            for (int i = 0; i < count; i++) toReturn.Add(Consume<T>(ref reader));
             return toReturn;
         }
         public static List<T> ConsumeArray<T>(byte[] bytes, int count)
@@ -37,7 +37,7 @@ namespace TestProject
             return toReturn;
         }
 
-        public static void Align(BinaryReader reader, int val)
+        public static void Align(ref BinaryReader reader, int val)
         {
             while (reader.BaseStream.Position % val != 0)
             {
@@ -56,7 +56,7 @@ namespace TestProject
             }
             return to_return;
         }
-        public static string ReadString(BinaryReader reader)
+        public static string ReadString(ref BinaryReader reader)
         {
             string to_return = "";
             for (int i = 0; i < int.MaxValue; i++)

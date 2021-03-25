@@ -8,23 +8,23 @@ using System.Threading.Tasks;
 
 namespace TestProject.File_Handlers.Misc
 {
-    class ResourcesBIN
+    public class ResourcesBIN
     {
         public static alien_resources_bin Load(string FullFilePath)
         {
             alien_resources_bin Result = new alien_resources_bin();
             BinaryReader Stream = new BinaryReader(File.OpenRead(FullFilePath));
 
-            Result.Header = Utilities.Consume<alien_resources_bin_header>(Stream);
+            Result.Header = Utilities.Consume<alien_resources_bin_header>(ref Stream);
             // TODO: Seems to be varying length or something weirder.
-            Result.Entries = Utilities.ConsumeArray<alien_resources_bin_entry>(Stream, Result.Header.EntryCount);
+            Result.Entries = Utilities.ConsumeArray<alien_resources_bin_entry>(ref Stream, Result.Header.EntryCount);
 
             return Result;
         }
     }
 }
 
-struct alien_resources_bin_header
+public struct alien_resources_bin_header
 {
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
     public int[] Unknown0_; // 2
@@ -32,14 +32,14 @@ struct alien_resources_bin_header
     public int Unknown1_;
 };
 
-struct alien_resources_bin_entry
+public struct alien_resources_bin_entry
 {
     public int Unknown0_;
     public int ResourceID;
     public int UnknownResourceIndex;
 };
 
-struct alien_resources_bin
+public struct alien_resources_bin
 {
     public alien_resources_bin_header Header;
     public List<alien_resources_bin_entry> Entries;

@@ -5,28 +5,28 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-class AlienModel
+public class AlienModel
 {
     public List<AlienModelPart> parts = new List<AlienModelPart>();
 }
 
-class AlienModelPart
+public class AlienModelPart
 {
     public List<int> indicies = new List<int>();
 
-    public List<Vector3> vertices = new List<Vector3>();
-    public List<Vector3> normals = new List<Vector3>();
-    public List<Vector2> uvs = new List<Vector2>();
-    public List<Vector2> uvs1 = new List<Vector2>();
-    public List<Vector2> uvs2 = new List<Vector2>();
-    public List<Vector2> uvs3 = new List<Vector2>();
-    public List<Vector2> uvs7 = new List<Vector2>();
-    public List<Vector4> colours = new List<Vector4>();
+    public List<V3> vertices = new List<V3>();
+    public List<V3> normals = new List<V3>();
+    public List<V2> uvs = new List<V2>();
+    public List<V2> uvs1 = new List<V2>();
+    public List<V2> uvs2 = new List<V2>();
+    public List<V2> uvs3 = new List<V2>();
+    public List<V2> uvs7 = new List<V2>();
+    public List<V4> colours = new List<V4>();
 }
 
 namespace TestProject.File_Handlers
 {
-    class AlienLevel
+    public class AlienLevel
     {
         public static alien_level Load(string levelPath)
         {
@@ -34,8 +34,8 @@ namespace TestProject.File_Handlers
 
             Result.RenderableREDS = File_Handlers.Misc.RenderableElementsBIN.Load(levelPath + "/RENDERABLE/REDS.BIN");
 
-            Result.GlobalTextures = File_Handlers.Textures.TexturePAK.Load(levelPath + "/../../GLOBAL/WORLD/GLOBAL_TEXTURES.ALL.PAK", levelPath + "/../../GLOBAL/WORLD/GLOBAL_TEXTURES_HEADERS.ALL.BIN");
             Result.LevelTextures = File_Handlers.Textures.TexturePAK.Load(levelPath + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK", levelPath + "/RENDERABLE/LEVEL_TEXTURE_HEADERS.ALL.BIN");
+            Result.GlobalTextures = File_Handlers.Textures.TexturePAK.Load(levelPath + "/../../GLOBAL/WORLD/GLOBAL_TEXTURES.ALL.PAK", levelPath + "/../../GLOBAL/WORLD/GLOBAL_TEXTURES_HEADERS.ALL.BIN");
 
             Result.ModelsCST = File.ReadAllBytes(levelPath + "/RENDERABLE/LEVEL_MODELS.CST");
             Result.ModelsMTL = File_Handlers.Models.ModelsMTL.Load(levelPath + "/RENDERABLE/LEVEL_MODELS.MTL", Result.ModelsCST);
@@ -101,7 +101,7 @@ namespace TestProject.File_Handlers
                     {
                         int ElementCount = ElementCounts[VertexArrayIndex];
                         alien_vertex_buffer_format_element Inputs = Elements[VertexArrayIndex];
-                        if (Inputs.ArrayIndex == 0xFF) InIndices = Utilities.ConsumeArray<Int16>(Stream, Model.IndexCount);
+                        if (Inputs.ArrayIndex == 0xFF) InIndices = Utilities.ConsumeArray<Int16>(ref Stream, Model.IndexCount);
                         else
                         {
                             for (int VertexIndex = 0; VertexIndex < Model.VertexCount; ++VertexIndex)
@@ -113,7 +113,7 @@ namespace TestProject.File_Handlers
                                     {
                                         case alien_vertex_input_type.AlienVertexInputType_v3:
                                         {
-                                            Vector3 Value = Utilities.Consume<Vector3>(Stream);
+                                            V3 Value = Utilities.Consume<V3>(ref Stream);
                                             // TODO: Check variant index.
                                             switch (Input.ShaderSlot)
                                             {
@@ -142,7 +142,7 @@ namespace TestProject.File_Handlers
                                                     //Seems to be material properties values, not color nor indices.
                                                     if (Input.VariantIndex == 0)
                                                     {
-                                                        thisPart.colours.Add(new Vector4(Value)); //In this case, XYZW is RGBA
+                                                        thisPart.colours.Add(new V4(Value)); //In this case, XYZW is RGBA
                                                     }
                                                     break;
                                             }
@@ -151,7 +151,7 @@ namespace TestProject.File_Handlers
 
                                         case alien_vertex_input_type.AlienVertexInputType_v4u8_i:
                                         {
-                                            Vector4 Value = new Vector4(Stream.ReadBytes(4));
+                                            V4 Value = new V4(Stream.ReadBytes(4));
                                             switch (Input.ShaderSlot)
                                             {
                                                 case alien_vertex_input_slot.AlienVertexInputSlot_BI:
@@ -163,7 +163,7 @@ namespace TestProject.File_Handlers
 
                                         case alien_vertex_input_type.AlienVertexInputType_v4u8_f:
                                         {
-                                            Vector4 Value = new Vector4(Stream.ReadBytes(4));
+                                            V4 Value = new V4(Stream.ReadBytes(4));
                                             Value = Value / 255.0f;
 
                                             switch (Input.ShaderSlot)
@@ -171,12 +171,12 @@ namespace TestProject.File_Handlers
                                                 case alien_vertex_input_slot.AlienVertexInputSlot_BW:
                                                     // NOTE: My skinning shader assumes the weights will always sum up to 1.
                                                     float Sum = Value.x + Value.y + Value.z + Value.w;
-                                                    Vector4 calculated = Value / Sum;
+                                                    V4 calculated = Value / Sum;
                                                     //SkinnedMesh.Weights[VertexIndex] = calculated;
                                                     break;
                                                 case alien_vertex_input_slot.AlienVertexInputSlot_UV:
-                                                    thisPart.uvs2.Add(new Vector2(Value.x, Value.y));
-                                                    thisPart.uvs3.Add(new Vector2(Value.z, Value.w));
+                                                    thisPart.uvs2.Add(new V2(Value.x, Value.y));
+                                                    thisPart.uvs3.Add(new V2(Value.z, Value.w));
                                                     break;
                                             }
                                             break;
@@ -184,8 +184,8 @@ namespace TestProject.File_Handlers
 
                                         case alien_vertex_input_type.AlienVertexInputType_v2s16_UV:
                                         {
-                                            List<Int16> Values = Utilities.ConsumeArray<Int16>(Stream, 2);
-                                            Vector2 Value = new Vector2(Values[0], Values[1]);
+                                            List<Int16> Values = Utilities.ConsumeArray<Int16>(ref Stream, 2);
+                                            V2 Value = new V2(Values[0], Values[1]);
                                             Value = Value / 2048.0f;
 
                                             switch (Input.ShaderSlot)
@@ -208,15 +208,15 @@ namespace TestProject.File_Handlers
 
                                         case alien_vertex_input_type.AlienVertexInputType_v4s16_f:
                                         {
-                                            List<Int16> Values = Utilities.ConsumeArray<Int16>(Stream, 4);
-                                            Vector4 Value = new Vector4(Values[0], Values[1], Values[2], Values[3]);
+                                            List<Int16> Values = Utilities.ConsumeArray<Int16>(ref Stream, 4);
+                                            V4 Value = new V4(Values[0], Values[1], Values[2], Values[3]);
                                             Value = Value / (float)Int16.MaxValue;
 
                                             // TODO: Check variant index.
                                             switch (Input.ShaderSlot)
                                             {
                                                 case alien_vertex_input_slot.AlienVertexInputSlot_P:
-                                                    thisPart.vertices.Add(new Vector3(Value));
+                                                    thisPart.vertices.Add(new V3(Value));
                                                     //T.w = Value.w;
                                                     break;
                                             }
@@ -225,14 +225,14 @@ namespace TestProject.File_Handlers
 
                                         case alien_vertex_input_type.AlienVertexInputType_v2s16_f:
                                             {
-                                                Vector4 Value = new Vector4(Stream.ReadBytes(4));
+                                                V4 Value = new V4(Stream.ReadBytes(4));
                                                 Value = Value / (float)Byte.MaxValue - 0.5f;
                                                 Value.Normalise();
 
                                                 switch (Input.ShaderSlot)
                                                 {
                                                     case alien_vertex_input_slot.AlienVertexInputSlot_N:
-                                                        thisPart.normals.Add(new Vector3(Value));
+                                                        thisPart.normals.Add(new V3(Value));
                                                         break;
                                                     case alien_vertex_input_slot.AlienVertexInputSlot_T:
                                                         //T = Value;
@@ -247,7 +247,7 @@ namespace TestProject.File_Handlers
                                 }
                             }
                         }
-                        Utilities.Align(Stream, 16);
+                        Utilities.Align(ref Stream, 16);
                     }
 
                     //probably a better way to do this
@@ -264,7 +264,7 @@ namespace TestProject.File_Handlers
     }
 }
 
-struct alien_level
+public struct alien_level
 {
     public byte[] ModelsCST;
     public alien_mtl ModelsMTL;

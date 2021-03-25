@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace TestProject.File_Handlers.Shaders
 {
-    class ShadersPAK
+    public class ShadersPAK
     {
         public static alien_shader_pak Load(string FullFilePath)
         {
@@ -26,23 +26,23 @@ namespace TestProject.File_Handlers.Shaders
 
                 alien_shader_pak_shader Shader = new alien_shader_pak_shader();
                 Shader.Index = Entry.UnknownIndex;
-                Shader.Header = Utilities.Consume<alien_shader_pak_shader_header>(Stream);
+                Shader.Header = Utilities.Consume<alien_shader_pak_shader_header>(ref Stream);
                 byte[] Name = Stream.ReadBytes(40);
                 Shader.Name = Utilities.ReadString(Name);
-                Shader.Header2 = Utilities.Consume<alien_shader_pak_shader_header2>(Stream);
+                Shader.Header2 = Utilities.Consume<alien_shader_pak_shader_header2>(ref Stream);
                 Shader.Entry0Count = Stream.ReadInt16();
-                Shader.Entries0 = Utilities.ConsumeArray<alien_shader_pak_shader_unknown_entry>(Stream, Shader.Entry0Count);
-                Shader.TextureEntries = Utilities.ConsumeArray<alien_shader_pak_shader_texture_entry>(Stream, Shader.Header.TableEntryCounts[0]);
+                Shader.Entries0 = Utilities.ConsumeArray<alien_shader_pak_shader_unknown_entry>(ref Stream, Shader.Entry0Count);
+                Shader.TextureEntries = Utilities.ConsumeArray<alien_shader_pak_shader_texture_entry>(ref Stream, Shader.Header.TableEntryCounts[0]);
                 Shader.Tables = new List<byte[]>(Shader.Header.TableEntryCounts.Length);
                 for (int TableIndex = 0; TableIndex < Shader.Header.TableEntryCounts.Length; ++TableIndex)
                 {
                     int EntryCount = Shader.Header.TableEntryCounts[TableIndex];
                     Shader.Tables.Add(Stream.ReadBytes(EntryCount));
                 }
-                Shader.Indices = Utilities.Consume<alien_shader_pak_shader_indices>(Stream);
+                Shader.Indices = Utilities.Consume<alien_shader_pak_shader_indices>(ref Stream);
                 Result.Shaders.Add(Shader);
 
-                Utilities.Align(Stream, 16);
+                Utilities.Align(ref Stream, 16);
             }
 
             return Result;
@@ -50,7 +50,7 @@ namespace TestProject.File_Handlers.Shaders
     }
 }
 
-struct alien_shader_pak_shader_header
+public struct alien_shader_pak_shader_header
 {
     public int ResourceID; // TODO: Is it? It seems to be an ID/Hash.
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
@@ -64,7 +64,7 @@ struct alien_shader_pak_shader_header
     //public Int16 TextureLinkCount;
 };
 
-enum alien_shader_pak_shader_texture_slots
+public enum alien_shader_pak_shader_texture_slots
 {
     AlienShaderTextureSlot_Opacity = 0,
     AlienShaderTextureSlot_Diffuse = 1,
@@ -76,7 +76,7 @@ enum alien_shader_pak_shader_texture_slots
     AlienShaderTextureSlot_Dirt = 14,
 };
 
-enum alien_shader_category
+public enum alien_shader_category
 {
     AlienShaderCategory_None = 0,
     AlienShaderCategory_Particle = 12,
@@ -116,7 +116,7 @@ enum alien_shader_category
     AlienShaderCategory_CameraMap = 65,
 };
 
-struct alien_shader_pak_shader_header2
+public struct alien_shader_pak_shader_header2
 {
     public Int16 ShaderCategory;
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 10)]
@@ -124,13 +124,13 @@ struct alien_shader_pak_shader_header2
     public int ResourceID; // TODO: Is it?
 };
 
-struct alien_shader_pak_shader_unknown_entry
+public struct alien_shader_pak_shader_unknown_entry
 {
     public Int16 Unknown0_;
     public int Unknown1_;
 };
 
-struct alien_shader_pak_shader_texture_entry
+public struct alien_shader_pak_shader_texture_entry
 {
     public byte UnknownIndex;
     public byte UnknownIndex1;
@@ -141,7 +141,7 @@ struct alien_shader_pak_shader_texture_entry
     public float UnknownFloat1;
 };
 
-struct alien_shader_pak_shader_indices
+public struct alien_shader_pak_shader_indices
 {
     public int VertexShader;
     public int PixelShader;
@@ -153,7 +153,7 @@ struct alien_shader_pak_shader_indices
     public int GeometryShader;
 };
 
-struct alien_shader_pak_shader
+public struct alien_shader_pak_shader
 {
     public alien_shader_pak_shader_header Header;
     public int Index;
@@ -169,7 +169,7 @@ struct alien_shader_pak_shader
     public alien_shader_pak_shader_indices Indices;
 };
 
-struct alien_shader_pak
+public struct alien_shader_pak
 {
     public alien_pak PAK;
     public List<alien_shader_pak_shader> Shaders;

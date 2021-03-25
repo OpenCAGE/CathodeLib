@@ -8,28 +8,28 @@ using System.Threading.Tasks;
 namespace TestProject.File_Handlers.Misc
 {
     //REnDerable elementS
-    class RenderableElementsBIN
+    public class RenderableElementsBIN
     {
         public static alien_reds_bin Load(string FullFilePath)
         {
             alien_reds_bin Result = new alien_reds_bin();
             BinaryReader Stream = new BinaryReader(File.OpenRead(FullFilePath));
 
-            Result.Header = Utilities.Consume<alien_reds_header>(Stream);
+            Result.Header = Utilities.Consume<alien_reds_header>(ref Stream);
             // TODO: Seems to be varying length or something weirder.
-            Result.Entries = Utilities.ConsumeArray<alien_reds_entry>(Stream, Result.Header.EntryCount);
+            Result.Entries = Utilities.ConsumeArray<alien_reds_entry>(ref Stream, Result.Header.EntryCount);
 
             return Result;
         }
     }
 }
 
-struct alien_reds_header
+public struct alien_reds_header
 {
     public int EntryCount;
 };
 
-struct alien_reds_entry
+public struct alien_reds_entry
 {
     public int UnknownZeros0_;
     public int ModelIndex;
@@ -41,7 +41,7 @@ struct alien_reds_entry
     public byte ModelLODPrimitiveCount; // NOTE: Sure it is primitive count, not sure about the ModelLOD part.
 };
 
-struct alien_reds_bin
+public struct alien_reds_bin
 {
     public alien_reds_header Header;
     public List<alien_reds_entry> Entries;

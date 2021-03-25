@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace TestProject.File_Handlers.Models
 {
-    class ModelPAK
+    public class ModelPAK
     {
         public static alien_pak_model Load(string FullFilePath)
         {
@@ -26,13 +26,13 @@ namespace TestProject.File_Handlers.Models
 
                 // TODO: Maybe this stuff can be moved to AlienLoadPAK, probably using an 'alien_pak_entry' value to check if
                 //  it is an array of entries.
-                alien_pak_model_entry_header EntryHeader = Utilities.Consume<alien_pak_model_entry_header>(Stream);
+                alien_pak_model_entry_header EntryHeader = Utilities.Consume<alien_pak_model_entry_header>(ref Stream);
                 EntryHeader.FirstChunkIndex = BinaryPrimitives.ReverseEndianness(EntryHeader.FirstChunkIndex);
                 EntryHeader.ChunkCount = BinaryPrimitives.ReverseEndianness(EntryHeader.ChunkCount);
                 Model.Header = EntryHeader;
 
-                Model.ChunkInfos = Utilities.ConsumeArray<alien_pak_model_chunk_info>(Stream, EntryHeader.ChunkCount);
-                Utilities.Align(Stream, 16);
+                Model.ChunkInfos = Utilities.ConsumeArray<alien_pak_model_chunk_info>(ref Stream, EntryHeader.ChunkCount);
+                Utilities.Align(ref Stream, 16);
                 Model.Chunks = new List<byte[]>(EntryHeader.ChunkCount);
 
                 for (int ChunkIndex = 0; ChunkIndex < EntryHeader.ChunkCount; ++ChunkIndex)
@@ -56,7 +56,7 @@ namespace TestProject.File_Handlers.Models
     }
 }
 
-struct alien_pak_model_entry_header
+public struct alien_pak_model_entry_header
 {
     public int FirstChunkIndex;
     public int ChunkCount;
@@ -65,7 +65,7 @@ struct alien_pak_model_entry_header
     public int[] Unknown; //4
 };
 
-struct alien_pak_model_chunk_info
+public struct alien_pak_model_chunk_info
 {
     public int BINIndex;
     public int Offset;
@@ -73,14 +73,14 @@ struct alien_pak_model_chunk_info
     public int _Unknown1; // NOTE: Probably struct padding
 };
 
-struct alien_pak_model_entry
+public struct alien_pak_model_entry
 {
     public alien_pak_model_entry_header Header;
     public List<alien_pak_model_chunk_info> ChunkInfos;
     public List<byte[]> Chunks;
 };
 
-struct alien_pak_model
+public struct alien_pak_model
 {
     public alien_pak PAK;
     public List<alien_pak_model_entry> Models;

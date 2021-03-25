@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace TestProject.File_Handlers.Shaders
 {
-    class IDXRemap
+    public class IDXRemap
     {
         public static alien_shader_idx_remap Load(string FullFilePath)
         {
@@ -26,16 +26,14 @@ namespace TestProject.File_Handlers.Shaders
     }
 }
 
-[StructLayout(LayoutKind.Sequential)]
-struct alien_shader_idx_remap_data
+public struct alien_shader_idx_remap_data
 {
     public int Index;
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
     public int[] Unknown0_; //3
 };
 
-[StructLayout(LayoutKind.Sequential)]
-struct alien_shader_idx_remap
+public struct alien_shader_idx_remap
 {
     public alien_pak PAK;
     public List<alien_shader_idx_remap_data> Datas;

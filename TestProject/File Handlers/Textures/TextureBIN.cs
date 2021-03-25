@@ -7,19 +7,19 @@ using System.Threading.Tasks;
 
 namespace TestProject.File_Handlers.Textures
 {
-    class TextureBIN
+    public class TextureBIN
     {
         public static alien_texture_bin Load(string FullFilePath)
         {
             alien_texture_bin Result = new alien_texture_bin();
             BinaryReader Stream = new BinaryReader(File.OpenRead(FullFilePath));
 
-            alien_texture_bin_header Header = Utilities.Consume<alien_texture_bin_header>(Stream);
+            alien_texture_bin_header Header = Utilities.Consume<alien_texture_bin_header>(ref Stream);
 
             int StringsStartCount = Stream.ReadInt32();
             byte[] StringsStart  = Stream.ReadBytes(StringsStartCount);
 
-            List<alien_texture_bin_texture> Textures = Utilities.ConsumeArray<alien_texture_bin_texture>(Stream, Header.EntryCount);
+            List<alien_texture_bin_texture> Textures = Utilities.ConsumeArray<alien_texture_bin_texture>(ref Stream, Header.EntryCount);
 
             Result.TextureFilePaths = new List<string>(Header.EntryCount);
             for (int EntryIndex = 0; EntryIndex < Header.EntryCount; ++EntryIndex)

@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace TestProject.File_Handlers.Shaders
 {
-    class ShadersBIN
+    public class ShadersBIN
     {
         public static alien_shader_bin_pak Load(string FullFilePath)
         {
@@ -31,8 +31,8 @@ namespace TestProject.File_Handlers.Shaders
                 BinaryReader Stream = new BinaryReader(new MemoryStream(Result.PAK.EntryDatas[EntryIndex]));
 
                 dso_file DSO = new dso_file();
-                DSO.Header = Utilities.Consume<dso_header>(Stream);
-                DSO.ChunkOffsets = Utilities.ConsumeArray<int>(Stream, DSO.Header.ChunkCount);
+                DSO.Header = Utilities.Consume<dso_header>(ref Stream);
+                DSO.ChunkOffsets = Utilities.ConsumeArray<int>(ref Stream, DSO.Header.ChunkCount);
 
                 for (int ChunkIndex = 0; ChunkIndex < DSO.Header.ChunkCount; ++ChunkIndex)
                 {
@@ -40,18 +40,18 @@ namespace TestProject.File_Handlers.Shaders
                     byte[] ChunkBuffer = Stream.ReadBytes((int)Stream.BaseStream.Length - (int)Stream.BaseStream.Position);
                     BinaryReader Stream2 = new BinaryReader(new MemoryStream(ChunkBuffer));
 
-                    dso_chunk_header ChunkHeader = Utilities.Consume<dso_chunk_header>(Stream2);
+                    dso_chunk_header ChunkHeader = Utilities.Consume<dso_chunk_header>(ref Stream2);
                     ChunkBuffer = Stream.ReadBytes((int)Stream.BaseStream.Length - (int)Stream.BaseStream.Position);
 
                     switch (new string(ChunkHeader.FourCC.V))
                     {
                         case "RDEF":
                             {
-                                DSO.RDEF = Utilities.Consume<dso_chunk_rdef>(Stream2);
-                                DSO.RDEF_RD11 = Utilities.Consume<dso_chunk_rdef_rd11>(Stream2);
+                                DSO.RDEF = Utilities.Consume<dso_chunk_rdef>(ref Stream2);
+                                DSO.RDEF_RD11 = Utilities.Consume<dso_chunk_rdef_rd11>(ref Stream2);
 
                                 Stream2.BaseStream.Position = DSO.RDEF.ConstantBufferOffset;
-                                DSO.ConstantBuffers = Utilities.ConsumeArray<dso_constant_buffer>(Stream2, DSO.RDEF.ConstantBufferCount);
+                                DSO.ConstantBuffers = Utilities.ConsumeArray<dso_constant_buffer>(ref Stream2, DSO.RDEF.ConstantBufferCount);
                                 DSO.ConstantBufferNames = new List<string>(DSO.RDEF.ConstantBufferCount);
                                 for (int BufferIndex = 0; BufferIndex < DSO.RDEF.ConstantBufferCount; ++BufferIndex)
                                 {
@@ -61,7 +61,7 @@ namespace TestProject.File_Handlers.Shaders
                                 }
 
                                 Stream2.BaseStream.Position = DSO.RDEF.ResourceBindingOffset;
-                                DSO.ResourceBindings = Utilities.ConsumeArray<dso_resource_binding>(Stream2, DSO.RDEF.ResourceBindingCount);
+                                DSO.ResourceBindings = Utilities.ConsumeArray<dso_resource_binding>(ref Stream2, DSO.RDEF.ResourceBindingCount);
                                 DSO.ResourceBindingNames = new List<string>(DSO.RDEF.ResourceBindingCount);
                                 for (int BindingIndex = 0; BindingIndex < DSO.RDEF.ResourceBindingCount; ++BindingIndex)
                                 {
@@ -83,8 +83,8 @@ namespace TestProject.File_Handlers.Shaders
 
                         case "ISGN":
                             {
-                                DSO.ISGN = Utilities.Consume<dso_chunk_isgn>(Stream2);
-                                DSO.InputSignatures = Utilities.ConsumeArray<dso_input_signature>(Stream2, DSO.ISGN.EntryCount);
+                                DSO.ISGN = Utilities.Consume<dso_chunk_isgn>(ref Stream2);
+                                DSO.InputSignatures = Utilities.ConsumeArray<dso_input_signature>(ref Stream2, DSO.ISGN.EntryCount);
 
                                 for (int InputIndex = 0; InputIndex < DSO.ISGN.EntryCount; ++InputIndex)
                                 {
@@ -140,13 +140,13 @@ namespace TestProject.File_Handlers.Shaders
     }
 }
 
-struct dso_chunk_header
+public struct dso_chunk_header
 {
     public fourcc FourCC;
     public int SizeInBytes;
 };
 
-struct dso_header
+public struct dso_header
 {
     public fourcc FourCC;
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
@@ -156,7 +156,7 @@ struct dso_header
     public int ChunkCount;
 };
 
-struct dso_chunk_rdef
+public struct dso_chunk_rdef
 {
     public int ConstantBufferCount;
     public int ConstantBufferOffset;
@@ -169,7 +169,7 @@ struct dso_chunk_rdef
     public int CreatorStringOffset;
 };
 
-struct dso_chunk_rdef_rd11
+public struct dso_chunk_rdef_rd11
 {
     public fourcc FourCC;
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)]
@@ -177,7 +177,7 @@ struct dso_chunk_rdef_rd11
     public int InterfaceSlotCount;
 };
 
-struct dso_constant_buffer
+public struct dso_constant_buffer
 {
     public int NameStringOffset;
     public int VariableCount;
@@ -187,7 +187,7 @@ struct dso_constant_buffer
     public int Type;
 };
 
-struct dso_variable
+public struct dso_variable
 {
     public int NameStringOffset;
     public int DataOffset;
@@ -200,7 +200,7 @@ struct dso_variable
     public int[] Unknown_; //4
 };
 
-struct dso_variable_type
+public struct dso_variable_type
 {
     public Int16 Class;
     public Int16 Type;
@@ -215,7 +215,7 @@ struct dso_variable_type
     public int NameStringOffset;
 };
 
-struct dso_resource_binding
+public struct dso_resource_binding
 {
     public int NameStringOffset;
     public int ShaderInputType;
@@ -227,13 +227,13 @@ struct dso_resource_binding
     public int ShaderInputFlags;
 };
 
-struct dso_chunk_isgn
+public struct dso_chunk_isgn
 {
     public int EntryCount;
     public int Unknown0_;
 };
 
-struct dso_input_signature
+public struct dso_input_signature
 {
     public int NameStringOffset;
     public int SemanticIndex;
@@ -245,7 +245,7 @@ struct dso_input_signature
     public Int16 Unknown0_; // NOTE: Seems unused.
 };
 
-struct dso_file
+public struct dso_file
 {
     public dso_header Header;
     public List<int> ChunkOffsets;
@@ -265,7 +265,7 @@ struct dso_file
     public List<dso_input_signature> InputSignatures;
 };
 
-struct alien_shader_bin_pak
+public struct alien_shader_bin_pak
 {
     public alien_pak PAK;
 
