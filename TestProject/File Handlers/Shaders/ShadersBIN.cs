@@ -140,12 +140,14 @@ namespace TestProject.File_Handlers.Shaders
     }
 }
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct dso_chunk_header
 {
     public fourcc FourCC;
     public int SizeInBytes;
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct dso_header
 {
     public fourcc FourCC;
@@ -156,6 +158,7 @@ public struct dso_header
     public int ChunkCount;
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct dso_chunk_rdef
 {
     public int ConstantBufferCount;
@@ -169,6 +172,7 @@ public struct dso_chunk_rdef
     public int CreatorStringOffset;
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct dso_chunk_rdef_rd11
 {
     public fourcc FourCC;
@@ -177,6 +181,7 @@ public struct dso_chunk_rdef_rd11
     public int InterfaceSlotCount;
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct dso_constant_buffer
 {
     public int NameStringOffset;
@@ -187,6 +192,7 @@ public struct dso_constant_buffer
     public int Type;
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct dso_variable
 {
     public int NameStringOffset;
@@ -200,6 +206,7 @@ public struct dso_variable
     public int[] Unknown_; //4
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct dso_variable_type
 {
     public Int16 Class;
@@ -215,6 +222,7 @@ public struct dso_variable_type
     public int NameStringOffset;
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct dso_resource_binding
 {
     public int NameStringOffset;
@@ -227,12 +235,14 @@ public struct dso_resource_binding
     public int ShaderInputFlags;
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct dso_chunk_isgn
 {
     public int EntryCount;
     public int Unknown0_;
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct dso_input_signature
 {
     public int NameStringOffset;

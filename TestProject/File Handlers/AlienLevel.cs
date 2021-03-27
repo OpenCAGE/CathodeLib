@@ -50,6 +50,8 @@ namespace TestProject.File_Handlers
 
             Result.PhysicsMap = File_Handlers.Misc.PhysicsMAP.Load(levelPath + "/WORLD/PHYSICS.MAP");
 
+            return Result;
+
 
             //Result.ModelsPAK.PAK.Header.EntryCount =  Mesh Count
             //Result.ModelsMTL.Header.MaterialCount  =  Material Count

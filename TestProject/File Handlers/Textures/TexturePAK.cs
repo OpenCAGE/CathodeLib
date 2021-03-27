@@ -42,12 +42,14 @@ public enum alien_texture_format
     Alien_FORMAT_R8G8 = 14,
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_texture_bin_header
 {
     public int Version;
     public int EntryCount;
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_texture_bin_texture
 {
     public fourcc FourCC;
@@ -66,6 +68,7 @@ public struct alien_texture_bin_texture
     public int Unknown2_;
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_texture_bin
 {
     public alien_texture_bin_header Header;
@@ -78,47 +81,3 @@ public struct alien_textures
     public alien_pak PAK;
     public alien_texture_bin BIN;
 };
-
-public struct asset_id
-{
-
-}
-
-
-/* Below here is all shit from dan's renderer */
-public enum texture_format
-{
-    UNKNOWN,
-
-    BC1_RGB_SRGB_BLOCK,
-    BC1_RGB_UNORM_BLOCK,
-    BC2_SRGB_BLOCK,
-    BC2_UNORM_BLOCK,
-    BC3_SRGB_BLOCK,
-    BC3_UNORM_BLOCK,
-    BC5_UNORM_BLOCK,
-    BC7_SRGB_BLOCK,
-    BC7_UNORM_BLOCK,
-    R8G8B8A8_SRGB,
-    R8G8B8A8_UNORM,
-    R8_SRGB,
-    R8_UNORM,
-    R8G8_SRGB,
-    R8G8_UNORM,
-    R32G32B32A32_SFLOAT,
-
-}
-
-public struct texture_info
-{
-    public bool IsCubeMap;
-    public V3 Dim;
-    public texture_format Format;
-    public int MipLevels;
-}
-
-public struct texture_image
-{
-    public byte[] Data;
-    public texture_info Info;
-}

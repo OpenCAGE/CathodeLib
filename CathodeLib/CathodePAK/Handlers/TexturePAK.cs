@@ -297,18 +297,18 @@ namespace CATHODE
 
                 //Get the biggest texture part stored
                 TEX4_Part TexturePart;
-                if (TextureEntries[FileIndex].Texture_V2.Saved)
-                {
-                    TexturePart = TextureEntries[FileIndex].Texture_V2;
-                }
-                else if (TextureEntries[FileIndex].Texture_V1.Saved)
-                {
+                //if (TextureEntries[FileIndex].Texture_V2.Saved)
+                //{
+                //    TexturePart = TextureEntries[FileIndex].Texture_V2;
+               // }
+                //else if (TextureEntries[FileIndex].Texture_V1.Saved)
+               // {
                     TexturePart = TextureEntries[FileIndex].Texture_V1;
-                }
-                else
-                {
-                    return PAKReturnType.FAIL_REQUEST_IS_UNSUPPORTED;
-                }
+               // }
+               // else
+               // {
+               //     return PAKReturnType.FAIL_REQUEST_IS_UNSUPPORTED;
+               // }
 
                 //Pull the texture part content from the PAK
                 BinaryReader ArchiveFile = new BinaryReader(File.OpenRead(FilePathPAK));

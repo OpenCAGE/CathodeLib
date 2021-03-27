@@ -64,6 +64,7 @@ namespace TestProject.File_Handlers.Models
     }
 }
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_model_bin_header
 {
     public fourcc FourCC;
@@ -73,7 +74,7 @@ public struct alien_model_bin_header
     public int VertexInputCount;
 };
 
-//Length: 96
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_model_bin_model_info
 {
     public int FileNameOffset;
@@ -221,6 +222,7 @@ public enum alien_vertex_input_slot
     AlienVertexInputSlot_C = 0x0A, // NOTE: Color? Specular? What is this?
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_vertex_buffer_format_element
 {
     public int ArrayIndex;

@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -59,8 +60,7 @@ namespace TestProject.File_Handlers.PAK
     }
 }
 
-
-//Length: 32 bytes
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_pak_header
 {
     public int _Unknown1;
@@ -73,7 +73,7 @@ public struct alien_pak_header
     public int _Unknown5;
 };
 
-//Length: 48 bytes
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_pak_entry
 {
     public int _Unknown1; //TODO: Is 'alien_pak_header' 40 bytes long instead?

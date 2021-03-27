@@ -56,6 +56,7 @@ namespace TestProject.File_Handlers.Models
     }
 }
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_pak_model_entry_header
 {
     public int FirstChunkIndex;
@@ -65,6 +66,7 @@ public struct alien_pak_model_entry_header
     public int[] Unknown; //4
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_pak_model_chunk_info
 {
     public int BINIndex;

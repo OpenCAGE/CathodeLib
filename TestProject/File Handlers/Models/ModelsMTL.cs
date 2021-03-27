@@ -25,6 +25,8 @@ namespace TestProject.File_Handlers.Models
 
             Stream.BaseStream.Position = Header.FirstMaterialOffset + Marshal.SizeOf(Header.BytesRemainingAfterThis);
 
+            int test = Marshal.SizeOf(typeof(alien_mtl_material));
+
             Result.Header = Header;
             Result.Materials = Utilities.ConsumeArray<alien_mtl_material>(ref Stream, Header.MaterialCount);
 
@@ -41,15 +43,18 @@ namespace TestProject.File_Handlers.Models
             Result.Datas5 = cstReader.ReadSingle();
             cstReader.Close();
 
-            foreach (alien_mtl_material material in Result.Materials)
+            Result.TextureReferenceCounts = new List<int>(Result.Header.MaterialCount);
+            for (int MaterialIndex = 0; MaterialIndex < Header.MaterialCount; ++MaterialIndex)
             {
-                for (int i =0; i < material.TextureReferences.Length; i++)
+                alien_mtl_material Material = Result.Materials[MaterialIndex];
+
+                int count = 0;
+                for (int I = 0; I < Material.TextureReferences.Length; ++I)
                 {
-                    if(material.TextureReferences[i].TextureTableIndex != 0 && material.TextureReferences[i].TextureTableIndex != 2 && material.TextureReferences[i].TextureTableIndex != -1)
-                    {
-                        string sfddf = "";
-                    }
+                    alien_mtl_texture_reference Pair = Material.TextureReferences[I];
+                    if (Pair.TextureTableIndex == 2 || Pair.TextureTableIndex == 0) count++;
                 }
+                Result.TextureReferenceCounts.Add(count);
             }
 
             return Result;
@@ -57,7 +62,7 @@ namespace TestProject.File_Handlers.Models
     }
 }
 
-//Length: 44
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_mtl_header
 {
     public int BytesRemainingAfterThis; // TODO: Weird, is there any case where this is not true? Assert!
@@ -69,13 +74,14 @@ public struct alien_mtl_header
     public Int16 Unknown2_;
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_mtl_texture_reference
 {
     public Int16 TextureIndex; // NOTE: Entry index in texture BIN file. Max value seen matches the BIN file entry count;
     public Int16 TextureTableIndex; // NOTE: Only seen as -1, 0 or 2 so far.
 };
 
-//Length: 296
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_mtl_material
 {
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 12)]
@@ -99,8 +105,8 @@ public struct alien_mtl_material
     public int Unknown4_;
     public int Color; // TODO: This is not really color AFAIK.
     public int UnknownValue2;
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
-    public int[] UnknownZeros2_; //3
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+    public int[] UnknownZeros2_; //2
 };
 
 public struct alien_mtl

@@ -26,6 +26,7 @@ namespace TestProject.File_Handlers.Shaders
     }
 }
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_shader_idx_remap_data
 {
     public int Index;

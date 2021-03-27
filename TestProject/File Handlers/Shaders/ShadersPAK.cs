@@ -30,7 +30,7 @@ namespace TestProject.File_Handlers.Shaders
                 byte[] Name = Stream.ReadBytes(40);
                 Shader.Name = Utilities.ReadString(Name);
                 Shader.Header2 = Utilities.Consume<alien_shader_pak_shader_header2>(ref Stream);
-                Shader.Entry0Count = Stream.ReadInt16();
+                Shader.Entry0Count = Stream.ReadUInt16();
                 Shader.Entries0 = Utilities.ConsumeArray<alien_shader_pak_shader_unknown_entry>(ref Stream, Shader.Entry0Count);
                 Shader.TextureEntries = Utilities.ConsumeArray<alien_shader_pak_shader_texture_entry>(ref Stream, Shader.Header.TableEntryCounts[0]);
                 Shader.Tables = new List<byte[]>(Shader.Header.TableEntryCounts.Length);
@@ -50,6 +50,7 @@ namespace TestProject.File_Handlers.Shaders
     }
 }
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_shader_pak_shader_header
 {
     public int ResourceID; // TODO: Is it? It seems to be an ID/Hash.
@@ -116,6 +117,7 @@ public enum alien_shader_category
     AlienShaderCategory_CameraMap = 65,
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_shader_pak_shader_header2
 {
     public Int16 ShaderCategory;
@@ -124,23 +126,28 @@ public struct alien_shader_pak_shader_header2
     public int ResourceID; // TODO: Is it?
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_shader_pak_shader_unknown_entry
 {
     public Int16 Unknown0_;
     public int Unknown1_;
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_shader_pak_shader_texture_entry
 {
     public byte UnknownIndex;
-    public byte UnknownIndex1;
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
-    public Int16[] UnknownU16s; //16
-    public float UnknownFloat0;
+    public byte TextureSlot;
+    public Int16 UnknownZero;
+    public Int16 TextureAddressMode;
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 14)]
+    public Int16[] UnknownU16s; //14
+    public float UVAdder;
     public Int16 UnknownU16;
     public float UnknownFloat1;
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_shader_pak_shader_indices
 {
     public int VertexShader;

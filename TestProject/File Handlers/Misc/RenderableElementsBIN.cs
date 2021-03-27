@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -24,11 +25,13 @@ namespace TestProject.File_Handlers.Misc
     }
 }
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_reds_header
 {
     public int EntryCount;
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_reds_entry
 {
     public int UnknownZeros0_;

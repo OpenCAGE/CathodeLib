@@ -24,6 +24,7 @@ namespace TestProject.File_Handlers.Misc
     }
 }
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_resources_bin_header
 {
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
@@ -32,6 +33,7 @@ public struct alien_resources_bin_header
     public int Unknown1_;
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_resources_bin_entry
 {
     public int Unknown0_;

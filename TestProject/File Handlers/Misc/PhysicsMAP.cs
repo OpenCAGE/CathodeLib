@@ -23,12 +23,14 @@ namespace TestProject.File_Handlers.Misc
     }
 }
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_physics_map_header
 {
     public int FileSizeExcludingThis;
     public int EntryCount;
 };
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_physics_map_entry
 {
     public int UnknownNotableValue_;
