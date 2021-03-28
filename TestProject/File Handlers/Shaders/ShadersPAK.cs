@@ -32,14 +32,20 @@ namespace TestProject.File_Handlers.Shaders
                 Shader.Header2 = Utilities.Consume<alien_shader_pak_shader_header2>(ref Stream);
                 Shader.Entry0Count = Stream.ReadUInt16();
                 Shader.Entries0 = Utilities.ConsumeArray<alien_shader_pak_shader_unknown_entry>(ref Stream, Shader.Entry0Count);
-                Shader.TextureEntries = Utilities.ConsumeArray<alien_shader_pak_shader_texture_entry>(ref Stream, Shader.Header.TableEntryCounts[0]);
-                Shader.Tables = new List<byte[]>(Shader.Header.TableEntryCounts.Length);
-                for (int TableIndex = 0; TableIndex < Shader.Header.TableEntryCounts.Length; ++TableIndex)
+
+                Shader.TextureEntries = Utilities.ConsumeArray<alien_shader_pak_shader_texture_entry>(ref Stream, Shader.Header.TextureCount);
+                Shader.TextureThings = Stream.ReadBytes(Shader.Header.TextureCount);
+
+                byte[][] CSTLinks = new byte[5][];
+                for (int TableIndex = 0; TableIndex < Shader.Header.CSTCounts.Length; ++TableIndex)
                 {
-                    int EntryCount = Shader.Header.TableEntryCounts[TableIndex];
-                    Shader.Tables.Add(Stream.ReadBytes(EntryCount));
+                    CSTLinks[TableIndex] = Stream.ReadBytes(Shader.Header.CSTCounts[TableIndex]);
                 }
+                Shader.CSTLinks = CSTLinks;
+
+                Shader.TextureLinks = Stream.ReadBytes(Shader.Header.TextureLinkCount);
                 Shader.Indices = Utilities.Consume<alien_shader_pak_shader_indices>(ref Stream);
+
                 Result.Shaders.Add(Shader);
 
                 Utilities.Align(ref Stream, 16);
@@ -54,27 +60,12 @@ namespace TestProject.File_Handlers.Shaders
 public struct alien_shader_pak_shader_header
 {
     public int ResourceID; // TODO: Is it? It seems to be an ID/Hash.
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-    public Int16[] Unknown0_; //2
-
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 12)]
-    public Int16[] TableEntryCounts; //12
-    //public Int16 TextureCount;
-    //[MarshalAs(UnmanagedType.ByValArray, SizeConst = 10)]
-    //public Int16[] Unknown1_; //10
-    //public Int16 TextureLinkCount;
-};
-
-public enum alien_shader_pak_shader_texture_slots
-{
-    AlienShaderTextureSlot_Opacity = 0,
-    AlienShaderTextureSlot_Diffuse = 1,
-    AlienShaderTextureSlot_Normal = 3,
-    AlienShaderTextureSlot_Specular = 5,
-    AlienShaderTextureSlot_SecondarySpecular = 6,
-    AlienShaderTextureSlot_Environment = 7,
-    AlienShaderTextureSlot_AlphaNoise = 12,
-    AlienShaderTextureSlot_Dirt = 14,
+    public Int16 Unknown0_; // NOTE: Always 36.
+    public Int16 Unknown1_; // NOTE: Always 1.
+    public Int16 TextureCount;
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5)]
+    public int[] CSTCounts;//5
+    public Int16 TextureLinkCount;
 };
 
 public enum alien_shader_category
@@ -121,9 +112,8 @@ public enum alien_shader_category
 public struct alien_shader_pak_shader_header2
 {
     public Int16 ShaderCategory;
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 10)]
-    public Int16[] Unknown; //10
-    public int ResourceID; // TODO: Is it?
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 24)]
+    public byte[] Unknown; //24
 };
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -134,17 +124,19 @@ public struct alien_shader_pak_shader_unknown_entry
 };
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
+public struct alien_shader_pak_shader_texture_property
+{
+    public Int16 Type;
+    public float F32;
+};
+
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_shader_pak_shader_texture_entry
 {
-    public byte UnknownIndex;
+    public byte PropertyCount;
     public byte TextureSlot;
-    public Int16 UnknownZero;
-    public Int16 TextureAddressMode;
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 14)]
-    public Int16[] UnknownU16s; //14
-    public float UVAdder;
-    public Int16 UnknownU16;
-    public float UnknownFloat1;
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 7)]
+    public alien_shader_pak_shader_texture_property[] Properties; //7
 };
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -162,16 +154,18 @@ public struct alien_shader_pak_shader_indices
 
 public struct alien_shader_pak_shader
 {
-    public alien_shader_pak_shader_header Header;
     public int Index;
+    public alien_shader_pak_shader_header Header;
     public string Name;
     public alien_shader_pak_shader_header2 Header2;
 
     public int Entry0Count;
     public List<alien_shader_pak_shader_unknown_entry> Entries0;
     public List<alien_shader_pak_shader_texture_entry> TextureEntries;
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 12)]
-    public List<byte[]> Tables; //12
+
+    public byte[] TextureThings;
+    public byte[][] CSTLinks;//always 5 parents
+    public byte[] TextureLinks;
 
     public alien_shader_pak_shader_indices Indices;
 };

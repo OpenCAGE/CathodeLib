@@ -225,7 +225,7 @@ namespace TestProject.File_Handlers
                                             break;
                                         }
 
-                                        case alien_vertex_input_type.AlienVertexInputType_v2s16_f:
+                                        case alien_vertex_input_type.AlienVertexInputType_v4u8_NTB:
                                             {
                                                 V4 Value = new V4(Stream.ReadBytes(4));
                                                 Value = Value / (float)Byte.MaxValue - 0.5f;

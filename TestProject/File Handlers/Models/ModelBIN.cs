@@ -206,7 +206,7 @@ public enum alien_vertex_input_type
     AlienVertexInputType_v4u8_f = 0x09,
     AlienVertexInputType_v2s16_UV = 0x0A,
     AlienVertexInputType_v4s16_f = 0x0B,
-    AlienVertexInputType_v2s16_f = 0x0F,
+    AlienVertexInputType_v4u8_NTB = 0x0F,
     AlienVertexInputType_u16 = 0x13,
 };
 

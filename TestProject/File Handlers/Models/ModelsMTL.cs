@@ -25,21 +25,19 @@ namespace TestProject.File_Handlers.Models
 
             Stream.BaseStream.Position = Header.FirstMaterialOffset + Marshal.SizeOf(Header.BytesRemainingAfterThis);
 
-            int test = Marshal.SizeOf(typeof(alien_mtl_material));
-
             Result.Header = Header;
             Result.Materials = Utilities.ConsumeArray<alien_mtl_material>(ref Stream, Header.MaterialCount);
 
             BinaryReader cstReader = new BinaryReader(new MemoryStream(CST));
-            cstReader.BaseStream.Position = Header._Unknown[0];
+            cstReader.BaseStream.Position = Header.CSTOffsets[0];
             Result.Datas1 = cstReader.ReadSingle();
-            cstReader.BaseStream.Position = Header._Unknown[1];
+            cstReader.BaseStream.Position = Header.CSTOffsets[1];
             Result.Datas2 = cstReader.ReadSingle();
-            cstReader.BaseStream.Position = Header._Unknown[2];
+            cstReader.BaseStream.Position = Header.CSTOffsets[2];
             Result.Datas3 = cstReader.ReadSingle();
-            cstReader.BaseStream.Position = Header._Unknown[3];
+            cstReader.BaseStream.Position = Header.CSTOffsets[3];
             Result.Datas4 = cstReader.ReadSingle();
-            cstReader.BaseStream.Position = Header._Unknown[4];
+            cstReader.BaseStream.Position = Header.CSTOffsets[4];
             Result.Datas5 = cstReader.ReadSingle();
             cstReader.Close();
 
@@ -68,8 +66,10 @@ public struct alien_mtl_header
     public int BytesRemainingAfterThis; // TODO: Weird, is there any case where this is not true? Assert!
     public int Unknown0_;
     public int FirstMaterialOffset;
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 7)]
-    public int[] _Unknown; //7
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5)]
+    public int[] CSTOffsets; //5
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+    public int[] UnknownOffsets; //2
     public Int16 MaterialCount;
     public Int16 Unknown2_;
 };

@@ -19,6 +19,9 @@ namespace CathodeLib
 #if !TEST_PROJECT
             cathode_id_map = ReadDB(CathodeLib.Properties.Resources.cathode_id_map); //Names for node types, parameters, and enums
             node_friendly_names = ReadDB(CathodeLib.Properties.Resources.node_friendly_names); //Names for unique nodes
+#else
+            cathode_id_map = ReadDB(TestProject.Properties.Resources.cathode_id_map); //Names for node types, parameters, and enums
+            node_friendly_names = ReadDB(TestProject.Properties.Resources.node_friendly_names); //Names for unique nodes
 #endif
         }
 

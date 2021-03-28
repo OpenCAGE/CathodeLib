@@ -5,7 +5,7 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{AB44562E-744A-4E51-9C5A-1B8B91B1369F}</ProjectGuid>
-    <OutputType>Library</OutputType>
+    <OutputType>WinExe</OutputType>
     <RootNamespace>TestProject</RootNamespace>
     <AssemblyName>TestProject</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
@@ -64,82 +64,10 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\CathodeLib\CathodeBIN\CathodeBIN.cs">
-      <Link>CathodeBIN.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\CathodeBIN\Handlers\RenderableElementsBIN.cs">
-      <Link>RenderableElementsBIN.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\CathodeBIN\Headers\RenderableElement.cs">
-      <Link>RenderableElement.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\CathodePAK\AssetPAK.cs">
-      <Link>AssetPAK.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\CathodePAK\CommandsPAK.cs">
-      <Link>CommandsPAK.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\CathodePAK\Handlers\MaterialMapPAK.cs">
-      <Link>MaterialMapPAK.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\CathodePAK\Handlers\ModelPAK.cs">
-      <Link>ModelPAK.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\CathodePAK\Handlers\PAK2.cs">
-      <Link>PAK2.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\CathodePAK\Handlers\ShaderPAK.cs">
-      <Link>ShaderPAK.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\CathodePAK\Handlers\TexturePAK.cs">
-      <Link>TexturePAK.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\CathodePAK\Headers\CathodeFlowgraph.cs">
-      <Link>CathodeFlowgraph.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\CathodePAK\Headers\CathodeParameter.cs">
-      <Link>CathodeParameter.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\CathodePAK\Headers\CathodeShader.cs">
-      <Link>CathodeShader.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\CathodePAK\Headers\CS2.cs">
-      <Link>CS2.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\CathodePAK\Headers\DDS.cs">
-      <Link>DDS.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\CathodePAK\Headers\EntryPAK2.cs">
-      <Link>EntryPAK2.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\CathodePAK\Headers\MaterialMap.cs">
-      <Link>MaterialMap.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\CathodePAK\Headers\TEX4.cs">
-      <Link>TEX4.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\Utilities\BinaryUtilities.cs">
-      <Link>BinaryUtilities.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\Utilities\DDSReader.cs">
-      <Link>DDSReader.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\Utilities\DDSWriter.cs">
-      <Link>DDSWriter.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\Utilities\ErrorMessages.cs">
-      <Link>ErrorMessages.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\Utilities\NodeDB.cs">
-      <Link>NodeDB.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\Utilities\PAK.cs">
-      <Link>PAK.cs</Link>
-    </Compile>
-    <Compile Include="..\CathodeLib\Utilities\Types.cs">
-      <Link>Types.cs</Link>
-    </Compile>
     <Compile Include="File Handlers\AlienLevel.cs" />
+    <Compile Include="File Handlers\Commands\CathodeFlowgraph.cs" />
+    <Compile Include="File Handlers\Commands\CathodeParameter.cs" />
+    <Compile Include="File Handlers\Commands\CommandsPAK.cs" />
     <Compile Include="File Handlers\Misc\PhysicsMAP.cs" />
     <Compile Include="File Handlers\Misc\RenderableElementsBIN.cs" />
     <Compile Include="File Handlers\Misc\ResourcesBIN.cs" />
@@ -169,6 +97,7 @@
     <Compile Include="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>
       <DependentUpon>Resources.resx</DependentUpon>
+      <DesignTime>True</DesignTime>
     </Compile>
     <None Include="packages.config" />
     <None Include="Properties\Settings.settings">
@@ -180,6 +109,8 @@
       <DependentUpon>Settings.settings</DependentUpon>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
     </Compile>
+    <EmbeddedResource Include="Resources\NodeDBs\cathode_id_map.bin" />
+    <EmbeddedResource Include="Resources\NodeDBs\node_friendly_names.bin" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
