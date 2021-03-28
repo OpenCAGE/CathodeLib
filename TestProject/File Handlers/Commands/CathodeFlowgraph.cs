@@ -131,14 +131,15 @@ namespace CATHODE
             return allLinks;
         }
         
-        /* Get resource reference by ID */
-        public CathodeResourceReference GetResourceReferenceByID(byte[] id)
+        /* Get resource references by ID */
+        public List<CathodeResourceReference> GetResourceReferencesByID(byte[] id)
         {
+            List<CathodeResourceReference> allResources = new List<CathodeResourceReference>();
             foreach (CathodeResourceReference res in resources)
             {
-                if (res.resourceID.SequenceEqual(id)) return res;
+                if (res.resourceID.SequenceEqual(id)) allResources.Add(res);
             }
-            return null;
+            return allResources;
         }
     }
 
