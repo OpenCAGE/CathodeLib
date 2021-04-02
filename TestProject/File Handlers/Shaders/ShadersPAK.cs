@@ -96,6 +96,7 @@ public enum alien_shader_category
     AlienShaderCategory_DistortionOverlay = 45,
     AlienShaderCategory_SurfaceEffects = 50,
     AlienShaderCategory_EffectOverlay = 51,
+    AlienShaderCategory_Terrain = 52,
     AlienShaderCategory_NonInteractiveWater = 53,
     AlienShaderCategory_SimpleWater = 54,
     AlienShaderCategory_Planet = 55,

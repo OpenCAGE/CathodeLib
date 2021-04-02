@@ -21,7 +21,7 @@ namespace TestProject
 
             //test.ExportFile("test.dds", test.GetFileNames()[500]);
 
-            CATHODE.CommandsPAK pak = new CATHODE.CommandsPAK(@"G:\SteamLibrary\steamapps\common\Alien Isolation\DATA\ENV\PRODUCTION\BSP_TORRENS\WORLD/COMMANDS.PAK");
+            //CATHODE.CommandsPAK pak = new CATHODE.CommandsPAK(@"G:\SteamLibrary\steamapps\common\Alien Isolation\DATA\ENV\PRODUCTION\BSP_TORRENS\WORLD/COMMANDS.PAK");
 
             //alien_level level = File_Handlers.AlienLevel.Load(@"G:\SteamLibrary\steamapps\common\Alien Isolation\DATA\ENV\PRODUCTION\BSP_TORRENS");
         }

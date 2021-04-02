@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CATHODE
+namespace TestProject.File_Handlers.Commands
 {
     public class CommandsPAK
     {
@@ -40,8 +40,8 @@ namespace CATHODE
                         writer.Write(cTransform.position.x);
                         writer.Write(cTransform.position.y);
                         writer.Write(cTransform.position.z);
+                        writer.Write(cTransform.rotation.y); //NOTE: this is not an error on my part, this is how it's saved!
                         writer.Write(cTransform.rotation.x);
-                        writer.Write(cTransform.rotation.y);
                         writer.Write(cTransform.rotation.z);
                         break;
                     case CathodeDataType.DIRECTION:
@@ -180,9 +180,9 @@ namespace CATHODE
                 {
                     case CathodeDataType.POSITION:
                         this_parameter = new CathodeTransform();
-                        //TODO: are these X/Y/Zs the right way around?
                         ((CathodeTransform)this_parameter).position = new Vec3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                        ((CathodeTransform)this_parameter).rotation = new Vec3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                        float _x, _y, _z; _y = reader.ReadSingle(); _x = reader.ReadSingle(); _z = reader.ReadSingle(); //Y,X,Z!
+                        ((CathodeTransform)this_parameter).rotation = new Vec3(_x, _y, _z);
                         break;
                     case CathodeDataType.INTEGER:
                         this_parameter = new CathodeInteger();
