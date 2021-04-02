@@ -88,20 +88,20 @@ public struct alien_model_bin_model_info
     public int NextInLODGroup_;
     public int FirstModelInGroupForNextLOD_;
     public int MaterialLibraryIndex;
-    public int Unknown2_; // NOTE: Flags?
+    public uint Unknown2_; // NOTE: Flags?
     public int UnknownIndex; // NOTE: -1 means no index. Seems to be related to Next/Parent.
-    public int BlockSize;
+    public uint BlockSize;
     public int CollisionIndex_; // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
     public int BoneArrayOffset_; // TODO: This indexes on the leftover data and points to an array of linearly growing indices.
                                  //  And the array count is BoneCount.
-    public Int16 VertexFormatIndex;
-    public Int16 VertexFormatIndexLowDetail;
-    public Int16 VertexFormatIndexDefault_; // TODO: This is always equals to the VertexFormatIndex
-    public Int16 ScaleFactor;
+    public UInt16 VertexFormatIndex;
+    public UInt16 VertexFormatIndexLowDetail;
+    public UInt16 VertexFormatIndexDefault_; // TODO: This is always equals to the VertexFormatIndex
+    public UInt16 ScaleFactor;
     public Int16 HeadRelated_; // NOTE: Seems to be valid on some 'HEAD' models, otherwise -1. Maybe morphing related???
-    public Int16 VertexCount;
-    public Int16 IndexCount;
-    public Int16 BoneCount;
+    public UInt16 VertexCount;
+    public UInt16 IndexCount;
+    public UInt16 BoneCount;
 };
 
 public struct V4
