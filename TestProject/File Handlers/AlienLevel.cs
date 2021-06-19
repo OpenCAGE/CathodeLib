@@ -6,25 +6,6 @@ using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
 
-public class AlienModel
-{
-    public List<AlienModelPart> parts = new List<AlienModelPart>();
-}
-
-public class AlienModelPart
-{
-    public List<int> indicies = new List<int>();
-
-    public List<Vector3> vertices = new List<Vector3>();
-    public List<Vector3> normals = new List<Vector3>();
-    public List<Vector2> uvs = new List<Vector2>();
-    public List<Vector2> uvs1 = new List<Vector2>();
-    public List<Vector2> uvs2 = new List<Vector2>();
-    public List<Vector2> uvs3 = new List<Vector2>();
-    public List<Vector2> uvs7 = new List<Vector2>();
-    public List<Vector4> colours = new List<Vector4>();
-}
-
 namespace TestProject.File_Handlers
 {
     public class AlienLevel
@@ -36,21 +17,24 @@ namespace TestProject.File_Handlers
             string levelPath = @"G:\SteamLibrary\steamapps\common\Alien Isolation\DATA\ENV\PRODUCTION\" + LEVEL_NAME;
             string rootPath = (LEVEL_NAME.ToUpper().Substring(0, 3) == "DLC") ? levelPath + "/.." : levelPath;
 
-            Result.GlobalTextures = CATHODE.Textures.TexturePAK.Load(rootPath + "/../../GLOBAL/WORLD/GLOBAL_TEXTURES.ALL.PAK", rootPath + "/../../GLOBAL/WORLD/GLOBAL_TEXTURES_HEADERS.ALL.BIN");
-            Result.LevelTextures = CATHODE.Textures.TexturePAK.Load(levelPath + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK", levelPath + "/RENDERABLE/LEVEL_TEXTURE_HEADERS.ALL.BIN");
             Result.ModelsCST = File.ReadAllBytes(levelPath + "/RENDERABLE/LEVEL_MODELS.CST");
             Result.ModelsMTL = CATHODE.Models.ModelsMTL.Load(levelPath + "/RENDERABLE/LEVEL_MODELS.MTL");
-            Result.ModelsBIN = CATHODE.Models.ModelBIN.Load(levelPath + "/RENDERABLE/MODELS_LEVEL.BIN");
             Result.ModelsPAK = CATHODE.Models.ModelPAK.Load(levelPath + "/RENDERABLE/LEVEL_MODELS.PAK");
+            Result.ModelsBIN = CATHODE.Models.ModelBIN.Load(levelPath + "/RENDERABLE/MODELS_LEVEL.BIN");
             Result.ModelsMVR = new CATHODE.Models.ModelsMVR(levelPath + "/WORLD/MODELS.MVR");
-            Result.RenderableREDS = CATHODE.Misc.RenderableElementsBIN.Load(levelPath + "/WORLD/REDS.BIN");
+
+            Result.GlobalTextures = CATHODE.Textures.TexturePAK.Load(rootPath + "/../../GLOBAL/WORLD/GLOBAL_TEXTURES.ALL.PAK", rootPath + "/../../GLOBAL/WORLD/GLOBAL_TEXTURES_HEADERS.ALL.BIN");
+            Result.LevelTextures = CATHODE.Textures.TexturePAK.Load(levelPath + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK", levelPath + "/RENDERABLE/LEVEL_TEXTURE_HEADERS.ALL.BIN");
+
             Result.ShadersPAK = CATHODE.Shaders.ShadersPAK.Load(levelPath + "/RENDERABLE/LEVEL_SHADERS_DX11.PAK");
             //Result.ShadersBIN = TestProject.File_Handlers.Shaders.ShadersBIN.Load(levelPath + "/RENDERABLE/LEVEL_SHADERS_DX11_BIN.PAK");
             Result.ShadersIDXRemap = CATHODE.Shaders.IDXRemap.Load(levelPath + "/RENDERABLE/LEVEL_SHADERS_DX11_IDX_REMAP.PAK");
 
-            Result.CollisionMap = CATHODE.Misc.CollisionMAP.Load(levelPath + "/WORLD/COLLISION.MAP");
+            Result.RenderableREDS = new CATHODE.Misc.RenderableElementsBIN(levelPath + "/WORLD/REDS.BIN");
+            Result.ResourcesBIN = new CATHODE.Misc.ResourcesBIN(levelPath + "/WORLD/RESOURCES.BIN");
+            Result.PhysicsMap = new CATHODE.Misc.PhysicsMAP(levelPath + "/WORLD/PHYSICS.MAP");
             Result.EnvironmentMap = new CATHODE.Misc.EnvironmentMapBIN(levelPath + "/WORLD/ENVIRONMENTMAP.BIN");
-            Result.PhysicsMap = CATHODE.Misc.PhysicsMAP.Load(levelPath + "/WORLD/PHYSICS.MAP");
+            Result.CollisionMap = new CATHODE.Misc.CollisionMAP(levelPath + "/WORLD/COLLISION.MAP");
 
             return Result;
         }
@@ -72,7 +56,11 @@ public class alien_level
     public alien_shader_bin_pak ShadersBIN;
     public alien_shader_idx_remap ShadersIDXRemap;
 
-    public alien_reds_bin RenderableREDS;
+    public CATHODE.Misc.RenderableElementsBIN RenderableREDS;
+    public CATHODE.Misc.ResourcesBIN ResourcesBIN;
+    public CATHODE.Misc.PhysicsMAP PhysicsMap;
+    public CATHODE.Misc.EnvironmentMapBIN EnvironmentMap;
+    public CATHODE.Misc.CollisionMAP CollisionMap;
 
     //alien_mvr ModelsMVR;
     //alien_type_infos TypeInfos;
@@ -80,13 +68,6 @@ public class alien_level
     //alien_commands_pak CommandsPAK;
     //alien_commands Commands;
     //public alien_reds_bin WorldREDS; - this doesnt exist on win32
-    public alien_resources_bin ResourcesBIN;
-
-    public int MeshCount;
-
-    public alien_physics_map PhysicsMap;
-    public CATHODE.Misc.EnvironmentMapBIN EnvironmentMap;
-    public alien_collision_map CollisionMap;
 
     //alien_animation_dat EnvironmentAnimation;
 

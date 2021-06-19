@@ -14,7 +14,7 @@ namespace CATHODE.Saves
         private string filepath;
         private alien_progression_ais content;
 
-        /* Load file */
+        /* Load the file */
         public ProgressionAIS(string pathToMVR)
         {
             filepath = pathToMVR;

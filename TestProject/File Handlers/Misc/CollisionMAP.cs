@@ -8,40 +8,62 @@ using System.Threading.Tasks;
 
 namespace CATHODE.Misc
 {
-    class CollisionMAP
+    /* Handles CATHODE COLLISION.MAP files */
+    public class CollisionMAP
     {
-        public static alien_collision_map Load(string FullFilePath)
+        private string filepath;
+        public alien_collision_map_header header;
+        public List<alien_collision_map_entry> entries;
+
+        /* Load the file */
+        public CollisionMAP(string path)
         {
-            alien_collision_map Result = new alien_collision_map();
-            BinaryReader Stream = new BinaryReader(File.OpenRead(FullFilePath));
+            filepath = path;
 
-            Result.Header = Utilities.Consume<alien_collision_map_header>(ref Stream);
-            Result.Entries = Utilities.ConsumeArray<alien_collision_map_entry>(ref Stream, Result.Header.EntryCount);
+            BinaryReader stream = new BinaryReader(File.OpenRead(path));
+            header = Utilities.Consume<alien_collision_map_header>(ref stream);
+            entries = Utilities.ConsumeArray<alien_collision_map_entry>(ref stream, header.EntryCount);
+            stream.Close();
+        }
 
-            return Result;
+        /* Save the file */
+        public void Save()
+        {
+            FileStream stream = new FileStream(filepath, FileMode.Create);
+            Utilities.Write<alien_collision_map_header>(ref stream, header);
+            for (int i = 0; i < entries.Count; i++) Utilities.Write<alien_collision_map_entry>(ref stream, entries[i]);
+            stream.Close();
+        }
+
+        /* Data accessors */
+        public int EntryCount { get { return entries.Count; } }
+        public List<alien_collision_map_entry> Entries { get { return entries; } }
+        public alien_collision_map_entry GetEntry(int i)
+        {
+            return entries[i];
+        }
+
+        /* Data setters */
+        public void SetEntry(int i, alien_collision_map_entry content)
+        {
+            entries[i] = content;
         }
     }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct alien_collision_map_header
+    {
+        public int DataSize;
+        public int EntryCount;
+    };
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct alien_collision_map_entry
+    {
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+        public int[] Unknowns1; //12
+        public int ID;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 7)]
+        public int[] Unknowns2; //12
+    };
 }
-
-[StructLayout(LayoutKind.Sequential, Pack = 1)]
-public struct alien_collision_map_header
-{
-    public int DataSize;
-    public int EntryCount;
-};
-
-[StructLayout(LayoutKind.Sequential, Pack = 1)]
-public struct alien_collision_map_entry
-{
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-    public int[] Unknowns1; //12
-    public int ID;
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 7)]
-    public int[] Unknowns2; //12
-};
-
-public struct alien_collision_map
-{
-    public alien_collision_map_header Header;
-    public List<alien_collision_map_entry> Entries;
-};

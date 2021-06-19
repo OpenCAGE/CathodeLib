@@ -16,18 +16,18 @@ namespace CATHODE.Models
         private alien_mvr_header header;
         private List<alien_mvr_entry> movers;
 
-        /* Load an MVR file */
+        /* Load the file */
         public ModelsMVR(string pathToFile)
         {
             filepath = pathToFile;
 
-            BinaryReader Stream = new BinaryReader(File.OpenRead(filepath));
-            header = Utilities.Consume<alien_mvr_header>(ref Stream);
-            movers = Utilities.ConsumeArray<alien_mvr_entry>(ref Stream, (int)header.EntryCount);
-            Stream.Close();
+            BinaryReader stream = new BinaryReader(File.OpenRead(filepath));
+            header = Utilities.Consume<alien_mvr_header>(ref stream);
+            movers = Utilities.ConsumeArray<alien_mvr_entry>(ref stream, (int)header.EntryCount);
+            stream.Close();
         }
 
-        /* Save the MVR file */
+        /* Save the file */
         public void Save()
         {
             FileStream stream = new FileStream(filepath, FileMode.Create);

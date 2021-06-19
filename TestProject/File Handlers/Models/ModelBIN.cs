@@ -65,6 +65,33 @@ namespace CATHODE.Models
     }
 }
 
+
+public enum alien_vertex_input_type
+{
+    AlienVertexInputType_v3 = 0x03,
+    // TODO: Present at 'bsp_torrens' but I haven't seen models that contain that being rendered yet.
+    AlienVertexInputType_Unknown0_ = 0x04,
+    AlienVertexInputType_u32_C = 0x05,
+    AlienVertexInputType_v4u8_i = 0x06,
+    AlienVertexInputType_v4u8_f = 0x09,
+    AlienVertexInputType_v2s16_UV = 0x0A,
+    AlienVertexInputType_v4s16_f = 0x0B,
+    AlienVertexInputType_v4u8_NTB = 0x0F,
+    AlienVertexInputType_u16 = 0x13,
+};
+
+public enum alien_vertex_input_slot
+{
+    AlienVertexInputSlot_P = 0x01,
+    AlienVertexInputSlot_BW = 0x02, // NOTE: Bone Weights
+    AlienVertexInputSlot_BI = 0x03, // NOTE: Bone Indices
+    AlienVertexInputSlot_N = 0x04,
+    AlienVertexInputSlot_UV = 0x06,
+    AlienVertexInputSlot_T = 0x07, // NOTE: Tangent
+    AlienVertexInputSlot_B = 0x08, // NOTE: Bitangent
+    AlienVertexInputSlot_C = 0x0A, // NOTE: Color? Specular? What is this?
+};
+
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_model_bin_header
 {
@@ -105,32 +132,6 @@ public struct alien_model_bin_model_info
     public UInt16 BoneCount;
 };
 
-public enum alien_vertex_input_type
-{
-    AlienVertexInputType_v3 = 0x03,
-    // TODO: Present at 'bsp_torrens' but I haven't seen models that contain that being rendered yet.
-    AlienVertexInputType_Unknown0_ = 0x04,
-    AlienVertexInputType_u32_C = 0x05,
-    AlienVertexInputType_v4u8_i = 0x06,
-    AlienVertexInputType_v4u8_f = 0x09,
-    AlienVertexInputType_v2s16_UV = 0x0A,
-    AlienVertexInputType_v4s16_f = 0x0B,
-    AlienVertexInputType_v4u8_NTB = 0x0F,
-    AlienVertexInputType_u16 = 0x13,
-};
-
-public enum alien_vertex_input_slot
-{
-    AlienVertexInputSlot_P = 0x01,
-    AlienVertexInputSlot_BW = 0x02, // NOTE: Bone Weights
-    AlienVertexInputSlot_BI = 0x03, // NOTE: Bone Indices
-    AlienVertexInputSlot_N = 0x04,
-    AlienVertexInputSlot_UV = 0x06,
-    AlienVertexInputSlot_T = 0x07, // NOTE: Tangent
-    AlienVertexInputSlot_B = 0x08, // NOTE: Bitangent
-    AlienVertexInputSlot_C = 0x0A, // NOTE: Color? Specular? What is this?
-};
-
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_vertex_buffer_format_element
 {
@@ -141,6 +142,13 @@ public struct alien_vertex_buffer_format_element
     public int VariantIndex; // NOTE: Variant index such as UVs: (UV0, UV1, UV2...)
     public int Unknown_; // NOTE: Seems to be always 2?
 };
+
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+public struct fourcc
+{
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+    public char[] V; //4
+}
 
 public struct alien_vertex_buffer_format
 {
@@ -157,9 +165,3 @@ public struct alien_model_bin
     public List<string> ModelFilePaths;
     public List<string> ModelLODPartNames;
 };
-
-public struct fourcc
-{
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-    public char[] V; //4
-}

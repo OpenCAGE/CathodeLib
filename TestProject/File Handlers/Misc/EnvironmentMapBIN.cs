@@ -8,14 +8,14 @@ using System.Threading.Tasks;
 
 namespace CATHODE.Misc
 {
-    /* Handles CATHODE ENVIRONMENTMAP.BIN file */
+    /* Handles CATHODE ENVIRONMENTMAP.BIN files */
     public class EnvironmentMapBIN
     {
         private string filepath;
         private alien_environment_map_bin_header header;
         private List<alien_environment_map_bin_entry> entries;
 
-        /* Load file */
+        /* Load the file */
         public EnvironmentMapBIN(string path)
         {
             filepath = path;
