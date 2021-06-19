@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TestProject.File_Handlers.Textures
+namespace CATHODE.Textures
 {
     public class TextureBIN
     {

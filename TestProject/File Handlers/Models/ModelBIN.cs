@@ -2,11 +2,12 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TestProject.File_Handlers.Models
+namespace CATHODE.Models
 {
     public class ModelBIN
     {
@@ -81,9 +82,9 @@ public struct alien_model_bin_model_info
     public int UnknownZero_; // NOTE: Always 0 on starting area.
     public int ModelPartNameOffset;
     public float UnknownValue0_; // NOTE: Always 0 on starting area.
-    public V3 AABBMin;
+    public Vector3 AABBMin;
     public float LODMinDistance_;
-    public V3 AABBMax;
+    public Vector3 AABBMax;
     public float LODMaxDistance_;
     public int NextInLODGroup_;
     public int FirstModelInGroupForNextLOD_;
@@ -103,98 +104,6 @@ public struct alien_model_bin_model_info
     public UInt16 IndexCount;
     public UInt16 BoneCount;
 };
-
-public struct V4
-{
-    public V4(int _a)
-    {
-        x = _a;
-        y = _a;
-        z = _a;
-        w = _a;
-    }
-    public V4(float _x, float _y, float _z, float _w)
-    {
-        x = _x;
-        y = _y;
-        z = _z;
-        w = _w;
-    }
-    public V4(byte[] _b)
-    {
-        x = _b[0];
-        y = _b[1];
-        z = _b[2];
-        w = _b[3];
-    }
-    public V4(V3 _v)
-    {
-        x = _v.x;
-        y = _v.y;
-        z = _v.z;
-        w = 0;
-    }
-
-    public static V4 operator / (V4 _v, float _d)
-    {
-        return new V4(_v.x / _d, _v.y / _d, _v.z / _d, _v.w / _d);
-    }
-    public static V4 operator - (V4 _v, float _d)
-    {
-        return new V4(_v.x - _d, _v.y - _d, _v.z - _d, _v.w - _d);
-    }
-
-    public void Normalise()
-    {
-        float l = (float)Math.Sqrt(Math.Pow(x, 2) + Math.Pow(y, 2) + Math.Pow(z, 2) + Math.Pow(w, 2));
-        x = x / l;
-        y = y / l;
-        z = z / l;
-        w = w / l;
-    }
-
-    public float x;
-    public float y;
-    public float z;
-    public float w;
-}
-public struct V3
-{
-    public V3(V4 _v)
-    {
-        x = _v.x;
-        y = _v.y;
-        z = _v.z;
-    }
-
-    public void Normalise()
-    {
-        float l = (float)Math.Sqrt(Math.Pow(x, 2) + Math.Pow(y, 2) + Math.Pow(z, 2));
-        x = x / l;
-        y = y / l;
-        z = z / l;
-    }
-
-    public float x;
-    public float y;
-    public float z;
-}
-public struct V2
-{
-    public V2(float _x, float _y)
-    {
-        x = _x;
-        y = _y;
-    }
-
-    public static V2 operator /(V2 _v, float _d)
-    {
-        return new V2(_v.x / _d, _v.y / _d);
-    }
-
-    public float x;
-    public float y;
-}
 
 public enum alien_vertex_input_type
 {

@@ -2,11 +2,12 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TestProject.File_Handlers.Misc
+namespace CATHODE.Misc
 {
     public class PhysicsMAP
     {
@@ -37,9 +38,9 @@ public struct alien_physics_map_entry
     public int UnknownZero;
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
     public int[] IDs; //4
-    public V4 Row0; // NOTE: This is a 3x4 matrix, seems to have rotation data on the leftmost 3x3 matrix, and position
-    public V4 Row1; //   on the rightmost 3x1 matrix.
-    public V4 Row2;
+    public Vector4 Row0; // NOTE: This is a 3x4 matrix, seems to have rotation data on the leftmost 3x3 matrix, and position
+    public Vector4 Row1; //   on the rightmost 3x1 matrix.
+    public Vector4 Row2;
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
     public int[] UnknownZeros_; //2
 };

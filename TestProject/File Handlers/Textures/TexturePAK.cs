@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TestProject.File_Handlers.Textures
+namespace CATHODE.Textures
 {
     public class TexturePAK
     {
@@ -14,8 +14,8 @@ namespace TestProject.File_Handlers.Textures
         {
             alien_textures Result = new alien_textures();
 
-            Result.PAK = File_Handlers.PAK.PAK.Load(PAKFileName, true);
-            Result.BIN = File_Handlers.Textures.TextureBIN.Load(BINFileName);
+            Result.PAK = Generic.PAK.Load(PAKFileName, true);
+            Result.BIN = Textures.TextureBIN.Load(BINFileName);
 
             return Result;
         }

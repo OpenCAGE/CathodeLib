@@ -6,11 +6,11 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TestProject.File_Handlers.Models
+namespace CATHODE.Models
 {
     public class ModelsMTL
     {
-        public static alien_mtl Load(string FullFilePath, byte[] CST = null)
+        public static alien_mtl Load(string FullFilePath)
         {
             alien_mtl Result = new alien_mtl();
             BinaryReader Stream = new BinaryReader(File.OpenRead(FullFilePath));
@@ -27,19 +27,6 @@ namespace TestProject.File_Handlers.Models
 
             Result.Header = Header;
             Result.Materials = Utilities.ConsumeArray<alien_mtl_material>(ref Stream, Header.MaterialCount);
-
-            BinaryReader cstReader = new BinaryReader(new MemoryStream(CST));
-            cstReader.BaseStream.Position = Header.CSTOffsets[0];
-            Result.Datas1 = cstReader.ReadSingle();
-            cstReader.BaseStream.Position = Header.CSTOffsets[1];
-            Result.Datas2 = cstReader.ReadSingle();
-            cstReader.BaseStream.Position = Header.CSTOffsets[2];
-            Result.Datas3 = cstReader.ReadSingle();
-            cstReader.BaseStream.Position = Header.CSTOffsets[3];
-            Result.Datas4 = cstReader.ReadSingle();
-            cstReader.BaseStream.Position = Header.CSTOffsets[4];
-            Result.Datas5 = cstReader.ReadSingle();
-            cstReader.Close();
 
             Result.TextureReferenceCounts = new List<int>(Result.Header.MaterialCount);
             for (int MaterialIndex = 0; MaterialIndex < Header.MaterialCount; ++MaterialIndex)
@@ -115,10 +102,4 @@ public struct alien_mtl
     public List<alien_mtl_material> Materials;
     public List<int> TextureReferenceCounts;
     public List<string> MaterialNames;
-
-    public float Datas1;
-    public float Datas2;
-    public float Datas3;
-    public float Datas4;
-    public float Datas5;
 };

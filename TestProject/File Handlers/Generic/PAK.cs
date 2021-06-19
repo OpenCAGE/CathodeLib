@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TestProject.File_Handlers.PAK
+namespace CATHODE.Generic
 {
     public class PAK
     {
@@ -79,7 +79,7 @@ public struct alien_pak_entry
     public int _Unknown1; //TODO: Is 'alien_pak_header' 40 bytes long instead?
     public int _Unknown2;
     public int Length;
-    public int DataLength; // TODO: Seems to be the aligned version of Length, aligned to 16 bytes.
+    public int DataLength; //TODO: Seems to be the aligned version of Length, aligned to 16 bytes.
     public int Offset;
     public int _Unknown3;
     public int _Unknown4;

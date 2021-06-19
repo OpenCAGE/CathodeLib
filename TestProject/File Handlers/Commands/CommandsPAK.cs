@@ -2,10 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TestProject.File_Handlers.Commands
+namespace CATHODE.Commands
 {
     public class CommandsPAK
     {
@@ -37,18 +38,18 @@ namespace TestProject.File_Handlers.Commands
                 {
                     case CathodeDataType.POSITION:
                         CathodeTransform cTransform = (CathodeTransform)parameter;
-                        writer.Write(cTransform.position.x);
-                        writer.Write(cTransform.position.y);
-                        writer.Write(cTransform.position.z);
-                        writer.Write(cTransform.rotation.y); //NOTE: this is not an error on my part, this is how it's saved!
-                        writer.Write(cTransform.rotation.x);
-                        writer.Write(cTransform.rotation.z);
+                        writer.Write(cTransform.position.X);
+                        writer.Write(cTransform.position.Y);
+                        writer.Write(cTransform.position.Z);
+                        writer.Write(cTransform.rotation.Y);
+                        writer.Write(cTransform.rotation.X);
+                        writer.Write(cTransform.rotation.Z);
                         break;
                     case CathodeDataType.DIRECTION:
                         CathodeVector3 cVector = (CathodeVector3)parameter;
-                        writer.Write(cVector.value.x);
-                        writer.Write(cVector.value.y);
-                        writer.Write(cVector.value.z);
+                        writer.Write(cVector.value.Y);
+                        writer.Write(cVector.value.X);
+                        writer.Write(cVector.value.Z);
                         break;
                     case CathodeDataType.INTEGER:
                         CathodeInteger cInt = (CathodeInteger)parameter;
@@ -110,16 +111,14 @@ namespace TestProject.File_Handlers.Commands
         }
 
         /* Get flowgraph/parameter */
-        public CathodeFlowgraph GetFlowgraph(byte[] id)
+        public CathodeFlowgraph GetFlowgraph(UInt32 id)
         {
-            if (id == null) return null;
-            foreach (CathodeFlowgraph flowgraph in flowgraphs) if (flowgraph.nodeID.SequenceEqual(id)) return flowgraph;
-            return null;
+            if (id == 0) return null;
+            return flowgraphs.FirstOrDefault(o => o.nodeID == id);
         }
         public CathodeParameter GetParameter(int offset)
         {
-            foreach (CathodeParameter parameter in parameters) if (parameter.offset == offset) return parameter;
-            return null;
+            return parameters.FirstOrDefault(o => o.offset == offset);
         }
 
         /* Get all flowgraphs/parameters */
@@ -130,7 +129,7 @@ namespace TestProject.File_Handlers.Commands
         public List<CathodeFlowgraph> EntryPoints { get
             {
                 List<CathodeFlowgraph> entry_points_CF = new List<CathodeFlowgraph>();
-                foreach (byte[] flow_id in entry_points) entry_points_CF.Add(GetFlowgraph(flow_id));
+                foreach (UInt32 flow_id in entry_points) entry_points_CF.Add(GetFlowgraph(flow_id));
                 return entry_points_CF;
             } 
         }
@@ -138,7 +137,7 @@ namespace TestProject.File_Handlers.Commands
         /* Parse the three entry flowgraphs for this COMMANDS.PAK */
         private void ReadEntryPoints(BinaryReader reader)
         {
-            for (int i = 0; i < 3; i++) entry_points.Add(reader.ReadBytes(4));
+            for (int i = 0; i < 3; i++) entry_points.Add(reader.ReadUInt32());
         }
 
         /* Read the parameter and flowgraph offsets */
@@ -180,9 +179,9 @@ namespace TestProject.File_Handlers.Commands
                 {
                     case CathodeDataType.POSITION:
                         this_parameter = new CathodeTransform();
-                        ((CathodeTransform)this_parameter).position = new Vec3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                        ((CathodeTransform)this_parameter).position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                         float _x, _y, _z; _y = reader.ReadSingle(); _x = reader.ReadSingle(); _z = reader.ReadSingle(); //Y,X,Z!
-                        ((CathodeTransform)this_parameter).rotation = new Vec3(_x, _y, _z);
+                        ((CathodeTransform)this_parameter).rotation = new Vector3(_x, _y, _z);
                         break;
                     case CathodeDataType.INTEGER:
                         this_parameter = new CathodeInteger();
@@ -213,15 +212,16 @@ namespace TestProject.File_Handlers.Commands
                         break;
                     case CathodeDataType.SHORT_GUID:
                         this_parameter = new CathodeResource();
-                        ((CathodeResource)this_parameter).resourceID = reader.ReadBytes(4);
+                        ((CathodeResource)this_parameter).resourceID = reader.ReadUInt32();
                         break;
                     case CathodeDataType.DIRECTION:
                         this_parameter = new CathodeVector3();
-                        ((CathodeVector3)this_parameter).value = new Vec3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                        float __x, __y, __z; __y = reader.ReadSingle(); __x = reader.ReadSingle(); __z = reader.ReadSingle(); //Y,X,Z!
+                        ((CathodeVector3)this_parameter).value = new Vector3(__x, __y, __z);
                         break;
                     case CathodeDataType.ENUM:
                         this_parameter = new CathodeEnum();
-                        ((CathodeEnum)this_parameter).enumID = reader.ReadBytes(4);
+                        ((CathodeEnum)this_parameter).enumID = reader.ReadUInt32();
                         ((CathodeEnum)this_parameter).enumIndex = reader.ReadInt32();
                         break;
                         /*
@@ -266,7 +266,7 @@ namespace TestProject.File_Handlers.Commands
 
                 //Game doesn't parse the script name, so there's no real nice way of grabbing it!!
                 reader.BaseStream.Position = scriptStart;
-                flowgraph.globalID = reader.ReadBytes(4);
+                flowgraph.globalID = reader.ReadUInt32();
                 string name = "";
                 while (true)
                 {
@@ -285,8 +285,8 @@ namespace TestProject.File_Handlers.Commands
                 List<OffsetPair> offsetPairs = new List<OffsetPair>();
                 for (int x = 0; x < 13; x++)
                 {
-                    if (x == 0) flowgraph.uniqueID = reader.ReadBytes(4);
-                    if (x == 1) flowgraph.nodeID = reader.ReadBytes(4);
+                    if (x == 0) flowgraph.uniqueID = reader.ReadUInt32();
+                    if (x == 1) flowgraph.nodeID = reader.ReadUInt32();
                     OffsetPair newPair = new OffsetPair();
                     newPair.GlobalOffset = reader.ReadInt32() * 4;
                     newPair.EntryCount = reader.ReadInt32();
@@ -304,7 +304,7 @@ namespace TestProject.File_Handlers.Commands
                             case CathodeScriptBlocks.DEFINE_NODE_LINKS:
                             {
                                 reader.BaseStream.Position = offsetPairs[x].GlobalOffset + (y * 12);
-                                byte[] parentID = reader.ReadBytes(4);
+                                UInt32 parentID = reader.ReadUInt32();
 
                                 int OffsetToFindParams = reader.ReadInt32() * 4;
                                 int NumberOfParams = reader.ReadInt32();
@@ -313,10 +313,10 @@ namespace TestProject.File_Handlers.Commands
                                 {
                                     reader.BaseStream.Position = OffsetToFindParams + (z * 16);
                                     CathodeNodeLink newLink = new CathodeNodeLink();
-                                    newLink.connectionID = reader.ReadBytes(4);
-                                    newLink.parentParamID = reader.ReadBytes(4);
-                                    newLink.childParamID = reader.ReadBytes(4);
-                                    newLink.childID = reader.ReadBytes(4);
+                                    newLink.connectionID = reader.ReadUInt32();
+                                    newLink.parentParamID = reader.ReadUInt32();
+                                    newLink.childParamID = reader.ReadUInt32();
+                                    newLink.childID = reader.ReadUInt32();
                                     newLink.parentID = parentID;
                                     flowgraph.links.Add(newLink);
                                 }
@@ -325,7 +325,7 @@ namespace TestProject.File_Handlers.Commands
                             case CathodeScriptBlocks.DEFINE_NODE_PARAMETERS:
                             {
                                 reader.BaseStream.Position = offsetPairs[x].GlobalOffset + (y * 12);
-                                CathodeNodeEntity thisNode = flowgraph.GetNodeByID(reader.ReadBytes(4));
+                                CathodeNodeEntity thisNode = flowgraph.GetNodeByID(reader.ReadUInt32());
 
                                 int OffsetToFindParams = reader.ReadInt32() * 4;
                                 int NumberOfParams = reader.ReadInt32();
@@ -334,7 +334,7 @@ namespace TestProject.File_Handlers.Commands
                                 {
                                     reader.BaseStream.Position = OffsetToFindParams + (z * 8);
                                     CathodeParameterReference thisParamRef = new CathodeParameterReference();
-                                    thisParamRef.paramID = reader.ReadBytes(4);
+                                    thisParamRef.paramID = reader.ReadUInt32();
                                     thisParamRef.editOffset = (int)reader.BaseStream.Position;
                                     thisParamRef.offset = reader.ReadInt32() * 4;
                                     thisNode.nodeParameterReferences.Add(thisParamRef);
@@ -374,9 +374,9 @@ namespace TestProject.File_Handlers.Commands
                             {
                                 reader.BaseStream.Position = offsetPairs[x].GlobalOffset + (y * 12);
 
-                                CathodeNodeEntity thisNode = flowgraph.GetNodeByID(reader.ReadBytes(4));
+                                CathodeNodeEntity thisNode = flowgraph.GetNodeByID(reader.ReadUInt32());
                                 thisNode.dataType = GetDataType(reader.ReadBytes(4));
-                                thisNode.dataTypeParam = reader.ReadBytes(4);
+                                thisNode.dataTypeParam = reader.ReadUInt32();
                                 break;
                             }
                             //NOT PARSING: This block is another x-ref list, potentially related to mission critical things (doors, maybe?) 
@@ -407,8 +407,8 @@ namespace TestProject.File_Handlers.Commands
                             }
                             case CathodeScriptBlocks.DEFINE_NODE_NODETYPES:
                             {
-                                CathodeNodeEntity thisNode = flowgraph.GetNodeByID(reader.ReadBytes(4));
-                                thisNode.nodeType = reader.ReadBytes(4);
+                                CathodeNodeEntity thisNode = flowgraph.GetNodeByID(reader.ReadUInt32());
+                                thisNode.nodeType = reader.ReadUInt32();
                                 break;
                             }
                             //PARSING: I'm currently unsure on a lot of this, as the types vary (see entryType)
@@ -419,11 +419,11 @@ namespace TestProject.File_Handlers.Commands
                                 //TODO: these values change by entry type - need to work out what they're for before allowing editing
                                 CathodeResourceReference resource_ref = new CathodeResourceReference();
                                 resource_ref.editOffset = (int)reader.BaseStream.Position;
-                                resource_ref.resourceRefID = reader.ReadBytes(4); //renderable element ID (also used in one of the param blocks for something)
+                                resource_ref.resourceRefID = reader.ReadUInt32(); //renderable element ID (also used in one of the param blocks for something)
                                 reader.BaseStream.Position += 4; //unk (always 0x00 x4?)
-                                resource_ref.positionOffset = new Vec3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()); //position offset
+                                resource_ref.positionOffset = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()); //position offset
                                 reader.BaseStream.Position += 4; //unk (always 0x00 x4?)
-                                resource_ref.resourceID = reader.ReadBytes(4); //resource id
+                                resource_ref.resourceID = reader.ReadUInt32(); //resource id
                                 resource_ref.entryType = GetResourceEntryType(reader.ReadBytes(4)); //entry type
                                 switch (resource_ref.entryType)
                                 {
@@ -433,7 +433,7 @@ namespace TestProject.File_Handlers.Commands
                                         break;
                                     case CathodeResourceReferenceType.COLLISION_MAPPING:
                                         resource_ref.unknownInteger = reader.ReadInt32(); //unknown integer (COLLISION.MAP index?)
-                                        resource_ref.nodeID = reader.ReadBytes(4); //ID which maps to the node using the resource (?) - check GetFriendlyName
+                                        resource_ref.nodeID = reader.ReadUInt32(); //ID which maps to the node using the resource (?) - check GetFriendlyName
                                         break;
                                     case CathodeResourceReferenceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
                                     case CathodeResourceReferenceType.NAV_MESH_BARRIER_RESOURCE:
@@ -459,7 +459,7 @@ namespace TestProject.File_Handlers.Commands
 
                                 //Jump to the pointer location - this defines a node ID and another offset with count
                                 reader.BaseStream.Position = offsetPos;
-                                CathodeNodeEntity thisNode = flowgraph.GetNodeByID(reader.ReadBytes(4)); //These always seem to be animation related nodes
+                                CathodeNodeEntity thisNode = flowgraph.GetNodeByID(reader.ReadUInt32()); //These always seem to be animation related nodes
                                 int OffsetToFindParams = reader.ReadInt32() * 4;
                                 int NumberOfParams = reader.ReadInt32();
 
@@ -508,7 +508,7 @@ namespace TestProject.File_Handlers.Commands
                                 int offsetPos = reader.ReadInt32() * 4;
 
                                 reader.BaseStream.Position = offsetPos;
-                                CathodeNodeEntity thisNode = flowgraph.GetNodeByID(reader.ReadBytes(4));
+                                CathodeNodeEntity thisNode = flowgraph.GetNodeByID(reader.ReadUInt32());
                                 //string test0 = NodeDB.GetFriendlyName(thisNode.nodeID);
                                 int OffsetToFindParams = reader.ReadInt32() * 4;
                                 int NumberOfParams = reader.ReadInt32();
@@ -590,7 +590,7 @@ namespace TestProject.File_Handlers.Commands
 
         private string path_to_pak = "";
 
-        private List<byte[]> entry_points = new List<byte[]>();
+        private List<UInt32> entry_points = new List<UInt32>();
 
         private int[] parameter_offsets;
         private int parameter_count;

@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TestProject.File_Handlers.Shaders
+namespace CATHODE.Shaders
 {
     public class IDXRemap
     {
@@ -13,7 +13,7 @@ namespace TestProject.File_Handlers.Shaders
         {
             alien_shader_idx_remap Result = new alien_shader_idx_remap();
 
-            Result.PAK = File_Handlers.PAK.PAK.Load(FullFilePath, false);
+            Result.PAK = Generic.PAK.Load(FullFilePath, false);
             Result.Datas = new List<alien_shader_idx_remap_data>(Result.PAK.Header.EntryCount);
 
             for (int EntryIndex = 0; EntryIndex < Result.PAK.Header.EntryCount; ++EntryIndex)

@@ -68,6 +68,8 @@
     <Compile Include="File Handlers\Commands\CathodeFlowgraph.cs" />
     <Compile Include="File Handlers\Commands\CathodeParameter.cs" />
     <Compile Include="File Handlers\Commands\CommandsPAK.cs" />
+    <Compile Include="File Handlers\Misc\CollisionMAP.cs" />
+    <Compile Include="File Handlers\Misc\EnvironmentMapBIN.cs" />
     <Compile Include="File Handlers\Misc\PhysicsMAP.cs" />
     <Compile Include="File Handlers\Misc\RenderableElementsBIN.cs" />
     <Compile Include="File Handlers\Misc\ResourcesBIN.cs" />
@@ -75,6 +77,8 @@
     <Compile Include="File Handlers\Generic\PAK.cs" />
     <Compile Include="File Handlers\Models\ModelPAK.cs" />
     <Compile Include="File Handlers\Models\ModelsMTL.cs" />
+    <Compile Include="File Handlers\Models\ModelsMVR.cs" />
+    <Compile Include="File Handlers\Saves\ProgressionAIS.cs" />
     <Compile Include="File Handlers\Shaders\IDXRemap.cs" />
     <Compile Include="File Handlers\Shaders\ShadersBIN.cs" />
     <Compile Include="File Handlers\Shaders\ShadersPAK.cs" />

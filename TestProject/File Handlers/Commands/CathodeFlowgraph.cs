@@ -1,10 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TestProject.File_Handlers.Commands
+namespace CATHODE.Commands
 {
     /* Blocks of data in each compiled flowgraph */
     public enum CathodeScriptBlocks
@@ -26,17 +27,17 @@ namespace TestProject.File_Handlers.Commands
     /* Defines a link between parent and child IDs, with a connection ID */
     public class CathodeNodeLink
     {
-        public byte[] connectionID;  //The unique ID for this connection
-        public byte[] parentID;      //The ID of the node we're connecting from, providing the value
-        public byte[] parentParamID; //The ID of the parameter we're providing out of this node
-        public byte[] childID;       //The ID of the node we're linking to to provide the value for
-        public byte[] childParamID;  //The ID of the parameter we're providing into the child
+        public UInt32 connectionID;  //The unique ID for this connection
+        public UInt32 parentID;      //The ID of the node we're connecting from, providing the value
+        public UInt32 parentParamID; //The ID of the parameter we're providing out of this node
+        public UInt32 childID;       //The ID of the node we're linking to to provide the value for
+        public UInt32 childParamID;  //The ID of the parameter we're providing into the child
     }
 
     /* A reference to a parameter in a flowgraph */
     public class CathodeParameterReference
     {
-        public byte[] paramID; //The ID of the param in the node
+        public UInt32 paramID; //The ID of the param in the node
         public int offset;     //The offset of the param this reference points to
         public int editOffset; //The offset in the PAK that this reference is
     }
@@ -46,9 +47,9 @@ namespace TestProject.File_Handlers.Commands
     {
         public int editOffset; //The offset in the PAK that this is for temp rewrite logic
 
-        public byte[] resourceRefID;                   //The ID of this entry?
-        public Vec3 positionOffset;                 //The 3D position to offset the resource by
-        public byte[] resourceID;                      //This is the ID also contained in the RESOURCE_ID parameter list
+        public UInt32 resourceRefID;                   //The ID of this entry?
+        public Vector3 positionOffset;     //The 3D position to offset the resource by
+        public UInt32 resourceID;                      //This is the ID also contained in the RESOURCE_ID parameter list
         public CathodeResourceReferenceType entryType; //This is the type of resource entry
 
         //For type REDS_REFERENCE
@@ -57,39 +58,35 @@ namespace TestProject.File_Handlers.Commands
 
         //For type UNKNOWN_REFERENCE & others
         public int unknownInteger;
-        public byte[] nodeID;
+        public UInt32 nodeID;
     }
 
     /* A node in a flowgraph */
     public class CathodeNodeEntity
     {
-        public bool HasNodeType { get { return nodeType != null; } }
+        public bool HasNodeType { get { return nodeType != 0; } }
         public bool HasDataType { get { return dataType != CathodeDataType.NONE; } }
 
-        public byte[] nodeID;   //Nodes always have a unique ID
-        public byte[] nodeType; //Some nodes are of a node type
+        public UInt32 nodeID;   //Nodes always have a unique ID
+        public UInt32 nodeType; //Some nodes are of a node type
 
         public CathodeDataType dataType = CathodeDataType.NONE; //If nodes have no type, they're of a data type
-        public byte[] dataTypeParam;                            //Data type nodes have a parameter ID
+        public UInt32 dataTypeParam;                            //Data type nodes have a parameter ID
 
         public List<CathodeParameterReference> nodeParameterReferences = new List<CathodeParameterReference>();
 
-        public CathodeParameterReference GetParameterReferenceByID(byte[] id)
+        public CathodeParameterReference GetParameterReferenceByID(UInt32 id)
         {
-            foreach (CathodeParameterReference paramRef in nodeParameterReferences)
-            {
-                if (paramRef.paramID.SequenceEqual(id)) return paramRef;
-            }
-            return null;
+            return nodeParameterReferences.FirstOrDefault(o => o.paramID == id);
         }
     }
 
     /* A script flowgraph containing nodes with parameters */
     public class CathodeFlowgraph
     {
-        public byte[] globalID;  //The four byte identifier code of the flowgraph global to all commands.paks
-        public byte[] uniqueID;  //The four byte identifier code of the flowgraph unique to commands.pak
-        public byte[] nodeID;    //The id when this flowgraph is used as a prefab node in another flowgraph
+        public UInt32 globalID;  //The four byte identifier code of the flowgraph global to all commands.paks
+        public UInt32 uniqueID;  //The four byte identifier code of the flowgraph unique to commands.pak
+        public UInt32 nodeID;    //The id when this flowgraph is used as a prefab node in another flowgraph
         public string name = ""; //The string name of the flowgraph
 
         public List<CathodeNodeEntity> nodes = new List<CathodeNodeEntity>();
@@ -97,11 +94,11 @@ namespace TestProject.File_Handlers.Commands
         public List<CathodeResourceReference> resources = new List<CathodeResourceReference>();
 
         /* If a node exists in the flowgraph, return it - otherwise create it, and return it */
-        public CathodeNodeEntity GetNodeByID(byte[] id)
+        public CathodeNodeEntity GetNodeByID(UInt32 id)
         {
             foreach (CathodeNodeEntity node in nodes)
             {
-                if (node.nodeID.SequenceEqual(id)) return node;
+                if (node.nodeID == id) return node;
             }
             CathodeNodeEntity newNode = new CathodeNodeEntity();
             newNode.nodeID = id;
@@ -110,36 +107,21 @@ namespace TestProject.File_Handlers.Commands
         }
 
         /* Get all child links for a node */
-        public List<CathodeNodeLink> GetChildLinksByID(byte[] id)
+        public List<CathodeNodeLink> GetChildLinksByID(UInt32 id)
         {
-            List<CathodeNodeLink> allLinks = new List<CathodeNodeLink>();
-            foreach (CathodeNodeLink link in links)
-            {
-                if (link.parentID.SequenceEqual(id)) allLinks.Add(link);
-            }
-            return allLinks;
+            return links.FindAll(o => o.parentID == id);
         }
 
         /* Get all parent links for a node */
-        public List<CathodeNodeLink> GetParentLinksByID(byte[] id)
+        public List<CathodeNodeLink> GetParentLinksByID(UInt32 id)
         {
-            List<CathodeNodeLink> allLinks = new List<CathodeNodeLink>();
-            foreach (CathodeNodeLink link in links)
-            {
-                if (link.childID.SequenceEqual(id)) allLinks.Add(link);
-            }
-            return allLinks;
+            return links.FindAll(o => o.childID == id);
         }
         
         /* Get resource references by ID */
-        public List<CathodeResourceReference> GetResourceReferencesByID(byte[] id)
+        public List<CathodeResourceReference> GetResourceReferencesByID(UInt32 id)
         {
-            List<CathodeResourceReference> allResources = new List<CathodeResourceReference>();
-            foreach (CathodeResourceReference res in resources)
-            {
-                if (res.resourceID.SequenceEqual(id)) allResources.Add(res);
-            }
-            return allResources;
+            return resources.FindAll(o => o.resourceID == id);
         }
     }
 

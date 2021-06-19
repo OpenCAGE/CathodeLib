@@ -2,13 +2,13 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using TestProject.File_Handlers.Commands;
+using CATHODE.Commands;
 
 namespace CathodeLib
 {
     public class ShortGUIDDescriptor
     {
-        public byte[] ID;
+        public UInt32 ID;
         public string Description;
     }
 
@@ -26,26 +26,26 @@ namespace CathodeLib
         }
 
         //Check the CATHODE data dump for a corresponding name
-        public static string GetName(byte[] id)
+        public static string GetName(UInt32 id)
         {
-            if (id == null) return "";
-            foreach (ShortGUIDDescriptor db_entry in cathode_id_map) if (db_entry.ID.SequenceEqual(id)) return db_entry.Description;
-            return BitConverter.ToString(id);
+            if (id == 0) return "";
+            foreach (ShortGUIDDescriptor db_entry in cathode_id_map) if (db_entry.ID == id) return db_entry.Description;
+            return id.ToString();
         }
-        public static string GetNodeTypeName(byte[] id, CommandsPAK pak) //This is performed separately to be able to remap nodes that are flowgraphs
+        public static string GetNodeTypeName(UInt32 id, ref CommandsPAK pak) //This is performed separately to be able to remap nodes that are flowgraphs
         {
-            if (id == null) return "";
-            foreach (ShortGUIDDescriptor db_entry in cathode_id_map) if (db_entry.ID.SequenceEqual(id)) return db_entry.Description;
-            CathodeFlowgraph flow = pak.GetFlowgraph(id); if (flow == null) return BitConverter.ToString(id);
+            if (id == 0) return "";
+            foreach (ShortGUIDDescriptor db_entry in cathode_id_map) if (db_entry.ID == id) return db_entry.Description;
+            CathodeFlowgraph flow = pak.GetFlowgraph(id); if (flow == null) return id.ToString();
             return flow.name;
         }
 
         //Check the COMMANDS.BIN dump for node in-editor names
-        public static string GetFriendlyName(byte[] id)
+        public static string GetFriendlyName(UInt32 id)
         {
-            if (id == null) return "";
-            foreach (ShortGUIDDescriptor db_entry in node_friendly_names) if (db_entry.ID.SequenceEqual(id)) return db_entry.Description;
-            return BitConverter.ToString(id);
+            if (id == 0) return "";
+            foreach (ShortGUIDDescriptor db_entry in node_friendly_names) if (db_entry.ID == id) return db_entry.Description;
+            return id.ToString();
         }
 
         private static List<ShortGUIDDescriptor> ReadDB(byte[] db_content)
@@ -57,7 +57,7 @@ namespace CathodeLib
             while (reader.BaseStream.Position < reader.BaseStream.Length)
             {
                 ShortGUIDDescriptor thisDesc = new ShortGUIDDescriptor();
-                thisDesc.ID = reader.ReadBytes(4);
+                thisDesc.ID = reader.ReadUInt32();
                 thisDesc.Description = reader.ReadString();
                 toReturn.Add(thisDesc);
             }

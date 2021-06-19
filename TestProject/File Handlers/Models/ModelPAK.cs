@@ -7,14 +7,14 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TestProject.File_Handlers.Models
+namespace CATHODE.Models
 {
     public class ModelPAK
     {
         public static alien_pak_model Load(string FullFilePath)
         {
             alien_pak_model Result = new alien_pak_model();
-            Result.PAK = File_Handlers.PAK.PAK.Load(FullFilePath, true);
+            Result.PAK = Generic.PAK.Load(FullFilePath, true);
             Result.Models = new List<alien_pak_model_entry>(Result.PAK.Header.EntryCount);
 
             for (int EntryIndex = 0; EntryIndex < Result.PAK.Header.EntryCount; ++EntryIndex)

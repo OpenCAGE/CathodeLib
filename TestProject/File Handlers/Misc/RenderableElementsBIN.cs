@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TestProject.File_Handlers.Misc
+namespace CATHODE.Misc
 {
     //REnDerable elementS
     public class RenderableElementsBIN

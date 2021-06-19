@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TestProject.File_Handlers.Misc
+namespace CATHODE.Misc
 {
     public class ResourcesBIN
     {
@@ -27,10 +27,10 @@ namespace TestProject.File_Handlers.Misc
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_resources_bin_header
 {
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-    public int[] Unknown0_; // 2
+    public fourcc Magic;
+    public int UnknownOne_;
     public int EntryCount;
-    public int Unknown1_;
+    public int UnknownZero_;
 };
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -38,7 +38,7 @@ public struct alien_resources_bin_entry
 {
     public int Unknown0_;
     public int ResourceID;
-    public int UnknownResourceIndex;
+    public int UnknownResourceIndex; // NOTE: This is an entry index in this file itself.
 };
 
 public struct alien_resources_bin

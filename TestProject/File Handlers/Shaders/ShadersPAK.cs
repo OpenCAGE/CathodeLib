@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TestProject.File_Handlers.Shaders
+namespace CATHODE.Shaders
 {
     public class ShadersPAK
     {
@@ -14,7 +14,7 @@ namespace TestProject.File_Handlers.Shaders
         {
             alien_shader_pak Result = new alien_shader_pak();
 
-            Result.PAK = File_Handlers.PAK.PAK.Load(FullFilePath, false);
+            Result.PAK = Generic.PAK.Load(FullFilePath, false);
             Result.Shaders = new List<alien_shader_pak_shader>(Result.PAK.Header.EntryCount);
 
             for (int EntryIndex = 0; EntryIndex < Result.PAK.Header.EntryCount; EntryIndex++)

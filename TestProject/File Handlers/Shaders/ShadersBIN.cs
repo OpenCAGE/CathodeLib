@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TestProject.File_Handlers.Shaders
+namespace CATHODE.Shaders
 {
     public class ShadersBIN
     {
@@ -15,7 +15,7 @@ namespace TestProject.File_Handlers.Shaders
         {
             alien_shader_bin_pak Result = new alien_shader_bin_pak();
 
-            Result.PAK = File_Handlers.PAK.PAK.Load(FullFilePath, false);
+            Result.PAK = Generic.PAK.Load(FullFilePath, false);
             Result.DSOs = new List<dso_file>(Result.PAK.Header.EntryCount);
 
             BinaryReader HeaderStream = new BinaryReader(new MemoryStream(Result.PAK.DataStart));

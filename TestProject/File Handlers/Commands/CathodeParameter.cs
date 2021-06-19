@@ -1,10 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TestProject.File_Handlers.Commands
+namespace CATHODE.Commands
 {
     /* Data types in the CATHODE scripting system */
     public enum CathodeDataType
@@ -53,8 +54,8 @@ namespace TestProject.File_Handlers.Commands
     }
     public class CathodeTransform : CathodeParameter
     {
-        public Vec3 position = new Vec3();
-        public Vec3 rotation = new Vec3();
+        public Vector3 position = new Vector3();
+        public Vector3 rotation = new Vector3();
     }
     public class CathodeInteger : CathodeParameter
     {
@@ -77,51 +78,19 @@ namespace TestProject.File_Handlers.Commands
     }
     public class CathodeResource : CathodeParameter
     {
-        public byte[] resourceID = { };
+        public UInt32 resourceID = 0;
     }
     public class CathodeVector3 : CathodeParameter
     {
-        public Vec3 value = new Vec3();
+        public Vector3 value = new Vector3();
     }
     public class CathodeEnum : CathodeParameter
     {
-        public byte[] enumID = { };
+        public UInt32 enumID = 0;
         public int enumIndex = 0;
     }
     public class CathodeSpline : CathodeParameter
     {
         public List<CathodeTransform> splinePoints = new List<CathodeTransform>();
-    }
-
-    /* Vector 2/3 */
-    public class Vec2
-    {
-        public Vec2()
-        {
-
-        }
-        public Vec2(float _x, float _y)
-        {
-            x = _x;
-            y = _y;
-        }
-        public float x = 0.0f;
-        public float y = 0.0f;
-    }
-    public class Vec3
-    {
-        public Vec3()
-        {
-
-        }
-        public Vec3(float _x, float _y, float _z)
-        {
-            x = _x;
-            y = _y;
-            z = _z;
-        }
-        public float x = 0.0f;
-        public float y = 0.0f;
-        public float z = 0.0f;
     }
 }
