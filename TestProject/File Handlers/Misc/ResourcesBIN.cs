@@ -18,6 +18,8 @@ namespace CATHODE.Misc
         /* Load the file */
         public ResourcesBIN(string path)
         {
+            filepath = path;
+
             BinaryReader Stream = new BinaryReader(File.OpenRead(path));
             header = Utilities.Consume<alien_resources_bin_header>(ref Stream);
             entries = Utilities.ConsumeArray<alien_resources_bin_entry>(ref Stream, header.EntryCount);

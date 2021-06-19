@@ -5,7 +5,7 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{AB44562E-744A-4E51-9C5A-1B8B91B1369F}</ProjectGuid>
-    <OutputType>Library</OutputType>
+    <OutputType>WinExe</OutputType>
     <RootNamespace>TestProject</RootNamespace>
     <AssemblyName>TestProject</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
@@ -69,6 +69,7 @@
     <Compile Include="File Handlers\Commands\CathodeParameter.cs" />
     <Compile Include="File Handlers\Commands\CommandsPAK.cs" />
     <Compile Include="File Handlers\Misc\CollisionMAP.cs" />
+    <Compile Include="File Handlers\Misc\EnvironmentAnimationDAT.cs" />
     <Compile Include="File Handlers\Misc\EnvironmentMapBIN.cs" />
     <Compile Include="File Handlers\Misc\PhysicsMAP.cs" />
     <Compile Include="File Handlers\Misc\RenderableElementsBIN.cs" />

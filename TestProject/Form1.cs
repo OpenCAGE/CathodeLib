@@ -15,15 +15,15 @@ namespace TestProject
         public Form1()
         {
             InitializeComponent();
+            string pathToEnv = @"G:\SteamLibrary\steamapps\common\Alien Isolation\DATA\ENV";
 
-            //CATHODE.TexturePAK test = new CATHODE.TexturePAK(@"G:\SteamLibrary\steamapps\common\Alien Isolation\DATA\ENV\PRODUCTION\BSP_TORRENS\RENDERABLE\LEVEL_TEXTURES.ALL.PAK");
-            //test.Load();
+            //Load global assets
+            alien_textures GlobalTextures = CATHODE.Textures.TexturePAK.Load(pathToEnv + "/GLOBAL/WORLD/GLOBAL_TEXTURES.ALL.PAK", pathToEnv + "/GLOBAL/WORLD/GLOBAL_TEXTURES_HEADERS.ALL.BIN");
+            //alien_pak2 GlobalAnimations;
+            //alien_anim_string_db GlobalAnimationsStrings;
 
-            //test.ExportFile("test.dds", test.GetFileNames()[500]);
-
-            //CATHODE.CommandsPAK pak = new CATHODE.CommandsPAK(@"G:\SteamLibrary\steamapps\common\Alien Isolation\DATA\ENV\PRODUCTION\BSP_TORRENS\WORLD/COMMANDS.PAK");
-
-            //alien_level level = File_Handlers.AlienLevel.Load(@"G:\SteamLibrary\steamapps\common\Alien Isolation\DATA\ENV\PRODUCTION\BSP_TORRENS");
+            //Load level assets
+            alien_level level = CATHODE.AlienLevel.Load("BSP_TORRENS", pathToEnv);
         }
     }
 }
