@@ -30,6 +30,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\AlienBML\AlienBML\AlienBML.cs" Link="Scripts\File Handlers\BML\AlienBML.cs" />
+    <Compile Include="..\AlienBML\AlienBML\BML.cs" Link="Scripts\File Handlers\BML\BML.cs" />
+    <Compile Include="..\AlienBML\AlienBML\BMLString.cs" Link="Scripts\File Handlers\BML\BMLString.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="Resources\NodeDBs\cathode_id_map.bin" />
     <EmbeddedResource Include="Resources\NodeDBs\cathode_id_map_DUMP_ONLY.bin" />
     <EmbeddedResource Include="Resources\NodeDBs\node_friendly_names.bin" />
@@ -55,6 +61,10 @@
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Scripts\File Handlers\BML\" />
   </ItemGroup>
 
 </Project>
