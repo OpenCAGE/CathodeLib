@@ -30,15 +30,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\AlienBML\AlienBML\AlienBML.cs" Link="Utilities\AlienBML.cs" />
-    <Compile Include="..\AlienBML\AlienBML\BML.cs" Link="BML.cs" />
-    <Compile Include="..\AlienBML\AlienBML\BMLString.cs" Link="BMLString.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
     <EmbeddedResource Include="Resources\NodeDBs\cathode_id_map.bin" />
     <EmbeddedResource Include="Resources\NodeDBs\cathode_id_map_DUMP_ONLY.bin" />
     <EmbeddedResource Include="Resources\NodeDBs\node_friendly_names.bin" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Buffers" Version="4.5.1" />
+    <PackageReference Include="System.Memory" Version="4.5.4" />
+    <PackageReference Include="System.Numerics.Vectors" Version="4.5.0" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="5.0.0" />
   </ItemGroup>
 
   <ItemGroup>
