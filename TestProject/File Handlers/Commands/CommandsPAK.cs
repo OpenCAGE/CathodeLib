@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+#if UNITY_EDITOR || UNITY_STANDALONE
+using UnityEngine;
+#else
 using System.Numerics;
-using System.Text;
-using System.Threading.Tasks;
+#endif
 
 namespace CATHODE.Commands
 {
@@ -38,18 +40,33 @@ namespace CATHODE.Commands
                 {
                     case CathodeDataType.POSITION:
                         CathodeTransform cTransform = (CathodeTransform)parameter;
+#if UNITY_EDITOR || UNITY_STANDALONE
+                        writer.Write(cTransform.position.x);
+                        writer.Write(cTransform.position.y);
+                        writer.Write(cTransform.position.z);
+                        writer.Write(cTransform.rotation.y);
+                        writer.Write(cTransform.rotation.x);
+                        writer.Write(cTransform.rotation.z);
+#else
                         writer.Write(cTransform.position.X);
                         writer.Write(cTransform.position.Y);
                         writer.Write(cTransform.position.Z);
                         writer.Write(cTransform.rotation.Y);
                         writer.Write(cTransform.rotation.X);
                         writer.Write(cTransform.rotation.Z);
+#endif
                         break;
                     case CathodeDataType.DIRECTION:
                         CathodeVector3 cVector = (CathodeVector3)parameter;
+#if UNITY_EDITOR || UNITY_STANDALONE
+                        writer.Write(cVector.value.y);
+                        writer.Write(cVector.value.x);
+                        writer.Write(cVector.value.z);
+#else
                         writer.Write(cVector.value.Y);
                         writer.Write(cVector.value.X);
                         writer.Write(cVector.value.Z);
+#endif
                         break;
                     case CathodeDataType.INTEGER:
                         CathodeInteger cInt = (CathodeInteger)parameter;

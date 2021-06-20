@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using CATHODE.Commands;
+#if UNITY_EDITOR || UNITY_STANDALONE
+using UnityEngine;
+#endif
 
 namespace CathodeLib
 {
@@ -16,7 +18,10 @@ namespace CathodeLib
     {
         static NodeDB()
         {
-#if !TEST_PROJECT
+#if UNITY_EDITOR || UNITY_STANDALONE
+            cathode_id_map = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_id_map.bin")); //Names for node types, parameters, and enums
+            node_friendly_names = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/node_friendly_names.bin")); //Names for unique nodes
+#elif !TEST_PROJECT
             cathode_id_map = ReadDB(CathodeLib.Properties.Resources.cathode_id_map); //Names for node types, parameters, and enums
             node_friendly_names = ReadDB(CathodeLib.Properties.Resources.node_friendly_names); //Names for unique nodes
 #else

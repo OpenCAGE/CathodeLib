@@ -1,11 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Numerics;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
+#if UNITY_EDITOR || UNITY_STANDALONE
+using UnityEngine;
+#else
+using System.Numerics;
+#endif
 
 namespace CATHODE.Misc
 {
