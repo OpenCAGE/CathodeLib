@@ -133,6 +133,10 @@ namespace CATHODE.Commands
             if (id == 0) return null;
             return flowgraphs.FirstOrDefault(o => o.nodeID == id);
         }
+        public CathodeFlowgraph GetFlowgraphByIndex(int index)
+        {
+            return (index >= flowgraphs.Count || index < 0) ? null : flowgraphs[index];
+        }
         public CathodeParameter GetParameter(int offset)
         {
             return parameters.FirstOrDefault(o => o.offset == offset);
@@ -142,13 +146,13 @@ namespace CATHODE.Commands
         public List<CathodeFlowgraph> AllFlowgraphs { get { return flowgraphs; } }
         public List<CathodeParameter> AllParameters { get { return parameters; } }
 
-        /* Get entry points */
+        /* Get entry points (TODO: don't calculate this in accessor as it's used a fair bit) */
         public List<CathodeFlowgraph> EntryPoints { get
             {
                 List<CathodeFlowgraph> entry_points_CF = new List<CathodeFlowgraph>();
                 foreach (UInt32 flow_id in entry_points) entry_points_CF.Add(GetFlowgraph(flow_id));
                 return entry_points_CF;
-            } 
+            }
         }
 
         /* Parse the three entry flowgraphs for this COMMANDS.PAK */
