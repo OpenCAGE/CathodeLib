@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using CATHODE.Commands;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
@@ -8,10 +9,18 @@ using UnityEngine;
 
 namespace CathodeLib
 {
-    public class ShortGUIDDescriptor
+    public class NodeDBDescriptor
     {
         public UInt32 ID;
+    }
+    public class ShortGUIDDescriptor : NodeDBDescriptor
+    {
         public string Description;
+    }
+    public class EnumDescriptor : NodeDBDescriptor
+    {
+        public string Name;
+        public List<string> Entries = new List<string>();
     }
 
     public class NodeDB
@@ -19,14 +28,13 @@ namespace CathodeLib
         static NodeDB()
         {
 #if UNITY_EDITOR || UNITY_STANDALONE
-            cathode_id_map = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_id_map.bin")); //Names for node types, parameters, and enums
-            node_friendly_names = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/node_friendly_names.bin")); //Names for unique nodes
-#elif !TEST_PROJECT
-            cathode_id_map = ReadDB(CathodeLib.Properties.Resources.cathode_id_map); //Names for node types, parameters, and enums
-            node_friendly_names = ReadDB(CathodeLib.Properties.Resources.node_friendly_names); //Names for unique nodes
+            cathode_id_map = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_generic_lut.bin")).Cast<ShortGUIDDescriptor>().ToList(); //Names for node types, parameters, enums, etc from EXE
+            cathode_enum_map = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_enum_lut.bin")).Cast<EnumDescriptor>().ToList(); //Correctly formatted enum list from EXE
+            node_friendly_names = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_nodename_lut.bin")).Cast<ShortGUIDDescriptor>().ToList(); //Names for unique nodes from commands BIN
 #else
-            cathode_id_map = ReadDB(TestProject.Properties.Resources.cathode_id_map); //Names for node types, parameters, and enums
-            node_friendly_names = ReadDB(TestProject.Properties.Resources.node_friendly_names); //Names for unique nodes
+            cathode_id_map = ReadDB(CathodeLib.Properties.Resources.cathode_generic_lut).Cast<ShortGUIDDescriptor>().ToList(); //Names for node types, parameters, enums, etc from EXE
+            cathode_enum_map = ReadDB(CathodeLib.Properties.Resources.cathode_enum_lut).Cast<EnumDescriptor>().ToList(); //Correctly formatted enum list from EXE
+            node_friendly_names = ReadDB(CathodeLib.Properties.Resources.cathode_nodename_lut).Cast<ShortGUIDDescriptor>().ToList(); //Names for unique nodes from commands BIN
 #endif
         }
 
@@ -53,18 +61,45 @@ namespace CathodeLib
             return id.ToString();
         }
 
-        private static List<ShortGUIDDescriptor> ReadDB(byte[] db_content)
+        //Check the formatted enum dump for content
+        public static EnumDescriptor GetEnum(UInt32 id)
         {
-            List<ShortGUIDDescriptor> toReturn = new List<ShortGUIDDescriptor>();
+            return cathode_enum_map.FirstOrDefault(o => o.ID == id);
+        }
+
+        private static List<NodeDBDescriptor> ReadDB(byte[] db_content)
+        {
+            List<NodeDBDescriptor> toReturn = new List<NodeDBDescriptor>();
 
             MemoryStream readerStream = new MemoryStream(db_content);
             BinaryReader reader = new BinaryReader(readerStream);
-            while (reader.BaseStream.Position < reader.BaseStream.Length)
+            int type = reader.ReadChar(); //0 = normal db, 1 = enum db
+            switch (type)
             {
-                ShortGUIDDescriptor thisDesc = new ShortGUIDDescriptor();
-                thisDesc.ID = reader.ReadUInt32();
-                thisDesc.Description = reader.ReadString();
-                toReturn.Add(thisDesc);
+                case 0:
+                {
+                    while (reader.BaseStream.Position < reader.BaseStream.Length)
+                    {
+                        ShortGUIDDescriptor thisDesc = new ShortGUIDDescriptor();
+                        thisDesc.ID = reader.ReadUInt32();
+                        thisDesc.Description = reader.ReadString();
+                        toReturn.Add(thisDesc);
+                    }
+                    break;
+                }
+                case 1:
+                {
+                    while (reader.BaseStream.Position < reader.BaseStream.Length)
+                    {
+                        EnumDescriptor thisDesc = new EnumDescriptor();
+                        thisDesc.ID = reader.ReadUInt32();
+                        thisDesc.Name = reader.ReadString();
+                        int entryCount = reader.ReadInt32();
+                        for (int i = 0; i < entryCount; i++) thisDesc.Entries.Add(reader.ReadString());
+                        toReturn.Add(thisDesc);
+                    }
+                    break;
+                }
             }
             reader.Close();
 
@@ -72,6 +107,7 @@ namespace CathodeLib
         }
 
         private static List<ShortGUIDDescriptor> cathode_id_map;
+        private static List<EnumDescriptor> cathode_enum_map;
         private static List<ShortGUIDDescriptor> node_friendly_names;
     }
 }

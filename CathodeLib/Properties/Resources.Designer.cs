@@ -63,9 +63,9 @@ namespace CathodeLib.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
-        internal static byte[] cathode_id_map {
+        internal static byte[] cathode_enum_lut {
             get {
-                object obj = ResourceManager.GetObject("cathode_id_map", resourceCulture);
+                object obj = ResourceManager.GetObject("cathode_enum_lut", resourceCulture);
                 return ((byte[])(obj));
             }
         }
@@ -73,9 +73,9 @@ namespace CathodeLib.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
-        internal static byte[] cathode_id_map_DUMP_ONLY {
+        internal static byte[] cathode_generic_lut {
             get {
-                object obj = ResourceManager.GetObject("cathode_id_map_DUMP_ONLY", resourceCulture);
+                object obj = ResourceManager.GetObject("cathode_generic_lut", resourceCulture);
                 return ((byte[])(obj));
             }
         }
@@ -83,9 +83,9 @@ namespace CathodeLib.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
-        internal static byte[] node_friendly_names {
+        internal static byte[] cathode_nodename_lut {
             get {
-                object obj = ResourceManager.GetObject("node_friendly_names", resourceCulture);
+                object obj = ResourceManager.GetObject("cathode_nodename_lut", resourceCulture);
                 return ((byte[])(obj));
             }
         }
