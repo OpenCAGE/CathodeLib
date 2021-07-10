@@ -31,101 +31,17 @@ namespace CATHODE.Commands
         public void Save()
         {
             BinaryWriter writer = new BinaryWriter(File.OpenWrite(path));
-
-            //Update all parameter values
-            foreach (CathodeParameter parameter in _parameters)
-            {
-                writer.BaseStream.Position = parameter.offset + 4;
-                switch (parameter.dataType)
-                {
-                    case CathodeDataType.POSITION:
-                        CathodeTransform cTransform = (CathodeTransform)parameter;
-#if UNITY_EDITOR || UNITY_STANDALONE
-                        writer.Write(cTransform.position.x);
-                        writer.Write(cTransform.position.y);
-                        writer.Write(cTransform.position.z);
-                        writer.Write(cTransform.rotation.y);
-                        writer.Write(cTransform.rotation.x);
-                        writer.Write(cTransform.rotation.z);
-#else
-                        writer.Write(cTransform.position.X);
-                        writer.Write(cTransform.position.Y);
-                        writer.Write(cTransform.position.Z);
-                        writer.Write(cTransform.rotation.Y);
-                        writer.Write(cTransform.rotation.X);
-                        writer.Write(cTransform.rotation.Z);
-#endif
-                        break;
-                    case CathodeDataType.DIRECTION:
-                        CathodeVector3 cVector = (CathodeVector3)parameter;
-#if UNITY_EDITOR || UNITY_STANDALONE
-                        writer.Write(cVector.value.y);
-                        writer.Write(cVector.value.x);
-                        writer.Write(cVector.value.z);
-#else
-                        writer.Write(cVector.value.Y);
-                        writer.Write(cVector.value.X);
-                        writer.Write(cVector.value.Z);
-#endif
-                        break;
-                    case CathodeDataType.INTEGER:
-                        CathodeInteger cInt = (CathodeInteger)parameter;
-                        writer.Write(cInt.value);
-                        break;
-                    case CathodeDataType.STRING:
-                        CathodeString cString = (CathodeString)parameter;
-                        writer.BaseStream.Position += 8;
-                        for (int i = 0; i < cString.initial_length; i++)
-                        {
-                            char to_write = (char)0x00;
-                            if (i < cString.value.Length) to_write = cString.value[i];
-                            writer.Write((byte)to_write);
-                        }
-                        break;
-                    case CathodeDataType.FLOAT:
-                        CathodeFloat cFloat = (CathodeFloat)parameter;
-                        writer.Write(cFloat.value);
-                        break;
-                }
-            }
-
-            //Update all selected parameter offsets & REDS references
-            foreach (CathodeFlowgraph flowgraph in _flowgraphs)
-            {
-                foreach (CathodeNode node in flowgraph.nodes)
-                {
-                    foreach (CathodeParameterReference param_ref in node.nodeParameterReferences)
-                    {
-                        //writer.BaseStream.Position = param_ref.editOffset;
-                        //writer.Write((int)(param_ref.offset));
-                    }
-                }
-                foreach (CathodeResourceReference resRef in flowgraph.resources)
-                {
-                    if (resRef == null || resRef.entryType != CathodeResourceReferenceType.RENDERABLE_INSTANCE) continue;
-                    writer.BaseStream.Position = resRef.editOffset + 32;
-                    writer.Write(resRef.entryIndexREDS);
-                    writer.Write(resRef.entryCountREDS);
-                }
-            }
-
-            writer.Close();
-        }
-
-        public void NewSave()
-        {
-            BinaryWriter writer = new BinaryWriter(File.OpenWrite(path));
             writer.BaseStream.SetLength(0); //todo
 
             /* Write entry points */
             Utilities.Write<CommandsEntryPoints>(writer, _entryPoints);
 
-            //we come back and rewrite these zeros later
+            /* Write placeholder info for parameter/flowgraph offsets */
             int offsetToRewrite = (int)writer.BaseStream.Position;
             writer.Write(0); 
-            writer.Write(_parameters.Length);
+            writer.Write(0);
             writer.Write(0); 
-            writer.Write(_flowgraphs.Length);
+            writer.Write(0);
 
             /* Write out parameters */
             parameterOffsets = new int[_parameters.Length]; 
@@ -181,10 +97,12 @@ namespace CATHODE.Commands
             {
                 Utilities.Write<cGUID>(writer, _flowgraphs[i].globalID);
                 for (int x = 0; x < _flowgraphs[i].name.Length; x++) writer.Write(_flowgraphs[i].name[x]);
+                writer.Write((char)0x00);
                 Utilities.Align(writer, 4);
                 Utilities.Write<cGUID>(writer, _flowgraphs[i].nodeID);
 
-                //write script data
+                //!!! write script data here !!!
+
                 int test_offset = (int)writer.BaseStream.Position;
 
                 flowgraphOffsets[i] = (int)writer.BaseStream.Position / 4;
@@ -206,11 +124,12 @@ namespace CATHODE.Commands
             int flowgraphOffsetPos = (int)writer.BaseStream.Position;
             Utilities.Write<int>(writer, flowgraphOffsets);
 
-            //rewrite with offsets
+            /* Rewrite header info with correct offsets */
             writer.BaseStream.Position = offsetToRewrite;
             writer.Write(parameterOffsetPos / 4);
-            writer.BaseStream.Position += 4;
+            writer.Write(_parameters.Length);
             writer.Write(flowgraphOffsetPos / 4);
+            writer.Write(_flowgraphs.Length);
 
             writer.Close();
         }
