@@ -74,13 +74,11 @@ namespace CATHODE.Commands
         public cGUID childParamID;  //The ID of the parameter we're providing into the child
     }
 
-    /* A reference to a parameter in a flowgraph */
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CathodeParameterReference
+    /* A parameter in a flowgraph */
+    public class CathodeParameter
     {
         public cGUID paramID; //The ID of the param in the node
-        public int offset;        //The offset of the param this reference points to (in memory this is *4)
-        //public int editOffset;    //The offset in the PAK that this reference is
+        public CathodeParameterData paramData; //The content of the param
     }
 
     /* A resource that references a REnDerable elementS DB entry */
@@ -114,11 +112,11 @@ namespace CATHODE.Commands
         public CathodeDataType dataType = CathodeDataType.NONE; //If nodes have no type, they're of a data type
         public cGUID dataTypeParam;                             //Data type nodes have a parameter ID
 
-        public List<CathodeParameterReference> nodeParameterReferences = new List<CathodeParameterReference>();
+        public List<CathodeParameter> nodeParameters = new List<CathodeParameter>();
 
-        public CathodeParameterReference GetParameterReferenceByID(cGUID id)
+        public CathodeParameter GetParameterByID(cGUID id)
         {
-            return nodeParameterReferences.FirstOrDefault(o => o.paramID == id);
+            return nodeParameters.FirstOrDefault(o => o.paramID == id);
         }
     }
 

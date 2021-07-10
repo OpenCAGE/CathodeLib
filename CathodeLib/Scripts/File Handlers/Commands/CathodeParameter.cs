@@ -46,51 +46,51 @@ namespace CATHODE.Commands
     }
 
     /* A parameter compiled in COMMANDS.PAK */
-    public class CathodeParameter
+    public class CathodeParameterData
     {
         public int offset;
         public CathodeDataType dataType;
 
         public byte[] unknownContent; //This contains any byte data not yet understood for children types
     }
-    public class CathodeTransform : CathodeParameter
+    public class CathodeTransform : CathodeParameterData
     {
         public Vector3 position = new Vector3();
         public Vector3 rotation = new Vector3();
     }
-    public class CathodeInteger : CathodeParameter
+    public class CathodeInteger : CathodeParameterData
     {
         public int value = 0;
     }
-    public class CathodeString : CathodeParameter
+    public class CathodeString : CathodeParameterData
     {
         public int initial_length = 0; //Added for parameter editing, when the format is fully known, this will not be a limitation
         public string value = "";
         public cGUID unk0;
         public cGUID unk1;
     }
-    public class CathodeBool : CathodeParameter
+    public class CathodeBool : CathodeParameterData
     {
         public bool value = false;
     }
-    public class CathodeFloat : CathodeParameter
+    public class CathodeFloat : CathodeParameterData
     {
         public float value = 0.0f;
     }
-    public class CathodeResource : CathodeParameter
+    public class CathodeResource : CathodeParameterData
     {
         public cGUID resourceID;
     }
-    public class CathodeVector3 : CathodeParameter
+    public class CathodeVector3 : CathodeParameterData
     {
         public Vector3 value = new Vector3();
     }
-    public class CathodeEnum : CathodeParameter
+    public class CathodeEnum : CathodeParameterData
     {
         public cGUID enumID;
         public int enumIndex = 0;
     }
-    public class CathodeSpline : CathodeParameter
+    public class CathodeSpline : CathodeParameterData
     {
         public List<CathodeTransform> splinePoints = new List<CathodeTransform>();
     }

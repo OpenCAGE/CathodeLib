@@ -33,7 +33,7 @@ namespace CATHODE.Commands
             BinaryWriter writer = new BinaryWriter(File.OpenWrite(path));
 
             //Update all parameter values
-            foreach (CathodeParameter parameter in _parameters)
+            foreach (CathodeParameterData parameter in _parameters)
             {
                 writer.BaseStream.Position = parameter.offset + 4;
                 switch (parameter.dataType)
@@ -94,7 +94,7 @@ namespace CATHODE.Commands
             {
                 foreach (CathodeNode node in flowgraph.nodes)
                 {
-                    foreach (CathodeParameterReference param_ref in node.nodeParameterReferences)
+                    foreach (CathodeParameter param_ref in node.nodeParameters)
                     {
                         //writer.BaseStream.Position = param_ref.editOffset;
                         //writer.Write((int)(param_ref.offset));
@@ -134,6 +134,21 @@ namespace CATHODE.Commands
             /* Write out flowgraph offsets */
             //writer.BaseStream.Position = flowgraph_offset_pos;
             //Utilities.Write<int>(writer, flowgraph_offsets);
+
+            /* Gather parameters to write */
+            List<CathodeParameterData> paramData = new List<CathodeParameterData>();
+            for (int i = 0; i < _flowgraphs.Length; i++)
+            {
+                for (int x = 0; x < _flowgraphs[i].nodes.Count; x++)
+                {
+                    for (int y = 0; y < _flowgraphs[i].nodes[x].nodeParameters.Count; y++) 
+                    {
+                        CathodeParameterData thisData = _flowgraphs[i].nodes[x].nodeParameters[y].paramData;
+                        if (!paramData.Contains(thisData)) paramData.Add(thisData);
+                    }
+                }
+            }
+            _parameters = paramData.OrderBy(o => o.dataType).ToArray<CathodeParameterData>();
 
             /* Write out parameters */
             writer.BaseStream.Position = parameterOffsets[0] * 4;
@@ -210,7 +225,7 @@ namespace CATHODE.Commands
         {
             return (index >= _flowgraphs.Length || index < 0) ? null : _flowgraphs[index];
         }
-        public CathodeParameter GetParameter(int offset)
+        public CathodeParameterData GetParameter(int offset)
         {
             return _parameters.FirstOrDefault(o => o.offset == offset);
         }
@@ -245,7 +260,7 @@ namespace CATHODE.Commands
 
             /* Initialise parameter info */
             int parameter_offset_pos = reader.ReadInt32() * 4;
-            _parameters = new CathodeParameter[reader.ReadInt32()];
+            _parameters = new CathodeParameterData[reader.ReadInt32()];
 
             /* Initialise flowgraph info */
             int flowgraph_offset_pos = reader.ReadInt32() * 4;
@@ -267,7 +282,7 @@ namespace CATHODE.Commands
             for (int i = 0; i < _parameters.Length; i++)
             {
                 int length = (i == _parameters.Length - 1) ? (flowgraphOffsets[0] * 4) - (parameterOffsets[i] * 4) : (parameterOffsets[i + 1] * 4) - (parameterOffsets[i] * 4);
-                CathodeParameter this_parameter = new CathodeParameter();
+                CathodeParameterData this_parameter = new CathodeParameterData();
                 CathodeDataType this_datatype = GetDataType(reader.ReadBytes(4));
                 switch (this_datatype)
                 {
@@ -405,7 +420,13 @@ namespace CATHODE.Commands
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader));
                                 int NumberOfParams = JumpToOffset(ref reader);
-                                thisNode.nodeParameterReferences.AddRange(Utilities.ConsumeArray<CathodeParameterReference>(reader, NumberOfParams));
+                                for (int p = 0; p < NumberOfParams; p++)
+                                {
+                                    CathodeParameter paramRef = new CathodeParameter();
+                                    paramRef.paramID = new cGUID(reader);
+                                    paramRef.paramData = GetParameter(reader.ReadInt32());
+                                    thisNode.nodeParameters.Add(paramRef);
+                                }
                                 break;
                             }
                             //NOT PARSING: This appears to define links to EnvironmentModelReference nodes through flowgraph ref nodes
@@ -688,7 +709,7 @@ namespace CATHODE.Commands
         private CommandsEntryPoints _entryPoints;
         private CathodeFlowgraph[] _entryPointObjects = null;
 
-        private CathodeParameter[] _parameters = null;
+        private CathodeParameterData[] _parameters = null;
         private CathodeFlowgraph[] _flowgraphs = null;
 
         private int[] parameterOffsets; //These values need to be multiplied by four when reading
