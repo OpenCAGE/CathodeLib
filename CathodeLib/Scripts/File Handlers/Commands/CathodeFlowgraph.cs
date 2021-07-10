@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
@@ -34,6 +35,10 @@ namespace CATHODE.Commands
         public cGUID(byte[] id)
         {
             val = id;
+        }
+        public cGUID(BinaryReader reader)
+        {
+            val = reader.ReadBytes(4);
         }
 
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]

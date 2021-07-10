@@ -16,9 +16,9 @@ namespace CATHODE.Commands
         /* Load and parse the COMMANDS.PAK */
         public CommandsPAK(string pathToPak)
         {
-            path_to_pak = pathToPak;
+            path = pathToPak;
 
-            BinaryReader reader = new BinaryReader(File.OpenRead(path_to_pak));
+            BinaryReader reader = new BinaryReader(File.OpenRead(path));
 
             ReadHeaderInfo(reader);
             ReadParameters(reader);
@@ -30,10 +30,10 @@ namespace CATHODE.Commands
         /* Save all changes back out */
         public void Save()
         {
-            BinaryWriter writer = new BinaryWriter(File.OpenWrite(path_to_pak));
+            BinaryWriter writer = new BinaryWriter(File.OpenWrite(path));
 
             //Update all parameter values
-            foreach (CathodeParameter parameter in Parameters)
+            foreach (CathodeParameter parameter in _parameters)
             {
                 writer.BaseStream.Position = parameter.offset + 4;
                 switch (parameter.dataType)
@@ -90,7 +90,7 @@ namespace CATHODE.Commands
             }
 
             //Update all selected parameter offsets & REDS references
-            foreach (CathodeFlowgraph flowgraph in Flowgraphs)
+            foreach (CathodeFlowgraph flowgraph in _flowgraphs)
             {
                 foreach (CathodeNode node in flowgraph.nodes)
                 {
@@ -114,18 +114,18 @@ namespace CATHODE.Commands
 
         public void NewSave()
         {
-            BinaryWriter writer = new BinaryWriter(File.OpenWrite(path_to_pak));
+            BinaryWriter writer = new BinaryWriter(File.OpenWrite(path));
             writer.BaseStream.SetLength(0); //todo
 
-            Utilities.Write<CommandsEntryPoints>(writer, entry_points);
+            Utilities.Write<CommandsEntryPoints>(writer, _entryPoints);
 
             int parameter_offset_pos = 0; //todo
             writer.Write(parameter_offset_pos); 
-            writer.Write(Parameters.Length);
+            writer.Write(_parameters.Length);
 
             int flowgraph_offset_pos = 0; //todo
             writer.Write(flowgraph_offset_pos);
-            writer.Write(Flowgraphs.Length);
+            writer.Write(_flowgraphs.Length);
 
             /* Write out parameter offsets */
             //writer.BaseStream.Position = parameter_offset_pos;
@@ -136,48 +136,48 @@ namespace CATHODE.Commands
             //Utilities.Write<int>(writer, flowgraph_offsets);
 
             /* Write out parameters */
-            writer.BaseStream.Position = parameter_offsets[0] * 4;
-            for (int i = 0; i < Parameters.Length; i++)
+            writer.BaseStream.Position = parameterOffsets[0] * 4;
+            for (int i = 0; i < _parameters.Length; i++)
             {
-                parameter_offsets[i] = (int)writer.BaseStream.Position / 4;
-                Utilities.Write<cGUID>(writer, GetDataTypeGUID(Parameters[i].dataType));
-                switch (Parameters[i].dataType)
+                parameterOffsets[i] = (int)writer.BaseStream.Position / 4;
+                Utilities.Write<cGUID>(writer, GetDataTypeGUID(_parameters[i].dataType));
+                switch (_parameters[i].dataType)
                 {
                     case CathodeDataType.POSITION:
-                        Vector3 pos = ((CathodeTransform)Parameters[i]).position;
-                        Vector3 rot = ((CathodeTransform)Parameters[i]).rotation;
+                        Vector3 pos = ((CathodeTransform)_parameters[i]).position;
+                        Vector3 rot = ((CathodeTransform)_parameters[i]).rotation;
                         writer.Write(pos.X); writer.Write(pos.Y); writer.Write(pos.Z);
                         writer.Write(rot.Y); writer.Write(rot.X); writer.Write(rot.Z);
                         break;
                     case CathodeDataType.INTEGER:
-                        writer.Write(((CathodeInteger)Parameters[i]).value);
+                        writer.Write(((CathodeInteger)_parameters[i]).value);
                         break;
                     case CathodeDataType.STRING:
-                        writer.Write(((CathodeString)Parameters[i]).unk0.val);
-                        writer.Write(((CathodeString)Parameters[i]).unk1.val);
-                        string str = ((CathodeString)Parameters[i]).value;
+                        writer.Write(((CathodeString)_parameters[i]).unk0.val);
+                        writer.Write(((CathodeString)_parameters[i]).unk1.val);
+                        string str = ((CathodeString)_parameters[i]).value;
                         for (int x = 0; x < str.Length; x++) writer.Write((char)x);
                         Utilities.Align(writer, 4);
                         break;
                     case CathodeDataType.BOOL:
-                        if (((CathodeBool)Parameters[i]).value) writer.Write(1); else writer.Write(0);
+                        if (((CathodeBool)_parameters[i]).value) writer.Write(1); else writer.Write(0);
                         break;
                     case CathodeDataType.FLOAT:
-                        writer.Write(((CathodeFloat)Parameters[i]).value);
+                        writer.Write(((CathodeFloat)_parameters[i]).value);
                         break;
                     case CathodeDataType.SHORT_GUID:
-                        Utilities.Write<cGUID>(writer, ((CathodeResource)Parameters[i]).resourceID);
+                        Utilities.Write<cGUID>(writer, ((CathodeResource)_parameters[i]).resourceID);
                         break;
                     case CathodeDataType.DIRECTION:
-                        Vector3 dir = ((CathodeVector3)Parameters[i]).value;
+                        Vector3 dir = ((CathodeVector3)_parameters[i]).value;
                         writer.Write(dir.Y); writer.Write(dir.X); writer.Write(dir.Z);
                         break;
                     case CathodeDataType.ENUM:
-                        Utilities.Write<cGUID>(writer, ((CathodeEnum)Parameters[i]).enumID);
-                        writer.Write(((CathodeEnum)Parameters[i]).enumIndex);
+                        Utilities.Write<cGUID>(writer, ((CathodeEnum)_parameters[i]).enumID);
+                        writer.Write(((CathodeEnum)_parameters[i]).enumIndex);
                         break;
                     default:
-                        writer.Write(Parameters[i].unknownContent);
+                        writer.Write(_parameters[i].unknownContent);
                         break;
                 }
             }
@@ -188,15 +188,15 @@ namespace CATHODE.Commands
         /* Return a list of filenames for flowgraphs in the CommandsPAK archive */
         public string[] GetFlowgraphNames()
         {
-            string[] toReturn = new string[Flowgraphs.Length];
-            for (int i = 0; i < Flowgraphs.Length; i++) toReturn[i] = Flowgraphs[i].name;
+            string[] toReturn = new string[_flowgraphs.Length];
+            for (int i = 0; i < _flowgraphs.Length; i++) toReturn[i] = _flowgraphs[i].name;
             return toReturn;
         }
 
         /* Find the a script entry object by name */
         public int GetFileIndex(string FileName)
         {
-            for (int i = 0; i < Flowgraphs.Length; i++) if (Flowgraphs[i].name == FileName || Flowgraphs[i].name == FileName.Replace('/', '\\')) return i;
+            for (int i = 0; i < _flowgraphs.Length; i++) if (_flowgraphs[i].name == FileName || _flowgraphs[i].name == FileName.Replace('/', '\\')) return i;
             return -1;
         }
 
@@ -204,30 +204,28 @@ namespace CATHODE.Commands
         public CathodeFlowgraph GetFlowgraph(cGUID id)
         {
             if (id.val == null) return null;
-            return Flowgraphs.FirstOrDefault(o => o.nodeID == id);
+            return _flowgraphs.FirstOrDefault(o => o.nodeID == id);
         }
         public CathodeFlowgraph GetFlowgraphByIndex(int index)
         {
-            return (index >= Flowgraphs.Length || index < 0) ? null : Flowgraphs[index];
+            return (index >= _flowgraphs.Length || index < 0) ? null : _flowgraphs[index];
         }
         public CathodeParameter GetParameter(int offset)
         {
-            return Parameters.FirstOrDefault(o => o.offset == offset);
+            return _parameters.FirstOrDefault(o => o.offset == offset);
         }
 
         /* Get all flowgraphs/parameters */
-        public CathodeFlowgraph[] Flowgraphs { get; private set; }
-        public CathodeParameter[] Parameters { get; private set; }
+        public CathodeFlowgraph[] Flowgraphs { get { return _flowgraphs; } }
 
         /* Get entry point flowgraph objects */
-        private CathodeFlowgraph[] _entryPoints = null;
         public CathodeFlowgraph[] EntryPoints { 
             get
             {
-                if (_entryPoints != null) return _entryPoints;
-                _entryPoints = new CathodeFlowgraph[entry_points.flowgraphIDs.Length];
-                for (int i = 0; i < entry_points.flowgraphIDs.Length; i++) _entryPoints[i] = GetFlowgraph(entry_points.flowgraphIDs[i]);
-                return _entryPoints;
+                if (_entryPointObjects != null) return _entryPointObjects;
+                _entryPointObjects = new CathodeFlowgraph[_entryPoints.flowgraphIDs.Length];
+                for (int i = 0; i < _entryPoints.flowgraphIDs.Length; i++) _entryPointObjects[i] = GetFlowgraph(_entryPoints.flowgraphIDs[i]);
+                return _entryPointObjects;
             }
         }
 
@@ -243,32 +241,32 @@ namespace CATHODE.Commands
         private void ReadHeaderInfo(BinaryReader reader)
         {
             /* Read entry points */
-            entry_points = Utilities.Consume<CommandsEntryPoints>(reader);
+            _entryPoints = Utilities.Consume<CommandsEntryPoints>(reader);
 
             /* Initialise parameter info */
             int parameter_offset_pos = reader.ReadInt32() * 4;
-            Parameters = new CathodeParameter[reader.ReadInt32()];
+            _parameters = new CathodeParameter[reader.ReadInt32()];
 
             /* Initialise flowgraph info */
             int flowgraph_offset_pos = reader.ReadInt32() * 4;
-            Flowgraphs = new CathodeFlowgraph[reader.ReadInt32()];
+            _flowgraphs = new CathodeFlowgraph[reader.ReadInt32()];
 
             /* Archive offsets for parameters */
             reader.BaseStream.Position = parameter_offset_pos;
-            parameter_offsets = Utilities.ConsumeArray<int>(reader, Parameters.Length);
+            parameterOffsets = Utilities.ConsumeArray<int>(reader, _parameters.Length);
 
             /* Archive offsets for flowgraphs */
             reader.BaseStream.Position = flowgraph_offset_pos;
-            flowgraph_offsets = Utilities.ConsumeArray<int>(reader, Flowgraphs.Length);
+            flowgraphOffsets = Utilities.ConsumeArray<int>(reader, _flowgraphs.Length);
         }
 
         /* Read all parameters from the PAK */
         private void ReadParameters(BinaryReader reader)
         {
-            reader.BaseStream.Position = parameter_offsets[0] * 4;
-            for (int i = 0; i < Parameters.Length; i++)
+            reader.BaseStream.Position = parameterOffsets[0] * 4;
+            for (int i = 0; i < _parameters.Length; i++)
             {
-                int length = (i == Parameters.Length - 1) ? (flowgraph_offsets[0] * 4) - (parameter_offsets[i] * 4) : (parameter_offsets[i + 1] * 4) - (parameter_offsets[i] * 4);
+                int length = (i == _parameters.Length - 1) ? (flowgraphOffsets[0] * 4) - (parameterOffsets[i] * 4) : (parameterOffsets[i + 1] * 4) - (parameterOffsets[i] * 4);
                 CathodeParameter this_parameter = new CathodeParameter();
                 CathodeDataType this_datatype = GetDataType(reader.ReadBytes(4));
                 switch (this_datatype)
@@ -285,8 +283,8 @@ namespace CATHODE.Commands
                         break;
                     case CathodeDataType.STRING:
                         this_parameter = new CathodeString();
-                        ((CathodeString)this_parameter).unk0 = new cGUID(reader.ReadBytes(4)); // some kind of ID sometimes referenced in script and resource id
-                        ((CathodeString)this_parameter).unk1 = new cGUID(reader.ReadBytes(4)); // sometimes flowgraph id ?!
+                        ((CathodeString)this_parameter).unk0 = new cGUID(reader); // some kind of ID sometimes referenced in script and resource id
+                        ((CathodeString)this_parameter).unk1 = new cGUID(reader); // sometimes flowgraph id ?!
                         bool shouldStop = false;
                         for (int x = 0; x < length - 8; x++)
                         {
@@ -308,7 +306,7 @@ namespace CATHODE.Commands
                         break;
                     case CathodeDataType.SHORT_GUID:
                         this_parameter = new CathodeResource();
-                        ((CathodeResource)this_parameter).resourceID = new cGUID(reader.ReadBytes(4));
+                        ((CathodeResource)this_parameter).resourceID = new cGUID(reader);
                         break;
                     case CathodeDataType.DIRECTION:
                         this_parameter = new CathodeVector3();
@@ -317,7 +315,7 @@ namespace CATHODE.Commands
                         break;
                     case CathodeDataType.ENUM:
                         this_parameter = new CathodeEnum();
-                        ((CathodeEnum)this_parameter).enumID = new cGUID(reader.ReadBytes(4));
+                        ((CathodeEnum)this_parameter).enumID = new cGUID(reader);
                         ((CathodeEnum)this_parameter).enumIndex = reader.ReadInt32();
                         break;
                         /*
@@ -345,24 +343,24 @@ namespace CATHODE.Commands
                         break;
                 }
 
-                this_parameter.offset = parameter_offsets[i];
+                this_parameter.offset = parameterOffsets[i];
                 this_parameter.dataType = this_datatype;
 
-                Parameters[i] = this_parameter;
+                _parameters[i] = this_parameter;
             }
         }
 
         /* Read all flowgraphs from the PAK */
         private void ReadFlowgraphs(BinaryReader reader)
         {
-            int scriptStart = (parameter_offsets[parameter_offsets.Length - 1] * 4) + 8; //Relies on the last param always being 4 in length
-            for (int i = 0; i < Flowgraphs.Length; i++)
+            int scriptStart = (parameterOffsets[parameterOffsets.Length - 1] * 4) + 8; //Relies on the last param always being 4 in length
+            for (int i = 0; i < _flowgraphs.Length; i++)
             {
                 CathodeFlowgraph flowgraph = new CathodeFlowgraph();
 
                 //Game doesn't parse the script name, so there's no real nice way of grabbing it!!
                 reader.BaseStream.Position = scriptStart;
-                flowgraph.globalID = new cGUID(reader.ReadBytes(4));
+                flowgraph.globalID = new cGUID(reader);
                 string name = "";
                 while (true)
                 {
@@ -371,18 +369,18 @@ namespace CATHODE.Commands
                     name += (char)thisByte;
                 }
                 flowgraph.name = name;
-                scriptStart = (flowgraph_offsets[i] * 4) + 116;
+                scriptStart = (flowgraphOffsets[i] * 4) + 116;
                 //End of crappy namegrab
 
-                reader.BaseStream.Position = (flowgraph_offsets[i] * 4);
+                reader.BaseStream.Position = (flowgraphOffsets[i] * 4);
                 reader.BaseStream.Position += 4; //Skip 0x00,0x00,0x00,0x00
 
                 //Read the offsets and counts
                 OffsetPair[] offsetPairs = new OffsetPair[13];
                 for (int x = 0; x < 13; x++)
                 {
-                    if (x == 0) flowgraph.uniqueID = new cGUID(reader.ReadBytes(4));
-                    if (x == 1) flowgraph.nodeID = new cGUID(reader.ReadBytes(4));
+                    if (x == 0) flowgraph.uniqueID = new cGUID(reader);
+                    if (x == 1) flowgraph.nodeID = new cGUID(reader);
                     offsetPairs[x] = Utilities.Consume<OffsetPair>(reader);
                 }
 
@@ -397,7 +395,7 @@ namespace CATHODE.Commands
                             case CathodeScriptBlocks.DEFINE_NODE_LINKS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-                                cGUID parentID = new cGUID(reader.ReadBytes(4)); //TODO: filter this by parentID? 
+                                cGUID parentID = new cGUID(reader); //TODO: filter this by parentID? 
                                 int NumberOfParams = JumpToOffset(ref reader);
                                 flowgraph.links.AddRange(Utilities.ConsumeArray<CathodeNodeLink>(reader, NumberOfParams));
                                 break;
@@ -405,7 +403,7 @@ namespace CATHODE.Commands
                             case CathodeScriptBlocks.DEFINE_NODE_PARAMETERS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-                                CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader.ReadBytes(4)));
+                                CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader));
                                 int NumberOfParams = JumpToOffset(ref reader);
                                 thisNode.nodeParameterReferences.AddRange(Utilities.ConsumeArray<CathodeParameterReference>(reader, NumberOfParams));
                                 break;
@@ -443,9 +441,9 @@ namespace CATHODE.Commands
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
 
-                                CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader.ReadBytes(4)));
+                                CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader));
                                 thisNode.dataType = GetDataType(reader.ReadBytes(4));
-                                thisNode.dataTypeParam = new cGUID(reader.ReadBytes(4));
+                                thisNode.dataTypeParam = new cGUID(reader);
                                 break;
                             }
                             //NOT PARSING: This block is another x-ref list, potentially related to mission critical things (doors, maybe?) 
@@ -476,8 +474,8 @@ namespace CATHODE.Commands
                             }
                             case CathodeScriptBlocks.DEFINE_NODE_NODETYPES:
                             {
-                                CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader.ReadBytes(4)));
-                                thisNode.nodeType = new cGUID(reader.ReadBytes(4));
+                                CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader));
+                                thisNode.nodeType = new cGUID(reader);
                                 break;
                             }
                             //PARSING: I'm currently unsure on a lot of this, as the types vary (see entryType)
@@ -488,11 +486,11 @@ namespace CATHODE.Commands
                                 //TODO: these values change by entry type - need to work out what they're for before allowing editing
                                 CathodeResourceReference resource_ref = new CathodeResourceReference();
                                 resource_ref.editOffset = (int)reader.BaseStream.Position;
-                                resource_ref.resourceRefID = new cGUID(reader.ReadBytes(4)); //renderable element ID (also used in one of the param blocks for something)
+                                resource_ref.resourceRefID = new cGUID(reader); //renderable element ID (also used in one of the param blocks for something)
                                 reader.BaseStream.Position += 4; //unk (always 0x00 x4?)
                                 resource_ref.positionOffset = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()); //position offset
                                 reader.BaseStream.Position += 4; //unk (always 0x00 x4?)
-                                resource_ref.resourceID = new cGUID(reader.ReadBytes(4)); //resource id
+                                resource_ref.resourceID = new cGUID(reader); //resource id
                                 resource_ref.entryType = GetResourceEntryType(reader.ReadBytes(4)); //entry type
                                 switch (resource_ref.entryType)
                                 {
@@ -502,7 +500,7 @@ namespace CATHODE.Commands
                                         break;
                                     case CathodeResourceReferenceType.COLLISION_MAPPING:
                                         resource_ref.unknownInteger = reader.ReadInt32(); //unknown integer (COLLISION.MAP index?)
-                                        resource_ref.nodeID = new cGUID(reader.ReadBytes(4)); //ID which maps to the node using the resource (?) - check GetFriendlyName
+                                        resource_ref.nodeID = new cGUID(reader); //ID which maps to the node using the resource (?) - check GetFriendlyName
                                         break;
                                     case CathodeResourceReferenceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
                                     case CathodeResourceReferenceType.NAV_MESH_BARRIER_RESOURCE:
@@ -528,7 +526,7 @@ namespace CATHODE.Commands
 
                                 //Jump to the pointer location - this defines a node ID and another offset with count
                                 reader.BaseStream.Position = offsetPos;
-                                CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader.ReadBytes(4))); //These always seem to be animation related nodes
+                                CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader)); //These always seem to be animation related nodes
                                 int OffsetToFindParams = reader.ReadInt32() * 4;
                                 int NumberOfParams = reader.ReadInt32();
 
@@ -577,7 +575,7 @@ namespace CATHODE.Commands
                                 int offsetPos = reader.ReadInt32() * 4;
 
                                 reader.BaseStream.Position = offsetPos;
-                                CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader.ReadBytes(4)));
+                                CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader));
                                 //string test0 = NodeDB.GetFriendlyName(thisNode.nodeID);
                                 int OffsetToFindParams = reader.ReadInt32() * 4;
                                 int NumberOfParams = reader.ReadInt32();
@@ -613,7 +611,7 @@ namespace CATHODE.Commands
                     }
                 }
 
-                Flowgraphs[i] = flowgraph;
+                _flowgraphs[i] = flowgraph;
             }
         }
 
@@ -685,12 +683,16 @@ namespace CATHODE.Commands
             return _resourceReferenceTypeLUT.FirstOrDefault(x => x.Value == type).Key;
         }
 
-        private string path_to_pak = "";
+        private string path = "";
 
-        private CommandsEntryPoints entry_points;
+        private CommandsEntryPoints _entryPoints;
+        private CathodeFlowgraph[] _entryPointObjects = null;
 
-        private int[] parameter_offsets; //These values need to be multiplied by four when reading
-        private int[] flowgraph_offsets; //These values need to be multiplied by four when reading
+        private CathodeParameter[] _parameters = null;
+        private CathodeFlowgraph[] _flowgraphs = null;
+
+        private int[] parameterOffsets; //These values need to be multiplied by four when reading
+        private int[] flowgraphOffsets; //These values need to be multiplied by four when reading
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
