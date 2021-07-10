@@ -117,26 +117,18 @@ namespace CATHODE.Commands
             BinaryWriter writer = new BinaryWriter(File.OpenWrite(path));
             writer.BaseStream.SetLength(0); //todo
 
+            /* Write entry points */
             Utilities.Write<CommandsEntryPoints>(writer, _entryPoints);
 
-            int parameter_offset_pos = 0; //todo
-            writer.Write(parameter_offset_pos); 
+            //we come back and rewrite these zeros later
+            int offsetToRewrite = (int)writer.BaseStream.Position;
+            writer.Write(0); 
             writer.Write(_parameters.Length);
-
-            int flowgraph_offset_pos = 0; //todo
-            writer.Write(flowgraph_offset_pos);
+            writer.Write(0); 
             writer.Write(_flowgraphs.Length);
 
-            /* Write out parameter offsets */
-            //writer.BaseStream.Position = parameter_offset_pos;
-            //Utilities.Write<int>(writer, parameter_offsets);
-
-            /* Write out flowgraph offsets */
-            //writer.BaseStream.Position = flowgraph_offset_pos;
-            //Utilities.Write<int>(writer, flowgraph_offsets);
-
             /* Write out parameters */
-            writer.BaseStream.Position = parameterOffsets[0] * 4;
+            parameterOffsets = new int[_parameters.Length]; 
             for (int i = 0; i < _parameters.Length; i++)
             {
                 parameterOffsets[i] = (int)writer.BaseStream.Position / 4;
@@ -156,7 +148,8 @@ namespace CATHODE.Commands
                         writer.Write(((CathodeString)_parameters[i]).unk0.val);
                         writer.Write(((CathodeString)_parameters[i]).unk1.val);
                         string str = ((CathodeString)_parameters[i]).value;
-                        for (int x = 0; x < str.Length; x++) writer.Write((char)x);
+                        for (int x = 0; x < str.Length; x++) writer.Write(str[x]);
+                        writer.Write((char)0x00);
                         Utilities.Align(writer, 4);
                         break;
                     case CathodeDataType.BOOL:
@@ -181,6 +174,43 @@ namespace CATHODE.Commands
                         break;
                 }
             }
+
+            /* Write out flowgraphs */
+            flowgraphOffsets = new int[_flowgraphs.Length];
+            for (int i = 0; i < _flowgraphs.Length; i++)
+            {
+                Utilities.Write<cGUID>(writer, _flowgraphs[i].globalID);
+                for (int x = 0; x < _flowgraphs[i].name.Length; x++) writer.Write(_flowgraphs[i].name[x]);
+                Utilities.Align(writer, 4);
+                Utilities.Write<cGUID>(writer, _flowgraphs[i].nodeID);
+
+                //write script data
+                int test_offset = (int)writer.BaseStream.Position;
+
+                flowgraphOffsets[i] = (int)writer.BaseStream.Position / 4;
+                writer.Write(0);
+                for (int x = 0; x < 13; x++)
+                {
+                    if (x == 0) Utilities.Write<cGUID>(writer, _flowgraphs[i].uniqueID);
+                    if (x == 1) Utilities.Write<cGUID>(writer, _flowgraphs[i].nodeID);
+                    writer.Write(test_offset / 4); //offset
+                    writer.Write(0); //count
+                }
+            }
+
+            /* Write out parameter offsets */
+            int parameterOffsetPos = (int)writer.BaseStream.Position;
+            Utilities.Write<int>(writer, parameterOffsets);
+
+            /* Write out flowgraph offsets */
+            int flowgraphOffsetPos = (int)writer.BaseStream.Position;
+            Utilities.Write<int>(writer, flowgraphOffsets);
+
+            //rewrite with offsets
+            writer.BaseStream.Position = offsetToRewrite;
+            writer.Write(parameterOffsetPos / 4);
+            writer.BaseStream.Position += 4;
+            writer.Write(flowgraphOffsetPos / 4);
 
             writer.Close();
         }
