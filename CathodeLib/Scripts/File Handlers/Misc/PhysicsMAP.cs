@@ -14,7 +14,7 @@ namespace CATHODE.Misc
     {
         private string filepath;
         public alien_collision_map_header header;
-        public List<alien_collision_map_entry> entries;
+        public alien_collision_map_entry[] entries;
 
         /* Load the file */
         public PhysicsMAP(string path)
@@ -22,23 +22,24 @@ namespace CATHODE.Misc
             filepath = path;
 
             BinaryReader stream = new BinaryReader(File.OpenRead(path));
-            header = Utilities.Consume<alien_collision_map_header>(ref stream);
-            entries = Utilities.ConsumeArray<alien_collision_map_entry>(ref stream, header.EntryCount);
+            header = Utilities.Consume<alien_collision_map_header>(stream);
+            entries = Utilities.ConsumeArray<alien_collision_map_entry>(stream, header.EntryCount);
             stream.Close();
         }
 
         /* Save the file */
         public void Save()
         {
-            FileStream stream = new FileStream(filepath, FileMode.Create);
-            Utilities.Write<alien_collision_map_header>(ref stream, header);
-            for (int i = 0; i < entries.Count; i++) Utilities.Write<alien_collision_map_entry>(ref stream, entries[i]);
+            BinaryWriter stream = new BinaryWriter(File.OpenWrite(filepath));
+            stream.BaseStream.SetLength(0);
+            Utilities.Write<alien_collision_map_header>(stream, header);
+            Utilities.Write<alien_collision_map_entry>(stream, entries);
             stream.Close();
         }
 
         /* Data accessors */
-        public int EntryCount { get { return entries.Count; } }
-        public List<alien_collision_map_entry> Entries { get { return entries; } }
+        public int EntryCount { get { return entries.Length; } }
+        public alien_collision_map_entry[] Entries { get { return entries; } }
         public alien_collision_map_entry GetEntry(int i)
         {
             return entries[i];

@@ -15,7 +15,7 @@ namespace CATHODE.Models
     {
         private string filepath;
         private alien_mvr_header header;
-        private List<alien_mvr_entry> movers;
+        private alien_mvr_entry[] movers;
 
         /* Load the file */
         public ModelsMVR(string pathToFile)
@@ -23,23 +23,24 @@ namespace CATHODE.Models
             filepath = pathToFile;
 
             BinaryReader stream = new BinaryReader(File.OpenRead(filepath));
-            header = Utilities.Consume<alien_mvr_header>(ref stream);
-            movers = Utilities.ConsumeArray<alien_mvr_entry>(ref stream, (int)header.EntryCount);
+            header = Utilities.Consume<alien_mvr_header>(stream);
+            movers = Utilities.ConsumeArray<alien_mvr_entry>(stream, (int)header.EntryCount);
             stream.Close();
         }
 
         /* Save the file */
         public void Save()
         {
-            FileStream stream = new FileStream(filepath, FileMode.Create);
-            Utilities.Write<alien_mvr_header>(ref stream, header);
-            for (int i = 0; i < movers.Count; i++) Utilities.Write<alien_mvr_entry>(ref stream, movers[i]);
+            BinaryWriter stream = new BinaryWriter(File.OpenWrite(filepath));
+            stream.BaseStream.SetLength(0);
+            Utilities.Write<alien_mvr_header>(stream, header);
+            Utilities.Write<alien_mvr_entry>(stream, movers);
             stream.Close();
         }
 
         /* Data accessors */
-        public int EntryCount { get { return movers.Count; } }
-        public List<alien_mvr_entry> Entries { get { return movers; } }
+        public int EntryCount { get { return movers.Length; } }
+        public alien_mvr_entry[] Entries { get { return movers; } }
         public alien_mvr_entry GetEntry(int i)
         {
             return movers[i];

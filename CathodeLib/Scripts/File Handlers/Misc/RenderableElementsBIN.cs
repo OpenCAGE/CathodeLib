@@ -13,7 +13,7 @@ namespace CATHODE.Misc
     {
         private string filepath;
         public alien_reds_header header;
-        public List<alien_reds_entry> entries;
+        public alien_reds_entry[] entries;
 
         /* Load the file */
         public RenderableElementsBIN(string path)
@@ -21,23 +21,24 @@ namespace CATHODE.Misc
             filepath = path;
 
             BinaryReader stream = new BinaryReader(File.OpenRead(path));
-            header = Utilities.Consume<alien_reds_header>(ref stream);
-            entries = Utilities.ConsumeArray<alien_reds_entry>(ref stream, header.EntryCount);
+            header = Utilities.Consume<alien_reds_header>(stream);
+            entries = Utilities.ConsumeArray<alien_reds_entry>(stream, header.EntryCount);
             stream.Close();
         }
 
         /* Save the file */
         public void Save()
         {
-            FileStream stream = new FileStream(filepath, FileMode.Create);
-            Utilities.Write<alien_reds_header>(ref stream, header);
-            for (int i = 0; i < entries.Count; i++) Utilities.Write<alien_reds_entry>(ref stream, entries[i]);
+            BinaryWriter stream = new BinaryWriter(File.OpenWrite(filepath));
+            stream.BaseStream.SetLength(0);
+            Utilities.Write<alien_reds_header>(stream, header);
+            Utilities.Write<alien_reds_entry>(stream, entries);
             stream.Close();
         }
 
         /* Data accessors */
-        public int EntryCount { get { return entries.Count; } }
-        public List<alien_reds_entry> Entries { get { return entries; } }
+        public int EntryCount { get { return entries.Length; } }
+        public alien_reds_entry[] Entries { get { return entries; } }
         public alien_reds_entry GetEntry(int i)
         {
             return entries[i];

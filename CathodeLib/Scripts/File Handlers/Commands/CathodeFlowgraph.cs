@@ -5,6 +5,7 @@ using System.Linq;
 using UnityEngine;
 #else
 using System.Numerics;
+using System.Runtime.InteropServices;
 #endif
 
 namespace CATHODE.Commands
@@ -26,22 +27,55 @@ namespace CATHODE.Commands
         DEFINE_ZONE_CONTENT = 10              //This defines zone content data for Zone nodes
     }
 
-    /* Defines a link between parent and child IDs, with a connection ID */
-    public class CathodeNodeLink
+    /* A unique id assigned to CATHODE objects */
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct cGUID
     {
-        public UInt32 connectionID;  //The unique ID for this connection
-        public UInt32 parentID;      //The ID of the node we're connecting from, providing the value
-        public UInt32 parentParamID; //The ID of the parameter we're providing out of this node
-        public UInt32 childID;       //The ID of the node we're linking to to provide the value for
-        public UInt32 childParamID;  //The ID of the parameter we're providing into the child
+        public cGUID(byte[] id)
+        {
+            val = id;
+        }
+
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+        public byte[] val;
+
+        public override bool Equals(object obj)
+        {
+            if (!(obj is cGUID)) return false;
+            return ((cGUID)obj).val.SequenceEqual(this.val);
+        }
+        public static bool operator ==(cGUID x, cGUID y)
+        {
+            return x.val.SequenceEqual(y.val);
+        }
+        public static bool operator !=(cGUID x, cGUID y)
+        {
+            return !x.val.SequenceEqual(y.val);
+        }
+        public override int GetHashCode()
+        {
+            return BitConverter.ToInt32(val, 0);
+        }
+    }
+
+    /* Defines a link between parent and child IDs, with a connection ID */
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct CathodeNodeLink
+    {
+        public cGUID connectionID;  //The unique ID for this connection
+        //public cGUID parentID;      //The ID of the node we're connecting from, providing the value
+        public cGUID parentParamID; //The ID of the parameter we're providing out of this node
+        public cGUID childID;       //The ID of the node we're linking to to provide the value for
+        public cGUID childParamID;  //The ID of the parameter we're providing into the child
     }
 
     /* A reference to a parameter in a flowgraph */
-    public class CathodeParameterReference
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct CathodeParameterReference
     {
-        public UInt32 paramID; //The ID of the param in the node
-        public int offset;     //The offset of the param this reference points to
-        public int editOffset; //The offset in the PAK that this reference is
+        public cGUID paramID; //The ID of the param in the node
+        public int offset;        //The offset of the param this reference points to (in memory this is *4)
+        //public int editOffset;    //The offset in the PAK that this reference is
     }
 
     /* A resource that references a REnDerable elementS DB entry */
@@ -49,9 +83,9 @@ namespace CATHODE.Commands
     {
         public int editOffset; //The offset in the PAK that this is for temp rewrite logic
 
-        public UInt32 resourceRefID;                   //The ID of this entry?
+        public cGUID resourceRefID;                   //The ID of this entry?
         public Vector3 positionOffset;     //The 3D position to offset the resource by
-        public UInt32 resourceID;                      //This is the ID also contained in the RESOURCE_ID parameter list
+        public cGUID resourceID;                      //This is the ID also contained in the RESOURCE_ID parameter list
         public CathodeResourceReferenceType entryType; //This is the type of resource entry
 
         //For type REDS_REFERENCE
@@ -60,24 +94,24 @@ namespace CATHODE.Commands
 
         //For type UNKNOWN_REFERENCE & others
         public int unknownInteger;
-        public UInt32 nodeID;
+        public cGUID nodeID;
     }
 
     /* A node in a flowgraph */
-    public class CathodeNodeEntity
+    public class CathodeNode
     {
-        public bool HasNodeType { get { return nodeType != 0; } }
+        public bool HasNodeType { get { return nodeType.val != null; } }
         public bool HasDataType { get { return dataType != CathodeDataType.NONE; } }
 
-        public UInt32 nodeID;   //Nodes always have a unique ID
-        public UInt32 nodeType; //Some nodes are of a node type
+        public cGUID nodeID;   //Nodes always have a unique ID
+        public cGUID nodeType; //Some nodes are of a node type
 
         public CathodeDataType dataType = CathodeDataType.NONE; //If nodes have no type, they're of a data type
-        public UInt32 dataTypeParam;                            //Data type nodes have a parameter ID
+        public cGUID dataTypeParam;                             //Data type nodes have a parameter ID
 
         public List<CathodeParameterReference> nodeParameterReferences = new List<CathodeParameterReference>();
 
-        public CathodeParameterReference GetParameterReferenceByID(UInt32 id)
+        public CathodeParameterReference GetParameterReferenceByID(cGUID id)
         {
             return nodeParameterReferences.FirstOrDefault(o => o.paramID == id);
         }
@@ -86,51 +120,54 @@ namespace CATHODE.Commands
     /* A script flowgraph containing nodes with parameters */
     public class CathodeFlowgraph
     {
-        public UInt32 globalID;  //The four byte identifier code of the flowgraph global to all commands.paks
-        public UInt32 uniqueID;  //The four byte identifier code of the flowgraph unique to commands.pak
-        public UInt32 nodeID;    //The id when this flowgraph is used as a prefab node in another flowgraph
+        public cGUID globalID;  //The four byte identifier code of the flowgraph global to all commands.paks
+        public cGUID uniqueID;  //The four byte identifier code of the flowgraph unique to commands.pak
+        public cGUID nodeID;    //The id when this flowgraph is used as a prefab node in another flowgraph
         public string name = ""; //The string name of the flowgraph
 
-        public List<CathodeNodeEntity> nodes = new List<CathodeNodeEntity>();
+        public List<CathodeNode> nodes = new List<CathodeNode>();
         public List<CathodeNodeLink> links = new List<CathodeNodeLink>();
         public List<CathodeResourceReference> resources = new List<CathodeResourceReference>();
 
         /* If a node exists in the flowgraph, return it - otherwise create it, and return it */
-        public CathodeNodeEntity GetNodeByID(UInt32 id)
+        public CathodeNode GetNodeByID(cGUID id)
         {
-            foreach (CathodeNodeEntity node in nodes)
+            foreach (CathodeNode node in nodes)
             {
                 if (node.nodeID == id) return node;
             }
-            CathodeNodeEntity newNode = new CathodeNodeEntity();
+            CathodeNode newNode = new CathodeNode();
             newNode.nodeID = id;
             nodes.Add(newNode);
             return newNode;
         }
 
         /* Get all child links for a node */
-        public List<CathodeNodeLink> GetChildLinksByID(UInt32 id)
+        /*
+        public List<CathodeNodeLink> GetChildLinksByID(cGUID id)
         {
             return links.FindAll(o => o.parentID == id);
         }
+        */
 
         /* Get all parent links for a node */
-        public List<CathodeNodeLink> GetParentLinksByID(UInt32 id)
+        public List<CathodeNodeLink> GetParentLinksByID(cGUID id)
         {
             return links.FindAll(o => o.childID == id);
         }
         
         /* Get resource references by ID */
-        public List<CathodeResourceReference> GetResourceReferencesByID(UInt32 id)
+        public List<CathodeResourceReference> GetResourceReferencesByID(cGUID id)
         {
             return resources.FindAll(o => o.resourceID == id);
         }
     }
 
     /* Temp holder for offset pairs */
-    public class OffsetPair
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct OffsetPair
     {
-        public int GlobalOffset = 0;
-        public int EntryCount = 0;
+        public int GlobalOffset;
+        public int EntryCount;
     }
 }

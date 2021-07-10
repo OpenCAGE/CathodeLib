@@ -20,15 +20,16 @@ namespace CATHODE.Saves
             filepath = pathToMVR;
 
             BinaryReader Stream = new BinaryReader(File.OpenRead(filepath));
-            content = Utilities.Consume<alien_progression_ais>(ref Stream);
+            content = Utilities.Consume<alien_progression_ais>(Stream);
             Stream.Close();
         }
 
         /* Save the file */
         public void Save()
         {
-            FileStream stream = new FileStream(filepath, FileMode.Create);
-            Utilities.Write<alien_progression_ais>(ref stream, content);
+            BinaryWriter stream = new BinaryWriter(File.OpenWrite(filepath));
+            stream.BaseStream.SetLength(0);
+            Utilities.Write<alien_progression_ais>(stream, content);
             stream.Close();
         }
     }

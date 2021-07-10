@@ -17,7 +17,7 @@ namespace CATHODE.Generic
             alien_pak Result = new alien_pak();
             BinaryReader Stream = new BinaryReader(File.OpenRead(filepath));
 
-            alien_pak_header Header = Utilities.Consume<alien_pak_header>(ref Stream);
+            alien_pak_header Header = Utilities.Consume<alien_pak_header>(Stream);
             if (BigEndian)
             {
                 Header.Version = BinaryPrimitives.ReverseEndianness(Header.Version);
@@ -25,7 +25,7 @@ namespace CATHODE.Generic
                 Header.EntryCount = BinaryPrimitives.ReverseEndianness(Header.EntryCount);
             }
 
-            List<alien_pak_entry> Entries = Utilities.ConsumeArray<alien_pak_entry>(ref Stream, Header.MaxEntryCount);
+            alien_pak_entry[] Entries = Utilities.ConsumeArray<alien_pak_entry>(Stream, Header.MaxEntryCount);
 
             //todo-mattf; remove the need for this
             long resetpos = Stream.BaseStream.Position;
@@ -94,7 +94,7 @@ public struct alien_pak_entry
 public struct alien_pak
 {
     public alien_pak_header Header;
-    public List<alien_pak_entry> Entries;
+    public alien_pak_entry[] Entries;
     
     public byte[] DataStart;
     public List<byte[]> EntryDatas;

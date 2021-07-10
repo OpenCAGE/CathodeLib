@@ -26,13 +26,13 @@ namespace CATHODE.Models
 
                 // TODO: Maybe this stuff can be moved to AlienLoadPAK, probably using an 'alien_pak_entry' value to check if
                 //  it is an array of entries.
-                alien_pak_model_entry_header EntryHeader = Utilities.Consume<alien_pak_model_entry_header>(ref Stream);
+                alien_pak_model_entry_header EntryHeader = Utilities.Consume<alien_pak_model_entry_header>(Stream);
                 EntryHeader.FirstChunkIndex = BinaryPrimitives.ReverseEndianness(EntryHeader.FirstChunkIndex);
                 EntryHeader.ChunkCount = BinaryPrimitives.ReverseEndianness(EntryHeader.ChunkCount);
                 Model.Header = EntryHeader;
 
-                Model.ChunkInfos = Utilities.ConsumeArray<alien_pak_model_chunk_info>(ref Stream, EntryHeader.ChunkCount);
-                Utilities.Align(ref Stream, 16);
+                Model.ChunkInfos = Utilities.ConsumeArray<alien_pak_model_chunk_info>(Stream, EntryHeader.ChunkCount);
+                Utilities.Align(Stream, 16);
                 Model.Chunks = new List<byte[]>(EntryHeader.ChunkCount);
 
                 for (int ChunkIndex = 0; ChunkIndex < EntryHeader.ChunkCount; ++ChunkIndex)
@@ -78,7 +78,7 @@ public struct alien_pak_model_chunk_info
 public struct alien_pak_model_entry
 {
     public alien_pak_model_entry_header Header;
-    public List<alien_pak_model_chunk_info> ChunkInfos;
+    public alien_pak_model_chunk_info[] ChunkInfos;
     public List<byte[]> Chunks;
 };
 

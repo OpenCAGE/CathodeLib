@@ -13,7 +13,7 @@ namespace CATHODE.Misc
     {
         private string filepath;
         private alien_environment_map_bin_header header;
-        private List<alien_environment_map_bin_entry> entries;
+        private alien_environment_map_bin_entry[] entries;
 
         /* Load the file */
         public EnvironmentMapBIN(string path)
@@ -21,23 +21,24 @@ namespace CATHODE.Misc
             filepath = path;
 
             BinaryReader Stream = new BinaryReader(File.OpenRead(filepath));
-            header = Utilities.Consume<alien_environment_map_bin_header>(ref Stream);
-            entries = Utilities.ConsumeArray<alien_environment_map_bin_entry>(ref Stream, (int)header.EntryCount);
+            header = Utilities.Consume<alien_environment_map_bin_header>(Stream);
+            entries = Utilities.ConsumeArray<alien_environment_map_bin_entry>(Stream, (int)header.EntryCount);
             Stream.Close();
         }
 
         /* Save the file */
         public void Save()
         {
-            FileStream stream = new FileStream(filepath, FileMode.Create);
-            Utilities.Write<alien_environment_map_bin_header>(ref stream, header);
-            for (int i = 0; i < entries.Count; i++) Utilities.Write<alien_environment_map_bin_entry>(ref stream, entries[i]);
+            BinaryWriter stream = new BinaryWriter(File.OpenWrite(filepath));
+            stream.BaseStream.SetLength(0);
+            Utilities.Write<alien_environment_map_bin_header>(stream, header);
+            Utilities.Write<alien_environment_map_bin_entry>(stream, entries);
             stream.Close();
         }
 
         /* Data accessors */
-        public int EntryCount { get { return entries.Count; } }
-        public List<alien_environment_map_bin_entry> Entries { get { return entries; } }
+        public int EntryCount { get { return entries.Length; } }
+        public alien_environment_map_bin_entry[] Entries { get { return entries; } }
         public alien_environment_map_bin_entry GetEntry(int i)
         {
             return entries[i];

@@ -66,8 +66,8 @@ namespace CATHODE.Commands
     {
         public int initial_length = 0; //Added for parameter editing, when the format is fully known, this will not be a limitation
         public string value = "";
-        public byte[] unk0;
-        public byte[] unk1;
+        public cGUID unk0;
+        public cGUID unk1;
     }
     public class CathodeBool : CathodeParameter
     {
@@ -79,7 +79,7 @@ namespace CATHODE.Commands
     }
     public class CathodeResource : CathodeParameter
     {
-        public UInt32 resourceID = 0;
+        public cGUID resourceID;
     }
     public class CathodeVector3 : CathodeParameter
     {
@@ -87,7 +87,7 @@ namespace CATHODE.Commands
     }
     public class CathodeEnum : CathodeParameter
     {
-        public UInt32 enumID = 0;
+        public cGUID enumID;
         public int enumIndex = 0;
     }
     public class CathodeSpline : CathodeParameter

@@ -17,7 +17,7 @@ namespace CATHODE.Models
             alien_model_bin Result = new alien_model_bin();
             BinaryReader Stream = new BinaryReader(File.OpenRead(filepath));
 
-            alien_model_bin_header Header = Utilities.Consume<alien_model_bin_header>(ref Stream);
+            alien_model_bin_header Header = Utilities.Consume<alien_model_bin_header>(Stream);
 
             Result.VertexBufferFormats = new List<alien_vertex_buffer_format>(Header.VertexInputCount);
             for (int EntryIndex = 0; EntryIndex < Header.VertexInputCount; ++EntryIndex)
@@ -33,7 +33,7 @@ namespace CATHODE.Models
 
                 alien_vertex_buffer_format VertexInput = new alien_vertex_buffer_format();
                 VertexInput.ElementCount = count;
-                VertexInput.Elements = Utilities.ConsumeArray<alien_vertex_buffer_format_element>(ref Stream, VertexInput.ElementCount);
+                VertexInput.Elements = Utilities.ConsumeArray<alien_vertex_buffer_format_element>(Stream, VertexInput.ElementCount);
                 Result.VertexBufferFormats.Add(VertexInput);
             }
 
@@ -43,7 +43,7 @@ namespace CATHODE.Models
             List<string> ModelFilePaths = new List<string>(Header.ModelCount);
             List<string> ModelPartNames = new List<string>(Header.ModelCount);
 
-            List<alien_model_bin_model_info> ModelInfos = Utilities.ConsumeArray<alien_model_bin_model_info>(ref Stream, Header.ModelCount);
+            alien_model_bin_model_info[] ModelInfos = Utilities.ConsumeArray<alien_model_bin_model_info>(Stream, Header.ModelCount);
             for (int EntryIndex = 0; EntryIndex < Header.ModelCount; ++EntryIndex)
             {
                 alien_model_bin_model_info ModelInfo = ModelInfos[EntryIndex];
@@ -52,7 +52,7 @@ namespace CATHODE.Models
             }
 
             int BoneBufferCount = Stream.ReadInt32();
-            byte[] BoneBuffer = Utilities.ConsumeArray<byte>(ref Stream, BoneBufferCount).ToArray();
+            byte[] BoneBuffer = Utilities.ConsumeArray<byte>(Stream, BoneBufferCount);
 
             //TODO: implement bone parsing
 
@@ -154,7 +154,7 @@ public struct fourcc
 public struct alien_vertex_buffer_format
 {
     public int ElementCount;
-    public List<alien_vertex_buffer_format_element> Elements;
+    public alien_vertex_buffer_format_element[] Elements;
 };
 
 public struct alien_model_bin
@@ -162,7 +162,7 @@ public struct alien_model_bin
     public byte[] Buffer;
     public alien_model_bin_header Header;
     public List<alien_vertex_buffer_format> VertexBufferFormats;
-    public List<alien_model_bin_model_info> Models;
+    public alien_model_bin_model_info[] Models;
     public List<string> ModelFilePaths;
     public List<string> ModelLODPartNames;
 };

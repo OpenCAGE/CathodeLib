@@ -11,7 +11,7 @@ namespace CathodeLib
 {
     public class NodeDBDescriptor
     {
-        public UInt32 ID;
+        public cGUID ID;
     }
     public class ShortGUIDDescriptor : NodeDBDescriptor
     {
@@ -39,30 +39,30 @@ namespace CathodeLib
         }
 
         //Check the CATHODE data dump for a corresponding name
-        public static string GetName(UInt32 id)
+        public static string GetName(cGUID id)
         {
-            if (id == 0) return "";
+            if (id.val == null) return "";
             foreach (ShortGUIDDescriptor db_entry in cathode_id_map) if (db_entry.ID == id) return db_entry.Description;
             return id.ToString();
         }
-        public static string GetNodeTypeName(UInt32 id, ref CommandsPAK pak) //This is performed separately to be able to remap nodes that are flowgraphs
+        public static string GetNodeTypeName(cGUID id, ref CommandsPAK pak) //This is performed separately to be able to remap nodes that are flowgraphs
         {
-            if (id == 0) return "";
+            if (id.val == null) return "";
             foreach (ShortGUIDDescriptor db_entry in cathode_id_map) if (db_entry.ID == id) return db_entry.Description;
             CathodeFlowgraph flow = pak.GetFlowgraph(id); if (flow == null) return id.ToString();
             return flow.name;
         }
 
         //Check the COMMANDS.BIN dump for node in-editor names
-        public static string GetFriendlyName(UInt32 id)
+        public static string GetFriendlyName(cGUID id)
         {
-            if (id == 0) return "";
+            if (id.val == null) return "";
             foreach (ShortGUIDDescriptor db_entry in node_friendly_names) if (db_entry.ID == id) return db_entry.Description;
             return id.ToString();
         }
 
         //Check the formatted enum dump for content
-        public static EnumDescriptor GetEnum(UInt32 id)
+        public static EnumDescriptor GetEnum(cGUID id)
         {
             return cathode_enum_map.FirstOrDefault(o => o.ID == id);
         }
@@ -81,7 +81,7 @@ namespace CathodeLib
                     while (reader.BaseStream.Position < reader.BaseStream.Length)
                     {
                         ShortGUIDDescriptor thisDesc = new ShortGUIDDescriptor();
-                        thisDesc.ID = reader.ReadUInt32();
+                        thisDesc.ID = new cGUID(reader.ReadBytes(4));
                         thisDesc.Description = reader.ReadString();
                         toReturn.Add(thisDesc);
                     }
@@ -92,7 +92,7 @@ namespace CathodeLib
                     while (reader.BaseStream.Position < reader.BaseStream.Length)
                     {
                         EnumDescriptor thisDesc = new EnumDescriptor();
-                        thisDesc.ID = reader.ReadUInt32();
+                        thisDesc.ID = new cGUID(reader.ReadBytes(4));
                         thisDesc.Name = reader.ReadString();
                         int entryCount = reader.ReadInt32();
                         for (int i = 0; i < entryCount; i++) thisDesc.Entries.Add(reader.ReadString());

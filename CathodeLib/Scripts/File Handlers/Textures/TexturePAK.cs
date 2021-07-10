@@ -68,11 +68,10 @@ public struct alien_texture_bin_texture
     public int Unknown2_;
 };
 
-[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct alien_texture_bin
 {
     public alien_texture_bin_header Header;
-    public List<alien_texture_bin_texture> Textures;
+    public alien_texture_bin_texture[] Textures;
     public List<string> TextureFilePaths;
 };
 

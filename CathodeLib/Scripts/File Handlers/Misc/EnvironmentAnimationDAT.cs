@@ -16,13 +16,13 @@ namespace CATHODE.Misc
             alien_animation_dat Result = new alien_animation_dat();
             BinaryReader Stream = new BinaryReader(File.OpenRead(filepath));
 
-            Result.Header = Utilities.Consume<alien_animation_header>(ref Stream);
-            Result.Entries0 = Utilities.ConsumeArray<alien_animation_entry0>(ref Stream, (int)Result.Header.EntryCount0);
-            Result.Matrices0 = Utilities.ConsumeArray<Matrix4x4>(ref Stream, (int)Result.Header.EntryCount0);
-            Result.Matrices1 = Utilities.ConsumeArray<Matrix4x4>(ref Stream, (int)Result.Header.EntryCount0);
-            Result.IDs0 = Utilities.ConsumeArray<int>(ref Stream, (int)Result.Header.EntryCount0);
-            Result.IDs1 = Utilities.ConsumeArray<int>(ref Stream, (int)Result.Header.EntryCount0);
-            Result.Entries1 = Utilities.ConsumeArray<alien_animation_entry1>(ref Stream, (int)Result.Header.EntryCount0);
+            Result.Header = Utilities.Consume<alien_animation_header>(Stream);
+            Result.Entries0 = Utilities.ConsumeArray<alien_animation_entry0>(Stream, (int)Result.Header.EntryCount0);
+            Result.Matrices0 = Utilities.ConsumeArray<Matrix4x4>(Stream, (int)Result.Header.EntryCount0);
+            Result.Matrices1 = Utilities.ConsumeArray<Matrix4x4>(Stream, (int)Result.Header.EntryCount0);
+            Result.IDs0 = Utilities.ConsumeArray<int>(Stream, (int)Result.Header.EntryCount0);
+            Result.IDs1 = Utilities.ConsumeArray<int>(Stream, (int)Result.Header.EntryCount0);
+            Result.Entries1 = Utilities.ConsumeArray<alien_animation_entry1>( Stream, (int)Result.Header.EntryCount0);
 
             Stream.Close();
             return Result;
@@ -90,10 +90,10 @@ public struct alien_animation_entry1
 public struct alien_animation_dat
 {
     public alien_animation_header Header;
-    public List<alien_animation_entry0> Entries0;
-    public List<Matrix4x4> Matrices0;
-    public List<Matrix4x4> Matrices1;
-    public List<int> IDs0;
-    public List<int> IDs1;
-    public List<alien_animation_entry1> Entries1;
+    public alien_animation_entry0[] Entries0;
+    public Matrix4x4[] Matrices0;
+    public Matrix4x4[] Matrices1;
+    public int[] IDs0;
+    public int[] IDs1;
+    public alien_animation_entry1[] Entries1;
 };

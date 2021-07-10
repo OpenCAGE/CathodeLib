@@ -26,14 +26,14 @@ namespace CATHODE.Shaders
 
                 alien_shader_pak_shader Shader = new alien_shader_pak_shader();
                 Shader.Index = Entry.UnknownIndex;
-                Shader.Header = Utilities.Consume<alien_shader_pak_shader_header>(ref Stream);
+                Shader.Header = Utilities.Consume<alien_shader_pak_shader_header>(Stream);
                 byte[] Name = Stream.ReadBytes(40);
                 Shader.Name = Utilities.ReadString(Name);
-                Shader.Header2 = Utilities.Consume<alien_shader_pak_shader_header2>(ref Stream);
+                Shader.Header2 = Utilities.Consume<alien_shader_pak_shader_header2>(Stream);
                 Shader.Entry0Count = Stream.ReadUInt16();
-                Shader.Entries0 = Utilities.ConsumeArray<alien_shader_pak_shader_unknown_entry>(ref Stream, Shader.Entry0Count);
+                Shader.Entries0 = Utilities.ConsumeArray<alien_shader_pak_shader_unknown_entry>(Stream, Shader.Entry0Count);
 
-                Shader.TextureEntries = Utilities.ConsumeArray<alien_shader_pak_shader_texture_entry>(ref Stream, Shader.Header.TextureCount);
+                Shader.TextureEntries = Utilities.ConsumeArray<alien_shader_pak_shader_texture_entry>(Stream, Shader.Header.TextureCount);
                 Shader.TextureThings = Stream.ReadBytes(Shader.Header.TextureCount);
 
                 byte[][] CSTLinks = new byte[5][];
@@ -44,11 +44,11 @@ namespace CATHODE.Shaders
                 Shader.CSTLinks = CSTLinks;
 
                 Shader.TextureLinks = Stream.ReadBytes(Shader.Header.TextureLinkCount);
-                Shader.Indices = Utilities.Consume<alien_shader_pak_shader_indices>(ref Stream);
+                Shader.Indices = Utilities.Consume<alien_shader_pak_shader_indices>(Stream);
 
                 Result.Shaders.Add(Shader);
 
-                Utilities.Align(ref Stream, 16);
+                Utilities.Align(Stream, 16);
             }
 
             return Result;
@@ -161,8 +161,8 @@ public struct alien_shader_pak_shader
     public alien_shader_pak_shader_header2 Header2;
 
     public int Entry0Count;
-    public List<alien_shader_pak_shader_unknown_entry> Entries0;
-    public List<alien_shader_pak_shader_texture_entry> TextureEntries;
+    public alien_shader_pak_shader_unknown_entry[] Entries0;
+    public alien_shader_pak_shader_texture_entry[] TextureEntries;
 
     public byte[] TextureThings;
     public byte[][] CSTLinks;//always 5 parents

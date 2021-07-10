@@ -15,18 +15,18 @@ namespace CATHODE.Models
             alien_mtl Result = new alien_mtl();
             BinaryReader Stream = new BinaryReader(File.OpenRead(FullFilePath));
 
-            alien_mtl_header Header = Utilities.Consume<alien_mtl_header>(ref Stream);
+            alien_mtl_header Header = Utilities.Consume<alien_mtl_header>(Stream);
 
             Result.MaterialNames = new List<string>(Header.MaterialCount);
             for (int MaterialIndex = 0; MaterialIndex < Header.MaterialCount; ++MaterialIndex)
             {
-                Result.MaterialNames.Add(Utilities.ReadString(ref Stream));
+                Result.MaterialNames.Add(Utilities.ReadString(Stream));
             }
 
             Stream.BaseStream.Position = Header.FirstMaterialOffset + Marshal.SizeOf(Header.BytesRemainingAfterThis);
 
             Result.Header = Header;
-            Result.Materials = Utilities.ConsumeArray<alien_mtl_material>(ref Stream, Header.MaterialCount);
+            Result.Materials = Utilities.ConsumeArray<alien_mtl_material>(Stream, Header.MaterialCount);
 
             Result.TextureReferenceCounts = new List<int>(Result.Header.MaterialCount);
             for (int MaterialIndex = 0; MaterialIndex < Header.MaterialCount; ++MaterialIndex)
@@ -99,7 +99,7 @@ public struct alien_mtl_material
 public struct alien_mtl
 {
     public alien_mtl_header Header;
-    public List<alien_mtl_material> Materials;
+    public alien_mtl_material[] Materials;
     public List<int> TextureReferenceCounts;
     public List<string> MaterialNames;
 };
