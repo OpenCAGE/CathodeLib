@@ -103,4 +103,39 @@ namespace CATHODE
             for (int i = 0; i < aux.Length; i++) Write<T>(stream, aux[i]);
         }
     }
+
+    /* A unique id assigned to CATHODE objects */
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct cGUID
+    {
+        public cGUID(byte[] id)
+        {
+            val = id;
+        }
+        public cGUID(BinaryReader reader)
+        {
+            val = reader.ReadBytes(4);
+        }
+
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+        public byte[] val;
+
+        public override bool Equals(object obj)
+        {
+            if (!(obj is cGUID)) return false;
+            return ((cGUID)obj).val.SequenceEqual(this.val);
+        }
+        public static bool operator ==(cGUID x, cGUID y)
+        {
+            return x.val.SequenceEqual(y.val);
+        }
+        public static bool operator !=(cGUID x, cGUID y)
+        {
+            return !x.val.SequenceEqual(y.val);
+        }
+        public override int GetHashCode()
+        {
+            return BitConverter.ToInt32(val, 0);
+        }
+    }
 }

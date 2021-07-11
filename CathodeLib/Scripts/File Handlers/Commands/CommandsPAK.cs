@@ -95,24 +95,69 @@ namespace CATHODE.Commands
             flowgraphOffsets = new int[_flowgraphs.Length];
             for (int i = 0; i < _flowgraphs.Length; i++)
             {
+                int scriptStartPos = (int)writer.BaseStream.Position / 4;
+
                 Utilities.Write<cGUID>(writer, _flowgraphs[i].globalID);
                 for (int x = 0; x < _flowgraphs[i].name.Length; x++) writer.Write(_flowgraphs[i].name[x]);
                 writer.Write((char)0x00);
                 Utilities.Align(writer, 4);
-                Utilities.Write<cGUID>(writer, _flowgraphs[i].nodeID);
 
-                //!!! write script data here !!!
+                int[] scriptBlockOffsets = new int[13];
+                int[] scriptBlockContentCount = new int[13];
+                for (int x = 0; x < 11/*13*/; x++)
+                {
+                    scriptBlockOffsets[x] = (int)writer.BaseStream.Position / 4;
+                    scriptBlockContentCount[x] = 0;
 
-                int test_offset = (int)writer.BaseStream.Position;
+                    switch ((CathodeScriptBlocks)x)
+                    {
+                        case CathodeScriptBlocks.DEFINE_SCRIPT_HEADER:
+                            Utilities.Write<cGUID>(writer, _flowgraphs[i].nodeID);
+                            writer.Write(0);
+                            scriptBlockContentCount[x] = 2;
+                            break;
+
+                            /*
+                             * So... to write this info out is gonna be kinda complicated. You have to write it as such:
+                             *  - Write all pointed-to content from every script block
+                             *  - Write all pointers to the content that was just written (with counts)
+                             *  - Write the pointers to those pointer lists with counts
+                             */
+
+                        case CathodeScriptBlocks.DEFINE_NODE_LINKS:
+                            break;
+                        case CathodeScriptBlocks.DEFINE_NODE_PARAMETERS:
+                            break;
+                        case CathodeScriptBlocks.DEFINE_ENV_MODEL_REF_LINKS:
+                            break;
+                        case CathodeScriptBlocks.DEFINE_ENV_MODEL_REF_LINKS_EXTRA:
+                            break;
+                        case CathodeScriptBlocks.DEFINE_NODE_DATATYPES:
+                            break;
+                        case CathodeScriptBlocks.DEFINE_LINKED_NODES:
+                            break;
+                        case CathodeScriptBlocks.DEFINE_RENDERABLE_ELEMENTS:
+                            break;
+                        case CathodeScriptBlocks.UNKNOWN_8:
+                            break;
+                        case CathodeScriptBlocks.DEFINE_ZONE_CONTENT:
+                            break;
+                    }
+                }
 
                 flowgraphOffsets[i] = (int)writer.BaseStream.Position / 4;
                 writer.Write(0);
                 for (int x = 0; x < 13; x++)
                 {
-                    if (x == 0) Utilities.Write<cGUID>(writer, _flowgraphs[i].uniqueID);
+                    if (x == 0)
+                    {
+                        byte[] scriptStartRaw = BitConverter.GetBytes(scriptStartPos);
+                        scriptStartRaw[3] = 0x80; //Not sure why we have to do this
+                        writer.Write(scriptStartRaw);
+                    }
                     if (x == 1) Utilities.Write<cGUID>(writer, _flowgraphs[i].nodeID);
-                    writer.Write(test_offset / 4); //offset
-                    writer.Write(0); //count
+                    writer.Write(scriptBlockOffsets[x]); //offset
+                    writer.Write(scriptBlockContentCount[x]); //count
                 }
             }
 
@@ -302,36 +347,32 @@ namespace CATHODE.Commands
         /* Read all flowgraphs from the PAK */
         private void ReadFlowgraphs(BinaryReader reader)
         {
-            int scriptStart = (parameterOffsets[parameterOffsets.Length - 1] * 4) + 8; //Relies on the last param always being 4 in length
             for (int i = 0; i < _flowgraphs.Length; i++)
             {
-                CathodeFlowgraph flowgraph = new CathodeFlowgraph();
-
-                //Game doesn't parse the script name, so there's no real nice way of grabbing it!!
-                reader.BaseStream.Position = scriptStart;
-                flowgraph.globalID = new cGUID(reader);
-                string name = "";
-                while (true)
-                {
-                    byte thisByte = reader.ReadByte();
-                    if (thisByte == 0x00) break;
-                    name += (char)thisByte;
-                }
-                flowgraph.name = name;
-                scriptStart = (flowgraphOffsets[i] * 4) + 116;
-                //End of crappy namegrab
-
-                reader.BaseStream.Position = (flowgraphOffsets[i] * 4);
+                reader.BaseStream.Position = flowgraphOffsets[i] * 4;
                 reader.BaseStream.Position += 4; //Skip 0x00,0x00,0x00,0x00
+                CathodeFlowgraph flowgraph = new CathodeFlowgraph();
 
                 //Read the offsets and counts
                 OffsetPair[] offsetPairs = new OffsetPair[13];
+                int scriptStartOffset = 0;
                 for (int x = 0; x < 13; x++)
                 {
-                    if (x == 0) flowgraph.uniqueID = new cGUID(reader);
+                    if (x == 0)
+                    {
+                        byte[] startOffsetRaw = reader.ReadBytes(4);
+                        startOffsetRaw[3] = 0x00; //For some reason this is 0x80?
+                        scriptStartOffset = BitConverter.ToInt32(startOffsetRaw, 0);
+                    }
                     if (x == 1) flowgraph.nodeID = new cGUID(reader);
                     offsetPairs[x] = Utilities.Consume<OffsetPair>(reader);
                 }
+
+                //Read script ID and string name
+                reader.BaseStream.Position = scriptStartOffset * 4;
+                flowgraph.globalID = new cGUID(reader);
+                flowgraph.name = Utilities.ReadString(reader);
+                Utilities.Align(reader, 4);
 
                 //Pull data from those offsets
                 for (int x = 0; x < offsetPairs.Length; x++)

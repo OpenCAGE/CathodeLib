@@ -14,8 +14,7 @@ namespace CATHODE.Commands
     /* Blocks of data in each compiled flowgraph */
     public enum CathodeScriptBlocks
     {
-        //These are +1 comapred to the ones in isolation_testground because we pull the block that skips first.
-
+        DEFINE_SCRIPT_HEADER = 0,
         DEFINE_NODE_LINKS = 1,                //This defines the logic links between nodes
         DEFINE_NODE_PARAMETERS = 2,           //This defines executable nodes with parameters 
         DEFINE_ENV_MODEL_REF_LINKS = 3,       //This appears to define links through flowgraphs to EnvironmentModelReference nodes
@@ -26,41 +25,6 @@ namespace CATHODE.Commands
         DEFINE_RENDERABLE_ELEMENTS = 8,       //This defines resources used for rendering, etc - E.G. a reference to a model renderable comp
         UNKNOWN_8 = 9,                        //
         DEFINE_ZONE_CONTENT = 10              //This defines zone content data for Zone nodes
-    }
-
-    /* A unique id assigned to CATHODE objects */
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct cGUID
-    {
-        public cGUID(byte[] id)
-        {
-            val = id;
-        }
-        public cGUID(BinaryReader reader)
-        {
-            val = reader.ReadBytes(4);
-        }
-
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-        public byte[] val;
-
-        public override bool Equals(object obj)
-        {
-            if (!(obj is cGUID)) return false;
-            return ((cGUID)obj).val.SequenceEqual(this.val);
-        }
-        public static bool operator ==(cGUID x, cGUID y)
-        {
-            return x.val.SequenceEqual(y.val);
-        }
-        public static bool operator !=(cGUID x, cGUID y)
-        {
-            return !x.val.SequenceEqual(y.val);
-        }
-        public override int GetHashCode()
-        {
-            return BitConverter.ToInt32(val, 0);
-        }
     }
 
     /* Defines a link between parent and child IDs, with a connection ID */
