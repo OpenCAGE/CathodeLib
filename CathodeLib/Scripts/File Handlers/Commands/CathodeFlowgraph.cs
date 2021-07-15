@@ -17,8 +17,8 @@ namespace CATHODE.Commands
         DEFINE_SCRIPT_HEADER = 0,
         DEFINE_NODE_LINKS = 1,                //This defines the logic links between nodes
         DEFINE_NODE_PARAMETERS = 2,           //This defines executable nodes with parameters 
-        DEFINE_ENV_MODEL_REF_LINKS = 3,       //This appears to define links through flowgraphs to EnvironmentModelReference nodes
-        DEFINE_ENV_MODEL_REF_LINKS_EXTRA = 4, //This appears to define 4-bytes of extra information for the links defined in the previous block
+        DEFINE_HIERARCHICAL_OVERRIDES = 3,       //This appears to define links through flowgraphs to EnvironmentModelReference nodes
+        DEFINE_HIERARCHICAL_OVERRIDES_CHECKSUM = 4, //This appears to define 4-bytes of extra information for the links defined in the previous block
         DEFINE_NODE_DATATYPES = 5,            //This defines variable nodes which connect to other executable nodes to provide parameters: these seem to be exposed to other flowgraphs as parameters if the flowgraph is used as a type
         DEFINE_LINKED_NODES = 6,              //This defines a connected node through the flowgraph hierarchy 
         DEFINE_NODE_NODETYPES = 7,            //This defines the type ID for all executable nodes (completes the list from the parameter population in step 2) 
@@ -45,6 +45,14 @@ namespace CATHODE.Commands
         public cGUID paramID; //The ID of the param in the node
         public int offset;        //The offset of the param this reference points to (in memory this is *4)
         //public int editOffset;    //The offset in the PAK that this reference is
+    }
+
+    /* A hierarchical override applied to nodes in included flowgraphs, for bespoke functionality */
+    public class CathodeFlowgraphHierarchyOverride
+    {
+        public cGUID id; //The unique ID of this override
+        public cGUID checksum; //TODO: This value is apparently a hash of the hierarchy GUIDs, but need to verify that, and work out the salt.
+        public List<cGUID> hierarchy = new List<cGUID>(); //Lists the nodeIDs to jump through (flowgraph refs) to get to the node that is being overridden, then that node's ID
     }
 
     /* A resource that references a REnDerable elementS DB entry */
@@ -97,6 +105,7 @@ namespace CATHODE.Commands
         public List<CathodeNode> nodes = new List<CathodeNode>();
         public List<CathodeNodeLink> links = new List<CathodeNodeLink>();
         public List<CathodeResourceReference> resources = new List<CathodeResourceReference>();
+        public List<CathodeFlowgraphHierarchyOverride> overrides = new List<CathodeFlowgraphHierarchyOverride>();
 
         /* If a node exists in the flowgraph, return it - otherwise create it, and return it */
         public CathodeNode GetNodeByID(cGUID id)
@@ -109,6 +118,18 @@ namespace CATHODE.Commands
             newNode.nodeID = id;
             nodes.Add(newNode);
             return newNode;
+        }
+
+        /* Get child node override by ID - otherwise create it, and return it */
+        public CathodeFlowgraphHierarchyOverride GetChildOverrideByID(cGUID id)
+        {
+            CathodeFlowgraphHierarchyOverride val = overrides.FirstOrDefault(o => o.id == id);
+            if (val == null)
+            {
+                val = new CathodeFlowgraphHierarchyOverride();
+                val.id = id;
+            }
+            return val;
         }
 
         /* Get all child links for a node */

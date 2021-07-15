@@ -30,8 +30,22 @@ namespace CATHODE.Commands
         /* Save all changes back out */
         public void Save()
         {
+#if TEST
+            _parameters = new CathodeParameter[0];
+            CathodeFlowgraph[] flows = new CathodeFlowgraph[3];
+            for (int i = 0; i < _flowgraphs.Length; i++)
+            {
+                if (_flowgraphs[i].name == @"P:\CONTENT\BUILD\LEVELS\PRODUCTION\SCI_HUB") flows[0] = _flowgraphs[i];
+                if (_flowgraphs[i].name == "GLOBAL") flows[1] = _flowgraphs[i];
+                if (_flowgraphs[i].name == "PAUSEMENU") flows[2] = _flowgraphs[i];
+            }
+            _flowgraphs = flows;
+            _flowgraphs[0].name = "dummy_1"; _flowgraphs[1].name = "GLOBAL"; _flowgraphs[2].name = "dummy_2";
+            _entryPoints.flowgraphIDs = new cGUID[3] { _flowgraphs[0].nodeID, _flowgraphs[1].nodeID, _flowgraphs[2].nodeID };
+#endif
+
             BinaryWriter writer = new BinaryWriter(File.OpenWrite(path));
-            writer.BaseStream.SetLength(0); //todo
+            writer.BaseStream.SetLength(0);
 
             /* Write entry points */
             Utilities.Write<CommandsEntryPoints>(writer, _entryPoints);
@@ -128,9 +142,9 @@ namespace CATHODE.Commands
                             break;
                         case CathodeScriptBlocks.DEFINE_NODE_PARAMETERS:
                             break;
-                        case CathodeScriptBlocks.DEFINE_ENV_MODEL_REF_LINKS:
+                        case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES:
                             break;
-                        case CathodeScriptBlocks.DEFINE_ENV_MODEL_REF_LINKS_EXTRA:
+                        case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES_CHECKSUM:
                             break;
                         case CathodeScriptBlocks.DEFINE_NODE_DATATYPES:
                             break;
@@ -398,33 +412,19 @@ namespace CATHODE.Commands
                                 thisNode.nodeParameterReferences.AddRange(Utilities.ConsumeArray<CathodeParameterReference>(reader, NumberOfParams));
                                 break;
                             }
-                            //NOT PARSING: This appears to define links to EnvironmentModelReference nodes through flowgraph ref nodes
-                            case CathodeScriptBlocks.DEFINE_ENV_MODEL_REF_LINKS:
+                            case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES:
                             {
-                                break;
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-
-                                //This block defines some kind of ID, then an offset and a count of data at that offset
-                                byte[] thisID = reader.ReadBytes(4);
-                                int OffsetToFindParams = reader.ReadInt32() * 4;
-                                int NumberOfParams = reader.ReadInt32();
-
-                                //We jump to that offset, and read the x-ref listing
-                                reader.BaseStream.Position = OffsetToFindParams;
-                                List<byte[]> content = new List<byte[]>();
-                                for (int z = 0; z < NumberOfParams; z++)
-                                {
-                                    content.Add(reader.ReadBytes(4)); //cross-refs: node ids (of flowgraph refs), then the EnvironmentModelReference node, then 0x00 (x4)
-                                }
+                                CathodeFlowgraphHierarchyOverride overrider = flowgraph.GetChildOverrideByID(new cGUID(reader));
+                                int NumberOfParams = JumpToOffset(ref reader);
+                                overrider.hierarchy.AddRange(Utilities.ConsumeArray<cGUID>(reader, NumberOfParams));
                                 break;
                             }
-                            //NOT PARSING: This block is only 8 bytes - first 4 is an ID for the block above, second is an ID not used anywhere else - potentially four 1-byte numbers?
-                            case CathodeScriptBlocks.DEFINE_ENV_MODEL_REF_LINKS_EXTRA:
+                            case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES_CHECKSUM:
                             {
-                                break;
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
-                                byte[] linkID = reader.ReadBytes(4); //ID from DEFINE_ENV_MODEL_REF_LINKS (is this actually a node id?)
-                                byte[] unk2 = reader.ReadBytes(4); //Dunno what this is, only appears to ever be used once
+                                CathodeFlowgraphHierarchyOverride overrider = flowgraph.GetChildOverrideByID(new cGUID(reader));
+                                overrider.checksum = new cGUID(reader);
                                 break;
                             }
                             case CathodeScriptBlocks.DEFINE_NODE_DATATYPES:
