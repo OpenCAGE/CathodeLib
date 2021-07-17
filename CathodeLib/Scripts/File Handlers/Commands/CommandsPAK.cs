@@ -122,7 +122,7 @@ namespace CATHODE.Commands
 
                 //Write the content out that we will point to in a second
                 List<List<OffsetPair>> scriptContentOffsetInfo = new List<List<OffsetPair>>();
-                for (int x = 0; x < 13; x++)
+                for (int x = 0; x < (int)CathodeScriptBlocks.NUMBER_OF_SCRIPT_BLOCKS; x++)
                 {
                     scriptContentOffsetInfo.Add(new List<OffsetPair>());
 
@@ -166,59 +166,62 @@ namespace CATHODE.Commands
 
                 //Point to that content we just wrote out
                 List<OffsetPair> scriptPointerOffsetInfo = new List<OffsetPair>();
-                for (int x = 0; x < 13; x++)
+                for (int x = 0; x < (int)CathodeScriptBlocks.NUMBER_OF_SCRIPT_BLOCKS; x++)
                 {
-                    scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, scriptContentOffsetInfo[x].Count));
-
-                    for (int z = 0; z < scriptContentOffsetInfo[x].Count; z++)
+                    switch ((CathodeScriptBlocks)x)
                     {
-                        switch ((CathodeScriptBlocks)x)
-                        {
-                            case CathodeScriptBlocks.DEFINE_SCRIPT_HEADER:
-                                //We actually just forward on the previous offsets here.
-                                scriptPointerOffsetInfo[x] = scriptContentOffsetInfo[x][z];
-                                z = 2;
-                                break;
-                            case CathodeScriptBlocks.DEFINE_NODE_LINKS:
-                                writer.Write(nodesWithLinks[z].nodeID.val);
-                                writer.Write(scriptContentOffsetInfo[x][z].GlobalOffset / 4);
-                                writer.Write(scriptContentOffsetInfo[x][z].EntryCount);
-                                break;
-                            case CathodeScriptBlocks.DEFINE_NODE_PARAMETERS:
-                                //TODO: to write out params we will have to edit how data is stored here.
-                                //Save params to each node rather than just storing references, or reference a stored array not by offset!
-                                break;
-                            case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES:
-                                break;
-                            case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES_CHECKSUM:
-                                break;
-                            case CathodeScriptBlocks.DEFINE_NODE_DATATYPES:
-                                break;
-                            case CathodeScriptBlocks.DEFINE_LINKED_NODES:
-                                break;
-                            case CathodeScriptBlocks.DEFINE_NODE_NODETYPES:
-                                break;
-                            case CathodeScriptBlocks.DEFINE_RENDERABLE_ELEMENTS:
-                                break;
-                            case CathodeScriptBlocks.DEFINE_UNKNOWN:
-                                break;
-                            case CathodeScriptBlocks.DEFINE_ZONE_CONTENT:
-                                break;
-                            case CathodeScriptBlocks.UNUSED:
-                                scriptPointerOffsetInfo[x] = new OffsetPair(0, 0);
-                                break;
-                            case CathodeScriptBlocks.UNKNOWN_COUNTS:
-                                //These count values are unknown. Just writing zeros for now.
-                                scriptPointerOffsetInfo[x] = new OffsetPair(0, 0);
-                                break;
-                        }
+                        default:
+                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, scriptContentOffsetInfo[x].Count));
+                            for (int z = 0; z < scriptContentOffsetInfo[x].Count; z++)
+                            {
+                                switch ((CathodeScriptBlocks)x)
+                                {
+                                    case CathodeScriptBlocks.DEFINE_NODE_LINKS:
+                                        writer.Write(nodesWithLinks[z].nodeID.val);
+                                        writer.Write(scriptContentOffsetInfo[x][z].GlobalOffset / 4);
+                                        writer.Write(scriptContentOffsetInfo[x][z].EntryCount);
+                                        break;
+                                    case CathodeScriptBlocks.DEFINE_NODE_PARAMETERS:
+                                        //TODO: to write out params we will have to edit how data is stored here.
+                                        //Save params to each node rather than just storing references, or reference a stored array not by offset!
+                                        break;
+                                    case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES:
+                                        break;
+                                    case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES_CHECKSUM:
+                                        break;
+                                    case CathodeScriptBlocks.DEFINE_NODE_DATATYPES:
+                                        break;
+                                    case CathodeScriptBlocks.DEFINE_LINKED_NODES:
+                                        break;
+                                    case CathodeScriptBlocks.DEFINE_NODE_NODETYPES:
+                                        break;
+                                    case CathodeScriptBlocks.DEFINE_RENDERABLE_ELEMENTS:
+                                        break;
+                                    case CathodeScriptBlocks.DEFINE_UNKNOWN:
+                                        break;
+                                    case CathodeScriptBlocks.DEFINE_ZONE_CONTENT:
+                                        break;
+                                }
+                            }
+                            break;
+                        case CathodeScriptBlocks.DEFINE_SCRIPT_HEADER:
+                            //We actually just forward on the previous offsets here.
+                            scriptPointerOffsetInfo.Add(scriptContentOffsetInfo[x][0]);
+                            break;
+                        case CathodeScriptBlocks.UNUSED:
+                            scriptPointerOffsetInfo.Add(new OffsetPair(0, 0));
+                            break;
+                        case CathodeScriptBlocks.UNKNOWN_COUNTS:
+                            //TODO: These count values are unknown. Just writing zeros for now.
+                            scriptPointerOffsetInfo.Add(new OffsetPair(0, 0));
+                            break;
                     }
                 }
 
                 //Write pointers to the pointers of the content
                 flowgraphOffsets[i] = (int)writer.BaseStream.Position / 4;
                 writer.Write(0);
-                for (int x = 0; x < 13; x++)
+                for (int x = 0; x < (int)CathodeScriptBlocks.NUMBER_OF_SCRIPT_BLOCKS; x++)
                 {
                     if (x == 0)
                     {
@@ -428,9 +431,9 @@ namespace CATHODE.Commands
                 CathodeFlowgraph flowgraph = new CathodeFlowgraph();
 
                 //Read the offsets and counts
-                OffsetPair[] offsetPairs = new OffsetPair[13];
+                OffsetPair[] offsetPairs = new OffsetPair[(int)CathodeScriptBlocks.NUMBER_OF_SCRIPT_BLOCKS];
                 int scriptStartOffset = 0;
-                for (int x = 0; x < 13; x++)
+                for (int x = 0; x < (int)CathodeScriptBlocks.NUMBER_OF_SCRIPT_BLOCKS; x++)
                 {
                     if (x == 0)
                     {

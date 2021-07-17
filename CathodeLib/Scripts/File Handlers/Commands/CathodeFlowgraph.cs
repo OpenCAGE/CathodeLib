@@ -14,20 +14,22 @@ namespace CATHODE.Commands
     /* Blocks of data in each compiled flowgraph */
     public enum CathodeScriptBlocks
     {
-        DEFINE_SCRIPT_HEADER = 0,
-        DEFINE_NODE_LINKS = 1,                      //This defines the logic links between nodes
-        DEFINE_NODE_PARAMETERS = 2,                 //This defines executable nodes with parameters 
-        DEFINE_HIERARCHICAL_OVERRIDES = 3,          //This appears to define links through flowgraphs to EnvironmentModelReference nodes
-        DEFINE_HIERARCHICAL_OVERRIDES_CHECKSUM = 4, //This appears to define 4-bytes of extra information for the links defined in the previous block
-        DEFINE_NODE_DATATYPES = 5,                  //This defines variable nodes which connect to other executable nodes to provide parameters: these seem to be exposed to other flowgraphs as parameters if the flowgraph is used as a type
-        DEFINE_LINKED_NODES = 6,                    //This defines a connected node through the flowgraph hierarchy 
-        DEFINE_NODE_NODETYPES = 7,                  //This defines the type ID for all executable nodes (completes the list from the parameter population in step 2) 
-        DEFINE_RENDERABLE_ELEMENTS = 8,             //This defines resources used for rendering, etc - E.G. a reference to a model renderable comp
-        DEFINE_UNKNOWN = 9,                              //
-        DEFINE_ZONE_CONTENT = 10,                   //This defines zone content data for Zone nodes
+        DEFINE_SCRIPT_HEADER,
+        DEFINE_NODE_LINKS,                      //This defines the logic links between nodes
+        DEFINE_NODE_PARAMETERS,                 //This defines executable nodes with parameters 
+        DEFINE_HIERARCHICAL_OVERRIDES,          //This appears to define links through flowgraphs to EnvironmentModelReference nodes
+        DEFINE_HIERARCHICAL_OVERRIDES_CHECKSUM, //This appears to define 4-bytes of extra information for the links defined in the previous block
+        DEFINE_NODE_DATATYPES,                  //This defines variable nodes which connect to other executable nodes to provide parameters: these seem to be exposed to other flowgraphs as parameters if the flowgraph is used as a type
+        DEFINE_LINKED_NODES,                    //This defines a connected node through the flowgraph hierarchy 
+        DEFINE_NODE_NODETYPES,                  //This defines the type ID for all executable nodes (completes the list from the parameter population in step 2) 
+        DEFINE_RENDERABLE_ELEMENTS,             //This defines resources used for rendering, etc - E.G. a reference to a model renderable comp
+        DEFINE_UNKNOWN,                         //
+        DEFINE_ZONE_CONTENT,                    //This defines zone content data for Zone nodes
 
-        UNUSED = 11,                                //Unused
-        UNKNOWN_COUNTS = 12,                        //Unknown count values which appear at the end of the offset list
+        UNUSED,                                 //Unused
+        UNKNOWN_COUNTS,                         //Unknown count values which appear at the end of the offset list
+
+        NUMBER_OF_SCRIPT_BLOCKS,                //THIS IS NOT A SCRIPT BLOCK: merely used as an easy way of sanity checking the number of blocks in-code!
     }
 
     /* Defines a link between parent and child IDs, with a connection ID */
