@@ -16,7 +16,7 @@ namespace CATHODE.Commands
     {
         DEFINE_SCRIPT_HEADER,
         DEFINE_NODE_LINKS,                      //This defines the logic links between nodes
-        DEFINE_NODE_PARAMETERS,                 //This defines executable nodes with parameters 
+        DEFINE_PARAMETERS,                 //This defines executable nodes with parameters 
         DEFINE_HIERARCHICAL_OVERRIDES,          //This appears to define links through flowgraphs to EnvironmentModelReference nodes
         DEFINE_HIERARCHICAL_OVERRIDES_CHECKSUM, //This appears to define 4-bytes of extra information for the links defined in the previous block
         DEFINE_NODE_DATATYPES,                  //This defines variable nodes which connect to other executable nodes to provide parameters: these seem to be exposed to other flowgraphs as parameters if the flowgraph is used as a type
@@ -57,6 +57,7 @@ namespace CATHODE.Commands
         public cGUID id; //The unique ID of this override
         public cGUID checksum; //TODO: This value is apparently a hash of the hierarchy GUIDs, but need to verify that, and work out the salt.
         public List<cGUID> hierarchy = new List<cGUID>(); //Lists the nodeIDs to jump through (flowgraph refs) to get to the node that is being overridden, then that node's ID
+        public List<CathodeParameterReference> paramRefs = new List<CathodeParameterReference>(); //Refererence to parameter to apply to the node being overidden
     }
 
     /* A resource that references a REnDerable elementS DB entry */

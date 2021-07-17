@@ -9,6 +9,11 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 #endif
 
+//TODO: 
+// - Finish write functionality
+// - Figure out proxies
+// - Improve storage of parameters (don't use references by offset anymore)
+
 namespace CATHODE.Commands
 {
     public class CommandsPAK
@@ -143,7 +148,7 @@ namespace CATHODE.Commands
                                 }
                             }
                             break;
-                        case CathodeScriptBlocks.DEFINE_NODE_PARAMETERS:
+                        case CathodeScriptBlocks.DEFINE_PARAMETERS:
                             break;
                         case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES:
                             break;
@@ -181,7 +186,7 @@ namespace CATHODE.Commands
                                         writer.Write(scriptContentOffsetInfo[x][z].GlobalOffset / 4);
                                         writer.Write(scriptContentOffsetInfo[x][z].EntryCount);
                                         break;
-                                    case CathodeScriptBlocks.DEFINE_NODE_PARAMETERS:
+                                    case CathodeScriptBlocks.DEFINE_PARAMETERS:
                                         //TODO: to write out params we will have to edit how data is stored here.
                                         //Save params to each node rather than just storing references, or reference a stored array not by offset!
                                         break;
@@ -455,6 +460,7 @@ namespace CATHODE.Commands
                 Utilities.Align(reader, 4);
 
                 //Pull data from those offsets
+                List<CommandsParamRefSet> paramRefSets = new List<CommandsParamRefSet>();
                 for (int x = 0; x < offsetPairs.Length; x++)
                 {
                     reader.BaseStream.Position = offsetPairs[x].GlobalOffset * 4;
@@ -470,12 +476,12 @@ namespace CATHODE.Commands
                                 parentNode.childLinks.AddRange(Utilities.ConsumeArray<CathodeNodeLink>(reader, NumberOfParams));
                                 break;
                             }
-                            case CathodeScriptBlocks.DEFINE_NODE_PARAMETERS:
+                            case CathodeScriptBlocks.DEFINE_PARAMETERS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-                                CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader));
+                                paramRefSets.Add(new CommandsParamRefSet(new cGUID(reader)));
                                 int NumberOfParams = JumpToOffset(ref reader);
-                                thisNode.nodeParameterReferences.AddRange(Utilities.ConsumeArray<CathodeParameterReference>(reader, NumberOfParams));
+                                paramRefSets[paramRefSets.Count - 1].refs.AddRange(Utilities.ConsumeArray<CathodeParameterReference>(reader, NumberOfParams));
                                 break;
                             }
                             case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES:
@@ -667,6 +673,20 @@ namespace CATHODE.Commands
                     }
                 }
 
+                //Assign parameter references to parsed nodes/overrides
+                for (int x = 0; x < paramRefSets.Count; x++)
+                {
+                    CathodeNode nodeToApply = flowgraph.nodes.FirstOrDefault(o => o.nodeID == paramRefSets[x].id);
+                    CathodeFlowgraphHierarchyOverride overrideToApply = (nodeToApply != null) ? null : flowgraph.overrides.FirstOrDefault(o => o.id == paramRefSets[x].id);
+                    if (nodeToApply == null && overrideToApply == null) continue; //TODO: Parameters can also apply to PROXIES. I don't parse those yet!
+
+                    for (int z = 0; z < paramRefSets[x].refs.Count; z++)
+                    {
+                        if (nodeToApply != null) nodeToApply.nodeParameterReferences.Add(paramRefSets[x].refs[z]);
+                        if (overrideToApply != null) overrideToApply.paramRefs.Add(paramRefSets[x].refs[z]);
+                    }
+                }
+
                 _flowgraphs[i] = flowgraph;
             }
         }
@@ -763,5 +783,16 @@ namespace CATHODE.Commands
     {
         public int offset;
         public int count;
+    }
+
+    public class CommandsParamRefSet
+    {
+        public cGUID id;
+        public List<CathodeParameterReference> refs = new List<CathodeParameterReference>();
+
+        public CommandsParamRefSet(cGUID _id)
+        {
+            id = _id;
+        }
     }
 }
