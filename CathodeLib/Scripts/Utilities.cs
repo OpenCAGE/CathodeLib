@@ -137,5 +137,10 @@ namespace CATHODE
         {
             return BitConverter.ToInt32(val, 0);
         }
+
+        public override string ToString()
+        {
+            return BitConverter.ToString(val);
+        }
     }
 }

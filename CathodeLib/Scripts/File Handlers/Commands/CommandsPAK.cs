@@ -293,6 +293,7 @@ namespace CATHODE.Commands
 
         /* Get all flowgraphs/parameters */
         public CathodeFlowgraph[] Flowgraphs { get { return _flowgraphs; } }
+        public CathodeParameter[] Parameters { get { return _parameters; } } //TODO: parameters should be instanced per node
 
         /* Get entry point flowgraph objects */
         public CathodeFlowgraph[] EntryPoints { 

@@ -49,6 +49,11 @@ namespace CATHODE.Commands
         public cGUID paramID; //The ID of the param in the node
         public int offset;        //The offset of the param this reference points to (in memory this is *4)
         //public int editOffset;    //The offset in the PAK that this reference is
+
+        public void UpdateOffset(int _offset)
+        {
+            offset = _offset;
+        }
     }
 
     /* A hierarchical override applied to nodes in included flowgraphs, for bespoke functionality */
