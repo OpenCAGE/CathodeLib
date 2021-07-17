@@ -15,16 +15,19 @@ namespace CATHODE.Commands
     public enum CathodeScriptBlocks
     {
         DEFINE_SCRIPT_HEADER = 0,
-        DEFINE_NODE_LINKS = 1,                //This defines the logic links between nodes
-        DEFINE_NODE_PARAMETERS = 2,           //This defines executable nodes with parameters 
-        DEFINE_HIERARCHICAL_OVERRIDES = 3,       //This appears to define links through flowgraphs to EnvironmentModelReference nodes
+        DEFINE_NODE_LINKS = 1,                      //This defines the logic links between nodes
+        DEFINE_NODE_PARAMETERS = 2,                 //This defines executable nodes with parameters 
+        DEFINE_HIERARCHICAL_OVERRIDES = 3,          //This appears to define links through flowgraphs to EnvironmentModelReference nodes
         DEFINE_HIERARCHICAL_OVERRIDES_CHECKSUM = 4, //This appears to define 4-bytes of extra information for the links defined in the previous block
-        DEFINE_NODE_DATATYPES = 5,            //This defines variable nodes which connect to other executable nodes to provide parameters: these seem to be exposed to other flowgraphs as parameters if the flowgraph is used as a type
-        DEFINE_LINKED_NODES = 6,              //This defines a connected node through the flowgraph hierarchy 
-        DEFINE_NODE_NODETYPES = 7,            //This defines the type ID for all executable nodes (completes the list from the parameter population in step 2) 
-        DEFINE_RENDERABLE_ELEMENTS = 8,       //This defines resources used for rendering, etc - E.G. a reference to a model renderable comp
-        UNKNOWN_8 = 9,                        //
-        DEFINE_ZONE_CONTENT = 10              //This defines zone content data for Zone nodes
+        DEFINE_NODE_DATATYPES = 5,                  //This defines variable nodes which connect to other executable nodes to provide parameters: these seem to be exposed to other flowgraphs as parameters if the flowgraph is used as a type
+        DEFINE_LINKED_NODES = 6,                    //This defines a connected node through the flowgraph hierarchy 
+        DEFINE_NODE_NODETYPES = 7,                  //This defines the type ID for all executable nodes (completes the list from the parameter population in step 2) 
+        DEFINE_RENDERABLE_ELEMENTS = 8,             //This defines resources used for rendering, etc - E.G. a reference to a model renderable comp
+        DEFINE_UNKNOWN = 9,                              //
+        DEFINE_ZONE_CONTENT = 10,                   //This defines zone content data for Zone nodes
+
+        UNUSED = 11,                                //Unused
+        UNKNOWN_COUNTS = 12,                        //Unknown count values which appear at the end of the offset list
     }
 
     /* Defines a link between parent and child IDs, with a connection ID */
@@ -32,7 +35,6 @@ namespace CATHODE.Commands
     public struct CathodeNodeLink
     {
         public cGUID connectionID;  //The unique ID for this connection
-        //public cGUID parentID;      //The ID of the node we're connecting from, providing the value
         public cGUID parentParamID; //The ID of the parameter we're providing out of this node
         public cGUID childID;       //The ID of the node we're linking to to provide the value for
         public cGUID childParamID;  //The ID of the parameter we're providing into the child
@@ -86,6 +88,7 @@ namespace CATHODE.Commands
         public CathodeDataType dataType = CathodeDataType.NONE; //If nodes have no type, they're of a data type
         public cGUID dataTypeParam;                             //Data type nodes have a parameter ID
 
+        public List<CathodeNodeLink> childLinks = new List<CathodeNodeLink>();
         public List<CathodeParameterReference> nodeParameterReferences = new List<CathodeParameterReference>();
 
         public CathodeParameterReference GetParameterReferenceByID(cGUID id)
@@ -103,7 +106,6 @@ namespace CATHODE.Commands
         public string name = ""; //The string name of the flowgraph
 
         public List<CathodeNode> nodes = new List<CathodeNode>();
-        public List<CathodeNodeLink> links = new List<CathodeNodeLink>();
         public List<CathodeResourceReference> resources = new List<CathodeResourceReference>();
         public List<CathodeFlowgraphHierarchyOverride> overrides = new List<CathodeFlowgraphHierarchyOverride>();
 
@@ -131,20 +133,6 @@ namespace CATHODE.Commands
             }
             return val;
         }
-
-        /* Get all child links for a node */
-        /*
-        public List<CathodeNodeLink> GetChildLinksByID(cGUID id)
-        {
-            return links.FindAll(o => o.parentID == id);
-        }
-        */
-
-        /* Get all parent links for a node */
-        public List<CathodeNodeLink> GetParentLinksByID(cGUID id)
-        {
-            return links.FindAll(o => o.childID == id);
-        }
         
         /* Get resource references by ID */
         public List<CathodeResourceReference> GetResourceReferencesByID(cGUID id)
@@ -159,5 +147,16 @@ namespace CATHODE.Commands
     {
         public int GlobalOffset;
         public int EntryCount;
+
+        public OffsetPair(int _go, int _ec)
+        {
+            GlobalOffset = _go;
+            EntryCount = _ec;
+        }
+        public OffsetPair(long _go, int _ec)
+        {
+            GlobalOffset = (int)_go;
+            EntryCount = _ec;
+        }
     }
 }

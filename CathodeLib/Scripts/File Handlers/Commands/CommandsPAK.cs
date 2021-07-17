@@ -116,29 +116,32 @@ namespace CATHODE.Commands
                 writer.Write((char)0x00);
                 Utilities.Align(writer, 4);
 
-                int[] scriptBlockOffsets = new int[13];
-                int[] scriptBlockContentCount = new int[13];
-                for (int x = 0; x < 11/*13*/; x++)
+                //Work out what we want to write
+                List<CathodeNode> nodesWithLinks = _flowgraphs[i].nodes.FindAll(o => o.childLinks.Count != 0);
+                List<CathodeNode> nodesWithParams = _flowgraphs[i].nodes.FindAll(o => o.nodeParameterReferences.Count != 0);
+
+                //Write the content out that we will point to in a second
+                List<List<OffsetPair>> scriptContentOffsetInfo = new List<List<OffsetPair>>();
+                for (int x = 0; x < 13; x++)
                 {
-                    scriptBlockOffsets[x] = (int)writer.BaseStream.Position / 4;
-                    scriptBlockContentCount[x] = 0;
+                    scriptContentOffsetInfo.Add(new List<OffsetPair>());
 
                     switch ((CathodeScriptBlocks)x)
                     {
                         case CathodeScriptBlocks.DEFINE_SCRIPT_HEADER:
+                            scriptContentOffsetInfo[x].Add(new OffsetPair(writer.BaseStream.Position, 2));
                             Utilities.Write<cGUID>(writer, _flowgraphs[i].nodeID);
                             writer.Write(0);
-                            scriptBlockContentCount[x] = 2;
                             break;
-
-                            /*
-                             * So... to write this info out is gonna be kinda complicated. You have to write it as such:
-                             *  - Write all pointed-to content from every script block
-                             *  - Write all pointers to the content that was just written (with counts)
-                             *  - Write the pointers to those pointer lists with counts
-                             */
-
                         case CathodeScriptBlocks.DEFINE_NODE_LINKS:
+                            foreach (CathodeNode nodeWithLink in nodesWithLinks)
+                            {
+                                scriptContentOffsetInfo[x].Add(new OffsetPair(writer.BaseStream.Position, nodeWithLink.childLinks.Count));
+                                foreach (CathodeNodeLink childLink in nodeWithLink.childLinks)
+                                {
+                                    Utilities.Write<CathodeNodeLink>(writer, childLink);
+                                }
+                            }
                             break;
                         case CathodeScriptBlocks.DEFINE_NODE_PARAMETERS:
                             break;
@@ -150,15 +153,69 @@ namespace CATHODE.Commands
                             break;
                         case CathodeScriptBlocks.DEFINE_LINKED_NODES:
                             break;
+                        case CathodeScriptBlocks.DEFINE_NODE_NODETYPES:
+                            break;
                         case CathodeScriptBlocks.DEFINE_RENDERABLE_ELEMENTS:
                             break;
-                        case CathodeScriptBlocks.UNKNOWN_8:
+                        case CathodeScriptBlocks.DEFINE_UNKNOWN:
                             break;
                         case CathodeScriptBlocks.DEFINE_ZONE_CONTENT:
                             break;
                     }
                 }
 
+                //Point to that content we just wrote out
+                List<OffsetPair> scriptPointerOffsetInfo = new List<OffsetPair>();
+                for (int x = 0; x < 13; x++)
+                {
+                    scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, scriptContentOffsetInfo[x].Count));
+
+                    for (int z = 0; z < scriptContentOffsetInfo[x].Count; z++)
+                    {
+                        switch ((CathodeScriptBlocks)x)
+                        {
+                            case CathodeScriptBlocks.DEFINE_SCRIPT_HEADER:
+                                //We actually just forward on the previous offsets here.
+                                scriptPointerOffsetInfo[x] = scriptContentOffsetInfo[x][z];
+                                z = 2;
+                                break;
+                            case CathodeScriptBlocks.DEFINE_NODE_LINKS:
+                                writer.Write(nodesWithLinks[z].nodeID.val);
+                                writer.Write(scriptContentOffsetInfo[x][z].GlobalOffset / 4);
+                                writer.Write(scriptContentOffsetInfo[x][z].EntryCount);
+                                break;
+                            case CathodeScriptBlocks.DEFINE_NODE_PARAMETERS:
+                                //TODO: to write out params we will have to edit how data is stored here.
+                                //Save params to each node rather than just storing references, or reference a stored array not by offset!
+                                break;
+                            case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES:
+                                break;
+                            case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES_CHECKSUM:
+                                break;
+                            case CathodeScriptBlocks.DEFINE_NODE_DATATYPES:
+                                break;
+                            case CathodeScriptBlocks.DEFINE_LINKED_NODES:
+                                break;
+                            case CathodeScriptBlocks.DEFINE_NODE_NODETYPES:
+                                break;
+                            case CathodeScriptBlocks.DEFINE_RENDERABLE_ELEMENTS:
+                                break;
+                            case CathodeScriptBlocks.DEFINE_UNKNOWN:
+                                break;
+                            case CathodeScriptBlocks.DEFINE_ZONE_CONTENT:
+                                break;
+                            case CathodeScriptBlocks.UNUSED:
+                                scriptPointerOffsetInfo[x] = new OffsetPair(0, 0);
+                                break;
+                            case CathodeScriptBlocks.UNKNOWN_COUNTS:
+                                //These count values are unknown. Just writing zeros for now.
+                                scriptPointerOffsetInfo[x] = new OffsetPair(0, 0);
+                                break;
+                        }
+                    }
+                }
+
+                //Write pointers to the pointers of the content
                 flowgraphOffsets[i] = (int)writer.BaseStream.Position / 4;
                 writer.Write(0);
                 for (int x = 0; x < 13; x++)
@@ -169,9 +226,12 @@ namespace CATHODE.Commands
                         scriptStartRaw[3] = 0x80; //Not sure why we have to do this
                         writer.Write(scriptStartRaw);
                     }
-                    if (x == 1) Utilities.Write<cGUID>(writer, _flowgraphs[i].nodeID);
-                    writer.Write(scriptBlockOffsets[x]); //offset
-                    writer.Write(scriptBlockContentCount[x]); //count
+                    writer.Write(scriptPointerOffsetInfo[x].GlobalOffset / 4); //offset
+                    writer.Write(scriptPointerOffsetInfo[x].EntryCount); //count
+                    if (x == 0)
+                    {
+                        Utilities.Write<cGUID>(writer, _flowgraphs[i].nodeID);
+                    }
                 }
             }
 
@@ -378,8 +438,11 @@ namespace CATHODE.Commands
                         startOffsetRaw[3] = 0x00; //For some reason this is 0x80?
                         scriptStartOffset = BitConverter.ToInt32(startOffsetRaw, 0);
                     }
-                    if (x == 1) flowgraph.nodeID = new cGUID(reader);
                     offsetPairs[x] = Utilities.Consume<OffsetPair>(reader);
+                    if (x == 0)
+                    {
+                        flowgraph.nodeID = new cGUID(reader);
+                    }
                 }
 
                 //Read script ID and string name
@@ -399,9 +462,9 @@ namespace CATHODE.Commands
                             case CathodeScriptBlocks.DEFINE_NODE_LINKS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-                                cGUID parentID = new cGUID(reader); //TODO: filter this by parentID? 
+                                CathodeNode parentNode = flowgraph.GetNodeByID(new cGUID(reader));
                                 int NumberOfParams = JumpToOffset(ref reader);
-                                flowgraph.links.AddRange(Utilities.ConsumeArray<CathodeNodeLink>(reader, NumberOfParams));
+                                parentNode.childLinks.AddRange(Utilities.ConsumeArray<CathodeNodeLink>(reader, NumberOfParams));
                                 break;
                             }
                             case CathodeScriptBlocks.DEFINE_NODE_PARAMETERS:
@@ -507,7 +570,7 @@ namespace CATHODE.Commands
                                 break;
                             }
                             //NOT PARSING: This is very similar in format to DEFINE_ENV_MODEL_REF_LINKS with the cross-references
-                            case CathodeScriptBlocks.UNKNOWN_8:
+                            case CathodeScriptBlocks.DEFINE_UNKNOWN:
                             {
                                 break;
                                 //This block is only four bytes - which translates to a pointer to another location... so read that
