@@ -127,18 +127,18 @@ namespace CATHODE.Commands
 
                 //Write the content out that we will point to in a second
                 List<List<OffsetPair>> scriptContentOffsetInfo = new List<List<OffsetPair>>();
-                for (int x = 0; x < (int)CathodeScriptBlocks.NUMBER_OF_SCRIPT_BLOCKS; x++)
+                for (int x = 0; x < (int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS; x++)
                 {
                     scriptContentOffsetInfo.Add(new List<OffsetPair>());
 
-                    switch ((CathodeScriptBlocks)x)
+                    switch ((CommandsDataBlock)x)
                     {
-                        case CathodeScriptBlocks.DEFINE_SCRIPT_HEADER:
+                        case CommandsDataBlock.DEFINE_SCRIPT_HEADER:
                             scriptContentOffsetInfo[x].Add(new OffsetPair(writer.BaseStream.Position, 2));
                             Utilities.Write<cGUID>(writer, _flowgraphs[i].nodeID);
                             writer.Write(0);
                             break;
-                        case CathodeScriptBlocks.DEFINE_NODE_LINKS:
+                        case CommandsDataBlock.DEFINE_CONNECTIONS:
                             foreach (CathodeNode nodeWithLink in nodesWithLinks)
                             {
                                 scriptContentOffsetInfo[x].Add(new OffsetPair(writer.BaseStream.Position, nodeWithLink.childLinks.Count));
@@ -148,75 +148,75 @@ namespace CATHODE.Commands
                                 }
                             }
                             break;
-                        case CathodeScriptBlocks.DEFINE_PARAMETERS:
+                        case CommandsDataBlock.DEFINE_PARAMETERS:
                             break;
-                        case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES:
+                        case CommandsDataBlock.DEFINE_OVERRIDES:
                             break;
-                        case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES_CHECKSUM:
+                        case CommandsDataBlock.DEFINE_OVERRIDES_CHECKSUM:
                             break;
-                        case CathodeScriptBlocks.DEFINE_NODE_DATATYPES:
+                        case CommandsDataBlock.DEFINE_EXPOSED_VARIABLES:
                             break;
-                        case CathodeScriptBlocks.DEFINE_LINKED_NODES:
+                        case CommandsDataBlock.DEFINE_PROXIES:
                             break;
-                        case CathodeScriptBlocks.DEFINE_NODE_NODETYPES:
+                        case CommandsDataBlock.DEFINE_FUNCTION_NODES:
                             break;
-                        case CathodeScriptBlocks.DEFINE_RENDERABLE_ELEMENTS:
+                        case CommandsDataBlock.DEFINE_RENDERABLE_DATA:
                             break;
-                        case CathodeScriptBlocks.DEFINE_UNKNOWN:
+                        case CommandsDataBlock.DEFINE_UNKNOWN:
                             break;
-                        case CathodeScriptBlocks.DEFINE_ZONE_CONTENT:
+                        case CommandsDataBlock.DEFINE_ZONES:
                             break;
                     }
                 }
 
                 //Point to that content we just wrote out
                 List<OffsetPair> scriptPointerOffsetInfo = new List<OffsetPair>();
-                for (int x = 0; x < (int)CathodeScriptBlocks.NUMBER_OF_SCRIPT_BLOCKS; x++)
+                for (int x = 0; x < (int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS; x++)
                 {
-                    switch ((CathodeScriptBlocks)x)
+                    switch ((CommandsDataBlock)x)
                     {
                         default:
                             scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, scriptContentOffsetInfo[x].Count));
                             for (int z = 0; z < scriptContentOffsetInfo[x].Count; z++)
                             {
-                                switch ((CathodeScriptBlocks)x)
+                                switch ((CommandsDataBlock)x)
                                 {
-                                    case CathodeScriptBlocks.DEFINE_NODE_LINKS:
+                                    case CommandsDataBlock.DEFINE_CONNECTIONS:
                                         writer.Write(nodesWithLinks[z].nodeID.val);
                                         writer.Write(scriptContentOffsetInfo[x][z].GlobalOffset / 4);
                                         writer.Write(scriptContentOffsetInfo[x][z].EntryCount);
                                         break;
-                                    case CathodeScriptBlocks.DEFINE_PARAMETERS:
+                                    case CommandsDataBlock.DEFINE_PARAMETERS:
                                         //TODO: to write out params we will have to edit how data is stored here.
                                         //Save params to each node rather than just storing references, or reference a stored array not by offset!
                                         break;
-                                    case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES:
+                                    case CommandsDataBlock.DEFINE_OVERRIDES:
                                         break;
-                                    case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES_CHECKSUM:
+                                    case CommandsDataBlock.DEFINE_OVERRIDES_CHECKSUM:
                                         break;
-                                    case CathodeScriptBlocks.DEFINE_NODE_DATATYPES:
+                                    case CommandsDataBlock.DEFINE_EXPOSED_VARIABLES:
                                         break;
-                                    case CathodeScriptBlocks.DEFINE_LINKED_NODES:
+                                    case CommandsDataBlock.DEFINE_PROXIES:
                                         break;
-                                    case CathodeScriptBlocks.DEFINE_NODE_NODETYPES:
+                                    case CommandsDataBlock.DEFINE_FUNCTION_NODES:
                                         break;
-                                    case CathodeScriptBlocks.DEFINE_RENDERABLE_ELEMENTS:
+                                    case CommandsDataBlock.DEFINE_RENDERABLE_DATA:
                                         break;
-                                    case CathodeScriptBlocks.DEFINE_UNKNOWN:
+                                    case CommandsDataBlock.DEFINE_UNKNOWN:
                                         break;
-                                    case CathodeScriptBlocks.DEFINE_ZONE_CONTENT:
+                                    case CommandsDataBlock.DEFINE_ZONES:
                                         break;
                                 }
                             }
                             break;
-                        case CathodeScriptBlocks.DEFINE_SCRIPT_HEADER:
+                        case CommandsDataBlock.DEFINE_SCRIPT_HEADER:
                             //We actually just forward on the previous offsets here.
                             scriptPointerOffsetInfo.Add(scriptContentOffsetInfo[x][0]);
                             break;
-                        case CathodeScriptBlocks.UNUSED:
+                        case CommandsDataBlock.UNUSED:
                             scriptPointerOffsetInfo.Add(new OffsetPair(0, 0));
                             break;
-                        case CathodeScriptBlocks.UNKNOWN_COUNTS:
+                        case CommandsDataBlock.UNKNOWN_COUNTS:
                             //TODO: These count values are unknown. Just writing zeros for now.
                             scriptPointerOffsetInfo.Add(new OffsetPair(0, 0));
                             break;
@@ -226,7 +226,7 @@ namespace CATHODE.Commands
                 //Write pointers to the pointers of the content
                 flowgraphOffsets[i] = (int)writer.BaseStream.Position / 4;
                 writer.Write(0);
-                for (int x = 0; x < (int)CathodeScriptBlocks.NUMBER_OF_SCRIPT_BLOCKS; x++)
+                for (int x = 0; x < (int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS; x++)
                 {
                     if (x == 0)
                     {
@@ -437,9 +437,9 @@ namespace CATHODE.Commands
                 CathodeFlowgraph flowgraph = new CathodeFlowgraph();
 
                 //Read the offsets and counts
-                OffsetPair[] offsetPairs = new OffsetPair[(int)CathodeScriptBlocks.NUMBER_OF_SCRIPT_BLOCKS];
+                OffsetPair[] offsetPairs = new OffsetPair[(int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS];
                 int scriptStartOffset = 0;
-                for (int x = 0; x < (int)CathodeScriptBlocks.NUMBER_OF_SCRIPT_BLOCKS; x++)
+                for (int x = 0; x < (int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS; x++)
                 {
                     if (x == 0)
                     {
@@ -467,17 +467,18 @@ namespace CATHODE.Commands
                     reader.BaseStream.Position = offsetPairs[x].GlobalOffset * 4;
                     for (int y = 0; y < offsetPairs[x].EntryCount; y++)
                     {
-                        switch ((CathodeScriptBlocks)x)
+                        switch ((CommandsDataBlock)x)
                         {
-                            case CathodeScriptBlocks.DEFINE_NODE_LINKS:
+                            case CommandsDataBlock.DEFINE_CONNECTIONS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 CathodeNode parentNode = flowgraph.GetNodeByID(new cGUID(reader));
                                 int NumberOfParams = JumpToOffset(ref reader);
                                 parentNode.childLinks.AddRange(Utilities.ConsumeArray<CathodeNodeLink>(reader, NumberOfParams));
+                                for (int z = 0; z < parentNode.childLinks.Count; z++) flowgraph.GetNodeByID(parentNode.childLinks[z].childID); //TODO: this is a HACK to generate child nodes if they don't exist
                                 break;
                             }
-                            case CathodeScriptBlocks.DEFINE_PARAMETERS:
+                            case CommandsDataBlock.DEFINE_PARAMETERS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 paramRefSets.Add(new CommandsParamRefSet(new cGUID(reader)));
@@ -485,7 +486,7 @@ namespace CATHODE.Commands
                                 paramRefSets[paramRefSets.Count - 1].refs.AddRange(Utilities.ConsumeArray<CathodeParameterReference>(reader, NumberOfParams));
                                 break;
                             }
-                            case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES:
+                            case CommandsDataBlock.DEFINE_OVERRIDES:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 CathodeFlowgraphHierarchyOverride overrider = flowgraph.GetChildOverrideByID(new cGUID(reader));
@@ -493,56 +494,42 @@ namespace CATHODE.Commands
                                 overrider.hierarchy.AddRange(Utilities.ConsumeArray<cGUID>(reader, NumberOfParams));
                                 break;
                             }
-                            case CathodeScriptBlocks.DEFINE_HIERARCHICAL_OVERRIDES_CHECKSUM:
+                            case CommandsDataBlock.DEFINE_OVERRIDES_CHECKSUM:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
                                 CathodeFlowgraphHierarchyOverride overrider = flowgraph.GetChildOverrideByID(new cGUID(reader));
                                 overrider.checksum = new cGUID(reader);
                                 break;
                             }
-                            case CathodeScriptBlocks.DEFINE_NODE_DATATYPES:
+                            case CommandsDataBlock.DEFINE_EXPOSED_VARIABLES:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-
                                 CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader));
                                 thisNode.dataType = GetDataType(reader.ReadBytes(4));
                                 thisNode.dataTypeParam = new cGUID(reader);
                                 break;
                             }
-                            //NOT PARSING: This block is another x-ref list, potentially related to mission critical things (doors, maybe?) 
-                            case CathodeScriptBlocks.DEFINE_LINKED_NODES:
+                            case CommandsDataBlock.DEFINE_PROXIES:
                             {
-                                break;
-                                //This block appears to be populated mainly in mission flowgraphs, rather than other ones like archetypes or model placement
-                                //It defines a node from another flowgraph, which is referenced by executation hierarchy
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 20);
-
-                                byte[] unk1 = reader.ReadBytes(4); //flowgraph id?
-
-                                int OffsetToFindParams = reader.ReadInt32() * 4; //offset
-                                int NumberOfParams = reader.ReadInt32(); //count
-
-                                int resetPos = (int)reader.BaseStream.Position;
-                                reader.BaseStream.Position = OffsetToFindParams;
-                                for (int p = 0; p < NumberOfParams; p++)
-                                {
-                                    byte[] unk69 = reader.ReadBytes(4); //cross-refs: node ids (of flowgraph refs), then the node, then 0x00 (x4)
-                                }
-
+                                CathodeProxy thisProxy = new CathodeProxy(new cGUID(reader));
+                                int resetPos = (int)reader.BaseStream.Position + 8; //TODO: This is a HACK - I need to rework JumpToOffset to make a temp stream
+                                int NumberOfParams = JumpToOffset(ref reader);
+                                thisProxy.hierarchy.AddRange(Utilities.ConsumeArray<cGUID>(reader, NumberOfParams)); //Last is always 0x00, 0x00, 0x00, 0x00
                                 reader.BaseStream.Position = resetPos;
-                                byte[] unk4 = reader.ReadBytes(4); //flowgraph id again
-                                byte[] unk5 = reader.ReadBytes(4); //another id for something else
-
+                                cGUID idCheck = new cGUID(reader);
+                                if (idCheck != thisProxy.id) throw new Exception("Proxy ID mismatch!");
+                                thisProxy.extraId = new cGUID(reader);
                                 break;
                             }
-                            case CathodeScriptBlocks.DEFINE_NODE_NODETYPES:
+                            case CommandsDataBlock.DEFINE_FUNCTION_NODES:
                             {
                                 CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader));
                                 thisNode.nodeType = new cGUID(reader);
                                 break;
                             }
-                            //PARSING: I'm currently unsure on a lot of this, as the types vary (see entryType)
-                            case CathodeScriptBlocks.DEFINE_RENDERABLE_ELEMENTS:
+                            //TODO: this case needs a GIANT refactor!
+                            case CommandsDataBlock.DEFINE_RENDERABLE_DATA:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 40);
 
@@ -580,7 +567,7 @@ namespace CATHODE.Commands
                                 break;
                             }
                             //NOT PARSING: This is very similar in format to DEFINE_ENV_MODEL_REF_LINKS with the cross-references
-                            case CathodeScriptBlocks.DEFINE_UNKNOWN:
+                            case CommandsDataBlock.DEFINE_UNKNOWN:
                             {
                                 break;
                                 //This block is only four bytes - which translates to a pointer to another location... so read that
@@ -631,7 +618,7 @@ namespace CATHODE.Commands
                                 break;
                             }
                             //NOT PARSING: This is very similar in format to DEFINE_ENV_MODEL_REF_LINKS with the cross-references
-                            case CathodeScriptBlocks.DEFINE_ZONE_CONTENT:
+                            case CommandsDataBlock.DEFINE_ZONES:
                             {
                                 break;
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);

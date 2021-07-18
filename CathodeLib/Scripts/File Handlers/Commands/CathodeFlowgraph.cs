@@ -12,24 +12,24 @@ using System.Runtime.InteropServices;
 namespace CATHODE.Commands
 {
     /* Blocks of data in each compiled flowgraph */
-    public enum CathodeScriptBlocks
+    public enum CommandsDataBlock
     {
-        DEFINE_SCRIPT_HEADER,
-        DEFINE_NODE_LINKS,                      //This defines the logic links between nodes
-        DEFINE_PARAMETERS,                 //This defines executable nodes with parameters 
-        DEFINE_HIERARCHICAL_OVERRIDES,          //This appears to define links through flowgraphs to EnvironmentModelReference nodes
-        DEFINE_HIERARCHICAL_OVERRIDES_CHECKSUM, //This appears to define 4-bytes of extra information for the links defined in the previous block
-        DEFINE_NODE_DATATYPES,                  //This defines variable nodes which connect to other executable nodes to provide parameters: these seem to be exposed to other flowgraphs as parameters if the flowgraph is used as a type
-        DEFINE_LINKED_NODES,                    //This defines a connected node through the flowgraph hierarchy 
-        DEFINE_NODE_NODETYPES,                  //This defines the type ID for all executable nodes (completes the list from the parameter population in step 2) 
-        DEFINE_RENDERABLE_ELEMENTS,             //This defines resources used for rendering, etc - E.G. a reference to a model renderable comp
-        DEFINE_UNKNOWN,                         //
-        DEFINE_ZONE_CONTENT,                    //This defines zone content data for Zone nodes
+        DEFINE_SCRIPT_HEADER,         //Defines the header of the flowgraph, with global ID and string name
+        DEFINE_CONNECTIONS,           //Defines the links between entities in the flowgraph
+        DEFINE_PARAMETERS,            //Defines parameters to be applied to entities in the flowgraph 
+        DEFINE_OVERRIDES,             //Defines overrides to apply to nested instances of flowgraphs in this flowgraph
+        DEFINE_OVERRIDES_CHECKSUM,    //Defines a checksum value for the hierarchy override (I think)
+        DEFINE_EXPOSED_VARIABLES,     //Defines variables which are exposed when instancing this flowgraph which are then connected in to entities (think variable pins in UE4 blueprint)
+        DEFINE_PROXIES,               //TODO
+        DEFINE_FUNCTION_NODES,        //Defines entities with an attached script function within Cathode
+        DEFINE_RENDERABLE_DATA,       //Defines renderable data which is referenced by entities in this flowgraph
+        DEFINE_UNKNOWN,               //TODO
+        DEFINE_ZONES,                 //TODO
 
-        UNUSED,                                 //Unused
-        UNKNOWN_COUNTS,                         //Unknown count values which appear at the end of the offset list
+        UNUSED,                       //Unused values
+        UNKNOWN_COUNTS,               //TODO
 
-        NUMBER_OF_SCRIPT_BLOCKS,                //THIS IS NOT A SCRIPT BLOCK: merely used as an easy way of sanity checking the number of blocks in-code!
+        NUMBER_OF_SCRIPT_BLOCKS,      //THIS IS NOT A DATA BLOCK: merely used as an easy way of sanity checking the number of blocks in-code!
     }
 
     /* Defines a link between parent and child IDs, with a connection ID */
@@ -63,6 +63,19 @@ namespace CATHODE.Commands
         public cGUID checksum; //TODO: This value is apparently a hash of the hierarchy GUIDs, but need to verify that, and work out the salt.
         public List<cGUID> hierarchy = new List<cGUID>(); //Lists the nodeIDs to jump through (flowgraph refs) to get to the node that is being overridden, then that node's ID
         public List<CathodeParameterReference> paramRefs = new List<CathodeParameterReference>(); //Refererence to parameter to apply to the node being overidden
+    }
+
+    /* A "proxy" - still need to work out more about this, seems similar to the hierarchy override above */
+    public class CathodeProxy
+    {
+        public CathodeProxy(cGUID _id)
+        {
+            id = _id;
+        }
+
+        public cGUID id; //todo: is this actually flowgraph id?
+        public cGUID extraId; //todo: what is this?
+        public List<cGUID> hierarchy = new List<cGUID>();
     }
 
     /* A resource that references a REnDerable elementS DB entry */
