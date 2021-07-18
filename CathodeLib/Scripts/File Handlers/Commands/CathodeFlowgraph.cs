@@ -18,9 +18,9 @@ namespace CATHODE.Commands
         DEFINE_CONNECTIONS,           //Defines the links between entities in the flowgraph
         DEFINE_PARAMETERS,            //Defines parameters to be applied to entities in the flowgraph 
         DEFINE_OVERRIDES,             //Defines overrides to apply to nested instances of flowgraphs in this flowgraph
-        DEFINE_OVERRIDES_CHECKSUM,    //Defines a checksum value for the hierarchy override (I think)
+        DEFINE_OVERRIDES_CHECKSUM,    //Defines a checksum value for the hierarchy override (TODO)
         DEFINE_EXPOSED_VARIABLES,     //Defines variables which are exposed when instancing this flowgraph which are then connected in to entities (think variable pins in UE4 blueprint)
-        DEFINE_PROXIES,               //TODO
+        DEFINE_PROXIES,               //Defines "proxies" similar to the overrides hierarchy (TODO)
         DEFINE_FUNCTION_NODES,        //Defines entities with an attached script function within Cathode
         DEFINE_RENDERABLE_DATA,       //Defines renderable data which is referenced by entities in this flowgraph
         DEFINE_UNKNOWN,               //TODO
@@ -30,16 +30,6 @@ namespace CATHODE.Commands
         UNKNOWN_COUNTS,               //TODO
 
         NUMBER_OF_SCRIPT_BLOCKS,      //THIS IS NOT A DATA BLOCK: merely used as an easy way of sanity checking the number of blocks in-code!
-    }
-
-    /* Defines a link between parent and child IDs, with a connection ID */
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CathodeNodeLink
-    {
-        public cGUID connectionID;  //The unique ID for this connection
-        public cGUID parentParamID; //The ID of the parameter we're providing out of this node
-        public cGUID childID;       //The ID of the node we're linking to to provide the value for
-        public cGUID childParamID;  //The ID of the parameter we're providing into the child
     }
 
     /* A reference to a parameter in a flowgraph */
@@ -65,7 +55,7 @@ namespace CATHODE.Commands
         public List<CathodeParameterReference> paramRefs = new List<CathodeParameterReference>(); //Refererence to parameter to apply to the node being overidden
     }
 
-    /* A "proxy" - still need to work out more about this, seems similar to the hierarchy override above */
+    /* A "proxy" - still need to work out more about this, seems very similar to the hierarchy override above */
     public class CathodeProxy
     {
         public CathodeProxy(cGUID _id)
@@ -76,6 +66,7 @@ namespace CATHODE.Commands
         public cGUID id; //todo: is this actually flowgraph id?
         public cGUID extraId; //todo: what is this?
         public List<cGUID> hierarchy = new List<cGUID>();
+        public List<CathodeParameterReference> paramRefs = new List<CathodeParameterReference>(); 
     }
 
     /* A resource that references a REnDerable elementS DB entry */
@@ -129,6 +120,7 @@ namespace CATHODE.Commands
         public List<CathodeNode> nodes = new List<CathodeNode>();
         public List<CathodeResourceReference> resources = new List<CathodeResourceReference>();
         public List<CathodeFlowgraphHierarchyOverride> overrides = new List<CathodeFlowgraphHierarchyOverride>();
+        public List<CathodeProxy> proxies = new List<CathodeProxy>();
 
         /* If a node exists in the flowgraph, return it - otherwise create it, and return it */
         public CathodeNode GetNodeByID(cGUID id)

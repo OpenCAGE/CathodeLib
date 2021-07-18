@@ -32,6 +32,55 @@ namespace CATHODE.Commands
             reader.Close();
         }
 
+        #region ACCESSORS
+        /* Return a list of filenames for flowgraphs in the CommandsPAK archive */
+        public string[] GetFlowgraphNames()
+        {
+            string[] toReturn = new string[_flowgraphs.Length];
+            for (int i = 0; i < _flowgraphs.Length; i++) toReturn[i] = _flowgraphs[i].name;
+            return toReturn;
+        }
+
+        /* Find the a script entry object by name */
+        public int GetFileIndex(string FileName)
+        {
+            for (int i = 0; i < _flowgraphs.Length; i++) if (_flowgraphs[i].name == FileName || _flowgraphs[i].name == FileName.Replace('/', '\\')) return i;
+            return -1;
+        }
+
+        /* Get flowgraph/parameter */
+        public CathodeFlowgraph GetFlowgraph(cGUID id)
+        {
+            if (id.val == null) return null;
+            return _flowgraphs.FirstOrDefault(o => o.nodeID == id);
+        }
+        public CathodeFlowgraph GetFlowgraphByIndex(int index)
+        {
+            return (index >= _flowgraphs.Length || index < 0) ? null : _flowgraphs[index];
+        }
+        public CathodeParameter GetParameter(int offset)
+        {
+            return _parameters.FirstOrDefault(o => o.offset == offset);
+        }
+
+        /* Get all flowgraphs/parameters */
+        public CathodeFlowgraph[] Flowgraphs { get { return _flowgraphs; } }
+        public CathodeParameter[] Parameters { get { return _parameters; } } //TODO: parameters should be instanced per node
+
+        /* Get entry point flowgraph objects */
+        public CathodeFlowgraph[] EntryPoints
+        {
+            get
+            {
+                if (_entryPointObjects != null) return _entryPointObjects;
+                _entryPointObjects = new CathodeFlowgraph[_entryPoints.flowgraphIDs.Length];
+                for (int i = 0; i < _entryPoints.flowgraphIDs.Length; i++) _entryPointObjects[i] = GetFlowgraph(_entryPoints.flowgraphIDs[i]);
+                return _entryPointObjects;
+            }
+        }
+        #endregion
+
+        #region WRITING
         /* Save all changes back out */
         public void Save()
         {
@@ -123,7 +172,11 @@ namespace CATHODE.Commands
 
                 //Work out what we want to write
                 List<CathodeNode> nodesWithLinks = _flowgraphs[i].nodes.FindAll(o => o.childLinks.Count != 0);
-                List<CathodeNode> nodesWithParams = _flowgraphs[i].nodes.FindAll(o => o.nodeParameterReferences.Count != 0);
+                //List<CathodeParameterReference> paramsToWrite = new List<CathodeParameterReference>();
+                //List<CathodeNode> nodesWithParams = _flowgraphs[i].nodes.FindAll(o => o.nodeParameterReferences.Count != 0);
+                //List<CathodeFlowgraphHierarchyOverride> overridesWithParams = _flowgraphs[i].overrides.FindAll(o => o.paramRefs.Count != 0);
+                //List<CathodeProxy> proxiesWithParams = _flowgraphs[i].proxies.FindAll(o => o.paramRefs.Count != 0);
+                //for (int x = 0; x < nodesWithParams.Count; x++) nodesWithParams[x].nodeParameterReferences
 
                 //Write the content out that we will point to in a second
                 List<List<OffsetPair>> scriptContentOffsetInfo = new List<List<OffsetPair>>();
@@ -260,52 +313,9 @@ namespace CATHODE.Commands
 
             writer.Close();
         }
+        #endregion
 
-        /* Return a list of filenames for flowgraphs in the CommandsPAK archive */
-        public string[] GetFlowgraphNames()
-        {
-            string[] toReturn = new string[_flowgraphs.Length];
-            for (int i = 0; i < _flowgraphs.Length; i++) toReturn[i] = _flowgraphs[i].name;
-            return toReturn;
-        }
-
-        /* Find the a script entry object by name */
-        public int GetFileIndex(string FileName)
-        {
-            for (int i = 0; i < _flowgraphs.Length; i++) if (_flowgraphs[i].name == FileName || _flowgraphs[i].name == FileName.Replace('/', '\\')) return i;
-            return -1;
-        }
-
-        /* Get flowgraph/parameter */
-        public CathodeFlowgraph GetFlowgraph(cGUID id)
-        {
-            if (id.val == null) return null;
-            return _flowgraphs.FirstOrDefault(o => o.nodeID == id);
-        }
-        public CathodeFlowgraph GetFlowgraphByIndex(int index)
-        {
-            return (index >= _flowgraphs.Length || index < 0) ? null : _flowgraphs[index];
-        }
-        public CathodeParameter GetParameter(int offset)
-        {
-            return _parameters.FirstOrDefault(o => o.offset == offset);
-        }
-
-        /* Get all flowgraphs/parameters */
-        public CathodeFlowgraph[] Flowgraphs { get { return _flowgraphs; } }
-        public CathodeParameter[] Parameters { get { return _parameters; } } //TODO: parameters should be instanced per node
-
-        /* Get entry point flowgraph objects */
-        public CathodeFlowgraph[] EntryPoints { 
-            get
-            {
-                if (_entryPointObjects != null) return _entryPointObjects;
-                _entryPointObjects = new CathodeFlowgraph[_entryPoints.flowgraphIDs.Length];
-                for (int i = 0; i < _entryPoints.flowgraphIDs.Length; i++) _entryPointObjects[i] = GetFlowgraph(_entryPoints.flowgraphIDs[i]);
-                return _entryPointObjects;
-            }
-        }
-
+        #region READING
         /* Read offset info & count, jump to the offset & return the count */
         private int JumpToOffset(ref BinaryReader reader)
         {
@@ -362,16 +372,8 @@ namespace CATHODE.Commands
                         this_parameter = new CathodeString();
                         ((CathodeString)this_parameter).unk0 = new cGUID(reader); // some kind of ID sometimes referenced in script and resource id
                         ((CathodeString)this_parameter).unk1 = new cGUID(reader); // sometimes flowgraph id ?!
-                        bool shouldStop = false;
-                        for (int x = 0; x < length - 8; x++)
-                        {
-                            byte thisByte = reader.ReadByte();
-                            if (thisByte == 0x00) { shouldStop = true; continue; }
-                            if (shouldStop && thisByte != 0x00) break;
-                            ((CathodeString)this_parameter).value += (char)thisByte;
-                        }
-                        ((CathodeString)this_parameter).initial_length = length - 13;
-                        reader.BaseStream.Position -= 1;
+                        ((CathodeString)this_parameter).value = Utilities.ReadString(reader);
+                        Utilities.Align(reader, 4);
                         break;
                     case CathodeDataType.BOOL:
                         this_parameter = new CathodeBool();
@@ -430,6 +432,8 @@ namespace CATHODE.Commands
         /* Read all flowgraphs from the PAK */
         private void ReadFlowgraphs(BinaryReader reader)
         {
+            List<string> debugDump = new List<string>();
+
             for (int i = 0; i < _flowgraphs.Length; i++)
             {
                 reader.BaseStream.Position = flowgraphOffsets[i] * 4;
@@ -461,6 +465,7 @@ namespace CATHODE.Commands
                 Utilities.Align(reader, 4);
 
                 //Pull data from those offsets
+                List<CommandsEntityLinks> entityLinks = new List<CommandsEntityLinks>(); //TODO: process this after parsing has completed
                 List<CommandsParamRefSet> paramRefSets = new List<CommandsParamRefSet>();
                 for (int x = 0; x < offsetPairs.Length; x++)
                 {
@@ -472,10 +477,9 @@ namespace CATHODE.Commands
                             case CommandsDataBlock.DEFINE_CONNECTIONS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-                                CathodeNode parentNode = flowgraph.GetNodeByID(new cGUID(reader));
+                                entityLinks.Add(new CommandsEntityLinks(new cGUID(reader)));
                                 int NumberOfParams = JumpToOffset(ref reader);
-                                parentNode.childLinks.AddRange(Utilities.ConsumeArray<CathodeNodeLink>(reader, NumberOfParams));
-                                for (int z = 0; z < parentNode.childLinks.Count; z++) flowgraph.GetNodeByID(parentNode.childLinks[z].childID); //TODO: this is a HACK to generate child nodes if they don't exist
+                                entityLinks[entityLinks.Count - 1].childLinks.AddRange(Utilities.ConsumeArray<CathodeNodeLink>(reader, NumberOfParams));
                                 break;
                             }
                             case CommandsDataBlock.DEFINE_PARAMETERS:
@@ -520,6 +524,7 @@ namespace CATHODE.Commands
                                 cGUID idCheck = new cGUID(reader);
                                 if (idCheck != thisProxy.id) throw new Exception("Proxy ID mismatch!");
                                 thisProxy.extraId = new cGUID(reader);
+                                flowgraph.proxies.Add(thisProxy);
                                 break;
                             }
                             case CommandsDataBlock.DEFINE_FUNCTION_NODES:
@@ -661,24 +666,71 @@ namespace CATHODE.Commands
                     }
                 }
 
+#if TEST
+                if (entityLinks.Count != 0) debugDump.Add(flowgraph.name);
+                for (int x = 0; x < entityLinks.Count; x++)
+                {
+                    CathodeNode nodeToApplyParent = flowgraph.nodes.FirstOrDefault(o => o.nodeID == entityLinks[x].parentID);
+                    CathodeFlowgraphHierarchyOverride overrideToApplyParent = flowgraph.overrides.FirstOrDefault(o => o.id == entityLinks[x].parentID);
+                    CathodeProxy proxyToApplyParent = flowgraph.proxies.FirstOrDefault(o => o.id == entityLinks[x].parentID);
+
+                    string isWhat = "is ";
+                    if (nodeToApplyParent != null) if (nodeToApplyParent.HasDataType) isWhat += "datatype node "; else isWhat += "function node ";
+                    if (overrideToApplyParent != null) isWhat += "override ";
+                    if (proxyToApplyParent != null) isWhat += "proxy ";
+                    if (isWhat == "is ") isWhat += "NOTHING!!";
+                    isWhat = entityLinks[x].parentID.ToString() + " " + isWhat;
+                    debugDump.Add("\tConnection Parent " + isWhat);
+
+                    for (int y = 0; y < entityLinks[x].childLinks.Count; y++)
+                    {
+                        CathodeNode nodeToApplyChild = flowgraph.nodes.FirstOrDefault(o => o.nodeID == entityLinks[x].childLinks[y].childID);
+                        CathodeFlowgraphHierarchyOverride overrideToApplyChild = flowgraph.overrides.FirstOrDefault(o => o.id == entityLinks[x].childLinks[y].childID);
+                        CathodeProxy proxyToApplyChild = flowgraph.proxies.FirstOrDefault(o => o.id == entityLinks[x].childLinks[y].childID);
+
+                        isWhat = "is ";
+                        if (nodeToApplyChild != null) if (nodeToApplyChild.HasDataType) isWhat += "datatype node "; else isWhat += "function node ";
+                        if (overrideToApplyChild != null) isWhat += "override ";
+                        if (proxyToApplyChild != null) isWhat += "proxy ";
+                        if (isWhat == "is ") isWhat += "NOTHING!!";
+                        isWhat = entityLinks[x].childLinks[y].childID.ToString() + " " + isWhat;
+                        debugDump.Add("\t\tChild " + isWhat);
+                    }
+
+                    debugDump.Add("");
+                }
+
+                if (entityLinks.Count != 0) debugDump.Add("***");
+                if (entityLinks.Count != 0) debugDump.Add("");
+#endif
+
                 //Assign parameter references to parsed nodes/overrides
                 for (int x = 0; x < paramRefSets.Count; x++)
                 {
                     CathodeNode nodeToApply = flowgraph.nodes.FirstOrDefault(o => o.nodeID == paramRefSets[x].id);
                     CathodeFlowgraphHierarchyOverride overrideToApply = (nodeToApply != null) ? null : flowgraph.overrides.FirstOrDefault(o => o.id == paramRefSets[x].id);
-                    if (nodeToApply == null && overrideToApply == null) continue; //TODO: Parameters can also apply to PROXIES. I don't parse those yet!
+                    CathodeProxy proxyToApply = (nodeToApply != null || overrideToApply != null) ? null : flowgraph.proxies.FirstOrDefault(o => o.id == paramRefSets[x].id);
+                    if (nodeToApply == null && overrideToApply == null && proxyToApply == null)
+                    {
+                        continue; //TODO: Perhaps parameters can apply to the final two blocks I'm not parsing yet? Seems like we shouldn't hit this, but we do.
+                    }
 
                     for (int z = 0; z < paramRefSets[x].refs.Count; z++)
                     {
                         if (nodeToApply != null) nodeToApply.nodeParameterReferences.Add(paramRefSets[x].refs[z]);
                         if (overrideToApply != null) overrideToApply.paramRefs.Add(paramRefSets[x].refs[z]);
+                        if (proxyToApply != null) proxyToApply.paramRefs.Add(paramRefSets[x].refs[z]);
                     }
                 }
 
                 _flowgraphs[i] = flowgraph;
             }
-        }
 
+            File.WriteAllLines("dump.txt", debugDump);
+        }
+        #endregion
+
+        #region LOOKUP_TABLES
         private Dictionary<cGUID, CathodeDataType> _dataTypeLUT = new Dictionary<cGUID, CathodeDataType>();
         private void SetupDataTypeLUT()
         {
@@ -746,6 +798,7 @@ namespace CATHODE.Commands
             SetupResourceEntryTypeLUT();
             return _resourceReferenceTypeLUT.FirstOrDefault(x => x.Value == type).Key;
         }
+        #endregion
 
         private string path = "";
 
@@ -771,6 +824,26 @@ namespace CATHODE.Commands
     {
         public int offset;
         public int count;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct CathodeNodeLink
+    {
+        public cGUID connectionID;  //The unique ID for this connection
+        public cGUID parentParamID; //The ID of the parameter we're providing out 
+        public cGUID childParamID;  //The ID of the parameter we're providing into the child
+        public cGUID childID;       //The ID of the entity we're linking to to provide the value for
+    }
+
+    public class CommandsEntityLinks
+    {
+        public cGUID parentID;
+        public List<CathodeNodeLink> childLinks = new List<CathodeNodeLink>();
+
+        public CommandsEntityLinks(cGUID _id)
+        {
+            parentID = _id;
+        }
     }
 
     public class CommandsParamRefSet
