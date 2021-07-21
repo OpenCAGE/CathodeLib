@@ -84,7 +84,7 @@ namespace CATHODE.Commands
         /* Save all changes back out */
         public void Save()
         {
-#if TEST
+#if TEST_WRITE
             _parameters = new CathodeParameter[0];
             CathodeFlowgraph[] flows = new CathodeFlowgraph[3];
             for (int i = 0; i < _flowgraphs.Length; i++)
@@ -218,7 +218,7 @@ namespace CATHODE.Commands
                             break;
                         case CommandsDataBlock.DEFINE_RENDERABLE_DATA:
                             break;
-                        case CommandsDataBlock.DEFINE_UNKNOWN:
+                        case CommandsDataBlock.DEFINE_CAGEANIMATION_DATA:
                             break;
                         case CommandsDataBlock.DEFINE_ZONES:
                             break;
@@ -258,7 +258,7 @@ namespace CATHODE.Commands
                                         break;
                                     case CommandsDataBlock.DEFINE_RENDERABLE_DATA:
                                         break;
-                                    case CommandsDataBlock.DEFINE_UNKNOWN:
+                                    case CommandsDataBlock.DEFINE_CAGEANIMATION_DATA:
                                         break;
                                     case CommandsDataBlock.DEFINE_ZONES:
                                         break;
@@ -435,8 +435,6 @@ namespace CATHODE.Commands
         /* Read all flowgraphs from the PAK */
         private void ReadFlowgraphs(BinaryReader reader)
         {
-            List<string> debugDump = new List<string>();
-
             for (int i = 0; i < _flowgraphs.Length; i++)
             {
                 reader.BaseStream.Position = flowgraphOffsets[i] * 4;
@@ -510,6 +508,7 @@ namespace CATHODE.Commands
                             }
                             case CommandsDataBlock.DEFINE_EXPOSED_VARIABLES:
                             {
+                                //TODO: Do we want to treat "exposed variable" nodes and "function" nodes separately? Probably should.
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader));
                                 thisNode.dataType = GetDataType(reader.ReadBytes(4));
@@ -574,54 +573,31 @@ namespace CATHODE.Commands
                                 flowgraph.resources.Add(resource_ref);
                                 break;
                             }
-                            //NOT PARSING: This is very similar in format to DEFINE_ENV_MODEL_REF_LINKS with the cross-references
-                            case CommandsDataBlock.DEFINE_UNKNOWN:
+                            case CommandsDataBlock.DEFINE_CAGEANIMATION_DATA:
                             {
-                                break;
-                                //This block is only four bytes - which translates to a pointer to another location... so read that
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
-                                int offsetPos = reader.ReadInt32() * 4;
+                                reader.BaseStream.Position = (reader.ReadInt32() * 4);
 
-                                //Jump to the pointer location - this defines a node ID and another offset with count
-                                reader.BaseStream.Position = offsetPos;
-                                CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader)); //These always seem to be animation related nodes
+                                CathodeNode animationNode = flowgraph.GetNodeByID(new cGUID(reader)); //CAGEAnimation to apply the following data to
+
+                                //TODO refactor the JumpToOffset function to allow it to be used here
                                 int OffsetToFindParams = reader.ReadInt32() * 4;
                                 int NumberOfParams = reader.ReadInt32();
-
-                                //Now we jump to THAT pointer's location, and iterate by count. The blocks here are of length 32.
                                 for (int z = 0; z < NumberOfParams; z++)
                                 {
                                     reader.BaseStream.Position = OffsetToFindParams + (z * 32);
 
-                                    //First 4: unknown id
-                                    byte[] unk1 = reader.ReadBytes(4);
+                                    cGUID unk1 = new cGUID(reader);//Unknown ID (does this link to unknown param ID on CAGEAnimation nodes?
 
-                                    //Second 4: datatype
-                                    byte[] datatype1 = reader.ReadBytes(4);
-                                    CathodeDataType datatype1_converted = GetDataType(datatype1);
+                                    CathodeDataType unk2 = GetDataType(new cGUID(reader)); //Datatype... used for?
+                                    cGUID unk3 = new cGUID(reader); //Unknown ID (does this link to unknown param ID on CAGEAnimation nodes?
+                                    cGUID unk4 = new cGUID(reader); //Unknown ID - is this a named parameter id? (does this link to unknown param ID on CAGEAnimation nodes?
 
-                                    //Third 4: unknown id
-                                    byte[] unk2 = reader.ReadBytes(4);
+                                    CathodeDataType unk5 = GetDataType(new cGUID(reader)); //Datatype... used for?
+                                    cGUID unk6 = new cGUID(reader); //Unknown ID (does this link to unknown param ID on CAGEAnimation nodes?
 
-                                    //Fourth 4: parameter id
-                                    byte[] unk3 = reader.ReadBytes(4);
-                                    //string unk3_paramname_string = NodeDB.GetName(unk3);
-
-                                    //Fifth 4: datatype
-                                    byte[] datatype2 = reader.ReadBytes(4);
-                                    CathodeDataType datatype2_converted = GetDataType(datatype2);
-
-                                    //Sixth 4: unknown ID
-                                    byte[] unk4 = reader.ReadBytes(4);
-
-                                    //Now we get ANOTHER offset. This is a pointer to a location and a count of IDs at that location.
-                                    int offset1 = reader.ReadInt32() * 4;
-                                    int count1 = reader.ReadInt32();
-                                    for (int p = 0; p < count1; p++)
-                                    {
-                                        reader.BaseStream.Position = offset1 + (p * 4);
-                                        byte[] unk69 = reader.ReadBytes(4);  //cross-refs: node ids (of flowgraph refs), then the node, then 0x00 (x4)
-                                    }
+                                    int NumberOfParams2 = JumpToOffset(ref reader);
+                                    List<cGUID> unk7_hierarchy = Utilities.ConsumeArray<cGUID>(reader, NumberOfParams2).ToList<cGUID>(); //Last is always 0x00, 0x00, 0x00, 0x00
                                 }
                                 break;
                             }
@@ -669,21 +645,14 @@ namespace CATHODE.Commands
                     }
                 }
 
-#if TEST
-                if (entityLinks.Count != 0) debugDump.Add(flowgraph.name);
+                /*
                 for (int x = 0; x < entityLinks.Count; x++)
                 {
                     CathodeNode nodeToApplyParent = flowgraph.nodes.FirstOrDefault(o => o.nodeID == entityLinks[x].parentID);
                     CathodeFlowgraphHierarchyOverride overrideToApplyParent = flowgraph.overrides.FirstOrDefault(o => o.id == entityLinks[x].parentID);
                     CathodeProxy proxyToApplyParent = flowgraph.proxies.FirstOrDefault(o => o.id == entityLinks[x].parentID);
 
-                    string isWhat = "is ";
-                    if (nodeToApplyParent != null) if (nodeToApplyParent.HasDataType) isWhat += "datatype node "; else isWhat += "function node ";
-                    if (overrideToApplyParent != null) isWhat += "override ";
-                    if (proxyToApplyParent != null) isWhat += "proxy ";
-                    if (isWhat == "is ") isWhat += "NOTHING!!";
-                    isWhat = entityLinks[x].parentID.ToString() + " " + isWhat;
-                    debugDump.Add("\tConnection Parent " + isWhat);
+                    //if (nodeToApplyParent == null && overrideToApplyParent == null && proxyToApplyParent == null) 
 
                     for (int y = 0; y < entityLinks[x].childLinks.Count; y++)
                     {
@@ -691,21 +660,10 @@ namespace CATHODE.Commands
                         CathodeFlowgraphHierarchyOverride overrideToApplyChild = flowgraph.overrides.FirstOrDefault(o => o.id == entityLinks[x].childLinks[y].childID);
                         CathodeProxy proxyToApplyChild = flowgraph.proxies.FirstOrDefault(o => o.id == entityLinks[x].childLinks[y].childID);
 
-                        isWhat = "is ";
-                        if (nodeToApplyChild != null) if (nodeToApplyChild.HasDataType) isWhat += "datatype node "; else isWhat += "function node ";
-                        if (overrideToApplyChild != null) isWhat += "override ";
-                        if (proxyToApplyChild != null) isWhat += "proxy ";
-                        if (isWhat == "is ") isWhat += "NOTHING!!";
-                        isWhat = entityLinks[x].childLinks[y].childID.ToString() + " " + isWhat;
-                        debugDump.Add("\t\tChild " + isWhat);
+                        //if (nodeToApplyChild == null && overrideToApplyChild == null && proxyToApplyChild == null)
                     }
-
-                    debugDump.Add("");
                 }
-
-                if (entityLinks.Count != 0) debugDump.Add("***");
-                if (entityLinks.Count != 0) debugDump.Add("");
-#endif
+                */
 
                 //Assign parameter references to parsed nodes/overrides
                 for (int x = 0; x < paramRefSets.Count; x++)
@@ -728,8 +686,6 @@ namespace CATHODE.Commands
 
                 _flowgraphs[i] = flowgraph;
             }
-
-            File.WriteAllLines("dump.txt", debugDump);
         }
         #endregion
 
