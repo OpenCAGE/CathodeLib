@@ -116,6 +116,14 @@ namespace CATHODE
         {
             val = reader.ReadBytes(4);
         }
+        public cGUID(string id)
+        {
+            String[] arr = id.Split('-');
+            if (arr.Length != 4) throw new Exception("Tried to initialise cGUID without 4-byte ID string.");
+            byte[] array = new byte[arr.Length];
+            for (int i = 0; i < arr.Length; i++) array[i] = Convert.ToByte(arr[i], 16);
+            val = array;
+        }
 
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
         public byte[] val;
@@ -132,6 +140,14 @@ namespace CATHODE
         public static bool operator !=(cGUID x, cGUID y)
         {
             return !x.val.SequenceEqual(y.val);
+        }
+        public static bool operator ==(cGUID x, string y)
+        {
+            return x.ToString() == y;
+        }
+        public static bool operator !=(cGUID x, string y)
+        {
+            return x.ToString() != y;
         }
         public override int GetHashCode()
         {

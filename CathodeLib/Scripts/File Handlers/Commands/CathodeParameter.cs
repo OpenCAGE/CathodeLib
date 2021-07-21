@@ -64,9 +64,8 @@ namespace CATHODE.Commands
     }
     public class CathodeString : CathodeParameter
     {
+        public cGUID guid;
         public string value = "";
-        public cGUID unk0;
-        public cGUID unk1;
     }
     public class CathodeBool : CathodeParameter
     {

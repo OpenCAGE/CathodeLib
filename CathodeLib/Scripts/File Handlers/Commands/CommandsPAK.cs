@@ -129,8 +129,11 @@ namespace CATHODE.Commands
                         writer.Write(((CathodeInteger)_parameters[i]).value);
                         break;
                     case CathodeDataType.STRING:
-                        writer.Write(((CathodeString)_parameters[i]).unk0.val);
-                        writer.Write(((CathodeString)_parameters[i]).unk1.val);
+                        int stringStart = ((int)writer.BaseStream.Position + 4) / 4;
+                        byte[] stringStartRaw = BitConverter.GetBytes(stringStart);
+                        stringStartRaw[3] = 0x80; //Not sure why we have to do this
+                        writer.Write(stringStartRaw);
+                        writer.Write(((CathodeString)_parameters[i]).guid.val);
                         string str = ((CathodeString)_parameters[i]).value;
                         for (int x = 0; x < str.Length; x++) writer.Write(str[x]);
                         writer.Write((char)0x00);
@@ -370,8 +373,8 @@ namespace CATHODE.Commands
                         break;
                     case CathodeDataType.STRING:
                         this_parameter = new CathodeString();
-                        ((CathodeString)this_parameter).unk0 = new cGUID(reader); // some kind of ID sometimes referenced in script and resource id
-                        ((CathodeString)this_parameter).unk1 = new cGUID(reader); // sometimes flowgraph id ?!
+                        reader.BaseStream.Position += 4; //Pointer to next 4 bytes (no reason to read this!)
+                        ((CathodeString)this_parameter).guid = new cGUID(reader); //Hashed GUID? Doesn't seem to be validated.
                         ((CathodeString)this_parameter).value = Utilities.ReadString(reader);
                         Utilities.Align(reader, 4);
                         break;
