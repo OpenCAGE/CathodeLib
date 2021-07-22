@@ -613,12 +613,13 @@ namespace CATHODE.Commands
                                 int NumberOfParams = reader.ReadInt32();
                                 for (int z = 0; z < NumberOfParams; z++)
                                 {
-                                    reader.BaseStream.Position = OffsetToFindParams + (z * 12) - 4;
-                                        
-                                    //For some reason if z == 0 entry length is 8, if z > 0 entry length is 12
-                                    reader.BaseStream.Position += 4; //If z is 0 this skip is required. If z > 0 this is data we are skipping. What is it?
-                                    int NumberOfParams2 = JumpToOffset(ref reader);
+                                    reader.BaseStream.Position = OffsetToFindParams + (z * 12);
 
+                                    int OffsetToFindParams2 = reader.ReadInt32() * 4;
+                                    int NumberOfParams2 = reader.ReadInt32();
+                                    cGUID unkID = new cGUID(reader); //Apppears to be some kind of identifier (NOT GUID) for this set of hierarchies
+
+                                    reader.BaseStream.Position = OffsetToFindParams2;
                                     List<cGUID> unk7_hierarchy = Utilities.ConsumeArray<cGUID>(reader, NumberOfParams2).ToList<cGUID>(); //Last is always 0x00, 0x00, 0x00, 0x00
                                 }
                                 break;
