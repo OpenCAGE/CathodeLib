@@ -617,7 +617,8 @@ namespace CATHODE.Commands
 
                                     int OffsetToFindParams2 = reader.ReadInt32() * 4;
                                     int NumberOfParams2 = reader.ReadInt32();
-                                    cGUID unkID = new cGUID(reader); //Apppears to be some kind of identifier (NOT GUID) for this set of hierarchies
+
+                                    float TimeToDelay = reader.ReadSingle(); //This defines how long we wait (sequentially) before triggering the node referenced in the hierarchy below
 
                                     reader.BaseStream.Position = OffsetToFindParams2;
                                     List<cGUID> unk7_hierarchy = Utilities.ConsumeArray<cGUID>(reader, NumberOfParams2).ToList<cGUID>(); //Last is always 0x00, 0x00, 0x00, 0x00
