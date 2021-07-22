@@ -23,8 +23,8 @@ namespace CATHODE.Commands
         DEFINE_PROXIES,               //Defines "proxies" similar to the overrides hierarchy (TODO)
         DEFINE_FUNCTION_NODES,        //Defines entities with an attached script function within Cathode
         DEFINE_RENDERABLE_DATA,       //Defines renderable data which is referenced by entities in this flowgraph
-        DEFINE_CAGEANIMATION_DATA,    //Defines additional data for CAGEAnimation type nodes (TODO)
-        DEFINE_ZONES,                 //Appears to group entities into zones for the LOD zoning system (TODO)
+        DEFINE_CAGEANIMATION_DATA,    //Appears to define additional data for CAGEAnimation type nodes (TODO)
+        DEFINE_TRIGGERSEQUENCE_DATA,  //Appears to define additional data for TriggerSequence type nodes (TODO)
 
         UNUSED,                       //Unused values
         UNKNOWN_COUNTS,               //TODO

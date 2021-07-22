@@ -220,7 +220,7 @@ namespace CATHODE.Commands
                             break;
                         case CommandsDataBlock.DEFINE_CAGEANIMATION_DATA:
                             break;
-                        case CommandsDataBlock.DEFINE_ZONES:
+                        case CommandsDataBlock.DEFINE_TRIGGERSEQUENCE_DATA:
                             break;
                     }
                 }
@@ -260,7 +260,7 @@ namespace CATHODE.Commands
                                         break;
                                     case CommandsDataBlock.DEFINE_CAGEANIMATION_DATA:
                                         break;
-                                    case CommandsDataBlock.DEFINE_ZONES:
+                                    case CommandsDataBlock.DEFINE_TRIGGERSEQUENCE_DATA:
                                         break;
                                 }
                             }
@@ -601,43 +601,25 @@ namespace CATHODE.Commands
                                 }
                                 break;
                             }
-                            //NOT PARSING: This is very similar in format to DEFINE_ENV_MODEL_REF_LINKS with the cross-references
-                            case CommandsDataBlock.DEFINE_ZONES:
+                            case CommandsDataBlock.DEFINE_TRIGGERSEQUENCE_DATA:
                             {
-                                break;
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
-                                int offsetPos = reader.ReadInt32() * 4;
+                                reader.BaseStream.Position = (reader.ReadInt32() * 4);
 
-                                reader.BaseStream.Position = offsetPos;
-                                CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader));
-                                //string test0 = NodeDB.GetFriendlyName(thisNode.nodeID);
+                                CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader)); //TriggerSequence to apply the following data to
+
+                                //TODO refactor the JumpToOffset function to allow it to be used here
                                 int OffsetToFindParams = reader.ReadInt32() * 4;
                                 int NumberOfParams = reader.ReadInt32();
-
-                                int goTo = OffsetToFindParams;
-                                for (int m = 0; m < NumberOfParams; m++)
+                                for (int z = 0; z < NumberOfParams; z++)
                                 {
-                                    reader.BaseStream.Position = goTo;
+                                    reader.BaseStream.Position = OffsetToFindParams + (z * 12) - 4;
+                                        
+                                    //For some reason if z == 0 entry length is 8, if z > 0 entry length is 12
+                                    reader.BaseStream.Position += 4; //If z is 0 this skip is required. If z > 0 this is data we are skipping. What is it?
+                                    int NumberOfParams2 = JumpToOffset(ref reader);
 
-                                    byte[] firstFour = reader.ReadBytes(4);
-                                    int offset1 = -1;
-                                    if (m > 0) //for some reason only the first entry is 8 bytes long, the rest are 12, with four bytes of something at the start (some kind of ID, zone id maybe?)
-                                    {
-                                        offset1 = reader.ReadInt32() * 4;
-                                    }
-                                    else
-                                    {
-                                        offset1 = BitConverter.ToInt32(firstFour, 0) * 4;
-                                    }
-                                    int count1 = reader.ReadInt32();
-
-                                    goTo = (int)reader.BaseStream.Position;
-
-                                    reader.BaseStream.Position = offset1;
-                                    for (int p = 0; p < count1; p++)
-                                    {
-                                        byte[] unk55 = reader.ReadBytes(4);  //cross-refs: node ids (of flowgraph refs), then the node, then 0x00 (x4)
-                                    }
+                                    List<cGUID> unk7_hierarchy = Utilities.ConsumeArray<cGUID>(reader, NumberOfParams2).ToList<cGUID>(); //Last is always 0x00, 0x00, 0x00, 0x00
                                 }
                                 break;
                             }
