@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -101,6 +102,20 @@ namespace CATHODE
         public static void Write<T>(BinaryWriter stream, T[] aux)
         {
             for (int i = 0; i < aux.Length; i++) Write<T>(stream, aux[i]);
+        }
+
+        public static cGUID GenerateGUID(string _s)
+        {
+            SHA1Managed sha1 = new SHA1Managed();
+            byte[] hash1 = sha1.ComputeHash(Encoding.UTF8.GetBytes(_s));
+            byte[] arrangedHash = new byte[] {
+                hash1[3], hash1[2], hash1[1], hash1[0], 
+                hash1[7], hash1[6], hash1[5], hash1[4],
+                hash1[11], hash1[10], hash1[9], hash1[8],
+                hash1[15], hash1[14], hash1[13], hash1[12] 
+            };
+            byte[] hash2 = sha1.ComputeHash(Encoding.UTF8.GetBytes(BitConverter.ToString(arrangedHash).Replace("-", string.Empty)));
+            return new cGUID(new byte[] { hash2[0], hash2[1], hash2[2], hash2[3] });
         }
     }
 
