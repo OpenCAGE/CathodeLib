@@ -45,29 +45,6 @@ namespace CATHODE.Commands
         }
     }
 
-    /* A hierarchical override applied to nodes in included flowgraphs, for bespoke functionality */
-    public class CathodeFlowgraphHierarchyOverride
-    {
-        public cGUID id; //The unique ID of this override
-        public cGUID checksum; //TODO: This value is apparently a hash of the hierarchy GUIDs, but need to verify that, and work out the salt.
-        public List<cGUID> hierarchy = new List<cGUID>(); //Lists the nodeIDs to jump through (flowgraph refs) to get to the node that is being overridden, then that node's ID
-        public List<CathodeParameterReference> paramRefs = new List<CathodeParameterReference>(); //Refererence to parameter to apply to the node being overidden
-    }
-
-    /* A "proxy" - still need to work out more about this, seems very similar to the hierarchy override above */
-    public class CathodeProxy
-    {
-        public CathodeProxy(cGUID _id)
-        {
-            id = _id;
-        }
-
-        public cGUID id; //todo: is this actually flowgraph id?
-        public cGUID extraId; //todo: what is this?
-        public List<cGUID> hierarchy = new List<cGUID>();
-        public List<CathodeParameterReference> paramRefs = new List<CathodeParameterReference>(); 
-    }
-
     /* A resource that references a REnDerable elementS DB entry */
     public class CathodeResourceReference
     {
@@ -93,7 +70,9 @@ namespace CATHODE.Commands
             nodeID = id;
         }
         
-        public cGUID nodeID;   //Nodes always have a unique ID
+        public cGUID nodeID; //Translates to string in COMMANDS.BIN dump
+        public CathodeNodeVariant variant = CathodeNodeVariant.NOT_SETUP_YET;
+
         public List<CathodeNodeLink> childLinks = new List<CathodeNodeLink>();
         public List<CathodeParameterReference> nodeParameterReferences = new List<CathodeParameterReference>();
 
@@ -104,51 +83,62 @@ namespace CATHODE.Commands
     }
     public class CathodeDatatypeNode : CathodeNode
     {
-        public CathodeDatatypeNode(cGUID id) : base(id) { }
+        public CathodeDatatypeNode(cGUID id) : base(id) { variant = CathodeNodeVariant.DATATYPE_NODE; }
         public CathodeDataType type = CathodeDataType.NO_TYPE;
-        public cGUID parameter; 
+        public cGUID parameter; //Translates to string in COMMANDS.BIN dump
     }
     public class CathodeFunctionNode : CathodeNode
     {
-        public CathodeFunctionNode(cGUID id) : base(id) { }
-        public cGUID function;
+        public CathodeFunctionNode(cGUID id) : base(id) { variant = CathodeNodeVariant.FUNCTION_NODE; }
+        public cGUID function; //Translates to string via cGUID system
+    }
+    public class CathodeProxyNode : CathodeNode
+    {
+        public CathodeProxyNode(cGUID id) : base(id) { variant = CathodeNodeVariant.PROXY_NODE; }
+        //todo: what does the proxy nodeID translate to? is it a flowgraph id?
+        public cGUID extraId; //todo: what is this?
+        public List<cGUID> hierarchy = new List<cGUID>();
+    }
+    public class CathodeOverrideNode : CathodeNode
+    {
+        public CathodeOverrideNode(cGUID id) : base(id) { variant = CathodeNodeVariant.OVERRIDE_NODE; }
+        public cGUID checksum; //TODO: This value is apparently a hash of the hierarchy GUIDs, but need to verify that, and work out the salt.
+        public List<cGUID> hierarchy = new List<cGUID>();
+    }
+    public enum CathodeNodeVariant
+    {
+        DATATYPE_NODE,
+        FUNCTION_NODE,
+
+        PROXY_NODE,
+        OVERRIDE_NODE,
+
+        NOT_SETUP_YET,
     }
 
     /* A script flowgraph containing nodes with parameters */
     public class CathodeFlowgraph
     {
-        public cGUID globalID;  //The four byte identifier code of the flowgraph global to all commands.paks
-        public cGUID uniqueID;  //The four byte identifier code of the flowgraph unique to commands.pak
+        public cGUID globalID;  //cGUID generated from flowgraph name
         public cGUID nodeID;    //The id when this flowgraph is used as a prefab node in another flowgraph
         public string name = ""; //The string name of the flowgraph
 
         public List<CathodeDatatypeNode> datatypeNodes = new List<CathodeDatatypeNode>();
         public List<CathodeFunctionNode> functionNodes = new List<CathodeFunctionNode>();
 
+        public List<CathodeOverrideNode> overrides = new List<CathodeOverrideNode>();
+        public List<CathodeProxyNode> proxies = new List<CathodeProxyNode>();
+
         public List<CathodeResourceReference> resources = new List<CathodeResourceReference>();
 
-        public List<CathodeFlowgraphHierarchyOverride> overrides = new List<CathodeFlowgraphHierarchyOverride>();
-        public List<CathodeProxy> proxies = new List<CathodeProxy>();
-
-        /* If a node exists in the flowgraph, return it - otherwise create it, and return it */
+        /* If a node exists in the flowgraph, return it */
         public CathodeNode GetNodeByID(cGUID id)
         {
             foreach (CathodeNode node in datatypeNodes) if (node.nodeID == id) return node;
             foreach (CathodeNode node in functionNodes) if (node.nodeID == id) return node;
+            foreach (CathodeNode node in overrides) if (node.nodeID == id) return node;
+            foreach (CathodeNode node in proxies) if (node.nodeID == id) return node;
             return null;
-        }
-
-        /* Get child node override by ID - otherwise create it, and return it */
-        public CathodeFlowgraphHierarchyOverride GetChildOverrideByID(cGUID id)
-        {
-            CathodeFlowgraphHierarchyOverride val = overrides.FirstOrDefault(o => o.id == id);
-            if (val == null)
-            {
-                val = new CathodeFlowgraphHierarchyOverride();
-                val.id = id;
-                overrides.Add(val);
-            }
-            return val;
         }
         
         /* Get resource references by ID */

@@ -171,7 +171,7 @@ namespace CATHODE.Commands
             {
                 int scriptStartPos = (int)writer.BaseStream.Position / 4;
 
-                Utilities.Write<cGUID>(writer, _flowgraphs[i].globalID);
+                Utilities.Write<cGUID>(writer, Utilities.GenerateGUID(_flowgraphs[i].name));
                 for (int x = 0; x < _flowgraphs[i].name.Length; x++) writer.Write(_flowgraphs[i].name[x]);
                 writer.Write((char)0x00);
                 Utilities.Align(writer, 4);
@@ -469,8 +469,9 @@ namespace CATHODE.Commands
                 Utilities.Align(reader, 4);
 
                 //Pull data from those offsets
-                List<CommandsEntityLinks> entityLinks = new List<CommandsEntityLinks>(); //TODO: process this after parsing has completed
+                List<CommandsEntityLinks> entityLinks = new List<CommandsEntityLinks>();
                 List<CommandsParamRefSet> paramRefSets = new List<CommandsParamRefSet>();
+                Dictionary<cGUID, cGUID> overrideChecksums = new Dictionary<cGUID, cGUID>();
                 for (int x = 0; x < offsetPairs.Length; x++)
                 {
                     reader.BaseStream.Position = offsetPairs[x].GlobalOffset * 4;
@@ -497,16 +498,16 @@ namespace CATHODE.Commands
                             case CommandsDataBlock.DEFINE_OVERRIDES:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-                                CathodeFlowgraphHierarchyOverride overrider = flowgraph.GetChildOverrideByID(new cGUID(reader));
+                                CathodeOverrideNode overrider = new CathodeOverrideNode(new cGUID(reader));
                                 int NumberOfParams = JumpToOffset(ref reader);
                                 overrider.hierarchy.AddRange(Utilities.ConsumeArray<cGUID>(reader, NumberOfParams));
+                                flowgraph.overrides.Add(overrider);
                                 break;
                             }
                             case CommandsDataBlock.DEFINE_OVERRIDES_CHECKSUM:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
-                                CathodeFlowgraphHierarchyOverride overrider = flowgraph.GetChildOverrideByID(new cGUID(reader));
-                                overrider.checksum = new cGUID(reader);
+                                overrideChecksums.Add(new cGUID(reader), new cGUID(reader));
                                 break;
                             }
                             case CommandsDataBlock.DEFINE_EXPOSED_VARIABLES:
@@ -515,18 +516,19 @@ namespace CATHODE.Commands
                                 CathodeDatatypeNode thisNode = new CathodeDatatypeNode(new cGUID(reader));
                                 thisNode.type = GetDataType(reader.ReadBytes(4));
                                 thisNode.parameter = new cGUID(reader);
+                                flowgraph.datatypeNodes.Add(thisNode);
                                 break;
                             }
                             case CommandsDataBlock.DEFINE_PROXIES:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 20);
-                                CathodeProxy thisProxy = new CathodeProxy(new cGUID(reader));
+                                CathodeProxyNode thisProxy = new CathodeProxyNode(new cGUID(reader));
                                 int resetPos = (int)reader.BaseStream.Position + 8; //TODO: This is a HACK - I need to rework JumpToOffset to make a temp stream
                                 int NumberOfParams = JumpToOffset(ref reader);
                                 thisProxy.hierarchy.AddRange(Utilities.ConsumeArray<cGUID>(reader, NumberOfParams)); //Last is always 0x00, 0x00, 0x00, 0x00
                                 reader.BaseStream.Position = resetPos;
                                 cGUID idCheck = new cGUID(reader);
-                                if (idCheck != thisProxy.id) throw new Exception("Proxy ID mismatch!");
+                                if (idCheck != thisProxy.nodeID) throw new Exception("Proxy ID mismatch!");
                                 thisProxy.extraId = new cGUID(reader);
                                 flowgraph.proxies.Add(thisProxy);
                                 break;
@@ -632,43 +634,27 @@ namespace CATHODE.Commands
                     }
                 }
 
-                /*
+                for (int x = 0; x < flowgraph.overrides.Count; x++)
+                {
+                    flowgraph.overrides[x].checksum = overrideChecksums[flowgraph.overrides[x].nodeID];
+                }
                 for (int x = 0; x < entityLinks.Count; x++)
                 {
-                    CathodeNode nodeToApplyParent = flowgraph.nodes.FirstOrDefault(o => o.nodeID == entityLinks[x].parentID);
-                    CathodeFlowgraphHierarchyOverride overrideToApplyParent = flowgraph.overrides.FirstOrDefault(o => o.id == entityLinks[x].parentID);
-                    CathodeProxy proxyToApplyParent = flowgraph.proxies.FirstOrDefault(o => o.id == entityLinks[x].parentID);
-
-                    //if (nodeToApplyParent == null && overrideToApplyParent == null && proxyToApplyParent == null) 
-
-                    for (int y = 0; y < entityLinks[x].childLinks.Count; y++)
+                    CathodeNode nodeToApply = flowgraph.GetNodeByID(entityLinks[x].parentID);
+                    if (nodeToApply == null)
                     {
-                        CathodeNode nodeToApplyChild = flowgraph.nodes.FirstOrDefault(o => o.nodeID == entityLinks[x].childLinks[y].childID);
-                        CathodeFlowgraphHierarchyOverride overrideToApplyChild = flowgraph.overrides.FirstOrDefault(o => o.id == entityLinks[x].childLinks[y].childID);
-                        CathodeProxy proxyToApplyChild = flowgraph.proxies.FirstOrDefault(o => o.id == entityLinks[x].childLinks[y].childID);
-
-                        //if (nodeToApplyChild == null && overrideToApplyChild == null && proxyToApplyChild == null)
+                        continue; //TODO: We shouldn't hit this, but we do...
                     }
+                    if (nodeToApply != null) nodeToApply.childLinks.AddRange(entityLinks[x].childLinks);
                 }
-                */
-
-                //Assign parameter references to parsed nodes/overrides
                 for (int x = 0; x < paramRefSets.Count; x++)
                 {
                     CathodeNode nodeToApply = flowgraph.GetNodeByID(paramRefSets[x].id);
-                    CathodeFlowgraphHierarchyOverride overrideToApply = (nodeToApply != null) ? null : flowgraph.overrides.FirstOrDefault(o => o.id == paramRefSets[x].id);
-                    CathodeProxy proxyToApply = (nodeToApply != null || overrideToApply != null) ? null : flowgraph.proxies.FirstOrDefault(o => o.id == paramRefSets[x].id);
-                    if (nodeToApply == null && overrideToApply == null && proxyToApply == null)
+                    if (nodeToApply == null)
                     {
-                        continue; //TODO: Perhaps parameters can apply to the final two blocks I'm not parsing yet? Seems like we shouldn't hit this, but we do.
+                        continue; //TODO: We shouldn't hit this, but we do...
                     }
-
-                    for (int z = 0; z < paramRefSets[x].refs.Count; z++)
-                    {
-                        if (nodeToApply != null) nodeToApply.nodeParameterReferences.Add(paramRefSets[x].refs[z]);
-                        if (overrideToApply != null) overrideToApply.paramRefs.Add(paramRefSets[x].refs[z]);
-                        if (proxyToApply != null) proxyToApply.paramRefs.Add(paramRefSets[x].refs[z]);
-                    }
+                    if (nodeToApply != null) nodeToApply.nodeParameterReferences.AddRange(paramRefSets[x].refs);
                 }
 
                 _flowgraphs[i] = flowgraph;
