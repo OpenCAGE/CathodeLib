@@ -210,22 +210,18 @@ namespace CATHODE.Commands
                             }
                             break;
                         case CommandsDataBlock.ENTITY_OVERRIDES:
-                            //TODO
-                            break;
-                        case CommandsDataBlock.ENTITY_OVERRIDES_CHECKSUM:
-                            //TODO
-                            break;
-                        case CommandsDataBlock.FLOWGRAPH_EXPOSED_PARAMETERS:
-                            //TODO
+                            for (int p = 0; p < _flowgraphs[i].overrides.Count; p++)
+                            {
+                                scriptContentOffsetInfo[x].Add(new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].overrides[p].hierarchy.Count));
+                                Utilities.Write<cGUID>(writer, _flowgraphs[i].overrides[p].hierarchy);
+                            }
                             break;
                         case CommandsDataBlock.ENTITY_PROXIES:
-                            //TODO
-                            break;
-                        case CommandsDataBlock.ENTITY_FUNCTIONS:
-                            //TODO
-                            break;
-                        case CommandsDataBlock.RENDERABLE_DATA:
-                            //TODO
+                            for (int p = 0; p < _flowgraphs[i].proxies.Count; p++)
+                            {
+                                scriptContentOffsetInfo[x].Add(new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].proxies[p].hierarchy.Count));
+                                Utilities.Write<cGUID>(writer, _flowgraphs[i].proxies[p].hierarchy);
+                            }
                             break;
                         case CommandsDataBlock.CAGEANIMATION_DATA:
                             //TODO
@@ -236,12 +232,88 @@ namespace CATHODE.Commands
                     }
                 }
 
-                //Point to that content we just wrote out
+                //Write remaining data & point to that content we just wrote out
                 List<OffsetPair> scriptPointerOffsetInfo = new List<OffsetPair>();
                 for (int x = 0; x < (int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS; x++)
                 {
                     switch ((CommandsDataBlock)x)
                     {
+                        case CommandsDataBlock.ENTITY_FUNCTIONS:
+                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, 0)); //TODO: note to self, this should be _flowgraphs[i].functions.Count
+                            for (int p = 0; p < _flowgraphs[i].functions.Count; p++)
+                            {
+                                writer.Write(_flowgraphs[i].functions[p].nodeID.val);
+                                writer.Write(_flowgraphs[i].functions[p].function.val);
+                            }
+                            break;
+                        case CommandsDataBlock.FLOWGRAPH_EXPOSED_PARAMETERS:
+                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].datatypes.Count));
+                            for (int p = 0; p < _flowgraphs[i].datatypes.Count; p++)
+                            {
+                                writer.Write(_flowgraphs[i].datatypes[p].nodeID.val);
+                                writer.Write(GetDataTypeGUID(_flowgraphs[i].datatypes[p].type).val);
+                                writer.Write(_flowgraphs[i].datatypes[p].parameter.val);
+                            }
+                            break;
+                        case CommandsDataBlock.RENDERABLE_DATA:
+                            //TODO: this case is quite messy as full parsing still isn't known
+                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].resources.Count));
+                            for (int p = 0; p < _flowgraphs[i].resources.Count; p++)
+                            {
+                                writer.Write(_flowgraphs[i].resources[p].resourceRefID.val);
+                                writer.Write(0);
+                                writer.Write(_flowgraphs[i].resources[p].positionOffset.X);
+                                writer.Write(_flowgraphs[i].resources[p].positionOffset.Y);
+                                writer.Write(_flowgraphs[i].resources[p].positionOffset.Z);
+                                writer.Write(0);
+                                writer.Write(_flowgraphs[i].resources[p].resourceID.val);
+                                writer.Write(GetResourceEntryTypeGUID(_flowgraphs[i].resources[p].entryType).val);
+                                switch (_flowgraphs[i].resources[p].entryType)
+                                {
+                                    case CathodeResourceReferenceType.RENDERABLE_INSTANCE:
+                                        writer.Write(_flowgraphs[i].resources[p].entryIndexREDS);
+                                        writer.Write(_flowgraphs[i].resources[p].entryCountREDS);
+                                        break;
+                                    case CathodeResourceReferenceType.COLLISION_MAPPING:
+                                        writer.Write(_flowgraphs[i].resources[p].unknownInteger);
+                                        writer.Write(_flowgraphs[i].resources[p].nodeID.val);
+                                        break;
+                                    case CathodeResourceReferenceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
+                                    case CathodeResourceReferenceType.NAV_MESH_BARRIER_RESOURCE:
+                                    case CathodeResourceReferenceType.TRAVERSAL_SEGMENT:
+                                        writer.Write(-1);
+                                        writer.Write(-1);
+                                        break;
+                                    case CathodeResourceReferenceType.ANIMATED_MODEL:
+                                    case CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM:
+                                        writer.Write(_flowgraphs[i].resources[p].unknownInteger);
+                                        writer.Write(0);
+                                        break;
+                                    default:
+                                        writer.Write(0);
+                                        writer.Write(0);
+                                        break;
+                                }
+                            }
+                            break;
+                        case CommandsDataBlock.ENTITY_OVERRIDES_CHECKSUM:
+                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].overrides.Count));
+                            for (int p = 0; p < _flowgraphs[i].overrides.Count; p++)
+                            {
+                                writer.Write(_flowgraphs[i].overrides[p].nodeID.val);
+                                writer.Write(_flowgraphs[i].overrides[p].checksum.val);
+                            }
+                            break;
+                        case CommandsDataBlock.DEFINE_SCRIPT_HEADER:
+                            scriptPointerOffsetInfo.Add(scriptContentOffsetInfo[x][0]);
+                            break;
+                        case CommandsDataBlock.UNUSED:
+                            scriptPointerOffsetInfo.Add(new OffsetPair(0, 0));
+                            break;
+                        case CommandsDataBlock.UNKNOWN_COUNTS:
+                            //TODO: These count values are unknown. Just writing zeros for now.
+                            scriptPointerOffsetInfo.Add(new OffsetPair(0, 0));
+                            break;
                         default:
                             scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, scriptContentOffsetInfo[x].Count));
                             for (int z = 0; z < scriptContentOffsetInfo[x].Count; z++)
@@ -259,22 +331,16 @@ namespace CATHODE.Commands
                                         writer.Write(scriptContentOffsetInfo[x][z].EntryCount);
                                         break;
                                     case CommandsDataBlock.ENTITY_OVERRIDES:
-                                        //TODO
-                                        break;
-                                    case CommandsDataBlock.ENTITY_OVERRIDES_CHECKSUM:
-                                        //TODO
-                                        break;
-                                    case CommandsDataBlock.FLOWGRAPH_EXPOSED_PARAMETERS:
-                                        //TODO
+                                        writer.Write(_flowgraphs[i].overrides[z].nodeID.val);
+                                        writer.Write(scriptContentOffsetInfo[x][z].GlobalOffset / 4);
+                                        writer.Write(scriptContentOffsetInfo[x][z].EntryCount);
                                         break;
                                     case CommandsDataBlock.ENTITY_PROXIES:
-                                        //TODO
-                                        break;
-                                    case CommandsDataBlock.ENTITY_FUNCTIONS:
-                                        //TODO
-                                        break;
-                                    case CommandsDataBlock.RENDERABLE_DATA:
-                                        //TODO
+                                        writer.Write(_flowgraphs[i].proxies[z].nodeID.val);
+                                        writer.Write(scriptContentOffsetInfo[x][z].GlobalOffset / 4);
+                                        writer.Write(scriptContentOffsetInfo[x][z].EntryCount);
+                                        writer.Write(_flowgraphs[i].proxies[z].nodeID.val);
+                                        writer.Write(_flowgraphs[i].proxies[z].extraId.val);
                                         break;
                                     case CommandsDataBlock.CAGEANIMATION_DATA:
                                         //TODO
@@ -284,17 +350,6 @@ namespace CATHODE.Commands
                                         break;
                                 }
                             }
-                            break;
-                        case CommandsDataBlock.DEFINE_SCRIPT_HEADER:
-                            //We actually just forward on the previous offsets here.
-                            scriptPointerOffsetInfo.Add(scriptContentOffsetInfo[x][0]);
-                            break;
-                        case CommandsDataBlock.UNUSED:
-                            scriptPointerOffsetInfo.Add(new OffsetPair(0, 0));
-                            break;
-                        case CommandsDataBlock.UNKNOWN_COUNTS:
-                            //TODO: These count values are unknown. Just writing zeros for now.
-                            scriptPointerOffsetInfo.Add(new OffsetPair(0, 0));
                             break;
                     }
                 }
