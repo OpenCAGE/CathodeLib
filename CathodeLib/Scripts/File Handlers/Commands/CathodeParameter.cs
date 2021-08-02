@@ -46,48 +46,61 @@ namespace CATHODE.Commands
     /* A parameter compiled in COMMANDS.PAK */
     public class CathodeParameter
     {
-        public int offset;
-        public CathodeDataType dataType;
+        public CathodeParameter() { }
+        public CathodeParameter(CathodeDataType type)
+        {
+            dataType = type;
+        }
 
-        public byte[] unknownContent; //This contains any byte data not yet understood for children types
+        public CathodeDataType dataType = CathodeDataType.NO_TYPE;
+        public byte[] unknownContent; //This contains any byte data not yet understood for children types (TODO: remove this)
     }
     public class CathodeTransform : CathodeParameter
     {
+        public CathodeTransform() { dataType = CathodeDataType.POSITION; }
         public Vector3 position = new Vector3();
         public Vector3 rotation = new Vector3();
     }
     public class CathodeInteger : CathodeParameter
     {
+        public CathodeInteger() { dataType = CathodeDataType.INTEGER; }
         public int value = 0;
     }
     public class CathodeString : CathodeParameter
     {
-        public cGUID guid;
+        public CathodeString() { dataType = CathodeDataType.STRING; }
+        public cGUID id; //cGUID generated from value
         public string value = "";
     }
     public class CathodeBool : CathodeParameter
     {
+        public CathodeBool() { dataType = CathodeDataType.BOOL; }
         public bool value = false;
     }
     public class CathodeFloat : CathodeParameter
     {
+        public CathodeFloat() { dataType = CathodeDataType.FLOAT; }
         public float value = 0.0f;
     }
     public class CathodeResource : CathodeParameter
     {
+        public CathodeResource() { dataType = CathodeDataType.SHORT_GUID; }
         public cGUID resourceID;
     }
     public class CathodeVector3 : CathodeParameter
     {
+        public CathodeVector3() { dataType = CathodeDataType.DIRECTION; }
         public Vector3 value = new Vector3();
     }
     public class CathodeEnum : CathodeParameter
     {
+        public CathodeEnum() { dataType = CathodeDataType.ENUM; }
         public cGUID enumID;
         public int enumIndex = 0;
     }
     public class CathodeSpline : CathodeParameter
     {
+        public CathodeSpline() { dataType = CathodeDataType.SPLINE_DATA; }
         public List<CathodeTransform> splinePoints = new List<CathodeTransform>();
     }
 }

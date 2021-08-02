@@ -15,16 +15,16 @@ namespace CATHODE.Commands
     public enum CommandsDataBlock
     {
         DEFINE_SCRIPT_HEADER,         //Defines the header of the flowgraph, with global ID and string name
-        DEFINE_CONNECTIONS,           //Defines the links between entities in the flowgraph
-        DEFINE_PARAMETERS,            //Defines parameters to be applied to entities in the flowgraph 
-        DEFINE_OVERRIDES,             //Defines overrides to apply to nested instances of flowgraphs in this flowgraph
-        DEFINE_OVERRIDES_CHECKSUM,    //Defines a checksum value for the hierarchy override (TODO)
-        DEFINE_EXPOSED_VARIABLES,     //Defines variables which are exposed when instancing this flowgraph which are then connected in to entities (think variable pins in UE4 blueprint)
-        DEFINE_PROXIES,               //Defines "proxies" similar to the overrides hierarchy (TODO)
-        DEFINE_FUNCTION_NODES,        //Defines entities with an attached script function within Cathode
-        DEFINE_RENDERABLE_DATA,       //Defines renderable data which is referenced by entities in this flowgraph
-        DEFINE_CAGEANIMATION_DATA,    //Appears to define additional data for CAGEAnimation type nodes (TODO)
-        DEFINE_TRIGGERSEQUENCE_DATA,  //Appears to define additional data for TriggerSequence type nodes (TODO)
+        ENTITY_CONNECTIONS,           //Defines the links between entities in the flowgraph
+        ENTITY_PARAMETERS,            //Defines parameters to be applied to entities in the flowgraph 
+        ENTITY_OVERRIDES,             //Defines overrides to apply to nested instances of flowgraphs in this flowgraph
+        ENTITY_OVERRIDES_CHECKSUM,    //Defines a checksum value for the hierarchy override (TODO)
+        FLOWGRAPH_EXPOSED_PARAMETERS,     //Defines variables which are exposed when instancing this flowgraph which are then connected in to entities (think variable pins in UE4 blueprint)
+        ENTITY_PROXIES,               //Defines "proxies" similar to the overrides hierarchy (TODO)
+        ENTITY_FUNCTIONS,        //Defines entities with an attached script function within Cathode
+        RENDERABLE_DATA,       //Defines renderable data which is referenced by entities in this flowgraph
+        CAGEANIMATION_DATA,    //Appears to define additional data for CAGEAnimation type nodes (TODO)
+        TRIGGERSEQUENCE_DATA,  //Appears to define additional data for TriggerSequence type nodes (TODO)
 
         UNUSED,                       //Unused values
         UNKNOWN_COUNTS,               //TODO
@@ -33,16 +33,16 @@ namespace CATHODE.Commands
     }
 
     /* A reference to a parameter in a flowgraph */
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CathodeParameterReference
+    public class CathodeLoadedParameter
     {
-        public cGUID paramID; //The ID of the param in the node
-        public int offset;        //The offset of the param this reference points to (in memory this is *4)
-
-        public void UpdateOffset(int _offset)
+        public CathodeLoadedParameter(cGUID id, CathodeParameter cont)
         {
-            offset = _offset;
+            paramID = id;
+            content = cont;
         }
+
+        public cGUID paramID; //The ID of the param in the node
+        public CathodeParameter content = null;
     }
 
     /* A resource that references a REnDerable elementS DB entry */
@@ -63,107 +63,88 @@ namespace CATHODE.Commands
     }
 
     /* A node in a flowgraph */
-    public class CathodeNode
+    public class CathodeEntity
     {
-        public CathodeNode(cGUID id)
+        public CathodeEntity(cGUID id)
         {
             nodeID = id;
         }
         
         public cGUID nodeID; //Translates to string in COMMANDS.BIN dump
-        public CathodeNodeVariant variant = CathodeNodeVariant.NOT_SETUP_YET;
+        public EntityVariant variant = EntityVariant.NOT_SETUP;
 
         public List<CathodeNodeLink> childLinks = new List<CathodeNodeLink>();
-        public List<CathodeParameterReference> nodeParameterReferences = new List<CathodeParameterReference>();
-
-        public CathodeParameterReference GetParameterReferenceByID(cGUID id)
-        {
-            return nodeParameterReferences.FirstOrDefault(o => o.paramID == id);
-        }
+        public List<CathodeLoadedParameter> parameters = new List<CathodeLoadedParameter>();
     }
-    public class CathodeDatatypeNode : CathodeNode
+    public class DatatypeEntity : CathodeEntity
     {
-        public CathodeDatatypeNode(cGUID id) : base(id) { variant = CathodeNodeVariant.DATATYPE_NODE; }
+        public DatatypeEntity(cGUID id) : base(id) { variant = EntityVariant.DATATYPE; }
         public CathodeDataType type = CathodeDataType.NO_TYPE;
         public cGUID parameter; //Translates to string in COMMANDS.BIN dump
     }
-    public class CathodeFunctionNode : CathodeNode
+    public class FunctionEntity : CathodeEntity
     {
-        public CathodeFunctionNode(cGUID id) : base(id) { variant = CathodeNodeVariant.FUNCTION_NODE; }
+        public FunctionEntity(cGUID id) : base(id) { variant = EntityVariant.FUNCTION; }
         public cGUID function; //Translates to string via cGUID system
     }
-    public class CathodeProxyNode : CathodeNode
+    public class ProxyEntity : CathodeEntity
     {
-        public CathodeProxyNode(cGUID id) : base(id) { variant = CathodeNodeVariant.PROXY_NODE; }
+        public ProxyEntity(cGUID id) : base(id) { variant = EntityVariant.PROXY; }
         //todo: what does the proxy nodeID translate to? is it a flowgraph id?
         public cGUID extraId; //todo: what is this?
         public List<cGUID> hierarchy = new List<cGUID>();
     }
-    public class CathodeOverrideNode : CathodeNode
+    public class OverrideEntity : CathodeEntity
     {
-        public CathodeOverrideNode(cGUID id) : base(id) { variant = CathodeNodeVariant.OVERRIDE_NODE; }
+        public OverrideEntity(cGUID id) : base(id) { variant = EntityVariant.OVERRIDE; }
         public cGUID checksum; //TODO: This value is apparently a hash of the hierarchy GUIDs, but need to verify that, and work out the salt.
         public List<cGUID> hierarchy = new List<cGUID>();
     }
-    public enum CathodeNodeVariant
+    public enum EntityVariant
     {
-        DATATYPE_NODE,
-        FUNCTION_NODE,
+        DATATYPE,
+        FUNCTION,
 
-        PROXY_NODE,
-        OVERRIDE_NODE,
+        PROXY,
+        OVERRIDE,
 
-        NOT_SETUP_YET,
+        NOT_SETUP,
     }
 
-    /* A script flowgraph containing nodes with parameters */
+    /* A script flowgraph containing entities */
     public class CathodeFlowgraph
     {
         public cGUID globalID;  //cGUID generated from flowgraph name
         public cGUID nodeID;    //The id when this flowgraph is used as a prefab node in another flowgraph
         public string name = ""; //The string name of the flowgraph
 
-        public List<CathodeDatatypeNode> datatypeNodes = new List<CathodeDatatypeNode>();
-        public List<CathodeFunctionNode> functionNodes = new List<CathodeFunctionNode>();
+        public List<DatatypeEntity> datatypes = new List<DatatypeEntity>();
+        public List<FunctionEntity> functions = new List<FunctionEntity>();
 
-        public List<CathodeOverrideNode> overrides = new List<CathodeOverrideNode>();
-        public List<CathodeProxyNode> proxies = new List<CathodeProxyNode>();
+        public List<OverrideEntity> overrides = new List<OverrideEntity>();
+        public List<ProxyEntity> proxies = new List<ProxyEntity>();
 
         public List<CathodeResourceReference> resources = new List<CathodeResourceReference>();
 
-        /* If a node exists in the flowgraph, return it */
-        public CathodeNode GetNodeByID(cGUID id)
+        /* If an entity exists in the flowgraph, return it */
+        public CathodeEntity GetEntityByID(cGUID id)
         {
-            foreach (CathodeNode node in datatypeNodes) if (node.nodeID == id) return node;
-            foreach (CathodeNode node in functionNodes) if (node.nodeID == id) return node;
-            foreach (CathodeNode node in overrides) if (node.nodeID == id) return node;
-            foreach (CathodeNode node in proxies) if (node.nodeID == id) return node;
+            foreach (CathodeEntity entity in datatypes) if (entity.nodeID == id) return entity;
+            foreach (CathodeEntity entity in functions) if (entity.nodeID == id) return entity;
+            foreach (CathodeEntity entity in overrides) if (entity.nodeID == id) return entity;
+            foreach (CathodeEntity entity in proxies) if (entity.nodeID == id) return entity;
             return null;
         }
-        
-        /* Get resource references by ID */
-        public List<CathodeResourceReference> GetResourceReferencesByID(cGUID id)
-        {
-            return resources.FindAll(o => o.resourceID == id);
-        }
-    }
 
-    /* Temp holder for offset pairs */
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct OffsetPair
-    {
-        public int GlobalOffset;
-        public int EntryCount;
-
-        public OffsetPair(int _go, int _ec)
+        /* Returns a collection of all entities in the flowgraph */
+        public List<CathodeEntity> GetEntities()
         {
-            GlobalOffset = _go;
-            EntryCount = _ec;
-        }
-        public OffsetPair(long _go, int _ec)
-        {
-            GlobalOffset = (int)_go;
-            EntryCount = _ec;
+            List<CathodeEntity> toReturn = new List<CathodeEntity>();
+            toReturn.AddRange(datatypes);
+            toReturn.AddRange(functions);
+            toReturn.AddRange(overrides);
+            toReturn.AddRange(proxies);
+            return toReturn;
         }
     }
 }

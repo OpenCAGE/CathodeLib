@@ -26,28 +26,22 @@ namespace CATHODE.Commands
         {
             path = pathToPak;
 
-            BinaryReader reader = new BinaryReader(File.OpenRead(path));
-
-            ReadHeaderInfo(reader);
-            ReadParameters(reader);
-            ReadFlowgraphs(reader);
-
-            reader.Close();
+            Load(path);
         }
 
         #region ACCESSORS
         /* Return a list of filenames for flowgraphs in the CommandsPAK archive */
         public string[] GetFlowgraphNames()
         {
-            string[] toReturn = new string[_flowgraphs.Length];
-            for (int i = 0; i < _flowgraphs.Length; i++) toReturn[i] = _flowgraphs[i].name;
+            string[] toReturn = new string[_flowgraphs.Count];
+            for (int i = 0; i < _flowgraphs.Count; i++) toReturn[i] = _flowgraphs[i].name;
             return toReturn;
         }
 
         /* Find the a script entry object by name */
         public int GetFileIndex(string FileName)
         {
-            for (int i = 0; i < _flowgraphs.Length; i++) if (_flowgraphs[i].name == FileName || _flowgraphs[i].name == FileName.Replace('/', '\\')) return i;
+            for (int i = 0; i < _flowgraphs.Count; i++) if (_flowgraphs[i].name == FileName || _flowgraphs[i].name == FileName.Replace('/', '\\')) return i;
             return -1;
         }
 
@@ -59,16 +53,11 @@ namespace CATHODE.Commands
         }
         public CathodeFlowgraph GetFlowgraphByIndex(int index)
         {
-            return (index >= _flowgraphs.Length || index < 0) ? null : _flowgraphs[index];
-        }
-        public CathodeParameter GetParameter(int offset)
-        {
-            return _parameters.FirstOrDefault(o => o.offset == offset);
+            return (index >= _flowgraphs.Count || index < 0) ? null : _flowgraphs[index];
         }
 
         /* Get all flowgraphs/parameters */
-        public CathodeFlowgraph[] Flowgraphs { get { return _flowgraphs; } }
-        public CathodeParameter[] Parameters { get { return _parameters; } } //TODO: parameters should be instanced per node
+        public List<CathodeFlowgraph> Flowgraphs { get { return _flowgraphs; } }
 
         /* Get entry point flowgraph objects */
         public CathodeFlowgraph[] EntryPoints
@@ -104,70 +93,82 @@ namespace CATHODE.Commands
             BinaryWriter writer = new BinaryWriter(File.OpenWrite(path));
             writer.BaseStream.SetLength(0);
 
-            /* Write entry points */
+            //Write entry points
             Utilities.Write<CommandsEntryPoints>(writer, _entryPoints);
 
-            /* Write placeholder info for parameter/flowgraph offsets */
+            //Write placeholder info for parameter/flowgraph offsets
             int offsetToRewrite = (int)writer.BaseStream.Position;
             writer.Write(0); 
             writer.Write(0);
             writer.Write(0); 
             writer.Write(0);
 
-            /* Write out parameters */
-            parameterOffsets = new int[_parameters.Length]; 
-            for (int i = 0; i < _parameters.Length; i++)
+            //Work out unique parameters to write
+            List<CathodeParameter> parameters = new List<CathodeParameter>();
+            for (int i = 0; i < _flowgraphs.Count; i++)
+            {
+                List<CathodeEntity> fgEntities = _flowgraphs[i].GetEntities();
+                for (int x = 0; x < fgEntities.Count; x++)
+                    for (int y = 0; y < fgEntities[x].parameters.Count; y++)
+                        if (!parameters.Contains(fgEntities[x].parameters[y].content)) parameters.Add(fgEntities[x].parameters[y].content);
+            }
+            parameters = parameters.OrderBy(o => o.dataType).ToList<CathodeParameter>(); //TODO: Secondary sort by value after sorting types?
+
+            //Write out parameters & track offsets
+            int[] parameterOffsets = new int[parameters.Count]; 
+            for (int i = 0; i < parameters.Count; i++)
             {
                 parameterOffsets[i] = (int)writer.BaseStream.Position / 4;
-                Utilities.Write<cGUID>(writer, GetDataTypeGUID(_parameters[i].dataType));
-                switch (_parameters[i].dataType)
+                Utilities.Write<cGUID>(writer, GetDataTypeGUID(parameters[i].dataType));
+                switch (parameters[i].dataType)
                 {
                     case CathodeDataType.POSITION:
-                        Vector3 pos = ((CathodeTransform)_parameters[i]).position;
-                        Vector3 rot = ((CathodeTransform)_parameters[i]).rotation;
+                        Vector3 pos = ((CathodeTransform)parameters[i]).position;
+                        Vector3 rot = ((CathodeTransform)parameters[i]).rotation;
                         writer.Write(pos.X); writer.Write(pos.Y); writer.Write(pos.Z);
                         writer.Write(rot.Y); writer.Write(rot.X); writer.Write(rot.Z);
                         break;
                     case CathodeDataType.INTEGER:
-                        writer.Write(((CathodeInteger)_parameters[i]).value);
+                        writer.Write(((CathodeInteger)parameters[i]).value);
                         break;
                     case CathodeDataType.STRING:
                         int stringStart = ((int)writer.BaseStream.Position + 4) / 4;
                         byte[] stringStartRaw = BitConverter.GetBytes(stringStart);
-                        stringStartRaw[3] = 0x80; //Not sure why we have to do this
+                        stringStartRaw[3] = 0x80; 
                         writer.Write(stringStartRaw);
-                        writer.Write(((CathodeString)_parameters[i]).guid.val);
-                        string str = ((CathodeString)_parameters[i]).value;
+                        string str = ((CathodeString)parameters[i]).value;
+                        writer.Write(Utilities.GenerateGUID(str).val);
                         for (int x = 0; x < str.Length; x++) writer.Write(str[x]);
                         writer.Write((char)0x00);
                         Utilities.Align(writer, 4);
                         break;
                     case CathodeDataType.BOOL:
-                        if (((CathodeBool)_parameters[i]).value) writer.Write(1); else writer.Write(0);
+                        if (((CathodeBool)parameters[i]).value) writer.Write(1); else writer.Write(0);
                         break;
                     case CathodeDataType.FLOAT:
-                        writer.Write(((CathodeFloat)_parameters[i]).value);
+                        writer.Write(((CathodeFloat)parameters[i]).value);
                         break;
                     case CathodeDataType.SHORT_GUID:
-                        Utilities.Write<cGUID>(writer, ((CathodeResource)_parameters[i]).resourceID);
+                        Utilities.Write<cGUID>(writer, ((CathodeResource)parameters[i]).resourceID);
                         break;
                     case CathodeDataType.DIRECTION:
-                        Vector3 dir = ((CathodeVector3)_parameters[i]).value;
+                        Vector3 dir = ((CathodeVector3)parameters[i]).value;
                         writer.Write(dir.Y); writer.Write(dir.X); writer.Write(dir.Z);
                         break;
                     case CathodeDataType.ENUM:
-                        Utilities.Write<cGUID>(writer, ((CathodeEnum)_parameters[i]).enumID);
-                        writer.Write(((CathodeEnum)_parameters[i]).enumIndex);
+                        Utilities.Write<cGUID>(writer, ((CathodeEnum)parameters[i]).enumID);
+                        writer.Write(((CathodeEnum)parameters[i]).enumIndex);
                         break;
+                    //TODO: splines
                     default:
-                        writer.Write(_parameters[i].unknownContent);
+                        writer.Write(parameters[i].unknownContent);
                         break;
                 }
             }
 
-            /* Write out flowgraphs */
-            flowgraphOffsets = new int[_flowgraphs.Length];
-            for (int i = 0; i < _flowgraphs.Length; i++)
+            //Write out flowgraphs & track offsets
+            int[] flowgraphOffsets = new int[_flowgraphs.Count];
+            for (int i = 0; i < _flowgraphs.Count; i++)
             {
                 int scriptStartPos = (int)writer.BaseStream.Position / 4;
 
@@ -177,15 +178,8 @@ namespace CATHODE.Commands
                 Utilities.Align(writer, 4);
 
                 //Work out what we want to write
-                List<CathodeNode> nodesWithLinks = new List<CathodeNode>();
-                nodesWithLinks.AddRange(_flowgraphs[i].functionNodes.FindAll(o => o.childLinks.Count != 0));
-                nodesWithLinks.AddRange(_flowgraphs[i].datatypeNodes.FindAll(o => o.childLinks.Count != 0));
-
-                //List<CathodeParameterReference> paramsToWrite = new List<CathodeParameterReference>();
-                //List<CathodeNode> nodesWithParams = _flowgraphs[i].nodes.FindAll(o => o.nodeParameterReferences.Count != 0);
-                //List<CathodeFlowgraphHierarchyOverride> overridesWithParams = _flowgraphs[i].overrides.FindAll(o => o.paramRefs.Count != 0);
-                //List<CathodeProxy> proxiesWithParams = _flowgraphs[i].proxies.FindAll(o => o.paramRefs.Count != 0);
-                //for (int x = 0; x < nodesWithParams.Count; x++) nodesWithParams[x].nodeParameterReferences
+                List<CathodeEntity> entitiesWithLinks = new List<CathodeEntity>(_flowgraphs[i].GetEntities().FindAll(o => o.childLinks.Count != 0));
+                List<CathodeEntity> entitiesWithParams = new List<CathodeEntity>(_flowgraphs[i].GetEntities().FindAll(o => o.parameters.Count != 0));
 
                 //Write the content out that we will point to in a second
                 List<List<OffsetPair>> scriptContentOffsetInfo = new List<List<OffsetPair>>();
@@ -200,30 +194,30 @@ namespace CATHODE.Commands
                             Utilities.Write<cGUID>(writer, _flowgraphs[i].nodeID);
                             writer.Write(0);
                             break;
-                        case CommandsDataBlock.DEFINE_CONNECTIONS:
-                            foreach (CathodeNode nodeWithLink in nodesWithLinks)
+                        case CommandsDataBlock.ENTITY_CONNECTIONS:
+                            foreach (CathodeEntity nodeWithLink in entitiesWithLinks)
                             {
                                 scriptContentOffsetInfo[x].Add(new OffsetPair(writer.BaseStream.Position, nodeWithLink.childLinks.Count));
                                 Utilities.Write<CathodeNodeLink>(writer, nodeWithLink.childLinks);
                             }
                             break;
-                        case CommandsDataBlock.DEFINE_PARAMETERS:
+                        case CommandsDataBlock.ENTITY_PARAMETERS:
                             break;
-                        case CommandsDataBlock.DEFINE_OVERRIDES:
+                        case CommandsDataBlock.ENTITY_OVERRIDES:
                             break;
-                        case CommandsDataBlock.DEFINE_OVERRIDES_CHECKSUM:
+                        case CommandsDataBlock.ENTITY_OVERRIDES_CHECKSUM:
                             break;
-                        case CommandsDataBlock.DEFINE_EXPOSED_VARIABLES:
+                        case CommandsDataBlock.FLOWGRAPH_EXPOSED_PARAMETERS:
                             break;
-                        case CommandsDataBlock.DEFINE_PROXIES:
+                        case CommandsDataBlock.ENTITY_PROXIES:
                             break;
-                        case CommandsDataBlock.DEFINE_FUNCTION_NODES:
+                        case CommandsDataBlock.ENTITY_FUNCTIONS:
                             break;
-                        case CommandsDataBlock.DEFINE_RENDERABLE_DATA:
+                        case CommandsDataBlock.RENDERABLE_DATA:
                             break;
-                        case CommandsDataBlock.DEFINE_CAGEANIMATION_DATA:
+                        case CommandsDataBlock.CAGEANIMATION_DATA:
                             break;
-                        case CommandsDataBlock.DEFINE_TRIGGERSEQUENCE_DATA:
+                        case CommandsDataBlock.TRIGGERSEQUENCE_DATA:
                             break;
                     }
                 }
@@ -240,30 +234,30 @@ namespace CATHODE.Commands
                             {
                                 switch ((CommandsDataBlock)x)
                                 {
-                                    case CommandsDataBlock.DEFINE_CONNECTIONS:
-                                        writer.Write(nodesWithLinks[z].nodeID.val);
+                                    case CommandsDataBlock.ENTITY_CONNECTIONS:
+                                        writer.Write(entitiesWithLinks[z].nodeID.val);
                                         writer.Write(scriptContentOffsetInfo[x][z].GlobalOffset / 4);
                                         writer.Write(scriptContentOffsetInfo[x][z].EntryCount);
                                         break;
-                                    case CommandsDataBlock.DEFINE_PARAMETERS:
+                                    case CommandsDataBlock.ENTITY_PARAMETERS:
                                         //TODO: to write out params we will have to edit how data is stored here.
                                         //Save params to each node rather than just storing references, or reference a stored array not by offset!
                                         break;
-                                    case CommandsDataBlock.DEFINE_OVERRIDES:
+                                    case CommandsDataBlock.ENTITY_OVERRIDES:
                                         break;
-                                    case CommandsDataBlock.DEFINE_OVERRIDES_CHECKSUM:
+                                    case CommandsDataBlock.ENTITY_OVERRIDES_CHECKSUM:
                                         break;
-                                    case CommandsDataBlock.DEFINE_EXPOSED_VARIABLES:
+                                    case CommandsDataBlock.FLOWGRAPH_EXPOSED_PARAMETERS:
                                         break;
-                                    case CommandsDataBlock.DEFINE_PROXIES:
+                                    case CommandsDataBlock.ENTITY_PROXIES:
                                         break;
-                                    case CommandsDataBlock.DEFINE_FUNCTION_NODES:
+                                    case CommandsDataBlock.ENTITY_FUNCTIONS:
                                         break;
-                                    case CommandsDataBlock.DEFINE_RENDERABLE_DATA:
+                                    case CommandsDataBlock.RENDERABLE_DATA:
                                         break;
-                                    case CommandsDataBlock.DEFINE_CAGEANIMATION_DATA:
+                                    case CommandsDataBlock.CAGEANIMATION_DATA:
                                         break;
-                                    case CommandsDataBlock.DEFINE_TRIGGERSEQUENCE_DATA:
+                                    case CommandsDataBlock.TRIGGERSEQUENCE_DATA:
                                         break;
                                 }
                             }
@@ -290,7 +284,7 @@ namespace CATHODE.Commands
                     if (x == 0)
                     {
                         byte[] scriptStartRaw = BitConverter.GetBytes(scriptStartPos);
-                        scriptStartRaw[3] = 0x80; //Not sure why we have to do this
+                        scriptStartRaw[3] = 0x80;
                         writer.Write(scriptStartRaw);
                     }
                     writer.Write(scriptPointerOffsetInfo[x].GlobalOffset / 4); //offset
@@ -302,20 +296,20 @@ namespace CATHODE.Commands
                 }
             }
 
-            /* Write out parameter offsets */
+            //Write out parameter offsets
             int parameterOffsetPos = (int)writer.BaseStream.Position;
             Utilities.Write<int>(writer, parameterOffsets);
 
-            /* Write out flowgraph offsets */
+            //Write out flowgraph offsets
             int flowgraphOffsetPos = (int)writer.BaseStream.Position;
             Utilities.Write<int>(writer, flowgraphOffsets);
 
-            /* Rewrite header info with correct offsets */
+            //Rewrite header info with correct offsets 
             writer.BaseStream.Position = offsetToRewrite;
             writer.Write(parameterOffsetPos / 4);
-            writer.Write(_parameters.Length);
+            writer.Write(parameters.Count);
             writer.Write(flowgraphOffsetPos / 4);
-            writer.Write(_flowgraphs.Length);
+            writer.Write(_flowgraphs.Count);
 
             writer.Close();
         }
@@ -331,38 +325,33 @@ namespace CATHODE.Commands
         }
 
         /* Read the parameter and flowgraph offsets & get entry points */
-        private void ReadHeaderInfo(BinaryReader reader)
+        private void Load(string path)
         {
-            /* Read entry points */
+            BinaryReader reader = new BinaryReader(File.OpenRead(path));
+
+            //Read entry points
             _entryPoints = Utilities.Consume<CommandsEntryPoints>(reader);
 
-            /* Initialise parameter info */
+            //Read parameter/flowgraph counts
             int parameter_offset_pos = reader.ReadInt32() * 4;
-            _parameters = new CathodeParameter[reader.ReadInt32()];
-
-            /* Initialise flowgraph info */
+            int parameter_count = reader.ReadInt32();
             int flowgraph_offset_pos = reader.ReadInt32() * 4;
-            _flowgraphs = new CathodeFlowgraph[reader.ReadInt32()];
+            int flowgraph_count = reader.ReadInt32();
 
-            /* Archive offsets for parameters */
+            //Read parameter/flowgraph offsets
             reader.BaseStream.Position = parameter_offset_pos;
-            parameterOffsets = Utilities.ConsumeArray<int>(reader, _parameters.Length);
-
-            /* Archive offsets for flowgraphs */
+            int[] parameterOffsets = Utilities.ConsumeArray<int>(reader, parameter_count);
             reader.BaseStream.Position = flowgraph_offset_pos;
-            flowgraphOffsets = Utilities.ConsumeArray<int>(reader, _flowgraphs.Length);
-        }
+            int[] flowgraphOffsets = Utilities.ConsumeArray<int>(reader, flowgraph_count);
 
-        /* Read all parameters from the PAK */
-        private void ReadParameters(BinaryReader reader)
-        {
+            //Read all parameters from the PAK
+            Dictionary<int, CathodeParameter> parameters = new Dictionary<int, CathodeParameter>(parameter_count);
             reader.BaseStream.Position = parameterOffsets[0] * 4;
-            for (int i = 0; i < _parameters.Length; i++)
+            for (int i = 0; i < parameter_count; i++)
             {
-                int length = (i == _parameters.Length - 1) ? (flowgraphOffsets[0] * 4) - (parameterOffsets[i] * 4) : (parameterOffsets[i + 1] * 4) - (parameterOffsets[i] * 4);
-                CathodeParameter this_parameter = new CathodeParameter();
-                CathodeDataType this_datatype = GetDataType(reader.ReadBytes(4));
-                switch (this_datatype)
+                int length = (i == parameter_count - 1) ? (flowgraphOffsets[0] * 4) - (parameterOffsets[i] * 4) : (parameterOffsets[i + 1] * 4) - (parameterOffsets[i] * 4); //TODO: remove this once splines are implemented
+                CathodeParameter this_parameter = new CathodeParameter(GetDataType(new cGUID(reader)));
+                switch (this_parameter.dataType)
                 {
                     case CathodeDataType.POSITION:
                         this_parameter = new CathodeTransform();
@@ -377,7 +366,7 @@ namespace CATHODE.Commands
                     case CathodeDataType.STRING:
                         this_parameter = new CathodeString();
                         reader.BaseStream.Position += 4; //Pointer to next 4 bytes (no reason to read this!)
-                        ((CathodeString)this_parameter).guid = new cGUID(reader); //Hashed GUID? Doesn't seem to be validated.
+                        ((CathodeString)this_parameter).id = new cGUID(reader);
                         ((CathodeString)this_parameter).value = Utilities.ReadString(reader);
                         Utilities.Align(reader, 4);
                         break;
@@ -427,18 +416,12 @@ namespace CATHODE.Commands
                         this_parameter.unknownContent = reader.ReadBytes(length - 4); //Should never hit this!
                         break;
                 }
-
-                this_parameter.offset = parameterOffsets[i];
-                this_parameter.dataType = this_datatype;
-
-                _parameters[i] = this_parameter;
+                parameters.Add(parameterOffsets[i], this_parameter);
             }
-        }
 
-        /* Read all flowgraphs from the PAK */
-        private void ReadFlowgraphs(BinaryReader reader)
-        {
-            for (int i = 0; i < _flowgraphs.Length; i++)
+            //Read all flowgraphs from the PAK
+            CathodeFlowgraph[] flowgraphs = new CathodeFlowgraph[flowgraph_count];
+            for (int i = 0; i < flowgraph_count; i++)
             {
                 reader.BaseStream.Position = flowgraphOffsets[i] * 4;
                 reader.BaseStream.Position += 4; //Skip 0x00,0x00,0x00,0x00
@@ -479,7 +462,7 @@ namespace CATHODE.Commands
                     {
                         switch ((CommandsDataBlock)x)
                         {
-                            case CommandsDataBlock.DEFINE_CONNECTIONS:
+                            case CommandsDataBlock.ENTITY_CONNECTIONS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 entityLinks.Add(new CommandsEntityLinks(new cGUID(reader)));
@@ -487,7 +470,7 @@ namespace CATHODE.Commands
                                 entityLinks[entityLinks.Count - 1].childLinks.AddRange(Utilities.ConsumeArray<CathodeNodeLink>(reader, NumberOfParams));
                                 break;
                             }
-                            case CommandsDataBlock.DEFINE_PARAMETERS:
+                            case CommandsDataBlock.ENTITY_PARAMETERS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 paramRefSets.Add(new CommandsParamRefSet(new cGUID(reader)));
@@ -495,34 +478,34 @@ namespace CATHODE.Commands
                                 paramRefSets[paramRefSets.Count - 1].refs.AddRange(Utilities.ConsumeArray<CathodeParameterReference>(reader, NumberOfParams));
                                 break;
                             }
-                            case CommandsDataBlock.DEFINE_OVERRIDES:
+                            case CommandsDataBlock.ENTITY_OVERRIDES:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-                                CathodeOverrideNode overrider = new CathodeOverrideNode(new cGUID(reader));
+                                OverrideEntity overrider = new OverrideEntity(new cGUID(reader));
                                 int NumberOfParams = JumpToOffset(ref reader);
                                 overrider.hierarchy.AddRange(Utilities.ConsumeArray<cGUID>(reader, NumberOfParams));
                                 flowgraph.overrides.Add(overrider);
                                 break;
                             }
-                            case CommandsDataBlock.DEFINE_OVERRIDES_CHECKSUM:
+                            case CommandsDataBlock.ENTITY_OVERRIDES_CHECKSUM:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
                                 overrideChecksums.Add(new cGUID(reader), new cGUID(reader));
                                 break;
                             }
-                            case CommandsDataBlock.DEFINE_EXPOSED_VARIABLES:
+                            case CommandsDataBlock.FLOWGRAPH_EXPOSED_PARAMETERS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-                                CathodeDatatypeNode thisNode = new CathodeDatatypeNode(new cGUID(reader));
-                                thisNode.type = GetDataType(reader.ReadBytes(4));
+                                DatatypeEntity thisNode = new DatatypeEntity(new cGUID(reader));
+                                thisNode.type = GetDataType(new cGUID(reader));
                                 thisNode.parameter = new cGUID(reader);
-                                flowgraph.datatypeNodes.Add(thisNode);
+                                flowgraph.datatypes.Add(thisNode);
                                 break;
                             }
-                            case CommandsDataBlock.DEFINE_PROXIES:
+                            case CommandsDataBlock.ENTITY_PROXIES:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 20);
-                                CathodeProxyNode thisProxy = new CathodeProxyNode(new cGUID(reader));
+                                ProxyEntity thisProxy = new ProxyEntity(new cGUID(reader));
                                 int resetPos = (int)reader.BaseStream.Position + 8; //TODO: This is a HACK - I need to rework JumpToOffset to make a temp stream
                                 int NumberOfParams = JumpToOffset(ref reader);
                                 thisProxy.hierarchy.AddRange(Utilities.ConsumeArray<cGUID>(reader, NumberOfParams)); //Last is always 0x00, 0x00, 0x00, 0x00
@@ -533,16 +516,16 @@ namespace CATHODE.Commands
                                 flowgraph.proxies.Add(thisProxy);
                                 break;
                             }
-                            case CommandsDataBlock.DEFINE_FUNCTION_NODES:
+                            case CommandsDataBlock.ENTITY_FUNCTIONS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
-                                CathodeFunctionNode thisNode = new CathodeFunctionNode(new cGUID(reader));
+                                FunctionEntity thisNode = new FunctionEntity(new cGUID(reader));
                                 thisNode.function = new cGUID(reader);
-                                flowgraph.functionNodes.Add(thisNode);
+                                flowgraph.functions.Add(thisNode);
                                 break;
                             }
                             //TODO: this case needs a GIANT refactor!
-                            case CommandsDataBlock.DEFINE_RENDERABLE_DATA:
+                            case CommandsDataBlock.RENDERABLE_DATA:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 40);
 
@@ -578,12 +561,12 @@ namespace CATHODE.Commands
                                 flowgraph.resources.Add(resource_ref);
                                 break;
                             }
-                            case CommandsDataBlock.DEFINE_CAGEANIMATION_DATA:
+                            case CommandsDataBlock.CAGEANIMATION_DATA:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
                                 reader.BaseStream.Position = (reader.ReadInt32() * 4);
 
-                                CathodeNode animationNode = flowgraph.GetNodeByID(new cGUID(reader)); //CAGEAnimation to apply the following data to
+                                CathodeEntity animationNode = flowgraph.GetEntityByID(new cGUID(reader)); //CAGEAnimation to apply the following data to
 
                                 //TODO refactor the JumpToOffset function to allow it to be used here
                                 int OffsetToFindParams = reader.ReadInt32() * 4;
@@ -606,12 +589,12 @@ namespace CATHODE.Commands
                                 }
                                 break;
                             }
-                            case CommandsDataBlock.DEFINE_TRIGGERSEQUENCE_DATA:
+                            case CommandsDataBlock.TRIGGERSEQUENCE_DATA:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
                                 reader.BaseStream.Position = (reader.ReadInt32() * 4);
 
-                                CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader)); //TriggerSequence to apply the following data to
+                                CathodeEntity thisNode = flowgraph.GetEntityByID(new cGUID(reader)); //TriggerSequence to apply the following data to
 
                                 //TODO refactor the JumpToOffset function to allow it to be used here
                                 int OffsetToFindParams = reader.ReadInt32() * 4;
@@ -640,7 +623,7 @@ namespace CATHODE.Commands
                 }
                 for (int x = 0; x < entityLinks.Count; x++)
                 {
-                    CathodeNode nodeToApply = flowgraph.GetNodeByID(entityLinks[x].parentID);
+                    CathodeEntity nodeToApply = flowgraph.GetEntityByID(entityLinks[x].parentID);
                     if (nodeToApply == null)
                     {
                         continue; //TODO: We shouldn't hit this, but we do...
@@ -649,16 +632,20 @@ namespace CATHODE.Commands
                 }
                 for (int x = 0; x < paramRefSets.Count; x++)
                 {
-                    CathodeNode nodeToApply = flowgraph.GetNodeByID(paramRefSets[x].id);
+                    CathodeEntity nodeToApply = flowgraph.GetEntityByID(paramRefSets[x].id);
                     if (nodeToApply == null)
                     {
                         continue; //TODO: We shouldn't hit this, but we do...
                     }
-                    if (nodeToApply != null) nodeToApply.nodeParameterReferences.AddRange(paramRefSets[x].refs);
+                    for (int y = 0; y < paramRefSets[x].refs.Count; y++)
+                        nodeToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, parameters[paramRefSets[x].refs[y].offset]));
                 }
 
-                _flowgraphs[i] = flowgraph;
+                flowgraphs[i] = flowgraph;
             }
+            _flowgraphs = flowgraphs.ToList<CathodeFlowgraph>();
+
+            reader.Close();
         }
         #endregion
 
@@ -737,11 +724,7 @@ namespace CATHODE.Commands
         private CommandsEntryPoints _entryPoints;
         private CathodeFlowgraph[] _entryPointObjects = null;
 
-        private CathodeParameter[] _parameters = null;
-        private CathodeFlowgraph[] _flowgraphs = null;
-
-        private int[] parameterOffsets; //These values need to be multiplied by four when reading
-        private int[] flowgraphOffsets; //These values need to be multiplied by four when reading
+        private List<CathodeFlowgraph> _flowgraphs = null;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -765,6 +748,31 @@ namespace CATHODE.Commands
         public cGUID parentParamID; //The ID of the parameter we're providing out 
         public cGUID childParamID;  //The ID of the parameter we're providing into the child
         public cGUID childID;       //The ID of the entity we're linking to to provide the value for
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct OffsetPair
+    {
+        public int GlobalOffset;
+        public int EntryCount;
+
+        public OffsetPair(int _go, int _ec)
+        {
+            GlobalOffset = _go;
+            EntryCount = _ec;
+        }
+        public OffsetPair(long _go, int _ec)
+        {
+            GlobalOffset = (int)_go;
+            EntryCount = _ec;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct CathodeParameterReference
+    {
+        public cGUID paramID; //The ID of the param in the node
+        public int offset;    //The offset of the param this reference points to (in memory this is *4)
     }
 
     public class CommandsEntityLinks
