@@ -118,6 +118,8 @@ namespace CATHODE.Commands
         public cGUID nodeID;    //The id when this flowgraph is used as a prefab node in another flowgraph
         public string name = ""; //The string name of the flowgraph
 
+        public OffsetPair unknownPair;
+
         public List<DatatypeEntity> datatypes = new List<DatatypeEntity>();
         public List<FunctionEntity> functions = new List<FunctionEntity>();
 

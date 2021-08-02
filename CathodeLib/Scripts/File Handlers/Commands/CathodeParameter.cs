@@ -69,7 +69,6 @@ namespace CATHODE.Commands
     public class CathodeString : CathodeParameter
     {
         public CathodeString() { dataType = CathodeDataType.STRING; }
-        public cGUID id; //cGUID generated from value
         public string value = "";
     }
     public class CathodeBool : CathodeParameter

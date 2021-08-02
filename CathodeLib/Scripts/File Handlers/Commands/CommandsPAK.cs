@@ -21,6 +21,9 @@ namespace CATHODE.Commands
 {
     public class CommandsPAK
     {
+        private List<TEMP_CAGEAnimationExtraData> tempCageAnimData;
+        private List<TEMP_TriggerSequenceExtraData> tempTriggerSequenceData;
+
         /* Load and parse the COMMANDS.PAK */
         public CommandsPAK(string pathToPak)
         {
@@ -145,9 +148,21 @@ namespace CATHODE.Commands
                         Utilities.Write<cGUID>(writer, ((CathodeEnum)parameters[i]).enumID);
                         writer.Write(((CathodeEnum)parameters[i]).enumIndex);
                         break;
-                    //TODO: splines
-                    default:
-                        writer.Write(parameters[i].unknownContent);
+                    case CathodeDataType.SPLINE_DATA:
+                        CathodeSpline thisSpline = ((CathodeSpline)parameters[i]);
+                        writer.Write((writer.BaseStream.Position + 8) / 4);
+                        writer.Write(thisSpline.splinePoints.Count);
+                        for (int x = 0; x < thisSpline.splinePoints.Count; x++)
+                        {
+                            writer.Write(thisSpline.splinePoints[x].position.X);
+                            writer.Write(thisSpline.splinePoints[x].position.Y);
+                            writer.Write(thisSpline.splinePoints[x].position.Z);
+                            //todo: is this YXZ
+                            writer.Write(thisSpline.splinePoints[x].rotation.X);
+                            writer.Write(thisSpline.splinePoints[x].rotation.Y);
+                            writer.Write(thisSpline.splinePoints[x].rotation.Z);
+                        }
+                        if (thisSpline.unknownContent != null) writer.Write(thisSpline.unknownContent); //TODO: work out what this is
                         break;
                 }
             }
@@ -239,7 +254,7 @@ namespace CATHODE.Commands
                     switch ((CommandsDataBlock)x)
                     {
                         case CommandsDataBlock.ENTITY_FUNCTIONS:
-                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, 0)); //TODO: note to self, this should be _flowgraphs[i].functions.Count
+                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].functions.Count)); 
                             for (int p = 0; p < _flowgraphs[i].functions.Count; p++)
                             {
                                 writer.Write(_flowgraphs[i].functions[p].nodeID.val);
@@ -311,8 +326,9 @@ namespace CATHODE.Commands
                             scriptPointerOffsetInfo.Add(new OffsetPair(0, 0));
                             break;
                         case CommandsDataBlock.UNKNOWN_COUNTS:
-                            //TODO: These count values are unknown. Just writing zeros for now.
-                            scriptPointerOffsetInfo.Add(new OffsetPair(0, 0));
+                            //TODO: These count values are unknown. Temp fix in place for the div by 4 at the end on offset (as this isn't actually an offset!)
+                            OffsetPair thisPairFix = new OffsetPair(_flowgraphs[i].unknownPair.GlobalOffset * 4, _flowgraphs[i].unknownPair.EntryCount);
+                            scriptPointerOffsetInfo.Add(thisPairFix); 
                             break;
                         default:
                             scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, scriptContentOffsetInfo[x].Count));
@@ -405,6 +421,9 @@ namespace CATHODE.Commands
         /* Read the parameter and flowgraph offsets & get entry points */
         private void Load(string path)
         {
+            tempCageAnimData = new List<TEMP_CAGEAnimationExtraData>();
+            tempTriggerSequenceData = new List<TEMP_TriggerSequenceExtraData>();
+
             BinaryReader reader = new BinaryReader(File.OpenRead(path));
 
             //Read entry points
@@ -443,8 +462,7 @@ namespace CATHODE.Commands
                         break;
                     case CathodeDataType.STRING:
                         this_parameter = new CathodeString();
-                        reader.BaseStream.Position += 4; //Pointer to next 4 bytes (no reason to read this!)
-                        ((CathodeString)this_parameter).id = new cGUID(reader);
+                        reader.BaseStream.Position += 8;
                         ((CathodeString)this_parameter).value = Utilities.ReadString(reader);
                         Utilities.Align(reader, 4);
                         break;
@@ -470,28 +488,23 @@ namespace CATHODE.Commands
                         ((CathodeEnum)this_parameter).enumID = new cGUID(reader);
                         ((CathodeEnum)this_parameter).enumIndex = reader.ReadInt32();
                         break;
-                        /*
                     case CathodeDataType.SPLINE_DATA:
                         this_parameter = new CathodeSpline();
-                        int start_offset = reader.ReadInt32(); //This just gives us a pointless offset
+                        reader.BaseStream.Position += 4;
                         int num_points = reader.ReadInt32();
-
-                        if (length - 12 != num_points * 24)
-                        {
-                            string dsfsdf = ""; //for some reason some have extra data at the end
-                        }
-
                         for (int x = 0; x < num_points; x++)
                         {
                             CathodeTransform this_point = new CathodeTransform();
                             this_point.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                            this_point.rotation = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                            this_point.rotation = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()); //TODO is this YXZ?
                             ((CathodeSpline)this_parameter).splinePoints.Add(this_point);
                         }
-                        break;
-                        */
-                    default:
-                        this_parameter.unknownContent = reader.ReadBytes(length - 4); //Should never hit this!
+                        if (((parameterOffsets[i]*4) + length) != (int)reader.BaseStream.Position)
+                        {
+                            //This is required for now because for some reason some splines have extra crap at the end
+                            int len = ((parameterOffsets[i]*4) + length) - (int)reader.BaseStream.Position;
+                            this_parameter.unknownContent = reader.ReadBytes(len);
+                        }
                         break;
                 }
                 parameters.Add(parameterOffsets[i], this_parameter);
@@ -522,6 +535,7 @@ namespace CATHODE.Commands
                         flowgraph.nodeID = new cGUID(reader);
                     }
                 }
+                flowgraph.unknownPair = offsetPairs[12];
 
                 //Read script ID and string name
                 reader.BaseStream.Position = scriptStartOffset * 4;
@@ -602,7 +616,7 @@ namespace CATHODE.Commands
                                 flowgraph.functions.Add(thisNode);
                                 break;
                             }
-                            //TODO: this case needs a GIANT refactor!
+                            //TODO: this case needs a refactor!
                             case CommandsDataBlock.RENDERABLE_DATA:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 40);
@@ -644,7 +658,10 @@ namespace CATHODE.Commands
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
                                 reader.BaseStream.Position = (reader.ReadInt32() * 4);
 
-                                CathodeEntity animationNode = flowgraph.GetEntityByID(new cGUID(reader)); //CAGEAnimation to apply the following data to
+                                CathodeEntity thisNode = flowgraph.GetEntityByID(new cGUID(reader)); //CAGEAnimation to apply the following data to
+
+                                TEMP_CAGEAnimationExtraData temp = new TEMP_CAGEAnimationExtraData();
+                                temp.nodeID = thisNode.nodeID;
 
                                 //TODO refactor the JumpToOffset function to allow it to be used here
                                 int OffsetToFindParams = reader.ReadInt32() * 4;
@@ -653,18 +670,21 @@ namespace CATHODE.Commands
                                 {
                                     reader.BaseStream.Position = OffsetToFindParams + (z * 32);
 
-                                    cGUID unk1 = new cGUID(reader);//Unknown ID (does this link to unknown param ID on CAGEAnimation nodes?
+                                    TEMP_CAGEAnimationExtraDataHolder tempD = new TEMP_CAGEAnimationExtraDataHolder();
+                                    tempD.unk1 = new cGUID(reader);//Unknown ID (does this link to unknown param ID on CAGEAnimation nodes?
 
-                                    CathodeDataType unk2 = GetDataType(new cGUID(reader)); //Datatype... used for?
-                                    cGUID unk3 = new cGUID(reader); //Unknown ID (does this link to unknown param ID on CAGEAnimation nodes?
-                                    cGUID unk4 = new cGUID(reader); //Unknown ID - is this a named parameter id? (does this link to unknown param ID on CAGEAnimation nodes?
+                                    tempD.unk2 = GetDataType(new cGUID(reader)); //Datatype... used for?
+                                    tempD.unk3 = new cGUID(reader); //Unknown ID (does this link to unknown param ID on CAGEAnimation nodes?
+                                    tempD.unk4 = new cGUID(reader); //Unknown ID - is this a named parameter id? (does this link to unknown param ID on CAGEAnimation nodes?
 
-                                    CathodeDataType unk5 = GetDataType(new cGUID(reader)); //Datatype... used for?
-                                    cGUID unk6 = new cGUID(reader); //Unknown ID (does this link to unknown param ID on CAGEAnimation nodes?
+                                    tempD.unk5 = GetDataType(new cGUID(reader)); //Datatype... used for?
+                                    tempD.unk6 = new cGUID(reader); //Unknown ID (does this link to unknown param ID on CAGEAnimation nodes?
 
                                     int NumberOfParams2 = JumpToOffset(ref reader);
-                                    List<cGUID> unk7_hierarchy = Utilities.ConsumeArray<cGUID>(reader, NumberOfParams2).ToList<cGUID>(); //Last is always 0x00, 0x00, 0x00, 0x00
+                                    tempD.hierarchy = Utilities.ConsumeArray<cGUID>(reader, NumberOfParams2).ToList<cGUID>(); //Last is always 0x00, 0x00, 0x00, 0x00
+                                    temp.paramsData.Add(tempD);
                                 }
+                                tempCageAnimData.Add(temp);
                                 break;
                             }
                             case CommandsDataBlock.TRIGGERSEQUENCE_DATA:
@@ -674,21 +694,26 @@ namespace CATHODE.Commands
 
                                 CathodeEntity thisNode = flowgraph.GetEntityByID(new cGUID(reader)); //TriggerSequence to apply the following data to
 
+                                TEMP_TriggerSequenceExtraData temp = new TEMP_TriggerSequenceExtraData();
+                                temp.nodeID = thisNode.nodeID;
+
                                 //TODO refactor the JumpToOffset function to allow it to be used here
                                 int OffsetToFindParams = reader.ReadInt32() * 4;
                                 int NumberOfParams = reader.ReadInt32();
                                 for (int z = 0; z < NumberOfParams; z++)
                                 {
                                     reader.BaseStream.Position = OffsetToFindParams + (z * 12);
-
                                     int OffsetToFindParams2 = reader.ReadInt32() * 4;
                                     int NumberOfParams2 = reader.ReadInt32();
 
-                                    float TriggerAfterSeconds = reader.ReadSingle(); //This defines how long we wait (sequentially) before triggering the node referenced in the hierarchy below (in seconds)
-
+                                    TEMP_TriggerSequenceExtraDataHolder tempD = new TEMP_TriggerSequenceExtraDataHolder();
+                                    tempD.timing = reader.ReadSingle();
                                     reader.BaseStream.Position = OffsetToFindParams2;
-                                    List<cGUID> HierarchyToTrigger = Utilities.ConsumeArray<cGUID>(reader, NumberOfParams2).ToList<cGUID>(); //Last is always 0x00, 0x00, 0x00, 0x00
+                                    tempD.hierarchy = Utilities.ConsumeArray<cGUID>(reader, NumberOfParams2).ToList<cGUID>();
+                                    temp.triggers.Add(tempD);
                                 }
+
+                                tempTriggerSequenceData.Add(temp);
                                 break;
                             }
                         }
@@ -873,5 +898,32 @@ namespace CATHODE.Commands
         {
             id = _id;
         }
+    }
+
+    /* TEMP STUFF TO FIX REWRITING */
+    public class TEMP_CAGEAnimationExtraData
+    {
+        public cGUID nodeID;
+        public List<TEMP_CAGEAnimationExtraDataHolder> paramsData = new List<TEMP_CAGEAnimationExtraDataHolder>();
+    }
+    public class TEMP_CAGEAnimationExtraDataHolder
+    {
+        public cGUID unk1;
+        public CathodeDataType unk2;
+        public cGUID unk3;
+        public cGUID unk4;
+        public CathodeDataType unk5;
+        public cGUID unk6;
+        public List<cGUID> hierarchy;
+    }
+    public class TEMP_TriggerSequenceExtraData
+    {
+        public cGUID nodeID;
+        public List<TEMP_TriggerSequenceExtraDataHolder> triggers = new List<TEMP_TriggerSequenceExtraDataHolder>();
+    }
+    public class TEMP_TriggerSequenceExtraDataHolder
+    {
+        public float timing;
+        public List<cGUID> hierarchy;
     }
 }
