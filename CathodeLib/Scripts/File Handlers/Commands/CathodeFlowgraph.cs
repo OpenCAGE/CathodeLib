@@ -38,7 +38,6 @@ namespace CATHODE.Commands
     {
         public cGUID paramID; //The ID of the param in the node
         public int offset;        //The offset of the param this reference points to (in memory this is *4)
-        //public int editOffset;    //The offset in the PAK that this reference is
 
         public void UpdateOffset(int _offset)
         {
@@ -72,8 +71,6 @@ namespace CATHODE.Commands
     /* A resource that references a REnDerable elementS DB entry */
     public class CathodeResourceReference
     {
-        public int editOffset; //The offset in the PAK that this is for temp rewrite logic
-
         public cGUID resourceRefID;                   //The ID of this entry?
         public Vector3 positionOffset;     //The 3D position to offset the resource by
         public cGUID resourceID;                      //This is the ID also contained in the RESOURCE_ID parameter list
@@ -91,15 +88,12 @@ namespace CATHODE.Commands
     /* A node in a flowgraph */
     public class CathodeNode
     {
-        public bool HasNodeType { get { return nodeType.val != null; } }
-        public bool HasDataType { get { return dataType != CathodeDataType.NONE; } }
-
+        public CathodeNode(cGUID id)
+        {
+            nodeID = id;
+        }
+        
         public cGUID nodeID;   //Nodes always have a unique ID
-        public cGUID nodeType; //Some nodes are of a node type
-
-        public CathodeDataType dataType = CathodeDataType.NONE; //If nodes have no type, they're of a data type
-        public cGUID dataTypeParam;                             //Data type nodes have a parameter ID
-
         public List<CathodeNodeLink> childLinks = new List<CathodeNodeLink>();
         public List<CathodeParameterReference> nodeParameterReferences = new List<CathodeParameterReference>();
 
@@ -107,6 +101,17 @@ namespace CATHODE.Commands
         {
             return nodeParameterReferences.FirstOrDefault(o => o.paramID == id);
         }
+    }
+    public class CathodeDatatypeNode : CathodeNode
+    {
+        public CathodeDatatypeNode(cGUID id) : base(id) { }
+        public CathodeDataType type = CathodeDataType.NO_TYPE;
+        public cGUID parameter; 
+    }
+    public class CathodeFunctionNode : CathodeNode
+    {
+        public CathodeFunctionNode(cGUID id) : base(id) { }
+        public cGUID function;
     }
 
     /* A script flowgraph containing nodes with parameters */
@@ -117,22 +122,20 @@ namespace CATHODE.Commands
         public cGUID nodeID;    //The id when this flowgraph is used as a prefab node in another flowgraph
         public string name = ""; //The string name of the flowgraph
 
-        public List<CathodeNode> nodes = new List<CathodeNode>();
+        public List<CathodeDatatypeNode> datatypeNodes = new List<CathodeDatatypeNode>();
+        public List<CathodeFunctionNode> functionNodes = new List<CathodeFunctionNode>();
+
         public List<CathodeResourceReference> resources = new List<CathodeResourceReference>();
+
         public List<CathodeFlowgraphHierarchyOverride> overrides = new List<CathodeFlowgraphHierarchyOverride>();
         public List<CathodeProxy> proxies = new List<CathodeProxy>();
 
         /* If a node exists in the flowgraph, return it - otherwise create it, and return it */
         public CathodeNode GetNodeByID(cGUID id)
         {
-            foreach (CathodeNode node in nodes)
-            {
-                if (node.nodeID == id) return node;
-            }
-            CathodeNode newNode = new CathodeNode();
-            newNode.nodeID = id;
-            nodes.Add(newNode);
-            return newNode;
+            foreach (CathodeNode node in datatypeNodes) if (node.nodeID == id) return node;
+            foreach (CathodeNode node in functionNodes) if (node.nodeID == id) return node;
+            return null;
         }
 
         /* Get child node override by ID - otherwise create it, and return it */
@@ -143,6 +146,7 @@ namespace CATHODE.Commands
             {
                 val = new CathodeFlowgraphHierarchyOverride();
                 val.id = id;
+                overrides.Add(val);
             }
             return val;
         }

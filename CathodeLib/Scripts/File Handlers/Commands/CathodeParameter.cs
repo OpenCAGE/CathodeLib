@@ -11,8 +11,6 @@ namespace CATHODE.Commands
     /* Data types in the CATHODE scripting system */
     public enum CathodeDataType
     {
-        NONE = -1,
-
         POSITION,
         FLOAT,
         STRING,
@@ -25,7 +23,7 @@ namespace CATHODE.Commands
         INTEGER,
 
         OBJECT,
-        UNKNOWN_7,
+        NO_TYPE, //Translates to a blank string
         ZONE_LINK_PTR,
         ZONE_PTR,
         MARKER,

@@ -103,6 +103,10 @@ namespace CATHODE
         {
             for (int i = 0; i < aux.Length; i++) Write<T>(stream, aux[i]);
         }
+        public static void Write<T>(BinaryWriter stream, List<T> aux)
+        {
+            Write<T>(stream, aux.ToArray<T>());
+        }
 
         public static cGUID GenerateGUID(string _s)
         {

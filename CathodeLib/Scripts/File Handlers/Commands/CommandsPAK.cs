@@ -1,3 +1,6 @@
+//#define TEST_READ
+//#define TEST_WRITE
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -174,7 +177,10 @@ namespace CATHODE.Commands
                 Utilities.Align(writer, 4);
 
                 //Work out what we want to write
-                List<CathodeNode> nodesWithLinks = _flowgraphs[i].nodes.FindAll(o => o.childLinks.Count != 0);
+                List<CathodeNode> nodesWithLinks = new List<CathodeNode>();
+                nodesWithLinks.AddRange(_flowgraphs[i].functionNodes.FindAll(o => o.childLinks.Count != 0));
+                nodesWithLinks.AddRange(_flowgraphs[i].datatypeNodes.FindAll(o => o.childLinks.Count != 0));
+
                 //List<CathodeParameterReference> paramsToWrite = new List<CathodeParameterReference>();
                 //List<CathodeNode> nodesWithParams = _flowgraphs[i].nodes.FindAll(o => o.nodeParameterReferences.Count != 0);
                 //List<CathodeFlowgraphHierarchyOverride> overridesWithParams = _flowgraphs[i].overrides.FindAll(o => o.paramRefs.Count != 0);
@@ -198,10 +204,7 @@ namespace CATHODE.Commands
                             foreach (CathodeNode nodeWithLink in nodesWithLinks)
                             {
                                 scriptContentOffsetInfo[x].Add(new OffsetPair(writer.BaseStream.Position, nodeWithLink.childLinks.Count));
-                                foreach (CathodeNodeLink childLink in nodeWithLink.childLinks)
-                                {
-                                    Utilities.Write<CathodeNodeLink>(writer, childLink);
-                                }
+                                Utilities.Write<CathodeNodeLink>(writer, nodeWithLink.childLinks);
                             }
                             break;
                         case CommandsDataBlock.DEFINE_PARAMETERS:
@@ -508,11 +511,10 @@ namespace CATHODE.Commands
                             }
                             case CommandsDataBlock.DEFINE_EXPOSED_VARIABLES:
                             {
-                                //TODO: Do we want to treat "exposed variable" nodes and "function" nodes separately? Probably should.
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-                                CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader));
-                                thisNode.dataType = GetDataType(reader.ReadBytes(4));
-                                thisNode.dataTypeParam = new cGUID(reader);
+                                CathodeDatatypeNode thisNode = new CathodeDatatypeNode(new cGUID(reader));
+                                thisNode.type = GetDataType(reader.ReadBytes(4));
+                                thisNode.parameter = new cGUID(reader);
                                 break;
                             }
                             case CommandsDataBlock.DEFINE_PROXIES:
@@ -531,8 +533,10 @@ namespace CATHODE.Commands
                             }
                             case CommandsDataBlock.DEFINE_FUNCTION_NODES:
                             {
-                                CathodeNode thisNode = flowgraph.GetNodeByID(new cGUID(reader));
-                                thisNode.nodeType = new cGUID(reader);
+                                reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
+                                CathodeFunctionNode thisNode = new CathodeFunctionNode(new cGUID(reader));
+                                thisNode.function = new cGUID(reader);
+                                flowgraph.functionNodes.Add(thisNode);
                                 break;
                             }
                             //TODO: this case needs a GIANT refactor!
@@ -542,7 +546,6 @@ namespace CATHODE.Commands
 
                                 //TODO: these values change by entry type - need to work out what they're for before allowing editing
                                 CathodeResourceReference resource_ref = new CathodeResourceReference();
-                                resource_ref.editOffset = (int)reader.BaseStream.Position;
                                 resource_ref.resourceRefID = new cGUID(reader); //renderable element ID (also used in one of the param blocks for something)
                                 reader.BaseStream.Position += 4; //unk (always 0x00 x4?)
                                 resource_ref.positionOffset = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()); //position offset
@@ -618,10 +621,10 @@ namespace CATHODE.Commands
                                     int OffsetToFindParams2 = reader.ReadInt32() * 4;
                                     int NumberOfParams2 = reader.ReadInt32();
 
-                                    float TimeToDelay = reader.ReadSingle(); //This defines how long we wait (sequentially) before triggering the node referenced in the hierarchy below
+                                    float TriggerAfterSeconds = reader.ReadSingle(); //This defines how long we wait (sequentially) before triggering the node referenced in the hierarchy below (in seconds)
 
                                     reader.BaseStream.Position = OffsetToFindParams2;
-                                    List<cGUID> unk7_hierarchy = Utilities.ConsumeArray<cGUID>(reader, NumberOfParams2).ToList<cGUID>(); //Last is always 0x00, 0x00, 0x00, 0x00
+                                    List<cGUID> HierarchyToTrigger = Utilities.ConsumeArray<cGUID>(reader, NumberOfParams2).ToList<cGUID>(); //Last is always 0x00, 0x00, 0x00, 0x00
                                 }
                                 break;
                             }
@@ -652,7 +655,7 @@ namespace CATHODE.Commands
                 //Assign parameter references to parsed nodes/overrides
                 for (int x = 0; x < paramRefSets.Count; x++)
                 {
-                    CathodeNode nodeToApply = flowgraph.nodes.FirstOrDefault(o => o.nodeID == paramRefSets[x].id);
+                    CathodeNode nodeToApply = flowgraph.GetNodeByID(paramRefSets[x].id);
                     CathodeFlowgraphHierarchyOverride overrideToApply = (nodeToApply != null) ? null : flowgraph.overrides.FirstOrDefault(o => o.id == paramRefSets[x].id);
                     CathodeProxy proxyToApply = (nodeToApply != null || overrideToApply != null) ? null : flowgraph.proxies.FirstOrDefault(o => o.id == paramRefSets[x].id);
                     if (nodeToApply == null && overrideToApply == null && proxyToApply == null)
@@ -679,23 +682,23 @@ namespace CATHODE.Commands
         {
             if (_dataTypeLUT.Count == 0)
             {
-                _dataTypeLUT.Add(new cGUID(new byte[] { 0xF0, 0x0B, 0x76, 0x96 }), CathodeDataType.BOOL);
-                _dataTypeLUT.Add(new cGUID(new byte[] { 0x87, 0xC1, 0x25, 0xE7 }), CathodeDataType.INTEGER);
-                _dataTypeLUT.Add(new cGUID(new byte[] { 0xDC, 0x72, 0x74, 0xFD }), CathodeDataType.FLOAT);
-                _dataTypeLUT.Add(new cGUID(new byte[] { 0x84, 0x11, 0xCD, 0x38 }), CathodeDataType.STRING);
-                _dataTypeLUT.Add(new cGUID(new byte[] { 0x6D, 0x8D, 0xDB, 0xC0 }), CathodeDataType.FILEPATH);
-                _dataTypeLUT.Add(new cGUID(new byte[] { 0x5E, 0x8E, 0x8E, 0x5A }), CathodeDataType.SPLINE_DATA);
-                _dataTypeLUT.Add(new cGUID(new byte[] { 0x38, 0x43, 0xFF, 0xBF }), CathodeDataType.DIRECTION);
-                _dataTypeLUT.Add(new cGUID(new byte[] { 0xDA, 0x6B, 0xD7, 0x02 }), CathodeDataType.POSITION);
-                _dataTypeLUT.Add(new cGUID(new byte[] { 0xBF, 0xA7, 0x62, 0x8C }), CathodeDataType.ENUM);
-                _dataTypeLUT.Add(new cGUID(new byte[] { 0xF6, 0xAF, 0x08, 0x93 }), CathodeDataType.SHORT_GUID);
-                _dataTypeLUT.Add(new cGUID(new byte[] { 0xC7, 0x6E, 0xC8, 0x05 }), CathodeDataType.OBJECT);
-                _dataTypeLUT.Add(new cGUID(new byte[] { 0xD1, 0xEA, 0x7E, 0x5E }), CathodeDataType.ZONE_PTR);
-                _dataTypeLUT.Add(new cGUID(new byte[] { 0x7E, 0x39, 0xA1, 0xDD }), CathodeDataType.ZONE_LINK_PTR);
-                _dataTypeLUT.Add(new cGUID(new byte[] { 0x25, 0x16, 0x14, 0x8C }), CathodeDataType.UNKNOWN_7);
-                _dataTypeLUT.Add(new cGUID(new byte[] { 0x93, 0xE9, 0xE9, 0x37 }), CathodeDataType.MARKER);
-                _dataTypeLUT.Add(new cGUID(new byte[] { 0x8A, 0x79, 0x61, 0xC5 }), CathodeDataType.CHARACTER);
-                _dataTypeLUT.Add(new cGUID(new byte[] { 0x4F, 0x2A, 0x35, 0x5B }), CathodeDataType.CAMERA);
+                _dataTypeLUT.Add(Utilities.GenerateGUID("bool"), CathodeDataType.BOOL);
+                _dataTypeLUT.Add(Utilities.GenerateGUID("int"), CathodeDataType.INTEGER);
+                _dataTypeLUT.Add(Utilities.GenerateGUID("float"), CathodeDataType.FLOAT);
+                _dataTypeLUT.Add(Utilities.GenerateGUID("String"), CathodeDataType.STRING);
+                _dataTypeLUT.Add(Utilities.GenerateGUID("FilePath"), CathodeDataType.FILEPATH);
+                _dataTypeLUT.Add(Utilities.GenerateGUID("SplineData"), CathodeDataType.SPLINE_DATA);
+                _dataTypeLUT.Add(Utilities.GenerateGUID("Direction"), CathodeDataType.DIRECTION);
+                _dataTypeLUT.Add(Utilities.GenerateGUID("Position"), CathodeDataType.POSITION);
+                _dataTypeLUT.Add(Utilities.GenerateGUID("Enum"), CathodeDataType.ENUM);
+                _dataTypeLUT.Add(Utilities.GenerateGUID("ShortGuid"), CathodeDataType.SHORT_GUID);
+                _dataTypeLUT.Add(Utilities.GenerateGUID("Object"), CathodeDataType.OBJECT);
+                _dataTypeLUT.Add(Utilities.GenerateGUID("ZonePtr"), CathodeDataType.ZONE_PTR);
+                _dataTypeLUT.Add(Utilities.GenerateGUID("ZoneLinkPtr"), CathodeDataType.ZONE_LINK_PTR);
+                _dataTypeLUT.Add(Utilities.GenerateGUID(""), CathodeDataType.NO_TYPE);
+                _dataTypeLUT.Add(Utilities.GenerateGUID("Marker"), CathodeDataType.MARKER);
+                _dataTypeLUT.Add(Utilities.GenerateGUID("Character"), CathodeDataType.CHARACTER);
+                _dataTypeLUT.Add(Utilities.GenerateGUID("Camera"), CathodeDataType.CAMERA);
             }
         }
         private CathodeDataType GetDataType(byte[] tag)
@@ -718,13 +721,13 @@ namespace CATHODE.Commands
         {
             if (_resourceReferenceTypeLUT.Count == 0)
             {
-                _resourceReferenceTypeLUT.Add(new cGUID(new byte[] { 0xDC, 0x53, 0xD1, 0x45 }), CathodeResourceReferenceType.RENDERABLE_INSTANCE);
-                _resourceReferenceTypeLUT.Add(new cGUID(new byte[] { 0xCD, 0xC5, 0x3B, 0x90 }), CathodeResourceReferenceType.TRAVERSAL_SEGMENT);
-                _resourceReferenceTypeLUT.Add(new cGUID(new byte[] { 0xB7, 0x92, 0xB6, 0xCE }), CathodeResourceReferenceType.COLLISION_MAPPING);
-                _resourceReferenceTypeLUT.Add(new cGUID(new byte[] { 0xB5, 0x5F, 0x6E, 0x4C }), CathodeResourceReferenceType.NAV_MESH_BARRIER_RESOURCE);
-                _resourceReferenceTypeLUT.Add(new cGUID(new byte[] { 0xDF, 0xFF, 0x99, 0xED }), CathodeResourceReferenceType.EXCLUSIVE_MASTER_STATE_RESOURCE);
-                _resourceReferenceTypeLUT.Add(new cGUID(new byte[] { 0x5D, 0x41, 0xF1, 0xFB }), CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM);
-                _resourceReferenceTypeLUT.Add(new cGUID(new byte[] { 0xD7, 0x3E, 0x1E, 0x5E }), CathodeResourceReferenceType.ANIMATED_MODEL);
+                _resourceReferenceTypeLUT.Add(Utilities.GenerateGUID("RENDERABLE_INSTANCE"), CathodeResourceReferenceType.RENDERABLE_INSTANCE);
+                _resourceReferenceTypeLUT.Add(Utilities.GenerateGUID("TRAVERSAL_SEGMENT"), CathodeResourceReferenceType.TRAVERSAL_SEGMENT);
+                _resourceReferenceTypeLUT.Add(Utilities.GenerateGUID("COLLISION_MAPPING"), CathodeResourceReferenceType.COLLISION_MAPPING);
+                _resourceReferenceTypeLUT.Add(Utilities.GenerateGUID("NAV_MESH_BARRIER_RESOURCE"), CathodeResourceReferenceType.NAV_MESH_BARRIER_RESOURCE);
+                _resourceReferenceTypeLUT.Add(Utilities.GenerateGUID("EXCLUSIVE_MASTER_STATE_RESOURCE"), CathodeResourceReferenceType.EXCLUSIVE_MASTER_STATE_RESOURCE);
+                _resourceReferenceTypeLUT.Add(Utilities.GenerateGUID("DYNAMIC_PHYSICS_SYSTEM"), CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM);
+                _resourceReferenceTypeLUT.Add(Utilities.GenerateGUID("ANIMATED_MODEL"), CathodeResourceReferenceType.ANIMATED_MODEL);
             }
         }
         private CathodeResourceReferenceType GetResourceEntryType(byte[] tag)
