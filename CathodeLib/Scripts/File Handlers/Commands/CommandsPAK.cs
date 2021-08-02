@@ -76,20 +76,6 @@ namespace CATHODE.Commands
         /* Save all changes back out */
         public void Save()
         {
-#if TEST_WRITE
-            _parameters = new CathodeParameter[0];
-            CathodeFlowgraph[] flows = new CathodeFlowgraph[3];
-            for (int i = 0; i < _flowgraphs.Length; i++)
-            {
-                if (_flowgraphs[i].name == @"P:\CONTENT\BUILD\LEVELS\PRODUCTION\SCI_HUB") flows[0] = _flowgraphs[i];
-                if (_flowgraphs[i].name == "GLOBAL") flows[1] = _flowgraphs[i];
-                if (_flowgraphs[i].name == "PAUSEMENU") flows[2] = _flowgraphs[i];
-            }
-            _flowgraphs = flows;
-            _flowgraphs[0].name = "dummy_1"; _flowgraphs[1].name = "GLOBAL"; _flowgraphs[2].name = "dummy_2";
-            _entryPoints.flowgraphIDs = new cGUID[3] { _flowgraphs[0].nodeID, _flowgraphs[1].nodeID, _flowgraphs[2].nodeID };
-#endif
-
             BinaryWriter writer = new BinaryWriter(File.OpenWrite(path));
             writer.BaseStream.SetLength(0);
 
@@ -195,29 +181,57 @@ namespace CATHODE.Commands
                             writer.Write(0);
                             break;
                         case CommandsDataBlock.ENTITY_CONNECTIONS:
-                            foreach (CathodeEntity nodeWithLink in entitiesWithLinks)
+                            foreach (CathodeEntity entityWithLink in entitiesWithLinks)
                             {
-                                scriptContentOffsetInfo[x].Add(new OffsetPair(writer.BaseStream.Position, nodeWithLink.childLinks.Count));
-                                Utilities.Write<CathodeNodeLink>(writer, nodeWithLink.childLinks);
+                                scriptContentOffsetInfo[x].Add(new OffsetPair(writer.BaseStream.Position, entityWithLink.childLinks.Count));
+                                Utilities.Write<CathodeNodeLink>(writer, entityWithLink.childLinks);
                             }
                             break;
                         case CommandsDataBlock.ENTITY_PARAMETERS:
+                            foreach (CathodeEntity entityWithParam in entitiesWithParams)
+                            {
+                                scriptContentOffsetInfo[x].Add(new OffsetPair(writer.BaseStream.Position, entityWithParam.parameters.Count));
+                                for (int y = 0; y < entityWithParam.parameters.Count; y++)
+                                {
+                                    Utilities.Write<cGUID>(writer, entityWithParam.parameters[y].paramID);
+                                    //TODO: this is super slow! Find a better way to lookup parameter content offsets (precalculate a nicer structure)
+                                    int paramOffset = -1;
+                                    for (int z = 0; z < parameters.Count; z++)
+                                    {
+                                        if (parameters[z] == entityWithParam.parameters[y].content)
+                                        {
+                                            paramOffset = parameterOffsets[z];
+                                            break;
+                                        }
+                                    }
+                                    if (paramOffset == -1) throw new Exception("Error writing parameter offset. Could not find parameter content!");
+                                    writer.Write(paramOffset);
+                                }
+                            }
                             break;
                         case CommandsDataBlock.ENTITY_OVERRIDES:
+                            //TODO
                             break;
                         case CommandsDataBlock.ENTITY_OVERRIDES_CHECKSUM:
+                            //TODO
                             break;
                         case CommandsDataBlock.FLOWGRAPH_EXPOSED_PARAMETERS:
+                            //TODO
                             break;
                         case CommandsDataBlock.ENTITY_PROXIES:
+                            //TODO
                             break;
                         case CommandsDataBlock.ENTITY_FUNCTIONS:
+                            //TODO
                             break;
                         case CommandsDataBlock.RENDERABLE_DATA:
+                            //TODO
                             break;
                         case CommandsDataBlock.CAGEANIMATION_DATA:
+                            //TODO
                             break;
                         case CommandsDataBlock.TRIGGERSEQUENCE_DATA:
+                            //TODO
                             break;
                     }
                 }
@@ -240,24 +254,33 @@ namespace CATHODE.Commands
                                         writer.Write(scriptContentOffsetInfo[x][z].EntryCount);
                                         break;
                                     case CommandsDataBlock.ENTITY_PARAMETERS:
-                                        //TODO: to write out params we will have to edit how data is stored here.
-                                        //Save params to each node rather than just storing references, or reference a stored array not by offset!
+                                        writer.Write(entitiesWithParams[z].nodeID.val);
+                                        writer.Write(scriptContentOffsetInfo[x][z].GlobalOffset / 4);
+                                        writer.Write(scriptContentOffsetInfo[x][z].EntryCount);
                                         break;
                                     case CommandsDataBlock.ENTITY_OVERRIDES:
+                                        //TODO
                                         break;
                                     case CommandsDataBlock.ENTITY_OVERRIDES_CHECKSUM:
+                                        //TODO
                                         break;
                                     case CommandsDataBlock.FLOWGRAPH_EXPOSED_PARAMETERS:
+                                        //TODO
                                         break;
                                     case CommandsDataBlock.ENTITY_PROXIES:
+                                        //TODO
                                         break;
                                     case CommandsDataBlock.ENTITY_FUNCTIONS:
+                                        //TODO
                                         break;
                                     case CommandsDataBlock.RENDERABLE_DATA:
+                                        //TODO
                                         break;
                                     case CommandsDataBlock.CAGEANIMATION_DATA:
+                                        //TODO
                                         break;
                                     case CommandsDataBlock.TRIGGERSEQUENCE_DATA:
+                                        //TODO
                                         break;
                                 }
                             }
