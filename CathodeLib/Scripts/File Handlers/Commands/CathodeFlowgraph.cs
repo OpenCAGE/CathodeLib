@@ -85,7 +85,17 @@ namespace CATHODE.Commands
     public class FunctionEntity : CathodeEntity
     {
         public FunctionEntity(cGUID id) : base(id) { variant = EntityVariant.FUNCTION; }
-        public cGUID function; //Translates to string via cGUID system
+        public cGUID function; 
+    }
+    public class CAGEAnimation : FunctionEntity
+    {
+        public CAGEAnimation(cGUID id) : base(id) { function = Utilities.GenerateGUID("CAGEAnimation"); }
+        public List<TEMP_CAGEAnimationExtraDataHolder> paramsData = new List<TEMP_CAGEAnimationExtraDataHolder>();
+    }
+    public class TriggerSequence : FunctionEntity
+    {
+        public TriggerSequence(cGUID id) : base(id) { function = Utilities.GenerateGUID("TriggerSequence"); }
+        public List<TEMP_TriggerSequenceExtraDataHolder> triggers = new List<TEMP_TriggerSequenceExtraDataHolder>();
     }
     public class ProxyEntity : CathodeEntity
     {
