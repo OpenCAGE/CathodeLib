@@ -599,22 +599,32 @@ namespace CATHODE.Commands
                                 cGUID functionID = new cGUID(reader);
                                 if (_functionTypeLUT.ContainsKey(functionID))
                                 {
+                                    //This node executes a hard-coded function
                                     CathodeFunctionType functionType = GetFunctionType(functionID);
                                     switch (functionType)
                                     {
                                         case CathodeFunctionType.CAGEAnimation:
                                             CAGEAnimation cageAnimation = new CAGEAnimation(nodeID);
                                             flowgraph.functions.Add(cageAnimation);
-                                            return;
+                                            break;
                                         case CathodeFunctionType.TriggerSequence:
                                             TriggerSequence triggerSequence = new TriggerSequence(nodeID);
                                             flowgraph.functions.Add(triggerSequence);
-                                            return;
+                                            break;
+                                        default:
+                                            FunctionEntity genericNode = new FunctionEntity(nodeID);
+                                            genericNode.function = functionID;
+                                            flowgraph.functions.Add(genericNode);
+                                            break;
                                     }
                                 }
-                                FunctionEntity genericNode = new FunctionEntity(nodeID);
-                                genericNode.function = functionID;
-                                flowgraph.functions.Add(genericNode);
+                                else
+                                {
+                                    //This node executes a flowgraph
+                                    FunctionEntity genericNode = new FunctionEntity(nodeID);
+                                    genericNode.function = functionID;
+                                    flowgraph.functions.Add(genericNode);
+                                }
                                 break;
                             }
                             //TODO: this case needs a refactor!
