@@ -49,6 +49,8 @@ namespace CATHODE.Commands
     public class CathodeResourceReference
     {
         public cGUID resourceRefID;                   //The ID of this entry?
+        public cGUID unknownID1;
+        public cGUID unknownID2;
         public Vector3 positionOffset;     //The 3D position to offset the resource by
         public cGUID resourceID;                      //This is the ID also contained in the RESOURCE_ID parameter list
         public CathodeResourceReferenceType entryType; //This is the type of resource entry

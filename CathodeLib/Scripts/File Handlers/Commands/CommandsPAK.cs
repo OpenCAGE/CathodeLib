@@ -419,11 +419,11 @@ namespace CATHODE.Commands
                             for (int p = 0; p < _flowgraphs[i].resources.Count; p++)
                             {
                                 writer.Write(_flowgraphs[i].resources[p].resourceRefID.val);
-                                writer.Write(0);
+                                writer.Write(_flowgraphs[i].resources[p].unknownID1.val);
                                 writer.Write(_flowgraphs[i].resources[p].positionOffset.X);
                                 writer.Write(_flowgraphs[i].resources[p].positionOffset.Y);
                                 writer.Write(_flowgraphs[i].resources[p].positionOffset.Z);
-                                writer.Write(0);
+                                writer.Write(_flowgraphs[i].resources[p].unknownID2.val);
                                 writer.Write(_flowgraphs[i].resources[p].resourceID.val);
                                 writer.Write(GetResourceEntryTypeGUID(_flowgraphs[i].resources[p].entryType).val);
                                 switch (_flowgraphs[i].resources[p].entryType)
@@ -776,9 +776,9 @@ namespace CATHODE.Commands
                                 //TODO: these values change by entry type - need to work out what they're for before allowing editing
                                 CathodeResourceReference resource_ref = new CathodeResourceReference();
                                 resource_ref.resourceRefID = new cGUID(reader); //renderable element ID (also used in one of the param blocks for something)
-                                reader.BaseStream.Position += 4; //unk (always 0x00 x4?)
+                                resource_ref.unknownID1 = new cGUID(reader); //unk (sometimes 0x00 x4?)
                                 resource_ref.positionOffset = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()); //position offset
-                                reader.BaseStream.Position += 4; //unk (always 0x00 x4?)
+                                resource_ref.unknownID2 = new cGUID(reader); //unk (sometimes 0x00 x4?)
                                 resource_ref.resourceID = new cGUID(reader); //resource id
                                 resource_ref.entryType = GetResourceEntryType(reader.ReadBytes(4)); //entry type
                                 switch (resource_ref.entryType)
