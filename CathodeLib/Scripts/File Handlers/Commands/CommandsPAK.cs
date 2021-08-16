@@ -673,11 +673,16 @@ namespace CATHODE.Commands
 
                                 int OffsetToFindParams = reader.ReadInt32() * 4;
                                 int NumberOfParams = reader.ReadInt32();
+                                int OffsetToFindParams2 = reader.ReadInt32() * 4;
+                                int NumberOfParams2 = reader.ReadInt32();
+                                int OffsetToFindParams3 = reader.ReadInt32() * 4;
+                                int NumberOfParams3 = reader.ReadInt32();
+
                                 for (int z = 0; z < NumberOfParams; z++)
                                 {
                                     reader.BaseStream.Position = OffsetToFindParams + (z * 32);
 
-                                    TEMP_CAGEAnimationExtraDataHolder thisParamSet = new TEMP_CAGEAnimationExtraDataHolder();
+                                    TEMP_CAGEAnimationExtraDataHolder1 thisParamSet = new TEMP_CAGEAnimationExtraDataHolder1();
                                     thisParamSet.unk1 = new cGUID(reader);//Unknown ID (does this link to unknown param ID on CAGEAnimation nodes?
 
                                     thisParamSet.unk2 = GetDataType(new cGUID(reader)); //Datatype... used for?
@@ -687,9 +692,65 @@ namespace CATHODE.Commands
                                     thisParamSet.unk5 = GetDataType(new cGUID(reader)); //Datatype... used for?
                                     thisParamSet.unk6 = new cGUID(reader); //Unknown ID (does this link to unknown param ID on CAGEAnimation nodes?
 
-                                    int NumberOfParams2 = JumpToOffset(ref reader);
-                                    thisParamSet.hierarchy = Utilities.ConsumeArray<cGUID>(reader, NumberOfParams2).ToList<cGUID>(); 
-                                    thisNode.paramsData.Add(thisParamSet);
+                                    int NumberOfParams_ = JumpToOffset(ref reader);
+                                    thisParamSet.hierarchy = Utilities.ConsumeArray<cGUID>(reader, NumberOfParams_).ToList<cGUID>(); 
+                                    thisNode.paramsData1.Add(thisParamSet);
+                                }
+
+                                reader.BaseStream.Position = OffsetToFindParams2;
+                                int[] newOffset = Utilities.ConsumeArray<int>(reader, NumberOfParams2);
+                                for (int z = 0; z < NumberOfParams2; z++)
+                                {
+                                    reader.BaseStream.Position = newOffset[z] * 4;
+
+                                    TEMP_CAGEAnimationExtraDataHolder2 thisParamSet = new TEMP_CAGEAnimationExtraDataHolder2();
+                                    thisParamSet.unk0 = reader.ReadSingle();
+                                    thisParamSet.unk1 = reader.ReadSingle();
+                                    thisParamSet.unk2 = reader.ReadInt32();
+
+                                    int NumberOfParams2_ = JumpToOffset(ref reader);
+                                    for (int m = 0; m < NumberOfParams2_; m++)
+                                    {
+                                        //Unsure if this is variable length
+                                        TEMP_CAGEAnimationExtraDataHolder2_1 thisInnerSet = new TEMP_CAGEAnimationExtraDataHolder2_1();
+                                        thisInnerSet.unk3 = reader.ReadInt32();
+                                        thisInnerSet.unk4 = reader.ReadSingle();
+                                        thisInnerSet.unk5 = reader.ReadSingle();
+                                        thisInnerSet.unk6 = reader.ReadSingle();
+                                        thisInnerSet.unk7 = reader.ReadSingle();
+                                        thisInnerSet.unk8 = reader.ReadSingle();
+                                        thisInnerSet.unk9 = reader.ReadSingle();
+                                        thisInnerSet.unk10 = reader.ReadSingle();
+                                        thisParamSet.innerSets.Add(thisInnerSet);
+                                    }
+                                    thisNode.paramsData2.Add(thisParamSet);
+                                }
+
+                                reader.BaseStream.Position = OffsetToFindParams3;
+                                int[] newOffset1 = Utilities.ConsumeArray<int>(reader, NumberOfParams3);
+                                for (int z = 0; z < NumberOfParams3; z++)
+                                {
+                                    reader.BaseStream.Position = newOffset1[z] * 4;
+
+                                    TEMP_CAGEAnimationExtraDataHolder3 thisParamSet = new TEMP_CAGEAnimationExtraDataHolder3();
+                                    thisParamSet.unk0 = reader.ReadSingle();
+                                    thisParamSet.unk1 = reader.ReadSingle();
+                                    thisParamSet.unk2 = reader.ReadInt32();
+
+                                    int NumberOfParams3_ = JumpToOffset(ref reader);
+                                    for (int m = 0; m < NumberOfParams3_; m++)
+                                    {
+                                        //Unsure if this is variable length
+                                        TEMP_CAGEAnimationExtraDataHolder3_1 thisInnerSet = new TEMP_CAGEAnimationExtraDataHolder3_1();
+                                        thisInnerSet.unk3 = reader.ReadInt32(); //count?
+                                        thisInnerSet.unk4 = reader.ReadSingle();
+                                        thisInnerSet.unk5 = reader.ReadInt32(); //id?
+                                        thisInnerSet.unk6 = reader.ReadInt32(); //id?
+                                        thisInnerSet.unk7 = reader.ReadInt32(); //count?
+                                        thisInnerSet.unk8 = reader.ReadInt32(); //zeros?
+                                        thisParamSet.innerSets.Add(thisInnerSet);
+                                    }
+                                    thisNode.paramsData3.Add(thisParamSet);
                                 }
                                 break;
                             }
@@ -917,7 +978,7 @@ namespace CATHODE.Commands
     }
 
     /* TEMP STUFF TO FIX REWRITING */
-    public class TEMP_CAGEAnimationExtraDataHolder
+    public class TEMP_CAGEAnimationExtraDataHolder1
     {
         public cGUID unk1;
         public CathodeDataType unk2;
@@ -926,6 +987,40 @@ namespace CATHODE.Commands
         public CathodeDataType unk5;
         public cGUID unk6;
         public List<cGUID> hierarchy;
+    }
+    public class TEMP_CAGEAnimationExtraDataHolder2
+    {
+        public float unk0;
+        public float unk1;
+        public int unk2;
+        public List<TEMP_CAGEAnimationExtraDataHolder2_1> innerSets = new List<TEMP_CAGEAnimationExtraDataHolder2_1>();
+    }
+    public class TEMP_CAGEAnimationExtraDataHolder2_1
+    {
+        public int unk3;
+        public float unk4;
+        public float unk5;
+        public float unk6;
+        public float unk7;
+        public float unk8;
+        public float unk9;
+        public float unk10;
+    }
+    public class TEMP_CAGEAnimationExtraDataHolder3
+    {
+        public float unk0;
+        public float unk1;
+        public int unk2;
+        public List<TEMP_CAGEAnimationExtraDataHolder3_1> innerSets = new List<TEMP_CAGEAnimationExtraDataHolder3_1>();
+    }
+    public class TEMP_CAGEAnimationExtraDataHolder3_1
+    {
+        public int unk3;
+        public float unk4;
+        public int unk5;
+        public int unk6;
+        public int unk7;
+        public int unk8;
     }
     public class TEMP_TriggerSequenceExtraDataHolder
     {
