@@ -150,7 +150,7 @@ namespace CATHODE.Commands
                         break;
                     case CathodeDataType.SPLINE_DATA:
                         CathodeSpline thisSpline = ((CathodeSpline)parameters[i]);
-                        writer.Write((writer.BaseStream.Position + 8) / 4);
+                        writer.Write(((int)writer.BaseStream.Position + 8) / 4);
                         writer.Write(thisSpline.splinePoints.Count);
                         for (int x = 0; x < thisSpline.splinePoints.Count; x++)
                         {
