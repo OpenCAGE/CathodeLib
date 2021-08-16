@@ -761,19 +761,33 @@ namespace CATHODE.Commands
 
                                 TriggerSequence thisNode = (TriggerSequence)flowgraph.GetEntityByID(new cGUID(reader)); 
 
-                                int OffsetToFindParams = reader.ReadInt32() * 4;
-                                int NumberOfParams = reader.ReadInt32();
-                                for (int z = 0; z < NumberOfParams; z++)
-                                {
-                                    reader.BaseStream.Position = OffsetToFindParams + (z * 12);
-                                    int OffsetToFindParams2 = reader.ReadInt32() * 4;
-                                    int NumberOfParams2 = reader.ReadInt32();
+                                int triggersOffset = reader.ReadInt32() * 4;
+                                int triggersCount = reader.ReadInt32();
+                                int eventsOffset = reader.ReadInt32() * 4;
+                                int eventsCount = reader.ReadInt32();
 
-                                    TEMP_TriggerSequenceExtraDataHolder thisTrigger = new TEMP_TriggerSequenceExtraDataHolder();
+                                for (int z = 0; z < triggersCount; z++)
+                                {
+                                    reader.BaseStream.Position = triggersOffset + (z * 12);
+                                    int hierarchyOffset = reader.ReadInt32() * 4;
+                                    int hierarchyCount = reader.ReadInt32();
+
+                                    TEMP_TriggerSequenceExtraDataHolder1 thisTrigger = new TEMP_TriggerSequenceExtraDataHolder1();
                                     thisTrigger.timing = reader.ReadSingle();
-                                    reader.BaseStream.Position = OffsetToFindParams2;
-                                    thisTrigger.hierarchy = Utilities.ConsumeArray<cGUID>(reader, NumberOfParams2).ToList<cGUID>();
+                                    reader.BaseStream.Position = hierarchyOffset;
+                                    thisTrigger.hierarchy = Utilities.ConsumeArray<cGUID>(reader, hierarchyCount).ToList<cGUID>();
                                     thisNode.triggers.Add(thisTrigger);
+                                }
+
+                                for (int z = 0; z < eventsCount; z++)
+                                {
+                                    reader.BaseStream.Position = eventsOffset + (z * 12);
+
+                                    TEMP_TriggerSequenceExtraDataHolder2 thisEvent = new TEMP_TriggerSequenceExtraDataHolder2();
+                                    thisEvent.EventID = new cGUID(reader);
+                                    thisEvent.StartedID = new cGUID(reader);
+                                    thisEvent.FinishedID = new cGUID(reader);
+                                    thisNode.events.Add(thisEvent);
                                 }
                                 break;
                             }
@@ -1022,9 +1036,15 @@ namespace CATHODE.Commands
         public int unk7;
         public int unk8;
     }
-    public class TEMP_TriggerSequenceExtraDataHolder
+    public class TEMP_TriggerSequenceExtraDataHolder1
     {
         public float timing;
         public List<cGUID> hierarchy;
+    }
+    public class TEMP_TriggerSequenceExtraDataHolder2
+    {
+        public cGUID EventID; //Assumed
+        public cGUID StartedID; //Assumed
+        public cGUID FinishedID;
     }
 }

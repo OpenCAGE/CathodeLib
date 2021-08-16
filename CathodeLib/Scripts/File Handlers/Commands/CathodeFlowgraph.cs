@@ -97,7 +97,8 @@ namespace CATHODE.Commands
     public class TriggerSequence : FunctionEntity
     {
         public TriggerSequence(cGUID id) : base(id) { function = Utilities.GenerateGUID("TriggerSequence"); }
-        public List<TEMP_TriggerSequenceExtraDataHolder> triggers = new List<TEMP_TriggerSequenceExtraDataHolder>();
+        public List<TEMP_TriggerSequenceExtraDataHolder1> triggers = new List<TEMP_TriggerSequenceExtraDataHolder1>();
+        public List<TEMP_TriggerSequenceExtraDataHolder2> events = new List<TEMP_TriggerSequenceExtraDataHolder2>();
     }
     public class ProxyEntity : CathodeEntity
     {
