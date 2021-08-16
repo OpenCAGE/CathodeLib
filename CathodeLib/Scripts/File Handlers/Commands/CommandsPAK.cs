@@ -181,6 +181,16 @@ namespace CATHODE.Commands
                 //Work out what we want to write
                 List<CathodeEntity> entitiesWithLinks = new List<CathodeEntity>(_flowgraphs[i].GetEntities().FindAll(o => o.childLinks.Count != 0));
                 List<CathodeEntity> entitiesWithParams = new List<CathodeEntity>(_flowgraphs[i].GetEntities().FindAll(o => o.parameters.Count != 0));
+                //TODO: find a nicer way to sort into node class types
+                List<CAGEAnimation> cageAnimationNodes = new List<CAGEAnimation>();
+                List<TriggerSequence> triggerSequenceNodes = new List<TriggerSequence>();
+                cGUID cageAnimationGUID = GetFunctionTypeGUID(CathodeFunctionType.CAGEAnimation);
+                cGUID triggerSequenceGUID = GetFunctionTypeGUID(CathodeFunctionType.TriggerSequence);
+                for (int x = 0; x < _flowgraphs[i].functions.Count; x++) 
+                    if (_flowgraphs[i].functions[x].function == cageAnimationGUID) 
+                        cageAnimationNodes.Add((CAGEAnimation)_flowgraphs[i].functions[x]);
+                    else if (_flowgraphs[i].functions[x].function == triggerSequenceGUID)
+                        triggerSequenceNodes.Add((TriggerSequence)_flowgraphs[i].functions[x]);
 
                 //Write the content out that we will point to in a second
                 List<List<OffsetPair>> scriptContentOffsetInfo = new List<List<OffsetPair>>();
@@ -239,10 +249,56 @@ namespace CATHODE.Commands
                             }
                             break;
                         case CommandsDataBlock.CAGEANIMATION_DATA:
-                            //TODO
+                            /*
+                            for (int p = 0; p < cageAnimationNodes.Count; p++)
+                            {
+                                scriptContentOffsetInfo[x].Add(new OffsetPair(writer.BaseStream.Position, 0));
+                                writer.Write(cageAnimationNodes[p].nodeID.val);
+                                //write three offset pointers
+                            }
+                            */
                             break;
                         case CommandsDataBlock.TRIGGERSEQUENCE_DATA:
-                            //TODO
+                            List<int> triggerOffsets = new List<int>();
+                            for (int p = 0; p < triggerSequenceNodes.Count; p++)
+                            {
+                                List<int> hierarchyOffsets = new List<int>();
+                                for (int pp = 0; pp < triggerSequenceNodes[p].triggers.Count; pp++)
+                                {
+                                    hierarchyOffsets.Add((int)writer.BaseStream.Position);
+                                    Utilities.Write<cGUID>(writer, triggerSequenceNodes[p].triggers[pp].hierarchy.ToArray());
+                                }
+
+                                triggerOffsets.Add((int)writer.BaseStream.Position);
+                                for (int pp = 0; pp < triggerSequenceNodes[p].triggers.Count; pp++)
+                                {
+                                    writer.Write(hierarchyOffsets[pp] / 4);
+                                    writer.Write(triggerSequenceNodes[p].triggers[pp].hierarchy.Count);
+                                    writer.Write(triggerSequenceNodes[p].triggers[pp].timing);
+                                }
+                            }
+
+                            List<int> eventOffsets = new List<int>();
+                            for (int p = 0; p < triggerSequenceNodes.Count; p++)
+                            {
+                                eventOffsets.Add((int)writer.BaseStream.Position);
+                                for (int pp = 0; pp < triggerSequenceNodes[p].events.Count; pp++)
+                                {
+                                    writer.Write(triggerSequenceNodes[p].events[pp].EventID.val);
+                                    writer.Write(triggerSequenceNodes[p].events[pp].StartedID.val);
+                                    writer.Write(triggerSequenceNodes[p].events[pp].FinishedID.val);
+                                }
+                            }
+                            
+                            for (int p = 0; p < triggerSequenceNodes.Count; p++)
+                            {
+                                scriptContentOffsetInfo[x].Add(new OffsetPair(writer.BaseStream.Position, 0));
+                                writer.Write(triggerSequenceNodes[p].nodeID.val);
+                                writer.Write(triggerOffsets[p] / 4);
+                                writer.Write(triggerSequenceNodes[p].triggers.Count);
+                                writer.Write(eventOffsets[p] / 4);
+                                writer.Write(triggerSequenceNodes[p].events.Count);
+                            }
                             break;
                     }
                 }
@@ -359,10 +415,8 @@ namespace CATHODE.Commands
                                         writer.Write(_flowgraphs[i].proxies[z].extraId.val);
                                         break;
                                     case CommandsDataBlock.CAGEANIMATION_DATA:
-                                        //TODO
-                                        break;
                                     case CommandsDataBlock.TRIGGERSEQUENCE_DATA:
-                                        //TODO
+                                        writer.Write(scriptContentOffsetInfo[x][z].GlobalOffset / 4);
                                         break;
                                 }
                             }
