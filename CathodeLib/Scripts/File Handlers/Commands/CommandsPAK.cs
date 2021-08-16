@@ -249,14 +249,101 @@ namespace CATHODE.Commands
                             }
                             break;
                         case CommandsDataBlock.CAGEANIMATION_DATA:
-                            /*
+                            List<int> paramData1Offsets = new List<int>();
+                            for (int p = 0; p < cageAnimationNodes.Count; p++)
+                            {
+                                List<int> hierarchyOffsets = new List<int>();
+                                for (int pp = 0; pp < cageAnimationNodes[p].paramsData1.Count; pp++)
+                                {
+                                    hierarchyOffsets.Add((int)writer.BaseStream.Position);
+                                    Utilities.Write<cGUID>(writer, cageAnimationNodes[p].paramsData1[pp].hierarchy);
+                                }
+
+                                paramData1Offsets.Add((int)writer.BaseStream.Position);
+                                for (int pp = 0; pp < cageAnimationNodes[p].paramsData1.Count; pp++)
+                                {
+                                    writer.Write(cageAnimationNodes[p].paramsData1[pp].unk1.val);
+                                    //writer.Write(GetDataTypeGUID(cageAnimationNodes[p].paramsData1[pp].unk2).val);
+                                    writer.Write(cageAnimationNodes[p].paramsData1[pp].unk2.val);
+                                    writer.Write(cageAnimationNodes[p].paramsData1[pp].unk3.val);
+                                    writer.Write(cageAnimationNodes[p].paramsData1[pp].unk4.val);
+                                    //writer.Write(GetDataTypeGUID(cageAnimationNodes[p].paramsData1[pp].unk5).val);
+                                    writer.Write(cageAnimationNodes[p].paramsData1[pp].unk5.val);
+                                    writer.Write(cageAnimationNodes[p].paramsData1[pp].unk6.val);
+                                    writer.Write(hierarchyOffsets[pp] / 4);
+                                    writer.Write(cageAnimationNodes[p].paramsData1[pp].hierarchy.Count);
+                                }
+                            }
+
+                            List<int> paramData2Offsets = new List<int>();
+                            for (int p = 0; p < cageAnimationNodes.Count; p++)
+                            {
+                                List<int> internalOffsets = new List<int>();
+                                for (int pp = 0; pp < cageAnimationNodes[p].paramsData2.Count; pp++)
+                                {
+                                    internalOffsets.Add(((int)writer.BaseStream.Position) / 4);
+
+                                    writer.Write(cageAnimationNodes[p].paramsData2[pp].unk0);
+                                    writer.Write(cageAnimationNodes[p].paramsData2[pp].unk1);
+                                    writer.Write(cageAnimationNodes[p].paramsData2[pp].unk2);
+
+                                    writer.Write((((int)writer.BaseStream.Position + 8)) / 4);
+                                    writer.Write(cageAnimationNodes[p].paramsData2[pp].innerSets.Count);
+                                    for (int ppp = 0; ppp < cageAnimationNodes[p].paramsData2[pp].innerSets.Count; ppp++)
+                                    {
+                                        writer.Write(cageAnimationNodes[p].paramsData2[pp].innerSets[ppp].unk3);
+                                        writer.Write(cageAnimationNodes[p].paramsData2[pp].innerSets[ppp].unk4);
+                                        writer.Write(cageAnimationNodes[p].paramsData2[pp].innerSets[ppp].unk5);
+                                        writer.Write(cageAnimationNodes[p].paramsData2[pp].innerSets[ppp].unk6);
+                                        writer.Write(cageAnimationNodes[p].paramsData2[pp].innerSets[ppp].unk7);
+                                        writer.Write(cageAnimationNodes[p].paramsData2[pp].innerSets[ppp].unk8);
+                                        writer.Write(cageAnimationNodes[p].paramsData2[pp].innerSets[ppp].unk9);
+                                        writer.Write(cageAnimationNodes[p].paramsData2[pp].innerSets[ppp].unk10);
+                                    }
+                                }
+                                paramData2Offsets.Add((int)writer.BaseStream.Position);
+                                Utilities.Write<int>(writer, internalOffsets);
+                            }
+
+                            List<int> paramData3Offsets = new List<int>();
+                            for (int p = 0; p < cageAnimationNodes.Count; p++)
+                            {
+                                List<int> internalOffsets = new List<int>();
+                                for (int pp = 0; pp < cageAnimationNodes[p].paramsData3.Count; pp++)
+                                {
+                                    internalOffsets.Add(((int)writer.BaseStream.Position) / 4);
+
+                                    writer.Write(cageAnimationNodes[p].paramsData3[pp].unk0);
+                                    writer.Write(cageAnimationNodes[p].paramsData3[pp].unk1);
+                                    writer.Write(cageAnimationNodes[p].paramsData3[pp].unk2);
+
+                                    writer.Write((((int)writer.BaseStream.Position + 8)) / 4);
+                                    writer.Write(cageAnimationNodes[p].paramsData3[pp].innerSets.Count);
+                                    for (int ppp = 0; ppp < cageAnimationNodes[p].paramsData3[pp].innerSets.Count; ppp++)
+                                    {
+                                        writer.Write(cageAnimationNodes[p].paramsData3[pp].innerSets[ppp].unk3);
+                                        writer.Write(cageAnimationNodes[p].paramsData3[pp].innerSets[ppp].unk4);
+                                        writer.Write(cageAnimationNodes[p].paramsData3[pp].innerSets[ppp].unk5);
+                                        writer.Write(cageAnimationNodes[p].paramsData3[pp].innerSets[ppp].unk6);
+                                        writer.Write(cageAnimationNodes[p].paramsData3[pp].innerSets[ppp].unk7);
+                                        writer.Write(cageAnimationNodes[p].paramsData3[pp].innerSets[ppp].unk8);
+                                    }
+                                }
+                                paramData3Offsets.Add((int)writer.BaseStream.Position);
+                                Utilities.Write<int>(writer, internalOffsets);
+                            }
+
                             for (int p = 0; p < cageAnimationNodes.Count; p++)
                             {
                                 scriptContentOffsetInfo[x].Add(new OffsetPair(writer.BaseStream.Position, 0));
                                 writer.Write(cageAnimationNodes[p].nodeID.val);
-                                //write three offset pointers
+                                writer.Write(paramData1Offsets[p] / 4);
+                                writer.Write(cageAnimationNodes[p].paramsData1.Count);
+                                writer.Write(paramData2Offsets[p] / 4);
+                                writer.Write(cageAnimationNodes[p].paramsData2.Count);
+                                writer.Write(paramData3Offsets[p] / 4);
+                                writer.Write(cageAnimationNodes[p].paramsData3.Count);
                             }
-                            */
                             break;
                         case CommandsDataBlock.TRIGGERSEQUENCE_DATA:
                             List<int> triggerOffsets = new List<int>();
@@ -266,7 +353,7 @@ namespace CATHODE.Commands
                                 for (int pp = 0; pp < triggerSequenceNodes[p].triggers.Count; pp++)
                                 {
                                     hierarchyOffsets.Add((int)writer.BaseStream.Position);
-                                    Utilities.Write<cGUID>(writer, triggerSequenceNodes[p].triggers[pp].hierarchy.ToArray());
+                                    Utilities.Write<cGUID>(writer, triggerSequenceNodes[p].triggers[pp].hierarchy);
                                 }
 
                                 triggerOffsets.Add((int)writer.BaseStream.Position);
@@ -739,11 +826,13 @@ namespace CATHODE.Commands
                                     TEMP_CAGEAnimationExtraDataHolder1 thisParamSet = new TEMP_CAGEAnimationExtraDataHolder1();
                                     thisParamSet.unk1 = new cGUID(reader);//Unknown ID (does this link to unknown param ID on CAGEAnimation nodes?
 
-                                    thisParamSet.unk2 = GetDataType(new cGUID(reader)); //Datatype... used for?
+                                    //thisParamSet.unk2 = GetDataType(new cGUID(reader)); //Datatype... used for?
+                                    thisParamSet.unk2 = new cGUID(reader);
                                     thisParamSet.unk3 = new cGUID(reader); //Unknown ID (does this link to unknown param ID on CAGEAnimation nodes?
                                     thisParamSet.unk4 = new cGUID(reader); //Unknown ID - is this a named parameter id? (does this link to unknown param ID on CAGEAnimation nodes?
 
-                                    thisParamSet.unk5 = GetDataType(new cGUID(reader)); //Datatype... used for?
+                                    //thisParamSet.unk5 = GetDataType(new cGUID(reader)); //Datatype... used for?
+                                    thisParamSet.unk5 = new cGUID(reader);
                                     thisParamSet.unk6 = new cGUID(reader); //Unknown ID (does this link to unknown param ID on CAGEAnimation nodes?
 
                                     int NumberOfParams_ = JumpToOffset(ref reader);
@@ -1049,10 +1138,12 @@ namespace CATHODE.Commands
     public class TEMP_CAGEAnimationExtraDataHolder1
     {
         public cGUID unk1;
-        public CathodeDataType unk2;
+        //public CathodeDataType unk2;
+        public cGUID unk2;
         public cGUID unk3;
         public cGUID unk4;
-        public CathodeDataType unk5;
+        //public CathodeDataType unk5;
+        public cGUID unk5;
         public cGUID unk6;
         public List<cGUID> hierarchy;
     }
