@@ -135,6 +135,8 @@ namespace CATHODE.Commands
 
         public OffsetPair unknownPair;
 
+        public List<CathodeEntity> unknowns = new List<CathodeEntity>(); //These entities are generated using info from links & parameters. I know nothing else about them.
+
         public List<DatatypeEntity> datatypes = new List<DatatypeEntity>();
         public List<FunctionEntity> functions = new List<FunctionEntity>();
 
@@ -150,6 +152,7 @@ namespace CATHODE.Commands
             foreach (CathodeEntity entity in functions) if (entity.nodeID == id) return entity;
             foreach (CathodeEntity entity in overrides) if (entity.nodeID == id) return entity;
             foreach (CathodeEntity entity in proxies) if (entity.nodeID == id) return entity;
+            foreach (CathodeEntity entity in unknowns) if (entity.nodeID == id) return entity;
             return null;
         }
 
@@ -161,6 +164,7 @@ namespace CATHODE.Commands
             toReturn.AddRange(functions);
             toReturn.AddRange(overrides);
             toReturn.AddRange(proxies);
+            toReturn.AddRange(unknowns);
             return toReturn;
         }
     }

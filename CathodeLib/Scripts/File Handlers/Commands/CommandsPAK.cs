@@ -162,10 +162,12 @@ namespace CATHODE.Commands
                             writer.Write(thisSpline.splinePoints[x].rotation.Y);
                             writer.Write(thisSpline.splinePoints[x].rotation.Z);
                         }
-                        if (thisSpline.unknownContent != null) writer.Write(thisSpline.unknownContent); //TODO: work out what this is
                         break;
                 }
             }
+
+            //writer.Write(0);
+            //writer.Write(0);
 
             //Write out flowgraphs & track offsets
             int[] flowgraphOffsets = new int[_flowgraphs.Count];
@@ -947,7 +949,9 @@ namespace CATHODE.Commands
                     CathodeEntity nodeToApply = flowgraph.GetEntityByID(entityLinks[x].parentID);
                     if (nodeToApply == null)
                     {
-                        continue; //TODO: We shouldn't hit this, but we do...
+                        //TODO: We shouldn't hit this, but we do...
+                        nodeToApply = new CathodeEntity(entityLinks[x].parentID);
+                        flowgraph.unknowns.Add(nodeToApply);
                     }
                     if (nodeToApply != null) nodeToApply.childLinks.AddRange(entityLinks[x].childLinks);
                 }
@@ -956,7 +960,9 @@ namespace CATHODE.Commands
                     CathodeEntity nodeToApply = flowgraph.GetEntityByID(paramRefSets[x].id);
                     if (nodeToApply == null)
                     {
-                        continue; //TODO: We shouldn't hit this, but we do...
+                        //TODO: We shouldn't hit this, but we do...
+                        nodeToApply = new CathodeEntity(paramRefSets[x].id);
+                        flowgraph.unknowns.Add(nodeToApply);
                     }
                     for (int y = 0; y < paramRefSets[x].refs.Count; y++)
                         nodeToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, parameters[paramRefSets[x].refs[y].offset]));
