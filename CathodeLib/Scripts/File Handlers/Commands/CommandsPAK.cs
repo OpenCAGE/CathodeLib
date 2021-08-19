@@ -188,11 +188,21 @@ namespace CATHODE.Commands
                 List<TriggerSequence> triggerSequenceNodes = new List<TriggerSequence>();
                 cGUID cageAnimationGUID = GetFunctionTypeGUID(CathodeFunctionType.CAGEAnimation);
                 cGUID triggerSequenceGUID = GetFunctionTypeGUID(CathodeFunctionType.TriggerSequence);
-                for (int x = 0; x < _flowgraphs[i].functions.Count; x++) 
-                    if (_flowgraphs[i].functions[x].function == cageAnimationGUID) 
-                        cageAnimationNodes.Add((CAGEAnimation)_flowgraphs[i].functions[x]);
+                for (int x = 0; x < _flowgraphs[i].functions.Count; x++)
+                {
+                    if (_flowgraphs[i].functions[x].function == cageAnimationGUID)
+                    {
+                        CAGEAnimation thisNode = (CAGEAnimation)_flowgraphs[i].functions[x];
+                        if (thisNode.paramsData1.Count == 0 && thisNode.paramsData2.Count == 0 && thisNode.paramsData3.Count == 0) continue;
+                        cageAnimationNodes.Add(thisNode);
+                    }
                     else if (_flowgraphs[i].functions[x].function == triggerSequenceGUID)
-                        triggerSequenceNodes.Add((TriggerSequence)_flowgraphs[i].functions[x]);
+                    {
+                        TriggerSequence thisNode = (TriggerSequence)_flowgraphs[i].functions[x];
+                        if (thisNode.triggers.Count == 0 && thisNode.events.Count == 0) continue;
+                        triggerSequenceNodes.Add(thisNode);
+                    }
+                }
 
                 //Write the content out that we will point to in a second
                 List<List<OffsetPair>> scriptContentOffsetInfo = new List<List<OffsetPair>>();
@@ -639,7 +649,7 @@ namespace CATHODE.Commands
                 }
                 parameters.Add(parameterOffsets[i], this_parameter);
             }
-
+            
             //Read all flowgraphs from the PAK
             CathodeFlowgraph[] flowgraphs = new CathodeFlowgraph[flowgraph_count];
             for (int i = 0; i < flowgraph_count; i++)
@@ -856,7 +866,6 @@ namespace CATHODE.Commands
                                     int NumberOfParams2_ = JumpToOffset(ref reader);
                                     for (int m = 0; m < NumberOfParams2_; m++)
                                     {
-                                        //Unsure if this is variable length
                                         TEMP_CAGEAnimationExtraDataHolder2_1 thisInnerSet = new TEMP_CAGEAnimationExtraDataHolder2_1();
                                         thisInnerSet.unk3 = reader.ReadInt32();
                                         thisInnerSet.unk4 = reader.ReadSingle();
@@ -885,7 +894,6 @@ namespace CATHODE.Commands
                                     int NumberOfParams3_ = JumpToOffset(ref reader);
                                     for (int m = 0; m < NumberOfParams3_; m++)
                                     {
-                                        //Unsure if this is variable length
                                         TEMP_CAGEAnimationExtraDataHolder3_1 thisInnerSet = new TEMP_CAGEAnimationExtraDataHolder3_1();
                                         thisInnerSet.unk3 = reader.ReadInt32(); //count?
                                         thisInnerSet.unk4 = reader.ReadSingle();
