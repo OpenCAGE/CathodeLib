@@ -101,10 +101,11 @@ namespace CATHODE.Commands
                     for (int y = 0; y < fgEntities[x].parameters.Count; y++)
                         if (!parameters.Contains(fgEntities[x].parameters[y].content)) parameters.Add(fgEntities[x].parameters[y].content);
             }
-            parameters = parameters.OrderBy(o => o.dataType).ToList<CathodeParameter>(); //TODO: Secondary sort by value after sorting types?
+            parameters = parameters.OrderBy(o => o.dataType).ThenByDescending(o => o.GetSortValue()).ToList(); 
 
             //Write out parameters & track offsets
-            int[] parameterOffsets = new int[parameters.Count]; 
+            int[] parameterOffsets = new int[parameters.Count];
+            bool hasWrittenSplineYet = false;
             for (int i = 0; i < parameters.Count; i++)
             {
                 parameterOffsets[i] = (int)writer.BaseStream.Position / 4;
@@ -162,12 +163,18 @@ namespace CATHODE.Commands
                             writer.Write(thisSpline.splinePoints[x].rotation.Y);
                             writer.Write(thisSpline.splinePoints[x].rotation.Z);
                         }
+                        if (!hasWrittenSplineYet)
+                        {
+                            //FOR DLC\CHALLENGEMAP16 - I DON'T THINK THIS IS READ
+                            //writer.Write(new cGUID("E9-63-77-91").val);
+                            //writer.Write(new cGUID("7D-A2-DE-3F").val);
+                            writer.Write(0);
+                            writer.Write(0); //Some PAKs use more than 8, and not only on the first one
+                            hasWrittenSplineYet = true;
+                        }
                         break;
                 }
             }
-
-            //writer.Write(0);
-            //writer.Write(0);
 
             //Write out flowgraphs & track offsets
             int[] flowgraphOffsets = new int[_flowgraphs.Count];
@@ -205,14 +212,14 @@ namespace CATHODE.Commands
                 }
 
                 //Write data
-                List<OffsetPair> scriptPointerOffsetInfo = new List<OffsetPair>();
+                OffsetPair[] scriptPointerOffsetInfo = new OffsetPair[(int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS];
                 for (int x = 0; x < (int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS; x++)
                 {
                     switch ((CommandsDataBlock)x)
                     {
                         case CommandsDataBlock.DEFINE_SCRIPT_HEADER:
                         {
-                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, 2));
+                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, 2);
                             Utilities.Write<cGUID>(writer, _flowgraphs[i].nodeID);
                             writer.Write(0);
                             break;
@@ -226,7 +233,7 @@ namespace CATHODE.Commands
                                 Utilities.Write<CathodeNodeLink>(writer, entityWithLink.childLinks);
                             }
 
-                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, entitiesWithLinks.Count));
+                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, entitiesWithLinks.Count);
                             for (int p = 0; p < entitiesWithLinks.Count; p++)
                             {
                                 writer.Write(entitiesWithLinks[p].nodeID.val);
@@ -260,7 +267,7 @@ namespace CATHODE.Commands
                                 }
                             }
 
-                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, offsetPairs.Count));
+                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, offsetPairs.Count);
                             for (int p = 0; p < entitiesWithParams.Count; p++)
                             {
                                 writer.Write(entitiesWithParams[p].nodeID.val);
@@ -278,7 +285,7 @@ namespace CATHODE.Commands
                                 Utilities.Write<cGUID>(writer, _flowgraphs[i].overrides[p].hierarchy);
                             }
 
-                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].overrides.Count));
+                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].overrides.Count);
                             for (int p = 0; p < _flowgraphs[i].overrides.Count; p++)
                             {
                                 writer.Write(_flowgraphs[i].overrides[p].nodeID.val);
@@ -289,7 +296,7 @@ namespace CATHODE.Commands
                         }
                         case CommandsDataBlock.ENTITY_OVERRIDES_CHECKSUM:
                         {
-                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].overrides.Count));
+                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].overrides.Count);
                             for (int p = 0; p < _flowgraphs[i].overrides.Count; p++)
                             {
                                 writer.Write(_flowgraphs[i].overrides[p].nodeID.val);
@@ -299,7 +306,7 @@ namespace CATHODE.Commands
                         }
                         case CommandsDataBlock.FLOWGRAPH_EXPOSED_PARAMETERS:
                         {
-                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].datatypes.Count));
+                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].datatypes.Count);
                             for (int p = 0; p < _flowgraphs[i].datatypes.Count; p++)
                             {
                                 writer.Write(_flowgraphs[i].datatypes[p].nodeID.val);
@@ -317,7 +324,7 @@ namespace CATHODE.Commands
                                 Utilities.Write<cGUID>(writer, _flowgraphs[i].proxies[p].hierarchy);
                             }
 
-                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, offsetPairs.Count));
+                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, offsetPairs.Count);
                             for (int p = 0; p < _flowgraphs[i].proxies.Count; p++)
                             {
                                 writer.Write(_flowgraphs[i].proxies[p].nodeID.val);
@@ -330,7 +337,7 @@ namespace CATHODE.Commands
                         }
                         case CommandsDataBlock.ENTITY_FUNCTIONS:
                         {
-                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].functions.Count));
+                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].functions.Count);
                             for (int p = 0; p < _flowgraphs[i].functions.Count; p++)
                             {
                                 writer.Write(_flowgraphs[i].functions[p].nodeID.val);
@@ -341,7 +348,7 @@ namespace CATHODE.Commands
                         case CommandsDataBlock.RENDERABLE_DATA:
                         {
                             //TODO: this case is quite messy as full parsing still isn't known
-                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].resources.Count));
+                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].resources.Count);
                             for (int p = 0; p < _flowgraphs[i].resources.Count; p++)
                             {
                                 writer.Write(_flowgraphs[i].resources[p].resourceRefID.val);
@@ -381,9 +388,9 @@ namespace CATHODE.Commands
                             }
                             break;
                         }
-                        case CommandsDataBlock.CAGEANIMATION_DATA:
+                        case CommandsDataBlock.TRIGGERSEQUENCE_DATA: //Actually CAGEANIMATION_DATA, but indexes are flipped
                         {
-                            List<int> paramData1Offsets = new List<int>();
+                            List<int> globalOffsets = new List<int>();
                             for (int p = 0; p < cageAnimationNodes.Count; p++)
                             {
                                 List<int> hierarchyOffsets = new List<int>();
@@ -393,7 +400,7 @@ namespace CATHODE.Commands
                                     Utilities.Write<cGUID>(writer, cageAnimationNodes[p].paramsData1[pp].hierarchy);
                                 }
 
-                                paramData1Offsets.Add((int)writer.BaseStream.Position);
+                                int paramData1Offset = (int)writer.BaseStream.Position;
                                 for (int pp = 0; pp < cageAnimationNodes[p].paramsData1.Count; pp++)
                                 {
                                     writer.Write(cageAnimationNodes[p].paramsData1[pp].unk1.val);
@@ -407,15 +414,12 @@ namespace CATHODE.Commands
                                     writer.Write(hierarchyOffsets[pp] / 4);
                                     writer.Write(cageAnimationNodes[p].paramsData1[pp].hierarchy.Count);
                                 }
-                            }
 
-                            List<int> paramData2Offsets = new List<int>();
-                            for (int p = 0; p < cageAnimationNodes.Count; p++)
-                            {
-                                List<int> internalOffsets = new List<int>();
+                                List<int> internalOffsets1 = new List<int>();
+                                List<int> internalOffsets2 = new List<int>();
                                 for (int pp = 0; pp < cageAnimationNodes[p].paramsData2.Count; pp++)
                                 {
-                                    internalOffsets.Add(((int)writer.BaseStream.Position) / 4);
+                                    internalOffsets1.Add(((int)writer.BaseStream.Position) / 4);
 
                                     writer.Write(cageAnimationNodes[p].paramsData2[pp].unk0);
                                     writer.Write(cageAnimationNodes[p].paramsData2[pp].unk1);
@@ -435,17 +439,14 @@ namespace CATHODE.Commands
                                         writer.Write(cageAnimationNodes[p].paramsData2[pp].innerSets[ppp].unk10);
                                     }
                                 }
-                                paramData2Offsets.Add((int)writer.BaseStream.Position);
-                                Utilities.Write<int>(writer, internalOffsets);
-                            }
 
-                            List<int> paramData3Offsets = new List<int>();
-                            for (int p = 0; p < cageAnimationNodes.Count; p++)
-                            {
-                                List<int> internalOffsets = new List<int>();
+                                int paramData2Offset = (int)writer.BaseStream.Position;
+                                Utilities.Write<int>(writer, internalOffsets1);
+
+                                internalOffsets2 = new List<int>();
                                 for (int pp = 0; pp < cageAnimationNodes[p].paramsData3.Count; pp++)
                                 {
-                                    internalOffsets.Add(((int)writer.BaseStream.Position) / 4);
+                                    internalOffsets2.Add(((int)writer.BaseStream.Position) / 4);
 
                                     writer.Write(cageAnimationNodes[p].paramsData3[pp].unk0);
                                     writer.Write(cageAnimationNodes[p].paramsData3[pp].unk1);
@@ -463,33 +464,30 @@ namespace CATHODE.Commands
                                         writer.Write(cageAnimationNodes[p].paramsData3[pp].innerSets[ppp].unk8);
                                     }
                                 }
-                                paramData3Offsets.Add((int)writer.BaseStream.Position);
-                                Utilities.Write<int>(writer, internalOffsets);
-                            }
 
-                            List<int> globalOffsets = new List<int>();
-                            for (int p = 0; p < cageAnimationNodes.Count; p++)
-                            {
+                                int paramData3Offset = (int)writer.BaseStream.Position;
+                                Utilities.Write<int>(writer, internalOffsets2);
+
                                 globalOffsets.Add((int)writer.BaseStream.Position);
                                 writer.Write(cageAnimationNodes[p].nodeID.val);
-                                writer.Write(paramData1Offsets[p] / 4);
+                                writer.Write(paramData1Offset / 4);
                                 writer.Write(cageAnimationNodes[p].paramsData1.Count);
-                                writer.Write(paramData2Offsets[p] / 4);
+                                writer.Write(paramData2Offset / 4);
                                 writer.Write(cageAnimationNodes[p].paramsData2.Count);
-                                writer.Write(paramData3Offsets[p] / 4);
+                                writer.Write(paramData3Offset / 4);
                                 writer.Write(cageAnimationNodes[p].paramsData3.Count);
                             }
 
-                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, globalOffsets.Count));
+                            scriptPointerOffsetInfo[(int)CommandsDataBlock.CAGEANIMATION_DATA] = new OffsetPair(writer.BaseStream.Position, globalOffsets.Count);
                             for (int p = 0; p < globalOffsets.Count; p++)
                             {
                                 writer.Write(globalOffsets[p] / 4);
                             }
                             break;
                         }
-                        case CommandsDataBlock.TRIGGERSEQUENCE_DATA:
+                        case CommandsDataBlock.CAGEANIMATION_DATA: //Actually TRIGGERSEQUENCE_DATA, but indexes are flipped
                         {
-                            List<int> triggerOffsets = new List<int>();
+                            List<int> globalOffsets = new List<int>();
                             for (int p = 0; p < triggerSequenceNodes.Count; p++)
                             {
                                 List<int> hierarchyOffsets = new List<int>();
@@ -499,39 +497,31 @@ namespace CATHODE.Commands
                                     Utilities.Write<cGUID>(writer, triggerSequenceNodes[p].triggers[pp].hierarchy);
                                 }
 
-                                triggerOffsets.Add((int)writer.BaseStream.Position);
+                                int triggerOffset = (int)writer.BaseStream.Position;
                                 for (int pp = 0; pp < triggerSequenceNodes[p].triggers.Count; pp++)
                                 {
                                     writer.Write(hierarchyOffsets[pp] / 4);
                                     writer.Write(triggerSequenceNodes[p].triggers[pp].hierarchy.Count);
                                     writer.Write(triggerSequenceNodes[p].triggers[pp].timing);
                                 }
-                            }
 
-                            List<int> eventOffsets = new List<int>();
-                            for (int p = 0; p < triggerSequenceNodes.Count; p++)
-                            {
-                                eventOffsets.Add((int)writer.BaseStream.Position);
+                                int eventOffset = (int)writer.BaseStream.Position;
                                 for (int pp = 0; pp < triggerSequenceNodes[p].events.Count; pp++)
                                 {
                                     writer.Write(triggerSequenceNodes[p].events[pp].EventID.val);
                                     writer.Write(triggerSequenceNodes[p].events[pp].StartedID.val);
                                     writer.Write(triggerSequenceNodes[p].events[pp].FinishedID.val);
                                 }
-                            }
 
-                            List<int> globalOffsets = new List<int>();
-                            for (int p = 0; p < triggerSequenceNodes.Count; p++)
-                            {
                                 globalOffsets.Add((int)writer.BaseStream.Position);
                                 writer.Write(triggerSequenceNodes[p].nodeID.val);
-                                writer.Write(triggerOffsets[p] / 4);
+                                writer.Write(triggerOffset / 4);
                                 writer.Write(triggerSequenceNodes[p].triggers.Count);
-                                writer.Write(eventOffsets[p] / 4);
+                                writer.Write(eventOffset / 4);
                                 writer.Write(triggerSequenceNodes[p].events.Count);
                             }
 
-                            scriptPointerOffsetInfo.Add(new OffsetPair(writer.BaseStream.Position, globalOffsets.Count));
+                            scriptPointerOffsetInfo[(int)CommandsDataBlock.TRIGGERSEQUENCE_DATA] = new OffsetPair(writer.BaseStream.Position, globalOffsets.Count);
                             for (int p = 0; p < globalOffsets.Count; p++)
                             {
                                 writer.Write(globalOffsets[p] / 4);
@@ -540,14 +530,13 @@ namespace CATHODE.Commands
                         }
                         case CommandsDataBlock.UNUSED:
                         {
-                            scriptPointerOffsetInfo.Add(new OffsetPair(0, 0));
+                            scriptPointerOffsetInfo[x] = new OffsetPair(0, 0);
                             break;
                         }
                         case CommandsDataBlock.UNKNOWN_COUNTS:
                         {
                             //TODO: These count values are unknown. Temp fix in place for the div by 4 at the end on offset (as this isn't actually an offset!)
-                            OffsetPair thisPairFix = new OffsetPair(_flowgraphs[i].unknownPair.GlobalOffset * 4, _flowgraphs[i].unknownPair.EntryCount);
-                            scriptPointerOffsetInfo.Add(thisPairFix);
+                            scriptPointerOffsetInfo[x] = new OffsetPair(_flowgraphs[i].unknownPair.GlobalOffset * 4, _flowgraphs[i].unknownPair.EntryCount);
                             break;
                         }
                     }
