@@ -60,12 +60,13 @@ namespace CATHODE.Commands
         public int entryCountREDS;                     //The count in REDS.BIN
 
         //For type UNKNOWN_REFERENCE & others
-        public int unknownInteger;
+        public int unknownInteger1;
+        public int unknownInteger2;
         public cGUID nodeID;
     }
 
     /* A node in a flowgraph */
-    public class CathodeEntity
+    public class CathodeEntity : IComparable<CathodeEntity>
     {
         public CathodeEntity(cGUID id)
         {
@@ -77,6 +78,15 @@ namespace CATHODE.Commands
 
         public List<CathodeNodeLink> childLinks = new List<CathodeNodeLink>();
         public List<CathodeLoadedParameter> parameters = new List<CathodeLoadedParameter>();
+
+        public int CompareTo(CathodeEntity other)
+        {
+            int nodeIDTotalThis = nodeID.val[0] + nodeID.val[1] + nodeID.val[2] + nodeID.val[3];
+            int nodeIDTotalOther = other.nodeID.val[0] + other.nodeID.val[1] + other.nodeID.val[2] + other.nodeID.val[3];
+            if (nodeIDTotalThis > nodeIDTotalOther) return 1;
+            else if (nodeIDTotalThis == nodeIDTotalOther) return 0;
+            return -1;
+        }
     }
     public class DatatypeEntity : CathodeEntity
     {
@@ -166,6 +176,16 @@ namespace CATHODE.Commands
             toReturn.AddRange(proxies);
             toReturn.AddRange(unknowns);
             return toReturn;
+        }
+
+        /* Sort all entity arrays */
+        public void SortEntities()
+        {
+            datatypes.Sort();
+            functions.Sort();
+            overrides.Sort();
+            proxies.Sort();
+            unknowns.Sort();
         }
     }
 }

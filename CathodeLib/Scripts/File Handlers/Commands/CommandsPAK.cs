@@ -211,6 +211,11 @@ namespace CATHODE.Commands
                     }
                 }
 
+                //Sort (TODO)
+                //_flowgraphs[i].SortEntities();
+                //entitiesWithLinks.Sort();
+                //entitiesWithParams.Sort();
+
                 //Write data
                 OffsetPair[] scriptPointerOffsetInfo = new OffsetPair[(int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS];
                 for (int x = 0; x < (int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS; x++)
@@ -366,23 +371,19 @@ namespace CATHODE.Commands
                                         writer.Write(_flowgraphs[i].resources[p].entryCountREDS);
                                         break;
                                     case CathodeResourceReferenceType.COLLISION_MAPPING:
-                                        writer.Write(_flowgraphs[i].resources[p].unknownInteger);
+                                        writer.Write(_flowgraphs[i].resources[p].unknownInteger1);
                                         writer.Write(_flowgraphs[i].resources[p].nodeID.val);
                                         break;
                                     case CathodeResourceReferenceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
                                     case CathodeResourceReferenceType.NAV_MESH_BARRIER_RESOURCE:
                                     case CathodeResourceReferenceType.TRAVERSAL_SEGMENT:
-                                        writer.Write(-1);
-                                        writer.Write(-1);
+                                        writer.Write(_flowgraphs[i].resources[p].unknownInteger1);
+                                        writer.Write(_flowgraphs[i].resources[p].unknownInteger2);
                                         break;
                                     case CathodeResourceReferenceType.ANIMATED_MODEL:
                                     case CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM:
-                                        writer.Write(_flowgraphs[i].resources[p].unknownInteger);
-                                        writer.Write(0);
-                                        break;
-                                    default:
-                                        writer.Write(0);
-                                        writer.Write(0);
+                                        writer.Write(_flowgraphs[i].resources[p].unknownInteger1);
+                                        writer.Write(_flowgraphs[i].resources[p].unknownInteger2);
                                         break;
                                 }
                             }
@@ -419,14 +420,7 @@ namespace CATHODE.Commands
                                 List<int> internalOffsets2 = new List<int>();
                                 for (int pp = 0; pp < cageAnimationNodes[p].paramsData2.Count; pp++)
                                 {
-                                    internalOffsets1.Add(((int)writer.BaseStream.Position) / 4);
-
-                                    writer.Write(cageAnimationNodes[p].paramsData2[pp].unk0);
-                                    writer.Write(cageAnimationNodes[p].paramsData2[pp].unk1);
-                                    writer.Write(cageAnimationNodes[p].paramsData2[pp].unk2);
-
-                                    writer.Write((((int)writer.BaseStream.Position + 8)) / 4);
-                                    writer.Write(cageAnimationNodes[p].paramsData2[pp].innerSets.Count);
+                                    int toPointTo = (int)writer.BaseStream.Position;
                                     for (int ppp = 0; ppp < cageAnimationNodes[p].paramsData2[pp].innerSets.Count; ppp++)
                                     {
                                         writer.Write(cageAnimationNodes[p].paramsData2[pp].innerSets[ppp].unk3);
@@ -438,6 +432,15 @@ namespace CATHODE.Commands
                                         writer.Write(cageAnimationNodes[p].paramsData2[pp].innerSets[ppp].unk9);
                                         writer.Write(cageAnimationNodes[p].paramsData2[pp].innerSets[ppp].unk10);
                                     }
+
+                                    internalOffsets1.Add(((int)writer.BaseStream.Position) / 4);
+
+                                    writer.Write(cageAnimationNodes[p].paramsData2[pp].unk0);
+                                    writer.Write(cageAnimationNodes[p].paramsData2[pp].unk1);
+                                    writer.Write(cageAnimationNodes[p].paramsData2[pp].unk2);
+
+                                    writer.Write(toPointTo / 4);
+                                    writer.Write(cageAnimationNodes[p].paramsData2[pp].innerSets.Count);
                                 }
 
                                 int paramData2Offset = (int)writer.BaseStream.Position;
@@ -446,14 +449,7 @@ namespace CATHODE.Commands
                                 internalOffsets2 = new List<int>();
                                 for (int pp = 0; pp < cageAnimationNodes[p].paramsData3.Count; pp++)
                                 {
-                                    internalOffsets2.Add(((int)writer.BaseStream.Position) / 4);
-
-                                    writer.Write(cageAnimationNodes[p].paramsData3[pp].unk0);
-                                    writer.Write(cageAnimationNodes[p].paramsData3[pp].unk1);
-                                    writer.Write(cageAnimationNodes[p].paramsData3[pp].unk2);
-
-                                    writer.Write((((int)writer.BaseStream.Position + 8)) / 4);
-                                    writer.Write(cageAnimationNodes[p].paramsData3[pp].innerSets.Count);
+                                    int toPointTo = (int)writer.BaseStream.Position;
                                     for (int ppp = 0; ppp < cageAnimationNodes[p].paramsData3[pp].innerSets.Count; ppp++)
                                     {
                                         writer.Write(cageAnimationNodes[p].paramsData3[pp].innerSets[ppp].unk3);
@@ -463,6 +459,15 @@ namespace CATHODE.Commands
                                         writer.Write(cageAnimationNodes[p].paramsData3[pp].innerSets[ppp].unk7);
                                         writer.Write(cageAnimationNodes[p].paramsData3[pp].innerSets[ppp].unk8);
                                     }
+
+                                    internalOffsets2.Add(((int)writer.BaseStream.Position) / 4);
+
+                                    writer.Write(cageAnimationNodes[p].paramsData3[pp].unk0);
+                                    writer.Write(cageAnimationNodes[p].paramsData3[pp].unk1);
+                                    writer.Write(cageAnimationNodes[p].paramsData3[pp].unk2);
+
+                                    writer.Write(toPointTo / 4);
+                                    writer.Write(cageAnimationNodes[p].paramsData3[pp].innerSets.Count);
                                 }
 
                                 int paramData3Offset = (int)writer.BaseStream.Position;
@@ -819,18 +824,19 @@ namespace CATHODE.Commands
                                         resource_ref.entryCountREDS = reader.ReadInt32(); //REDS.BIN entry count
                                         break;
                                     case CathodeResourceReferenceType.COLLISION_MAPPING:
-                                        resource_ref.unknownInteger = reader.ReadInt32(); //unknown integer (COLLISION.MAP index?)
+                                        resource_ref.unknownInteger1 = reader.ReadInt32(); //unknown integer (COLLISION.MAP index?)
                                         resource_ref.nodeID = new cGUID(reader); //ID which maps to the node using the resource (?) - check GetFriendlyName
                                         break;
                                     case CathodeResourceReferenceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
                                     case CathodeResourceReferenceType.NAV_MESH_BARRIER_RESOURCE:
                                     case CathodeResourceReferenceType.TRAVERSAL_SEGMENT:
-                                        reader.BaseStream.Position += 8; //just two -1 32-bit integers for some reason
+                                        resource_ref.unknownInteger1 = reader.ReadInt32(); //always -1?
+                                        resource_ref.unknownInteger2 = reader.ReadInt32(); //always -1?
                                         break;
                                     case CathodeResourceReferenceType.ANIMATED_MODEL:
                                     case CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM:
-                                        resource_ref.unknownInteger = reader.ReadInt32(); //unknown integer
-                                        reader.BaseStream.Position += 4;
+                                        resource_ref.unknownInteger1 = reader.ReadInt32(); //unknown integer
+                                        resource_ref.unknownInteger2 = reader.ReadInt32(); //always zero/-1?
                                         break;
                                 }
                                 flowgraph.resources.Add(resource_ref);
