@@ -101,7 +101,6 @@ namespace CATHODE.Commands
                     for (int y = 0; y < fgEntities[x].parameters.Count; y++)
                         if (!parameters.Contains(fgEntities[x].parameters[y].content)) parameters.Add(fgEntities[x].parameters[y].content);
             }
-            parameters = parameters.OrderBy(o => o.dataType).ThenByDescending(o => o.GetSortValue()).ToList(); 
 
             //Write out parameters & track offsets
             int[] parameterOffsets = new int[parameters.Count];
@@ -211,10 +210,10 @@ namespace CATHODE.Commands
                     }
                 }
 
-                //Sort (TODO)
-                //_flowgraphs[i].SortEntities();
-                //entitiesWithLinks.Sort();
-                //entitiesWithParams.Sort();
+                //Sort (TODO: work out how this is calculated)
+                entitiesWithLinks = entitiesWithLinks.OrderBy(o => o.ConnectionIndex).ToList();
+                entitiesWithParams = entitiesWithParams.OrderBy(o => o.ParamRefIndex).ToList();
+                List<OverrideEntity> reshuffledChecksums = _flowgraphs[i].overrides.OrderBy(o => o.ChecksumIndex).ToList(); //Fuck this
 
                 //Write data
                 OffsetPair[] scriptPointerOffsetInfo = new OffsetPair[(int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS];
@@ -301,11 +300,11 @@ namespace CATHODE.Commands
                         }
                         case CommandsDataBlock.ENTITY_OVERRIDES_CHECKSUM:
                         {
-                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].overrides.Count);
-                            for (int p = 0; p < _flowgraphs[i].overrides.Count; p++)
+                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledChecksums.Count);
+                            for (int p = 0; p < reshuffledChecksums.Count; p++)
                             {
-                                writer.Write(_flowgraphs[i].overrides[p].nodeID.val);
-                                writer.Write(_flowgraphs[i].overrides[p].checksum.val);
+                                writer.Write(reshuffledChecksums[p].nodeID.val);
+                                writer.Write(reshuffledChecksums[p].checksum.val);
                             }
                             break;
                         }
@@ -707,7 +706,7 @@ namespace CATHODE.Commands
                 //Pull data from those offsets
                 List<CommandsEntityLinks> entityLinks = new List<CommandsEntityLinks>();
                 List<CommandsParamRefSet> paramRefSets = new List<CommandsParamRefSet>();
-                Dictionary<cGUID, cGUID> overrideChecksums = new Dictionary<cGUID, cGUID>();
+                Dictionary<cGUID, (cGUID, int)> overrideChecksums = new Dictionary<cGUID, (cGUID, int)>();
                 for (int x = 0; x < offsetPairs.Length; x++)
                 {
                     reader.BaseStream.Position = offsetPairs[x].GlobalOffset * 4;
@@ -743,7 +742,7 @@ namespace CATHODE.Commands
                             case CommandsDataBlock.ENTITY_OVERRIDES_CHECKSUM:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
-                                overrideChecksums.Add(new cGUID(reader), new cGUID(reader));
+                                overrideChecksums.Add(new cGUID(reader), (new cGUID(reader), (int)reader.BaseStream.Position)); //TODO: Added in reader.BaseStream.Position as offset hack before working out proper sort order algo
                                 break;
                             }
                             case CommandsDataBlock.FLOWGRAPH_EXPOSED_PARAMETERS:
@@ -975,7 +974,8 @@ namespace CATHODE.Commands
 
                 for (int x = 0; x < flowgraph.overrides.Count; x++)
                 {
-                    flowgraph.overrides[x].checksum = overrideChecksums[flowgraph.overrides[x].nodeID];
+                    flowgraph.overrides[x].checksum = overrideChecksums[flowgraph.overrides[x].nodeID].Item1;
+                    flowgraph.overrides[x].ChecksumIndex = overrideChecksums[flowgraph.overrides[x].nodeID].Item2; //HACK HACK HACK
                 }
                 for (int x = 0; x < entityLinks.Count; x++)
                 {
@@ -986,7 +986,8 @@ namespace CATHODE.Commands
                         nodeToApply = new CathodeEntity(entityLinks[x].parentID);
                         flowgraph.unknowns.Add(nodeToApply);
                     }
-                    if (nodeToApply != null) nodeToApply.childLinks.AddRange(entityLinks[x].childLinks);
+                    nodeToApply.ConnectionIndex = x;
+                    nodeToApply.childLinks.AddRange(entityLinks[x].childLinks);
                 }
                 for (int x = 0; x < paramRefSets.Count; x++)
                 {
@@ -997,6 +998,7 @@ namespace CATHODE.Commands
                         nodeToApply = new CathodeEntity(paramRefSets[x].id);
                         flowgraph.unknowns.Add(nodeToApply);
                     }
+                    nodeToApply.ParamRefIndex = x;
                     for (int y = 0; y < paramRefSets[x].refs.Count; y++)
                         nodeToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, parameters[paramRefSets[x].refs[y].offset]));
                 }
@@ -1164,6 +1166,8 @@ namespace CATHODE.Commands
 
     public class CommandsParamRefSet
     {
+        public int Index = -1; //TEMP TEST
+
         public cGUID id;
         public List<CathodeParameterReference> refs = new List<CathodeParameterReference>();
 

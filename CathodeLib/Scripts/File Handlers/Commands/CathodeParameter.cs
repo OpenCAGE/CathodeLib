@@ -849,80 +849,53 @@ namespace CATHODE.Commands
         {
             dataType = type;
         }
-        public virtual int GetSortValue() { return 0; }
-
         public CathodeDataType dataType = CathodeDataType.NO_TYPE;
     }
     public class CathodeTransform : CathodeParameter
     {
         public CathodeTransform() { dataType = CathodeDataType.POSITION; }
-        public override int GetSortValue() { return (int)((position.X * 10000) + (position.Y * 10000) + (position.Z * 10000) + (rotation.X * 10000) + (rotation.Y * 10000) + (rotation.Z * 10000)); }
-
         public Vector3 position = new Vector3();
         public Vector3 rotation = new Vector3();
     }
     public class CathodeInteger : CathodeParameter
     {
         public CathodeInteger() { dataType = CathodeDataType.INTEGER; }
-        public override int GetSortValue() { return value; }
-
         public int value = 0;
     }
     public class CathodeString : CathodeParameter
     {
         public CathodeString() { dataType = CathodeDataType.STRING; }
-        public override int GetSortValue() { return value.Length; }
-
         public string value = "";
     }
     public class CathodeBool : CathodeParameter
     {
         public CathodeBool() { dataType = CathodeDataType.BOOL; }
-        public override int GetSortValue() { return (value) ? 1 : 0; }
-
         public bool value = false;
     }
     public class CathodeFloat : CathodeParameter
     {
         public CathodeFloat() { dataType = CathodeDataType.FLOAT; }
-        public override int GetSortValue() { return (int)(value * 10000); }
-
         public float value = 0.0f;
     }
     public class CathodeResource : CathodeParameter
     {
         public CathodeResource() { dataType = CathodeDataType.SHORT_GUID; }
-        public override int GetSortValue() { return (resourceID.val == null) ? 0 : resourceID.val[0] + resourceID.val[1] + resourceID.val[2] + resourceID.val[3]; }
-
         public cGUID resourceID;
     }
     public class CathodeVector3 : CathodeParameter
     {
         public CathodeVector3() { dataType = CathodeDataType.DIRECTION; }
-        public override int GetSortValue() { return (int)(value.X + value.Y + value.Z); }
-
         public Vector3 value = new Vector3();
     }
     public class CathodeEnum : CathodeParameter
     {
         public CathodeEnum() { dataType = CathodeDataType.ENUM; }
-        public override int GetSortValue() { return 0; } //TODO
-
         public cGUID enumID;
         public int enumIndex = 0;
     }
     public class CathodeSpline : CathodeParameter
     {
         public CathodeSpline() { dataType = CathodeDataType.SPLINE_DATA; }
-        public override int GetSortValue()
-        {
-            int sortVal = 0;
-            for (int i = 0; i < splinePoints.Count; i++)
-                sortVal += (int)(splinePoints[i].position.X + splinePoints[i].position.Y + splinePoints[i].position.Z + 
-                                 splinePoints[i].rotation.X + splinePoints[i].rotation.Y + splinePoints[i].rotation.Z);
-            return sortVal;
-        }
-
         public List<CathodeTransform> splinePoints = new List<CathodeTransform>();
     }
 }

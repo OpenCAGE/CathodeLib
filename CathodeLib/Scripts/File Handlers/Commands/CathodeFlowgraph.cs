@@ -68,6 +68,9 @@ namespace CATHODE.Commands
     /* A node in a flowgraph */
     public class CathodeEntity : IComparable<CathodeEntity>
     {
+        public int ConnectionIndex = -1; //TEMP TEST
+        public int ParamRefIndex = -1; //TEMP TEST
+
         public CathodeEntity(cGUID id)
         {
             nodeID = id;
@@ -121,6 +124,8 @@ namespace CATHODE.Commands
     }
     public class OverrideEntity : CathodeEntity
     {
+        public int ChecksumIndex = -1; //TEMP TEST
+
         public OverrideEntity(cGUID id) : base(id) { variant = EntityVariant.OVERRIDE; }
         public cGUID checksum; //TODO: This value is apparently a hash of the hierarchy GUIDs, but need to verify that, and work out the salt.
         public List<cGUID> hierarchy = new List<cGUID>();
