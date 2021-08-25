@@ -181,11 +181,11 @@ namespace CATHODE.Commands
         /* Sort all entity arrays */
         public void SortEntities()
         {
-            datatypes.Sort();
-            functions.Sort();
-            overrides.Sort();
-            proxies.Sort();
-            unknowns.Sort();
+            datatypes.OrderBy(o => o.nodeID.ToUInt32());
+            functions.OrderBy(o => o.nodeID.ToUInt32());
+            overrides.OrderBy(o => o.nodeID.ToUInt32());
+            proxies.OrderBy(o => o.nodeID.ToUInt32());
+            unknowns.OrderBy(o => o.nodeID.ToUInt32());
         }
     }
 }

@@ -210,10 +210,11 @@ namespace CATHODE.Commands
                     }
                 }
 
-                //Sort (TODO: work out how this is calculated)
+                //Sort
                 entitiesWithLinks = entitiesWithLinks.OrderBy(o => o.nodeID.ToUInt32()).ToList();
                 entitiesWithParams = entitiesWithParams.OrderBy(o => o.nodeID.ToUInt32()).ToList();
-                List<OverrideEntity> reshuffledChecksums = _flowgraphs[i].overrides.OrderBy(o => o.checksum.ToUInt32()).ToList(); 
+                List<OverrideEntity> reshuffledChecksums = _flowgraphs[i].overrides.OrderBy(o => o.checksum.ToUInt32()).ToList();
+                _flowgraphs[i].SortEntities();
 
                 //Write data
                 OffsetPair[] scriptPointerOffsetInfo = new OffsetPair[(int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS];
