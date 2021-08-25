@@ -177,5 +177,9 @@ namespace CATHODE
         {
             return BitConverter.ToString(val);
         }
+        public uint ToUInt32()
+        {
+            return BitConverter.ToUInt32(val, 0);
+        }
     }
 }

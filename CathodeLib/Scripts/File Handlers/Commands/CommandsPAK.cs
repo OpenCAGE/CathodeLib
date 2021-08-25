@@ -211,9 +211,9 @@ namespace CATHODE.Commands
                 }
 
                 //Sort (TODO: work out how this is calculated)
-                entitiesWithLinks = entitiesWithLinks.OrderBy(o => o.ConnectionIndex).ToList();
-                entitiesWithParams = entitiesWithParams.OrderBy(o => o.ParamRefIndex).ToList();
-                List<OverrideEntity> reshuffledChecksums = _flowgraphs[i].overrides.OrderBy(o => o.ChecksumIndex).ToList(); //Fuck this
+                entitiesWithLinks = entitiesWithLinks.OrderBy(o => o.nodeID.ToUInt32()).ToList();
+                entitiesWithParams = entitiesWithParams.OrderBy(o => o.nodeID.ToUInt32()).ToList();
+                List<OverrideEntity> reshuffledChecksums = _flowgraphs[i].overrides.OrderBy(o => o.checksum.ToUInt32()).ToList(); 
 
                 //Write data
                 OffsetPair[] scriptPointerOffsetInfo = new OffsetPair[(int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS];
@@ -675,6 +675,7 @@ namespace CATHODE.Commands
             
             //Read all flowgraphs from the PAK
             CathodeFlowgraph[] flowgraphs = new CathodeFlowgraph[flowgraph_count];
+            List<string> order_test = new List<string>();
             for (int i = 0; i < flowgraph_count; i++)
             {
                 reader.BaseStream.Position = flowgraphOffsets[i] * 4;
@@ -846,6 +847,7 @@ namespace CATHODE.Commands
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
                                 reader.BaseStream.Position = (reader.ReadInt32() * 4);
 
+                                //THIS SOMETIMES TRANSLATES TO A PROXY - NOT A CAGEANIMATION NODE
                                 CAGEAnimation thisNode = (CAGEAnimation)flowgraph.GetEntityByID(new cGUID(reader));
 
                                 int OffsetToFindParams = reader.ReadInt32() * 4;
@@ -975,7 +977,6 @@ namespace CATHODE.Commands
                 for (int x = 0; x < flowgraph.overrides.Count; x++)
                 {
                     flowgraph.overrides[x].checksum = overrideChecksums[flowgraph.overrides[x].nodeID].Item1;
-                    flowgraph.overrides[x].ChecksumIndex = overrideChecksums[flowgraph.overrides[x].nodeID].Item2; //HACK HACK HACK
                 }
                 for (int x = 0; x < entityLinks.Count; x++)
                 {
@@ -986,7 +987,6 @@ namespace CATHODE.Commands
                         nodeToApply = new CathodeEntity(entityLinks[x].parentID);
                         flowgraph.unknowns.Add(nodeToApply);
                     }
-                    nodeToApply.ConnectionIndex = x;
                     nodeToApply.childLinks.AddRange(entityLinks[x].childLinks);
                 }
                 for (int x = 0; x < paramRefSets.Count; x++)
@@ -998,7 +998,6 @@ namespace CATHODE.Commands
                         nodeToApply = new CathodeEntity(paramRefSets[x].id);
                         flowgraph.unknowns.Add(nodeToApply);
                     }
-                    nodeToApply.ParamRefIndex = x;
                     for (int y = 0; y < paramRefSets[x].refs.Count; y++)
                         nodeToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, parameters[paramRefSets[x].refs[y].offset]));
                 }
@@ -1006,6 +1005,7 @@ namespace CATHODE.Commands
                 flowgraphs[i] = flowgraph;
             }
             _flowgraphs = flowgraphs.ToList<CathodeFlowgraph>();
+            File.WriteAllLines("dumpy.txt", order_test);
 
             reader.Close();
         }
