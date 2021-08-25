@@ -676,7 +676,6 @@ namespace CATHODE.Commands
             
             //Read all flowgraphs from the PAK
             CathodeFlowgraph[] flowgraphs = new CathodeFlowgraph[flowgraph_count];
-            List<string> order_test = new List<string>();
             for (int i = 0; i < flowgraph_count; i++)
             {
                 reader.BaseStream.Position = flowgraphOffsets[i] * 4;
@@ -1006,7 +1005,6 @@ namespace CATHODE.Commands
                 flowgraphs[i] = flowgraph;
             }
             _flowgraphs = flowgraphs.ToList<CathodeFlowgraph>();
-            File.WriteAllLines("dumpy.txt", order_test);
 
             reader.Close();
         }
