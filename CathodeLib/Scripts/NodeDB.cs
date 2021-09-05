@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -46,7 +46,7 @@ namespace CathodeLib
             foreach (ShortGUIDDescriptor db_entry in cathode_id_map) if (db_entry.ID == id) return db_entry.Description;
             return id.ToString();
         }
-        public static string GetNodeTypeName(cGUID id, ref CommandsPAK pak) //This is performed separately to be able to remap nodes that are flowgraphs
+        public static string GetNodeTypeName(cGUID id, CommandsPAK pak) //This is performed separately to be able to remap nodes that are flowgraphs
         {
             if (id.val == null) return "";
             foreach (ShortGUIDDescriptor db_entry in cathode_id_map) if (db_entry.ID == id) return db_entry.Description;
