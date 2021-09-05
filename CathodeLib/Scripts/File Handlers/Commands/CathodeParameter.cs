@@ -842,7 +842,7 @@ namespace CATHODE.Commands
     }
 
     /* A parameter compiled in COMMANDS.PAK */
-    public class CathodeParameter
+    public class CathodeParameter : ICloneable
     {
         public CathodeParameter() { }
         public CathodeParameter(CathodeDataType type)
@@ -850,6 +850,11 @@ namespace CATHODE.Commands
             dataType = type;
         }
         public CathodeDataType dataType = CathodeDataType.NO_TYPE;
+
+        public object Clone()
+        {
+            return this.MemberwiseClone();
+        }
     }
     public class CathodeTransform : CathodeParameter
     {

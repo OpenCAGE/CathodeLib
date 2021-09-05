@@ -12,11 +12,6 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 #endif
 
-//TODO: 
-// - Finish write functionality
-// - Figure out proxies
-// - Improve storage of parameters (don't use references by offset anymore)
-
 namespace CATHODE.Commands
 {
     public class CommandsPAK
@@ -999,7 +994,7 @@ namespace CATHODE.Commands
                         flowgraph.unknowns.Add(nodeToApply);
                     }
                     for (int y = 0; y < paramRefSets[x].refs.Count; y++)
-                        nodeToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, parameters[paramRefSets[x].refs[y].offset]));
+                        nodeToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, (CathodeParameter)parameters[paramRefSets[x].refs[y].offset].Clone()));
                 }
 
                 flowgraphs[i] = flowgraph;
