@@ -40,13 +40,13 @@ namespace CathodeLib
         }
 
         //Check the CATHODE data dump for a corresponding name
-        public static string GetName(cGUID id)
+        public static string GetCathodeName(cGUID id)
         {
             if (id.val == null) return "";
             foreach (ShortGUIDDescriptor db_entry in cathode_id_map) if (db_entry.ID == id) return db_entry.Description;
             return id.ToString();
         }
-        public static string GetNodeTypeName(cGUID id, CommandsPAK pak) //This is performed separately to be able to remap nodes that are flowgraphs
+        public static string GetCathodeName(cGUID id, CommandsPAK pak) //This is performed separately to be able to remap nodes that are flowgraphs
         {
             if (id.val == null) return "";
             foreach (ShortGUIDDescriptor db_entry in cathode_id_map) if (db_entry.ID == id) return db_entry.Description;
@@ -54,12 +54,28 @@ namespace CathodeLib
             return flow.name;
         }
 
+        //Reverse CATHODE name check
+        public static cGUID GetCathodeGUID(string text)
+        {
+            ShortGUIDDescriptor thisDesc = cathode_id_map.FirstOrDefault(o => o.Description == text);
+            if (thisDesc == null) return new cGUID();
+            return thisDesc.ID;
+        }
+
         //Check the COMMANDS.BIN dump for node in-editor names
-        public static string GetFriendlyName(cGUID id)
+        public static string GetEditorName(cGUID id)
         {
             if (id.val == null) return "";
             foreach (ShortGUIDDescriptor db_entry in node_friendly_names) if (db_entry.ID == id) return db_entry.Description;
             return id.ToString();
+        }
+
+        //Reverse editor name check
+        public static cGUID GetEditorGUID(string text)
+        {
+            ShortGUIDDescriptor thisDesc = node_friendly_names.FirstOrDefault(o => o.Description == text);
+            if (thisDesc == null) return new cGUID();
+            return thisDesc.ID;
         }
 
         //Check the formatted enum dump for content

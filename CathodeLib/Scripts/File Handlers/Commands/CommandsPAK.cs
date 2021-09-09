@@ -99,7 +99,6 @@ namespace CATHODE.Commands
 
             //Write out parameters & track offsets
             int[] parameterOffsets = new int[parameters.Count];
-            bool hasWrittenSplineYet = false;
             for (int i = 0; i < parameters.Count; i++)
             {
                 parameterOffsets[i] = (int)writer.BaseStream.Position / 4;
@@ -156,15 +155,6 @@ namespace CATHODE.Commands
                             writer.Write(thisSpline.splinePoints[x].rotation.X);
                             writer.Write(thisSpline.splinePoints[x].rotation.Y);
                             writer.Write(thisSpline.splinePoints[x].rotation.Z);
-                        }
-                        if (!hasWrittenSplineYet)
-                        {
-                            //FOR DLC\CHALLENGEMAP16 - I DON'T THINK THIS IS READ
-                            //writer.Write(new cGUID("E9-63-77-91").val);
-                            //writer.Write(new cGUID("7D-A2-DE-3F").val);
-                            writer.Write(0);
-                            writer.Write(0); //Some PAKs use more than 8, and not only on the first one
-                            hasWrittenSplineYet = true;
                         }
                         break;
                 }
