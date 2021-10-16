@@ -94,8 +94,9 @@ namespace CATHODE.Commands
                 List<CathodeEntity> fgEntities = _flowgraphs[i].GetEntities();
                 for (int x = 0; x < fgEntities.Count; x++)
                     for (int y = 0; y < fgEntities[x].parameters.Count; y++)
-                        if (!parameters.Contains(fgEntities[x].parameters[y].content)) parameters.Add(fgEntities[x].parameters[y].content);
+                        parameters.Add(fgEntities[x].parameters[y].content);
             }
+            parameters = PruneParameterList(parameters);
 
             //Write out parameters & track offsets
             int[] parameterOffsets = new int[parameters.Count];
@@ -565,6 +566,27 @@ namespace CATHODE.Commands
             writer.Write(_flowgraphs.Count);
 
             writer.Close();
+        }
+
+        /* Filter down a list of parameters to contain only unique entries */
+        private List<CathodeParameter> PruneParameterList(List<CathodeParameter> parameters)
+        {
+            List<CathodeParameter> prunedList = new List<CathodeParameter>();
+            bool canAdd = true;
+            for (int i = 0; i < parameters.Count; i++)
+            {
+                canAdd = true;
+                for (int x = 0; x < prunedList.Count; x++)
+                {
+                    if (prunedList[x] == parameters[i]) //This is where the bulk of our logic lies
+                    {
+                        canAdd = false;
+                        continue;
+                    }
+                }
+                if (canAdd) prunedList.Add(parameters[i]);
+            }
+            return prunedList;
         }
         #endregion
 

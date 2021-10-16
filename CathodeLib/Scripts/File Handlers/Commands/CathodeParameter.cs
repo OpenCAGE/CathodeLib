@@ -851,6 +851,93 @@ namespace CATHODE.Commands
         }
         public CathodeDataType dataType = CathodeDataType.NO_TYPE;
 
+        public static bool operator ==(CathodeParameter x, CathodeParameter y)
+        {
+            if (x.dataType != y.dataType) return false;
+            switch (x.dataType)
+            {
+                case CathodeDataType.POSITION:
+                    CathodeTransform x_t = (CathodeTransform)x;
+                    CathodeTransform y_t = (CathodeTransform)y;
+                    return x_t.position == y_t.position && x_t.rotation == y_t.rotation;
+                case CathodeDataType.INTEGER:
+                    return ((CathodeInteger)x).value == ((CathodeInteger)y).value;
+                case CathodeDataType.STRING:
+                    return ((CathodeString)x).value == ((CathodeString)y).value;
+                case CathodeDataType.BOOL:
+                    return ((CathodeBool)x).value == ((CathodeBool)y).value;
+                case CathodeDataType.FLOAT:
+                    return ((CathodeFloat)x).value == ((CathodeFloat)y).value;
+                case CathodeDataType.SHORT_GUID:
+                    return ((CathodeResource)x).resourceID == ((CathodeResource)y).resourceID;
+                case CathodeDataType.DIRECTION:
+                    return ((CathodeVector3)x).value == ((CathodeVector3)y).value;
+                case CathodeDataType.ENUM:
+                    CathodeEnum x_e = (CathodeEnum)x;
+                    CathodeEnum y_e = (CathodeEnum)y;
+                    return x_e.enumIndex == y_e.enumIndex && x_e.enumID == y_e.enumID;
+                case CathodeDataType.SPLINE_DATA:
+                    return ((CathodeSpline)x).splinePoints == ((CathodeSpline)y).splinePoints;
+                case CathodeDataType.NO_TYPE:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+        public static bool operator !=(CathodeParameter x, CathodeParameter y)
+        {
+            return !(x == y);
+        }
+
+        public override int GetHashCode()
+        {
+            //this is gross
+            switch (dataType)
+            {
+                case CathodeDataType.POSITION:
+                    CathodeTransform x_t = (CathodeTransform)this;
+                    return Convert.ToInt32(
+                        x_t.rotation.X.ToString() + x_t.rotation.Y.ToString() + x_t.rotation.Z.ToString() +
+                        x_t.position.X.ToString() + x_t.position.Y.ToString() + x_t.position.Z.ToString());
+                case CathodeDataType.INTEGER:
+                    return ((CathodeInteger)this).value;
+                case CathodeDataType.STRING:
+                    CathodeString x_s = (CathodeString)this;
+                    string num = "";
+                    for (int i = 0; i < x_s.value.Length; i++) num += ((int)x_s.value[i]).ToString();
+                    return Convert.ToInt32(num);
+                case CathodeDataType.BOOL:
+                    return ((CathodeBool)this).value ? 1 : 0;
+                case CathodeDataType.FLOAT:
+                    return Convert.ToInt32(((CathodeFloat)this).value.ToString().Replace(".", ""));
+                case CathodeDataType.SHORT_GUID:
+                    string x_g_s = ((CathodeString)this).value.ToString();
+                    string num2 = "";
+                    for (int i = 0; i < x_g_s.Length; i++) num2 += ((int)x_g_s[i]).ToString();
+                    return Convert.ToInt32(num2);
+                case CathodeDataType.DIRECTION:
+                    CathodeVector3 x_v = (CathodeVector3)this;
+                    return Convert.ToInt32(x_v.value.X.ToString() + x_v.value.Y.ToString() + x_v.value.Z.ToString());
+                case CathodeDataType.ENUM:
+                    CathodeEnum x_e = (CathodeEnum)this;
+                    string x_e_s = x_e.enumID.ToString();
+                    string num3 = "";
+                    for (int i = 0; i < x_e_s.Length; i++) num3 += ((int)x_e_s[i]).ToString();
+                    return Convert.ToInt32(num3 + x_e.enumIndex.ToString());
+                case CathodeDataType.SPLINE_DATA:
+                    CathodeSpline x_sd = (CathodeSpline)this;
+                    string x_sd_s = "";
+                    for (int i = 0; i < x_sd.splinePoints.Count; i++) x_sd_s += x_sd.splinePoints[i].position.GetHashCode().ToString();
+                    cGUID x_sd_g = Utilities.GenerateGUID(x_sd_s);
+                    string x_sd_g_s = x_sd_g.ToString();
+                    string num4 = "";
+                    for (int i = 0; i < x_sd_g_s.Length; i++) num4 += ((int)x_sd_g_s[i]).ToString();
+                    return Convert.ToInt32(num4);
+                default:
+                    return -1;
+            }
+        }
+
         public object Clone()
         {
             return this.MemberwiseClone();
