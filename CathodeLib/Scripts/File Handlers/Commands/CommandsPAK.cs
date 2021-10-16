@@ -581,7 +581,7 @@ namespace CATHODE.Commands
                     if (prunedList[x] == parameters[i]) //This is where the bulk of our logic lies
                     {
                         canAdd = false;
-                        continue;
+                        break;
                     }
                 }
                 if (canAdd) prunedList.Add(parameters[i]);
