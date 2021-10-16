@@ -24,7 +24,7 @@ namespace CATHODE.Commands
             SetupResourceEntryTypeLUT();
 
             path = pathToPak;
-            Load(path);
+            _didLoadCorrectly = Load(path);
         }
 
         #region ACCESSORS
@@ -578,8 +578,9 @@ namespace CATHODE.Commands
         }
 
         /* Read the parameter and flowgraph offsets & get entry points */
-        private void Load(string path)
+        private bool Load(string path)
         {
+            if (!File.Exists(path)) return false;
             BinaryReader reader = new BinaryReader(File.OpenRead(path));
 
             //Read entry points
@@ -992,6 +993,7 @@ namespace CATHODE.Commands
             _flowgraphs = flowgraphs.ToList<CathodeFlowgraph>();
 
             reader.Close();
+            return true;
         }
         #endregion
 
@@ -1087,6 +1089,9 @@ namespace CATHODE.Commands
         private CathodeFlowgraph[] _entryPointObjects = null;
 
         private List<CathodeFlowgraph> _flowgraphs = null;
+
+        private bool _didLoadCorrectly = false;
+        public bool Loaded { get { return _didLoadCorrectly; } }
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
