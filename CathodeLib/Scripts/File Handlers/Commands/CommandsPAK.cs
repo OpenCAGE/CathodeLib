@@ -833,8 +833,12 @@ namespace CATHODE.Commands
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
                                 reader.BaseStream.Position = (reader.ReadInt32() * 4);
 
-                                //THIS SOMETIMES TRANSLATES TO A PROXY - NOT A CAGEANIMATION NODE
-                                CAGEAnimation thisNode = (CAGEAnimation)flowgraph.GetEntityByID(new cGUID(reader));
+                                CathodeEntity thisEntity = flowgraph.GetEntityByID(new cGUID(reader));
+                                if (thisEntity.variant == EntityVariant.PROXY)
+                                {
+                                    break; // We don't handle this just yet... need to resolve the proxy.
+                                }
+                                CAGEAnimation thisNode = (CAGEAnimation)thisEntity;
 
                                 int OffsetToFindParams = reader.ReadInt32() * 4;
                                 int NumberOfParams = reader.ReadInt32();
