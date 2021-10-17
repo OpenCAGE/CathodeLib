@@ -950,7 +950,12 @@ namespace CATHODE.Commands
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
                                 reader.BaseStream.Position = (reader.ReadInt32() * 4);
 
-                                TriggerSequence thisNode = (TriggerSequence)flowgraph.GetEntityByID(new cGUID(reader)); 
+                                CathodeEntity thisEntity = flowgraph.GetEntityByID(new cGUID(reader));
+                                if (thisEntity.variant == EntityVariant.PROXY)
+                                {
+                                    break; // We don't handle this just yet... need to resolve the proxy.
+                                }
+                                TriggerSequence thisNode = (TriggerSequence)thisEntity;
 
                                 int triggersOffset = reader.ReadInt32() * 4;
                                 int triggersCount = reader.ReadInt32();
