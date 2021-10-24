@@ -150,10 +150,15 @@ namespace CATHODE
         public override bool Equals(object obj)
         {
             if (!(obj is cGUID)) return false;
+            if (((cGUID)obj).val == null) return this.val == null;
+            if (this.val == null) return ((cGUID)obj).val == null;
             return ((cGUID)obj).val.SequenceEqual(this.val);
         }
         public static bool operator ==(cGUID x, cGUID y)
         {
+            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+            if (x.val == null) return y.val == null;
+            if (y.val == null) return x.val == null;
             return x.val.SequenceEqual(y.val);
         }
         public static bool operator !=(cGUID x, cGUID y)
