@@ -853,6 +853,7 @@ namespace CATHODE.Commands
 
         public static bool operator ==(CathodeParameter x, CathodeParameter y)
         {
+            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
             if (x.dataType != y.dataType) return false;
             switch (x.dataType)
             {
@@ -887,6 +888,12 @@ namespace CATHODE.Commands
         public static bool operator !=(CathodeParameter x, CathodeParameter y)
         {
             return !(x == y);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (!(obj is CathodeParameter)) return false;
+            return ((CathodeParameter)obj) == this;
         }
 
         public override int GetHashCode()

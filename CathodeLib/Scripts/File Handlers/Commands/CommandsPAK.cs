@@ -753,7 +753,9 @@ namespace CATHODE.Commands
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
                                 overrideChecksums.Add(new cGUID(reader), (new cGUID(reader), (int)reader.BaseStream.Position)); //TODO: Added in reader.BaseStream.Position as offset hack before working out proper sort order algo
                                 break;
-                            }
+                                }
+                            //TODO: Really, I think these should be treated as parameters on the flowgraph class as they are the pins we use for flowgraph instances.
+                            //      Need to look into this more and see if any of these entities actually contain much data other than links into the flowgraph itself.
                             case CommandsDataBlock.FLOWGRAPH_EXPOSED_PARAMETERS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
@@ -1000,7 +1002,7 @@ namespace CATHODE.Commands
                     CathodeEntity nodeToApply = flowgraph.GetEntityByID(entityLinks[x].parentID);
                     if (nodeToApply == null)
                     {
-                        //TODO: We shouldn't hit this, but we do...
+                        //TODO: We shouldn't hit this, but we do... is this perhaps an ID from another flowgraph, similar to proxies?
                         nodeToApply = new CathodeEntity(entityLinks[x].parentID);
                         flowgraph.unknowns.Add(nodeToApply);
                     }
@@ -1011,7 +1013,7 @@ namespace CATHODE.Commands
                     CathodeEntity nodeToApply = flowgraph.GetEntityByID(paramRefSets[x].id);
                     if (nodeToApply == null)
                     {
-                        //TODO: We shouldn't hit this, but we do...
+                        //TODO: We shouldn't hit this, but we do... is this perhaps an ID from another flowgraph, similar to proxies?
                         nodeToApply = new CathodeEntity(paramRefSets[x].id);
                         flowgraph.unknowns.Add(nodeToApply);
                     }
@@ -1123,6 +1125,7 @@ namespace CATHODE.Commands
 
         private bool _didLoadCorrectly = false;
         public bool Loaded { get { return _didLoadCorrectly; } }
+        public string Filepath { get { return path; } }
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
