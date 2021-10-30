@@ -19,7 +19,7 @@ namespace CATHODE.Models
         private int EntrySize = 320;
         private int UnknownNumber = 0;
 
-        public List<alien_mvr_entry> Movers = new List<alien_mvr_entry>();
+        public List<CathodeMover> Movers = new List<CathodeMover>();
 
         /* Load the file */
         public ModelsMVR() { }
@@ -34,7 +34,7 @@ namespace CATHODE.Models
             stream.BaseStream.Position += 4;
             EntrySize = stream.ReadInt32();
             stream.BaseStream.Position += 12;
-            Movers = new List<alien_mvr_entry>(Utilities.ConsumeArray<alien_mvr_entry>(stream, EntryCount));
+            Movers = new List<CathodeMover>(Utilities.ConsumeArray<CathodeMover>(stream, EntryCount));
             stream.Close();
         }
 
@@ -51,12 +51,12 @@ namespace CATHODE.Models
             stream.Write(0);
             stream.Write(EntrySize);
             stream.Write(0); stream.Write(0); stream.Write(0);
-            Utilities.Write<alien_mvr_entry>(stream, Movers);
+            Utilities.Write<CathodeMover>(stream, Movers);
             stream.Close();
         }
     }
 
-    public enum MVREntryType : short
+    public enum MoverType : short
     {
         PARTICLE_EMITTER_1 = 1,
         LIGHT = 2,
@@ -68,18 +68,31 @@ namespace CATHODE.Models
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct alien_mvr_entry
+    public struct CathodeMover
     {
         public Matrix4x4 Transform;
 
         public Vector4 LightColour;
         public Vector4 MaterialTint;
 
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
-        public Vector4[] InstanceState;
-        public cGUID UnknownID; // TODO: Is this an ID or two u16s?
+        public float lightVolumeIntensity; //todo: idk if this is right, but editing this value seems to increase/decrease the brightness of the light volume meshes
+        public float particleIntensity; //0 = black particle
+        public float particleSystemOffset; //todo: not sure entirely, but increasing this value seems to apply an offset to particle systems
+
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
+        public byte[] blankSpace1;
+
+        public float lightRadius;
+        public Vector2 textureTile; //x = horizontal tile, y = vertical tile
+
+        public float UnknownValue1_;
+        public float UnknownValue2_;
         public float UnknownValue3_;
         public float UnknownValue4_;
+
+        public cGUID UnknownID; // TODO: Is this an ID or two u16s?
+        public float UnknownValue5_;
+        public float UnknownValue6_;
         public Int32 Unknown2_;
 
         public Vector4 Unknown3_;
@@ -89,7 +102,7 @@ namespace CATHODE.Models
         public Vector3[] UnknownMinMax_; // NOTE: Sometimes I see 'nan's here too.
 
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 36)]
-        public byte[] blankSpace;
+        public byte[] blankSpace3;
 
         public UInt32 REDSIndex; // Index 45
         public UInt32 ModelCount;
@@ -107,7 +120,7 @@ namespace CATHODE.Models
         public UInt32 Unknowns60_;
         public UInt32 Unknowns61_;
         public UInt16 Unknown17_;   // TODO: It is -1 most of the time, but some times it isn't.
-        public MVREntryType IsThisTypeID; // TODO: So far 3: Static, 6: Physics (Cone, Box) 7: Scripted (Door, Camera).
+        public MoverType IsThisTypeID; // TODO: So far 3: Static, 6: Physics (Cone, Box) 7: Scripted (Door, Camera).
         public UInt32 Unknowns70_;
         public UInt32 Unknowns71_;
     };
