@@ -13,10 +13,11 @@ namespace CATHODE.Models
     /* Handles CATHODE MVR files */
     public class ModelsMVR
     {
-        private string FilePath = "";
-        private int FileSize = 32;
-        private int EntryCount = 0;
-        private int EntrySize = 320;
+        public string FilePath { get { return filePath; } }
+        private string filePath = "";
+        private int fileSize = 32;
+        private int entryCount = 0;
+        private int entrySize = 320;
         private int UnknownNumber = 0;
 
         public List<CathodeMover> Movers = new List<CathodeMover>();
@@ -25,31 +26,33 @@ namespace CATHODE.Models
         public ModelsMVR() { }
         public ModelsMVR(string pathToFile)
         {
-            FilePath = pathToFile;
+            if (!File.Exists(pathToFile)) return;
 
-            BinaryReader stream = new BinaryReader(File.OpenRead(FilePath));
-            FileSize = stream.ReadInt32();
-            EntryCount = stream.ReadInt32();
+            filePath = pathToFile;
+
+            BinaryReader stream = new BinaryReader(File.OpenRead(filePath));
+            fileSize = stream.ReadInt32();
+            entryCount = stream.ReadInt32();
             UnknownNumber = stream.ReadInt32();
             stream.BaseStream.Position += 4;
-            EntrySize = stream.ReadInt32();
+            entrySize = stream.ReadInt32();
             stream.BaseStream.Position += 12;
-            Movers = new List<CathodeMover>(Utilities.ConsumeArray<CathodeMover>(stream, EntryCount));
+            Movers = new List<CathodeMover>(Utilities.ConsumeArray<CathodeMover>(stream, entryCount));
             stream.Close();
         }
 
         /* Save the file */
         public void Save(string pathToFile = "")
         {
-            if (pathToFile != "") FilePath = pathToFile;
+            if (pathToFile != "") filePath = pathToFile;
 
-            BinaryWriter stream = new BinaryWriter(File.OpenWrite(FilePath));
+            BinaryWriter stream = new BinaryWriter(File.OpenWrite(filePath));
             stream.BaseStream.SetLength(0);
-            stream.Write(FileSize);
-            stream.Write(EntryCount);
+            stream.Write(fileSize);
+            stream.Write(entryCount);
             stream.Write(UnknownNumber);
             stream.Write(0);
-            stream.Write(EntrySize);
+            stream.Write(entrySize);
             stream.Write(0); stream.Write(0); stream.Write(0);
             Utilities.Write<CathodeMover>(stream, Movers);
             stream.Close();
