@@ -18,7 +18,7 @@ namespace CATHODE.Models
         private int fileSize = 32;
         private int entryCount = 0;
         private int entrySize = 320;
-        private int UnknownNumber = 0;
+        private int nonCommandsEntries = 0;
 
         public List<CathodeMover> Movers = new List<CathodeMover>();
 
@@ -33,8 +33,8 @@ namespace CATHODE.Models
             BinaryReader stream = new BinaryReader(File.OpenRead(filePath));
             fileSize = stream.ReadInt32();
             entryCount = stream.ReadInt32();
-            UnknownNumber = stream.ReadInt32();
-            stream.BaseStream.Position += 4;
+            nonCommandsEntries = stream.ReadInt32(); //this the number of entries that have a NodeID of 00-00-00-00
+            stream.BaseStream.Position += 4; 
             entrySize = stream.ReadInt32();
             stream.BaseStream.Position += 12;
             Movers = new List<CathodeMover>(Utilities.ConsumeArray<CathodeMover>(stream, entryCount));
@@ -46,11 +46,19 @@ namespace CATHODE.Models
         {
             if (pathToFile != "") filePath = pathToFile;
 
+            fileSize = (Movers.Count * entrySize) + 32;
+            entryCount = Movers.Count;
+            nonCommandsEntries = 0;
+            for (int i = 0; i < Movers.Count; i++)
+            {
+                if (Movers[i].NodeID == new cGUID(0)) nonCommandsEntries++;
+            }
+
             BinaryWriter stream = new BinaryWriter(File.OpenWrite(filePath));
             stream.BaseStream.SetLength(0);
             stream.Write(fileSize);
             stream.Write(entryCount);
-            stream.Write(UnknownNumber);
+            stream.Write(nonCommandsEntries);
             stream.Write(0);
             stream.Write(entrySize);
             stream.Write(0); stream.Write(0); stream.Write(0);

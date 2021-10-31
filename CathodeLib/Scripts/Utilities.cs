@@ -127,6 +127,14 @@ namespace CATHODE
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct cGUID
     {
+        public cGUID(float num)
+        {
+            val = BitConverter.GetBytes(num);
+        }
+        public cGUID(int num)
+        {
+            val = BitConverter.GetBytes(num);
+        }
         public cGUID(byte[] id)
         {
             val = id;
