@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
@@ -125,7 +125,7 @@ namespace CATHODE
 
     /* A unique id assigned to CATHODE objects */
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct cGUID
+    public struct cGUID : IComparable<cGUID>
     {
         public cGUID(float num)
         {
@@ -184,6 +184,23 @@ namespace CATHODE
         public override int GetHashCode()
         {
             return BitConverter.ToInt32(val, 0);
+        }
+
+        public int CompareTo(cGUID x)
+        {
+            if (x == null) return 0;
+            if (x.val == null && val != null) return 0;
+            if (x.val != null && val == null) return 0;
+            if (x.val.Length != val.Length) return 0;
+
+            int comp = 0;
+            for (int i = 0; i < x.val.Length; i++)
+            {
+                comp += x.val[i].CompareTo(val[i]);
+            }
+            comp /= x.val.Length;
+
+            return comp;
         }
 
         public override string ToString()

@@ -102,8 +102,8 @@ namespace CATHODE.Commands
     public class CAGEAnimation : FunctionEntity
     {
         public CAGEAnimation(cGUID id) : base(id) { function = Utilities.GenerateGUID("CAGEAnimation"); }
-        public List<TEMP_CAGEAnimationExtraDataHolder1> paramsData1 = new List<TEMP_CAGEAnimationExtraDataHolder1>();
-        public List<TEMP_CAGEAnimationExtraDataHolder2> paramsData2 = new List<TEMP_CAGEAnimationExtraDataHolder2>();
+        public List<TEMP_CAGEAnimationExtraDataHolder1> parameterNames = new List<TEMP_CAGEAnimationExtraDataHolder1>();
+        public List<TEMP_CAGEAnimationExtraDataHolder2> parameterValues = new List<TEMP_CAGEAnimationExtraDataHolder2>();
         public List<TEMP_CAGEAnimationExtraDataHolder3> paramsData3 = new List<TEMP_CAGEAnimationExtraDataHolder3>();
     }
     public class TriggerSequence : FunctionEntity
