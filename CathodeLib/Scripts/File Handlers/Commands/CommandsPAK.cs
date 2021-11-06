@@ -185,7 +185,7 @@ namespace CATHODE.Commands
                     if (_flowgraphs[i].functions[x].function == cageAnimationGUID)
                     {
                         CAGEAnimation thisNode = (CAGEAnimation)_flowgraphs[i].functions[x];
-                        if (thisNode.parameterNames.Count == 0 && thisNode.parameterValues.Count == 0 && thisNode.paramsData3.Count == 0) continue;
+                        if (thisNode.keyframeHeaders.Count == 0 && thisNode.keyframeData.Count == 0 && thisNode.paramsData3.Count == 0) continue;
                         cageAnimationNodes.Add(thisNode);
                     }
                     else if (_flowgraphs[i].functions[x].function == triggerSequenceGUID)
@@ -381,50 +381,50 @@ namespace CATHODE.Commands
                             for (int p = 0; p < cageAnimationNodes.Count; p++)
                             {
                                 List<int> hierarchyOffsets = new List<int>();
-                                for (int pp = 0; pp < cageAnimationNodes[p].parameterNames.Count; pp++)
+                                for (int pp = 0; pp < cageAnimationNodes[p].keyframeHeaders.Count; pp++)
                                 {
                                     hierarchyOffsets.Add((int)writer.BaseStream.Position);
-                                    Utilities.Write<cGUID>(writer, cageAnimationNodes[p].parameterNames[pp].hierarchy);
+                                    Utilities.Write<cGUID>(writer, cageAnimationNodes[p].keyframeHeaders[pp].connectedEntity);
                                 }
 
                                 int paramData1Offset = (int)writer.BaseStream.Position;
-                                for (int pp = 0; pp < cageAnimationNodes[p].parameterNames.Count; pp++)
+                                for (int pp = 0; pp < cageAnimationNodes[p].keyframeHeaders.Count; pp++)
                                 {
-                                    Utilities.Write(writer, cageAnimationNodes[p].parameterNames[pp].ID);
-                                    Utilities.Write(writer, GetDataTypeGUID(cageAnimationNodes[p].parameterNames[pp].unk2));
-                                    Utilities.Write(writer, cageAnimationNodes[p].parameterNames[pp].paramValueID);
-                                    Utilities.Write(writer, cageAnimationNodes[p].parameterNames[pp].paramGroupName);
-                                    Utilities.Write(writer, GetDataTypeGUID(cageAnimationNodes[p].parameterNames[pp].unk5));
-                                    Utilities.Write(writer, cageAnimationNodes[p].parameterNames[pp].paramName);
+                                    Utilities.Write(writer, cageAnimationNodes[p].keyframeHeaders[pp].ID);
+                                    Utilities.Write(writer, GetDataTypeGUID(cageAnimationNodes[p].keyframeHeaders[pp].unk2));
+                                    Utilities.Write(writer, cageAnimationNodes[p].keyframeHeaders[pp].keyframeDataID);
+                                    Utilities.Write(writer, cageAnimationNodes[p].keyframeHeaders[pp].parameterID);
+                                    Utilities.Write(writer, GetDataTypeGUID(cageAnimationNodes[p].keyframeHeaders[pp].parameterDataType));
+                                    Utilities.Write(writer, cageAnimationNodes[p].keyframeHeaders[pp].parameterSubID);
                                     writer.Write(hierarchyOffsets[pp] / 4);
-                                    writer.Write(cageAnimationNodes[p].parameterNames[pp].hierarchy.Count);
+                                    writer.Write(cageAnimationNodes[p].keyframeHeaders[pp].connectedEntity.Count);
                                 }
 
                                 List<int> internalOffsets1 = new List<int>();
                                 List<int> internalOffsets2 = new List<int>();
-                                for (int pp = 0; pp < cageAnimationNodes[p].parameterValues.Count; pp++)
+                                for (int pp = 0; pp < cageAnimationNodes[p].keyframeData.Count; pp++)
                                 {
                                     int toPointTo = (int)writer.BaseStream.Position;
-                                    for (int ppp = 0; ppp < cageAnimationNodes[p].parameterValues[pp].keyframes.Count; ppp++)
+                                    for (int ppp = 0; ppp < cageAnimationNodes[p].keyframeData[pp].keyframes.Count; ppp++)
                                     {
-                                        writer.Write(cageAnimationNodes[p].parameterValues[pp].keyframes[ppp].unk1);
-                                        writer.Write(cageAnimationNodes[p].parameterValues[pp].keyframes[ppp].secondsSinceStart);
-                                        writer.Write(cageAnimationNodes[p].parameterValues[pp].keyframes[ppp].secondsSinceStartValidation);
-                                        writer.Write(cageAnimationNodes[p].parameterValues[pp].keyframes[ppp].paramValue);
-                                        writer.Write(cageAnimationNodes[p].parameterValues[pp].keyframes[ppp].unk2);
-                                        writer.Write(cageAnimationNodes[p].parameterValues[pp].keyframes[ppp].unk3);
-                                        writer.Write(cageAnimationNodes[p].parameterValues[pp].keyframes[ppp].unk4);
-                                        writer.Write(cageAnimationNodes[p].parameterValues[pp].keyframes[ppp].unk5);
+                                        writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes[ppp].unk1);
+                                        writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes[ppp].secondsSinceStart);
+                                        writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes[ppp].secondsSinceStartValidation);
+                                        writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes[ppp].paramValue);
+                                        writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes[ppp].unk2);
+                                        writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes[ppp].unk3);
+                                        writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes[ppp].unk4);
+                                        writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes[ppp].unk5);
                                     }
 
                                     internalOffsets1.Add(((int)writer.BaseStream.Position) / 4);
 
-                                    writer.Write(cageAnimationNodes[p].parameterValues[pp].minSeconds);
-                                    writer.Write(cageAnimationNodes[p].parameterValues[pp].maxSeconds);
-                                    Utilities.Write(writer, cageAnimationNodes[p].parameterValues[pp].ID);
+                                    writer.Write(cageAnimationNodes[p].keyframeData[pp].minSeconds);
+                                    writer.Write(cageAnimationNodes[p].keyframeData[pp].maxSeconds);
+                                    Utilities.Write(writer, cageAnimationNodes[p].keyframeData[pp].ID);
 
                                     writer.Write(toPointTo / 4);
-                                    writer.Write(cageAnimationNodes[p].parameterValues[pp].keyframes.Count);
+                                    writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes.Count);
                                 }
 
                                 int paramData2Offset = (int)writer.BaseStream.Position;
@@ -460,9 +460,9 @@ namespace CATHODE.Commands
                                 globalOffsets.Add((int)writer.BaseStream.Position);
                                 writer.Write(cageAnimationNodes[p].nodeID.val);
                                 writer.Write(paramData1Offset / 4);
-                                writer.Write(cageAnimationNodes[p].parameterNames.Count);
+                                writer.Write(cageAnimationNodes[p].keyframeHeaders.Count);
                                 writer.Write(paramData2Offset / 4);
-                                writer.Write(cageAnimationNodes[p].parameterValues.Count);
+                                writer.Write(cageAnimationNodes[p].keyframeData.Count);
                                 writer.Write(paramData3Offset / 4);
                                 writer.Write(cageAnimationNodes[p].paramsData3.Count);
                             }
@@ -862,59 +862,56 @@ namespace CATHODE.Commands
                                 }
                                 CAGEAnimation thisNode = (CAGEAnimation)thisEntity;
 
-                                int OffsetToFindParams = reader.ReadInt32() * 4;
-                                int NumberOfParams = reader.ReadInt32();
-                                int OffsetToFindParams2 = reader.ReadInt32() * 4;
-                                int NumberOfParams2 = reader.ReadInt32();
+                                int keyframeHeaderOffset = reader.ReadInt32() * 4;
+                                int numberOfKeyframeHeaders = reader.ReadInt32();
+                                int keyframeDataOffset = reader.ReadInt32() * 4;
+                                int numberOfKeyframeDataEntries = reader.ReadInt32();
                                 int OffsetToFindParams3 = reader.ReadInt32() * 4;
                                 int NumberOfParams3 = reader.ReadInt32();
 
-                                //THIS IS THE LABELS FOR THE PARAMS IN THE NEXT BLOCK
-                                for (int z = 0; z < NumberOfParams; z++)
+                                for (int z = 0; z < numberOfKeyframeHeaders; z++)
                                 {
-                                    reader.BaseStream.Position = OffsetToFindParams + (z * 32);
+                                    reader.BaseStream.Position = keyframeHeaderOffset + (z * 32);
 
-                                    TEMP_CAGEAnimationExtraDataHolder1 thisParamSet = new TEMP_CAGEAnimationExtraDataHolder1();
-                                    thisParamSet.ID = new cGUID(reader);//ID
-                                    thisParamSet.unk2 = GetDataType(new cGUID(reader)); //Datatype
-                                    thisParamSet.paramValueID = new cGUID(reader); //ID for next block
-                                    thisParamSet.paramGroupName = new cGUID(reader); //String (param group name)
-                                    thisParamSet.unk5 = GetDataType(new cGUID(reader)); //Datatype
-                                    thisParamSet.paramName = new cGUID(reader); //String (this param name)
+                                    CathodeParameterKeyframeHeader thisHeader = new CathodeParameterKeyframeHeader();
+                                    thisHeader.ID = new cGUID(reader);//ID
+                                    thisHeader.unk2 = GetDataType(new cGUID(reader)); //Datatype, seems to usually be NO_TYPE
+                                    thisHeader.keyframeDataID = new cGUID(reader); 
+                                    thisHeader.parameterID = new cGUID(reader); 
+                                    thisHeader.parameterDataType = GetDataType(new cGUID(reader)); 
+                                    thisHeader.parameterSubID = new cGUID(reader); 
 
-                                    int NumberOfParams_ = JumpToOffset(ref reader);
-                                    thisParamSet.hierarchy = Utilities.ConsumeArray<cGUID>(reader, NumberOfParams_).ToList<cGUID>(); 
-                                    thisNode.parameterNames.Add(thisParamSet);
+                                    int hierarchyCount = JumpToOffset(ref reader);
+                                    thisHeader.connectedEntity = Utilities.ConsumeArray<cGUID>(reader, hierarchyCount).ToList<cGUID>(); 
+                                    thisNode.keyframeHeaders.Add(thisHeader);
                                 }
                                 
-                                //PARAMS WHICH MATCH THE LABELS ABOVE
-                                reader.BaseStream.Position = OffsetToFindParams2;
-                                int[] newOffset = Utilities.ConsumeArray<int>(reader, NumberOfParams2);
-                                for (int z = 0; z < NumberOfParams2; z++)
+                                reader.BaseStream.Position = keyframeDataOffset;
+                                int[] newOffset = Utilities.ConsumeArray<int>(reader, numberOfKeyframeDataEntries);
+                                for (int z = 0; z < numberOfKeyframeDataEntries; z++)
                                 {
                                     reader.BaseStream.Position = newOffset[z] * 4;
 
-                                    TEMP_CAGEAnimationExtraDataHolder2 thisParamSet = new TEMP_CAGEAnimationExtraDataHolder2();
-                                    thisParamSet.minSeconds = reader.ReadSingle();
-                                    thisParamSet.maxSeconds = reader.ReadSingle(); //max seconds for keyframe list
-                                    thisParamSet.ID = new cGUID(reader); //this is perhaps a node id
+                                    CathodeParameterKeyframe thisParamKey = new CathodeParameterKeyframe();
+                                    thisParamKey.minSeconds = reader.ReadSingle();
+                                    thisParamKey.maxSeconds = reader.ReadSingle(); //max seconds for keyframe list
+                                    thisParamKey.ID = new cGUID(reader); //this is perhaps a node id
 
-                                        //keyframe list
-                                    int NumberOfParams2_ = JumpToOffset(ref reader);
-                                    for (int m = 0; m < NumberOfParams2_; m++)
+                                    int numberOfKeyframes = JumpToOffset(ref reader);
+                                    for (int m = 0; m < numberOfKeyframes; m++)
                                     {
-                                        TEMP_CAGEAnimationExtraDataHolder2_1 thisInnerSet = new TEMP_CAGEAnimationExtraDataHolder2_1();
-                                        thisInnerSet.unk1 = reader.ReadSingle(); //
-                                        thisInnerSet.secondsSinceStart = reader.ReadSingle(); //Seconds since start of animation
-                                        thisInnerSet.secondsSinceStartValidation = reader.ReadSingle(); //Seconds since start of animation
-                                        thisInnerSet.paramValue = reader.ReadSingle(); //Parameter value
-                                        thisInnerSet.unk2 = reader.ReadSingle(); //
-                                        thisInnerSet.unk3 = reader.ReadSingle(); // 
-                                        thisInnerSet.unk4 = reader.ReadSingle(); //
-                                        thisInnerSet.unk5 = reader.ReadSingle(); //
-                                        thisParamSet.keyframes.Add(thisInnerSet);
+                                        CathodeKeyframe thisKeyframe = new CathodeKeyframe();
+                                        thisKeyframe.unk1 = reader.ReadSingle(); //
+                                        thisKeyframe.secondsSinceStart = reader.ReadSingle(); //Seconds since start of animation
+                                        thisKeyframe.secondsSinceStartValidation = reader.ReadSingle(); //Seconds since start of animation
+                                        thisKeyframe.paramValue = reader.ReadSingle(); //Parameter value
+                                        thisKeyframe.unk2 = reader.ReadSingle(); //
+                                        thisKeyframe.unk3 = reader.ReadSingle(); // 
+                                        thisKeyframe.unk4 = reader.ReadSingle(); //
+                                        thisKeyframe.unk5 = reader.ReadSingle(); //
+                                        thisParamKey.keyframes.Add(thisKeyframe);
                                     }
-                                    thisNode.parameterValues.Add(thisParamSet);
+                                    thisNode.keyframeData.Add(thisParamKey);
                                 }
 
                                 //UNKNOWN - is this maybe event triggers?
@@ -1199,25 +1196,25 @@ namespace CATHODE.Commands
     }
 
     /* TEMP STUFF TO FIX REWRITING */
-    public class TEMP_CAGEAnimationExtraDataHolder1
+    public class CathodeParameterKeyframeHeader
     {
         public cGUID ID;
         public CathodeDataType unk2;
-        public cGUID paramValueID;
+        public cGUID keyframeDataID;
         //public float unk3;
-        public cGUID paramGroupName;
-        public CathodeDataType unk5;
-        public cGUID paramName; 
-        public List<cGUID> hierarchy; //path to controlled entity
+        public cGUID parameterID;
+        public CathodeDataType parameterDataType;
+        public cGUID parameterSubID; //if parameterID is position, this might be x for example
+        public List<cGUID> connectedEntity; //path to controlled entity
     }
-    public class TEMP_CAGEAnimationExtraDataHolder2
+    public class CathodeParameterKeyframe
     {
         public float minSeconds;
         public float maxSeconds;
         public cGUID ID;
-        public List<TEMP_CAGEAnimationExtraDataHolder2_1> keyframes = new List<TEMP_CAGEAnimationExtraDataHolder2_1>();
+        public List<CathodeKeyframe> keyframes = new List<CathodeKeyframe>();
     }
-    public class TEMP_CAGEAnimationExtraDataHolder2_1
+    public class CathodeKeyframe
     {
         public float unk1;
         public float secondsSinceStart;

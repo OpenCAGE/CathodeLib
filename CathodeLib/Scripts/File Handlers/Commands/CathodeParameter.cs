@@ -954,7 +954,7 @@ namespace CATHODE.Commands
     {
         public CathodeTransform() { dataType = CathodeDataType.POSITION; }
         public Vector3 position = new Vector3();
-        public Vector3 rotation = new Vector3();
+        public Vector3 rotation = new Vector3(); //In CATHODE this is named Roll/Pitch/Yaw
     }
     public class CathodeInteger : CathodeParameter
     {
