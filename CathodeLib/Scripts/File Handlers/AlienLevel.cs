@@ -1,5 +1,6 @@
 ﻿using System.IO;
 
+/*
 namespace CATHODE
 {
     public class AlienLevel
@@ -11,16 +12,17 @@ namespace CATHODE
 
             /*** WORLD ***/
 
-            Result.ModelsMVR = new CATHODE.Models.ModelsMVR(levelPath + "/WORLD/MODELS.MVR");
+/*
+            Result.ModelsMVR = new CATHODE.Models.CathodeMovers(levelPath + "/WORLD/MODELS.MVR");
             Result.CommandsPAK = new CATHODE.Commands.CommandsPAK(levelPath + "/WORLD/COMMANDS.PAK");
 
-            Result.RenderableREDS = new CATHODE.Misc.RenderableElementsBIN(levelPath + "/WORLD/REDS.BIN");
-            Result.ResourcesBIN = new CATHODE.Misc.ResourcesBIN(levelPath + "/WORLD/RESOURCES.BIN");
-            Result.PhysicsMap = new CATHODE.Misc.PhysicsMAP(levelPath + "/WORLD/PHYSICS.MAP");
-            Result.EnvironmentMap = new CATHODE.Misc.EnvironmentMapBIN(levelPath + "/WORLD/ENVIRONMENTMAP.BIN");
-            Result.CollisionMap = new CATHODE.Misc.CollisionMAP(levelPath + "/WORLD/COLLISION.MAP");
+            Result.RenderableREDS = new CATHODE.Misc.CathodeRenderableElements(levelPath + "/WORLD/REDS.BIN");
+            Result.ResourcesBIN = new CATHODE.Misc.CathodeResources(levelPath + "/WORLD/RESOURCES.BIN");
+            Result.PhysicsMap = new CATHODE.Misc.CathodePhysicsMap(levelPath + "/WORLD/PHYSICS.MAP");
+            Result.EnvironmentMap = new CATHODE.Misc.CathodeEnvironmentMap(levelPath + "/WORLD/ENVIRONMENTMAP.BIN");
+            Result.CollisionMap = new CATHODE.Misc.CathodeCollisionMap(levelPath + "/WORLD/COLLISION.MAP");
 
-            Result.EnvironmentAnimation = CATHODE.Misc.EnvironmentAnimationDAT.Load(levelPath + "/WORLD/ENVIRONMENT_ANIMATION.DAT");
+            Result.EnvironmentAnimation = CATHODE.Misc.CathodeEnvironmentAnimation.Load(levelPath + "/WORLD/ENVIRONMENT_ANIMATION.DAT");
 
             //ALPHALIGHT_LEVEL.BIN
             //BEHAVIOR_TREE.DB
@@ -55,8 +57,9 @@ namespace CATHODE
 
             /*** RENDERABLE ***/
 
-            Result.ModelsCST = File.ReadAllBytes(levelPath + "/RENDERABLE/LEVEL_MODELS.CST");
-            Result.ModelsMTL = CATHODE.Models.ModelsMTL.Load(levelPath + "/RENDERABLE/LEVEL_MODELS.MTL");
+/*
+Result.ModelsCST = File.ReadAllBytes(levelPath + "/RENDERABLE/LEVEL_MODELS.CST");
+            Result.ModelsMTL = CATHODE.Models.CathodeMaterials.Load(levelPath + "/RENDERABLE/LEVEL_MODELS.MTL");
             Result.ModelsPAK = CATHODE.Models.ModelPAK.Load(levelPath + "/RENDERABLE/LEVEL_MODELS.PAK");
             Result.ModelsBIN = CATHODE.Models.ModelBIN.Load(levelPath + "/RENDERABLE/MODELS_LEVEL.BIN");
 
@@ -64,7 +67,7 @@ namespace CATHODE
             //Result.ShadersBIN = CATHODE.Shaders.ShadersBIN.Load(levelPath + "/RENDERABLE/LEVEL_SHADERS_DX11_BIN.PAK");
             Result.ShadersIDXRemap = CATHODE.Shaders.IDXRemap.Load(levelPath + "/RENDERABLE/LEVEL_SHADERS_DX11_IDX_REMAP.PAK");
 
-            Result.LevelTextures = CATHODE.Textures.TexturePAK.Load(levelPath + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK", levelPath + "/RENDERABLE/LEVEL_TEXTURE_HEADERS.ALL.BIN");
+            Result.LevelTextures = CATHODE.Textures.CathodeTextures.Load(levelPath + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK", levelPath + "/RENDERABLE/LEVEL_TEXTURE_HEADERS.ALL.BIN");
 
             //LEVEL_TEXTURES.DX11.PAK
             //RADIOSITY_INSTANCE_MAP.TXT
@@ -80,14 +83,14 @@ namespace CATHODE
 
 public class alien_level
 {
-    public CATHODE.Models.ModelsMVR ModelsMVR;
+    public CATHODE.Models.CathodeMovers ModelsMVR;
     public CATHODE.Commands.CommandsPAK CommandsPAK;
 
-    public CATHODE.Misc.RenderableElementsBIN RenderableREDS;
-    public CATHODE.Misc.ResourcesBIN ResourcesBIN;
-    public CATHODE.Misc.PhysicsMAP PhysicsMap;
-    public CATHODE.Misc.EnvironmentMapBIN EnvironmentMap;
-    public CATHODE.Misc.CollisionMAP CollisionMap;
+    public CATHODE.Misc.CathodeRenderableElements RenderableREDS;
+    public CATHODE.Misc.CathodeResources ResourcesBIN;
+    public CATHODE.Misc.CathodePhysicsMap PhysicsMap;
+    public CATHODE.Misc.CathodeEnvironmentMap EnvironmentMap;
+    public CATHODE.Misc.CathodeCollisionMap CollisionMap;
 
     public alien_animation_dat EnvironmentAnimation;
 
@@ -102,3 +105,4 @@ public class alien_level
     public alien_shader_bin_pak ShadersBIN;
     public alien_shader_idx_remap ShadersIDXRemap;
 };
+*/

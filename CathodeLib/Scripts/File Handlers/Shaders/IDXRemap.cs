@@ -1,41 +1,36 @@
-﻿using System;
+﻿using CATHODE.Generic;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
+/*
 namespace CATHODE.Shaders
 {
-    public class IDXRemap
+    public class IDXRemap : CathodePAK
     {
-        public static alien_shader_idx_remap Load(string FullFilePath)
+        public List<alien_shader_idx_remap_data> Datas;
+        public void Load(string FullFilePath)
         {
-            alien_shader_idx_remap Result = new alien_shader_idx_remap();
+            LoadPAK(FullFilePath, false);
 
-            Result.PAK = Generic.PAK.Load(FullFilePath, false);
-            Result.Datas = new List<alien_shader_idx_remap_data>(Result.PAK.Header.EntryCount);
+            Datas = new List<alien_shader_idx_remap_data>(PAKHeader.EntryCount);
 
-            for (int EntryIndex = 0; EntryIndex < Result.PAK.Header.EntryCount; ++EntryIndex)
+            for (int EntryIndex = 0; EntryIndex < PAKHeader.EntryCount; ++EntryIndex)
             {
-                Result.Datas.Add(Utilities.Consume<alien_shader_idx_remap_data>(Result.PAK.EntryDatas[EntryIndex]));
+                Datas.Add(Utilities.Consume<alien_shader_idx_remap_data>(EntryDatas[EntryIndex]));
             }
-
-            return Result;
         }
     }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct alien_shader_idx_remap_data
+    {
+        public int Index;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        public int[] Unknown0_; //3
+    };
 }
-
-[StructLayout(LayoutKind.Sequential, Pack = 1)]
-public struct alien_shader_idx_remap_data
-{
-    public int Index;
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
-    public int[] Unknown0_; //3
-};
-
-public struct alien_shader_idx_remap
-{
-    public alien_pak PAK;
-    public List<alien_shader_idx_remap_data> Datas;
-};
+*/

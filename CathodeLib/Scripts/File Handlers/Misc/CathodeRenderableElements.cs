@@ -8,21 +8,21 @@ using System.Threading.Tasks;
 
 namespace CATHODE.Misc
 {
-    /* Handles CATHODE REDS.BIN files */
-    public class RenderableElementsBIN
+    /* Handles Cathode REDS.BIN files */
+    public class CathodeRenderableElements
     {
         private string filepath;
-        public alien_reds_header header;
-        public alien_reds_entry[] entries;
+        public RenderableElementHeader header;
+        public RenderableElementEntry[] entries;
 
         /* Load the file */
-        public RenderableElementsBIN(string path)
+        public CathodeRenderableElements(string path)
         {
             filepath = path;
 
             BinaryReader stream = new BinaryReader(File.OpenRead(path));
-            header = Utilities.Consume<alien_reds_header>(stream);
-            entries = Utilities.ConsumeArray<alien_reds_entry>(stream, header.EntryCount);
+            header = Utilities.Consume<RenderableElementHeader>(stream);
+            entries = Utilities.ConsumeArray<RenderableElementEntry>(stream, header.EntryCount);
             stream.Close();
         }
 
@@ -31,34 +31,34 @@ namespace CATHODE.Misc
         {
             BinaryWriter stream = new BinaryWriter(File.OpenWrite(filepath));
             stream.BaseStream.SetLength(0);
-            Utilities.Write<alien_reds_header>(stream, header);
-            Utilities.Write<alien_reds_entry>(stream, entries);
+            Utilities.Write<RenderableElementHeader>(stream, header);
+            Utilities.Write<RenderableElementEntry>(stream, entries);
             stream.Close();
         }
 
         /* Data accessors */
         public int EntryCount { get { return entries.Length; } }
-        public alien_reds_entry[] Entries { get { return entries; } }
-        public alien_reds_entry GetEntry(int i)
+        public RenderableElementEntry[] Entries { get { return entries; } }
+        public RenderableElementEntry GetEntry(int i)
         {
             return entries[i];
         }
 
         /* Data setters */
-        public void SetEntry(int i, alien_reds_entry content)
+        public void SetEntry(int i, RenderableElementEntry content)
         {
             entries[i] = content;
         }
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct alien_reds_header
+    public struct RenderableElementHeader
     {
         public int EntryCount;
     };
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct alien_reds_entry
+    public struct RenderableElementEntry
     {
         public int UnknownZeros0_;
         public int ModelIndex;

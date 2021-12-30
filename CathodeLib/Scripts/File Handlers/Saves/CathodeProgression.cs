@@ -8,14 +8,14 @@ using System.Threading.Tasks;
 
 namespace CATHODE.Saves
 {
-    /* Handles CATHODE PROGRESSION.AIS files */
-    public class ProgressionAIS
+    /* Handles Cathode PROGRESSION.AIS files */
+    public class CathodeProgression
     {
         private string filepath;
         private alien_progression_ais content;
 
         /* Load the file */
-        public ProgressionAIS(string pathToMVR)
+        public CathodeProgression(string pathToMVR)
         {
             filepath = pathToMVR;
 

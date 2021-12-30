@@ -9,21 +9,21 @@ using System.Numerics;
 
 namespace CATHODE.Misc
 {
-    /* Handles CATHODE PHYSICS.MAP files */
-    public class PhysicsMAP
+    /* Handles Cathode PHYSICS.MAP files */
+    public class CathodePhysicsMap
     {
         private string filepath;
-        public alien_collision_map_header header;
-        public alien_collision_map_entry[] entries;
+        public PhysicsMapHeader header;
+        public PhysicsMapEntry[] entries;
 
         /* Load the file */
-        public PhysicsMAP(string path)
+        public CathodePhysicsMap(string path)
         {
             filepath = path;
 
             BinaryReader stream = new BinaryReader(File.OpenRead(path));
-            header = Utilities.Consume<alien_collision_map_header>(stream);
-            entries = Utilities.ConsumeArray<alien_collision_map_entry>(stream, header.EntryCount);
+            header = Utilities.Consume<PhysicsMapHeader>(stream);
+            entries = Utilities.ConsumeArray<PhysicsMapEntry>(stream, header.EntryCount);
             stream.Close();
         }
 
@@ -32,35 +32,35 @@ namespace CATHODE.Misc
         {
             BinaryWriter stream = new BinaryWriter(File.OpenWrite(filepath));
             stream.BaseStream.SetLength(0);
-            Utilities.Write<alien_collision_map_header>(stream, header);
-            Utilities.Write<alien_collision_map_entry>(stream, entries);
+            Utilities.Write<PhysicsMapHeader>(stream, header);
+            Utilities.Write<PhysicsMapEntry>(stream, entries);
             stream.Close();
         }
 
         /* Data accessors */
         public int EntryCount { get { return entries.Length; } }
-        public alien_collision_map_entry[] Entries { get { return entries; } }
-        public alien_collision_map_entry GetEntry(int i)
+        public PhysicsMapEntry[] Entries { get { return entries; } }
+        public PhysicsMapEntry GetEntry(int i)
         {
             return entries[i];
         }
 
         /* Data setters */
-        public void SetEntry(int i, alien_collision_map_entry content)
+        public void SetEntry(int i, PhysicsMapEntry content)
         {
             entries[i] = content;
         }
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct alien_physics_map_header
+    public struct PhysicsMapHeader
     {
         public int FileSizeExcludingThis;
         public int EntryCount;
     };
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct alien_physics_map_entry
+    public struct PhysicsMapEntry
     {
         public int UnknownNotableValue_;
         public int UnknownZero;

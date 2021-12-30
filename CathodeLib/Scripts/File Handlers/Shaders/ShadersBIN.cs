@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
+/*
 namespace CATHODE.Shaders
 {
     public class ShadersBIN
@@ -15,7 +16,7 @@ namespace CATHODE.Shaders
         {
             alien_shader_bin_pak Result = new alien_shader_bin_pak();
 
-            Result.PAK = Generic.PAK.Load(FullFilePath, false);
+            Result.PAK = Generic.CathodePAK.Load(FullFilePath, false);
             Result.DSOs = new List<dso_file>(Result.PAK.Header.EntryCount);
 
             BinaryReader HeaderStream = new BinaryReader(new MemoryStream(Result.PAK.DataStart));
@@ -277,9 +278,10 @@ public struct dso_file
 
 public struct alien_shader_bin_pak
 {
-    public alien_pak PAK;
+    public CATHODE.Generic.CathodePAK PAK;
 
     public List<dso_file> DSOs;
     public List<dso_file> VertexShaders;
     public List<dso_file> PixelShaders;
 };
+*/

@@ -8,21 +8,21 @@ using System.Threading.Tasks;
 
 namespace CATHODE.Misc
 {
-    /* Handles CATHODE COLLISION.MAP files */
-    public class CollisionMAP
+    /* Handles Cathode COLLISION.MAP files */
+    public class CathodeCollisionMap
     {
         private string filepath;
-        public alien_collision_map_header header;
-        public alien_collision_map_entry[] entries;
+        public CollisionMapHeader header;
+        public CollisionMapEntry[] entries;
 
         /* Load the file */
-        public CollisionMAP(string path)
+        public CathodeCollisionMap(string path)
         {
             filepath = path;
 
             BinaryReader stream = new BinaryReader(File.OpenRead(path));
-            header = Utilities.Consume<alien_collision_map_header>(stream);
-            entries = Utilities.ConsumeArray<alien_collision_map_entry>(stream, header.EntryCount);
+            header = Utilities.Consume<CollisionMapHeader>(stream);
+            entries = Utilities.ConsumeArray<CollisionMapEntry>(stream, header.EntryCount);
             stream.Close();
         }
 
@@ -31,35 +31,35 @@ namespace CATHODE.Misc
         {
             BinaryWriter stream = new BinaryWriter(File.OpenWrite(filepath));
             stream.BaseStream.SetLength(0);
-            Utilities.Write<alien_collision_map_header>(stream, header);
-            Utilities.Write<alien_collision_map_entry>(stream, entries);
+            Utilities.Write<CollisionMapHeader>(stream, header);
+            Utilities.Write<CollisionMapEntry>(stream, entries);
             stream.Close();
         }
 
         /* Data accessors */
         public int EntryCount { get { return entries.Length; } }
-        public alien_collision_map_entry[] Entries { get { return entries; } }
-        public alien_collision_map_entry GetEntry(int i)
+        public CollisionMapEntry[] Entries { get { return entries; } }
+        public CollisionMapEntry GetEntry(int i)
         {
             return entries[i];
         }
 
         /* Data setters */
-        public void SetEntry(int i, alien_collision_map_entry content)
+        public void SetEntry(int i, CollisionMapEntry content)
         {
             entries[i] = content;
         }
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct alien_collision_map_header
+    public struct CollisionMapHeader
     {
         public int DataSize;
         public int EntryCount;
     };
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct alien_collision_map_entry
+    public struct CollisionMapEntry
     {
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
         public int[] Unknowns1; //12

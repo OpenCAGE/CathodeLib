@@ -10,8 +10,8 @@ using System.Numerics;
 
 namespace CATHODE.Models
 {
-    /* Handles CATHODE MVR files */
-    public class ModelsMVR
+    /* Handles Cathode MODELS.MVR files */
+    public class CathodeMovers
     {
         public string FilePath { get { return filePath; } }
         private string filePath = "";
@@ -20,11 +20,11 @@ namespace CATHODE.Models
         private int entrySize = 320;
         private int nonCommandsEntries = 0;
 
-        public List<CathodeMover> Movers = new List<CathodeMover>();
+        public List<MoverEntry> Movers = new List<MoverEntry>();
 
         /* Load the file */
-        public ModelsMVR() { }
-        public ModelsMVR(string pathToFile)
+        public CathodeMovers() { }
+        public CathodeMovers(string pathToFile)
         {
             if (!File.Exists(pathToFile)) return;
 
@@ -37,7 +37,7 @@ namespace CATHODE.Models
             stream.BaseStream.Position += 4; 
             entrySize = stream.ReadInt32();
             stream.BaseStream.Position += 12;
-            Movers = new List<CathodeMover>(Utilities.ConsumeArray<CathodeMover>(stream, entryCount));
+            Movers = new List<MoverEntry>(Utilities.ConsumeArray<MoverEntry>(stream, entryCount));
             stream.Close();
         }
 
@@ -62,7 +62,7 @@ namespace CATHODE.Models
             stream.Write(0);
             stream.Write(entrySize);
             stream.Write(0); stream.Write(0); stream.Write(0);
-            Utilities.Write<CathodeMover>(stream, Movers);
+            Utilities.Write<MoverEntry>(stream, Movers);
             stream.Close();
         }
     }
@@ -79,7 +79,7 @@ namespace CATHODE.Models
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CathodeMover
+    public struct MoverEntry
     {
         public Matrix4x4 Transform;
 
