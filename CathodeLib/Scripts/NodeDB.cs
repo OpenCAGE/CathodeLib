@@ -13,6 +13,7 @@ namespace CathodeLib
     public class NodeDBDescriptor
     {
         public cGUID ID;
+        public string ID_cachedstring;
     }
     public class ShortGUIDDescriptor : NodeDBDescriptor
     {
@@ -44,13 +45,15 @@ namespace CathodeLib
         public static string GetCathodeName(cGUID id)
         {
             if (id.val == null) return "";
-            foreach (ShortGUIDDescriptor db_entry in cathode_id_map) if (db_entry.ID == id) return db_entry.Description;
+            string id_string = id.ToString();
+            for (int i = 0; i < cathode_id_map.Count; i++) if (cathode_id_map[i].ID_cachedstring == id_string) return cathode_id_map[i].Description;
             return id.ToString();
         }
         public static string GetCathodeName(cGUID id, CommandsPAK pak) //This is performed separately to be able to remap nodes that are flowgraphs
         {
             if (id.val == null) return "";
-            foreach (ShortGUIDDescriptor db_entry in cathode_id_map) if (db_entry.ID == id) return db_entry.Description;
+            string id_string = id.ToString();
+            for (int i = 0; i < cathode_id_map.Count; i++) if (cathode_id_map[i].ID_cachedstring == id_string) return cathode_id_map[i].Description;
             CathodeFlowgraph flow = pak.GetFlowgraph(id); if (flow == null) return id.ToString();
             return flow.name;
         }
@@ -67,7 +70,8 @@ namespace CathodeLib
         public static string GetEditorName(cGUID id)
         {
             if (id.val == null) return "";
-            foreach (ShortGUIDDescriptor db_entry in node_friendly_names) if (db_entry.ID == id) return db_entry.Description;
+            string id_string = id.ToString();
+            for (int i = 0; i < node_friendly_names.Count; i++) if (node_friendly_names[i].ID_cachedstring == id_string) return node_friendly_names[i].Description;
             return id.ToString();
         }
 
@@ -129,6 +133,7 @@ namespace CathodeLib
             }
             reader.Close();
 
+            for (int i = 0; i < toReturn.Count; i++) toReturn[i].ID_cachedstring = toReturn[i].ID.ToString();
             return toReturn;
         }
 
