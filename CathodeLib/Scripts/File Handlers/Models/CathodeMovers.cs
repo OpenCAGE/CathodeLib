@@ -51,7 +51,7 @@ namespace CATHODE.Models
             nonCommandsEntries = 0;
             for (int i = 0; i < Movers.Count; i++)
             {
-                if (Movers[i].renderConstants.NodeID == new cGUID(0)) nonCommandsEntries++;
+                if (Movers[i].NodeID == new cGUID(0)) nonCommandsEntries++;
             }
 
             BinaryWriter stream = new BinaryWriter(File.OpenWrite(filePath));
@@ -110,8 +110,11 @@ namespace CATHODE.Models
 
          RenderableScene::initialize passes MOVER_DESCRIPTOR to create_instance and defines its length as 320
          RenderableScene::create_instance takes MOVER_DESCRIPTOR and grabs two values:
-            296: (4) uVar1 - used as first parameter in call to RenderableScene::add_new_zone
-            300: (4) uVar3 - used as second parameter in call to RenderableScene::add_new_zone
+            296: (uint) uVar1 - used as first parameter in call to RenderableScene::add_new_zone, which passes it to g_zone_ids
+            300: (uint) uVar3 - used as second parameter in call to RenderableScene::add_new_zone, which does some conditional check to call Zone::activate
+
+         INSTANCE_DATABASE::initialise_emissive_surfaces uses MOVER_DESCRIPTOR:
+            284: dunno what this is used for, but it goes +4, +8 - so 3 offsets?
 
          RENDERABLE_INSTANCE::TYPE values RenderableLightInstance/RenderableDynamicFxInstance/RenderableDynamicTempFXInstance/etc do this...
             RenderableScene::InstanceManager<>::reserve_light_light_master_sets takes takes MOVER_DESCRIPTOR and grabs two values:
@@ -169,17 +172,12 @@ namespace CATHODE.Models
 
          */
 
-        //Worth noting that GPU_CONSTANTS and RENDER_CONSTANTS may not actually be as big as they are here
-        //Still need to look at where their data is actually used to see the offsets
-
         public Matrix4x4 Transform;
         //64
         public GPU_CONSTANTS gpuConstants;
         //144
-        public cGUID UnknownID; // TODO: Is this an ID or two u16s?
-        public float UnknownValue5_;
-        public float UnknownValue6_;
-        public Int32 Unknown2_;
+        public UInt64 fogsphere_val1; // 0xa0 in RenderableFogSphereInstance
+        public UInt64 fogsphere_val2; // 0xa8 in RenderableFogSphereInstance
         //160
         public RENDER_CONSTANTS renderConstants;
         //244
@@ -192,16 +190,17 @@ namespace CATHODE.Models
         //272
         public cGUID NodeID; // Index 52
         public cGUID ResourcesBINID; // NOTE: This is 'IDFromMVREntry' field on 'alien_resources_bin_entry'.
-        public UInt32 EnvironmentMapBINIndex; // NOTE: Tells me which Environment Map texture to use.
-        public UInt32 UnknownValue1;
-        //288
-        public float UnknownValue;
-        public UInt32 Unknown5_;
+        //280
+        public UInt32 EnvironmentMapBINIndex; //Converted to short in code
+        //284
+        public float UnknownValue1; //emissive surface val1
+        public float UnknownValue; //emissive surface val2
+        public float Unknown5_; //emissive surface val3
         //296
-        public cGUID CollisionMapThingID; //this is uVar1 in RenderableScene::create_instance
-        public UInt32 Unknowns60_; //this is uVar3 in RenderableScene::create_instance
+        public UInt32 CollisionMapThingID; //zone id? RenderableScene::create_instance, RenderableScene::initialize
+        public UInt32 Unknowns60_;  //zone activator? RenderableScene::create_instance, RenderableScene::initialize
         //304
-        public UInt32 Unknowns61_;
+        public UInt32 Unknowns61_; //uVar3 in reserve_light_light_master_sets, val of LightMasterSet, or an incrementer
         public UInt16 Unknown17_;   // TODO: It is -1 most of the time, but some times it isn't.
         //310
         public MoverType IsThisTypeID; //ushort

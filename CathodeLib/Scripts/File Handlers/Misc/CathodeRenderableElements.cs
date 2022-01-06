@@ -60,6 +60,7 @@ namespace CATHODE.Misc
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct RenderableElementEntry
     {
+        //in the ios dump it appears this data isn't actually in a struct, and just directly read 
         public int UnknownZeros0_;
         public int ModelIndex;
         public byte UnknownZeroByte0_;

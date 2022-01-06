@@ -14,6 +14,30 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE.Commands
 {
+    /*
+    
+    A:I iOS contains all symbols which has been super helpful. There's some new Commands info, as well as a bunch of info about REDS/MVR.
+
+    COMMANDS.BIN loads into CommandBuffer object.
+    CommandBuffer is looped through once for number of commands entries, adding or removing:
+       composite_template
+       alias_from_command
+       parameter_from_command
+       entity_to_seq_from_command
+       link
+       connector
+       resource
+       track_from_command
+    It's then looped through again, adding or removing:
+       entity
+       binding_from_command
+       **something undefined**
+       method
+       proxy_from_command
+       breakpoint_from_command
+
+    */
+
     public class CommandsPAK
     {
         /* Load and parse the COMMANDS.PAK */
