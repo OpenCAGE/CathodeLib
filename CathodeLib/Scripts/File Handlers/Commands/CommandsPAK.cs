@@ -161,7 +161,7 @@ namespace CATHODE.Commands
                         break;
                     case CathodeDataType.DIRECTION:
                         Vector3 dir = ((CathodeVector3)parameters[i]).value;
-                        writer.Write(dir.Y); writer.Write(dir.X); writer.Write(dir.Z);
+                        writer.Write(dir.X); writer.Write(dir.Y); writer.Write(dir.Z);
                         break;
                     case CathodeDataType.ENUM:
                         Utilities.Write<cGUID>(writer, ((CathodeEnum)parameters[i]).enumID);
@@ -680,8 +680,7 @@ namespace CATHODE.Commands
                         break;
                     case CathodeDataType.DIRECTION:
                         this_parameter = new CathodeVector3();
-                        float __x, __y, __z; __y = reader.ReadSingle(); __x = reader.ReadSingle(); __z = reader.ReadSingle(); //Y,X,Z!
-                        ((CathodeVector3)this_parameter).value = new Vector3(__x, __y, __z);
+                        ((CathodeVector3)this_parameter).value = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                         break;
                     case CathodeDataType.ENUM:
                         this_parameter = new CathodeEnum();

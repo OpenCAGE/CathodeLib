@@ -854,6 +854,7 @@ namespace CATHODE.Commands
         public static bool operator ==(CathodeParameter x, CathodeParameter y)
         {
             if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+            if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
             if (x.dataType != y.dataType) return false;
             switch (x.dataType)
             {
