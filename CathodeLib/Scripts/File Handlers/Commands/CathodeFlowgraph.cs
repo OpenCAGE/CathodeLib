@@ -33,6 +33,7 @@ namespace CATHODE.Commands
     }
 
     /* A reference to a parameter in a flowgraph */
+    [Serializable]
     public class CathodeLoadedParameter
     {
         public CathodeLoadedParameter(cGUID id, CathodeParameter cont)
@@ -66,6 +67,7 @@ namespace CATHODE.Commands
     }
 
     /* A node in a flowgraph */
+    [Serializable]
     public class CathodeEntity : IComparable<CathodeEntity>
     {
         public CathodeEntity(cGUID id)
@@ -88,17 +90,20 @@ namespace CATHODE.Commands
             return -1;
         }
     }
+    [Serializable]
     public class DatatypeEntity : CathodeEntity
     {
         public DatatypeEntity(cGUID id) : base(id) { variant = EntityVariant.DATATYPE; }
         public CathodeDataType type = CathodeDataType.NO_TYPE;
         public cGUID parameter; //Translates to string in COMMANDS.BIN dump
     }
+    [Serializable]
     public class FunctionEntity : CathodeEntity
     {
         public FunctionEntity(cGUID id) : base(id) { variant = EntityVariant.FUNCTION; }
         public cGUID function; 
     }
+    [Serializable]
     public class CAGEAnimation : FunctionEntity
     {
         public CAGEAnimation(cGUID id) : base(id) { function = Utilities.GenerateGUID("CAGEAnimation"); }
@@ -106,12 +111,14 @@ namespace CATHODE.Commands
         public List<CathodeParameterKeyframe> keyframeData = new List<CathodeParameterKeyframe>();
         public List<TEMP_CAGEAnimationExtraDataHolder3> paramsData3 = new List<TEMP_CAGEAnimationExtraDataHolder3>();
     }
+    [Serializable]
     public class TriggerSequence : FunctionEntity
     {
         public TriggerSequence(cGUID id) : base(id) { function = Utilities.GenerateGUID("TriggerSequence"); }
         public List<TEMP_TriggerSequenceExtraDataHolder1> triggers = new List<TEMP_TriggerSequenceExtraDataHolder1>();
         public List<TEMP_TriggerSequenceExtraDataHolder2> events = new List<TEMP_TriggerSequenceExtraDataHolder2>();
     }
+    [Serializable]
     public class ProxyEntity : CathodeEntity
     {
         public ProxyEntity(cGUID id) : base(id) { variant = EntityVariant.PROXY; }
@@ -119,6 +126,7 @@ namespace CATHODE.Commands
         public cGUID extraId; //todo: what is this?
         public List<cGUID> hierarchy = new List<cGUID>();
     }
+    [Serializable]
     public class OverrideEntity : CathodeEntity
     {
         public OverrideEntity(cGUID id) : base(id) { variant = EntityVariant.OVERRIDE; }

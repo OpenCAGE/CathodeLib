@@ -57,7 +57,7 @@ namespace CATHODE.Misc
                 ID = _id;
                 content = _str;
             }
-            public cGUID ID;
+            public cGUID ID; //For the animation string DB, this cGUID is converted to UInt32 and used as the filename for the CLIP_DB
             public string content;
         }
 

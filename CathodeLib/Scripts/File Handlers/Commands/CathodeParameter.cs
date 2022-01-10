@@ -842,6 +842,7 @@ namespace CATHODE.Commands
     }
 
     /* A parameter compiled in COMMANDS.PAK */
+    [Serializable]
     public class CathodeParameter : ICloneable
     {
         public CathodeParameter() { }
@@ -905,8 +906,8 @@ namespace CATHODE.Commands
                 case CathodeDataType.POSITION:
                     CathodeTransform x_t = (CathodeTransform)this;
                     return Convert.ToInt32(
-                        x_t.rotation.X.ToString() + x_t.rotation.Y.ToString() + x_t.rotation.Z.ToString() +
-                        x_t.position.X.ToString() + x_t.position.Y.ToString() + x_t.position.Z.ToString());
+                        x_t.rotation.x.ToString() + x_t.rotation.y.ToString() + x_t.rotation.z.ToString() +
+                        x_t.position.x.ToString() + x_t.position.y.ToString() + x_t.position.z.ToString());
                 case CathodeDataType.INTEGER:
                     return ((CathodeInteger)this).value;
                 case CathodeDataType.STRING:
@@ -925,7 +926,7 @@ namespace CATHODE.Commands
                     return Convert.ToInt32(num2);
                 case CathodeDataType.DIRECTION:
                     CathodeVector3 x_v = (CathodeVector3)this;
-                    return Convert.ToInt32(x_v.value.X.ToString() + x_v.value.Y.ToString() + x_v.value.Z.ToString());
+                    return Convert.ToInt32(x_v.value.x.ToString() + x_v.value.y.ToString() + x_v.value.z.ToString());
                 case CathodeDataType.ENUM:
                     CathodeEnum x_e = (CathodeEnum)this;
                     string x_e_s = x_e.enumID.ToString();
@@ -951,48 +952,57 @@ namespace CATHODE.Commands
             return this.MemberwiseClone();
         }
     }
+    [Serializable]
     public class CathodeTransform : CathodeParameter
     {
         public CathodeTransform() { dataType = CathodeDataType.POSITION; }
         public Vector3 position = new Vector3();
         public Vector3 rotation = new Vector3(); //In CATHODE this is named Roll/Pitch/Yaw
     }
+    [Serializable]
     public class CathodeInteger : CathodeParameter
     {
         public CathodeInteger() { dataType = CathodeDataType.INTEGER; }
         public int value = 0;
     }
+    [Serializable]
     public class CathodeString : CathodeParameter
     {
         public CathodeString() { dataType = CathodeDataType.STRING; }
         public string value = "";
     }
+    [Serializable]
     public class CathodeBool : CathodeParameter
     {
         public CathodeBool() { dataType = CathodeDataType.BOOL; }
         public bool value = false;
     }
+    [Serializable]
     public class CathodeFloat : CathodeParameter
     {
         public CathodeFloat() { dataType = CathodeDataType.FLOAT; }
         public float value = 0.0f;
     }
+    [Serializable]
     public class CathodeResource : CathodeParameter
     {
         public CathodeResource() { dataType = CathodeDataType.SHORT_GUID; }
         public cGUID resourceID;
     }
+    [Serializable]
     public class CathodeVector3 : CathodeParameter
     {
         public CathodeVector3() { dataType = CathodeDataType.DIRECTION; }
         public Vector3 value = new Vector3();
     }
+    [Serializable]
     public class CathodeEnum : CathodeParameter
     {
         public CathodeEnum() { dataType = CathodeDataType.ENUM; }
         public cGUID enumID;
         public int enumIndex = 0;
     }
+    [Serializable]
     public class CathodeSpline : CathodeParameter
     {
         public CathodeSpline() { dataType = CathodeDataType.SPLINE_DATA; }

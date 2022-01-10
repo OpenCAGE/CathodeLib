@@ -123,7 +123,25 @@ namespace CATHODE
         }
     }
 
+#if !(UNITY_EDITOR || UNITY_STANDALONE)
+    [Serializable]
+    public class Vector3
+    {
+        public Vector3() { }
+        public Vector3(float _x, float _y, float _z)
+        {
+            x = _x;
+            y = _y;
+            z = _z;
+        }
+        public float x;
+        public float y;
+        public float z;
+    }
+#endif
+
     /* A unique id assigned to CATHODE objects */
+    [Serializable]
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct cGUID : IComparable<cGUID>
     {

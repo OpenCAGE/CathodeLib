@@ -5,11 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
-#else
-using System.Numerics;
-using System.Runtime.InteropServices;
 #endif
 
 namespace CATHODE.Commands
@@ -133,8 +131,8 @@ namespace CATHODE.Commands
                     case CathodeDataType.POSITION:
                         Vector3 pos = ((CathodeTransform)parameters[i]).position;
                         Vector3 rot = ((CathodeTransform)parameters[i]).rotation;
-                        writer.Write(pos.X); writer.Write(pos.Y); writer.Write(pos.Z);
-                        writer.Write(rot.Y); writer.Write(rot.X); writer.Write(rot.Z);
+                        writer.Write(pos.x); writer.Write(pos.y); writer.Write(pos.z);
+                        writer.Write(rot.y); writer.Write(rot.x); writer.Write(rot.z);
                         break;
                     case CathodeDataType.INTEGER:
                         writer.Write(((CathodeInteger)parameters[i]).value);
@@ -161,7 +159,7 @@ namespace CATHODE.Commands
                         break;
                     case CathodeDataType.DIRECTION:
                         Vector3 dir = ((CathodeVector3)parameters[i]).value;
-                        writer.Write(dir.X); writer.Write(dir.Y); writer.Write(dir.Z);
+                        writer.Write(dir.x); writer.Write(dir.y); writer.Write(dir.z);
                         break;
                     case CathodeDataType.ENUM:
                         Utilities.Write<cGUID>(writer, ((CathodeEnum)parameters[i]).enumID);
@@ -173,13 +171,13 @@ namespace CATHODE.Commands
                         writer.Write(thisSpline.splinePoints.Count);
                         for (int x = 0; x < thisSpline.splinePoints.Count; x++)
                         {
-                            writer.Write(thisSpline.splinePoints[x].position.X);
-                            writer.Write(thisSpline.splinePoints[x].position.Y);
-                            writer.Write(thisSpline.splinePoints[x].position.Z);
+                            writer.Write(thisSpline.splinePoints[x].position.x);
+                            writer.Write(thisSpline.splinePoints[x].position.y);
+                            writer.Write(thisSpline.splinePoints[x].position.z);
                             //todo: is this YXZ
-                            writer.Write(thisSpline.splinePoints[x].rotation.X);
-                            writer.Write(thisSpline.splinePoints[x].rotation.Y);
-                            writer.Write(thisSpline.splinePoints[x].rotation.Z);
+                            writer.Write(thisSpline.splinePoints[x].rotation.x);
+                            writer.Write(thisSpline.splinePoints[x].rotation.y);
+                            writer.Write(thisSpline.splinePoints[x].rotation.z);
                         }
                         break;
                 }
@@ -368,9 +366,9 @@ namespace CATHODE.Commands
                             {
                                 writer.Write(_flowgraphs[i].resources[p].resourceRefID.val);
                                 writer.Write(_flowgraphs[i].resources[p].unknownID1.val);
-                                writer.Write(_flowgraphs[i].resources[p].positionOffset.X);
-                                writer.Write(_flowgraphs[i].resources[p].positionOffset.Y);
-                                writer.Write(_flowgraphs[i].resources[p].positionOffset.Z);
+                                writer.Write(_flowgraphs[i].resources[p].positionOffset.x);
+                                writer.Write(_flowgraphs[i].resources[p].positionOffset.y);
+                                writer.Write(_flowgraphs[i].resources[p].positionOffset.z);
                                 writer.Write(_flowgraphs[i].resources[p].unknownID2.val);
                                 writer.Write(_flowgraphs[i].resources[p].resourceID.val);
                                 writer.Write(GetResourceEntryTypeGUID(_flowgraphs[i].resources[p].entryType).val);
@@ -1160,6 +1158,7 @@ namespace CATHODE.Commands
         public int count;
     }
 
+    [Serializable]
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct CathodeNodeLink
     {
@@ -1219,6 +1218,7 @@ namespace CATHODE.Commands
     }
 
     /* TEMP STUFF TO FIX REWRITING */
+    [Serializable]
     public class CathodeParameterKeyframeHeader
     {
         public cGUID ID;
@@ -1230,6 +1230,7 @@ namespace CATHODE.Commands
         public cGUID parameterSubID; //if parameterID is position, this might be x for example
         public List<cGUID> connectedEntity; //path to controlled entity
     }
+    [Serializable]
     public class CathodeParameterKeyframe
     {
         public float minSeconds;
@@ -1237,6 +1238,7 @@ namespace CATHODE.Commands
         public cGUID ID;
         public List<CathodeKeyframe> keyframes = new List<CathodeKeyframe>();
     }
+    [Serializable]
     public class CathodeKeyframe
     {
         public float unk1;
@@ -1248,6 +1250,7 @@ namespace CATHODE.Commands
         public float unk4;
         public float unk5;
     }
+    [Serializable]
     public class TEMP_CAGEAnimationExtraDataHolder3
     {
         public float minSeconds;
@@ -1255,6 +1258,7 @@ namespace CATHODE.Commands
         public cGUID ID;
         public List<TEMP_CAGEAnimationExtraDataHolder3_1> keyframes = new List<TEMP_CAGEAnimationExtraDataHolder3_1>();
     }
+    [Serializable]
     public class TEMP_CAGEAnimationExtraDataHolder3_1
     {
         public float unk1;
