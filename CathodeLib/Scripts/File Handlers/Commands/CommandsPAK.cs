@@ -41,10 +41,6 @@ namespace CATHODE.Commands
         /* Load and parse the COMMANDS.PAK */
         public CommandsPAK(string pathToPak)
         {
-            SetupFunctionTypeLUT();
-            SetupDataTypeLUT();
-            SetupResourceEntryTypeLUT();
-
             path = pathToPak;
             _didLoadCorrectly = Load(path);
         }
@@ -125,7 +121,7 @@ namespace CATHODE.Commands
             for (int i = 0; i < parameters.Count; i++)
             {
                 parameterOffsets[i] = (int)writer.BaseStream.Position / 4;
-                Utilities.Write<cGUID>(writer, GetDataTypeGUID(parameters[i].dataType));
+                Utilities.Write<cGUID>(writer, CommandsUtils.GetDataTypeGUID(parameters[i].dataType));
                 switch (parameters[i].dataType)
                 {
                     case CathodeDataType.POSITION:
@@ -200,8 +196,8 @@ namespace CATHODE.Commands
                 //TODO: find a nicer way to sort into node class types
                 List<CAGEAnimation> cageAnimationNodes = new List<CAGEAnimation>();
                 List<TriggerSequence> triggerSequenceNodes = new List<TriggerSequence>();
-                cGUID cageAnimationGUID = GetFunctionTypeGUID(CathodeFunctionType.CAGEAnimation);
-                cGUID triggerSequenceGUID = GetFunctionTypeGUID(CathodeFunctionType.TriggerSequence);
+                cGUID cageAnimationGUID = CommandsUtils.GetFunctionTypeGUID(CathodeFunctionType.CAGEAnimation);
+                cGUID triggerSequenceGUID = CommandsUtils.GetFunctionTypeGUID(CathodeFunctionType.TriggerSequence);
                 for (int x = 0; x < _flowgraphs[i].functions.Count; x++)
                 {
                     if (_flowgraphs[i].functions[x].function == cageAnimationGUID)
@@ -323,7 +319,7 @@ namespace CATHODE.Commands
                             for (int p = 0; p < _flowgraphs[i].datatypes.Count; p++)
                             {
                                 writer.Write(_flowgraphs[i].datatypes[p].nodeID.val);
-                                writer.Write(GetDataTypeGUID(_flowgraphs[i].datatypes[p].type).val);
+                                writer.Write(CommandsUtils.GetDataTypeGUID(_flowgraphs[i].datatypes[p].type).val);
                                 writer.Write(_flowgraphs[i].datatypes[p].parameter.val);
                             }
                             break;
@@ -371,7 +367,7 @@ namespace CATHODE.Commands
                                 writer.Write(_flowgraphs[i].resources[p].positionOffset.z);
                                 writer.Write(_flowgraphs[i].resources[p].unknownID2.val);
                                 writer.Write(_flowgraphs[i].resources[p].resourceID.val);
-                                writer.Write(GetResourceEntryTypeGUID(_flowgraphs[i].resources[p].entryType).val);
+                                writer.Write(CommandsUtils.GetResourceEntryTypeGUID(_flowgraphs[i].resources[p].entryType).val);
                                 switch (_flowgraphs[i].resources[p].entryType)
                                 {
                                     case CathodeResourceReferenceType.RENDERABLE_INSTANCE:
@@ -413,10 +409,10 @@ namespace CATHODE.Commands
                                 for (int pp = 0; pp < cageAnimationNodes[p].keyframeHeaders.Count; pp++)
                                 {
                                     Utilities.Write(writer, cageAnimationNodes[p].keyframeHeaders[pp].ID);
-                                    Utilities.Write(writer, GetDataTypeGUID(cageAnimationNodes[p].keyframeHeaders[pp].unk2));
+                                    Utilities.Write(writer, CommandsUtils.GetDataTypeGUID(cageAnimationNodes[p].keyframeHeaders[pp].unk2));
                                     Utilities.Write(writer, cageAnimationNodes[p].keyframeHeaders[pp].keyframeDataID);
                                     Utilities.Write(writer, cageAnimationNodes[p].keyframeHeaders[pp].parameterID);
-                                    Utilities.Write(writer, GetDataTypeGUID(cageAnimationNodes[p].keyframeHeaders[pp].parameterDataType));
+                                    Utilities.Write(writer, CommandsUtils.GetDataTypeGUID(cageAnimationNodes[p].keyframeHeaders[pp].parameterDataType));
                                     Utilities.Write(writer, cageAnimationNodes[p].keyframeHeaders[pp].parameterSubID);
                                     writer.Write(hierarchyOffsets[pp] / 4);
                                     writer.Write(cageAnimationNodes[p].keyframeHeaders[pp].connectedEntity.Count);
@@ -645,7 +641,7 @@ namespace CATHODE.Commands
             for (int i = 0; i < parameter_count; i++)
             {
                 reader.BaseStream.Position = parameterOffsets[i] * 4; 
-                CathodeParameter this_parameter = new CathodeParameter(GetDataType(new cGUID(reader)));
+                CathodeParameter this_parameter = new CathodeParameter(CommandsUtils.GetDataType(new cGUID(reader)));
                 switch (this_parameter.dataType)
                 {
                     case CathodeDataType.POSITION:
@@ -779,7 +775,7 @@ namespace CATHODE.Commands
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 DatatypeEntity thisNode = new DatatypeEntity(new cGUID(reader));
-                                thisNode.type = GetDataType(new cGUID(reader));
+                                thisNode.type = CommandsUtils.GetDataType(new cGUID(reader));
                                 thisNode.parameter = new cGUID(reader);
                                 flowgraph.datatypes.Add(thisNode);
                                 break;
@@ -803,10 +799,10 @@ namespace CATHODE.Commands
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
                                 cGUID nodeID = new cGUID(reader);
                                 cGUID functionID = new cGUID(reader);
-                                if (_functionTypeLUT.ContainsKey(functionID))
+                                if (CommandsUtils.FunctionTypeExists(functionID))
                                 {
                                     //This node executes a hard-coded function
-                                    CathodeFunctionType functionType = GetFunctionType(functionID);
+                                    CathodeFunctionType functionType = CommandsUtils.GetFunctionType(functionID);
                                     switch (functionType)
                                     {
                                         case CathodeFunctionType.CAGEAnimation:
@@ -845,7 +841,7 @@ namespace CATHODE.Commands
                                 resource_ref.positionOffset = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()); //position offset
                                 resource_ref.unknownID2 = new cGUID(reader); //unk (sometimes 0x00 x4?)
                                 resource_ref.resourceID = new cGUID(reader); //resource id
-                                resource_ref.entryType = GetResourceEntryType(reader.ReadBytes(4)); //entry type
+                                resource_ref.entryType = CommandsUtils.GetResourceEntryType(reader.ReadBytes(4)); //entry type
                                 switch (resource_ref.entryType)
                                 {
                                     case CathodeResourceReferenceType.RENDERABLE_INSTANCE:
@@ -896,10 +892,10 @@ namespace CATHODE.Commands
 
                                     CathodeParameterKeyframeHeader thisHeader = new CathodeParameterKeyframeHeader();
                                     thisHeader.ID = new cGUID(reader);//ID
-                                    thisHeader.unk2 = GetDataType(new cGUID(reader)); //Datatype, seems to usually be NO_TYPE
+                                    thisHeader.unk2 = CommandsUtils.GetDataType(new cGUID(reader)); //Datatype, seems to usually be NO_TYPE
                                     thisHeader.keyframeDataID = new cGUID(reader); 
                                     thisHeader.parameterID = new cGUID(reader); 
-                                    thisHeader.parameterDataType = GetDataType(new cGUID(reader)); 
+                                    thisHeader.parameterDataType = CommandsUtils.GetDataType(new cGUID(reader)); 
                                     thisHeader.parameterSubID = new cGUID(reader); 
 
                                     int hierarchyCount = JumpToOffset(ref reader);
@@ -1043,92 +1039,6 @@ namespace CATHODE.Commands
 
             reader.Close();
             return true;
-        }
-        #endregion
-
-        #region LOOKUP_TABLES
-        private Dictionary<cGUID, CathodeFunctionType> _functionTypeLUT = new Dictionary<cGUID, CathodeFunctionType>();
-        private void SetupFunctionTypeLUT()
-        {
-            if (_functionTypeLUT.Count != 0) return;
-            
-            foreach (CathodeFunctionType functionType in Enum.GetValues(typeof(CathodeFunctionType)))
-                _functionTypeLUT.Add(Utilities.GenerateGUID(functionType.ToString()), functionType);
-        }
-        private CathodeFunctionType GetFunctionType(byte[] tag)
-        {
-            return GetFunctionType(new cGUID(tag));
-        }
-        private CathodeFunctionType GetFunctionType(cGUID tag)
-        {
-            SetupFunctionTypeLUT();
-            return _functionTypeLUT[tag];
-        }
-        private cGUID GetFunctionTypeGUID(CathodeFunctionType type)
-        {
-            SetupFunctionTypeLUT();
-            return _functionTypeLUT.FirstOrDefault(x => x.Value == type).Key;
-        }
-
-        private Dictionary<cGUID, CathodeDataType> _dataTypeLUT = new Dictionary<cGUID, CathodeDataType>();
-        private void SetupDataTypeLUT()
-        {
-            if (_dataTypeLUT.Count != 0) return;
-
-            _dataTypeLUT.Add(Utilities.GenerateGUID("bool"), CathodeDataType.BOOL);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("int"), CathodeDataType.INTEGER);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("float"), CathodeDataType.FLOAT);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("String"), CathodeDataType.STRING);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("FilePath"), CathodeDataType.FILEPATH);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("SplineData"), CathodeDataType.SPLINE_DATA);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("Direction"), CathodeDataType.DIRECTION);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("Position"), CathodeDataType.POSITION);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("Enum"), CathodeDataType.ENUM);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("ShortGuid"), CathodeDataType.SHORT_GUID);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("Object"), CathodeDataType.OBJECT);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("ZonePtr"), CathodeDataType.ZONE_PTR);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("ZoneLinkPtr"), CathodeDataType.ZONE_LINK_PTR);
-            _dataTypeLUT.Add(Utilities.GenerateGUID(""), CathodeDataType.NO_TYPE);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("Marker"), CathodeDataType.MARKER);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("Character"), CathodeDataType.CHARACTER);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("Camera"), CathodeDataType.CAMERA);
-        }
-        private CathodeDataType GetDataType(byte[] tag)
-        {
-            return GetDataType(new cGUID(tag));
-        }
-        private CathodeDataType GetDataType(cGUID tag)
-        {
-            SetupDataTypeLUT();
-            return _dataTypeLUT[tag];
-        }
-        private cGUID GetDataTypeGUID(CathodeDataType type)
-        {
-            SetupDataTypeLUT();
-            return _dataTypeLUT.FirstOrDefault(x => x.Value == type).Key;
-        }
-
-        private Dictionary<cGUID, CathodeResourceReferenceType> _resourceReferenceTypeLUT = new Dictionary<cGUID, CathodeResourceReferenceType>();
-        private void SetupResourceEntryTypeLUT()
-        {
-            if (_resourceReferenceTypeLUT.Count != 0) return;
-
-            foreach (CathodeResourceReferenceType referenceType in Enum.GetValues(typeof(CathodeResourceReferenceType)))
-                _resourceReferenceTypeLUT.Add(Utilities.GenerateGUID(referenceType.ToString()), referenceType);
-        }
-        private CathodeResourceReferenceType GetResourceEntryType(byte[] tag)
-        {
-            return GetResourceEntryType(new cGUID(tag));
-        }
-        private CathodeResourceReferenceType GetResourceEntryType(cGUID tag)
-        {
-            SetupResourceEntryTypeLUT();
-            return _resourceReferenceTypeLUT[tag];
-        }
-        private cGUID GetResourceEntryTypeGUID(CathodeResourceReferenceType type)
-        {
-            SetupResourceEntryTypeLUT();
-            return _resourceReferenceTypeLUT.FirstOrDefault(x => x.Value == type).Key;
         }
         #endregion
 

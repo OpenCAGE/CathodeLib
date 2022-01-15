@@ -54,6 +54,7 @@ namespace CATHODE.Commands
         ApplyRelativeTransform,
         AreaHitMonitor,
         AssetSpawner,
+        AttachmentInterface,
         Benchmark,
         BindObjectsMultiplexer,
         BlendLowResFrame,
@@ -80,6 +81,7 @@ namespace CATHODE.Commands
         Character,
         CharacterAttachmentNode,
         CharacterCommand,
+        CharacterMonitor,
         CharacterShivaArms,
         CharacterTypeMonitor,
         Checkpoint,
@@ -125,6 +127,7 @@ namespace CATHODE.Commands
         ClearPrimaryObjective,
         ClearSubObjective,
         ClipPlanesController,
+        CloseableInterface,
         CMD_AimAt,
         CMD_AimAtCurrentTarget,
         CMD_Die,
@@ -149,6 +152,7 @@ namespace CATHODE.Commands
         CollisionBarrier,
         ColourCorrectionTransition,
         ColourSettings,
+        CompositeInterface,
         CompoundVolume,
         ControllableRange,
         Convo,
@@ -168,6 +172,7 @@ namespace CATHODE.Commands
         DebugLoadCheckpoint,
         DebugMenuToggle,
         DebugObjectMarker,
+        DebugPositionMarker,
         DebugText,
         DebugTextStacking,
         DeleteBlankPanel,
@@ -201,11 +206,13 @@ namespace CATHODE.Commands
         EnvironmentMap,
         EnvironmentModelReference,
         EQUIPPABLE_ITEM,
+        EvaluatorInterface,
         ExclusiveMaster,
         Explosion_AINotifier,
         ExternalVariableBool,
         FakeAILightSourceInPlayersHand,
         FilmGrainSettings,
+        Filter,
         FilterAbsorber,
         FilterAnd,
         FilterBelongsToAlliance,
@@ -300,7 +307,9 @@ namespace CATHODE.Commands
         GameOverCredits,
         GameplayTip,
         GameStateChanged,
+        GateInterface,
         GateResourceInterface,
+        GCIP_WorldPickup, //n:\\content\\build\\library\\archetypes\\gameplay\\gcip_worldpickup
         GenericHighlightEntity,
         GetBlueprintAvailable,
         GetBlueprintLevel,
@@ -345,6 +354,7 @@ namespace CATHODE.Commands
         IdleTask,
         ImpactSphere,
         InhibitActionsUntilRelease,
+        InspectorInterface,
         IntegerAbsolute,
         IntegerAdd,
         IntegerAdd_All,
@@ -443,6 +453,7 @@ namespace CATHODE.Commands
         Minigames,
         MissionNumber,
         ModelReference,
+        ModifierInterface,
         MonitorActionMap,
         MonitorBase,
         MonitorPadInput,
@@ -463,6 +474,7 @@ namespace CATHODE.Commands
         NavMeshWalkablePlatform,
         NetPlayerCounter,
         NetworkedTimer,
+        NetworkProxy,
         NonInteractiveWater,
         NonPersistentBool,
         NonPersistentInt,
@@ -565,6 +577,7 @@ namespace CATHODE.Commands
         PlayerDiscardsItems,
         PlayerDiscardsTools,
         PlayerDiscardsWeapons,
+        PlayForMinDuration, //n:\\content\\build\\library\\ayz\\animation\\logichelpers\\playforminduration
         PlayerHasEnoughItems,
         PlayerHasItem,
         PlayerHasItemEntity,
@@ -587,6 +600,7 @@ namespace CATHODE.Commands
         ProjectiveDecal,
         ProximityDetector,
         ProximityTrigger,
+        ProxyInterface,
         QueryGCItemPool,
         RadiosityIsland,
         RadiosityProxy,
@@ -624,11 +638,16 @@ namespace CATHODE.Commands
         ScreenFadeOutToBlackTimed,
         ScreenFadeOutToWhite,
         ScreenFadeOutToWhiteTimed,
+        ScriptInterface,
+        ScriptVariable,
+        SensorAttachmentInterface,
+        SensorInterface,
         SetAsActiveMissionLevel,
         SetBlueprintInfo,
         SetBool,
         SetColour,
         SetEnum,
+        SetEnumString,
         SetFloat,
         SetGamepadAxes,
         SetGameplayTips,
@@ -704,7 +723,9 @@ namespace CATHODE.Commands
         ThrowingPointOfImpact,
         ToggleFunctionality,
         TogglePlayerTorch,
+        Torch_Control, //n:\\content\\build\\library\\archetypes\\script\\gameplay\\torch_control
         TorchDynamicMovement,
+        TransformerInterface,
         TRAV_1ShotClimbUnder,
         TRAV_1ShotFloorVentEntrance,
         TRAV_1ShotFloorVentExit,
@@ -773,6 +794,7 @@ namespace CATHODE.Commands
         VariableBool,
         VariableColour,
         VariableEnum,
+        VariableEnumString,
         VariableFilterObject,
         VariableFlashScreenColour,
         VariableFloat,
@@ -812,6 +834,7 @@ namespace CATHODE.Commands
         WEAPON_AmmoTypeFilter,
         WEAPON_AttackerFilter,
         WEAPON_DamageFilter,
+        WEAPON_DidHitSomethingFilter,
         WEAPON_Effect,
         WEAPON_GiveToCharacter,
         WEAPON_GiveToPlayer,
@@ -825,6 +848,7 @@ namespace CATHODE.Commands
         WEAPON_TargetObjectFilter,
         Zone,
         ZoneExclusionLink,
+        ZoneInterface,
         ZoneLink,
         ZoneLoaded,
     }
@@ -832,12 +856,13 @@ namespace CATHODE.Commands
     /* Resource reference types */
     public enum CathodeResourceReferenceType
     {
-        RENDERABLE_INSTANCE,             //This one references an entry in the REnDerable elementS (REDS.BIN) database
+        //CATHODE_COVER_SEGMENT,
         COLLISION_MAPPING,               //This one seems to be called in another script block that I'm not currently parsing 
-        TRAVERSAL_SEGMENT,               //This just seems to be two -1 32-bit integers
-        NAV_MESH_BARRIER_RESOURCE,       //This just seems to be two -1 32-bit integers (same as above)
-        EXCLUSIVE_MASTER_STATE_RESOURCE, //This just seems to be two -1 32-bit integers (same as above)
         DYNAMIC_PHYSICS_SYSTEM,          //This is a count (usually small) and then a -1 32-bit int
+        EXCLUSIVE_MASTER_STATE_RESOURCE, //This just seems to be two -1 32-bit integers (same as above)
+        NAV_MESH_BARRIER_RESOURCE,       //This just seems to be two -1 32-bit integers (same as above)
+        RENDERABLE_INSTANCE,             //This one references an entry in the REnDerable elementS (REDS.BIN) database
+        TRAVERSAL_SEGMENT,               //This just seems to be two -1 32-bit integers
         ANIMATED_MODEL,                  //This is a count (usually small) and then a -1 32-bit int (same as above)
     }
 
