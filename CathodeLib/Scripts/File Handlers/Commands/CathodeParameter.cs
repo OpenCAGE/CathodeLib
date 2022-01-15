@@ -1012,6 +1012,7 @@ namespace CATHODE.Commands
     public class CathodeResource : CathodeParameter
     {
         public CathodeResource() { dataType = CathodeDataType.SHORT_GUID; }
+        public CathodeResourceReference value = new CathodeResourceReference();
         public cGUID resourceID;
     }
     [Serializable]

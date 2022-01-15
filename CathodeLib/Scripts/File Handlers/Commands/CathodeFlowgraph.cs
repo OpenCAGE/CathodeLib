@@ -22,7 +22,7 @@ namespace CATHODE.Commands
         FLOWGRAPH_EXPOSED_PARAMETERS,     //Defines variables which are exposed when instancing this flowgraph which are then connected in to entities (think variable pins in UE4 blueprint)
         ENTITY_PROXIES,               //Defines "proxies" similar to the overrides hierarchy (TODO)
         ENTITY_FUNCTIONS,        //Defines entities with an attached script function within Cathode
-        RENDERABLE_DATA,       //Defines renderable data which is referenced by entities in this flowgraph
+        RESOURCE_REFERENCES,       //Defines renderable data which is referenced by entities in this flowgraph
         CAGEANIMATION_DATA,    //Appears to define additional data for CAGEAnimation type nodes (TODO)
         TRIGGERSEQUENCE_DATA,  //Appears to define additional data for TriggerSequence type nodes (TODO)
 
@@ -160,8 +160,6 @@ namespace CATHODE.Commands
 
         public List<OverrideEntity> overrides = new List<OverrideEntity>();
         public List<ProxyEntity> proxies = new List<ProxyEntity>();
-
-        public List<CathodeResourceReference> resources = new List<CathodeResourceReference>();
 
         /* If an entity exists in the flowgraph, return it */
         public CathodeEntity GetEntityByID(cGUID id)

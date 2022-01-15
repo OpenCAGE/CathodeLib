@@ -41,8 +41,8 @@ namespace CATHODE.Commands
         /* Load and parse the COMMANDS.PAK */
         public CommandsPAK(string pathToPak)
         {
-            path = pathToPak;
-            _didLoadCorrectly = Load(path);
+            _path = pathToPak;
+            _didLoadCorrectly = Load(_path);
         }
 
         #region ACCESSORS
@@ -92,7 +92,7 @@ namespace CATHODE.Commands
         /* Save all changes back out */
         public void Save()
         {
-            BinaryWriter writer = new BinaryWriter(File.OpenWrite(path));
+            BinaryWriter writer = new BinaryWriter(File.OpenWrite(_path));
             writer.BaseStream.SetLength(0);
 
             //Write entry points
@@ -191,8 +191,9 @@ namespace CATHODE.Commands
                 Utilities.Align(writer, 4);
 
                 //Work out what we want to write
-                List<CathodeEntity> entitiesWithLinks = new List<CathodeEntity>(_flowgraphs[i].GetEntities().FindAll(o => o.childLinks.Count != 0));
-                List<CathodeEntity> entitiesWithParams = new List<CathodeEntity>(_flowgraphs[i].GetEntities().FindAll(o => o.parameters.Count != 0));
+                List<CathodeEntity> ents = _flowgraphs[i].GetEntities();
+                List<CathodeEntity> entitiesWithLinks = new List<CathodeEntity>(ents.FindAll(o => o.childLinks.Count != 0));
+                List<CathodeEntity> entitiesWithParams = new List<CathodeEntity>(ents.FindAll(o => o.parameters.Count != 0));
                 //TODO: find a nicer way to sort into node class types
                 List<CAGEAnimation> cageAnimationNodes = new List<CAGEAnimation>();
                 List<TriggerSequence> triggerSequenceNodes = new List<TriggerSequence>();
@@ -213,6 +214,20 @@ namespace CATHODE.Commands
                         triggerSequenceNodes.Add(thisNode);
                     }
                 }
+
+                //Reconstruct resources
+                List<CathodeResourceReference> resourceReferences = new List<CathodeResourceReference>();
+                cGUID resourceParamID = Utilities.GenerateGUID("resource");
+                for (int x = 0; x < ents.Count; x++)
+                {
+                    CathodeLoadedParameter resParam = ents[x].parameters.FirstOrDefault(o => o.paramID == resourceParamID);
+                    if (resParam == null) continue;
+                    CathodeResourceReference resRef = ((CathodeResource)resParam.content).value;
+                    resourceReferences.Add(resRef);
+                    //Since we hackily create a "resource" param when one doesn't exist on the node, undo that... we link by entity ID in the res ref instead.
+                    if (resRef.resourceID == ents[x].nodeID) ents[x].parameters.Remove(resParam);
+                }
+                //TODO: do we need to check if any resource refs have matching link IDs?
 
                 //Sort
                 entitiesWithLinks = entitiesWithLinks.OrderBy(o => o.nodeID.ToUInt32()).ToList();
@@ -354,40 +369,40 @@ namespace CATHODE.Commands
                             }
                             break;
                         }
-                        case CommandsDataBlock.RENDERABLE_DATA:
+                        case CommandsDataBlock.RESOURCE_REFERENCES:
                         {
                             //TODO: this case is quite messy as full parsing still isn't known
-                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].resources.Count);
-                            for (int p = 0; p < _flowgraphs[i].resources.Count; p++)
+                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, resourceReferences.Count);
+                            for (int p = 0; p < resourceReferences.Count; p++)
                             {
-                                writer.Write(_flowgraphs[i].resources[p].resourceRefID.val);
-                                writer.Write(_flowgraphs[i].resources[p].unknownID1.val);
-                                writer.Write(_flowgraphs[i].resources[p].positionOffset.x);
-                                writer.Write(_flowgraphs[i].resources[p].positionOffset.y);
-                                writer.Write(_flowgraphs[i].resources[p].positionOffset.z);
-                                writer.Write(_flowgraphs[i].resources[p].unknownID2.val);
-                                writer.Write(_flowgraphs[i].resources[p].resourceID.val);
-                                writer.Write(CommandsUtils.GetResourceEntryTypeGUID(_flowgraphs[i].resources[p].entryType).val);
-                                switch (_flowgraphs[i].resources[p].entryType)
+                                writer.Write(resourceReferences[p].resourceRefID.val);
+                                writer.Write(resourceReferences[p].unknownID1.val);
+                                writer.Write(resourceReferences[p].positionOffset.x);
+                                writer.Write(resourceReferences[p].positionOffset.y);
+                                writer.Write(resourceReferences[p].positionOffset.z);
+                                writer.Write(resourceReferences[p].unknownID2.val);
+                                writer.Write(resourceReferences[p].resourceID.val); //Sometimes this is the NodeID that uses the resource, other times it's the "resource" parameter ID link
+                                writer.Write(CommandsUtils.GetResourceEntryTypeGUID(resourceReferences[p].entryType).val);
+                                switch (resourceReferences[p].entryType)
                                 {
                                     case CathodeResourceReferenceType.RENDERABLE_INSTANCE:
-                                        writer.Write(_flowgraphs[i].resources[p].entryIndexREDS);
-                                        writer.Write(_flowgraphs[i].resources[p].entryCountREDS);
+                                        writer.Write(resourceReferences[p].entryIndexREDS);
+                                        writer.Write(resourceReferences[p].entryCountREDS);
                                         break;
                                     case CathodeResourceReferenceType.COLLISION_MAPPING:
-                                        writer.Write(_flowgraphs[i].resources[p].unknownInteger1);
-                                        writer.Write(_flowgraphs[i].resources[p].nodeID.val);
+                                        writer.Write(resourceReferences[p].unknownInteger1);
+                                        writer.Write(resourceReferences[p].nodeID.val);
                                         break;
                                     case CathodeResourceReferenceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
                                     case CathodeResourceReferenceType.NAV_MESH_BARRIER_RESOURCE:
                                     case CathodeResourceReferenceType.TRAVERSAL_SEGMENT:
-                                        writer.Write(_flowgraphs[i].resources[p].unknownInteger1);
-                                        writer.Write(_flowgraphs[i].resources[p].unknownInteger2);
+                                        writer.Write(resourceReferences[p].unknownInteger1);
+                                        writer.Write(resourceReferences[p].unknownInteger2);
                                         break;
                                     case CathodeResourceReferenceType.ANIMATED_MODEL:
                                     case CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM:
-                                        writer.Write(_flowgraphs[i].resources[p].unknownInteger1);
-                                        writer.Write(_flowgraphs[i].resources[p].unknownInteger2);
+                                        writer.Write(resourceReferences[p].unknownInteger1);
+                                        writer.Write(resourceReferences[p].unknownInteger2);
                                         break;
                                 }
                             }
@@ -730,6 +745,7 @@ namespace CATHODE.Commands
                 //Pull data from those offsets
                 List<CommandsEntityLinks> entityLinks = new List<CommandsEntityLinks>();
                 List<CommandsParamRefSet> paramRefSets = new List<CommandsParamRefSet>();
+                List<CathodeResourceReference> resourceRefs = new List<CathodeResourceReference>();
                 Dictionary<cGUID, (cGUID, int)> overrideChecksums = new Dictionary<cGUID, (cGUID, int)>();
                 for (int x = 0; x < offsetPairs.Length; x++)
                 {
@@ -830,7 +846,7 @@ namespace CATHODE.Commands
                                 break;
                             }
                             //TODO: this case needs a refactor!
-                            case CommandsDataBlock.RENDERABLE_DATA:
+                            case CommandsDataBlock.RESOURCE_REFERENCES:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 40);
 
@@ -864,7 +880,7 @@ namespace CATHODE.Commands
                                         resource_ref.unknownInteger2 = reader.ReadInt32(); //always zero/-1?
                                         break;
                                 }
-                                flowgraph.resources.Add(resource_ref);
+                                resourceRefs.Add(resource_ref);
                                 break;
                             }
                             case CommandsDataBlock.CAGEANIMATION_DATA:
@@ -1033,6 +1049,39 @@ namespace CATHODE.Commands
                         nodeToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, (CathodeParameter)parameters[paramRefSets[x].refs[y].offset].Clone()));
                 }
 
+                List<CathodeEntity> ents = flowgraph.GetEntities();
+                cGUID resParamID = Utilities.GenerateGUID("resource");
+                for (int x = 0; x < resourceRefs.Count; x++)
+                {
+                    CathodeEntity ent = ents.FirstOrDefault(o => o.nodeID == resourceRefs[x].resourceID);
+                    CathodeResource param = null;
+                    if (ent == null)
+                    {
+                        for (int z = 0; z < ents.Count; z++)
+                        {
+                            for (int y = 0; y < ents[z].parameters.Count; y++)
+                            {
+                                if (ents[z].parameters[y].paramID == resParamID)
+                                {
+                                    ent = ents[z];
+                                    param = (CathodeResource)ents[z].parameters[y].content;
+                                    break;
+                                }
+                            }
+                            if (ent != null) break;
+                        }
+                    }
+                    if (ent == null) throw new Exception("Failed to look up resource in flowgraph!");
+                    if (param == null)
+                    {
+                        param = new CathodeResource();
+                        param.resourceID = Utilities.GenerateGUID(ent.nodeID.ToString() + "_res");
+                        ent.parameters.Add(new CathodeLoadedParameter(resParamID, param));
+                    }
+                    if (param.value.resourceID.val != null) throw new Exception("Entity already has a resource assigned!");
+                    param.value = resourceRefs[x];
+                }
+
                 flowgraphs[i] = flowgraph;
             }
             _flowgraphs = flowgraphs.ToList<CathodeFlowgraph>();
@@ -1042,7 +1091,7 @@ namespace CATHODE.Commands
         }
         #endregion
 
-        private string path = "";
+        private string _path = "";
 
         private CommandsEntryPoints _entryPoints;
         private CathodeFlowgraph[] _entryPointObjects = null;
@@ -1051,7 +1100,7 @@ namespace CATHODE.Commands
 
         private bool _didLoadCorrectly = false;
         public bool Loaded { get { return _didLoadCorrectly; } }
-        public string Filepath { get { return path; } }
+        public string Filepath { get { return _path; } }
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
