@@ -220,12 +220,12 @@ namespace CATHODE.Commands
                 cGUID resourceParamID = Utilities.GenerateGUID("resource");
                 for (int x = 0; x < ents.Count; x++)
                 {
+                    resourceReferences.AddRange(ents[x].resources);
+
                     CathodeLoadedParameter resParam = ents[x].parameters.FirstOrDefault(o => o.paramID == resourceParamID);
                     if (resParam == null) continue;
                     CathodeResourceReference resRef = ((CathodeResource)resParam.content).value;
                     resourceReferences.Add(resRef);
-                    //Since we hackily create a "resource" param when one doesn't exist on the node, undo that... we link by entity ID in the res ref instead.
-                    if (resRef.resourceID == ents[x].nodeID) ents[x].parameters.Remove(resParam);
                 }
                 //TODO: do we need to check if any resource refs have matching link IDs?
 
@@ -1057,11 +1057,13 @@ namespace CATHODE.Commands
                     CathodeResource param = null;
                     if (ent == null)
                     {
+                        //If this resource ref doesn't match a nodeID, look to see if we can find the parameter that references it instead
                         for (int z = 0; z < ents.Count; z++)
                         {
                             for (int y = 0; y < ents[z].parameters.Count; y++)
                             {
-                                if (ents[z].parameters[y].paramID == resParamID)
+                                if (ents[z].parameters[y].paramID == resParamID && 
+                                    ((CathodeResource)ents[z].parameters[y].content).resourceID == resourceRefs[x].resourceID)
                                 {
                                     ent = ents[z];
                                     param = (CathodeResource)ents[z].parameters[y].content;
@@ -1071,15 +1073,21 @@ namespace CATHODE.Commands
                             if (ent != null) break;
                         }
                     }
-                    if (ent == null) throw new Exception("Failed to look up resource in flowgraph!");
-                    if (param == null)
+                    if (ent == null)
                     {
-                        param = new CathodeResource();
-                        param.resourceID = Utilities.GenerateGUID(ent.nodeID.ToString() + "_res");
-                        ent.parameters.Add(new CathodeLoadedParameter(resParamID, param));
+                        //This resource applies to the FLOWGRAPH
+                        flowgraph.resources.Add(resourceRefs[x]);
                     }
-                    if (param.value.resourceID.val != null) throw new Exception("Entity already has a resource assigned!");
-                    param.value = resourceRefs[x];
+                    else if (param == null)
+                    {
+                        //This resource applies to the ENTITY
+                        ent.resources.Add(resourceRefs[x]);
+                    }
+                    else
+                    {
+                        //This resource applies to a RESOURCE PARAMETER
+                        param.value = resourceRefs[x];
+                    }
                 }
 
                 flowgraphs[i] = flowgraph;

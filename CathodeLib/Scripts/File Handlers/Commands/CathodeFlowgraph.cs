@@ -80,6 +80,7 @@ namespace CATHODE.Commands
 
         public List<CathodeNodeLink> childLinks = new List<CathodeNodeLink>();
         public List<CathodeLoadedParameter> parameters = new List<CathodeLoadedParameter>();
+        public List<CathodeResourceReference> resources = new List<CathodeResourceReference>();
 
         public int CompareTo(CathodeEntity other)
         {
@@ -160,6 +161,8 @@ namespace CATHODE.Commands
 
         public List<OverrideEntity> overrides = new List<OverrideEntity>();
         public List<ProxyEntity> proxies = new List<ProxyEntity>();
+
+        public List<CathodeResourceReference> resources = new List<CathodeResourceReference>(); //Resources are per-entity, and also per-flowgraph!
 
         /* If an entity exists in the flowgraph, return it */
         public CathodeEntity GetEntityByID(cGUID id)
