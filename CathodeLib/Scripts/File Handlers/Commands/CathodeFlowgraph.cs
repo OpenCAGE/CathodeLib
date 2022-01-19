@@ -47,6 +47,7 @@ namespace CATHODE.Commands
     }
 
     /* A resource that references a REnDerable elementS DB entry */
+    [Serializable]
     public class CathodeResourceReference
     {
         public cGUID resourceRefID;                   //The ID of this entry?
@@ -146,6 +147,7 @@ namespace CATHODE.Commands
     }
 
     /* A script flowgraph containing entities */
+    [Serializable]
     public class CathodeFlowgraph
     {
         public cGUID globalID;  //cGUID generated from flowgraph name

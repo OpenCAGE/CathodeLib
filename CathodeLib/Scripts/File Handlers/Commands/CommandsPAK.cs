@@ -224,8 +224,7 @@ namespace CATHODE.Commands
 
                     CathodeLoadedParameter resParam = ents[x].parameters.FirstOrDefault(o => o.paramID == resourceParamID);
                     if (resParam == null) continue;
-                    CathodeResourceReference resRef = ((CathodeResource)resParam.content).value;
-                    resourceReferences.Add(resRef);
+                    resourceReferences.AddRange(((CathodeResource)resParam.content).value);
                 }
                 //TODO: do we need to check if any resource refs have matching link IDs?
 
@@ -1049,45 +1048,37 @@ namespace CATHODE.Commands
                         nodeToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, (CathodeParameter)parameters[paramRefSets[x].refs[y].offset].Clone()));
                 }
 
+                //Remap resources (TODO: This can be optimised)
                 List<CathodeEntity> ents = flowgraph.GetEntities();
                 cGUID resParamID = Utilities.GenerateGUID("resource");
                 for (int x = 0; x < resourceRefs.Count; x++)
                 {
+                    //Check to see if this resource applies to an ENTITY
                     CathodeEntity ent = ents.FirstOrDefault(o => o.nodeID == resourceRefs[x].resourceID);
-                    CathodeResource param = null;
-                    if (ent == null)
+                    if (ent != null)
                     {
-                        //If this resource ref doesn't match a nodeID, look to see if we can find the parameter that references it instead
-                        for (int z = 0; z < ents.Count; z++)
+                        ent.resources.Add(resourceRefs[x]);
+                        continue;
+                    }
+
+                    //Check to see if this resource applies to a PARAMETER
+                    bool didApplyToParam = false;
+                    for (int z = 0; z < ents.Count; z++)
+                    {
+                        for (int y = 0; y < ents[z].parameters.Count; y++)
                         {
-                            for (int y = 0; y < ents[z].parameters.Count; y++)
+                            if (ents[z].parameters[y].paramID == resParamID && 
+                                ((CathodeResource)ents[z].parameters[y].content).resourceID == resourceRefs[x].resourceID)
                             {
-                                if (ents[z].parameters[y].paramID == resParamID && 
-                                    ((CathodeResource)ents[z].parameters[y].content).resourceID == resourceRefs[x].resourceID)
-                                {
-                                    ent = ents[z];
-                                    param = (CathodeResource)ents[z].parameters[y].content;
-                                    break;
-                                }
+                                ((CathodeResource)ents[z].parameters[y].content).value.Add(resourceRefs[x]);
+                                didApplyToParam = true;
                             }
-                            if (ent != null) break;
                         }
                     }
-                    if (ent == null)
-                    {
-                        //This resource applies to the FLOWGRAPH
-                        flowgraph.resources.Add(resourceRefs[x]);
-                    }
-                    else if (param == null)
-                    {
-                        //This resource applies to the ENTITY
-                        ent.resources.Add(resourceRefs[x]);
-                    }
-                    else
-                    {
-                        //This resource applies to a RESOURCE PARAMETER
-                        param.value = resourceRefs[x];
-                    }
+                    if (didApplyToParam) continue;
+
+                    //If it applied to none of the above, apply it to the FLOWGRAPH
+                    flowgraph.resources.Add(resourceRefs[x]);
                 }
 
                 flowgraphs[i] = flowgraph;
@@ -1235,11 +1226,13 @@ namespace CATHODE.Commands
         public float unk4;
         public float unk5;
     }
+    [Serializable]
     public class TEMP_TriggerSequenceExtraDataHolder1
     {
         public float timing;
         public List<cGUID> hierarchy;
     }
+    [Serializable]
     public class TEMP_TriggerSequenceExtraDataHolder2
     {
         public cGUID EventID; //Assumed

@@ -55,7 +55,7 @@ namespace CATHODE.Misc
     public struct CathodeResourcesHeader
     {
         public fourcc Magic;
-        public int UnknownOne_;
+        public int UnknownOne_; //maybe file version
         public int EntryCount;
         public int UnknownZero_;
     };
@@ -63,8 +63,8 @@ namespace CATHODE.Misc
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct CathodeResourcesEntry
     {
-        public int Unknown0_;
-        public int ResourceID;
-        public int UnknownResourceIndex; // NOTE: This is an entry index in this file itself.
+        public cGUID NodeID;
+        public int IDFromMVREntry; //ResourceID?
+        public int IndexFromMVREntry; // NOTE: This is an entry index in this file itself.
     };
 }

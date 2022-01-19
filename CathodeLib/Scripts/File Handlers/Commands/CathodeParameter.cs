@@ -1012,7 +1012,7 @@ namespace CATHODE.Commands
     public class CathodeResource : CathodeParameter
     {
         public CathodeResource() { dataType = CathodeDataType.SHORT_GUID; }
-        public CathodeResourceReference value = new CathodeResourceReference();
+        public List<CathodeResourceReference> value = new List<CathodeResourceReference>(); //TODO: i dont know if this can actually have multiple entries. need to assert
         public cGUID resourceID;
     }
     [Serializable]
