@@ -1,6 +1,3 @@
-//#define TEST_READ
-//#define TEST_WRITE
-
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -85,6 +82,13 @@ namespace CATHODE.Commands
                 for (int i = 0; i < _entryPoints.flowgraphIDs.Length; i++) _entryPointObjects[i] = GetFlowgraph(_entryPoints.flowgraphIDs[i]);
                 return _entryPointObjects;
             }
+        }
+
+        /* Set the entry point (we only allow the level script to be set, PAUSEMENU and GLOBAL are required) */
+        public void SetEntryPoint(cGUID id)
+        {
+            _entryPoints.flowgraphIDs[0] = id;
+            _entryPointObjects = null;
         }
         #endregion
 
