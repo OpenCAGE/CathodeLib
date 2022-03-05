@@ -594,14 +594,6 @@ namespace CATHODE.Commands
                 }
             }
 
-            int bleh = totalWriteCount;
-            List<string> toWrite = new List<string>();
-            for (int z= 0; z < _flowgraphs.Count; z++)
-            {
-                toWrite.Add(_flowgraphs[z].name + ": " + resourceCount[_flowgraphs[z].name]);
-            }
-            File.WriteAllLines("write.txt", toWrite);
-
             //Write out parameter offsets
             int parameterOffsetPos = (int)writer.BaseStream.Position;
             Utilities.Write<int>(writer, parameterOffsets);
@@ -735,8 +727,6 @@ namespace CATHODE.Commands
             
             //Read all flowgraphs from the PAK
             CathodeFlowgraph[] flowgraphs = new CathodeFlowgraph[flowgraph_count];
-            int totalReadCount = 0;
-            Dictionary<string, int> resourceCount = new Dictionary<string, int>();
             for (int i = 0; i < flowgraph_count; i++)
             {
                 reader.BaseStream.Position = flowgraphOffsets[i] * 4;
@@ -1087,15 +1077,8 @@ namespace CATHODE.Commands
                 }
 
                 //Remap resources (TODO: This can be optimised)
-                totalReadCount += resourceRefs.Count;
-                resourceCount.Add(flowgraph.name, resourceRefs.Count);
                 List<CathodeEntity> ents = flowgraph.GetEntities();
                 cGUID resParamID = Utilities.GenerateGUID("resource");
-                int appliedCount = 0;
-                if (flowgraph.name == @"REQUIRED_ASSETS\LIGHT_IMPACT_VFX\LIGHT_IMPACT_DECAL")
-                {
-                    string breakhere = "";
-                }
                 //Check to see if this resource applies to an ENTITY
                 List<CathodeResourceReference> resourceRefsCulled = new List<CathodeResourceReference>();
                 for (int x = 0; x < resourceRefs.Count; x++)
@@ -1104,7 +1087,6 @@ namespace CATHODE.Commands
                     if (ent != null)
                     {
                         ent.resources.Add(resourceRefs[x]);
-                        appliedCount++;
                         continue;
                     }
                     resourceRefsCulled.Add(resourceRefs[x]);
@@ -1124,7 +1106,6 @@ namespace CATHODE.Commands
                             if (resourceParam.resourceID == resourceRefs[m].resourceID)
                             {
                                 resourceParam.value.Add(resourceRefs[m]);
-                                appliedCount++;
                                 continue;
                             }
                             resourceRefsCulled.Add(resourceRefs[m]);
@@ -1136,27 +1117,11 @@ namespace CATHODE.Commands
                 for (int z = 0; z < resourceRefs.Count; z++)
                 {
                     flowgraph.resources.Add(resourceRefs[z]);
-                    appliedCount++;
-                }
-
-                if (resourceRefs.Count != appliedCount)
-                {
-                    string breakhere = "";
                 }
 
                 flowgraphs[i] = flowgraph;
             }
             _flowgraphs = flowgraphs.ToList<CathodeFlowgraph>();
-
-            //TODO: what the hell is happening here? the correct data gets added, then around here somehow some resource parameters get a load of garbage things added
-
-            int bleh = totalReadCount;
-            List<string> toWrite = new List<string>();
-            for (int z = 0; z < _flowgraphs.Count; z++)
-            {
-                toWrite.Add(_flowgraphs[z].name + ": " + resourceCount[_flowgraphs[z].name]);
-            }
-            File.WriteAllLines("read.txt", toWrite);
 
             reader.Close();
             return true;
