@@ -46,10 +46,39 @@ namespace CATHODE.Commands
         public CathodeParameter content = null;
     }
 
-    /* A resource that references a REnDerable elementS DB entry */
+    /* A reference to a game resource (E.G. a renderable element, a collision mapping, etc) */
     [Serializable]
-    public class CathodeResourceReference
+    public class CathodeResourceReference : ICloneable
     {
+        public static bool operator ==(CathodeResourceReference x, CathodeResourceReference y)
+        {
+            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+            if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+
+            if (x.resourceRefID != y.resourceRefID) return false;
+            if (x.unknownID1 != y.unknownID1) return false;
+            if (x.unknownID2 != y.unknownID2) return false;
+            if (x.positionOffset != y.positionOffset) return false;
+            if (x.resourceID != y.resourceID) return false;
+            if (x.entryType != y.entryType) return false;
+            if (x.entryIndexREDS != y.entryIndexREDS) return false;
+            if (x.entryCountREDS != y.entryCountREDS) return false;
+            if (x.unknownInteger1 != y.unknownInteger1) return false;
+            if (x.unknownInteger2 != y.unknownInteger2) return false;
+            if (x.nodeID != y.nodeID) return false;
+
+            return true;
+        }
+        public static bool operator !=(CathodeResourceReference x, CathodeResourceReference y)
+        {
+            return !(x == y);
+        }
+
+        public object Clone()
+        {
+            return Utilities.CloneObject(this);
+        }
+
         public cGUID resourceRefID;                   //The ID of this entry?
         public cGUID unknownID1;
         public cGUID unknownID2;

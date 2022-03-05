@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Runtime.Serialization.Formatters.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
@@ -121,6 +122,18 @@ namespace CATHODE
             byte[] hash2 = sha1.ComputeHash(Encoding.UTF8.GetBytes(BitConverter.ToString(arrangedHash).Replace("-", string.Empty)));
             return new cGUID(new byte[] { hash2[0], hash2[1], hash2[2], hash2[3] });
         }
+
+        public static T CloneObject<T>(T obj)
+        {
+            //A somewhat hacky an inefficient way of deep cloning an object
+            MemoryStream ms = new MemoryStream();
+            new BinaryFormatter().Serialize(ms, obj);
+            ms.Position = 0;
+            T obj2 = (T)new BinaryFormatter().Deserialize(ms);
+            ms.Close();
+            return obj2;
+            //obj.MemberwiseClone();
+        }
     }
 
 #if !(UNITY_EDITOR || UNITY_STANDALONE)
@@ -133,6 +146,19 @@ namespace CATHODE
             x = _x;
             y = _y;
             z = _z;
+        }
+        public static bool operator ==(Vector3 x, Vector3 y)
+        {
+            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+            if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+            if (x.x != y.x) return false;
+            if (x.y != y.y) return false;
+            if (x.z != y.z) return false;
+            return true;
+        }
+        public static bool operator !=(Vector3 x, Vector3 y)
+        {
+            return !(x == y);
         }
         public float x;
         public float y;

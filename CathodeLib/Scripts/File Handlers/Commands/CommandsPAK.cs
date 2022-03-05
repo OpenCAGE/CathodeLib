@@ -185,6 +185,8 @@ namespace CATHODE.Commands
 
             //Write out flowgraphs & track offsets
             int[] flowgraphOffsets = new int[_flowgraphs.Count];
+            int totalWriteCount = 0;
+            Dictionary<string, int> resourceCount = new Dictionary<string, int>();
             for (int i = 0; i < _flowgraphs.Count; i++)
             {
                 int scriptStartPos = (int)writer.BaseStream.Position / 4;
@@ -224,12 +226,20 @@ namespace CATHODE.Commands
                 cGUID resourceParamID = Utilities.GenerateGUID("resource");
                 for (int x = 0; x < ents.Count; x++)
                 {
-                    resourceReferences.AddRange(ents[x].resources);
+                    for (int y = 0; y < ents[x].resources.Count; y++)
+                        if (!resourceReferences.Contains(ents[x].resources[y]))
+                            resourceReferences.Add(ents[x].resources[y]);
 
                     CathodeLoadedParameter resParam = ents[x].parameters.FirstOrDefault(o => o.paramID == resourceParamID);
                     if (resParam == null) continue;
-                    resourceReferences.AddRange(((CathodeResource)resParam.content).value);
+                    List<CathodeResourceReference> resParamRef = ((CathodeResource)resParam.content).value;
+                    for (int y = 0; y < resParamRef.Count; y++)
+                        if (!resourceReferences.Contains(resParamRef[y]))
+                            resourceReferences.Add(resParamRef[y]);
                 }
+                resourceReferences.AddRange(_flowgraphs[i].resources);
+                totalWriteCount += resourceReferences.Count;
+                resourceCount.Add(_flowgraphs[i].name, resourceReferences.Count);
                 //TODO: do we need to check if any resource refs have matching link IDs?
 
                 //Sort
@@ -584,6 +594,14 @@ namespace CATHODE.Commands
                 }
             }
 
+            int bleh = totalWriteCount;
+            List<string> toWrite = new List<string>();
+            for (int z= 0; z < _flowgraphs.Count; z++)
+            {
+                toWrite.Add(_flowgraphs[z].name + ": " + resourceCount[_flowgraphs[z].name]);
+            }
+            File.WriteAllLines("write.txt", toWrite);
+
             //Write out parameter offsets
             int parameterOffsetPos = (int)writer.BaseStream.Position;
             Utilities.Write<int>(writer, parameterOffsets);
@@ -717,6 +735,8 @@ namespace CATHODE.Commands
             
             //Read all flowgraphs from the PAK
             CathodeFlowgraph[] flowgraphs = new CathodeFlowgraph[flowgraph_count];
+            int totalReadCount = 0;
+            Dictionary<string, int> resourceCount = new Dictionary<string, int>();
             for (int i = 0; i < flowgraph_count; i++)
             {
                 reader.BaseStream.Position = flowgraphOffsets[i] * 4;
@@ -883,6 +903,10 @@ namespace CATHODE.Commands
                                         resource_ref.unknownInteger2 = reader.ReadInt32(); //always zero/-1?
                                         break;
                                 }
+                                    if (resource_ref.entryIndexREDS == 20 && resource_ref.entryCountREDS == 1)
+                                    {
+                                        string breakhere = "";
+                                    }
                                 resourceRefs.Add(resource_ref);
                                 break;
                             }
@@ -1049,45 +1073,90 @@ namespace CATHODE.Commands
                         flowgraph.unknowns.Add(nodeToApply);
                     }
                     for (int y = 0; y < paramRefSets[x].refs.Count; y++)
-                        nodeToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, (CathodeParameter)parameters[paramRefSets[x].refs[y].offset].Clone()));
+                    {
+                        switch (parameters[paramRefSets[x].refs[y].offset].dataType)
+                        {
+                            case CathodeDataType.SHORT_GUID:
+                                nodeToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, (CathodeParameter)((CathodeResource)parameters[paramRefSets[x].refs[y].offset].Clone())));
+                                break;
+                            default:
+                                nodeToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, (CathodeParameter)parameters[paramRefSets[x].refs[y].offset].Clone()));
+                                break;
+                        }
+                    }
                 }
 
                 //Remap resources (TODO: This can be optimised)
+                totalReadCount += resourceRefs.Count;
+                resourceCount.Add(flowgraph.name, resourceRefs.Count);
                 List<CathodeEntity> ents = flowgraph.GetEntities();
                 cGUID resParamID = Utilities.GenerateGUID("resource");
+                int appliedCount = 0;
+                if (flowgraph.name == @"REQUIRED_ASSETS\LIGHT_IMPACT_VFX\LIGHT_IMPACT_DECAL")
+                {
+                    string breakhere = "";
+                }
+                //Check to see if this resource applies to an ENTITY
+                List<CathodeResourceReference> resourceRefsCulled = new List<CathodeResourceReference>();
                 for (int x = 0; x < resourceRefs.Count; x++)
                 {
-                    //Check to see if this resource applies to an ENTITY
                     CathodeEntity ent = ents.FirstOrDefault(o => o.nodeID == resourceRefs[x].resourceID);
                     if (ent != null)
                     {
                         ent.resources.Add(resourceRefs[x]);
+                        appliedCount++;
                         continue;
                     }
-
-                    //Check to see if this resource applies to a PARAMETER
-                    bool didApplyToParam = false;
-                    for (int z = 0; z < ents.Count; z++)
+                    resourceRefsCulled.Add(resourceRefs[x]);
+                }
+                resourceRefs = resourceRefsCulled;
+                //Check to see if this resource applies to a PARAMETER
+                for (int z = 0; z < ents.Count; z++)
+                {
+                    for (int y = 0; y < ents[z].parameters.Count; y++)
                     {
-                        for (int y = 0; y < ents[z].parameters.Count; y++)
-                        {
-                            if (ents[z].parameters[y].paramID == resParamID && 
-                                ((CathodeResource)ents[z].parameters[y].content).resourceID == resourceRefs[x].resourceID)
-                            {
-                                ((CathodeResource)ents[z].parameters[y].content).value.Add(resourceRefs[x]);
-                                didApplyToParam = true;
-                            }
-                        }
-                    }
-                    if (didApplyToParam) continue;
+                        if (ents[z].parameters[y].paramID != resParamID) continue;
 
-                    //If it applied to none of the above, apply it to the FLOWGRAPH
-                    flowgraph.resources.Add(resourceRefs[x]);
+                        CathodeResource resourceParam = (CathodeResource)ents[z].parameters[y].content;
+                        resourceRefsCulled = new List<CathodeResourceReference>();
+                        for (int m = 0; m < resourceRefs.Count; m++)
+                        {
+                            if (resourceParam.resourceID == resourceRefs[m].resourceID)
+                            {
+                                resourceParam.value.Add(resourceRefs[m]);
+                                appliedCount++;
+                                continue;
+                            }
+                            resourceRefsCulled.Add(resourceRefs[m]);
+                        }
+                        resourceRefs = resourceRefsCulled;
+                    }
+                }
+                //If it applied to none of the above, apply it to the FLOWGRAPH
+                for (int z = 0; z < resourceRefs.Count; z++)
+                {
+                    flowgraph.resources.Add(resourceRefs[z]);
+                    appliedCount++;
+                }
+
+                if (resourceRefs.Count != appliedCount)
+                {
+                    string breakhere = "";
                 }
 
                 flowgraphs[i] = flowgraph;
             }
             _flowgraphs = flowgraphs.ToList<CathodeFlowgraph>();
+
+            //TODO: what the hell is happening here? the correct data gets added, then around here somehow some resource parameters get a load of garbage things added
+
+            int bleh = totalReadCount;
+            List<string> toWrite = new List<string>();
+            for (int z = 0; z < _flowgraphs.Count; z++)
+            {
+                toWrite.Add(_flowgraphs[z].name + ": " + resourceCount[_flowgraphs[z].name]);
+            }
+            File.WriteAllLines("read.txt", toWrite);
 
             reader.Close();
             return true;

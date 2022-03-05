@@ -1,9 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #else
 using System.Numerics;
+using System.Runtime.Serialization.Formatters.Binary;
 #endif
 
 namespace CATHODE.Commands
@@ -974,7 +977,7 @@ namespace CATHODE.Commands
 
         public object Clone()
         {
-            return this.MemberwiseClone();
+            return Utilities.CloneObject(this);
         }
     }
     [Serializable]
@@ -1014,6 +1017,17 @@ namespace CATHODE.Commands
         public CathodeResource() { dataType = CathodeDataType.SHORT_GUID; }
         public List<CathodeResourceReference> value = new List<CathodeResourceReference>(); //TODO: i dont know if this can actually have multiple entries. need to assert
         public cGUID resourceID;
+
+        /*
+        public new object Clone()
+        {
+            CathodeResource newRes = new CathodeResource();
+            newRes.resourceID = resourceID; //i think this should be a copy not a ref?
+            for (int i = 0; i < value.Count; i++)
+                newRes.value.Add((CathodeResourceReference)value[i].Clone());
+            return newRes;
+        }
+        */
     }
     [Serializable]
     public class CathodeVector3 : CathodeParameter
@@ -1033,5 +1047,14 @@ namespace CATHODE.Commands
     {
         public CathodeSpline() { dataType = CathodeDataType.SPLINE_DATA; }
         public List<CathodeTransform> splinePoints = new List<CathodeTransform>();
+
+        /*
+        public new object Clone()
+        {
+            CathodeSpline newRes = (CathodeSpline)base.Clone();
+            newRes.splinePoints = splinePoints.Select(x => (CathodeTransform)x.Clone()).ToList();
+            return newRes;
+        }
+        */
     }
 }
