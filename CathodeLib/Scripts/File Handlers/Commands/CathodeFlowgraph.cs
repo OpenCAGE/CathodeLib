@@ -76,7 +76,7 @@ namespace CATHODE.Commands
 
         public object Clone()
         {
-            return Utilities.CloneObject(this);
+            return this.MemberwiseClone();
         }
 
         public cGUID resourceRefID;                   //The ID of this entry?

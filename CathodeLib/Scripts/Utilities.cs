@@ -125,7 +125,7 @@ namespace CATHODE
 
         public static T CloneObject<T>(T obj)
         {
-            //A somewhat hacky an inefficient way of deep cloning an object
+            //A somewhat hacky an inefficient way of deep cloning an object (TODO: optimise this as we use it a lot!)
             MemoryStream ms = new MemoryStream();
             new BinaryFormatter().Serialize(ms, obj);
             ms.Position = 0;

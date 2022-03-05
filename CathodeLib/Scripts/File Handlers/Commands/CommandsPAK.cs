@@ -185,8 +185,6 @@ namespace CATHODE.Commands
 
             //Write out flowgraphs & track offsets
             int[] flowgraphOffsets = new int[_flowgraphs.Count];
-            int totalWriteCount = 0;
-            Dictionary<string, int> resourceCount = new Dictionary<string, int>();
             for (int i = 0; i < _flowgraphs.Count; i++)
             {
                 int scriptStartPos = (int)writer.BaseStream.Position / 4;
@@ -238,9 +236,6 @@ namespace CATHODE.Commands
                             resourceReferences.Add(resParamRef[y]);
                 }
                 resourceReferences.AddRange(_flowgraphs[i].resources);
-                totalWriteCount += resourceReferences.Count;
-                resourceCount.Add(_flowgraphs[i].name, resourceReferences.Count);
-                //TODO: do we need to check if any resource refs have matching link IDs?
 
                 //Sort
                 entitiesWithLinks = entitiesWithLinks.OrderBy(o => o.nodeID.ToUInt32()).ToList();
@@ -1064,15 +1059,7 @@ namespace CATHODE.Commands
                     }
                     for (int y = 0; y < paramRefSets[x].refs.Count; y++)
                     {
-                        switch (parameters[paramRefSets[x].refs[y].offset].dataType)
-                        {
-                            case CathodeDataType.SHORT_GUID:
-                                nodeToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, (CathodeParameter)((CathodeResource)parameters[paramRefSets[x].refs[y].offset].Clone())));
-                                break;
-                            default:
-                                nodeToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, (CathodeParameter)parameters[paramRefSets[x].refs[y].offset].Clone()));
-                                break;
-                        }
+                        nodeToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, (CathodeParameter)parameters[paramRefSets[x].refs[y].offset].Clone()));
                     }
                 }
 
