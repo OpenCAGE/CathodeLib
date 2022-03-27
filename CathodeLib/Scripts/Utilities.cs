@@ -109,8 +109,11 @@ namespace CATHODE
             Write<T>(stream, aux.ToArray<T>());
         }
 
+        private static Dictionary<string, cGUID> guidCache = new Dictionary<string, cGUID>();
         public static cGUID GenerateGUID(string _s)
         {
+            if (guidCache.ContainsKey(_s)) return guidCache[_s];
+
             SHA1Managed sha1 = new SHA1Managed();
             byte[] hash1 = sha1.ComputeHash(Encoding.UTF8.GetBytes(_s));
             byte[] arrangedHash = new byte[] {
@@ -120,7 +123,9 @@ namespace CATHODE
                 hash1[15], hash1[14], hash1[13], hash1[12] 
             };
             byte[] hash2 = sha1.ComputeHash(Encoding.UTF8.GetBytes(BitConverter.ToString(arrangedHash).Replace("-", string.Empty)));
-            return new cGUID(new byte[] { hash2[0], hash2[1], hash2[2], hash2[3] });
+            cGUID finalGUID = new cGUID(new byte[] { hash2[0], hash2[1], hash2[2], hash2[3] });
+            guidCache.Add(_s, finalGUID);
+            return finalGUID;
         }
 
         public static T CloneObject<T>(T obj)
@@ -166,7 +171,7 @@ namespace CATHODE
     }
 #endif
 
-    /* A unique id assigned to CATHODE objects */
+    /* A unique id assigned to CATHODE objects - actually ShortGuid */
     [Serializable]
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct cGUID : IComparable<cGUID>
