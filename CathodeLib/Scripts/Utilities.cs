@@ -143,14 +143,21 @@ namespace CATHODE
 
 #if !(UNITY_EDITOR || UNITY_STANDALONE)
     [Serializable]
-    public class Vector3
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct Vector3
     {
-        public Vector3() { }
         public Vector3(float _x, float _y, float _z)
         {
+            vals = new float[3] { 0, 0, 0 };
             x = _x;
             y = _y;
             z = _z;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (!(obj is Vector3)) return false;
+            return (Vector3)obj == this;
         }
         public static bool operator ==(Vector3 x, Vector3 y)
         {
@@ -165,9 +172,17 @@ namespace CATHODE
         {
             return !(x == y);
         }
-        public float x;
-        public float y;
-        public float z;
+        public override int GetHashCode()
+        {
+            return (int)(x * y * z * 100);
+        }
+
+        public float x { get { return vals[0]; } set { vals[0] = value; } }
+        public float y { get { return vals[1]; } set { vals[1] = value; } }
+        public float z { get { return vals[2]; } set { vals[2] = value; } }
+
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        private float[] vals;
     }
 #endif
 

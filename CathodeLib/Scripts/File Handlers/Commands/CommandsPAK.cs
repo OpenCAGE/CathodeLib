@@ -1130,6 +1130,11 @@ namespace CATHODE.Commands
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct CommandsEntryPoints
     {
+        // This is always:
+        //  - Root Instance (the map's entry flowgraph, usually containing entities that call mission/environment flowgraphs)
+        //  - Global Instance (the main data handler for keeping track of mission number, etc - kinda like a big singleton)
+        //  - Pause Menu Instance
+
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
         public cGUID[] flowgraphIDs;
     }
