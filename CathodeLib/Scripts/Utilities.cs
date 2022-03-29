@@ -177,9 +177,32 @@ namespace CATHODE
             return (int)(x * y * z * 100);
         }
 
-        public float x { get { return vals[0]; } set { vals[0] = value; } }
-        public float y { get { return vals[1]; } set { vals[1] = value; } }
-        public float z { get { return vals[2]; } set { vals[2] = value; } }
+        public float x { 
+            get { return (vals == null) ? 0.0f : vals[0]; } 
+            set
+            {
+                if (vals == null) vals = new float[3] { value, 0, 0 };
+                else vals[0] = value;
+            }
+        }
+        public float y
+        {
+            get { return (vals == null) ? 0.0f : vals[1]; }
+            set
+            {
+                if (vals == null) vals = new float[3] { 0, value, 0 };
+                else vals[1] = value;
+            }
+        }
+        public float z
+        {
+            get { return (vals == null) ? 0.0f : vals[2]; }
+            set
+            {
+                if (vals == null) vals = new float[3] { 0, 0, value };
+                else vals[2] = value;
+            }
+        }
 
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
         private float[] vals;
