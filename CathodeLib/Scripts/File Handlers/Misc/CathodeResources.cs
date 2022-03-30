@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 namespace CATHODE.Misc
 {
     /* Handles CATHODE RESOURCES.BIN files */
+    //This file seems to govern data being drawn from either MVR or COMMANDS
     public class CathodeResources
     {
         private string filepath;
@@ -24,6 +25,14 @@ namespace CATHODE.Misc
             header = Utilities.Consume<CathodeResourcesHeader>(Stream);
             entries = Utilities.ConsumeArray<CathodeResourcesEntry>(Stream, header.EntryCount);
             Stream.Close();
+        }
+
+        public void OrderEntries()
+        {
+            List<CathodeResourcesEntry> entrieslist = new List<CathodeResourcesEntry>();
+            entrieslist.AddRange(entries);
+            entrieslist.OrderBy(o => o.IndexFromMVREntry);
+            entries = entrieslist.ToArray();
         }
 
         /* Save the file */

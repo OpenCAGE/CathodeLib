@@ -144,7 +144,7 @@ namespace CATHODE
 #if !(UNITY_EDITOR || UNITY_STANDALONE)
     [Serializable]
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct Vector3
+    public struct Vector3 : ICloneable
     {
         public Vector3(float _x, float _y, float _z)
         {
@@ -175,6 +175,11 @@ namespace CATHODE
         public override int GetHashCode()
         {
             return (int)(x * y * z * 100);
+        }
+
+        public object Clone()
+        {
+            return new Vector3(this.x, this.y, this.z);
         }
 
         public float x { 

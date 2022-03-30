@@ -982,6 +982,11 @@ namespace CATHODE.Commands
                 case CathodeDataType.SPLINE_DATA:
                 case CathodeDataType.SHORT_GUID:
                     return Utilities.CloneObject(this);
+                case CathodeDataType.DIRECTION:
+                    //HOTFIX FOR VECTOR 3 CLONE ISSUE
+                    CathodeVector3 v3 = (CathodeVector3)this.MemberwiseClone();
+                    v3.value = (Vector3)((CathodeVector3)this).value.Clone();
+                    return v3;
                 default:
                     return this.MemberwiseClone();
             }
