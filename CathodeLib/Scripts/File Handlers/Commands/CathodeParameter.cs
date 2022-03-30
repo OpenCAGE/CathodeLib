@@ -982,11 +982,17 @@ namespace CATHODE.Commands
                 case CathodeDataType.SPLINE_DATA:
                 case CathodeDataType.SHORT_GUID:
                     return Utilities.CloneObject(this);
+                //HOTFIX FOR VECTOR 3 CLONE ISSUE - TODO: FIND WHY THIS ISN'T WORKING WITH MEMBERWISE CLONE
                 case CathodeDataType.DIRECTION:
-                    //HOTFIX FOR VECTOR 3 CLONE ISSUE
                     CathodeVector3 v3 = (CathodeVector3)this.MemberwiseClone();
                     v3.value = (Vector3)((CathodeVector3)this).value.Clone();
                     return v3;
+                case CathodeDataType.POSITION:
+                    CathodeTransform tr = (CathodeTransform)this.MemberwiseClone();
+                    tr.position = (Vector3)((CathodeTransform)this).position.Clone();
+                    tr.rotation = (Vector3)((CathodeTransform)this).rotation.Clone();
+                    return tr;
+                //END OF HOTFIX - SHOULD THIS ALSO APPLY TO OTHERS??
                 default:
                     return this.MemberwiseClone();
             }
