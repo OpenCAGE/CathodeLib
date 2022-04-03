@@ -304,4 +304,11 @@ namespace CATHODE
             return BitConverter.ToUInt32(val, 0);
         }
     }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct fourcc
+    {
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+        public char[] V;
+    }
 }
