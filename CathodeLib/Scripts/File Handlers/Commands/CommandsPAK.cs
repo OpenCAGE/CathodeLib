@@ -43,43 +43,43 @@ namespace CATHODE.Commands
         }
 
         #region ACCESSORS
-        /* Return a list of filenames for flowgraphs in the CommandsPAK archive */
-        public string[] GetFlowgraphNames()
+        /* Return a list of filenames for composites in the CommandsPAK archive */
+        public string[] GetCompositeNames()
         {
-            string[] toReturn = new string[_flowgraphs.Count];
-            for (int i = 0; i < _flowgraphs.Count; i++) toReturn[i] = _flowgraphs[i].name;
+            string[] toReturn = new string[_composites.Count];
+            for (int i = 0; i < _composites.Count; i++) toReturn[i] = _composites[i].name;
             return toReturn;
         }
 
         /* Find the a script entry object by name */
         public int GetFileIndex(string FileName)
         {
-            for (int i = 0; i < _flowgraphs.Count; i++) if (_flowgraphs[i].name == FileName || _flowgraphs[i].name == FileName.Replace('/', '\\')) return i;
+            for (int i = 0; i < _composites.Count; i++) if (_composites[i].name == FileName || _composites[i].name == FileName.Replace('/', '\\')) return i;
             return -1;
         }
 
-        /* Get flowgraph/parameter */
-        public CathodeFlowgraph GetFlowgraph(cGUID id)
+        /* Get an individual composite */
+        public CathodeComposite GetComposite(cGUID id)
         {
             if (id.val == null) return null;
-            return _flowgraphs.FirstOrDefault(o => o.nodeID == id);
+            return _composites.FirstOrDefault(o => o.shortGUID == id);
         }
-        public CathodeFlowgraph GetFlowgraphByIndex(int index)
+        public CathodeComposite GetCompositeByIndex(int index)
         {
-            return (index >= _flowgraphs.Count || index < 0) ? null : _flowgraphs[index];
+            return (index >= _composites.Count || index < 0) ? null : _composites[index];
         }
 
-        /* Get all flowgraphs/parameters */
-        public List<CathodeFlowgraph> Flowgraphs { get { return _flowgraphs; } }
+        /* Get all composites */
+        public List<CathodeComposite> Composites { get { return _composites; } }
 
-        /* Get entry point flowgraph objects */
-        public CathodeFlowgraph[] EntryPoints
+        /* Get entry point composite objects */
+        public CathodeComposite[] EntryPoints
         {
             get
             {
                 if (_entryPointObjects != null) return _entryPointObjects;
-                _entryPointObjects = new CathodeFlowgraph[_entryPoints.flowgraphIDs.Length];
-                for (int i = 0; i < _entryPoints.flowgraphIDs.Length; i++) _entryPointObjects[i] = GetFlowgraph(_entryPoints.flowgraphIDs[i]);
+                _entryPointObjects = new CathodeComposite[_entryPoints.compositeIDs.Length];
+                for (int i = 0; i < _entryPoints.compositeIDs.Length; i++) _entryPointObjects[i] = GetComposite(_entryPoints.compositeIDs[i]);
                 return _entryPointObjects;
             }
         }
@@ -87,7 +87,7 @@ namespace CATHODE.Commands
         /* Set the entry point (we only allow the level script to be set, PAUSEMENU and GLOBAL are required) */
         public void SetEntryPoint(cGUID id)
         {
-            _entryPoints.flowgraphIDs[0] = id;
+            _entryPoints.compositeIDs[0] = id;
             _entryPointObjects = null;
         }
         #endregion
@@ -102,7 +102,7 @@ namespace CATHODE.Commands
             //Write entry points
             Utilities.Write<CommandsEntryPoints>(writer, _entryPoints);
 
-            //Write placeholder info for parameter/flowgraph offsets
+            //Write placeholder info for parameter/composite offsets
             int offsetToRewrite = (int)writer.BaseStream.Position;
             writer.Write(0); 
             writer.Write(0);
@@ -111,9 +111,9 @@ namespace CATHODE.Commands
 
             //Work out unique parameters to write
             List<CathodeParameter> parameters = new List<CathodeParameter>();
-            for (int i = 0; i < _flowgraphs.Count; i++)
+            for (int i = 0; i < _composites.Count; i++)
             {
-                List<CathodeEntity> fgEntities = _flowgraphs[i].GetEntities();
+                List<CathodeEntity> fgEntities = _composites[i].GetEntities();
                 for (int x = 0; x < fgEntities.Count; x++)
                     for (int y = 0; y < fgEntities[x].parameters.Count; y++)
                         parameters.Add(fgEntities[x].parameters[y].content);
@@ -183,39 +183,39 @@ namespace CATHODE.Commands
                 }
             }
 
-            //Write out flowgraphs & track offsets
-            int[] flowgraphOffsets = new int[_flowgraphs.Count];
-            for (int i = 0; i < _flowgraphs.Count; i++)
+            //Write out composites & track offsets
+            int[] compositeOffsets = new int[_composites.Count];
+            for (int i = 0; i < _composites.Count; i++)
             {
                 int scriptStartPos = (int)writer.BaseStream.Position / 4;
 
-                Utilities.Write<cGUID>(writer, Utilities.GenerateGUID(_flowgraphs[i].name));
-                for (int x = 0; x < _flowgraphs[i].name.Length; x++) writer.Write(_flowgraphs[i].name[x]);
+                Utilities.Write<cGUID>(writer, Utilities.GenerateGUID(_composites[i].name));
+                for (int x = 0; x < _composites[i].name.Length; x++) writer.Write(_composites[i].name[x]);
                 writer.Write((char)0x00);
                 Utilities.Align(writer, 4);
 
                 //Work out what we want to write
-                List<CathodeEntity> ents = _flowgraphs[i].GetEntities();
+                List<CathodeEntity> ents = _composites[i].GetEntities();
                 List<CathodeEntity> entitiesWithLinks = new List<CathodeEntity>(ents.FindAll(o => o.childLinks.Count != 0));
                 List<CathodeEntity> entitiesWithParams = new List<CathodeEntity>(ents.FindAll(o => o.parameters.Count != 0));
-                //TODO: find a nicer way to sort into node class types
-                List<CAGEAnimation> cageAnimationNodes = new List<CAGEAnimation>();
-                List<TriggerSequence> triggerSequenceNodes = new List<TriggerSequence>();
+                //TODO: find a nicer way to sort into entity class types
+                List<CAGEAnimation> cageAnimationEntities = new List<CAGEAnimation>();
+                List<TriggerSequence> triggerSequenceEntities = new List<TriggerSequence>();
                 cGUID cageAnimationGUID = CommandsUtils.GetFunctionTypeGUID(CathodeFunctionType.CAGEAnimation);
                 cGUID triggerSequenceGUID = CommandsUtils.GetFunctionTypeGUID(CathodeFunctionType.TriggerSequence);
-                for (int x = 0; x < _flowgraphs[i].functions.Count; x++)
+                for (int x = 0; x < _composites[i].functions.Count; x++)
                 {
-                    if (_flowgraphs[i].functions[x].function == cageAnimationGUID)
+                    if (_composites[i].functions[x].function == cageAnimationGUID)
                     {
-                        CAGEAnimation thisNode = (CAGEAnimation)_flowgraphs[i].functions[x];
-                        if (thisNode.keyframeHeaders.Count == 0 && thisNode.keyframeData.Count == 0 && thisNode.paramsData3.Count == 0) continue;
-                        cageAnimationNodes.Add(thisNode);
+                        CAGEAnimation thisEntity = (CAGEAnimation)_composites[i].functions[x];
+                        if (thisEntity.keyframeHeaders.Count == 0 && thisEntity.keyframeData.Count == 0 && thisEntity.paramsData3.Count == 0) continue;
+                        cageAnimationEntities.Add(thisEntity);
                     }
-                    else if (_flowgraphs[i].functions[x].function == triggerSequenceGUID)
+                    else if (_composites[i].functions[x].function == triggerSequenceGUID)
                     {
-                        TriggerSequence thisNode = (TriggerSequence)_flowgraphs[i].functions[x];
-                        if (thisNode.triggers.Count == 0 && thisNode.events.Count == 0) continue;
-                        triggerSequenceNodes.Add(thisNode);
+                        TriggerSequence thisEntity = (TriggerSequence)_composites[i].functions[x];
+                        if (thisEntity.triggers.Count == 0 && thisEntity.events.Count == 0) continue;
+                        triggerSequenceEntities.Add(thisEntity);
                     }
                 }
 
@@ -228,20 +228,20 @@ namespace CATHODE.Commands
                         if (!resourceReferences.Contains(ents[x].resources[y]))
                             resourceReferences.Add(ents[x].resources[y]);
 
-                    CathodeLoadedParameter resParam = ents[x].parameters.FirstOrDefault(o => o.paramID == resourceParamID);
+                    CathodeLoadedParameter resParam = ents[x].parameters.FirstOrDefault(o => o.shortGUID == resourceParamID);
                     if (resParam == null) continue;
                     List<CathodeResourceReference> resParamRef = ((CathodeResource)resParam.content).value;
                     for (int y = 0; y < resParamRef.Count; y++)
                         if (!resourceReferences.Contains(resParamRef[y]))
                             resourceReferences.Add(resParamRef[y]);
                 }
-                resourceReferences.AddRange(_flowgraphs[i].resources);
+                resourceReferences.AddRange(_composites[i].resources);
 
                 //Sort
-                entitiesWithLinks = entitiesWithLinks.OrderBy(o => o.nodeID.ToUInt32()).ToList();
-                entitiesWithParams = entitiesWithParams.OrderBy(o => o.nodeID.ToUInt32()).ToList();
-                List<OverrideEntity> reshuffledChecksums = _flowgraphs[i].overrides.OrderBy(o => o.checksum.ToUInt32()).ToList();
-                _flowgraphs[i].SortEntities();
+                entitiesWithLinks = entitiesWithLinks.OrderBy(o => o.shortGUID.ToUInt32()).ToList();
+                entitiesWithParams = entitiesWithParams.OrderBy(o => o.shortGUID.ToUInt32()).ToList();
+                List<OverrideEntity> reshuffledChecksums = _composites[i].overrides.OrderBy(o => o.checksum.ToUInt32()).ToList();
+                _composites[i].SortEntities();
 
                 //Write data
                 OffsetPair[] scriptPointerOffsetInfo = new OffsetPair[(int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS];
@@ -249,10 +249,10 @@ namespace CATHODE.Commands
                 {
                     switch ((CommandsDataBlock)x)
                     {
-                        case CommandsDataBlock.DEFINE_SCRIPT_HEADER:
+                        case CommandsDataBlock.COMPOSITE_HEADER:
                         {
                             scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, 2);
-                            Utilities.Write<cGUID>(writer, _flowgraphs[i].nodeID);
+                            Utilities.Write<cGUID>(writer, _composites[i].shortGUID);
                             writer.Write(0);
                             break;
                         }
@@ -262,13 +262,13 @@ namespace CATHODE.Commands
                             foreach (CathodeEntity entityWithLink in entitiesWithLinks)
                             {
                                 offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, entityWithLink.childLinks.Count));
-                                Utilities.Write<CathodeNodeLink>(writer, entityWithLink.childLinks);
+                                Utilities.Write<CathodeEntityLink>(writer, entityWithLink.childLinks);
                             }
 
                             scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, entitiesWithLinks.Count);
                             for (int p = 0; p < entitiesWithLinks.Count; p++)
                             {
-                                writer.Write(entitiesWithLinks[p].nodeID.val);
+                                writer.Write(entitiesWithLinks[p].shortGUID.val);
                                 writer.Write(offsetPairs[p].GlobalOffset / 4);
                                 writer.Write(offsetPairs[p].EntryCount);
                             }
@@ -283,7 +283,7 @@ namespace CATHODE.Commands
                                 offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, entityWithParam.parameters.Count));
                                 for (int y = 0; y < entityWithParam.parameters.Count; y++)
                                 {
-                                    Utilities.Write<cGUID>(writer, entityWithParam.parameters[y].paramID);
+                                    Utilities.Write<cGUID>(writer, entityWithParam.parameters[y].shortGUID);
                                     //TODO: this is super slow! Find a better way to lookup parameter content offsets (precalculate a nicer structure)
                                     int paramOffset = -1;
                                     for (int z = 0; z < parameters.Count; z++)
@@ -302,7 +302,7 @@ namespace CATHODE.Commands
                             scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, offsetPairs.Count);
                             for (int p = 0; p < entitiesWithParams.Count; p++)
                             {
-                                writer.Write(entitiesWithParams[p].nodeID.val);
+                                writer.Write(entitiesWithParams[p].shortGUID.val);
                                 writer.Write(offsetPairs[p].GlobalOffset / 4);
                                 writer.Write(offsetPairs[p].EntryCount);
                             }
@@ -311,16 +311,16 @@ namespace CATHODE.Commands
                         case CommandsDataBlock.ENTITY_OVERRIDES:
                         {
                             List<OffsetPair> offsetPairs = new List<OffsetPair>();
-                            for (int p = 0; p < _flowgraphs[i].overrides.Count; p++)
+                            for (int p = 0; p < _composites[i].overrides.Count; p++)
                             {
-                                offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].overrides[p].hierarchy.Count));
-                                Utilities.Write<cGUID>(writer, _flowgraphs[i].overrides[p].hierarchy);
+                                offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, _composites[i].overrides[p].hierarchy.Count));
+                                Utilities.Write<cGUID>(writer, _composites[i].overrides[p].hierarchy);
                             }
 
-                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].overrides.Count);
-                            for (int p = 0; p < _flowgraphs[i].overrides.Count; p++)
+                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _composites[i].overrides.Count);
+                            for (int p = 0; p < _composites[i].overrides.Count; p++)
                             {
-                                writer.Write(_flowgraphs[i].overrides[p].nodeID.val);
+                                writer.Write(_composites[i].overrides[p].shortGUID.val);
                                 writer.Write(offsetPairs[p].GlobalOffset / 4);
                                 writer.Write(offsetPairs[p].EntryCount);
                             }
@@ -331,49 +331,49 @@ namespace CATHODE.Commands
                             scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledChecksums.Count);
                             for (int p = 0; p < reshuffledChecksums.Count; p++)
                             {
-                                writer.Write(reshuffledChecksums[p].nodeID.val);
+                                writer.Write(reshuffledChecksums[p].shortGUID.val);
                                 writer.Write(reshuffledChecksums[p].checksum.val);
                             }
                             break;
                         }
-                        case CommandsDataBlock.FLOWGRAPH_EXPOSED_PARAMETERS:
+                        case CommandsDataBlock.COMPOSITE_EXPOSED_PARAMETERS:
                         {
-                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].datatypes.Count);
-                            for (int p = 0; p < _flowgraphs[i].datatypes.Count; p++)
+                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _composites[i].datatypes.Count);
+                            for (int p = 0; p < _composites[i].datatypes.Count; p++)
                             {
-                                writer.Write(_flowgraphs[i].datatypes[p].nodeID.val);
-                                writer.Write(CommandsUtils.GetDataTypeGUID(_flowgraphs[i].datatypes[p].type).val);
-                                writer.Write(_flowgraphs[i].datatypes[p].parameter.val);
+                                writer.Write(_composites[i].datatypes[p].shortGUID.val);
+                                writer.Write(CommandsUtils.GetDataTypeGUID(_composites[i].datatypes[p].type).val);
+                                writer.Write(_composites[i].datatypes[p].parameter.val);
                             }
                             break;
                         }
                         case CommandsDataBlock.ENTITY_PROXIES:
                         {
                             List<OffsetPair> offsetPairs = new List<OffsetPair>();
-                            for (int p = 0; p < _flowgraphs[i].proxies.Count; p++)
+                            for (int p = 0; p < _composites[i].proxies.Count; p++)
                             {
-                                offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].proxies[p].hierarchy.Count));
-                                Utilities.Write<cGUID>(writer, _flowgraphs[i].proxies[p].hierarchy);
+                                offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, _composites[i].proxies[p].hierarchy.Count));
+                                Utilities.Write<cGUID>(writer, _composites[i].proxies[p].hierarchy);
                             }
 
                             scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, offsetPairs.Count);
-                            for (int p = 0; p < _flowgraphs[i].proxies.Count; p++)
+                            for (int p = 0; p < _composites[i].proxies.Count; p++)
                             {
-                                writer.Write(_flowgraphs[i].proxies[p].nodeID.val);
+                                writer.Write(_composites[i].proxies[p].shortGUID.val);
                                 writer.Write(offsetPairs[p].GlobalOffset / 4);
                                 writer.Write(offsetPairs[p].EntryCount);
-                                writer.Write(_flowgraphs[i].proxies[p].nodeID.val);
-                                writer.Write(_flowgraphs[i].proxies[p].extraId.val);
+                                writer.Write(_composites[i].proxies[p].shortGUID.val);
+                                writer.Write(_composites[i].proxies[p].extraId.val);
                             }
                             break;
                         }
                         case CommandsDataBlock.ENTITY_FUNCTIONS:
                         {
-                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _flowgraphs[i].functions.Count);
-                            for (int p = 0; p < _flowgraphs[i].functions.Count; p++)
+                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _composites[i].functions.Count);
+                            for (int p = 0; p < _composites[i].functions.Count; p++)
                             {
-                                writer.Write(_flowgraphs[i].functions[p].nodeID.val);
-                                writer.Write(_flowgraphs[i].functions[p].function.val);
+                                writer.Write(_composites[i].functions[p].shortGUID.val);
+                                writer.Write(_composites[i].functions[p].function.val);
                             }
                             break;
                         }
@@ -389,7 +389,7 @@ namespace CATHODE.Commands
                                 writer.Write(resourceReferences[p].positionOffset.y);
                                 writer.Write(resourceReferences[p].positionOffset.z);
                                 writer.Write(resourceReferences[p].unknownID2.val);
-                                writer.Write(resourceReferences[p].resourceID.val); //Sometimes this is the NodeID that uses the resource, other times it's the "resource" parameter ID link
+                                writer.Write(resourceReferences[p].resourceID.val); //Sometimes this is the entity ID that uses the resource, other times it's the "resource" parameter ID link
                                 writer.Write(CommandsUtils.GetResourceEntryTypeGUID(resourceReferences[p].entryType).val);
                                 switch (resourceReferences[p].entryType)
                                 {
@@ -399,7 +399,7 @@ namespace CATHODE.Commands
                                         break;
                                     case CathodeResourceReferenceType.COLLISION_MAPPING:
                                         writer.Write(resourceReferences[p].unknownInteger1);
-                                        writer.Write(resourceReferences[p].nodeID.val);
+                                        writer.Write(resourceReferences[p].entityID.val);
                                         break;
                                     case CathodeResourceReferenceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
                                     case CathodeResourceReferenceType.NAV_MESH_BARRIER_RESOURCE:
@@ -419,93 +419,93 @@ namespace CATHODE.Commands
                         case CommandsDataBlock.TRIGGERSEQUENCE_DATA: //Actually CAGEANIMATION_DATA, but indexes are flipped
                         {
                             List<int> globalOffsets = new List<int>();
-                            for (int p = 0; p < cageAnimationNodes.Count; p++)
+                            for (int p = 0; p < cageAnimationEntities.Count; p++)
                             {
                                 List<int> hierarchyOffsets = new List<int>();
-                                for (int pp = 0; pp < cageAnimationNodes[p].keyframeHeaders.Count; pp++)
+                                for (int pp = 0; pp < cageAnimationEntities[p].keyframeHeaders.Count; pp++)
                                 {
                                     hierarchyOffsets.Add((int)writer.BaseStream.Position);
-                                    Utilities.Write<cGUID>(writer, cageAnimationNodes[p].keyframeHeaders[pp].connectedEntity);
+                                    Utilities.Write<cGUID>(writer, cageAnimationEntities[p].keyframeHeaders[pp].connectedEntity);
                                 }
 
                                 int paramData1Offset = (int)writer.BaseStream.Position;
-                                for (int pp = 0; pp < cageAnimationNodes[p].keyframeHeaders.Count; pp++)
+                                for (int pp = 0; pp < cageAnimationEntities[p].keyframeHeaders.Count; pp++)
                                 {
-                                    Utilities.Write(writer, cageAnimationNodes[p].keyframeHeaders[pp].ID);
-                                    Utilities.Write(writer, CommandsUtils.GetDataTypeGUID(cageAnimationNodes[p].keyframeHeaders[pp].unk2));
-                                    Utilities.Write(writer, cageAnimationNodes[p].keyframeHeaders[pp].keyframeDataID);
-                                    Utilities.Write(writer, cageAnimationNodes[p].keyframeHeaders[pp].parameterID);
-                                    Utilities.Write(writer, CommandsUtils.GetDataTypeGUID(cageAnimationNodes[p].keyframeHeaders[pp].parameterDataType));
-                                    Utilities.Write(writer, cageAnimationNodes[p].keyframeHeaders[pp].parameterSubID);
+                                    Utilities.Write(writer, cageAnimationEntities[p].keyframeHeaders[pp].ID);
+                                    Utilities.Write(writer, CommandsUtils.GetDataTypeGUID(cageAnimationEntities[p].keyframeHeaders[pp].unk2));
+                                    Utilities.Write(writer, cageAnimationEntities[p].keyframeHeaders[pp].keyframeDataID);
+                                    Utilities.Write(writer, cageAnimationEntities[p].keyframeHeaders[pp].parameterID);
+                                    Utilities.Write(writer, CommandsUtils.GetDataTypeGUID(cageAnimationEntities[p].keyframeHeaders[pp].parameterDataType));
+                                    Utilities.Write(writer, cageAnimationEntities[p].keyframeHeaders[pp].parameterSubID);
                                     writer.Write(hierarchyOffsets[pp] / 4);
-                                    writer.Write(cageAnimationNodes[p].keyframeHeaders[pp].connectedEntity.Count);
+                                    writer.Write(cageAnimationEntities[p].keyframeHeaders[pp].connectedEntity.Count);
                                 }
 
                                 List<int> internalOffsets1 = new List<int>();
                                 List<int> internalOffsets2 = new List<int>();
-                                for (int pp = 0; pp < cageAnimationNodes[p].keyframeData.Count; pp++)
+                                for (int pp = 0; pp < cageAnimationEntities[p].keyframeData.Count; pp++)
                                 {
                                     int toPointTo = (int)writer.BaseStream.Position;
-                                    for (int ppp = 0; ppp < cageAnimationNodes[p].keyframeData[pp].keyframes.Count; ppp++)
+                                    for (int ppp = 0; ppp < cageAnimationEntities[p].keyframeData[pp].keyframes.Count; ppp++)
                                     {
-                                        writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes[ppp].unk1);
-                                        writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes[ppp].secondsSinceStart);
-                                        writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes[ppp].secondsSinceStartValidation);
-                                        writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes[ppp].paramValue);
-                                        writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes[ppp].unk2);
-                                        writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes[ppp].unk3);
-                                        writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes[ppp].unk4);
-                                        writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes[ppp].unk5);
+                                        writer.Write(cageAnimationEntities[p].keyframeData[pp].keyframes[ppp].unk1);
+                                        writer.Write(cageAnimationEntities[p].keyframeData[pp].keyframes[ppp].secondsSinceStart);
+                                        writer.Write(cageAnimationEntities[p].keyframeData[pp].keyframes[ppp].secondsSinceStartValidation);
+                                        writer.Write(cageAnimationEntities[p].keyframeData[pp].keyframes[ppp].paramValue);
+                                        writer.Write(cageAnimationEntities[p].keyframeData[pp].keyframes[ppp].unk2);
+                                        writer.Write(cageAnimationEntities[p].keyframeData[pp].keyframes[ppp].unk3);
+                                        writer.Write(cageAnimationEntities[p].keyframeData[pp].keyframes[ppp].unk4);
+                                        writer.Write(cageAnimationEntities[p].keyframeData[pp].keyframes[ppp].unk5);
                                     }
 
                                     internalOffsets1.Add(((int)writer.BaseStream.Position) / 4);
 
-                                    writer.Write(cageAnimationNodes[p].keyframeData[pp].minSeconds);
-                                    writer.Write(cageAnimationNodes[p].keyframeData[pp].maxSeconds);
-                                    Utilities.Write(writer, cageAnimationNodes[p].keyframeData[pp].ID);
+                                    writer.Write(cageAnimationEntities[p].keyframeData[pp].minSeconds);
+                                    writer.Write(cageAnimationEntities[p].keyframeData[pp].maxSeconds);
+                                    Utilities.Write(writer, cageAnimationEntities[p].keyframeData[pp].ID);
 
                                     writer.Write(toPointTo / 4);
-                                    writer.Write(cageAnimationNodes[p].keyframeData[pp].keyframes.Count);
+                                    writer.Write(cageAnimationEntities[p].keyframeData[pp].keyframes.Count);
                                 }
 
                                 int paramData2Offset = (int)writer.BaseStream.Position;
                                 Utilities.Write<int>(writer, internalOffsets1);
 
                                 internalOffsets2 = new List<int>();
-                                for (int pp = 0; pp < cageAnimationNodes[p].paramsData3.Count; pp++)
+                                for (int pp = 0; pp < cageAnimationEntities[p].paramsData3.Count; pp++)
                                 {
                                     int toPointTo = (int)writer.BaseStream.Position;
-                                    for (int ppp = 0; ppp < cageAnimationNodes[p].paramsData3[pp].keyframes.Count; ppp++)
+                                    for (int ppp = 0; ppp < cageAnimationEntities[p].paramsData3[pp].keyframes.Count; ppp++)
                                     {
-                                        writer.Write(cageAnimationNodes[p].paramsData3[pp].keyframes[ppp].unk1);
-                                        writer.Write(cageAnimationNodes[p].paramsData3[pp].keyframes[ppp].SecondsSinceStart);
-                                        writer.Write(cageAnimationNodes[p].paramsData3[pp].keyframes[ppp].unk2);
-                                        writer.Write(cageAnimationNodes[p].paramsData3[pp].keyframes[ppp].unk3);
-                                        writer.Write(cageAnimationNodes[p].paramsData3[pp].keyframes[ppp].unk4);
-                                        writer.Write(cageAnimationNodes[p].paramsData3[pp].keyframes[ppp].unk5);
+                                        writer.Write(cageAnimationEntities[p].paramsData3[pp].keyframes[ppp].unk1);
+                                        writer.Write(cageAnimationEntities[p].paramsData3[pp].keyframes[ppp].SecondsSinceStart);
+                                        writer.Write(cageAnimationEntities[p].paramsData3[pp].keyframes[ppp].unk2);
+                                        writer.Write(cageAnimationEntities[p].paramsData3[pp].keyframes[ppp].unk3);
+                                        writer.Write(cageAnimationEntities[p].paramsData3[pp].keyframes[ppp].unk4);
+                                        writer.Write(cageAnimationEntities[p].paramsData3[pp].keyframes[ppp].unk5);
                                     }
 
                                     internalOffsets2.Add(((int)writer.BaseStream.Position) / 4);
 
-                                    writer.Write(cageAnimationNodes[p].paramsData3[pp].minSeconds);
-                                    writer.Write(cageAnimationNodes[p].paramsData3[pp].maxSeconds);
-                                    Utilities.Write(writer, cageAnimationNodes[p].paramsData3[pp].ID);
+                                    writer.Write(cageAnimationEntities[p].paramsData3[pp].minSeconds);
+                                    writer.Write(cageAnimationEntities[p].paramsData3[pp].maxSeconds);
+                                    Utilities.Write(writer, cageAnimationEntities[p].paramsData3[pp].ID);
 
                                     writer.Write(toPointTo / 4);
-                                    writer.Write(cageAnimationNodes[p].paramsData3[pp].keyframes.Count);
+                                    writer.Write(cageAnimationEntities[p].paramsData3[pp].keyframes.Count);
                                 }
 
                                 int paramData3Offset = (int)writer.BaseStream.Position;
                                 Utilities.Write<int>(writer, internalOffsets2);
 
                                 globalOffsets.Add((int)writer.BaseStream.Position);
-                                writer.Write(cageAnimationNodes[p].nodeID.val);
+                                writer.Write(cageAnimationEntities[p].shortGUID.val);
                                 writer.Write(paramData1Offset / 4);
-                                writer.Write(cageAnimationNodes[p].keyframeHeaders.Count);
+                                writer.Write(cageAnimationEntities[p].keyframeHeaders.Count);
                                 writer.Write(paramData2Offset / 4);
-                                writer.Write(cageAnimationNodes[p].keyframeData.Count);
+                                writer.Write(cageAnimationEntities[p].keyframeData.Count);
                                 writer.Write(paramData3Offset / 4);
-                                writer.Write(cageAnimationNodes[p].paramsData3.Count);
+                                writer.Write(cageAnimationEntities[p].paramsData3.Count);
                             }
 
                             scriptPointerOffsetInfo[(int)CommandsDataBlock.CAGEANIMATION_DATA] = new OffsetPair(writer.BaseStream.Position, globalOffsets.Count);
@@ -518,37 +518,37 @@ namespace CATHODE.Commands
                         case CommandsDataBlock.CAGEANIMATION_DATA: //Actually TRIGGERSEQUENCE_DATA, but indexes are flipped
                         {
                             List<int> globalOffsets = new List<int>();
-                            for (int p = 0; p < triggerSequenceNodes.Count; p++)
+                            for (int p = 0; p < triggerSequenceEntities.Count; p++)
                             {
                                 List<int> hierarchyOffsets = new List<int>();
-                                for (int pp = 0; pp < triggerSequenceNodes[p].triggers.Count; pp++)
+                                for (int pp = 0; pp < triggerSequenceEntities[p].triggers.Count; pp++)
                                 {
                                     hierarchyOffsets.Add((int)writer.BaseStream.Position);
-                                    Utilities.Write<cGUID>(writer, triggerSequenceNodes[p].triggers[pp].hierarchy);
+                                    Utilities.Write<cGUID>(writer, triggerSequenceEntities[p].triggers[pp].hierarchy);
                                 }
 
                                 int triggerOffset = (int)writer.BaseStream.Position;
-                                for (int pp = 0; pp < triggerSequenceNodes[p].triggers.Count; pp++)
+                                for (int pp = 0; pp < triggerSequenceEntities[p].triggers.Count; pp++)
                                 {
                                     writer.Write(hierarchyOffsets[pp] / 4);
-                                    writer.Write(triggerSequenceNodes[p].triggers[pp].hierarchy.Count);
-                                    writer.Write(triggerSequenceNodes[p].triggers[pp].timing);
+                                    writer.Write(triggerSequenceEntities[p].triggers[pp].hierarchy.Count);
+                                    writer.Write(triggerSequenceEntities[p].triggers[pp].timing);
                                 }
 
                                 int eventOffset = (int)writer.BaseStream.Position;
-                                for (int pp = 0; pp < triggerSequenceNodes[p].events.Count; pp++)
+                                for (int pp = 0; pp < triggerSequenceEntities[p].events.Count; pp++)
                                 {
-                                    writer.Write(triggerSequenceNodes[p].events[pp].EventID.val);
-                                    writer.Write(triggerSequenceNodes[p].events[pp].StartedID.val);
-                                    writer.Write(triggerSequenceNodes[p].events[pp].FinishedID.val);
+                                    writer.Write(triggerSequenceEntities[p].events[pp].EventID.val);
+                                    writer.Write(triggerSequenceEntities[p].events[pp].StartedID.val);
+                                    writer.Write(triggerSequenceEntities[p].events[pp].FinishedID.val);
                                 }
 
                                 globalOffsets.Add((int)writer.BaseStream.Position);
-                                writer.Write(triggerSequenceNodes[p].nodeID.val);
+                                writer.Write(triggerSequenceEntities[p].shortGUID.val);
                                 writer.Write(triggerOffset / 4);
-                                writer.Write(triggerSequenceNodes[p].triggers.Count);
+                                writer.Write(triggerSequenceEntities[p].triggers.Count);
                                 writer.Write(eventOffset / 4);
-                                writer.Write(triggerSequenceNodes[p].events.Count);
+                                writer.Write(triggerSequenceEntities[p].events.Count);
                             }
 
                             scriptPointerOffsetInfo[(int)CommandsDataBlock.TRIGGERSEQUENCE_DATA] = new OffsetPair(writer.BaseStream.Position, globalOffsets.Count);
@@ -566,14 +566,14 @@ namespace CATHODE.Commands
                         case CommandsDataBlock.UNKNOWN_COUNTS:
                         {
                             //TODO: These count values are unknown. Temp fix in place for the div by 4 at the end on offset (as this isn't actually an offset!)
-                            scriptPointerOffsetInfo[x] = new OffsetPair(_flowgraphs[i].unknownPair.GlobalOffset * 4, _flowgraphs[i].unknownPair.EntryCount);
+                            scriptPointerOffsetInfo[x] = new OffsetPair(_composites[i].unknownPair.GlobalOffset * 4, _composites[i].unknownPair.EntryCount);
                             break;
                         }
                     }
                 }
 
                 //Write pointers to the pointers of the content
-                flowgraphOffsets[i] = (int)writer.BaseStream.Position / 4;
+                compositeOffsets[i] = (int)writer.BaseStream.Position / 4;
                 writer.Write(0);
                 for (int x = 0; x < (int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS; x++)
                 {
@@ -585,7 +585,7 @@ namespace CATHODE.Commands
                     }
                     writer.Write(scriptPointerOffsetInfo[x].GlobalOffset / 4); 
                     writer.Write(scriptPointerOffsetInfo[x].EntryCount);
-                    if (x == 0) Utilities.Write<cGUID>(writer, _flowgraphs[i].nodeID);
+                    if (x == 0) Utilities.Write<cGUID>(writer, _composites[i].shortGUID);
                 }
             }
 
@@ -593,16 +593,16 @@ namespace CATHODE.Commands
             int parameterOffsetPos = (int)writer.BaseStream.Position;
             Utilities.Write<int>(writer, parameterOffsets);
 
-            //Write out flowgraph offsets
-            int flowgraphOffsetPos = (int)writer.BaseStream.Position;
-            Utilities.Write<int>(writer, flowgraphOffsets);
+            //Write out composite offsets
+            int compositeOffsetPos = (int)writer.BaseStream.Position;
+            Utilities.Write<int>(writer, compositeOffsets);
 
             //Rewrite header info with correct offsets 
             writer.BaseStream.Position = offsetToRewrite;
             writer.Write(parameterOffsetPos / 4);
             writer.Write(parameters.Count);
-            writer.Write(flowgraphOffsetPos / 4);
-            writer.Write(_flowgraphs.Count);
+            writer.Write(compositeOffsetPos / 4);
+            writer.Write(_composites.Count);
 
             writer.Close();
         }
@@ -638,7 +638,7 @@ namespace CATHODE.Commands
             return pair.count;
         }
 
-        /* Read the parameter and flowgraph offsets & get entry points */
+        /* Read the parameter and composite offsets & get entry points */
         private bool Load(string path)
         {
             if (!File.Exists(path)) return false;
@@ -647,17 +647,17 @@ namespace CATHODE.Commands
             //Read entry points
             _entryPoints = Utilities.Consume<CommandsEntryPoints>(reader);
 
-            //Read parameter/flowgraph counts
+            //Read parameter/composite counts
             int parameter_offset_pos = reader.ReadInt32() * 4;
             int parameter_count = reader.ReadInt32();
-            int flowgraph_offset_pos = reader.ReadInt32() * 4;
-            int flowgraph_count = reader.ReadInt32();
+            int composite_offset_pos = reader.ReadInt32() * 4;
+            int composite_count = reader.ReadInt32();
 
-            //Read parameter/flowgraph offsets
+            //Read parameter/composite offsets
             reader.BaseStream.Position = parameter_offset_pos;
             int[] parameterOffsets = Utilities.ConsumeArray<int>(reader, parameter_count);
-            reader.BaseStream.Position = flowgraph_offset_pos;
-            int[] flowgraphOffsets = Utilities.ConsumeArray<int>(reader, flowgraph_count);
+            reader.BaseStream.Position = composite_offset_pos;
+            int[] compositeOffsets = Utilities.ConsumeArray<int>(reader, composite_count);
 
             //Read all parameters from the PAK
             Dictionary<int, CathodeParameter> parameters = new Dictionary<int, CathodeParameter>(parameter_count);
@@ -719,14 +719,14 @@ namespace CATHODE.Commands
                 }
                 parameters.Add(parameterOffsets[i], this_parameter);
             }
-            
-            //Read all flowgraphs from the PAK
-            CathodeFlowgraph[] flowgraphs = new CathodeFlowgraph[flowgraph_count];
-            for (int i = 0; i < flowgraph_count; i++)
+
+            //Read all composites from the PAK
+            CathodeComposite[] composites = new CathodeComposite[composite_count];
+            for (int i = 0; i < composite_count; i++)
             {
-                reader.BaseStream.Position = flowgraphOffsets[i] * 4;
+                reader.BaseStream.Position = compositeOffsets[i] * 4;
                 reader.BaseStream.Position += 4; //Skip 0x00,0x00,0x00,0x00
-                CathodeFlowgraph flowgraph = new CathodeFlowgraph();
+                CathodeComposite composite = new CathodeComposite();
 
                 //Read the offsets and counts
                 OffsetPair[] offsetPairs = new OffsetPair[(int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS];
@@ -740,14 +740,13 @@ namespace CATHODE.Commands
                         scriptStartOffset = BitConverter.ToInt32(startOffsetRaw, 0);
                     }
                     offsetPairs[x] = Utilities.Consume<OffsetPair>(reader);
-                    if (x == 0) flowgraph.nodeID = new cGUID(reader);
+                    if (x == 0) composite.shortGUID = new cGUID(reader);
                 }
-                flowgraph.unknownPair = offsetPairs[12];
+                composite.unknownPair = offsetPairs[12];
 
                 //Read script ID and string name
-                reader.BaseStream.Position = scriptStartOffset * 4;
-                flowgraph.globalID = new cGUID(reader);
-                flowgraph.name = Utilities.ReadString(reader);
+                reader.BaseStream.Position = (scriptStartOffset * 4) + 4;
+                composite.name = Utilities.ReadString(reader);
                 Utilities.Align(reader, 4);
 
                 //Pull data from those offsets
@@ -767,7 +766,7 @@ namespace CATHODE.Commands
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 entityLinks.Add(new CommandsEntityLinks(new cGUID(reader)));
                                 int NumberOfParams = JumpToOffset(ref reader);
-                                entityLinks[entityLinks.Count - 1].childLinks.AddRange(Utilities.ConsumeArray<CathodeNodeLink>(reader, NumberOfParams));
+                                entityLinks[entityLinks.Count - 1].childLinks.AddRange(Utilities.ConsumeArray<CathodeEntityLink>(reader, NumberOfParams));
                                 break;
                             }
                             case CommandsDataBlock.ENTITY_PARAMETERS:
@@ -784,7 +783,7 @@ namespace CATHODE.Commands
                                 OverrideEntity overrider = new OverrideEntity(new cGUID(reader));
                                 int NumberOfParams = JumpToOffset(ref reader);
                                 overrider.hierarchy.AddRange(Utilities.ConsumeArray<cGUID>(reader, NumberOfParams));
-                                flowgraph.overrides.Add(overrider);
+                                composite.overrides.Add(overrider);
                                 break;
                             }
                             case CommandsDataBlock.ENTITY_OVERRIDES_CHECKSUM:
@@ -793,15 +792,15 @@ namespace CATHODE.Commands
                                 overrideChecksums.Add(new cGUID(reader), (new cGUID(reader), (int)reader.BaseStream.Position)); //TODO: Added in reader.BaseStream.Position as offset hack before working out proper sort order algo
                                 break;
                                 }
-                            //TODO: Really, I think these should be treated as parameters on the flowgraph class as they are the pins we use for flowgraph instances.
-                            //      Need to look into this more and see if any of these entities actually contain much data other than links into the flowgraph itself.
-                            case CommandsDataBlock.FLOWGRAPH_EXPOSED_PARAMETERS:
+                            //TODO: Really, I think these should be treated as parameters on the composite class as they are the pins we use for composite instances.
+                            //      Need to look into this more and see if any of these entities actually contain much data other than links into the composite itself.
+                            case CommandsDataBlock.COMPOSITE_EXPOSED_PARAMETERS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-                                DatatypeEntity thisNode = new DatatypeEntity(new cGUID(reader));
-                                thisNode.type = CommandsUtils.GetDataType(new cGUID(reader));
-                                thisNode.parameter = new cGUID(reader);
-                                flowgraph.datatypes.Add(thisNode);
+                                DatatypeEntity dtEntity = new DatatypeEntity(new cGUID(reader));
+                                dtEntity.type = CommandsUtils.GetDataType(new cGUID(reader));
+                                dtEntity.parameter = new cGUID(reader);
+                                composite.datatypes.Add(dtEntity);
                                 break;
                             }
                             case CommandsDataBlock.ENTITY_PROXIES:
@@ -813,43 +812,43 @@ namespace CATHODE.Commands
                                 thisProxy.hierarchy.AddRange(Utilities.ConsumeArray<cGUID>(reader, NumberOfParams)); //Last is always 0x00, 0x00, 0x00, 0x00
                                 reader.BaseStream.Position = resetPos;
                                 cGUID idCheck = new cGUID(reader);
-                                if (idCheck != thisProxy.nodeID) throw new Exception("Proxy ID mismatch!");
+                                if (idCheck != thisProxy.shortGUID) throw new Exception("Proxy ID mismatch!");
                                 thisProxy.extraId = new cGUID(reader);
-                                flowgraph.proxies.Add(thisProxy);
+                                composite.proxies.Add(thisProxy);
                                 break;
                             }
                             case CommandsDataBlock.ENTITY_FUNCTIONS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
-                                cGUID nodeID = new cGUID(reader);
+                                cGUID entityID = new cGUID(reader);
                                 cGUID functionID = new cGUID(reader);
                                 if (CommandsUtils.FunctionTypeExists(functionID))
                                 {
-                                    //This node executes a hard-coded function
+                                    //This entity executes a hard-coded CATHODE function
                                     CathodeFunctionType functionType = CommandsUtils.GetFunctionType(functionID);
                                     switch (functionType)
                                     {
                                         case CathodeFunctionType.CAGEAnimation:
-                                            CAGEAnimation cageAnimation = new CAGEAnimation(nodeID);
-                                            flowgraph.functions.Add(cageAnimation);
+                                            CAGEAnimation cageAnimation = new CAGEAnimation(entityID);
+                                            composite.functions.Add(cageAnimation);
                                             break;
                                         case CathodeFunctionType.TriggerSequence:
-                                            TriggerSequence triggerSequence = new TriggerSequence(nodeID);
-                                            flowgraph.functions.Add(triggerSequence);
+                                            TriggerSequence triggerSequence = new TriggerSequence(entityID);
+                                            composite.functions.Add(triggerSequence);
                                             break;
                                         default:
-                                            FunctionEntity genericNode = new FunctionEntity(nodeID);
-                                            genericNode.function = functionID;
-                                            flowgraph.functions.Add(genericNode);
+                                            FunctionEntity funcEntity = new FunctionEntity(entityID);
+                                            funcEntity.function = functionID;
+                                            composite.functions.Add(funcEntity);
                                             break;
                                     }
                                 }
                                 else
                                 {
-                                    //This node executes a flowgraph
-                                    FunctionEntity genericNode = new FunctionEntity(nodeID);
-                                    genericNode.function = functionID;
-                                    flowgraph.functions.Add(genericNode);
+                                    //This entity is an instance of a composite entity collection
+                                    FunctionEntity funcEntity = new FunctionEntity(entityID);
+                                    funcEntity.function = functionID;
+                                    composite.functions.Add(funcEntity);
                                 }
                                 break;
                             }
@@ -874,7 +873,7 @@ namespace CATHODE.Commands
                                         break;
                                     case CathodeResourceReferenceType.COLLISION_MAPPING:
                                         resource_ref.unknownInteger1 = reader.ReadInt32(); //unknown integer (COLLISION.MAP index?)
-                                        resource_ref.nodeID = new cGUID(reader); //ID which maps to the node using the resource (?) - check GetFriendlyName
+                                        resource_ref.entityID = new cGUID(reader); //ID which maps to the entity using the resource (?) - check GetFriendlyName
                                         break;
                                     case CathodeResourceReferenceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
                                     case CathodeResourceReferenceType.NAV_MESH_BARRIER_RESOURCE:
@@ -900,12 +899,12 @@ namespace CATHODE.Commands
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
                                 reader.BaseStream.Position = (reader.ReadInt32() * 4);
 
-                                CathodeEntity thisEntity = flowgraph.GetEntityByID(new cGUID(reader));
+                                CathodeEntity thisEntity = composite.GetEntityByID(new cGUID(reader));
                                 if (thisEntity.variant == EntityVariant.PROXY)
                                 {
                                     break; // We don't handle this just yet... need to resolve the proxy.
                                 }
-                                CAGEAnimation thisNode = (CAGEAnimation)thisEntity;
+                                CAGEAnimation animEntity = (CAGEAnimation)thisEntity;
 
                                 int keyframeHeaderOffset = reader.ReadInt32() * 4;
                                 int numberOfKeyframeHeaders = reader.ReadInt32();
@@ -928,7 +927,7 @@ namespace CATHODE.Commands
 
                                     int hierarchyCount = JumpToOffset(ref reader);
                                     thisHeader.connectedEntity = Utilities.ConsumeArray<cGUID>(reader, hierarchyCount).ToList<cGUID>(); 
-                                    thisNode.keyframeHeaders.Add(thisHeader);
+                                    animEntity.keyframeHeaders.Add(thisHeader);
                                 }
                                 
                                 reader.BaseStream.Position = keyframeDataOffset;
@@ -940,7 +939,7 @@ namespace CATHODE.Commands
                                     CathodeParameterKeyframe thisParamKey = new CathodeParameterKeyframe();
                                     thisParamKey.minSeconds = reader.ReadSingle();
                                     thisParamKey.maxSeconds = reader.ReadSingle(); //max seconds for keyframe list
-                                    thisParamKey.ID = new cGUID(reader); //this is perhaps a node id
+                                    thisParamKey.ID = new cGUID(reader); //this is perhaps an entity id
 
                                     int numberOfKeyframes = JumpToOffset(ref reader);
                                     for (int m = 0; m < numberOfKeyframes; m++)
@@ -956,7 +955,7 @@ namespace CATHODE.Commands
                                         thisKeyframe.unk5 = reader.ReadSingle(); //
                                         thisParamKey.keyframes.Add(thisKeyframe);
                                     }
-                                    thisNode.keyframeData.Add(thisParamKey);
+                                    animEntity.keyframeData.Add(thisParamKey);
                                 }
 
                                 //UNKNOWN - is this maybe event triggers?
@@ -969,7 +968,7 @@ namespace CATHODE.Commands
                                     TEMP_CAGEAnimationExtraDataHolder3 thisParamSet = new TEMP_CAGEAnimationExtraDataHolder3();
                                     thisParamSet.minSeconds = reader.ReadSingle();
                                     thisParamSet.maxSeconds = reader.ReadSingle();
-                                    thisParamSet.ID = new cGUID(reader); //this is perhaps a node id
+                                    thisParamSet.ID = new cGUID(reader); //this is perhaps an entity id
 
                                     int NumberOfParams3_ = JumpToOffset(ref reader);
                                     for (int m = 0; m < NumberOfParams3_; m++)
@@ -983,7 +982,7 @@ namespace CATHODE.Commands
                                         thisInnerSet.unk5 = reader.ReadSingle(); //
                                         thisParamSet.keyframes.Add(thisInnerSet);
                                     }
-                                    thisNode.paramsData3.Add(thisParamSet);
+                                    animEntity.paramsData3.Add(thisParamSet);
                                 }
                                 break;
                             }
@@ -992,12 +991,12 @@ namespace CATHODE.Commands
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
                                 reader.BaseStream.Position = (reader.ReadInt32() * 4);
 
-                                CathodeEntity thisEntity = flowgraph.GetEntityByID(new cGUID(reader));
+                                CathodeEntity thisEntity = composite.GetEntityByID(new cGUID(reader));
                                 if (thisEntity.variant == EntityVariant.PROXY)
                                 {
                                     break; // We don't handle this just yet... need to resolve the proxy.
                                 }
-                                TriggerSequence thisNode = (TriggerSequence)thisEntity;
+                                TriggerSequence trigEntity = (TriggerSequence)thisEntity;
 
                                 int triggersOffset = reader.ReadInt32() * 4;
                                 int triggersCount = reader.ReadInt32();
@@ -1014,7 +1013,7 @@ namespace CATHODE.Commands
                                     thisTrigger.timing = reader.ReadSingle();
                                     reader.BaseStream.Position = hierarchyOffset;
                                     thisTrigger.hierarchy = Utilities.ConsumeArray<cGUID>(reader, hierarchyCount).ToList<cGUID>();
-                                    thisNode.triggers.Add(thisTrigger);
+                                    trigEntity.triggers.Add(thisTrigger);
                                 }
 
                                 for (int z = 0; z < eventsCount; z++)
@@ -1025,7 +1024,7 @@ namespace CATHODE.Commands
                                     thisEvent.EventID = new cGUID(reader);
                                     thisEvent.StartedID = new cGUID(reader);
                                     thisEvent.FinishedID = new cGUID(reader);
-                                    thisNode.events.Add(thisEvent);
+                                    trigEntity.events.Add(thisEvent);
                                 }
                                 break;
                             }
@@ -1033,44 +1032,44 @@ namespace CATHODE.Commands
                     }
                 }
 
-                for (int x = 0; x < flowgraph.overrides.Count; x++)
+                for (int x = 0; x < composite.overrides.Count; x++)
                 {
-                    flowgraph.overrides[x].checksum = overrideChecksums[flowgraph.overrides[x].nodeID].Item1;
+                    composite.overrides[x].checksum = overrideChecksums[composite.overrides[x].shortGUID].Item1;
                 }
                 for (int x = 0; x < entityLinks.Count; x++)
                 {
-                    CathodeEntity nodeToApply = flowgraph.GetEntityByID(entityLinks[x].parentID);
-                    if (nodeToApply == null)
+                    CathodeEntity entToApply = composite.GetEntityByID(entityLinks[x].parentID);
+                    if (entToApply == null)
                     {
-                        //TODO: We shouldn't hit this, but we do... is this perhaps an ID from another flowgraph, similar to proxies?
-                        nodeToApply = new CathodeEntity(entityLinks[x].parentID);
-                        flowgraph.unknowns.Add(nodeToApply);
+                        //TODO: We shouldn't hit this, but we do... is this perhaps an ID from another composite, similar to proxies?
+                        entToApply = new CathodeEntity(entityLinks[x].parentID);
+                        composite.unknowns.Add(entToApply);
                     }
-                    nodeToApply.childLinks.AddRange(entityLinks[x].childLinks);
+                    entToApply.childLinks.AddRange(entityLinks[x].childLinks);
                 }
                 for (int x = 0; x < paramRefSets.Count; x++)
                 {
-                    CathodeEntity nodeToApply = flowgraph.GetEntityByID(paramRefSets[x].id);
-                    if (nodeToApply == null)
+                    CathodeEntity entToApply = composite.GetEntityByID(paramRefSets[x].id);
+                    if (entToApply == null)
                     {
-                        //TODO: We shouldn't hit this, but we do... is this perhaps an ID from another flowgraph, similar to proxies?
-                        nodeToApply = new CathodeEntity(paramRefSets[x].id);
-                        flowgraph.unknowns.Add(nodeToApply);
+                        //TODO: We shouldn't hit this, but we do... is this perhaps an ID from another composite, similar to proxies?
+                        entToApply = new CathodeEntity(paramRefSets[x].id);
+                        composite.unknowns.Add(entToApply);
                     }
                     for (int y = 0; y < paramRefSets[x].refs.Count; y++)
                     {
-                        nodeToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, (CathodeParameter)parameters[paramRefSets[x].refs[y].offset].Clone()));
+                        entToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, (CathodeParameter)parameters[paramRefSets[x].refs[y].offset].Clone()));
                     }
                 }
 
                 //Remap resources (TODO: This can be optimised)
-                List<CathodeEntity> ents = flowgraph.GetEntities();
+                List<CathodeEntity> ents = composite.GetEntities();
                 cGUID resParamID = Utilities.GenerateGUID("resource");
                 //Check to see if this resource applies to an ENTITY
                 List<CathodeResourceReference> resourceRefsCulled = new List<CathodeResourceReference>();
                 for (int x = 0; x < resourceRefs.Count; x++)
                 {
-                    CathodeEntity ent = ents.FirstOrDefault(o => o.nodeID == resourceRefs[x].resourceID);
+                    CathodeEntity ent = ents.FirstOrDefault(o => o.shortGUID == resourceRefs[x].resourceID);
                     if (ent != null)
                     {
                         ent.resources.Add(resourceRefs[x]);
@@ -1084,7 +1083,7 @@ namespace CATHODE.Commands
                 {
                     for (int y = 0; y < ents[z].parameters.Count; y++)
                     {
-                        if (ents[z].parameters[y].paramID != resParamID) continue;
+                        if (ents[z].parameters[y].shortGUID != resParamID) continue;
 
                         CathodeResource resourceParam = (CathodeResource)ents[z].parameters[y].content;
                         resourceRefsCulled = new List<CathodeResourceReference>();
@@ -1100,15 +1099,15 @@ namespace CATHODE.Commands
                         resourceRefs = resourceRefsCulled;
                     }
                 }
-                //If it applied to none of the above, apply it to the FLOWGRAPH
+                //If it applied to none of the above, apply it to the COMPOSITE
                 for (int z = 0; z < resourceRefs.Count; z++)
                 {
-                    flowgraph.resources.Add(resourceRefs[z]);
+                    composite.resources.Add(resourceRefs[z]);
                 }
 
-                flowgraphs[i] = flowgraph;
+                composites[i] = composite;
             }
-            _flowgraphs = flowgraphs.ToList<CathodeFlowgraph>();
+            _composites = composites.ToList<CathodeComposite>();
 
             reader.Close();
             return true;
@@ -1118,9 +1117,9 @@ namespace CATHODE.Commands
         private string _path = "";
 
         private CommandsEntryPoints _entryPoints;
-        private CathodeFlowgraph[] _entryPointObjects = null;
+        private CathodeComposite[] _entryPointObjects = null;
 
-        private List<CathodeFlowgraph> _flowgraphs = null;
+        private List<CathodeComposite> _composites = null;
 
         private bool _didLoadCorrectly = false;
         public bool Loaded { get { return _didLoadCorrectly; } }
@@ -1131,12 +1130,12 @@ namespace CATHODE.Commands
     public struct CommandsEntryPoints
     {
         // This is always:
-        //  - Root Instance (the map's entry flowgraph, usually containing entities that call mission/environment flowgraphs)
+        //  - Root Instance (the map's entry composite, usually containing entities that call mission/environment composites)
         //  - Global Instance (the main data handler for keeping track of mission number, etc - kinda like a big singleton)
         //  - Pause Menu Instance
 
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
-        public cGUID[] flowgraphIDs;
+        public cGUID[] compositeIDs;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -1148,7 +1147,7 @@ namespace CATHODE.Commands
 
     [Serializable]
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CathodeNodeLink
+    public struct CathodeEntityLink
     {
         public cGUID connectionID;  //The unique ID for this connection
         public cGUID parentParamID; //The ID of the parameter we're providing out 
@@ -1177,14 +1176,14 @@ namespace CATHODE.Commands
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct CathodeParameterReference
     {
-        public cGUID paramID; //The ID of the param in the node
+        public cGUID paramID; //The ID of the param in the entity
         public int offset;    //The offset of the param this reference points to (in memory this is *4)
     }
 
     public class CommandsEntityLinks
     {
         public cGUID parentID;
-        public List<CathodeNodeLink> childLinks = new List<CathodeNodeLink>();
+        public List<CathodeEntityLink> childLinks = new List<CathodeEntityLink>();
 
         public CommandsEntityLinks(cGUID _id)
         {

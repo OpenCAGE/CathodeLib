@@ -34,7 +34,7 @@ namespace CATHODE.Commands
         CAMERA
     }
 
-    /* Function node types in the CATHODE scripting system */
+    /* Function types in the CATHODE scripting system */
     public enum CathodeFunctionType
     {
         AccessTerminal,

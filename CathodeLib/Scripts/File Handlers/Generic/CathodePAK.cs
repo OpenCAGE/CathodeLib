@@ -12,11 +12,11 @@ namespace CATHODE.Generic
 {
     public class CathodePAK
     {
-        public GenericPAKHeader PAKHeader;
-        public GenericPAKEntry[] PAKEntries;
+        protected GenericPAKHeader PAKHeader;
+        protected GenericPAKEntry[] PAKEntries;
 
-        public byte[] DataStart;
-        public List<byte[]> EntryDatas;
+        protected byte[] DataStart;
+        protected List<byte[]> EntryDatas;
 
         protected void LoadPAK(string filepath, bool BigEndian)
         {

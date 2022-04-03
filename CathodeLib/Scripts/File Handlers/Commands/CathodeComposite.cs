@@ -1,48 +1,45 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #else
-using System.Numerics;
-using System.Runtime.InteropServices;
 #endif
 
 namespace CATHODE.Commands
 {
-    /* Blocks of data in each compiled flowgraph */
+    /* Blocks of data in each compiled composite */
     public enum CommandsDataBlock
     {
-        DEFINE_SCRIPT_HEADER,         //Defines the header of the flowgraph, with global ID and string name
-        ENTITY_CONNECTIONS,           //Defines the links between entities in the flowgraph
-        ENTITY_PARAMETERS,            //Defines parameters to be applied to entities in the flowgraph 
-        ENTITY_OVERRIDES,             //Defines overrides to apply to nested instances of flowgraphs in this flowgraph
+        COMPOSITE_HEADER,             //Defines the header of the composite, with global ID and string name
+        ENTITY_CONNECTIONS,           //Defines the links between entities in the composite
+        ENTITY_PARAMETERS,            //Defines parameters to be applied to entities in the composite 
+        ENTITY_OVERRIDES,             //Defines overrides to apply to nested instances of composites in this composite
         ENTITY_OVERRIDES_CHECKSUM,    //Defines a checksum value for the hierarchy override (TODO)
-        FLOWGRAPH_EXPOSED_PARAMETERS,     //Defines variables which are exposed when instancing this flowgraph which are then connected in to entities (think variable pins in UE4 blueprint)
+        COMPOSITE_EXPOSED_PARAMETERS, //Defines variables which are exposed when instancing this composite which are then connected in to entities (think variable pins in UE4 blueprint)
         ENTITY_PROXIES,               //Defines "proxies" similar to the overrides hierarchy (TODO)
-        ENTITY_FUNCTIONS,        //Defines entities with an attached script function within Cathode
-        RESOURCE_REFERENCES,       //Defines renderable data which is referenced by entities in this flowgraph
-        CAGEANIMATION_DATA,    //Appears to define additional data for CAGEAnimation type nodes (TODO)
-        TRIGGERSEQUENCE_DATA,  //Appears to define additional data for TriggerSequence type nodes (TODO)
+        ENTITY_FUNCTIONS,             //Defines entities with an attached script function within Cathode
+        RESOURCE_REFERENCES,          //Defines renderable data which is referenced by entities in this composite
+        CAGEANIMATION_DATA,           //Appears to define additional data for CAGEAnimation type entities (TODO)
+        TRIGGERSEQUENCE_DATA,         //Appears to define additional data for TriggerSequence type entities (TODO)
 
         UNUSED,                       //Unused values
-        UNKNOWN_COUNTS,               //TODO
+        UNKNOWN_COUNTS,               //TODO - unused?
 
         NUMBER_OF_SCRIPT_BLOCKS,      //THIS IS NOT A DATA BLOCK: merely used as an easy way of sanity checking the number of blocks in-code!
     }
 
-    /* A reference to a parameter in a flowgraph */
+    /* A reference to a parameter in a composite */
     [Serializable]
     public class CathodeLoadedParameter
     {
         public CathodeLoadedParameter(cGUID id, CathodeParameter cont)
         {
-            paramID = id;
+            shortGUID = id;
             content = cont;
         }
 
-        public cGUID paramID; //The ID of the param in the node
+        public cGUID shortGUID; //The ID of the param in the entity
         public CathodeParameter content = null;
     }
 
@@ -65,7 +62,7 @@ namespace CATHODE.Commands
             if (x.entryCountREDS != y.entryCountREDS) return false;
             if (x.unknownInteger1 != y.unknownInteger1) return false;
             if (x.unknownInteger2 != y.unknownInteger2) return false;
-            if (x.nodeID != y.nodeID) return false;
+            if (x.entityID != y.entityID) return false;
 
             return true;
         }
@@ -93,31 +90,31 @@ namespace CATHODE.Commands
         //For type UNKNOWN_REFERENCE & others
         public int unknownInteger1;
         public int unknownInteger2;
-        public cGUID nodeID;
+        public cGUID entityID;
     }
 
-    /* A node in a flowgraph */
+    /* An entity in a composite */
     [Serializable]
     public class CathodeEntity : IComparable<CathodeEntity>
     {
         public CathodeEntity(cGUID id)
         {
-            nodeID = id;
+            shortGUID = id;
         }
         
-        public cGUID nodeID; //Translates to string in COMMANDS.BIN dump
+        public cGUID shortGUID; //Translates to string in COMMANDS.BIN dump
         public EntityVariant variant = EntityVariant.NOT_SETUP;
 
-        public List<CathodeNodeLink> childLinks = new List<CathodeNodeLink>();
+        public List<CathodeEntityLink> childLinks = new List<CathodeEntityLink>();
         public List<CathodeLoadedParameter> parameters = new List<CathodeLoadedParameter>();
         public List<CathodeResourceReference> resources = new List<CathodeResourceReference>();
 
         public int CompareTo(CathodeEntity other)
         {
-            int nodeIDTotalThis = nodeID.val[0] + nodeID.val[1] + nodeID.val[2] + nodeID.val[3];
-            int nodeIDTotalOther = other.nodeID.val[0] + other.nodeID.val[1] + other.nodeID.val[2] + other.nodeID.val[3];
-            if (nodeIDTotalThis > nodeIDTotalOther) return 1;
-            else if (nodeIDTotalThis == nodeIDTotalOther) return 0;
+            int TotalThis = shortGUID.val[0] + shortGUID.val[1] + shortGUID.val[2] + shortGUID.val[3];
+            int TotalOther = other.shortGUID.val[0] + other.shortGUID.val[1] + other.shortGUID.val[2] + other.shortGUID.val[3];
+            if (TotalThis > TotalOther) return 1;
+            else if (TotalThis == TotalOther) return 0;
             return -1;
         }
     }
@@ -140,7 +137,7 @@ namespace CATHODE.Commands
         public CAGEAnimation(cGUID id) : base(id) { function = Utilities.GenerateGUID("CAGEAnimation"); }
         public List<CathodeParameterKeyframeHeader> keyframeHeaders = new List<CathodeParameterKeyframeHeader>();
         public List<CathodeParameterKeyframe> keyframeData = new List<CathodeParameterKeyframe>();
-        public List<TEMP_CAGEAnimationExtraDataHolder3> paramsData3 = new List<TEMP_CAGEAnimationExtraDataHolder3>();
+        public List<TEMP_CAGEAnimationExtraDataHolder3> paramsData3 = new List<TEMP_CAGEAnimationExtraDataHolder3>(); //events?
     }
     [Serializable]
     public class TriggerSequence : FunctionEntity
@@ -153,7 +150,7 @@ namespace CATHODE.Commands
     public class ProxyEntity : CathodeEntity
     {
         public ProxyEntity(cGUID id) : base(id) { variant = EntityVariant.PROXY; }
-        //todo: what does the proxy nodeID translate to? is it a flowgraph id?
+        //todo: what does the proxy nodeID translate to? is it a composite id?
         public cGUID extraId; //todo: what is this?
         public List<cGUID> hierarchy = new List<cGUID>();
     }
@@ -175,13 +172,12 @@ namespace CATHODE.Commands
         NOT_SETUP,
     }
 
-    /* A script flowgraph containing entities */
+    /* A script composite containing entities */
     [Serializable]
-    public class CathodeFlowgraph
+    public class CathodeComposite
     {
-        public cGUID globalID;  //cGUID generated from flowgraph name
-        public cGUID nodeID;    //The id when this flowgraph is used as a prefab node in another flowgraph
-        public string name = ""; //The string name of the flowgraph
+        public cGUID shortGUID;  //The id when this composite is used as an entity in another composite
+        public string name = ""; //The string name of the composite
 
         public OffsetPair unknownPair;
 
@@ -193,20 +189,20 @@ namespace CATHODE.Commands
         public List<OverrideEntity> overrides = new List<OverrideEntity>();
         public List<ProxyEntity> proxies = new List<ProxyEntity>();
 
-        public List<CathodeResourceReference> resources = new List<CathodeResourceReference>(); //Resources are per-entity, and also per-flowgraph!
+        public List<CathodeResourceReference> resources = new List<CathodeResourceReference>(); //Resources are per-entity, and also per-composite!
 
-        /* If an entity exists in the flowgraph, return it */
+        /* If an entity exists in the composite, return it */
         public CathodeEntity GetEntityByID(cGUID id)
         {
-            foreach (CathodeEntity entity in datatypes) if (entity.nodeID == id) return entity;
-            foreach (CathodeEntity entity in functions) if (entity.nodeID == id) return entity;
-            foreach (CathodeEntity entity in overrides) if (entity.nodeID == id) return entity;
-            foreach (CathodeEntity entity in proxies) if (entity.nodeID == id) return entity;
-            foreach (CathodeEntity entity in unknowns) if (entity.nodeID == id) return entity;
+            foreach (CathodeEntity entity in datatypes) if (entity.shortGUID == id) return entity;
+            foreach (CathodeEntity entity in functions) if (entity.shortGUID == id) return entity;
+            foreach (CathodeEntity entity in overrides) if (entity.shortGUID == id) return entity;
+            foreach (CathodeEntity entity in proxies) if (entity.shortGUID == id) return entity;
+            foreach (CathodeEntity entity in unknowns) if (entity.shortGUID == id) return entity;
             return null;
         }
 
-        /* Returns a collection of all entities in the flowgraph */
+        /* Returns a collection of all entities in the composite */
         public List<CathodeEntity> GetEntities()
         {
             List<CathodeEntity> toReturn = new List<CathodeEntity>();
@@ -221,11 +217,11 @@ namespace CATHODE.Commands
         /* Sort all entity arrays */
         public void SortEntities()
         {
-            datatypes.OrderBy(o => o.nodeID.ToUInt32());
-            functions.OrderBy(o => o.nodeID.ToUInt32());
-            overrides.OrderBy(o => o.nodeID.ToUInt32());
-            proxies.OrderBy(o => o.nodeID.ToUInt32());
-            unknowns.OrderBy(o => o.nodeID.ToUInt32());
+            datatypes.OrderBy(o => o.shortGUID.ToUInt32());
+            functions.OrderBy(o => o.shortGUID.ToUInt32());
+            overrides.OrderBy(o => o.shortGUID.ToUInt32());
+            proxies.OrderBy(o => o.shortGUID.ToUInt32());
+            unknowns.OrderBy(o => o.shortGUID.ToUInt32());
         }
     }
 }
