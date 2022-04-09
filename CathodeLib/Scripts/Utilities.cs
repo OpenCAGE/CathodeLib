@@ -109,8 +109,8 @@ namespace CATHODE
             Write<T>(stream, aux.ToArray<T>());
         }
 
-        private static Dictionary<string, cGUID> guidCache = new Dictionary<string, cGUID>();
-        public static cGUID GenerateGUID(string _s)
+        private static Dictionary<string, ShortGuid> guidCache = new Dictionary<string, ShortGuid>();
+        public static ShortGuid GenerateGUID(string _s)
         {
             if (guidCache.ContainsKey(_s)) return guidCache[_s];
 
@@ -123,7 +123,7 @@ namespace CATHODE
                 hash1[15], hash1[14], hash1[13], hash1[12] 
             };
             byte[] hash2 = sha1.ComputeHash(Encoding.UTF8.GetBytes(BitConverter.ToString(arrangedHash).Replace("-", string.Empty)));
-            cGUID finalGUID = new cGUID(new byte[] { hash2[0], hash2[1], hash2[2], hash2[3] });
+            ShortGuid finalGUID = new ShortGuid(new byte[] { hash2[0], hash2[1], hash2[2], hash2[3] });
             guidCache.Add(_s, finalGUID);
             return finalGUID;
         }
@@ -214,28 +214,28 @@ namespace CATHODE
     }
 #endif
 
-    /* A unique id assigned to CATHODE objects - actually ShortGuid */
+    /* A unique id assigned to CATHODE objects */
     [Serializable]
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct cGUID : IComparable<cGUID>
+    public struct ShortGuid : IComparable<ShortGuid>
     {
-        public cGUID(float num)
+        public ShortGuid(float num)
         {
             val = BitConverter.GetBytes(num);
         }
-        public cGUID(int num)
+        public ShortGuid(int num)
         {
             val = BitConverter.GetBytes(num);
         }
-        public cGUID(byte[] id)
+        public ShortGuid(byte[] id)
         {
             val = id;
         }
-        public cGUID(BinaryReader reader)
+        public ShortGuid(BinaryReader reader)
         {
             val = reader.ReadBytes(4);
         }
-        public cGUID(string id)
+        public ShortGuid(string id)
         {
             String[] arr = id.Split('-');
             if (arr.Length != 4) throw new Exception("Tried to initialise cGUID without 4-byte ID string.");
@@ -249,27 +249,27 @@ namespace CATHODE
 
         public override bool Equals(object obj)
         {
-            if (!(obj is cGUID)) return false;
-            if (((cGUID)obj).val == null) return this.val == null;
-            if (this.val == null) return ((cGUID)obj).val == null;
-            return ((cGUID)obj).val.SequenceEqual(this.val);
+            if (!(obj is ShortGuid)) return false;
+            if (((ShortGuid)obj).val == null) return this.val == null;
+            if (this.val == null) return ((ShortGuid)obj).val == null;
+            return ((ShortGuid)obj).val.SequenceEqual(this.val);
         }
-        public static bool operator ==(cGUID x, cGUID y)
+        public static bool operator ==(ShortGuid x, ShortGuid y)
         {
             if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
             if (x.val == null) return y.val == null;
             if (y.val == null) return x.val == null;
             return x.val.SequenceEqual(y.val);
         }
-        public static bool operator !=(cGUID x, cGUID y)
+        public static bool operator !=(ShortGuid x, ShortGuid y)
         {
             return !x.val.SequenceEqual(y.val);
         }
-        public static bool operator ==(cGUID x, string y)
+        public static bool operator ==(ShortGuid x, string y)
         {
             return x.ToString() == y;
         }
-        public static bool operator !=(cGUID x, string y)
+        public static bool operator !=(ShortGuid x, string y)
         {
             return x.ToString() != y;
         }
@@ -278,7 +278,7 @@ namespace CATHODE
             return BitConverter.ToInt32(val, 0);
         }
 
-        public int CompareTo(cGUID x)
+        public int CompareTo(ShortGuid x)
         {
             if (x == null) return 0;
             if (x.val == null && val != null) return 0;
