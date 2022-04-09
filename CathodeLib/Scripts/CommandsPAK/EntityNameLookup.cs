@@ -10,13 +10,13 @@ using System.Text;
 namespace CATHODE.Commands
 {
     //This should be initialised per-commandspak, and serves as a helpful extension to manage entity & composite names
-    public class CompositeNameLookup
+    public class EntityNameLookup
     {
         private CommandsPAK commandsPAK;
         private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> vanilla_composites;
         private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> custom_composites;
 
-        public CompositeNameLookup(CommandsPAK commands)
+        public EntityNameLookup(CommandsPAK commands)
         {
             commandsPAK = commands;
             commandsPAK.OnSaved += SaveCustomNames;

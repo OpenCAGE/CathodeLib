@@ -89,5 +89,15 @@ namespace CathodeLib.Properties {
                 return ((byte[])(obj));
             }
         }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Byte[].
+        /// </summary>
+        internal static byte[] composite_paths {
+            get {
+                object obj = ResourceManager.GetObject("composite_paths", resourceCulture);
+                return ((byte[])(obj));
+            }
+        }
     }
 }

@@ -30,6 +30,7 @@
     <None Remove="Resources\NodeDBs\cathode_id_map.bin" />
     <None Remove="Resources\NodeDBs\cathode_id_map_DUMP_ONLY.bin" />
     <None Remove="Resources\NodeDBs\composite_entity_names.bin" />
+    <None Remove="Resources\NodeDBs\composite_paths.bin" />
     <None Remove="Resources\NodeDBs\node_friendly_names.bin" />
   </ItemGroup>
 
@@ -41,6 +42,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Resources\NodeDBs\composite_entity_names.bin" />
+    <EmbeddedResource Include="Resources\NodeDBs\composite_paths.bin" />
   </ItemGroup>
 
   <ItemGroup>

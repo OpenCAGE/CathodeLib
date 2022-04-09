@@ -1,3 +1,6 @@
+#define DO_PRETTY_COMPOSITES
+
+using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -751,6 +754,10 @@ namespace CATHODE.Commands
                 //Read script ID and string name
                 reader.BaseStream.Position = (scriptStartOffset * 4) + 4;
                 composite.name = Utilities.ReadString(reader);
+#if DO_PRETTY_COMPOSITES
+                string prettyPath = CompositePathDB.GetPrettyPathForComposite(composite.shortGUID);
+                if (prettyPath != "") composite.name = prettyPath;
+#endif
                 Utilities.Align(reader, 4);
 
                 //Pull data from those offsets
