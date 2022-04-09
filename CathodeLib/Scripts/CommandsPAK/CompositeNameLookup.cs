@@ -13,7 +13,7 @@ namespace CATHODE.Commands
     public class CompositeNameLookup
     {
         private CommandsPAK commandsPAK;
-        private Dictionary<ShortGuid, List<BinEntity>> composites = new Dictionary<ShortGuid, List<BinEntity>>();
+        private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> composites;
 
         public CompositeNameLookup(CommandsPAK commands)
         {
@@ -22,28 +22,28 @@ namespace CATHODE.Commands
 
             LoadVanillaNames();
             LoadCustomNames();
-
-            //TODO: apply PATH here?
         }
 
 
         /* Get the name of an entity contained within a composite */
         public string GetEntityName(ShortGuid compositeID, ShortGuid entityID)
         {
-            return GetEntity(compositeID, entityID).name;
+            if (!composites.ContainsKey(compositeID) || !composites[compositeID].ContainsKey(entityID))
+                return entityID.ToString();
+
+            return composites[compositeID][entityID];
         }
 
         /* Set the name of an entity contained within a composite */
         public void SetEntityName(ShortGuid compositeID, ShortGuid entityID, string name)
         {
-            GetEntity(compositeID, entityID).SetNewName(name);
+            composites[compositeID][entityID] = name;
         }
 
         /* Clear the name of an entity contained within a composite */
         public void ClearEntityName(ShortGuid compositeID, ShortGuid entityID)
         {
-            if (!composites.ContainsKey(compositeID)) return;
-            composites[compositeID].Remove(composites[compositeID].FirstOrDefault(o => o.id == entityID));
+            composites[compositeID].Remove(entityID);
         }
 
 
@@ -51,7 +51,7 @@ namespace CATHODE.Commands
         private void LoadVanillaNames()
         {
             BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.composite_entity_names));
-            ConsumeDatabase(reader, true);
+            ConsumeDatabase(reader);
             reader.Close();
         }
 
@@ -72,7 +72,7 @@ namespace CATHODE.Commands
                 reader.Close();
                 return;
             }
-            ConsumeDatabase(reader, false);
+            ConsumeDatabase(reader);
             reader.Close();
         }
 
@@ -81,57 +81,25 @@ namespace CATHODE.Commands
         {
             Stream writer = File.OpenWrite(commandsPAK.Filepath);
             writer.Position = writer.Length;
-            new BinaryFormatter().Serialize(writer, composites);
+            writer.Write((char)0xAB);
             writer.Close();
         }
 
-        private void ConsumeDatabase(BinaryReader reader, bool containsPath)
+        /* Consume our stored entity info */
+        private void ConsumeDatabase(BinaryReader reader)
         {
             int compCount = reader.ReadInt32();
+            composites = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>(compCount);
             for (int i = 0; i < compCount; i++)
             {
                 ShortGuid compositeID = Utilities.Consume<ShortGuid>(reader);
-                if (containsPath) reader.ReadString();
                 int entityCount = reader.ReadInt32();
-                List<BinEntity> entities = new List<BinEntity>(entityCount);
+                composites.Add(compositeID, new Dictionary<ShortGuid, string>(entityCount));
                 for (int x = 0; x < entityCount; x++)
                 {
-                    BinEntity entity = new BinEntity();
-                    entity.id = Utilities.Consume<ShortGuid>(reader);
-                    entity.name = reader.ReadString();
-                    entities.Add(entity);
+                    ShortGuid entityID = Utilities.Consume<ShortGuid>(reader);
+                    composites[compositeID].Add(entityID, reader.ReadString());
                 }
-                composites.Add(compositeID, entities);
-            }
-        }
-
-        /* Get an entity info object */
-        private BinEntity GetEntity(ShortGuid compositeID, ShortGuid entityID)
-        {
-            if (!composites.ContainsKey(compositeID))
-                composites.Add(compositeID, new List<BinEntity>());
-
-            BinEntity entity = composites[compositeID].FirstOrDefault(o => o.id == entityID);
-            if (entity.name == null)
-            {
-                entity = new BinEntity();
-                entity.id = entityID;
-                entity.name = entityID.ToString();
-                composites[compositeID].Add(entity);
-            }
-            return entity;
-        }
-
-        [Serializable]
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        private struct BinEntity
-        {
-            public ShortGuid id;
-            public string name;
-
-            public void SetNewName(string _n)
-            {
-                name = _n;
             }
         }
     }
