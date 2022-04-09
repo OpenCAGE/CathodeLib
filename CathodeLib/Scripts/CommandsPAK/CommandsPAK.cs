@@ -35,6 +35,9 @@ namespace CATHODE.Commands
 
     public class CommandsPAK
     {
+        public Action OnLoaded;
+        public Action OnSaved;
+
         /* Load and parse the COMMANDS.PAK */
         public CommandsPAK(string pathToPak)
         {
@@ -605,6 +608,7 @@ namespace CATHODE.Commands
             writer.Write(_composites.Count);
 
             writer.Close();
+            OnSaved?.Invoke();
         }
 
         /* Filter down a list of parameters to contain only unique entries */
@@ -1106,6 +1110,7 @@ namespace CATHODE.Commands
             _composites = composites.ToList<CathodeComposite>();
 
             reader.Close();
+            OnLoaded?.Invoke();
             return true;
         }
         #endregion

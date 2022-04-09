@@ -35,57 +35,8 @@ namespace CathodeLib
 
         static EntityDB()
         {
-#if UNITY_EDITOR || UNITY_STANDALONE
-            lookup_shortguid = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_generic_lut.bin")).Cast<ShortGUIDDescriptor>().ToList(); //Names for entity types, parameters, enums, etc from EXE
-            lookup_enum = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_enum_lut.bin")).Cast<EnumDescriptor>().ToList(); //Correctly formatted enum list from EXE
-            lookup_composite = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_nodename_lut.bin")).Cast<ShortGUIDDescriptor>().ToList(); //Names for unique entities from commands BIN
-#else
             lookup_enum = ReadDB(Properties.Resources.cathode_enum_lut, DatabaseType.ENUM_LOOKUP).Cast<EnumDescriptor>().ToList(); //Correctly formatted enum list from EXE
-            lookup_composite = ReadDB(Properties.Resources.composite_entity_names, DatabaseType.COMPOSITE_LOOKUP).Cast<ShortGuidDescriptor>().ToList(); //Names for unique entities from commands BIN
-#endif
             SetupEntityParameterList();
-        }
-
-        //Check the CATHODE data dump for a corresponding name
-        public static string GetCathodeName(ShortGuid id)
-        {
-            if (id.val == null) return "";
-            string id_string = id.ToString();
-            for (int i = 0; i < lookup_shortguid.Count; i++) if (lookup_shortguid[i].ID_cachedstring == id_string) return lookup_shortguid[i].Description;
-            return id.ToString();
-        }
-        public static string GetCathodeName(ShortGuid id, CommandsPAK pak) //This is performed separately to be able to remap entities that are composites
-        {
-            if (id.val == null) return "";
-            string id_string = id.ToString();
-            for (int i = 0; i < lookup_shortguid.Count; i++) if (lookup_shortguid[i].ID_cachedstring == id_string) return lookup_shortguid[i].Description;
-            CathodeComposite composite = pak.GetComposite(id); if (composite == null) return id.ToString();
-            return composite.name;
-        }
-
-        //Reverse CATHODE name check
-        public static ShortGuid GetCathodeGUID(string text)
-        {
-            ShortGuidDescriptor thisDesc = lookup_shortguid.FirstOrDefault(o => o.Description == text);
-            if (thisDesc == null) return new ShortGuid();
-            return thisDesc.ID;
-        }
-
-        //Check the COMMANDS.BIN dump for entity in-editor names
-        public static string GetEditorName(ShortGuid id)
-        {
-            if (id.val == null) return "";
-            string id_string = id.ToString();
-            for (int i = 0; i < lookup_composite.Count; i++) if (lookup_composite[i].ID_cachedstring == id_string) return lookup_composite[i].Description;
-            return id.ToString();
-        }
-
-        //Reverse editor name check
-        public static ShortGuid GetEditorGUID(string text)
-        {
-            ShortGuidDescriptor thisDesc = lookup_composite.FirstOrDefault(o => o.Description == text);
-            if (thisDesc == null) return new ShortGuid();
-            return thisDesc.ID;
         }
 
         //Check the formatted enum dump for content
@@ -931,9 +882,7 @@ namespace CathodeLib
             entity_parameters.Add("ZoneLoaded", new string[] { "on_loaded", "on_unloaded" });
         }
 
-        private static List<ShortGuidDescriptor> lookup_shortguid;
         private static List<EnumDescriptor> lookup_enum;
-        private static List<ShortGuidDescriptor> lookup_composite;
         private static Dictionary<string, string[]> entity_parameters = new Dictionary<string, string[]>();
     }
 }

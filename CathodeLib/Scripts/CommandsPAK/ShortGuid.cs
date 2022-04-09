@@ -13,6 +13,8 @@ namespace CATHODE.Commands
         private static Dictionary<string, ShortGuid> guidCache = new Dictionary<string, ShortGuid>();
         private static Dictionary<ShortGuid, string> guidCacheReversed = new Dictionary<ShortGuid, string>();
 
+        //TODO: need to store generated guids to file
+
         /* Pull in strings we know are cached as ShortGuid in Cathode */
         public ShortGuidUtils()
         {
@@ -44,15 +46,12 @@ namespace CATHODE.Commands
         }
 
         /* Attempts to look up the string for a given ShortGuid */
-        public static bool FindString(ShortGuid guid, out string value)
+        public static string FindString(ShortGuid guid)
         {
             if (!guidCacheReversed.ContainsKey(guid))
-            {
-                value = guid.ToString();
-                return false;
-            }
-            value = guidCacheReversed[guid];
-            return true;
+                return guid.ToString();
+
+            return guidCacheReversed[guid];
         }
 
         /* Cache a pre-generated ShortGuid */
