@@ -13,7 +13,8 @@ namespace CATHODE.Commands
     public class CompositeNameLookup
     {
         private CommandsPAK commandsPAK;
-        private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> composites;
+        private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> vanilla_composites;
+        private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> custom_composites;
 
         public CompositeNameLookup(CommandsPAK commands)
         {
@@ -28,22 +29,30 @@ namespace CATHODE.Commands
         /* Get the name of an entity contained within a composite */
         public string GetEntityName(ShortGuid compositeID, ShortGuid entityID)
         {
-            if (!composites.ContainsKey(compositeID) || !composites[compositeID].ContainsKey(entityID))
-                return entityID.ToString();
-
-            return composites[compositeID][entityID];
+            if (custom_composites.ContainsKey(compositeID) && custom_composites[compositeID].ContainsKey(entityID))
+                return custom_composites[compositeID][entityID];
+            if (vanilla_composites.ContainsKey(compositeID) && vanilla_composites[compositeID].ContainsKey(entityID))
+                return vanilla_composites[compositeID][entityID];
+            return entityID.ToString();
         }
 
         /* Set the name of an entity contained within a composite */
         public void SetEntityName(ShortGuid compositeID, ShortGuid entityID, string name)
         {
-            composites[compositeID][entityID] = name;
+            if (!custom_composites.ContainsKey(compositeID))
+                custom_composites.Add(compositeID, new Dictionary<ShortGuid, string>());
+
+            if (!custom_composites[compositeID].ContainsKey(entityID))
+                custom_composites[compositeID].Add(entityID, name);
+            else
+                custom_composites[compositeID][entityID] = name;
         }
 
         /* Clear the name of an entity contained within a composite */
         public void ClearEntityName(ShortGuid compositeID, ShortGuid entityID)
         {
-            composites[compositeID].Remove(entityID);
+            if (custom_composites.ContainsKey(compositeID))
+                vanilla_composites[compositeID].Remove(entityID);
         }
 
 
@@ -51,7 +60,7 @@ namespace CATHODE.Commands
         private void LoadVanillaNames()
         {
             BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.composite_entity_names));
-            ConsumeDatabase(reader);
+            vanilla_composites = ConsumeDatabase(reader);
             reader.Close();
         }
 
@@ -62,34 +71,42 @@ namespace CATHODE.Commands
             reader.BaseStream.Position = 20;
             int end_of_pak = (reader.ReadInt32() * 4) + (reader.ReadInt32() * 4);
             reader.BaseStream.Position = end_of_pak;
-            if ((int)reader.BaseStream.Length - end_of_pak == 0)
+            if ((int)reader.BaseStream.Length - end_of_pak == 0 || reader.ReadByte() != (byte)255)
             {
+                //0xAB above is used to "version" our write at the end of the file, to drop support for the old methods
+                custom_composites = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>();
                 reader.Close();
                 return;
             }
-            if (reader.ReadByte() != 0xAB) //This is used to "version" our write at the end of the file
-            {
-                reader.Close();
-                return;
-            }
-            ConsumeDatabase(reader);
+            custom_composites = ConsumeDatabase(reader);
             reader.Close();
         }
 
         /* Write non-vanilla entity names to the CommandsPAK */
         private void SaveCustomNames()
         {
-            Stream writer = File.OpenWrite(commandsPAK.Filepath);
-            writer.Position = writer.Length;
-            writer.Write((char)0xAB);
+            BinaryWriter writer = new BinaryWriter(File.OpenWrite(commandsPAK.Filepath));
+            writer.BaseStream.Position = writer.BaseStream.Length;
+            writer.Write((byte)255);
+            writer.Write(custom_composites.Count);
+            foreach (KeyValuePair<ShortGuid, Dictionary<ShortGuid, string>> composite in custom_composites)
+            {
+                Utilities.Write<ShortGuid>(writer, composite.Key);
+                writer.Write(composite.Value.Count);
+                foreach (KeyValuePair<ShortGuid, string> entity in composite.Value)
+                {
+                    Utilities.Write<ShortGuid>(writer, entity.Key);
+                    writer.Write(entity.Value);
+                }
+            }
             writer.Close();
         }
 
         /* Consume our stored entity info */
-        private void ConsumeDatabase(BinaryReader reader)
+        private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> ConsumeDatabase(BinaryReader reader)
         {
             int compCount = reader.ReadInt32();
-            composites = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>(compCount);
+            Dictionary<ShortGuid, Dictionary<ShortGuid, string>> composites = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>(compCount);
             for (int i = 0; i < compCount; i++)
             {
                 ShortGuid compositeID = Utilities.Consume<ShortGuid>(reader);
@@ -101,6 +118,8 @@ namespace CATHODE.Commands
                     composites[compositeID].Add(entityID, reader.ReadString());
                 }
             }
+            Console.WriteLine("Loaded names for " + compCount + " composites!");
+            return composites;
         }
     }
 }
