@@ -27,16 +27,21 @@ namespace CathodeLib
 
     public class EntityDB
     {
+        private enum DatabaseType
+        {
+            ENUM_LOOKUP,
+            COMPOSITE_LOOKUP,
+        }
+
         static EntityDB()
         {
 #if UNITY_EDITOR || UNITY_STANDALONE
-            cathode_id_map = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_generic_lut.bin")).Cast<ShortGUIDDescriptor>().ToList(); //Names for entity types, parameters, enums, etc from EXE
-            cathode_enum_map = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_enum_lut.bin")).Cast<EnumDescriptor>().ToList(); //Correctly formatted enum list from EXE
-            entity_friendly_names = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_nodename_lut.bin")).Cast<ShortGUIDDescriptor>().ToList(); //Names for unique entities from commands BIN
+            lookup_shortguid = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_generic_lut.bin")).Cast<ShortGUIDDescriptor>().ToList(); //Names for entity types, parameters, enums, etc from EXE
+            lookup_enum = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_enum_lut.bin")).Cast<EnumDescriptor>().ToList(); //Correctly formatted enum list from EXE
+            lookup_composite = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_nodename_lut.bin")).Cast<ShortGUIDDescriptor>().ToList(); //Names for unique entities from commands BIN
 #else
-            cathode_id_map = ReadDB(CathodeLib.Properties.Resources.cathode_generic_lut).Cast<ShortGuidDescriptor>().ToList(); //Names for entity types, parameters, enums, etc from EXE
-            cathode_enum_map = ReadDB(CathodeLib.Properties.Resources.cathode_enum_lut).Cast<EnumDescriptor>().ToList(); //Correctly formatted enum list from EXE
-            entity_friendly_names = ReadDB(CathodeLib.Properties.Resources.cathode_nodename_lut).Cast<ShortGuidDescriptor>().ToList(); //Names for unique entities from commands BIN
+            lookup_enum = ReadDB(Properties.Resources.cathode_enum_lut, DatabaseType.ENUM_LOOKUP).Cast<EnumDescriptor>().ToList(); //Correctly formatted enum list from EXE
+            lookup_composite = ReadDB(Properties.Resources.composite_entity_names, DatabaseType.COMPOSITE_LOOKUP).Cast<ShortGuidDescriptor>().ToList(); //Names for unique entities from commands BIN
 #endif
             SetupEntityParameterList();
         }
@@ -46,14 +51,14 @@ namespace CathodeLib
         {
             if (id.val == null) return "";
             string id_string = id.ToString();
-            for (int i = 0; i < cathode_id_map.Count; i++) if (cathode_id_map[i].ID_cachedstring == id_string) return cathode_id_map[i].Description;
+            for (int i = 0; i < lookup_shortguid.Count; i++) if (lookup_shortguid[i].ID_cachedstring == id_string) return lookup_shortguid[i].Description;
             return id.ToString();
         }
         public static string GetCathodeName(ShortGuid id, CommandsPAK pak) //This is performed separately to be able to remap entities that are composites
         {
             if (id.val == null) return "";
             string id_string = id.ToString();
-            for (int i = 0; i < cathode_id_map.Count; i++) if (cathode_id_map[i].ID_cachedstring == id_string) return cathode_id_map[i].Description;
+            for (int i = 0; i < lookup_shortguid.Count; i++) if (lookup_shortguid[i].ID_cachedstring == id_string) return lookup_shortguid[i].Description;
             CathodeComposite composite = pak.GetComposite(id); if (composite == null) return id.ToString();
             return composite.name;
         }
@@ -61,7 +66,7 @@ namespace CathodeLib
         //Reverse CATHODE name check
         public static ShortGuid GetCathodeGUID(string text)
         {
-            ShortGuidDescriptor thisDesc = cathode_id_map.FirstOrDefault(o => o.Description == text);
+            ShortGuidDescriptor thisDesc = lookup_shortguid.FirstOrDefault(o => o.Description == text);
             if (thisDesc == null) return new ShortGuid();
             return thisDesc.ID;
         }
@@ -71,14 +76,14 @@ namespace CathodeLib
         {
             if (id.val == null) return "";
             string id_string = id.ToString();
-            for (int i = 0; i < entity_friendly_names.Count; i++) if (entity_friendly_names[i].ID_cachedstring == id_string) return entity_friendly_names[i].Description;
+            for (int i = 0; i < lookup_composite.Count; i++) if (lookup_composite[i].ID_cachedstring == id_string) return lookup_composite[i].Description;
             return id.ToString();
         }
 
         //Reverse editor name check
         public static ShortGuid GetEditorGUID(string text)
         {
-            ShortGuidDescriptor thisDesc = entity_friendly_names.FirstOrDefault(o => o.Description == text);
+            ShortGuidDescriptor thisDesc = lookup_composite.FirstOrDefault(o => o.Description == text);
             if (thisDesc == null) return new ShortGuid();
             return thisDesc.ID;
         }
@@ -86,7 +91,7 @@ namespace CathodeLib
         //Check the formatted enum dump for content
         public static EnumDescriptor GetEnum(ShortGuid id)
         {
-            return cathode_enum_map.FirstOrDefault(o => o.ID == id);
+            return lookup_enum.FirstOrDefault(o => o.ID == id);
         }
 
         //Get the known-valid params for a entity (this list is incomplete, and needs populating with default vals)
@@ -97,28 +102,15 @@ namespace CathodeLib
         }
 
         //Read a generic entity database file
-        private static List<EntityDBDescriptor> ReadDB(byte[] db_content)
+        private static List<EntityDBDescriptor> ReadDB(byte[] db_content, DatabaseType db_type)
         {
             List<EntityDBDescriptor> toReturn = new List<EntityDBDescriptor>();
-
-            MemoryStream readerStream = new MemoryStream(db_content);
-            BinaryReader reader = new BinaryReader(readerStream);
-            int type = reader.ReadChar(); //0 = normal db, 1 = enum db
-            switch (type)
+            BinaryReader reader = new BinaryReader(new MemoryStream(db_content));
+            switch (db_type)
             {
-                case 0:
+                case DatabaseType.ENUM_LOOKUP:
                 {
-                    while (reader.BaseStream.Position < reader.BaseStream.Length)
-                    {
-                        ShortGuidDescriptor thisDesc = new ShortGuidDescriptor();
-                        thisDesc.ID = new ShortGuid(reader.ReadBytes(4));
-                        thisDesc.Description = reader.ReadString();
-                        toReturn.Add(thisDesc);
-                    }
-                    break;
-                }
-                case 1:
-                {
+                    reader.BaseStream.Position += 1;
                     while (reader.BaseStream.Position < reader.BaseStream.Length)
                     {
                         EnumDescriptor thisDesc = new EnumDescriptor();
@@ -132,7 +124,6 @@ namespace CathodeLib
                 }
             }
             reader.Close();
-
             for (int i = 0; i < toReturn.Count; i++) toReturn[i].ID_cachedstring = toReturn[i].ID.ToString();
             return toReturn;
         }
@@ -940,9 +931,9 @@ namespace CathodeLib
             entity_parameters.Add("ZoneLoaded", new string[] { "on_loaded", "on_unloaded" });
         }
 
-        private static List<ShortGuidDescriptor> cathode_id_map;
-        private static List<EnumDescriptor> cathode_enum_map;
-        private static List<ShortGuidDescriptor> entity_friendly_names;
+        private static List<ShortGuidDescriptor> lookup_shortguid;
+        private static List<EnumDescriptor> lookup_enum;
+        private static List<ShortGuidDescriptor> lookup_composite;
         private static Dictionary<string, string[]> entity_parameters = new Dictionary<string, string[]>();
     }
 }

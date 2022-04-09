@@ -143,7 +143,7 @@ namespace CATHODE.Commands
                         stringStartRaw[3] = 0x80; 
                         writer.Write(stringStartRaw);
                         string str = ((CathodeString)parameters[i]).value;
-                        writer.Write(Utilities.GenerateGUID(str).val);
+                        writer.Write(ShortGuidUtils.Generate(str).val);
                         for (int x = 0; x < str.Length; x++) writer.Write(str[x]);
                         writer.Write((char)0x00);
                         Utilities.Align(writer, 4);
@@ -189,7 +189,7 @@ namespace CATHODE.Commands
             {
                 int scriptStartPos = (int)writer.BaseStream.Position / 4;
 
-                Utilities.Write<ShortGuid>(writer, Utilities.GenerateGUID(_composites[i].name));
+                Utilities.Write<ShortGuid>(writer, ShortGuidUtils.Generate(_composites[i].name));
                 for (int x = 0; x < _composites[i].name.Length; x++) writer.Write(_composites[i].name[x]);
                 writer.Write((char)0x00);
                 Utilities.Align(writer, 4);
@@ -221,7 +221,7 @@ namespace CATHODE.Commands
 
                 //Reconstruct resources
                 List<CathodeResourceReference> resourceReferences = new List<CathodeResourceReference>();
-                ShortGuid resourceParamID = Utilities.GenerateGUID("resource");
+                ShortGuid resourceParamID = ShortGuidUtils.Generate("resource");
                 for (int x = 0; x < ents.Count; x++)
                 {
                     for (int y = 0; y < ents[x].resources.Count; y++)
@@ -887,10 +887,6 @@ namespace CATHODE.Commands
                                         resource_ref.unknownInteger2 = reader.ReadInt32(); //always zero/-1?
                                         break;
                                 }
-                                    if (resource_ref.entryIndexREDS == 20 && resource_ref.entryCountREDS == 1)
-                                    {
-                                        string breakhere = "";
-                                    }
                                 resourceRefs.Add(resource_ref);
                                 break;
                             }
@@ -1064,7 +1060,7 @@ namespace CATHODE.Commands
 
                 //Remap resources (TODO: This can be optimised)
                 List<CathodeEntity> ents = composite.GetEntities();
-                ShortGuid resParamID = Utilities.GenerateGUID("resource");
+                ShortGuid resParamID = ShortGuidUtils.Generate("resource");
                 //Check to see if this resource applies to an ENTITY
                 List<CathodeResourceReference> resourceRefsCulled = new List<CathodeResourceReference>();
                 for (int x = 0; x < resourceRefs.Count; x++)

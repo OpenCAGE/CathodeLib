@@ -20,7 +20,7 @@ namespace CATHODE.Commands
             if (_functionTypeLUT.Count != 0) return;
 
             foreach (CathodeFunctionType functionType in Enum.GetValues(typeof(CathodeFunctionType)))
-                _functionTypeLUT.Add(Utilities.GenerateGUID(functionType.ToString()), functionType);
+                _functionTypeLUT.Add(ShortGuidUtils.Generate(functionType.ToString()), functionType);
         }
         public static CathodeFunctionType GetFunctionType(byte[] tag)
         {
@@ -46,23 +46,23 @@ namespace CATHODE.Commands
         {
             if (_dataTypeLUT.Count != 0) return;
 
-            _dataTypeLUT.Add(Utilities.GenerateGUID("bool"), CathodeDataType.BOOL);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("int"), CathodeDataType.INTEGER);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("float"), CathodeDataType.FLOAT);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("String"), CathodeDataType.STRING);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("FilePath"), CathodeDataType.FILEPATH);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("SplineData"), CathodeDataType.SPLINE_DATA);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("Direction"), CathodeDataType.DIRECTION);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("Position"), CathodeDataType.POSITION);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("Enum"), CathodeDataType.ENUM);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("ShortGuid"), CathodeDataType.SHORT_GUID);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("Object"), CathodeDataType.OBJECT);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("ZonePtr"), CathodeDataType.ZONE_PTR);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("ZoneLinkPtr"), CathodeDataType.ZONE_LINK_PTR);
-            _dataTypeLUT.Add(Utilities.GenerateGUID(""), CathodeDataType.NO_TYPE);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("Marker"), CathodeDataType.MARKER);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("Character"), CathodeDataType.CHARACTER);
-            _dataTypeLUT.Add(Utilities.GenerateGUID("Camera"), CathodeDataType.CAMERA);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("bool"), CathodeDataType.BOOL);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("int"), CathodeDataType.INTEGER);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("float"), CathodeDataType.FLOAT);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("String"), CathodeDataType.STRING);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("FilePath"), CathodeDataType.FILEPATH);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("SplineData"), CathodeDataType.SPLINE_DATA);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("Direction"), CathodeDataType.DIRECTION);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("Position"), CathodeDataType.POSITION);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("Enum"), CathodeDataType.ENUM);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("ShortGuid"), CathodeDataType.SHORT_GUID);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("Object"), CathodeDataType.OBJECT);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("ZonePtr"), CathodeDataType.ZONE_PTR);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("ZoneLinkPtr"), CathodeDataType.ZONE_LINK_PTR);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate(""), CathodeDataType.NO_TYPE);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("Marker"), CathodeDataType.MARKER);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("Character"), CathodeDataType.CHARACTER);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("Camera"), CathodeDataType.CAMERA);
         }
         public static CathodeDataType GetDataType(byte[] tag)
         {
@@ -89,7 +89,7 @@ namespace CATHODE.Commands
             if (_resourceReferenceTypeLUT.Count != 0) return;
 
             foreach (CathodeResourceReferenceType referenceType in Enum.GetValues(typeof(CathodeResourceReferenceType)))
-                _resourceReferenceTypeLUT.Add(Utilities.GenerateGUID(referenceType.ToString()), referenceType);
+                _resourceReferenceTypeLUT.Add(ShortGuidUtils.Generate(referenceType.ToString()), referenceType);
         }
         public static CathodeResourceReferenceType GetResourceEntryType(byte[] tag)
         {

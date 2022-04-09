@@ -7,6 +7,7 @@ using UnityEngine;
 #else
 using System.Numerics;
 #endif
+using CATHODE.Commands;
 
 namespace CATHODE.Misc
 {

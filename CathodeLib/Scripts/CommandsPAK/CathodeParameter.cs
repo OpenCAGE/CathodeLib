@@ -965,7 +965,7 @@ namespace CATHODE.Commands
                     CathodeSpline x_sd = (CathodeSpline)this;
                     string x_sd_s = "";
                     for (int i = 0; i < x_sd.splinePoints.Count; i++) x_sd_s += x_sd.splinePoints[i].position.GetHashCode().ToString();
-                    ShortGuid x_sd_g = Utilities.GenerateGUID(x_sd_s);
+                    ShortGuid x_sd_g = ShortGuidUtils.Generate(x_sd_s);
                     string x_sd_g_s = x_sd_g.ToString();
                     string num4 = "";
                     for (int i = 0; i < x_sd_g_s.Length; i++) num4 += ((int)x_sd_g_s[i]).ToString();

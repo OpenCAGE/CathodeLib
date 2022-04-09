@@ -124,7 +124,7 @@
   <data name="cathode_generic_lut" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\NodeDBs\cathode_generic_lut.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
-  <data name="cathode_nodename_lut" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\NodeDBs\cathode_nodename_lut.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  <data name="composite_entity_names" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\resources\nodedbs\composite_entity_names.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
 </root>

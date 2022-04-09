@@ -134,7 +134,7 @@ namespace CATHODE.Commands
     [Serializable]
     public class CAGEAnimation : FunctionEntity
     {
-        public CAGEAnimation(ShortGuid id) : base(id) { function = Utilities.GenerateGUID("CAGEAnimation"); }
+        public CAGEAnimation(ShortGuid id) : base(id) { function = ShortGuidUtils.Generate("CAGEAnimation"); }
         public List<CathodeParameterKeyframeHeader> keyframeHeaders = new List<CathodeParameterKeyframeHeader>();
         public List<CathodeParameterKeyframe> keyframeData = new List<CathodeParameterKeyframe>();
         public List<TEMP_CAGEAnimationExtraDataHolder3> paramsData3 = new List<TEMP_CAGEAnimationExtraDataHolder3>(); //events?
@@ -142,7 +142,7 @@ namespace CATHODE.Commands
     [Serializable]
     public class TriggerSequence : FunctionEntity
     {
-        public TriggerSequence(ShortGuid id) : base(id) { function = Utilities.GenerateGUID("TriggerSequence"); }
+        public TriggerSequence(ShortGuid id) : base(id) { function = ShortGuidUtils.Generate("TriggerSequence"); }
         public List<TEMP_TriggerSequenceExtraDataHolder1> triggers = new List<TEMP_TriggerSequenceExtraDataHolder1>();
         public List<TEMP_TriggerSequenceExtraDataHolder2> events = new List<TEMP_TriggerSequenceExtraDataHolder2>();
     }
