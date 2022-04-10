@@ -39,11 +39,5 @@ namespace CathodeLib
             }
             return fullPath;
         }
-
-        private struct CompositePath
-        {
-            public ShortGuid id;
-            public string path;
-        }
     }
 }

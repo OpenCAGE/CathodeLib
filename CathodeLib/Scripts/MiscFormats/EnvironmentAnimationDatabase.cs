@@ -12,6 +12,8 @@ namespace CATHODE.Misc
     /* Handles Cathode ENVIRONMENT_ANIMATION.DAT files */
     public class EnvironmentAnimationDatabase
     {
+        //This file is referenced by ANIMATED_MODEL resource type in COMMANDS
+
         private string filepath;
         private EnvironmentAnimationHeader Header;
         private EnvironmentAnimationEntry1[] Entries0;

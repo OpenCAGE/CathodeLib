@@ -120,6 +120,22 @@ namespace CATHODE
             return obj2;
             //obj.MemberwiseClone();
         }
+
+        //Generate a hashed string for use in the animation system (FNV hash)
+        public static uint AnimationHashedString(string str)
+        {
+            uint hash = 0x811c9dc5;
+            uint prime = 0x1000193;
+
+            for (int i = 0; i < str.Length; ++i)
+            {
+                char value = str[i];
+                hash = hash ^ value;
+                hash *= prime;
+            }
+
+            return hash;
+        }
     }
 
 #if !(UNITY_EDITOR || UNITY_STANDALONE)
