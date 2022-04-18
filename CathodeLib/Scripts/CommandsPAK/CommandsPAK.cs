@@ -1,4 +1,4 @@
-#define DO_PRETTY_COMPOSITES
+//#define DO_PRETTY_COMPOSITES
 
 using CathodeLib;
 using System;
