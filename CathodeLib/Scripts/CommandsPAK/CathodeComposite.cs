@@ -143,8 +143,8 @@ namespace CATHODE.Commands
     public class TriggerSequence : FunctionEntity
     {
         public TriggerSequence(ShortGuid id) : base(id) { function = ShortGuidUtils.Generate("TriggerSequence"); }
-        public List<TEMP_TriggerSequenceExtraDataHolder1> triggers = new List<TEMP_TriggerSequenceExtraDataHolder1>();
-        public List<TEMP_TriggerSequenceExtraDataHolder2> events = new List<TEMP_TriggerSequenceExtraDataHolder2>();
+        public List<CathodeTriggerSequenceTrigger> triggers = new List<CathodeTriggerSequenceTrigger>();
+        public List<CathodeTriggerSequenceEvent> events = new List<CathodeTriggerSequenceEvent>();
     }
     [Serializable]
     public class ProxyEntity : CathodeEntity

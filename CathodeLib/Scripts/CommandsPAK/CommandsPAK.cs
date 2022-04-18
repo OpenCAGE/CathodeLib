@@ -1016,7 +1016,7 @@ namespace CATHODE.Commands
                                     int hierarchyOffset = reader.ReadInt32() * 4;
                                     int hierarchyCount = reader.ReadInt32();
 
-                                    TEMP_TriggerSequenceExtraDataHolder1 thisTrigger = new TEMP_TriggerSequenceExtraDataHolder1();
+                                    CathodeTriggerSequenceTrigger thisTrigger = new CathodeTriggerSequenceTrigger();
                                     thisTrigger.timing = reader.ReadSingle();
                                     reader.BaseStream.Position = hierarchyOffset;
                                     thisTrigger.hierarchy = Utilities.ConsumeArray<ShortGuid>(reader, hierarchyCount).ToList<ShortGuid>();
@@ -1027,7 +1027,7 @@ namespace CATHODE.Commands
                                 {
                                     reader.BaseStream.Position = eventsOffset + (z * 12);
 
-                                    TEMP_TriggerSequenceExtraDataHolder2 thisEvent = new TEMP_TriggerSequenceExtraDataHolder2();
+                                    CathodeTriggerSequenceEvent thisEvent = new CathodeTriggerSequenceEvent();
                                     thisEvent.EventID = new ShortGuid(reader);
                                     thisEvent.StartedID = new ShortGuid(reader);
                                     thisEvent.FinishedID = new ShortGuid(reader);
@@ -1264,13 +1264,13 @@ namespace CATHODE.Commands
         public float unk5;
     }
     [Serializable]
-    public class TEMP_TriggerSequenceExtraDataHolder1
+    public class CathodeTriggerSequenceTrigger
     {
         public float timing;
         public List<ShortGuid> hierarchy;
     }
     [Serializable]
-    public class TEMP_TriggerSequenceExtraDataHolder2
+    public class CathodeTriggerSequenceEvent
     {
         public ShortGuid EventID; //Assumed
         public ShortGuid StartedID; //Assumed
