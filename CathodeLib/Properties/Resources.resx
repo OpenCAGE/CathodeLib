@@ -121,13 +121,13 @@
   <data name="cathode_enum_lut" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\NodeDBs\cathode_enum_lut.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
-  <data name="cathode_generic_lut" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\NodeDBs\cathode_generic_lut.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
-  </data>
   <data name="composite_entity_names" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\resources\nodedbs\composite_entity_names.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
   <data name="composite_paths" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\resources\nodedbs\composite_paths.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="entity_parameter_names" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\NodeDBs\entity_parameter_names.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
 </root>

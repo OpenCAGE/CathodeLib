@@ -16,13 +16,11 @@ namespace CATHODE.Commands
         //TODO: need to store generated guids to file
 
         /* Pull in strings we know are cached as ShortGuid in Cathode */
-        public ShortGuidUtils()
+        static ShortGuidUtils()
         {
-            //TODO: re-gen this file with content from the iOS dump
-            BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.cathode_generic_lut));
-            reader.BaseStream.Position += 1;
+            BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.entity_parameter_names));
             while (reader.BaseStream.Position < reader.BaseStream.Length)
-                Cache(new ShortGuid(reader.ReadBytes(4)), reader.ReadString());
+                Cache(new ShortGuid(reader), reader.ReadString());
             reader.Close();
         }
 
@@ -33,6 +31,7 @@ namespace CATHODE.Commands
 
             SHA1Managed sha1 = new SHA1Managed();
             byte[] hash1 = sha1.ComputeHash(Encoding.UTF8.GetBytes(value));
+            //This is referred to as LongGuid - should we make a thing for it?
             byte[] arrangedHash = new byte[] {
                 hash1[3], hash1[2], hash1[1], hash1[0],
                 hash1[7], hash1[6], hash1[5], hash1[4],
@@ -57,6 +56,7 @@ namespace CATHODE.Commands
         /* Cache a pre-generated ShortGuid */
         private static void Cache(ShortGuid guid, string value)
         {
+            Console.WriteLine(value);
             if (guidCache.ContainsKey(value)) return;
             guidCache.Add(value, guid);
             guidCacheReversed.Add(guid, value);

@@ -73,16 +73,6 @@ namespace CathodeLib.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
-        internal static byte[] cathode_generic_lut {
-            get {
-                object obj = ResourceManager.GetObject("cathode_generic_lut", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
         internal static byte[] composite_entity_names {
             get {
                 object obj = ResourceManager.GetObject("composite_entity_names", resourceCulture);
@@ -96,6 +86,16 @@ namespace CathodeLib.Properties {
         internal static byte[] composite_paths {
             get {
                 object obj = ResourceManager.GetObject("composite_paths", resourceCulture);
+                return ((byte[])(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Byte[].
+        /// </summary>
+        internal static byte[] entity_parameter_names {
+            get {
+                object obj = ResourceManager.GetObject("entity_parameter_names", resourceCulture);
                 return ((byte[])(obj));
             }
         }
