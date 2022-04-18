@@ -16,10 +16,11 @@ namespace CATHODE.Commands
         private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> vanilla_composites;
         private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> custom_composites;
 
-        public EntityNameLookup(CommandsPAK commands)
+        public EntityNameLookup(CommandsPAK commands = null)
         {
             commandsPAK = commands;
-            commandsPAK.OnSaved += SaveCustomNames;
+            if (commandsPAK != null) 
+                commandsPAK.OnSaved += SaveCustomNames;
 
             LoadVanillaNames();
             LoadCustomNames();
@@ -60,35 +61,53 @@ namespace CATHODE.Commands
         private void LoadVanillaNames()
         {
             BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.composite_entity_names));
-            vanilla_composites = ConsumeDatabase(reader);
+            vanilla_composites = ConsumeDatabase(reader, reader.ReadInt32());
             reader.Close();
         }
 
         /* Pull non-vanilla entity names from the CommandsPAK */
         private void LoadCustomNames()
         {
+            if (commandsPAK == null) return;
+            int endPos = GetEndOfCommands();
             BinaryReader reader = new BinaryReader(File.OpenRead(commandsPAK.Filepath));
-            reader.BaseStream.Position = 20;
-            int end_of_pak = (reader.ReadInt32() * 4) + (reader.ReadInt32() * 4);
-            reader.BaseStream.Position = end_of_pak;
-            if ((int)reader.BaseStream.Length - end_of_pak == 0 || reader.ReadByte() != (byte)255)
+            reader.BaseStream.Position = endPos;
+            if ((int)reader.BaseStream.Length - endPos == 0 || reader.ReadByte() != (byte)254)
             {
-                //0xAB above is used to "version" our write at the end of the file, to drop support for the old methods
                 custom_composites = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>();
                 reader.Close();
                 return;
             }
-            custom_composites = ConsumeDatabase(reader);
+            reader.BaseStream.Position += 4;
+            int compCount = reader.ReadInt32();
+            reader.BaseStream.Position += 8;
+            custom_composites = ConsumeDatabase(reader, compCount);
             reader.Close();
         }
 
         /* Write non-vanilla entity names to the CommandsPAK */
         private void SaveCustomNames()
         {
+            if (commandsPAK == null) return;
+            int endPos = GetEndOfCommands();
+            //TODO: move this writing functionality into its own thing
             BinaryWriter writer = new BinaryWriter(File.OpenWrite(commandsPAK.Filepath));
-            writer.BaseStream.Position = writer.BaseStream.Length;
-            writer.Write((byte)255);
+            bool hasAlreadyWritten = (int)writer.BaseStream.Length - endPos != 0;
+            int posToJumpBackTo = 0;
+            writer.BaseStream.Position = endPos;
+            writer.Write((byte)254);
+            writer.Write((int)writer.BaseStream.Position + 16);
             writer.Write(custom_composites.Count);
+            if (hasAlreadyWritten)
+            {
+                writer.BaseStream.Position += 8;
+            }
+            else
+            {
+                posToJumpBackTo = (int)writer.BaseStream.Position;
+                writer.Write(0);
+                writer.Write(0);
+            }
             foreach (KeyValuePair<ShortGuid, Dictionary<ShortGuid, string>> composite in custom_composites)
             {
                 Utilities.Write<ShortGuid>(writer, composite.Key);
@@ -99,13 +118,15 @@ namespace CATHODE.Commands
                     writer.Write(entity.Value);
                 }
             }
+            int posToWrite = (int)writer.BaseStream.Position;
+            writer.BaseStream.Position = posToJumpBackTo;
+            writer.Write(posToWrite);
             writer.Close();
         }
 
         /* Consume our stored entity info */
-        private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> ConsumeDatabase(BinaryReader reader)
+        private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> ConsumeDatabase(BinaryReader reader, int compCount)
         {
-            int compCount = reader.ReadInt32();
             Dictionary<ShortGuid, Dictionary<ShortGuid, string>> composites = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>(compCount);
             for (int i = 0; i < compCount; i++)
             {
@@ -120,6 +141,16 @@ namespace CATHODE.Commands
             }
             Console.WriteLine("Loaded names for " + compCount + " composites!");
             return composites;
+        }
+
+        /* Get the position where we start writing our own data */
+        private int GetEndOfCommands()
+        {
+            BinaryReader reader = new BinaryReader(File.OpenRead(commandsPAK.Filepath));
+            reader.BaseStream.Position = 20;
+            int end_of_pak = (reader.ReadInt32() * 4) + (reader.ReadInt32() * 4);
+            reader.Close();
+            return end_of_pak;
         }
     }
 }

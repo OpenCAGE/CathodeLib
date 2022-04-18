@@ -10,24 +10,22 @@ namespace CATHODE.Commands
 {
     public class ShortGuidUtils
     {
-        private static Dictionary<string, ShortGuid> guidCache = new Dictionary<string, ShortGuid>();
-        private static Dictionary<ShortGuid, string> guidCacheReversed = new Dictionary<ShortGuid, string>();
-
-        //TODO: need to store generated guids to file
+        private static ShortGuidTable vanilla = new ShortGuidTable();
+        private static ShortGuidTable custom = new ShortGuidTable();
 
         /* Pull in strings we know are cached as ShortGuid in Cathode */
         static ShortGuidUtils()
         {
             BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.entity_parameter_names));
             while (reader.BaseStream.Position < reader.BaseStream.Length)
-                Cache(new ShortGuid(reader), reader.ReadString());
+                Cache(new ShortGuid(reader), reader.ReadString(), true);
             reader.Close();
         }
 
         /* Generate a ShortGuid to interface with the Cathode scripting system */
         public static ShortGuid Generate(string value)
         {
-            if (guidCache.ContainsKey(value)) return guidCache[value];
+            if (vanilla.cache.ContainsKey(value)) return vanilla.cache[value];
 
             SHA1Managed sha1 = new SHA1Managed();
             byte[] hash1 = sha1.ComputeHash(Encoding.UTF8.GetBytes(value));
@@ -47,19 +45,34 @@ namespace CATHODE.Commands
         /* Attempts to look up the string for a given ShortGuid */
         public static string FindString(ShortGuid guid)
         {
-            if (!guidCacheReversed.ContainsKey(guid))
+            if (!vanilla.cacheReversed.ContainsKey(guid))
                 return guid.ToString();
 
-            return guidCacheReversed[guid];
+            return vanilla.cacheReversed[guid];
         }
 
         /* Cache a pre-generated ShortGuid */
-        private static void Cache(ShortGuid guid, string value)
+        private static void Cache(ShortGuid guid, string value, bool isVanilla = false)
         {
             Console.WriteLine(value);
-            if (guidCache.ContainsKey(value)) return;
-            guidCache.Add(value, guid);
-            guidCacheReversed.Add(guid, value);
+            if (isVanilla)
+            {
+                if (vanilla.cache.ContainsKey(value)) return;
+                vanilla.cache.Add(value, guid);
+                vanilla.cacheReversed.Add(guid, value);
+            }
+            else
+            {
+                if (custom.cache.ContainsKey(value)) return;
+                custom.cache.Add(value, guid);
+                custom.cacheReversed.Add(guid, value);
+            }
+        }
+
+        private class ShortGuidTable
+        {
+            public Dictionary<string, ShortGuid> cache = new Dictionary<string, ShortGuid>();
+            public Dictionary<ShortGuid, string> cacheReversed = new Dictionary<ShortGuid, string>();
         }
     }
 
