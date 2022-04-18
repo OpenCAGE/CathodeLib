@@ -15,43 +15,43 @@ namespace CathodeLib
      * This will probably be expanded over time as required.
      *
     */
-    public class BigEndianUtils
+    public static class BigEndianUtils
     {
-        public int ReadInt32(BinaryReader Reader)
+        public static int ReadInt32(BinaryReader Reader)
         {
             byte[] data = Reader.ReadBytes(4);
             Array.Reverse(data);
             return BitConverter.ToInt32(data, 0);
         }
-        public Int16 ReadInt16(BinaryReader Reader)
+        public static Int16 ReadInt16(BinaryReader Reader)
         {
             var data = Reader.ReadBytes(2);
             Array.Reverse(data);
             return BitConverter.ToInt16(data, 0);
         }
-        public Int64 ReadInt64(BinaryReader Reader)
+        public static Int64 ReadInt64(BinaryReader Reader)
         {
             var data = Reader.ReadBytes(8);
             Array.Reverse(data);
             return BitConverter.ToInt64(data, 0);
         }
-        public UInt32 ReadUInt32(BinaryReader Reader)
+        public static UInt32 ReadUInt32(BinaryReader Reader)
         {
             var data = Reader.ReadBytes(4);
             Array.Reverse(data);
             return BitConverter.ToUInt32(data, 0);
         }
         
-        public byte[] FlipEndian(byte[] ThisEndian)
+        public static byte[] FlipEndian(byte[] ThisEndian)
         {
             Array.Reverse(ThisEndian);
             return ThisEndian;
         }
     }
-    public class ExtraBinaryUtils
+    public static class ExtraBinaryUtils
     {
         //Gets a string from a byte array (at position) by reading chars until a null is hit
-        public string GetStringFromByteArray(byte[] byte_array, int position)
+        public static string GetStringFromByteArray(byte[] byte_array, int position)
         {
             string to_return = "";
             for (int i = 0; i < 999999999; i++)
@@ -67,7 +67,7 @@ namespace CathodeLib
         }
 
         //Removes the leading nulls from a byte array, useful for cleaning byte-aligned file extracts
-        public byte[] RemoveLeadingNulls(byte[] extracted_file)
+        public static byte[] RemoveLeadingNulls(byte[] extracted_file)
         {
             //Remove from leading
             int start_offset = 0;
@@ -86,7 +86,7 @@ namespace CathodeLib
         }
 
         //Writes a string without a leading length value (C# BinaryWriter default)
-        public void WriteString(string string_to_write, BinaryWriter writer)
+        public static void WriteString(string string_to_write, BinaryWriter writer)
         {
             foreach (char character in string_to_write)
             {

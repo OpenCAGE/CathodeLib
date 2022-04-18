@@ -191,7 +191,6 @@ namespace CATHODE.Assets
             try
             {
                 //Re-write out to the PAK
-                ExtraBinaryUtils BinaryUtils = new ExtraBinaryUtils();
                 BinaryWriter ArchiveWriter = new BinaryWriter(File.OpenWrite(FilePathPAK));
                 ArchiveWriter.BaseStream.SetLength(0);
                 ArchiveWriter.Write(FileHeaderJunk);
@@ -202,11 +201,11 @@ namespace CATHODE.Assets
                     ArchiveWriter.Write(ThisMatRemap.MapEntryCoupleCount);
                     ArchiveWriter.Write(ThisMatRemap.MapJunk);
                     ArchiveWriter.Write(ThisMatRemap.MapFilename.Length);
-                    BinaryUtils.WriteString(ThisMatRemap.MapFilename, ArchiveWriter);
+                    ExtraBinaryUtils.WriteString(ThisMatRemap.MapFilename, ArchiveWriter);
                     foreach (string MaterialName in ThisMatRemap.MapMatEntries)
                     {
                         ArchiveWriter.Write(MaterialName.Length);
-                        BinaryUtils.WriteString(MaterialName, ArchiveWriter);
+                        ExtraBinaryUtils.WriteString(MaterialName, ArchiveWriter);
                     }
                 }
                 ArchiveWriter.Close();

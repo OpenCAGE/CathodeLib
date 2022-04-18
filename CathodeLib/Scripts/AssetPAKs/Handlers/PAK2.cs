@@ -69,11 +69,10 @@ namespace CATHODE.Assets
                 }
 
                 //Read in the files to entries
-                ExtraBinaryUtils BinaryUtils = new ExtraBinaryUtils();
                 for (int i = 0; i < NumberOfEntries; i++)
                 {
                     //Must pass to RemoveLeadingNulls as each file starts with 0-3 null bytes to align files to a 4-byte block reader
-                    Pak2Files[i].Content = BinaryUtils.RemoveLeadingNulls(ArchiveFile.ReadBytes(FileOffsets[i + 1] - FileOffsets[i]));
+                    Pak2Files[i].Content = ExtraBinaryUtils.RemoveLeadingNulls(ArchiveFile.ReadBytes(FileOffsets[i + 1] - FileOffsets[i]));
                 }
 
                 //Close PAK
@@ -184,10 +183,9 @@ namespace CATHODE.Assets
                 {
                     ArchiveFileWrite = new BinaryWriter(File.Create(FilePathPAK));
                 }
-                ExtraBinaryUtils BinaryUtils = new ExtraBinaryUtils();
 
                 //Write header
-                BinaryUtils.WriteString("PAK2", ArchiveFileWrite);
+                ExtraBinaryUtils.WriteString("PAK2", ArchiveFileWrite);
                 int OffsetListBegin_New = 0;
                 for (int i = 0; i < Pak2Files.Count; i++)
                 {
@@ -200,7 +198,7 @@ namespace CATHODE.Assets
                 //Write filenames
                 for (int i = 0; i < Pak2Files.Count; i++)
                 {
-                    BinaryUtils.WriteString(Pak2Files[i].Filename.Replace("\\", "/"), ArchiveFileWrite);
+                    ExtraBinaryUtils.WriteString(Pak2Files[i].Filename.Replace("\\", "/"), ArchiveFileWrite);
                     ArchiveFileWrite.Write((byte)0x00);
                 }
 

@@ -95,15 +95,14 @@ namespace CATHODE.Assets
                 byte[] filename_bytes = ArchiveFileBin.ReadBytes(FilenameListEnd);
 
                 //Read table 2 (skipping all unknowns for now)
-                ExtraBinaryUtils BinaryUtils = new ExtraBinaryUtils();
                 for (int i = 0; i < TableCountPt2; i++)
                 {
                     CS2 new_entry = new CS2();
                     new_entry.FilenameOffset = ArchiveFileBin.ReadInt32();
-                    new_entry.Filename = BinaryUtils.GetStringFromByteArray(filename_bytes, new_entry.FilenameOffset);
+                    new_entry.Filename = ExtraBinaryUtils.GetStringFromByteArray(filename_bytes, new_entry.FilenameOffset);
                     ArchiveFileBin.BaseStream.Position += 4;
                     new_entry.ModelPartNameOffset = ArchiveFileBin.ReadInt32();
-                    new_entry.ModelPartName = BinaryUtils.GetStringFromByteArray(filename_bytes, new_entry.ModelPartNameOffset);
+                    new_entry.ModelPartName = ExtraBinaryUtils.GetStringFromByteArray(filename_bytes, new_entry.ModelPartNameOffset);
                     ArchiveFileBin.BaseStream.Position += 44;
                     new_entry.MaterialLibaryIndex = ArchiveFileBin.ReadInt32();
                     new_entry.MaterialName = MaterialEntries[new_entry.MaterialLibaryIndex];
@@ -121,19 +120,18 @@ namespace CATHODE.Assets
 
                 //Get extra info from each header in the PAK
                 BinaryReader ArchiveFile = new BinaryReader(File.OpenRead(FilePathPAK));
-                BigEndianUtils BigEndian = new BigEndianUtils();
                 ArchiveFile.BaseStream.Position += 32; //Skip header
                 for (int i = 0; i < TableCountPt2; i++)
                 {
                     ArchiveFile.BaseStream.Position += 8; //Skip unknowns
-                    int ThisPakSize = BigEndian.ReadInt32(ArchiveFile);
-                    if (ThisPakSize != BigEndian.ReadInt32(ArchiveFile))
+                    int ThisPakSize = BigEndianUtils.ReadInt32(ArchiveFile);
+                    if (ThisPakSize != BigEndianUtils.ReadInt32(ArchiveFile))
                     {
                         //Dud entry... handle this somehow?
                     }
-                    int ThisPakOffset = BigEndian.ReadInt32(ArchiveFile);
+                    int ThisPakOffset = BigEndianUtils.ReadInt32(ArchiveFile);
                     ArchiveFile.BaseStream.Position += 14;
-                    int ThisIndex = BigEndian.ReadInt16(ArchiveFile);
+                    int ThisIndex = BigEndianUtils.ReadInt16(ArchiveFile);
                     ArchiveFile.BaseStream.Position += 12;
 
                     if (ThisIndex == -1)

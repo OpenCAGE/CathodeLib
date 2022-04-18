@@ -283,11 +283,10 @@ namespace CathodeLib
             //Save out the DDS file
             FileStream outputStream = new FileStream(path_File2write, FileMode.Create);
             BinaryWriter bw = new BinaryWriter(outputStream);
-            BigEndianUtils EndianUtils = new BigEndianUtils();
 
             //Write Header first
-            bw.Write(EndianUtils.FlipEndian(BitConverter.GetBytes((int)DDS_HEADER.DDS_MAGIC)));
-            bw.Write(EndianUtils.FlipEndian(BitConverter.GetBytes((int)DDS_HEADER.dwSize)));
+            bw.Write(BigEndianUtils.FlipEndian(BitConverter.GetBytes((int)DDS_HEADER.DDS_MAGIC)));
+            bw.Write(BigEndianUtils.FlipEndian(BitConverter.GetBytes((int)DDS_HEADER.dwSize)));
             bw.Write(DDS_HEADER.dwFlags);
             bw.Write(DDS_HEADER.dwHeight);
             bw.Write(DDS_HEADER.dwWidth);
