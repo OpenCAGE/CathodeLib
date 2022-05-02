@@ -1039,10 +1039,11 @@ namespace CATHODE.Commands
                     }
                 }
 
+                //Apply checksums to overrides
                 for (int x = 0; x < composite.overrides.Count; x++)
-                {
                     composite.overrides[x].checksum = overrideChecksums[composite.overrides[x].shortGUID];
-                }
+
+                //Apply connections between entities
                 for (int x = 0; x < entityLinks.Count; x++)
                 {
                     CathodeEntity entToApply = composite.GetEntityByID(entityLinks[x].parentID);
@@ -1054,6 +1055,8 @@ namespace CATHODE.Commands
                     }
                     entToApply.childLinks.AddRange(entityLinks[x].childLinks);
                 }
+
+                //Apply parameters to entities
                 for (int x = 0; x < paramRefSets.Count; x++)
                 {
                     CathodeEntity entToApply = composite.GetEntityByID(paramRefSets[x].id);

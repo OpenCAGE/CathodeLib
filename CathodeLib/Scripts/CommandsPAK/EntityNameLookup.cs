@@ -26,6 +26,20 @@ namespace CATHODE.Commands
             LoadCustomNames();
         }
 
+#if DEBUG
+        /* For testing only: get from any composite */
+        public string GetFromAnyComposite(ShortGuid id)
+        {
+            foreach (KeyValuePair<ShortGuid, Dictionary<ShortGuid, string>> composite in vanilla_composites)
+            {
+                foreach (KeyValuePair<ShortGuid, string> entity in composite.Value)
+                {
+                    if (composite.Key == id) return entity.Value;
+                }
+            }
+            return "";
+        }
+#endif
 
         /* Get the name of an entity contained within a composite */
         public string GetEntityName(ShortGuid compositeID, ShortGuid entityID)

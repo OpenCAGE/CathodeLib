@@ -9,13 +9,13 @@ using System.Threading.Tasks;
 namespace CATHODE.Misc
 {
     /* Handles Cathode PROGRESSION.AIS files */
-    public class ProgressionTracker
+    public class ProgressionSave
     {
         private string filepath;
         private alien_progression_ais content;
 
         /* Load the file */
-        public ProgressionTracker(string pathToMVR)
+        public ProgressionSave(string pathToMVR)
         {
             filepath = pathToMVR;
 
