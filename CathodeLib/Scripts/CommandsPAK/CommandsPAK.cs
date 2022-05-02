@@ -764,7 +764,7 @@ namespace CATHODE.Commands
                 List<CommandsEntityLinks> entityLinks = new List<CommandsEntityLinks>();
                 List<CommandsParamRefSet> paramRefSets = new List<CommandsParamRefSet>();
                 List<CathodeResourceReference> resourceRefs = new List<CathodeResourceReference>();
-                Dictionary<ShortGuid, (ShortGuid, int)> overrideChecksums = new Dictionary<ShortGuid, (ShortGuid, int)>();
+                Dictionary<ShortGuid, ShortGuid> overrideChecksums = new Dictionary<ShortGuid, ShortGuid>();
                 for (int x = 0; x < offsetPairs.Length; x++)
                 {
                     reader.BaseStream.Position = offsetPairs[x].GlobalOffset * 4;
@@ -800,7 +800,7 @@ namespace CATHODE.Commands
                             case CommandsDataBlock.ENTITY_OVERRIDES_CHECKSUM:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
-                                overrideChecksums.Add(new ShortGuid(reader), (new ShortGuid(reader), (int)reader.BaseStream.Position)); //TODO: Added in reader.BaseStream.Position as offset hack before working out proper sort order algo
+                                overrideChecksums.Add(new ShortGuid(reader), new ShortGuid(reader));
                                 break;
                                 }
                             //TODO: Really, I think these should be treated as parameters on the composite class as they are the pins we use for composite instances.
@@ -1041,7 +1041,7 @@ namespace CATHODE.Commands
 
                 for (int x = 0; x < composite.overrides.Count; x++)
                 {
-                    composite.overrides[x].checksum = overrideChecksums[composite.overrides[x].shortGUID].Item1;
+                    composite.overrides[x].checksum = overrideChecksums[composite.overrides[x].shortGUID];
                 }
                 for (int x = 0; x < entityLinks.Count; x++)
                 {

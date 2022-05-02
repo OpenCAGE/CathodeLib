@@ -68,15 +68,18 @@ namespace CATHODE.Misc
         }
     }
 
-    public enum MoverType : short
+    //Pulled from the iOS decomp
+    public enum RENDERABLE_INSTANCE_Type
     {
-        PARTICLE_EMITTER_1 = 1,
-        LIGHT = 2,
-        STATIC_MODEL = 3,
-        PARTICLE_EMITTER_2 = 4, //these seem to usually be from AYZ/FX_LIBRARY
-        PARTICLE_EMITTER_3 = 5, //these seem to usually be from AYZ/LEVELS
-        LIGHT_AND_PHYSICS = 6,
-        DYNAMIC_MODEL = 7,
+        RenderableLightInstance = 0,
+        RenderableDynamicFXInstance = 1,
+        RenderableDynamicTempFXInstance = 2,
+        RenderableEnvironmentInstance = 3,
+        RenderableCharacterInstance = 4,
+        RenderableMiscInstance = 5,
+        RenderablePlanetInstance = 6,
+        RenderableEnvironmentExtraInstance = 7,
+        RenderableFogSphereInstance = 8,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -204,7 +207,7 @@ namespace CATHODE.Misc
         public UInt32 Unknowns61_; //uVar3 in reserve_light_light_master_sets, val of LightMasterSet, or an incrementer
         public UInt16 Unknown17_;   // TODO: It is -1 most of the time, but some times it isn't.
         //310
-        public MoverType IsThisTypeID; //ushort
+        public UInt16 MoverFlags; //ushort - used for bitwise flags depending on mover RENDERABLE_INSTANCE::Type. Environment types seem to use first bit to decide if its position comes from MVR.
         //312
         public UInt32 Unknowns70_;
         public UInt32 Unknowns71_;
