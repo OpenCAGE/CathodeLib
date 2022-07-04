@@ -57,6 +57,8 @@ namespace CATHODE.Commands
             if (!vanilla.cacheReversed.ContainsKey(guid))
                 return guid.ToString();
 
+            //TODO: check custom cache
+
             return vanilla.cacheReversed[guid];
         }
 
