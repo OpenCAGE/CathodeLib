@@ -12,7 +12,7 @@ namespace CATHODE.Assets
      * More work needs to be done to understand the broken formats and to allow importing for files with only V1.
      * 
     */
-    public class TexturePAK : AssetPAK
+    public class Textures : AssetPAK
     {
         private List<TEX4> TextureEntries = new List<TEX4>();
         private int HeaderListBeginBIN = -1;
@@ -23,7 +23,7 @@ namespace CATHODE.Assets
         private int VersionNumber_PAK = 14;
 
         /* Initialise the TexturePAK class with the intended location (existing or not) */
-        public TexturePAK(string PathToPAK)
+        public Textures(string PathToPAK)
         {
             FilePathPAK = PathToPAK;
 

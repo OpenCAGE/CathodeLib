@@ -12,12 +12,12 @@ namespace CATHODE.Assets
      * Work needs to be done on parsing the _BIN and how that links to the initial PAK.
      * 
     */
-    public class ShaderPAK : AssetPAK
+    public class Shaders : AssetPAK
     {
         List<CathodeShaderHeader> HeaderDump = new List<CathodeShaderHeader>();
 
         /* Initialise the ShaderPAK class with the intended location (existing or not) */
-        public ShaderPAK(string PathToPAK)
+        public Shaders(string PathToPAK)
         {
             FilePathPAK = PathToPAK;
             FilePathBIN = PathToPAK.Substring(0, PathToPAK.Length - Path.GetFileName(PathToPAK).Length) + Path.GetFileNameWithoutExtension(FilePathPAK) + "_BIN.PAK";
