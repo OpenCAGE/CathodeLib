@@ -1,0 +1,220 @@
+using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace CATHODE
+{
+    public class Utilities
+    {
+        public static T Consume<T>(BinaryReader reader)
+        {
+            byte[] bytes = reader.ReadBytes(Marshal.SizeOf(typeof(T)));
+            return Consume<T>(bytes);
+        }
+        public static T Consume<T>(byte[] bytes)
+        {
+            GCHandle handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+            T theStructure = (T)Marshal.PtrToStructure(handle.AddrOfPinnedObject(), typeof(T));
+            handle.Free();
+            return theStructure;
+        }
+
+        public static T[] ConsumeArray<T>(BinaryReader reader, int count)
+        {
+            T[] toReturn = new T[count];
+            for (int i = 0; i < count; i++) toReturn[i] = Consume<T>(reader);
+            return toReturn;
+        }
+        public static T[] ConsumeArray<T>(byte[] bytes, int count)
+        {
+            T[] toReturn = new T[count];
+            for (int i = 0; i < count; i++) toReturn[i] = Consume<T>(bytes);
+            return toReturn;
+        }
+
+        public static void Align(BinaryReader reader, int val)
+        {
+            while (reader.BaseStream.Position % val != 0)
+            {
+                reader.ReadByte();
+            }
+        }
+        public static void Align(BinaryWriter writer, int val)
+        {
+            while (writer.BaseStream.Position % val != 0)
+            {
+                writer.Write((char)0x00);
+            }
+        }
+
+        public static string ReadString(byte[] bytes, int position)
+        {
+            string to_return = "";
+            for (int i = 0; i < int.MaxValue; i++)
+            {
+                byte this_byte = bytes[position + i];
+                if (this_byte == 0x00) break;
+                to_return += (char)this_byte;
+            }
+            return to_return;
+        }
+        public static string ReadString(BinaryReader reader)
+        {
+            string to_return = "";
+            for (int i = 0; i < int.MaxValue; i++)
+            {
+                byte this_byte = reader.ReadByte();
+                if (this_byte == 0x00) break;
+                to_return += (char)this_byte;
+            }
+            return to_return;
+        }
+        public static string ReadString(byte[] bytes)
+        {
+            string to_return = "";
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                byte this_byte = bytes[i];
+                if (this_byte == 0x00) break;
+                to_return += (char)this_byte;
+            }
+            return to_return;
+        }
+
+        public static void Write<T>(BinaryWriter stream, T aux)
+        {
+            int length = Marshal.SizeOf(aux);
+            IntPtr ptr = Marshal.AllocHGlobal(length);
+            byte[] myBuffer = new byte[length];
+
+            Marshal.StructureToPtr(aux, ptr, true);
+            Marshal.Copy(ptr, myBuffer, 0, length);
+            Marshal.FreeHGlobal(ptr);
+
+            stream.Write(myBuffer);
+        }
+        public static void Write<T>(BinaryWriter stream, T[] aux)
+        {
+            for (int i = 0; i < aux.Length; i++) Write<T>(stream, aux[i]);
+        }
+        public static void Write<T>(BinaryWriter stream, List<T> aux)
+        {
+            Write<T>(stream, aux.ToArray<T>());
+        }
+
+        public static T CloneObject<T>(T obj)
+        {
+            //A somewhat hacky an inefficient way of deep cloning an object (TODO: optimise this as we use it a lot!)
+            MemoryStream ms = new MemoryStream();
+            new BinaryFormatter().Serialize(ms, obj);
+            ms.Position = 0;
+            T obj2 = (T)new BinaryFormatter().Deserialize(ms);
+            ms.Close();
+            return obj2;
+            //obj.MemberwiseClone();
+        }
+
+        //Generate a hashed string for use in the animation system (FNV hash)
+        public static uint AnimationHashedString(string str)
+        {
+            uint hash = 0x811c9dc5;
+            uint prime = 0x1000193;
+
+            for (int i = 0; i < str.Length; ++i)
+            {
+                char value = str[i];
+                hash = hash ^ value;
+                hash *= prime;
+            }
+
+            return hash;
+        }
+    }
+
+#if !(UNITY_EDITOR || UNITY_STANDALONE)
+    [Serializable]
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct Vector3 : ICloneable
+    {
+        public Vector3(float _x, float _y, float _z)
+        {
+            vals = new float[3] { 0, 0, 0 };
+            x = _x;
+            y = _y;
+            z = _z;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (!(obj is Vector3)) return false;
+            return (Vector3)obj == this;
+        }
+        public static bool operator ==(Vector3 x, Vector3 y)
+        {
+            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+            if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+            if (x.x != y.x) return false;
+            if (x.y != y.y) return false;
+            if (x.z != y.z) return false;
+            return true;
+        }
+        public static bool operator !=(Vector3 x, Vector3 y)
+        {
+            return !(x == y);
+        }
+        public override int GetHashCode()
+        {
+            return (int)(x * y * z * 100);
+        }
+
+        public object Clone()
+        {
+            return new Vector3(this.x, this.y, this.z);
+        }
+
+        public float x { 
+            get { return (vals == null) ? 0.0f : vals[0]; } 
+            set
+            {
+                if (vals == null) vals = new float[3] { value, 0, 0 };
+                else vals[0] = value;
+            }
+        }
+        public float y
+        {
+            get { return (vals == null) ? 0.0f : vals[1]; }
+            set
+            {
+                if (vals == null) vals = new float[3] { 0, value, 0 };
+                else vals[1] = value;
+            }
+        }
+        public float z
+        {
+            get { return (vals == null) ? 0.0f : vals[2]; }
+            set
+            {
+                if (vals == null) vals = new float[3] { 0, 0, value };
+                else vals[2] = value;
+            }
+        }
+
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        private float[] vals;
+    }
+#endif
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct fourcc
+    {
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+        public char[] V;
+    }
+}

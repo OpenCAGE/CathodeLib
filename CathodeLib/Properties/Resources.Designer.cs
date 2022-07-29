@@ -19,7 +19,7 @@ namespace CathodeLib.Properties {
     // class via a tool like ResGen or Visual Studio.
     // To add or remove a member, edit your .ResX file then rerun ResGen
     // with the /str option, or rebuild your VS project.
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "16.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "17.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     internal class Resources {
@@ -63,9 +63,9 @@ namespace CathodeLib.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
-        internal static byte[] cathode_id_map {
+        internal static byte[] cathode_enum_lut {
             get {
-                object obj = ResourceManager.GetObject("cathode_id_map", resourceCulture);
+                object obj = ResourceManager.GetObject("cathode_enum_lut", resourceCulture);
                 return ((byte[])(obj));
             }
         }
@@ -73,9 +73,9 @@ namespace CathodeLib.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
-        internal static byte[] cathode_id_map_DUMP_ONLY {
+        internal static byte[] composite_entity_names {
             get {
-                object obj = ResourceManager.GetObject("cathode_id_map_DUMP_ONLY", resourceCulture);
+                object obj = ResourceManager.GetObject("composite_entity_names", resourceCulture);
                 return ((byte[])(obj));
             }
         }
@@ -83,9 +83,19 @@ namespace CathodeLib.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
-        internal static byte[] node_friendly_names {
+        internal static byte[] composite_paths {
             get {
-                object obj = ResourceManager.GetObject("node_friendly_names", resourceCulture);
+                object obj = ResourceManager.GetObject("composite_paths", resourceCulture);
+                return ((byte[])(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Byte[].
+        /// </summary>
+        internal static byte[] entity_parameter_names {
+            get {
+                object obj = ResourceManager.GetObject("entity_parameter_names", resourceCulture);
                 return ((byte[])(obj));
             }
         }

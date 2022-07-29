@@ -118,13 +118,16 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
-  <data name="cathode_id_map" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\NodeDBs\cathode_id_map.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  <data name="cathode_enum_lut" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\NodeDBs\cathode_enum_lut.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
-  <data name="cathode_id_map_DUMP_ONLY" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\NodeDBs\cathode_id_map_DUMP_ONLY.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  <data name="composite_entity_names" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\NodeDBs\composite_entity_names.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
-  <data name="node_friendly_names" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\NodeDBs\node_friendly_names.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  <data name="composite_paths" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\NodeDBs\composite_paths.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="entity_parameter_names" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\NodeDBs\entity_parameter_names.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
 </root>
