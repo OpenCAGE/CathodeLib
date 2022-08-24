@@ -17,19 +17,19 @@ namespace CATHODE.Assets
     */
     public class MaterialMapping : AssetPAK
     {
-        List<EntryMaterialMappingsPAK> MaterialMappingEntries = new List<EntryMaterialMappingsPAK>();
-        byte[] FileHeaderJunk = new byte[8];
+        List<EntryMaterialMappingsPAK> _entries = new List<EntryMaterialMappingsPAK>();
+        byte[] _headerJunk = new byte[8];
 
         /* Initialise the MaterialMapPAK class with the intended location (existing or not) */
         public MaterialMapping(string PathToPAK)
         {
-            FilePathPAK = PathToPAK;
+            _filePathPAK = PathToPAK;
         }
 
         /* Load the contents of an existing MaterialMapPAK */
         public override PAKReturnType Load()
         {
-            if (!File.Exists(FilePathPAK))
+            if (!File.Exists(_filePathPAK))
             {
                 return PAKReturnType.FAIL_TRIED_TO_LOAD_VIRTUAL_ARCHIVE;
             }
@@ -37,45 +37,45 @@ namespace CATHODE.Assets
             try
             {
                 //Open PAK
-                BinaryReader ArchiveFile = new BinaryReader(File.OpenRead(FilePathPAK));
+                BinaryReader pak = new BinaryReader(File.OpenRead(_filePathPAK));
 
                 //Parse header
-                FileHeaderJunk = ArchiveFile.ReadBytes(8); //TODO: Work out what this contains
-                int NumberOfFiles = ArchiveFile.ReadInt32();
+                _headerJunk = pak.ReadBytes(8); //TODO: Work out what this contains
+                int entryCount = pak.ReadInt32();
 
                 //Parse entries (XML is broken in the build files - doesn't get shipped)
-                for (int x = 0; x < NumberOfFiles; x++)
+                for (int x = 0; x < entryCount; x++)
                 {
                     //This entry
-                    EntryMaterialMappingsPAK NewMatEntry = new EntryMaterialMappingsPAK();
-                    NewMatEntry.MapHeader = ArchiveFile.ReadBytes(4); //TODO: Work out the significance of this value, to be able to construct new PAKs from scratch.
-                    NewMatEntry.MapEntryCoupleCount = ArchiveFile.ReadInt32();
-                    NewMatEntry.MapJunk = ArchiveFile.ReadBytes(4); //TODO: Work out if this is always null.
-                    for (int p = 0; p < (NewMatEntry.MapEntryCoupleCount * 2) + 1; p++)
+                    EntryMaterialMappingsPAK entry = new EntryMaterialMappingsPAK();
+                    entry.MapHeader = pak.ReadBytes(4); //TODO: Work out the significance of this value, to be able to construct new PAKs from scratch.
+                    entry.MapEntryCoupleCount = pak.ReadInt32();
+                    entry.MapJunk = pak.ReadBytes(4); //TODO: Work out if this is always null.
+                    for (int p = 0; p < (entry.MapEntryCoupleCount * 2) + 1; p++)
                     {
                         //String
-                        int NewMatStringLength = ArchiveFile.ReadInt32();
-                        string NewMatString = "";
-                        for (int i = 0; i < NewMatStringLength; i++)
+                        int length = pak.ReadInt32();
+                        string materialString = "";
+                        for (int i = 0; i < length; i++)
                         {
-                            NewMatString += ArchiveFile.ReadChar();
+                            materialString += pak.ReadChar();
                         }
 
                         //First string is filename, others are materials
                         if (p == 0)
                         {
-                            NewMatEntry.MapFilename = NewMatString;
+                            entry.MapFilename = materialString;
                         }
                         else
                         {
-                            NewMatEntry.MapMatEntries.Add(NewMatString);
+                            entry.MapMatEntries.Add(materialString);
                         }
                     }
-                    MaterialMappingEntries.Add(NewMatEntry);
+                    _entries.Add(entry);
                 }
 
                 //Done!
-                ArchiveFile.Close();
+                pak.Close();
                 return PAKReturnType.SUCCESS;
             }
             catch (IOException) { return PAKReturnType.FAIL_COULD_NOT_ACCESS_FILE; }
@@ -86,7 +86,7 @@ namespace CATHODE.Assets
         public override List<string> GetFileNames()
         {
             List<string> FileNameList = new List<string>();
-            foreach (EntryMaterialMappingsPAK MapEntry in MaterialMappingEntries)
+            foreach (EntryMaterialMappingsPAK MapEntry in _entries)
             {
                 FileNameList.Add(MapEntry.MapFilename);
             }
@@ -97,7 +97,7 @@ namespace CATHODE.Assets
         public override int GetFilesize(string FileName)
         {
             int size = 0;
-            foreach (string MatMap in MaterialMappingEntries[GetFileIndex(FileName)].MapMatEntries)
+            foreach (string MatMap in _entries[GetFileIndex(FileName)].MapMatEntries)
             {
                 size += MatMap.Length;
             }
@@ -107,9 +107,9 @@ namespace CATHODE.Assets
         /* Find the entry object by name */
         public override int GetFileIndex(string FileName)
         {
-            for (int i = 0; i < MaterialMappingEntries.Count; i++)
+            for (int i = 0; i < _entries.Count; i++)
             {
-                if (MaterialMappingEntries[i].MapFilename == FileName || MaterialMappingEntries[i].MapFilename == FileName.Replace('/', '\\'))
+                if (_entries[i].MapFilename == FileName || _entries[i].MapFilename == FileName.Replace('/', '\\'))
                 {
                     return i;
                 }
@@ -124,7 +124,7 @@ namespace CATHODE.Assets
             { 
                 //Pull the new mapping info from the import XML
                 XDocument InputFile = XDocument.Load(PathToNewFile);
-                EntryMaterialMappingsPAK MaterialMapping = MaterialMappingEntries[GetFileIndex(FileName)];
+                EntryMaterialMappingsPAK MaterialMapping = _entries[GetFileIndex(FileName)];
                 List<string> NewOverrides = new List<string>();
                 foreach (XElement ThisMap in InputFile.Element("material_mappings").Elements())
                 {
@@ -155,7 +155,7 @@ namespace CATHODE.Assets
                 XElement MaterialPair = XElement.Parse("<map><original arrow='false'></original><override arrow='false'></override></map>");
 
                 int ThisEntryNum = 0;
-                EntryMaterialMappingsPAK ThisEntry = MaterialMappingEntries[GetFileIndex(FileName)];
+                EntryMaterialMappingsPAK ThisEntry = _entries[GetFileIndex(FileName)];
                 for (int i = 0; i < ThisEntry.MapEntryCoupleCount; i++)
                 {
                     for (int x = 0; x < 2; x++)
@@ -191,11 +191,11 @@ namespace CATHODE.Assets
             try
             {
                 //Re-write out to the PAK
-                BinaryWriter ArchiveWriter = new BinaryWriter(File.OpenWrite(FilePathPAK));
+                BinaryWriter ArchiveWriter = new BinaryWriter(File.OpenWrite(_filePathPAK));
                 ArchiveWriter.BaseStream.SetLength(0);
-                ArchiveWriter.Write(FileHeaderJunk);
-                ArchiveWriter.Write(MaterialMappingEntries.Count);
-                foreach (EntryMaterialMappingsPAK ThisMatRemap in MaterialMappingEntries)
+                ArchiveWriter.Write(_headerJunk);
+                ArchiveWriter.Write(_entries.Count);
+                foreach (EntryMaterialMappingsPAK ThisMatRemap in _entries)
                 {
                     ArchiveWriter.Write(ThisMatRemap.MapHeader);
                     ArchiveWriter.Write(ThisMatRemap.MapEntryCoupleCount);

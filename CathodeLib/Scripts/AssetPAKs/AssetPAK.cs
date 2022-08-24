@@ -6,8 +6,8 @@ namespace CATHODE.Assets
 {
     public class AssetPAK
     {
-        protected string FilePathPAK = "";
-        protected string FilePathBIN = "";
+        protected string _filePathPAK = "";
+        protected string _filePathBIN = "";
 
         virtual public PAKReturnType Load() { return PAKReturnType.FAIL_FEATURE_IS_COMING_SOON; }
         virtual public List<string> GetFileNames() { return null; }

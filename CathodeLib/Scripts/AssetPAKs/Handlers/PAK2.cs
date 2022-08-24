@@ -13,20 +13,18 @@ namespace CATHODE.Assets
     */
     public class PAK2 : AssetPAK
     {
-        private List<EntryPAK2> Pak2Files = new List<EntryPAK2>();
-        private int OffsetListBegin = -1;
-        private int NumberOfEntries = -1;
+        private List<EntryPAK2> _entries = new List<EntryPAK2>();
 
         /* Initialise the PAK2 class with the intended PAK2 location (existing or not) */
         public PAK2(string PathToPAK)
         {
-            FilePathPAK = PathToPAK;
+            _filePathPAK = PathToPAK;
         }
 
         /* Load the contents of an existing PAK2 */
         public override PAKReturnType Load()
         {
-            if (!File.Exists(FilePathPAK))
+            if (!File.Exists(_filePathPAK))
             {
                 return PAKReturnType.FAIL_TRIED_TO_LOAD_VIRTUAL_ARCHIVE;
             }
@@ -34,18 +32,18 @@ namespace CATHODE.Assets
             try
             {
                 //Open PAK
-                BinaryReader ArchiveFile = new BinaryReader(File.OpenRead(FilePathPAK));
+                BinaryReader ArchiveFile = new BinaryReader(File.OpenRead(_filePathPAK));
 
                 //Read the header info
                 string MagicValidation = "";
                 for (int i = 0; i < 4; i++) { MagicValidation += ArchiveFile.ReadChar(); }
                 if (MagicValidation != "PAK2") { ArchiveFile.Close(); return PAKReturnType.FAIL_ARCHIVE_IS_NOT_EXCPETED_TYPE; }
-                OffsetListBegin = ArchiveFile.ReadInt32() + 16;
-                NumberOfEntries = ArchiveFile.ReadInt32();
+                int offsetListBegin = ArchiveFile.ReadInt32() + 16;
+                int entryCount = ArchiveFile.ReadInt32();
                 ArchiveFile.BaseStream.Position += 4; //Skip "4"
 
                 //Read all file names and create entries
-                for (int i = 0; i < NumberOfEntries; i++)
+                for (int i = 0; i < entryCount; i++)
                 {
                     string ThisFileName = "";
                     for (byte b; (b = ArchiveFile.ReadByte()) != 0x00;)
@@ -55,24 +53,24 @@ namespace CATHODE.Assets
 
                     EntryPAK2 NewPakFile = new EntryPAK2();
                     NewPakFile.Filename = ThisFileName;
-                    Pak2Files.Add(NewPakFile);
+                    _entries.Add(NewPakFile);
                 }
 
                 //Read all file offsets
-                ArchiveFile.BaseStream.Position = OffsetListBegin;
+                ArchiveFile.BaseStream.Position = offsetListBegin;
                 List<int> FileOffsets = new List<int>();
-                FileOffsets.Add(OffsetListBegin + (NumberOfEntries * 4));
-                for (int i = 0; i < NumberOfEntries; i++)
+                FileOffsets.Add(offsetListBegin + (entryCount * 4));
+                for (int i = 0; i < entryCount; i++)
                 {
                     FileOffsets.Add(ArchiveFile.ReadInt32());
-                    Pak2Files[i].Offset = FileOffsets[i];
+                    _entries[i].Offset = FileOffsets[i];
                 }
 
                 //Read in the files to entries
-                for (int i = 0; i < NumberOfEntries; i++)
+                for (int i = 0; i < entryCount; i++)
                 {
                     //Must pass to RemoveLeadingNulls as each file starts with 0-3 null bytes to align files to a 4-byte block reader
-                    Pak2Files[i].Content = ExtraBinaryUtils.RemoveLeadingNulls(ArchiveFile.ReadBytes(FileOffsets[i + 1] - FileOffsets[i]));
+                    _entries[i].Content = ExtraBinaryUtils.RemoveLeadingNulls(ArchiveFile.ReadBytes(FileOffsets[i + 1] - FileOffsets[i]));
                 }
 
                 //Close PAK
@@ -87,7 +85,7 @@ namespace CATHODE.Assets
         public override List<string> GetFileNames()
         {
             List<string> FileNameList = new List<string>();
-            foreach (EntryPAK2 ArchiveFile in Pak2Files)
+            foreach (EntryPAK2 ArchiveFile in _entries)
             {
                 FileNameList.Add(ArchiveFile.Filename);
             }
@@ -97,15 +95,15 @@ namespace CATHODE.Assets
         /* Get the file size of an archive entry */
         public override int GetFilesize(string FileName)
         {
-            return Pak2Files[GetFileIndex(FileName)].Content.Length;
+            return _entries[GetFileIndex(FileName)].Content.Length;
         }
 
         /* Find the a file entry object by name */
         public override int GetFileIndex(string FileName)
         {
-            for (int i = 0; i < Pak2Files.Count; i++)
+            for (int i = 0; i < _entries.Count; i++)
             {
-                if (Pak2Files[i].Filename == FileName || Pak2Files[i].Filename == FileName.Replace('/', '\\'))
+                if (_entries[i].Filename == FileName || _entries[i].Filename == FileName.Replace('/', '\\'))
                 {
                     return i;
                 }
@@ -122,7 +120,7 @@ namespace CATHODE.Assets
                 if (TrimFromPath == 0) { NewFile.Filename = Path.GetFileName(PathToNewFile).ToUpper(); } //Virtual directory support here would be nice too
                 else { NewFile.Filename = PathToNewFile.Substring(TrimFromPath).ToUpper(); } //Easy to fail here, so be careful on function usage!
                 NewFile.Content = File.ReadAllBytes(PathToNewFile);
-                Pak2Files.Add(NewFile);
+                _entries.Add(NewFile);
                 return PAKReturnType.SUCCESS;
             }
             catch (IOException) { return PAKReturnType.FAIL_COULD_NOT_ACCESS_FILE; }
@@ -134,7 +132,7 @@ namespace CATHODE.Assets
         {
             try
             {
-                Pak2Files.RemoveAt(GetFileIndex(FileName));
+                _entries.RemoveAt(GetFileIndex(FileName));
                 return PAKReturnType.SUCCESS;
             }
             catch
@@ -148,7 +146,7 @@ namespace CATHODE.Assets
         {
             try
             {
-                Pak2Files[GetFileIndex(FileName)].Content = File.ReadAllBytes(PathToNewFile);
+                _entries[GetFileIndex(FileName)].Content = File.ReadAllBytes(PathToNewFile);
                 return PAKReturnType.SUCCESS;
             }
             catch (IOException) { return PAKReturnType.FAIL_COULD_NOT_ACCESS_FILE; }
@@ -160,7 +158,7 @@ namespace CATHODE.Assets
         {
             try
             {
-                File.WriteAllBytes(PathToExport, Pak2Files[GetFileIndex(FileName)].Content);
+                File.WriteAllBytes(PathToExport, _entries[GetFileIndex(FileName)].Content);
                 return PAKReturnType.SUCCESS;
             }
             catch (IOException) { return PAKReturnType.FAIL_COULD_NOT_ACCESS_FILE; }
@@ -174,57 +172,57 @@ namespace CATHODE.Assets
             {
                 //Open/create PAK2 for writing
                 BinaryWriter ArchiveFileWrite;
-                if (File.Exists(FilePathPAK))
+                if (File.Exists(_filePathPAK))
                 {
-                    ArchiveFileWrite = new BinaryWriter(File.OpenWrite(FilePathPAK));
+                    ArchiveFileWrite = new BinaryWriter(File.OpenWrite(_filePathPAK));
                     ArchiveFileWrite.BaseStream.SetLength(0);
                 }
                 else
                 {
-                    ArchiveFileWrite = new BinaryWriter(File.Create(FilePathPAK));
+                    ArchiveFileWrite = new BinaryWriter(File.Create(_filePathPAK));
                 }
 
                 //Write header
                 ExtraBinaryUtils.WriteString("PAK2", ArchiveFileWrite);
                 int OffsetListBegin_New = 0;
-                for (int i = 0; i < Pak2Files.Count; i++)
+                for (int i = 0; i < _entries.Count; i++)
                 {
-                    OffsetListBegin_New += Pak2Files[i].Filename.Length + 1;
+                    OffsetListBegin_New += _entries[i].Filename.Length + 1;
                 }
                 ArchiveFileWrite.Write(OffsetListBegin_New);
-                ArchiveFileWrite.Write(Pak2Files.Count);
+                ArchiveFileWrite.Write(_entries.Count);
                 ArchiveFileWrite.Write(4);
 
                 //Write filenames
-                for (int i = 0; i < Pak2Files.Count; i++)
+                for (int i = 0; i < _entries.Count; i++)
                 {
-                    ExtraBinaryUtils.WriteString(Pak2Files[i].Filename.Replace("\\", "/"), ArchiveFileWrite);
+                    ExtraBinaryUtils.WriteString(_entries[i].Filename.Replace("\\", "/"), ArchiveFileWrite);
                     ArchiveFileWrite.Write((byte)0x00);
                 }
 
                 //Write placeholder offsets for now, we'll correct them after writing the content
-                OffsetListBegin = (int)ArchiveFileWrite.BaseStream.Position;
-                for (int i = 0; i < Pak2Files.Count; i++)
+                int offsetListBegin = (int)ArchiveFileWrite.BaseStream.Position;
+                for (int i = 0; i < _entries.Count; i++)
                 {
                     ArchiveFileWrite.Write(0);
                 }
 
                 //Write files
-                for (int i = 0; i < Pak2Files.Count; i++)
+                for (int i = 0; i < _entries.Count; i++)
                 {
                     while (ArchiveFileWrite.BaseStream.Position % 4 != 0)
                     {
                         ArchiveFileWrite.Write((byte)0x00);
                     }
-                    ArchiveFileWrite.Write(Pak2Files[i].Content);
-                    Pak2Files[i].Offset = (int)ArchiveFileWrite.BaseStream.Position;
+                    ArchiveFileWrite.Write(_entries[i].Content);
+                    _entries[i].Offset = (int)ArchiveFileWrite.BaseStream.Position;
                 }
 
                 //Re-write offsets with correct values
-                ArchiveFileWrite.BaseStream.Position = OffsetListBegin;
-                for (int i = 0; i < Pak2Files.Count; i++)
+                ArchiveFileWrite.BaseStream.Position = offsetListBegin;
+                for (int i = 0; i < _entries.Count; i++)
                 {
-                    ArchiveFileWrite.Write(Pak2Files[i].Offset);
+                    ArchiveFileWrite.Write(_entries[i].Offset);
                 }
 
                 ArchiveFileWrite.Close();

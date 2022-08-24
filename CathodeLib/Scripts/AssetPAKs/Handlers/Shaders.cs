@@ -14,19 +14,19 @@ namespace CATHODE.Assets
     */
     public class Shaders : AssetPAK
     {
-        List<CathodeShaderHeader> HeaderDump = new List<CathodeShaderHeader>();
+        List<CathodeShaderHeader> _header = new List<CathodeShaderHeader>();
 
         /* Initialise the ShaderPAK class with the intended location (existing or not) */
         public Shaders(string PathToPAK)
         {
-            FilePathPAK = PathToPAK;
-            FilePathBIN = PathToPAK.Substring(0, PathToPAK.Length - Path.GetFileName(PathToPAK).Length) + Path.GetFileNameWithoutExtension(FilePathPAK) + "_BIN.PAK";
+            _filePathPAK = PathToPAK;
+            _filePathBIN = PathToPAK.Substring(0, PathToPAK.Length - Path.GetFileName(PathToPAK).Length) + Path.GetFileNameWithoutExtension(_filePathPAK) + "_BIN.PAK";
         }
 
         /* Load the contents of an existing ShaderPAK set (massive WIP) */
         public override PAKReturnType Load()
         {
-            if (!File.Exists(FilePathPAK))
+            if (!File.Exists(_filePathPAK))
             {
                 return PAKReturnType.FAIL_COULD_NOT_ACCESS_FILE;
             }
@@ -74,56 +74,55 @@ namespace CATHODE.Assets
                 ArchiveFile.Close();
                 */
 
-                BinaryReader ArchiveFileBin = new BinaryReader(File.OpenRead(FilePathBIN));
+                BinaryReader bin = new BinaryReader(File.OpenRead(_filePathBIN));
 
                 //Validate our header magic (look at _IDX_REMAP as I think this should also be supported)
-                ArchiveFileBin.BaseStream.Position = 4;
-                if (!(ArchiveFileBin.ReadInt32() == 14 && ArchiveFileBin.ReadInt32() == 3))
+                bin.BaseStream.Position = 4;
+                if (!(bin.ReadInt32() == 14 && bin.ReadInt32() == 3))
                     return PAKReturnType.FAIL_ARCHIVE_IS_NOT_EXCPETED_TYPE;
 
                 //Read entry count from header
-                ArchiveFileBin.BaseStream.Position = 12;
-                int EntryCount = ArchiveFileBin.ReadInt32();
-                int EndOfHeaders = 0;
+                bin.BaseStream.Position = 12;
+                int entryCount = bin.ReadInt32();
 
                 //Skip rest of the main header
-                ArchiveFileBin.BaseStream.Position = 32;
+                bin.BaseStream.Position = 32;
 
                 //Pull each entry's individual header
-                for (int i = 0; i < EntryCount; i++)
+                for (int i = 0; i < entryCount; i++)
                 {
                     CathodeShaderHeader newStringEntry = new CathodeShaderHeader();
-                    ArchiveFileBin.BaseStream.Position += 8; //skip blanks
+                    bin.BaseStream.Position += 8; //skip blanks
                     
-                    newStringEntry.FileLength = ArchiveFileBin.ReadInt32();
-                    newStringEntry.FileLengthWithPadding = ArchiveFileBin.ReadInt32();
-                    newStringEntry.FileOffset = ArchiveFileBin.ReadInt32(); 
+                    newStringEntry.FileLength = bin.ReadInt32();
+                    newStringEntry.FileLengthWithPadding = bin.ReadInt32();
+                    newStringEntry.FileOffset = bin.ReadInt32(); 
 
-                    ArchiveFileBin.BaseStream.Position += 8; //skip blanks
+                    bin.BaseStream.Position += 8; //skip blanks
 
-                    newStringEntry.StringPart1 = ArchiveFileBin.ReadBytes(4);
-                    newStringEntry.FileIndex = ArchiveFileBin.ReadInt32(); //potentially actually int8 or int16 not 32
+                    newStringEntry.StringPart1 = bin.ReadBytes(4);
+                    newStringEntry.FileIndex = bin.ReadInt32(); //potentially actually int8 or int16 not 32
 
-                    ArchiveFileBin.BaseStream.Position += 8; //skip blanks
+                    bin.BaseStream.Position += 8; //skip blanks
 
-                    newStringEntry.StringPart2 = ArchiveFileBin.ReadBytes(4);
+                    newStringEntry.StringPart2 = bin.ReadBytes(4);
 
                     //TEMP: For now I'm just setting the filename to be the index... need to work out how the _BIN relates to the initial .PAK to get names, etc
                     newStringEntry.FileName = newStringEntry.FileIndex + ".DXBC";
                     //END OF TEMP
 
-                    HeaderDump.Add(newStringEntry);
+                    _header.Add(newStringEntry);
                 }
-                EndOfHeaders = (int)ArchiveFileBin.BaseStream.Position;
+                int endOfHeaders = (int)bin.BaseStream.Position;
 
                 //Pull each entry's file content
-                foreach (CathodeShaderHeader shaderEntry in HeaderDump)
+                foreach (CathodeShaderHeader shaderEntry in _header)
                 {
-                    ArchiveFileBin.BaseStream.Position = shaderEntry.FileOffset + EndOfHeaders;
-                    shaderEntry.FileContent = ArchiveFileBin.ReadBytes(shaderEntry.FileLength);
+                    bin.BaseStream.Position = shaderEntry.FileOffset + endOfHeaders;
+                    shaderEntry.FileContent = bin.ReadBytes(shaderEntry.FileLength);
                 }
 
-                ArchiveFileBin.Close();
+                bin.Close();
                 return PAKReturnType.SUCCESS;
             }
             catch (IOException) { return PAKReturnType.FAIL_COULD_NOT_ACCESS_FILE; }
@@ -134,7 +133,7 @@ namespace CATHODE.Assets
         public override List<string> GetFileNames()
         {
             List<string> FileNameList = new List<string>();
-            foreach (CathodeShaderHeader shaderEntry in HeaderDump)
+            foreach (CathodeShaderHeader shaderEntry in _header)
             {
                 FileNameList.Add(shaderEntry.FileName);
             }
@@ -144,15 +143,15 @@ namespace CATHODE.Assets
         /* Get the size of the requested shader (not yet implemented) */
         public override int GetFilesize(string FileName)
         {
-            return HeaderDump[GetFileIndex(FileName)].FileLength;
+            return _header[GetFileIndex(FileName)].FileLength;
         }
 
         /* Find the shader entry object by name (not yet implemented) */
         public override int GetFileIndex(string FileName)
         {
-            for (int i = 0; i < HeaderDump.Count; i++)
+            for (int i = 0; i < _header.Count; i++)
             {
-                if (HeaderDump[i].FileName == FileName)
+                if (_header[i].FileName == FileName)
                 {
                     return i;
                 }
@@ -165,7 +164,7 @@ namespace CATHODE.Assets
         {
             try
             {
-                File.WriteAllBytes(PathToExport, HeaderDump[GetFileIndex(FileName)].FileContent);
+                File.WriteAllBytes(PathToExport, _header[GetFileIndex(FileName)].FileContent);
                 return PAKReturnType.SUCCESS;
             }
             catch (IOException) { return PAKReturnType.FAIL_COULD_NOT_ACCESS_FILE; }
