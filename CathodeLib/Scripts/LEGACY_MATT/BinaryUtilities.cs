@@ -17,23 +17,24 @@ namespace CathodeLib
     */
     public static class BigEndianUtils
     {
-        public static int ReadInt32(BinaryReader Reader)
-        {
-            byte[] data = Reader.ReadBytes(4);
-            Array.Reverse(data);
-            return BitConverter.ToInt32(data, 0);
-        }
-        public static Int16 ReadInt16(BinaryReader Reader)
-        {
-            var data = Reader.ReadBytes(2);
-            Array.Reverse(data);
-            return BitConverter.ToInt16(data, 0);
-        }
         public static Int64 ReadInt64(BinaryReader Reader)
         {
             var data = Reader.ReadBytes(8);
             Array.Reverse(data);
             return BitConverter.ToInt64(data, 0);
+        }
+        public static UInt64 ReadUInt64(BinaryReader Reader)
+        {
+            var data = Reader.ReadBytes(8);
+            Array.Reverse(data);
+            return BitConverter.ToUInt64(data, 0);
+        }
+
+        public static Int32 ReadInt32(BinaryReader Reader)
+        {
+            byte[] data = Reader.ReadBytes(4);
+            Array.Reverse(data);
+            return BitConverter.ToInt32(data, 0);
         }
         public static UInt32 ReadUInt32(BinaryReader Reader)
         {
@@ -41,11 +42,48 @@ namespace CathodeLib
             Array.Reverse(data);
             return BitConverter.ToUInt32(data, 0);
         }
-        
+
+        public static Int16 ReadInt16(BinaryReader Reader)
+        {
+            var data = Reader.ReadBytes(2);
+            Array.Reverse(data);
+            return BitConverter.ToInt16(data, 0);
+        }
+        public static UInt16 ReadUInt16(BinaryReader Reader)
+        {
+            var data = Reader.ReadBytes(2);
+            Array.Reverse(data);
+            return BitConverter.ToUInt16(data, 0);
+        }
+
         public static byte[] FlipEndian(byte[] ThisEndian)
         {
             Array.Reverse(ThisEndian);
             return ThisEndian;
+        }
+        public static byte[] FlipEndian(Int64 ThisEndian)
+        {
+            return FlipEndian(BitConverter.GetBytes(ThisEndian));
+        }
+        public static byte[] FlipEndian(UInt64 ThisEndian)
+        {
+            return FlipEndian(BitConverter.GetBytes(ThisEndian));
+        }
+        public static byte[] FlipEndian(Int32 ThisEndian)
+        {
+            return FlipEndian(BitConverter.GetBytes(ThisEndian));
+        }
+        public static byte[] FlipEndian(UInt32 ThisEndian)
+        {
+            return FlipEndian(BitConverter.GetBytes(ThisEndian));
+        }
+        public static byte[] FlipEndian(Int16 ThisEndian)
+        {
+            return FlipEndian(BitConverter.GetBytes(ThisEndian));
+        }
+        public static byte[] FlipEndian(UInt16 ThisEndian)
+        {
+            return FlipEndian(BitConverter.GetBytes(ThisEndian));
         }
     }
     public static class ExtraBinaryUtils

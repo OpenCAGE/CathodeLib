@@ -191,24 +191,24 @@ namespace CATHODE.Assets
             try
             {
                 //Re-write out to the PAK
-                BinaryWriter ArchiveWriter = new BinaryWriter(File.OpenWrite(_filePathPAK));
-                ArchiveWriter.BaseStream.SetLength(0);
-                ArchiveWriter.Write(_headerJunk);
-                ArchiveWriter.Write(_entries.Count);
-                foreach (EntryMaterialMappingsPAK ThisMatRemap in _entries)
+                BinaryWriter pak = new BinaryWriter(File.OpenWrite(_filePathPAK));
+                pak.BaseStream.SetLength(0);
+                pak.Write(_headerJunk);
+                pak.Write(_entries.Count);
+                foreach (EntryMaterialMappingsPAK entry in _entries)
                 {
-                    ArchiveWriter.Write(ThisMatRemap.MapHeader);
-                    ArchiveWriter.Write(ThisMatRemap.MapEntryCoupleCount);
-                    ArchiveWriter.Write(ThisMatRemap.MapJunk);
-                    ArchiveWriter.Write(ThisMatRemap.MapFilename.Length);
-                    ExtraBinaryUtils.WriteString(ThisMatRemap.MapFilename, ArchiveWriter);
-                    foreach (string MaterialName in ThisMatRemap.MapMatEntries)
+                    pak.Write(entry.MapHeader);
+                    pak.Write(entry.MapEntryCoupleCount);
+                    pak.Write(entry.MapJunk);
+                    pak.Write(entry.MapFilename.Length);
+                    ExtraBinaryUtils.WriteString(entry.MapFilename, pak);
+                    foreach (string name in entry.MapMatEntries)
                     {
-                        ArchiveWriter.Write(MaterialName.Length);
-                        ExtraBinaryUtils.WriteString(MaterialName, ArchiveWriter);
+                        pak.Write(name.Length);
+                        ExtraBinaryUtils.WriteString(name, pak);
                     }
                 }
-                ArchiveWriter.Close();
+                pak.Close();
 
                 return PAKReturnType.SUCCESS;
             }
