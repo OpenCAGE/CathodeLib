@@ -330,19 +330,11 @@ namespace CATHODE.Assets
                 if (FileIndex == -1) return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR; //CHANGED FOR OPENCAGE
 
                 //Get the biggest texture part stored
-                TEX4_Part TexturePart;
-                if (_entries[FileIndex].tex_HighRes.Saved)
-                {
-                    TexturePart = _entries[FileIndex].tex_HighRes;
-                }
-                else if (_entries[FileIndex].tex_LowRes.Saved)
-                {
+                TEX4_Part TexturePart = _entries[FileIndex].tex_HighRes;
+                if (TexturePart.HeaderPos == -1)
                     TexturePart = _entries[FileIndex].tex_LowRes;
-                }
-                else
-                {
-                    return PAKReturnType.FAIL_REQUEST_IS_UNSUPPORTED;
-                }
+                if (TexturePart.HeaderPos == -1)
+                    return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR;
 
                 //Pull the texture part content from the PAK
                 BinaryReader ArchiveFile = new BinaryReader(File.OpenRead(_filePathPAK));
