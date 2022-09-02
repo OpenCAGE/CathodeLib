@@ -20,23 +20,14 @@ namespace CATHODE.Assets
     //The Tex4 Entry
     class TEX4
     {
-        //Misc header info (used for rewriting and not a lot else)
-        public string Magic = ""; 
-        public int Length_V2 = -1;
-        public int Length_V1 = -1;
-
-        public int Type = -1;
-        public AlienUnknownTextureThing UnknownTexThing;
-        public int FileNameOffset = -1;
-
-        //The filename and path
         public string FileName = "";
 
-        //Misc metadata
         public TextureFormat Format;
-        public int HeaderPos = -1;
+        public int Type = -1; //AlienTextureType
+        public AlienUnknownTextureThing UnknownTexThing;
 
-        //Actual texture content
+        public int HeaderPos = -1; //TODO: deprecate
+
         public TEX4_Part tex_LowRes = new TEX4_Part();
         public TEX4_Part tex_HighRes = new TEX4_Part(); //V2 is the largest, unless we don't have a V2 in which case V1 is.
     }
@@ -64,7 +55,7 @@ namespace CATHODE.Assets
         public Int16 Width = -1;
         public Int16 Height = -1;
 
-        public Int16 Bit = -1;
+        public Int16 Depth = -1;
         public Int16 MipLevels = -1;
 
         public int HeaderPos = -1;
