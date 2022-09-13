@@ -12,62 +12,52 @@ namespace CATHODE.Misc
     public class RenderableElementsDatabase
     {
         private string filepath;
-        public RenderableElementHeader header;
-        public RenderableElementEntry[] entries;
+
+        private List<RenderableElement> entries;
+        public List<RenderableElement> RenderableElements { get { return entries; } }
 
         /* Load the file */
         public RenderableElementsDatabase(string path)
         {
             filepath = path;
 
-            BinaryReader stream = new BinaryReader(File.OpenRead(path));
-            header = Utilities.Consume<RenderableElementHeader>(stream);
-            entries = Utilities.ConsumeArray<RenderableElementEntry>(stream, header.EntryCount);
-            stream.Close();
+            //Don't try and read a REDS that doesn't exist, we will make one when saving.
+            if (!File.Exists(path)) return;
+
+            BinaryReader reds = new BinaryReader(File.OpenRead(path));
+            int entryCount = reds.ReadInt32();
+            for (int i = 0; i < entryCount; i++)
+            {
+                RenderableElement element = new RenderableElement();
+                reds.BaseStream.Position += 4;
+                element.ModelIndex = reds.ReadInt32();
+                reds.BaseStream.Position += 5;
+                element.MaterialLibraryIndex = reds.ReadInt32();
+                reds.BaseStream.Position += 1;
+                element.ModelLODIndex = reds.ReadInt32();
+                element.ModelLODPrimitiveCount = reds.ReadByte();
+            }
+            reds.Close();
         }
 
         /* Save the file */
         public void Save()
         {
-            BinaryWriter stream = new BinaryWriter(File.OpenWrite(filepath));
-            stream.BaseStream.SetLength(0);
-            Utilities.Write<RenderableElementHeader>(stream, header);
-            Utilities.Write<RenderableElementEntry>(stream, entries);
-            stream.Close();
+            BinaryWriter reds = new BinaryWriter(File.OpenWrite(filepath));
+            reds.BaseStream.SetLength(0);
+            reds.Write(entries.Count);
+            Utilities.Write<RenderableElement>(reds, entries);
+            reds.Close();
         }
 
-        /* Data accessors */
-        public int EntryCount { get { return entries.Length; } }
-        public RenderableElementEntry[] Entries { get { return entries; } }
-        public RenderableElementEntry GetEntry(int i)
+        /* Definition of a Renderable Element in CATHODE */
+        public class RenderableElement
         {
-            return entries[i];
-        }
+            public int ModelIndex;
+            public int MaterialLibraryIndex;
 
-        /* Data setters */
-        public void SetEntry(int i, RenderableElementEntry content)
-        {
-            entries[i] = content;
+            public int ModelLODIndex; // NOTE: Not sure, looks like it.
+            public byte ModelLODPrimitiveCount; // NOTE: Sure it is primitive count, not sure about the ModelLOD part.
         }
     }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct RenderableElementHeader
-    {
-        public int EntryCount;
-    };
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct RenderableElementEntry
-    {
-        //in the ios dump it appears this data isn't actually in a struct, and just directly read 
-        public int UnknownZeros0_;
-        public int ModelIndex;
-        public byte UnknownZeroByte0_;
-        public int UnknownZeros1_;
-        public int MaterialLibraryIndex;
-        public byte UnknownZeroByte1_;
-        public int ModelLODIndex; // NOTE: Not sure, looks like it.
-        public byte ModelLODPrimitiveCount; // NOTE: Sure it is primitive count, not sure about the ModelLOD part.
-    };
 }
