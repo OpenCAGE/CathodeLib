@@ -1,7 +1,7 @@
+using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using CathodeLib;
 
 namespace CATHODE.Assets
 {
@@ -59,6 +59,7 @@ namespace CATHODE.Assets
                 {
                     TEX4 TextureEntry = new TEX4();
                     TextureEntry.FileName = CATHODE.Utilities.ReadString(bin);
+                    //TODO: maybe we should stop doing this & just do in AlienPAK instead
                     if (Path.GetExtension(TextureEntry.FileName).ToUpper() != ".DDS")
                         TextureEntry.FileName += ".dds";
                     _entries.Add(TextureEntry);
@@ -68,11 +69,10 @@ namespace CATHODE.Assets
                 bin.BaseStream.Position = HeaderListBeginBIN + 12;
                 for (int i = 0; i < NumberOfEntriesBIN; i++)
                 {
-                    _entries[i].HeaderPos = (int)bin.BaseStream.Position;
                     bin.BaseStream.Position += 4; //TEX4 magic
                     _entries[i].Format = (TextureFormat)bin.ReadInt32();
                     _entries[i].tex_HighRes.Length = bin.ReadInt32();
-                    _entries[i].tex_LowRes.Length = bin.ReadInt32(); 
+                    _entries[i].tex_LowRes.Length = bin.ReadInt32();
                     _entries[i].tex_LowRes.Width = bin.ReadInt16();
                     _entries[i].tex_LowRes.Height = bin.ReadInt16();
                     _entries[i].tex_HighRes.Depth = bin.ReadInt16();
@@ -103,15 +103,9 @@ namespace CATHODE.Assets
                 if (BigEndianUtils.ReadInt32(pak) != NumberOfEntriesPAK) { return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR; }
                 pak.BaseStream.Position += 12; //Skip unused
 
-                List<string> debug_dump = new List<string>();
-            
                 //Read the texture headers from the PAK
                 for (int i = 0; i < NumberOfEntriesPAK; i++)
                 {
-                    //Header indexes are out of order, so optimise replacements by saving position
-                    int position = (int)pak.BaseStream.Position;
-
-                    //Pull the entry info
                     pak.BaseStream.Position += 8; //Skip unused
 
                     int length = BigEndianUtils.ReadInt32(pak);
@@ -125,8 +119,8 @@ namespace CATHODE.Assets
 
                     pak.BaseStream.Position += 2; //Skip unused
 
-                    int two_five_six = BigEndianUtils.ReadInt16(pak); //always 256
-                    if (two_five_six != 256) { return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR; }
+                    int val256 = BigEndianUtils.ReadInt16(pak); //always 256
+                    if (val256 != 256) { return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR; }
 
                     UInt32 unk1 = BigEndianUtils.ReadUInt32(pak);
                     UInt16 unk2 = BigEndianUtils.ReadUInt16(pak); 
@@ -139,19 +133,16 @@ namespace CATHODE.Assets
                     UInt32 unk4 = BigEndianUtils.ReadUInt32(pak);
 
                     //Find the entry
-                    TEX4 TextureEntry = _entries[index];
-                    TEX4_Part TexturePart = (isHighRes == 1) ? TextureEntry.tex_HighRes : TextureEntry.tex_LowRes;
-                    if (length != TexturePart.Length) { return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR; }
+                    TEX4_Part texFullRes = (isHighRes == 1) ? _entries[index].tex_HighRes : _entries[index].tex_LowRes;
+                    if (length != texFullRes.Length) { return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR; }
 
                     //Write out the info
-                    TexturePart.HeaderPos = position;
-                    TexturePart.Offset = offset;
-                    TexturePart.unk1 = unk1;
-                    TexturePart.unk2 = unk2;
-                    TexturePart.unk3 = unk3;
-                    TexturePart.unk4 = unk4;
+                    texFullRes.Offset = offset;
+                    texFullRes.unk1 = unk1;
+                    texFullRes.unk2 = unk2;
+                    texFullRes.unk3 = unk3;
+                    texFullRes.unk4 = unk4;
                 }
-                File.WriteAllLines("out.csv", debug_dump);
 
                 //Close PAK
                 pak.Close();
@@ -206,109 +197,94 @@ namespace CATHODE.Assets
         }
 
         /* Replace an existing file in the TexturePAK archive */
+        //TODO: THIS FUNCTION DOES NOT CURRENTLY WORK!
+        //      I NEED TO IMPLEMENT PULLING ALL PAK TEXTURE CONTENT, UPDATING WITH NEW, THEN SAVING IT BACK OUT
+        //      CURRENTLY IT ONLY UPDATES HEADERS!
         public override PAKReturnType ReplaceFile(string PathToNewFile, string FileName)
         {
             try
             {
-                //Get the texture entry & parse new DDS
-                int EntryIndex = GetFileIndex(FileName);
-                if (EntryIndex == -1) return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR; //CHANGED FOR OPENCAGE
-                TEX4 TextureEntry = _entries[EntryIndex];
-                DDSReader NewTexture = new DDSReader(PathToNewFile);
-
-                //Currently we only apply the new texture to the "biggest", some have lower mips that we don't edit (TODO)
-                TEX4_Part BiggestPart = TextureEntry.tex_HighRes;
-                if (BiggestPart.HeaderPos == -1)
-                    BiggestPart = TextureEntry.tex_LowRes;
-                if (BiggestPart.HeaderPos == -1)
-                    return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR; 
-
-                //CATHODE seems to ignore texture header information regarding size, so as default, resize any imported textures to the original size.
-                //An option is provided in the toolkit to write size information to the header (done above) however, so don't resize if that's the case.
-                //More work needs to be done to figure out why CATHODE doesn't honour the header's size value.
-                int OriginalLength = BiggestPart.Length;
-                Array.Resize(ref NewTexture.DataBlock, OriginalLength);
+                int index = GetFileIndex(FileName);
+                if (index == -1) return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR;
 
                 //Update our internal knowledge of the textures
-                BiggestPart.Length = (int)NewTexture.DataBlock.Length;
-                BiggestPart.Width = (Int16)NewTexture.Width;
-                BiggestPart.Height = (Int16)NewTexture.Height;
-                TextureEntry.Format = NewTexture.Format;
-                //TODO: Update smallest here too if it exists!
-                //Will need to be written into the PAK at "Pull PAK sections before/after V2" too - headers are handled already.
+                //TODO: update low and high res - take lowest mip of high?
+                DDSReader newTexture = new DDSReader(PathToNewFile);
+                TEX4_Part texFullRes = _entries[index].tex_HighRes;
+                if (texFullRes.Length == 0)
+                    texFullRes = _entries[index].tex_LowRes;
+                if (texFullRes.Length == 0)
+                    return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR; 
+                texFullRes.Length = (int)newTexture.DataBlock.Length;
+                texFullRes.Width = (Int16)newTexture.Width;
+                texFullRes.Height = (Int16)newTexture.Height;
+                _entries[index].Format = newTexture.Format;
 
-                //Load the BIN and write out updated BIN texture header
+                //Update BIN
                 BinaryWriter bin = new BinaryWriter(File.OpenWrite(_filePathBIN));
-                bin.BaseStream.Position = TextureEntry.HeaderPos;
-                ExtraBinaryUtils.WriteString(TextureEntry.Magic, bin);
-                bin.Write(BitConverter.GetBytes((int)TextureEntry.Format));
-                bin.Write((TextureEntry.tex_HighRes.Length == -1) ? 0 : TextureEntry.tex_HighRes.Length);
-                bin.Write(TextureEntry.tex_LowRes.Length);
-                bin.Write(TextureEntry.tex_LowRes.Width);
-                bin.Write(TextureEntry.tex_LowRes.Height);
-                bin.Write(TextureEntry.tex_LowRes.Depth);
-                bin.Write(TextureEntry.tex_HighRes.Width);
-                bin.Write(TextureEntry.tex_HighRes.Height);
-                bin.Write(TextureEntry.tex_HighRes.Depth);
-                bin.Write(TextureEntry.Type);
-                bin.Write(2048); //TODO: derive this from the actual texture
-                bin.Write(0); //TODO: this is filename offset, gen this from how we write!
-                bin.Write(new byte[] {0x00, 0x00, 0x00, 0x00}); //Padding
+                bin.BaseStream.Position += 12;
+                for (int i = 0; i < _entries.Count; i++)
+                {
+                    CATHODE.Utilities.Write<string>(bin, _entries[i].FileName);
+                    bin.Write(0x00);
+                }
+                int binHeaderStart = (int)bin.BaseStream.Position;
+                int binEntryCount = 0;
+                for (int i = 0; i < _entries.Count; i++)
+                {
+                    ExtraBinaryUtils.WriteString("tex4", bin);
+                    bin.Write(BitConverter.GetBytes((int)_entries[i].Format));
+                    bin.Write(_entries[i].tex_HighRes.Length);
+                    bin.Write(_entries[i].tex_LowRes.Length);
+                    bin.Write(_entries[i].tex_LowRes.Width);
+                    bin.Write(_entries[i].tex_LowRes.Height);
+                    bin.Write(_entries[i].tex_LowRes.Depth);
+                    bin.Write(_entries[i].tex_HighRes.Width);
+                    bin.Write(_entries[i].tex_HighRes.Height);
+                    bin.Write(_entries[i].tex_HighRes.Depth);
+                    bin.Write(_entries[i].Type);
+                    bin.Write((Int16)_entries[i].UnknownTexThing);
+                    bin.Write((Int16)2048); //TODO: derive this from the actual texture
+                    bin.Write(0); //TODO: this is filename offset, gen this from how we write!
+                    bin.Write(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                    binEntryCount++;
+                }
+                bin.BaseStream.Position = 4;
+                bin.Write(binEntryCount);
+                bin.Write(binHeaderStart); //TODO: above I +12 to this number, so i guess this is wrong - i forget why
                 bin.Close();
 
-                //Update headers for V1+2 in PAK if they exist
+                //Update headers in PAK for all entries
                 BinaryWriter pak = new BinaryWriter(File.OpenWrite(_filePathPAK));
-                if (TextureEntry.tex_LowRes.HeaderPos != -1)
+                pak.BaseStream.Position = 32;
+                int pakEntryCount = 0;
+                for (int i = 0; i < _entries.Count; i++)
                 {
-                    pak.BaseStream.Position = TextureEntry.tex_LowRes.HeaderPos;
-                    pak.Write(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
-                    pak.Write(BigEndianUtils.FlipEndian(TextureEntry.tex_LowRes.Length));
-                    pak.Write(BigEndianUtils.FlipEndian(TextureEntry.tex_LowRes.Length));
-                    pak.Write(BigEndianUtils.FlipEndian(TextureEntry.tex_LowRes.Offset));
-                    pak.Write(new byte[] { 0x00, 0x00 });
-                    pak.Write((Int16)0); //isHighRes
-                    pak.Write(new byte[] { 0x00, 0x00 });
-                    pak.Write((Int16)256); //TODO: derive this from the actual texture
-                    pak.Write(BigEndianUtils.FlipEndian(TextureEntry.tex_LowRes.unk1));
-                    pak.Write(BigEndianUtils.FlipEndian(TextureEntry.tex_LowRes.unk2));
-                    pak.Write(BigEndianUtils.FlipEndian((Int16)EntryIndex));
-                    pak.Write(new byte[] { 0x00, 0x00, 0x00, 0x00 });
-                    pak.Write(BigEndianUtils.FlipEndian(TextureEntry.tex_LowRes.unk3));
-                    pak.Write(BigEndianUtils.FlipEndian(TextureEntry.tex_LowRes.unk4));
+                    for (int x = 0; x < 2; x++)
+                    {
+                        TEX4_Part currentRes = (x == 0) ? _entries[i].tex_LowRes : _entries[i].tex_HighRes;
+                        if (currentRes.Length == 0) continue;
+                        pak.Write(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
+                        pak.Write(BigEndianUtils.FlipEndian(currentRes.Length));
+                        pak.Write(BigEndianUtils.FlipEndian(currentRes.Length));
+                        pak.Write(BigEndianUtils.FlipEndian(currentRes.Offset));
+                        pak.Write(new byte[] { 0x00, 0x00 });
+                        pak.Write((Int16)x); //isHighRes
+                        pak.Write(new byte[] { 0x00, 0x00 });
+                        pak.Write((Int16)256); //TODO: derive this from the actual texture
+                        pak.Write(BigEndianUtils.FlipEndian(currentRes.unk1));
+                        pak.Write(BigEndianUtils.FlipEndian(currentRes.unk2));
+                        pak.Write(BigEndianUtils.FlipEndian((Int16)index));
+                        pak.Write(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                        pak.Write(BigEndianUtils.FlipEndian(currentRes.unk3));
+                        pak.Write(BigEndianUtils.FlipEndian(currentRes.unk4));
+                        pakEntryCount++;
+                    }
                 }
-                if (TextureEntry.tex_HighRes.HeaderPos != -1)
-                {
-                    pak.BaseStream.Position = TextureEntry.tex_HighRes.HeaderPos;
-                    pak.Write(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
-                    pak.Write(BigEndianUtils.FlipEndian(TextureEntry.tex_HighRes.Length));
-                    pak.Write(BigEndianUtils.FlipEndian(TextureEntry.tex_HighRes.Length));
-                    pak.Write(BigEndianUtils.FlipEndian(TextureEntry.tex_HighRes.Offset));
-                    pak.Write(new byte[] { 0x00, 0x00 });
-                    pak.Write((Int16)1); //isHighRes
-                    pak.Write(new byte[] { 0x00, 0x00 });
-                    pak.Write((Int16)256); //TODO: derive this from the actual texture
-                    pak.Write(BigEndianUtils.FlipEndian(TextureEntry.tex_HighRes.unk1));
-                    pak.Write(BigEndianUtils.FlipEndian(TextureEntry.tex_HighRes.unk2));
-                    pak.Write(BigEndianUtils.FlipEndian((Int16)EntryIndex));
-                    pak.Write(new byte[] { 0x00, 0x00, 0x00, 0x00 });
-                    pak.Write(BigEndianUtils.FlipEndian(TextureEntry.tex_HighRes.unk3));
-                    pak.Write(BigEndianUtils.FlipEndian(TextureEntry.tex_HighRes.unk4));
-                }
-                pak.Close();
-
-                //Pull PAK sections before/after V2
-                BinaryReader ArchiveFile = new BinaryReader(File.OpenRead(_filePathPAK));
-                byte[] PAK_Pt1 = ArchiveFile.ReadBytes((NumberOfEntriesPAK * 48) + 32 + BiggestPart.Offset);
-                ArchiveFile.BaseStream.Position += OriginalLength;
-                byte[] PAK_Pt2 = ArchiveFile.ReadBytes((int)ArchiveFile.BaseStream.Length - (int)ArchiveFile.BaseStream.Position);
-                ArchiveFile.Close();
-
-                //Write the PAK back out with new content
-                pak = new BinaryWriter(File.OpenWrite(_filePathPAK));
-                pak.BaseStream.SetLength(0);
-                pak.Write(PAK_Pt1);
-                pak.Write(NewTexture.DataBlock);
-                pak.Write(PAK_Pt2);
+                //TODO: Pull all PAK content for textures & then rewrite properly using new info
+                pak.BaseStream.Position = 12;
+                pak.Write(pakEntryCount);
+                pak.Write(pakEntryCount);
                 pak.Close();
 
                 return PAKReturnType.SUCCESS;
@@ -328,9 +304,9 @@ namespace CATHODE.Assets
 
                 //Get the biggest texture part stored
                 TEX4_Part TexturePart = _entries[FileIndex].tex_HighRes;
-                if (TexturePart.HeaderPos == -1)
+                if (TexturePart.Length == 0)
                     TexturePart = _entries[FileIndex].tex_LowRes;
-                if (TexturePart.HeaderPos == -1)
+                if (TexturePart.Length == 0)
                     return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR;
 
                 //Pull the texture part content from the PAK

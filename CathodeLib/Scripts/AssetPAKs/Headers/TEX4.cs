@@ -29,7 +29,7 @@ namespace CATHODE.Assets
         public int HeaderPos = -1; //TODO: deprecate
 
         public TEX4_Part tex_LowRes = new TEX4_Part();
-        public TEX4_Part tex_HighRes = new TEX4_Part(); //V2 is the largest, unless we don't have a V2 in which case V1 is.
+        public TEX4_Part tex_HighRes = new TEX4_Part(); //We don't always have this
     }
 
     public enum AlienTextureType
@@ -52,21 +52,19 @@ namespace CATHODE.Assets
     //The Tex4 Sub-Parts
     class TEX4_Part
     {
-        public Int16 Width = -1;
-        public Int16 Height = -1;
+        public Int16 Width = 0;
+        public Int16 Height = 0;
 
-        public Int16 Depth = -1;
-        public Int16 MipLevels = -1;
+        public Int16 Depth = 0;
+        public Int16 MipLevels = 0;
 
-        public int HeaderPos = -1;
-
-        public int Offset = -1;
-        public int Length = -1;
+        public int Offset = 0;
+        public int Length = 0;
 
         //Saving these so we can re-write without issue
-        public UInt32 unk1;
-        public UInt16 unk2;
-        public UInt32 unk3;
-        public UInt32 unk4;
+        public UInt32 unk1 = 0;
+        public UInt16 unk2 = 0;
+        public UInt32 unk3 = 0;
+        public UInt32 unk4 = 0;
     }
 }
