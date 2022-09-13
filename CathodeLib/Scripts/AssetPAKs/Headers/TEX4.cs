@@ -26,8 +26,6 @@ namespace CATHODE.Assets
         public int Type = -1; //AlienTextureType
         public AlienUnknownTextureThing UnknownTexThing;
 
-        public int HeaderPos = -1; //TODO: deprecate
-
         public TEX4_Part tex_LowRes = new TEX4_Part();
         public TEX4_Part tex_HighRes = new TEX4_Part(); //We don't always have this
     }
