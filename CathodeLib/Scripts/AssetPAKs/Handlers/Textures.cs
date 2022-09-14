@@ -49,8 +49,8 @@ namespace CATHODE.Assets
                 BinaryReader bin = new BinaryReader(File.OpenRead(_filePathBIN));
 
                 //Read the header info from the BIN
-                int versionNumBIN = bin.ReadInt32();
-                if (versionNumBIN != 45) { return PAKReturnType.FAIL_ARCHIVE_IS_NOT_EXCPETED_TYPE; } 
+                if ((FileIdentifiers)bin.ReadInt32() != FileIdentifiers.TEXTURE_DATA) 
+                    return PAKReturnType.FAIL_ARCHIVE_IS_NOT_EXCPETED_TYPE;
                 NumberOfEntriesBIN = bin.ReadInt32();
                 HeaderListBeginBIN = bin.ReadInt32();
 
@@ -94,13 +94,15 @@ namespace CATHODE.Assets
                 /* Second, parse the PAK and pull ONLY header info from it - we'll pull textures when requested (to save memory) */
                 BinaryReader pak = new BinaryReader(File.OpenRead(_filePathPAK));
 
-                //Read the header info from the PAK
+                //Read & check the header info from the PAK
                 pak.BaseStream.Position += 4; //Skip unused
-                int versionNumPAK = BigEndianUtils.ReadInt32(pak);
-                if (versionNumPAK != 14) { return PAKReturnType.FAIL_ARCHIVE_IS_NOT_EXCPETED_TYPE; } 
-                if (BigEndianUtils.ReadInt32(pak) != versionNumBIN) { return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR; }
+                if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.ASSET_FILE) 
+                    return PAKReturnType.FAIL_ARCHIVE_IS_NOT_EXCPETED_TYPE;
+                if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.TEXTURE_DATA) 
+                    return PAKReturnType.FAIL_ARCHIVE_IS_NOT_EXCPETED_TYPE;
                 NumberOfEntriesPAK = BigEndianUtils.ReadInt32(pak);
-                if (BigEndianUtils.ReadInt32(pak) != NumberOfEntriesPAK) { return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR; }
+                if (BigEndianUtils.ReadInt32(pak) != NumberOfEntriesPAK) 
+                    return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR;
                 pak.BaseStream.Position += 12; //Skip unused
 
                 //Read the texture headers from the PAK
@@ -220,15 +222,16 @@ namespace CATHODE.Assets
                 texFullRes.Height = (Int16)newTexture.Height;
                 _entries[index].Format = newTexture.Format;
 
-                //Update BIN
+                //Write BIN file
                 BinaryWriter bin = new BinaryWriter(File.OpenWrite(_filePathBIN));
-                bin.BaseStream.Position += 12;
+                bin.BaseStream.SetLength(0);
+                bin.Write(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
                 for (int i = 0; i < _entries.Count; i++)
                 {
                     CATHODE.Utilities.Write<string>(bin, _entries[i].FileName); //TODO: does this need converting to char array?
                     bin.Write((byte)0x00);
                 }
-                int binHeaderStart = (int)bin.BaseStream.Position;
+                int binHeaderStart = (int)bin.BaseStream.Position - 12;
                 int binEntryCount = 0;
                 for (int i = 0; i < _entries.Count; i++)
                 {
@@ -249,9 +252,10 @@ namespace CATHODE.Assets
                     bin.Write(new byte[] { 0x00, 0x00, 0x00, 0x00 });
                     binEntryCount++;
                 }
-                bin.BaseStream.Position = 4;
+                bin.BaseStream.Position = 0;
+                bin.Write((int)FileIdentifiers.TEXTURE_DATA);
                 bin.Write(binEntryCount);
-                bin.Write(binHeaderStart); //TODO: above I +12 to this number, so i guess this is wrong - i forget why
+                bin.Write(binHeaderStart); 
                 bin.Close();
 
                 //Update headers in PAK for all entries
@@ -282,7 +286,9 @@ namespace CATHODE.Assets
                     }
                 }
                 //TODO: Pull all PAK content for textures & then rewrite properly using new info
-                pak.BaseStream.Position = 12;
+                pak.Write(0);
+                pak.Write((int)FileIdentifiers.ASSET_FILE);
+                pak.Write((int)FileIdentifiers.TEXTURE_DATA);
                 pak.Write(pakEntryCount);
                 pak.Write(pakEntryCount);
                 pak.Close();

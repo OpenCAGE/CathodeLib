@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CathodeLib;
+using System;
 using System.Collections.Generic;
 using System.IO;
 
@@ -15,12 +16,15 @@ namespace CATHODE.Assets
     public class Shaders : AssetPAK
     {
         List<CathodeShaderHeader> _header = new List<CathodeShaderHeader>();
+        private string _filePathIdxRemap = "";
 
         /* Initialise the ShaderPAK class with the intended location (existing or not) */
         public Shaders(string PathToPAK)
         {
             _filePathPAK = PathToPAK;
-            _filePathBIN = PathToPAK.Substring(0, PathToPAK.Length - Path.GetFileName(PathToPAK).Length) + Path.GetFileNameWithoutExtension(_filePathPAK) + "_BIN.PAK";
+            string trimmed = PathToPAK.Substring(0, PathToPAK.Length - Path.GetFileName(PathToPAK).Length) + Path.GetFileNameWithoutExtension(_filePathPAK);
+            _filePathBIN = trimmed + "_BIN.PAK";
+            _filePathIdxRemap = trimmed + "_IDX_REMAP.PAK";
         }
 
         /* Load the contents of an existing ShaderPAK set (massive WIP) */
@@ -34,19 +38,33 @@ namespace CATHODE.Assets
             try
             {
                 //The main PAK is unhandled for now, as I can't work out how the main (initial) PAK relates to the _BIN.PAK. Entry counts are different, and no noticeable indexes!
-                /*
                 //Open PAK
-                BinaryReader ArchiveFile = new BinaryReader(File.OpenRead(FilePathPAK));
-                ExtraBinaryUtils BinaryUtils = new ExtraBinaryUtils();
-                
+                BinaryReader pak = new BinaryReader(File.OpenRead(_filePathPAK));
+
+                //Read & check the header info from the PAK
+                pak.BaseStream.Position += 4; //Skip unused
+                if ((FileIdentifiers)pak.ReadInt32() != FileIdentifiers.ASSET_FILE)
+                    return PAKReturnType.FAIL_ARCHIVE_IS_NOT_EXCPETED_TYPE;
+                if ((FileIdentifiers)pak.ReadInt32() != FileIdentifiers.SHADER_DATA)
+                    return PAKReturnType.FAIL_ARCHIVE_IS_NOT_EXCPETED_TYPE;
+                int pakEntryCount = pak.ReadInt32();
+                if (BigEndianUtils.ReadInt32(pak) != pakEntryCount)
+                    return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR;
+
+                /*
+                //TODO: usually we skip 12 bytes here as this bit is unused, but in shader PAKs it seems 8 bytes are used
+
+                pak.BaseStream.Position += 12; //Skip unused
+
+
                 //Read shader headers
                 for (int i = 0; i < NumOfStringPairs; i++)
                 {
                     CathodeShaderHeader newHeaderEntry = new CathodeShaderHeader();
 
                     //Get the name (or type) of this header
-                    ArchiveFile.BaseStream.Position += 32;
-                    byte[] entryNameOrType = ArchiveFile.ReadBytes(40);
+                    pak.BaseStream.Position += 32;
+                    byte[] entryNameOrType = pak.ReadBytes(40);
                     for (int x = 0; x < entryNameOrType.Length; x++)
                     {
                         if (entryNameOrType[x] != 0x00)
@@ -60,9 +78,9 @@ namespace CATHODE.Assets
                     //Skip over the rest for now just so I can scrape all the names (this needs parsing obvs)
                     for (int x = 0; x < 999999; x++)
                     {
-                        if (ArchiveFile.ReadBytes(4).SequenceEqual(new byte[] { 0xA4, 0xBB, 0x25, 0x77 }))
+                        if (pak.ReadBytes(4).SequenceEqual(new byte[] { 0xA4, 0xBB, 0x25, 0x77 }))
                         {
-                            ArchiveFile.BaseStream.Position -= 4;
+                            pak.BaseStream.Position -= 4;
                             break;
                         }
                     }
@@ -71,25 +89,29 @@ namespace CATHODE.Assets
                 }
 
                 //Done!
-                ArchiveFile.Close();
                 */
+                pak.Close();
 
                 BinaryReader bin = new BinaryReader(File.OpenRead(_filePathBIN));
 
-                //Validate our header magic (look at _IDX_REMAP as I think this should also be supported)
-                bin.BaseStream.Position = 4;
-                if (!(bin.ReadInt32() == 14 && bin.ReadInt32() == 3))
+                bin.BaseStream.Position = 4; //skip magic
+                if ((FileIdentifiers)pak.ReadInt32() != FileIdentifiers.ASSET_FILE)
+                    return PAKReturnType.FAIL_ARCHIVE_IS_NOT_EXCPETED_TYPE;
+                if ((FileIdentifiers)pak.ReadInt32() != FileIdentifiers.SHADER_DATA)
                     return PAKReturnType.FAIL_ARCHIVE_IS_NOT_EXCPETED_TYPE;
 
                 //Read entry count from header
-                bin.BaseStream.Position = 12;
-                int entryCount = bin.ReadInt32();
+                int binEntryCount = bin.ReadInt32();
+                if (BigEndianUtils.ReadInt32(pak) != binEntryCount)
+                    return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR;
+
+                //TODO: the other info here seems to mirror the extra data used in the other shader PAK which is usually unused
 
                 //Skip rest of the main header
                 bin.BaseStream.Position = 32;
 
                 //Pull each entry's individual header
-                for (int i = 0; i < entryCount; i++)
+                for (int i = 0; i < binEntryCount; i++)
                 {
                     CathodeShaderHeader newStringEntry = new CathodeShaderHeader();
                     bin.BaseStream.Position += 8; //skip blanks

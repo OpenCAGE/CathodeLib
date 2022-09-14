@@ -123,17 +123,22 @@ namespace CATHODE.Assets
                 #endregion
 
                 #region MODEL_PAK
-                //Read PAK header info
                 BinaryReader pak = new BinaryReader(File.OpenRead(_filePathPAK));
-                pak.BaseStream.Position += 8;
-                int Version = BinaryPrimitives.ReverseEndianness(pak.ReadInt32());
+
+                //Read & check the header info from the PAK
+                pak.BaseStream.Position += 4; //Skip unused
+                if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.ASSET_FILE)
+                    return PAKReturnType.FAIL_ARCHIVE_IS_NOT_EXCPETED_TYPE;
+                if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.MODEL_DATA)
+                    return PAKReturnType.FAIL_ARCHIVE_IS_NOT_EXCPETED_TYPE;
                 int EntryCount = BinaryPrimitives.ReverseEndianness(pak.ReadInt32());
-                int EntryCountMax = BinaryPrimitives.ReverseEndianness(pak.ReadInt32());
-                pak.BaseStream.Position += 12;
+                if (BigEndianUtils.ReadInt32(pak) != EntryCount)
+                    return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR;
+                pak.BaseStream.Position += 12; //Skip unused
 
                 //Get PAK entry information
                 List<int> lengths = new List<int>();
-                for (int i = 0; i < EntryCountMax; i++)
+                for (int i = 0; i < EntryCount; i++)
                 {
                     pak.BaseStream.Position += 8;
                     int Length = BinaryPrimitives.ReverseEndianness(pak.ReadInt32());

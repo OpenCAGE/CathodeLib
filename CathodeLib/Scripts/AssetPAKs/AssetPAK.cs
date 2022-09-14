@@ -42,4 +42,13 @@ namespace CATHODE.Assets
         SUCCESS,
         SUCCESS_WITH_WARNINGS
     };
+
+    public enum FileIdentifiers
+    {
+        ASSET_FILE = 14,
+
+        SHADER_DATA = 3,
+        MODEL_DATA = 19,
+        TEXTURE_DATA = 45,
+    }
 }
