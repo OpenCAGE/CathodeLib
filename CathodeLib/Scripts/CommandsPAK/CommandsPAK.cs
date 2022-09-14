@@ -385,16 +385,15 @@ namespace CATHODE.Commands
                         }
                         case CommandsDataBlock.RESOURCE_REFERENCES:
                         {
-                            //TODO: this case is quite messy as full parsing still isn't known
                             scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, resourceReferences.Count);
                             for (int p = 0; p < resourceReferences.Count; p++)
                             {
-                                writer.Write(resourceReferences[p].resourceRefID.val);
-                                writer.Write(resourceReferences[p].unknownID1.val);
-                                writer.Write(resourceReferences[p].positionOffset.x);
-                                writer.Write(resourceReferences[p].positionOffset.y);
-                                writer.Write(resourceReferences[p].positionOffset.z);
-                                writer.Write(resourceReferences[p].unknownID2.val);
+                                writer.Write(resourceReferences[p].position.x);
+                                writer.Write(resourceReferences[p].position.y);
+                                writer.Write(resourceReferences[p].position.z);
+                                writer.Write(resourceReferences[p].rotation.x);
+                                writer.Write(resourceReferences[p].rotation.y);
+                                writer.Write(resourceReferences[p].rotation.z);
                                 writer.Write(resourceReferences[p].resourceID.val); //Sometimes this is the entity ID that uses the resource, other times it's the "resource" parameter ID link
                                 writer.Write(CommandsUtils.GetResourceEntryTypeGUID(resourceReferences[p].entryType).val);
                                 switch (resourceReferences[p].entryType)
@@ -868,12 +867,9 @@ namespace CATHODE.Commands
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 40);
 
-                                //TODO: these values change by entry type - need to work out what they're for before allowing editing
                                 CathodeResourceReference resource_ref = new CathodeResourceReference();
-                                resource_ref.resourceRefID = new ShortGuid(reader); //renderable element ID (also used in one of the param blocks for something)
-                                resource_ref.unknownID1 = new ShortGuid(reader); //unk (sometimes 0x00 x4?)
-                                resource_ref.positionOffset = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()); //position offset
-                                resource_ref.unknownID2 = new ShortGuid(reader); //unk (sometimes 0x00 x4?)
+                                resource_ref.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                                resource_ref.rotation = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()); 
                                 resource_ref.resourceID = new ShortGuid(reader); //resource id
                                 resource_ref.entryType = CommandsUtils.GetResourceEntryType(reader.ReadBytes(4)); //entry type
                                 switch (resource_ref.entryType)

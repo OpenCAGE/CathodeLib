@@ -52,10 +52,8 @@ namespace CATHODE.Commands
             if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
             if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
 
-            if (x.resourceRefID != y.resourceRefID) return false;
-            if (x.unknownID1 != y.unknownID1) return false;
-            if (x.unknownID2 != y.unknownID2) return false;
-            if (x.positionOffset != y.positionOffset) return false;
+            if (x.position != y.position) return false;
+            if (x.rotation != y.rotation) return false;
             if (x.resourceID != y.resourceID) return false;
             if (x.entryType != y.entryType) return false;
             if (x.entryIndexREDS != y.entryIndexREDS) return false;
@@ -76,10 +74,9 @@ namespace CATHODE.Commands
             return this.MemberwiseClone();
         }
 
-        public ShortGuid resourceRefID;                   //The ID of this entry?
-        public ShortGuid unknownID1;
-        public ShortGuid unknownID2;
-        public Vector3 positionOffset;     //The 3D position to offset the resource by
+        public Vector3 position;
+        public Vector3 rotation;
+
         public ShortGuid resourceID;                      //This is the ID also contained in the RESOURCE_ID parameter list
         public CathodeResourceReferenceType entryType; //This is the type of resource entry
 
