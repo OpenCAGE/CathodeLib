@@ -35,7 +35,7 @@ namespace CATHODE.Misc
                 element.MaterialLibraryIndex = reds.ReadInt32();
                 reds.BaseStream.Position += 1;
                 element.ModelLODIndex = reds.ReadInt32();
-                element.ModelLODPrimitiveCount = reds.ReadByte();
+                element.ModelLODPrimitiveCount = reds.ReadByte(); //TODO: convert to int for ease of use?
             }
             reds.Close();
         }
@@ -46,7 +46,16 @@ namespace CATHODE.Misc
             BinaryWriter reds = new BinaryWriter(File.OpenWrite(filepath));
             reds.BaseStream.SetLength(0);
             reds.Write(entries.Count);
-            Utilities.Write<RenderableElement>(reds, entries);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                reds.Write(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                reds.Write(entries[i].ModelIndex);
+                reds.Write(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00 });
+                reds.Write(entries[i].MaterialLibraryIndex);
+                reds.Write((byte)0x00);
+                reds.Write(entries[i].ModelLODIndex);
+                reds.Write((byte)entries[i].ModelLODPrimitiveCount);
+            }
             reds.Close();
         }
 

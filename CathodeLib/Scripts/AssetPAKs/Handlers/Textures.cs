@@ -225,8 +225,8 @@ namespace CATHODE.Assets
                 bin.BaseStream.Position += 12;
                 for (int i = 0; i < _entries.Count; i++)
                 {
-                    CATHODE.Utilities.Write<string>(bin, _entries[i].FileName);
-                    bin.Write(0x00);
+                    CATHODE.Utilities.Write<string>(bin, _entries[i].FileName); //TODO: does this need converting to char array?
+                    bin.Write((byte)0x00);
                 }
                 int binHeaderStart = (int)bin.BaseStream.Position;
                 int binEntryCount = 0;
