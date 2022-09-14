@@ -50,5 +50,9 @@ namespace CATHODE.Assets
         SHADER_DATA = 3,
         MODEL_DATA = 19,
         TEXTURE_DATA = 45,
+
+        //From ABOUT.TXT (unsure where used)
+        STRING_FILE_VERSION = 6,
+        ENTITY_FILE_VERSION = 171,
     }
 }

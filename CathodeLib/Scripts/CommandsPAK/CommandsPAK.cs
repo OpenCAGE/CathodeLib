@@ -399,16 +399,16 @@ namespace CATHODE.Commands
                                 switch (resourceReferences[p].entryType)
                                 {
                                     case CathodeResourceReferenceType.RENDERABLE_INSTANCE:
-                                        writer.Write(resourceReferences[p].index);
+                                        writer.Write(resourceReferences[p].startIndex);
                                         writer.Write(resourceReferences[p].count);
                                         break;
                                     case CathodeResourceReferenceType.COLLISION_MAPPING:
-                                        writer.Write(resourceReferences[p].index);
+                                        writer.Write(resourceReferences[p].startIndex);
                                         writer.Write(resourceReferences[p].entityID.val);
                                         break;
                                     case CathodeResourceReferenceType.ANIMATED_MODEL:
                                     case CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM:
-                                        writer.Write(resourceReferences[p].index);
+                                        writer.Write(resourceReferences[p].startIndex);
                                         writer.Write(-1);
                                         break;
                                     case CathodeResourceReferenceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
@@ -874,16 +874,16 @@ namespace CATHODE.Commands
                                 switch (resource.entryType)
                                 {
                                     case CathodeResourceReferenceType.RENDERABLE_INSTANCE:
-                                        resource.index = reader.ReadInt32(); //REDS.BIN entry index
+                                        resource.startIndex = reader.ReadInt32(); //REDS.BIN entry index
                                         resource.count = reader.ReadInt32(); //REDS.BIN entry count
                                         break;
                                     case CathodeResourceReferenceType.COLLISION_MAPPING:
-                                        resource.index = reader.ReadInt32(); //COLLISION.MAP entry index?
+                                        resource.startIndex = reader.ReadInt32(); //COLLISION.MAP entry index?
                                         resource.entityID = new ShortGuid(reader); //ID which maps to the entity using the resource (?) - check GetFriendlyName
                                         break;
                                     case CathodeResourceReferenceType.ANIMATED_MODEL:
                                     case CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM:
-                                        resource.index = reader.ReadInt32(); //PHYSICS.MAP entry index?
+                                        resource.startIndex = reader.ReadInt32(); //PHYSICS.MAP entry index?
                                         reader.BaseStream.Position += 4;
                                         break;
                                     case CathodeResourceReferenceType.EXCLUSIVE_MASTER_STATE_RESOURCE:

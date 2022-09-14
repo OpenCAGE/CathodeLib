@@ -56,7 +56,7 @@ namespace CATHODE.Commands
             if (x.rotation != y.rotation) return false;
             if (x.resourceID != y.resourceID) return false;
             if (x.entryType != y.entryType) return false;
-            if (x.index != y.index) return false;
+            if (x.startIndex != y.startIndex) return false;
             if (x.count != y.count) return false;
             if (x.entityID != y.entityID) return false;
 
@@ -79,7 +79,7 @@ namespace CATHODE.Commands
                    EqualityComparer<Vector3>.Default.Equals(rotation, reference.rotation) &&
                    EqualityComparer<ShortGuid>.Default.Equals(resourceID, reference.resourceID) &&
                    entryType == reference.entryType &&
-                   index == reference.index &&
+                   startIndex == reference.startIndex &&
                    count == reference.count &&
                    EqualityComparer<ShortGuid>.Default.Equals(entityID, reference.entityID);
         }
@@ -91,7 +91,7 @@ namespace CATHODE.Commands
             hashCode = hashCode * -1521134295 + rotation.GetHashCode();
             hashCode = hashCode * -1521134295 + resourceID.GetHashCode();
             hashCode = hashCode * -1521134295 + entryType.GetHashCode();
-            hashCode = hashCode * -1521134295 + index.GetHashCode();
+            hashCode = hashCode * -1521134295 + startIndex.GetHashCode();
             hashCode = hashCode * -1521134295 + count.GetHashCode();
             hashCode = hashCode * -1521134295 + entityID.GetHashCode();
             return hashCode;
@@ -103,8 +103,9 @@ namespace CATHODE.Commands
         public ShortGuid resourceID;
         public CathodeResourceReferenceType entryType;
 
-        public int index = -1;
-        public int count = -1;
+        public int startIndex = -1;
+        public int count = 1;
+
         public ShortGuid entityID;
     }
 

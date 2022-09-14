@@ -20,6 +20,7 @@ namespace CATHODE.Misc
         public RenderableElementsDatabase(string path)
         {
             filepath = path;
+            entries = new List<RenderableElement>();
 
             //Don't try and read a REDS that doesn't exist, we will make one when saving.
             if (!File.Exists(path)) return;
@@ -36,6 +37,7 @@ namespace CATHODE.Misc
                 reds.BaseStream.Position += 1;
                 element.ModelLODIndex = reds.ReadInt32();
                 element.ModelLODPrimitiveCount = reds.ReadByte(); //TODO: convert to int for ease of use?
+                entries.Add(element);
             }
             reds.Close();
         }
