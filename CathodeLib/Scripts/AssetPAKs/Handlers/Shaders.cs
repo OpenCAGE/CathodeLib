@@ -51,6 +51,8 @@ namespace CATHODE.Assets
                 if (BigEndianUtils.ReadInt32(pak) != pakEntryCount)
                     return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR;
 
+                //TODO: look at the ios dump, there seems to be a way of working out which is compute/pixel/etc
+
                 /*
                 //TODO: usually we skip 12 bytes here as this bit is unused, but in shader PAKs it seems 8 bytes are used
 

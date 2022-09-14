@@ -179,6 +179,11 @@ namespace CATHODE
             return new Vector3(this.x, this.y, this.z);
         }
 
+        public override string ToString()
+        {
+            return "(" + x + ", " + y + ", " + z + ")";
+        }
+
         public float x { 
             get { return (vals == null) ? 0.0f : vals[0]; } 
             set
