@@ -188,12 +188,22 @@ namespace CATHODE.Assets
         //    return _metadata;
         //}
 
-        /* Get entry by index (added for cross-ref support in OpenCAGE with CommandsPAK) */
-        //public CS2 GetModelByIndex(int index)
-        //{
-        //    if (index < 0 || index >= _metadata.Count) return null;
-        //    return _metadata[index];
-        //}
+        /* TEMP TEMP TEMP!!! */
+        public CS2 GetModelByIndex(int index)
+        {
+            if (index < 0 || index >= _metadata.Count) return new CS2();
+            return _metadata[index];
+        }
+        public string GetModelNameByIndex(int index)
+        {
+            if (index < 0 || index >= _metadata.Count) return "";
+            return _filePaths[index];
+        }
+        public string GetModelSubmeshNameByIndex(int index)
+        {
+            if (index < 0 || index >= _metadata.Count) return "";
+            return _partNames[index];
+        }
 
         /* Get the selected model's submeshes and add up their sizes */
         public override int GetFilesize(string FileName)

@@ -16,7 +16,9 @@ namespace CATHODE.Misc
         public List<int> TextureReferenceCounts;
         public List<string> MaterialNames;
 
-        public void Load(string FullFilePath)
+        //TODO: THIS NEEDS UPDATING TO WORK NICELY!
+
+        public MaterialDatabase(string FullFilePath)
         {
             BinaryReader Stream = new BinaryReader(File.OpenRead(FullFilePath));
 
