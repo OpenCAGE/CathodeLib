@@ -399,23 +399,23 @@ namespace CATHODE.Commands
                                 switch (resourceReferences[p].entryType)
                                 {
                                     case CathodeResourceReferenceType.RENDERABLE_INSTANCE:
-                                        writer.Write(resourceReferences[p].entryIndexREDS);
-                                        writer.Write(resourceReferences[p].entryCountREDS);
+                                        writer.Write(resourceReferences[p].index);
+                                        writer.Write(resourceReferences[p].count);
                                         break;
                                     case CathodeResourceReferenceType.COLLISION_MAPPING:
-                                        writer.Write(resourceReferences[p].unknownInteger1);
+                                        writer.Write(resourceReferences[p].index);
                                         writer.Write(resourceReferences[p].entityID.val);
+                                        break;
+                                    case CathodeResourceReferenceType.ANIMATED_MODEL:
+                                    case CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM:
+                                        writer.Write(resourceReferences[p].index);
+                                        writer.Write(-1);
                                         break;
                                     case CathodeResourceReferenceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
                                     case CathodeResourceReferenceType.NAV_MESH_BARRIER_RESOURCE:
                                     case CathodeResourceReferenceType.TRAVERSAL_SEGMENT:
-                                        writer.Write(resourceReferences[p].unknownInteger1);
-                                        writer.Write(resourceReferences[p].unknownInteger2);
-                                        break;
-                                    case CathodeResourceReferenceType.ANIMATED_MODEL:
-                                    case CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM:
-                                        writer.Write(resourceReferences[p].unknownInteger1);
-                                        writer.Write(resourceReferences[p].unknownInteger2);
+                                        writer.Write(-1);
+                                        writer.Write(-1);
                                         break;
                                 }
                             }
@@ -862,39 +862,37 @@ namespace CATHODE.Commands
                                 }
                                 break;
                             }
-                            //TODO: this case needs a refactor!
                             case CommandsDataBlock.RESOURCE_REFERENCES:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 40);
 
-                                CathodeResourceReference resource_ref = new CathodeResourceReference();
-                                resource_ref.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                                resource_ref.rotation = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()); 
-                                resource_ref.resourceID = new ShortGuid(reader); //resource id
-                                resource_ref.entryType = CommandsUtils.GetResourceEntryType(reader.ReadBytes(4)); //entry type
-                                switch (resource_ref.entryType)
+                                CathodeResourceReference resource = new CathodeResourceReference();
+                                resource.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                                resource.rotation = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()); 
+                                resource.resourceID = new ShortGuid(reader);
+                                resource.entryType = CommandsUtils.GetResourceEntryType(reader.ReadBytes(4));
+                                switch (resource.entryType)
                                 {
                                     case CathodeResourceReferenceType.RENDERABLE_INSTANCE:
-                                        resource_ref.entryIndexREDS = reader.ReadInt32(); //REDS.BIN entry index
-                                        resource_ref.entryCountREDS = reader.ReadInt32(); //REDS.BIN entry count
+                                        resource.index = reader.ReadInt32(); //REDS.BIN entry index
+                                        resource.count = reader.ReadInt32(); //REDS.BIN entry count
                                         break;
                                     case CathodeResourceReferenceType.COLLISION_MAPPING:
-                                        resource_ref.unknownInteger1 = reader.ReadInt32(); //unknown integer (COLLISION.MAP index?)
-                                        resource_ref.entityID = new ShortGuid(reader); //ID which maps to the entity using the resource (?) - check GetFriendlyName
+                                        resource.index = reader.ReadInt32(); //COLLISION.MAP entry index?
+                                        resource.entityID = new ShortGuid(reader); //ID which maps to the entity using the resource (?) - check GetFriendlyName
+                                        break;
+                                    case CathodeResourceReferenceType.ANIMATED_MODEL:
+                                    case CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM:
+                                        resource.index = reader.ReadInt32(); //PHYSICS.MAP entry index?
+                                        reader.BaseStream.Position += 4;
                                         break;
                                     case CathodeResourceReferenceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
                                     case CathodeResourceReferenceType.NAV_MESH_BARRIER_RESOURCE:
                                     case CathodeResourceReferenceType.TRAVERSAL_SEGMENT:
-                                        resource_ref.unknownInteger1 = reader.ReadInt32(); //always -1?
-                                        resource_ref.unknownInteger2 = reader.ReadInt32(); //always -1?
-                                        break;
-                                    case CathodeResourceReferenceType.ANIMATED_MODEL:
-                                    case CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM:
-                                        resource_ref.unknownInteger1 = reader.ReadInt32(); //unknown integer
-                                        resource_ref.unknownInteger2 = reader.ReadInt32(); //always zero/-1?
+                                        reader.BaseStream.Position += 8;
                                         break;
                                 }
-                                resourceRefs.Add(resource_ref);
+                                resourceRefs.Add(resource);
                                 break;
                             }
                             case CommandsDataBlock.CAGEANIMATION_DATA:

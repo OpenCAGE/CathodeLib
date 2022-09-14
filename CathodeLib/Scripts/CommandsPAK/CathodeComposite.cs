@@ -56,10 +56,8 @@ namespace CATHODE.Commands
             if (x.rotation != y.rotation) return false;
             if (x.resourceID != y.resourceID) return false;
             if (x.entryType != y.entryType) return false;
-            if (x.entryIndexREDS != y.entryIndexREDS) return false;
-            if (x.entryCountREDS != y.entryCountREDS) return false;
-            if (x.unknownInteger1 != y.unknownInteger1) return false;
-            if (x.unknownInteger2 != y.unknownInteger2) return false;
+            if (x.index != y.index) return false;
+            if (x.count != y.count) return false;
             if (x.entityID != y.entityID) return false;
 
             return true;
@@ -74,19 +72,39 @@ namespace CATHODE.Commands
             return this.MemberwiseClone();
         }
 
+        public override bool Equals(object obj)
+        {
+            return obj is CathodeResourceReference reference &&
+                   EqualityComparer<Vector3>.Default.Equals(position, reference.position) &&
+                   EqualityComparer<Vector3>.Default.Equals(rotation, reference.rotation) &&
+                   EqualityComparer<ShortGuid>.Default.Equals(resourceID, reference.resourceID) &&
+                   entryType == reference.entryType &&
+                   index == reference.index &&
+                   count == reference.count &&
+                   EqualityComparer<ShortGuid>.Default.Equals(entityID, reference.entityID);
+        }
+
+        public override int GetHashCode()
+        {
+            int hashCode = -1286985782;
+            hashCode = hashCode * -1521134295 + position.GetHashCode();
+            hashCode = hashCode * -1521134295 + rotation.GetHashCode();
+            hashCode = hashCode * -1521134295 + resourceID.GetHashCode();
+            hashCode = hashCode * -1521134295 + entryType.GetHashCode();
+            hashCode = hashCode * -1521134295 + index.GetHashCode();
+            hashCode = hashCode * -1521134295 + count.GetHashCode();
+            hashCode = hashCode * -1521134295 + entityID.GetHashCode();
+            return hashCode;
+        }
+
         public Vector3 position;
         public Vector3 rotation;
 
-        public ShortGuid resourceID;                      //This is the ID also contained in the RESOURCE_ID parameter list
-        public CathodeResourceReferenceType entryType; //This is the type of resource entry
+        public ShortGuid resourceID;
+        public CathodeResourceReferenceType entryType;
 
-        //For type REDS_REFERENCE
-        public int entryIndexREDS;                     //The index in REDS.BIN
-        public int entryCountREDS;                     //The count in REDS.BIN
-
-        //For type UNKNOWN_REFERENCE & others
-        public int unknownInteger1;
-        public int unknownInteger2;
+        public int index = -1;
+        public int count = -1;
         public ShortGuid entityID;
     }
 
