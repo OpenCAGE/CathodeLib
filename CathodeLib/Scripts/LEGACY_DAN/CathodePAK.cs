@@ -20,6 +20,7 @@ namespace CATHODE.LEGACY
 
         protected void LoadPAK(string filepath, bool BigEndian)
         {
+            /*
             BinaryReader Stream = new BinaryReader(File.OpenRead(filepath));
 
             header = Utilities.Consume<GenericPAKHeader>(Stream);
@@ -35,32 +36,61 @@ namespace CATHODE.LEGACY
             }
 
             Stream.Close();
+            */
+
+            BinaryReader Stream = new BinaryReader(File.OpenRead(filepath));
+
+            GenericPAKHeader Header = Utilities.Consume<GenericPAKHeader>(Stream);
+            if (BigEndian)
+            {
+                Header.Version = BinaryPrimitives.ReverseEndianness(Header.Version);
+                Header.MaxEntryCount = BinaryPrimitives.ReverseEndianness(Header.MaxEntryCount);
+                Header.EntryCount = BinaryPrimitives.ReverseEndianness(Header.EntryCount);
+            }
+
+            GenericPAKEntry[] Entries = Utilities.ConsumeArray<GenericPAKEntry>(Stream, Header.MaxEntryCount);
+
+            //todo-mattf; remove the need for this
+            long resetpos = Stream.BaseStream.Position;
+            byte[] DataStart = Stream.ReadBytes((int)Stream.BaseStream.Length - (int)resetpos);
+            Stream.BaseStream.Position = resetpos;
+
+            List<byte[]> EntryDatas = new List<byte[]>(Header.MaxEntryCount);
+            for (int EntryIndex = 0; EntryIndex < Header.MaxEntryCount; ++EntryIndex)
+            {
+                if (BigEndian)
+                {
+                    GenericPAKEntry Entry = Entries[EntryIndex];
+                    Entry.Length = BinaryPrimitives.ReverseEndianness(Entries[EntryIndex].Length);
+                    Entry.DataLength = BinaryPrimitives.ReverseEndianness(Entries[EntryIndex].DataLength);
+                    Entry.UnknownIndex = BinaryPrimitives.ReverseEndianness(Entries[EntryIndex].UnknownIndex);
+                    Entry.BINIndex = BinaryPrimitives.ReverseEndianness(Entries[EntryIndex].BINIndex);
+                    Entry.Offset = BinaryPrimitives.ReverseEndianness(Entries[EntryIndex].Offset);
+                    Entries[EntryIndex] = Entry;
+                }
+                byte[] Buffer = (Entries[EntryIndex].DataLength == -1) ? new byte[] { } : Stream.ReadBytes(Entries[EntryIndex].DataLength);
+                EntryDatas.Add(Buffer);
+            }
+
+            header = Header;
+            entryHeaders = Entries;
+            entryContents = EntryDatas;
+
+            Stream.Close();
         }
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct GenericPAKHeader
     {
-        public fourcc magic; //unused
-        public int versionPAK;
-        public int versionBIN;
-        public int entryCount;
-        public int entryCountValidation; //should match entryCount
+        public int _Unknown1;
+        public int _Unknown2;
+        public int Version;
+        public int EntryCount;
+        public int MaxEntryCount;
         public int _Unknown3;
         public int _Unknown4;
         public int _Unknown5;
-
-        public void EndianSwap()
-        {
-            //swap magic?
-            versionPAK = BinaryPrimitives.ReverseEndianness(versionPAK);
-            versionBIN = BinaryPrimitives.ReverseEndianness(versionBIN);
-            entryCount = BinaryPrimitives.ReverseEndianness(entryCount);
-            entryCountValidation = BinaryPrimitives.ReverseEndianness(entryCountValidation);
-            _Unknown3 = BinaryPrimitives.ReverseEndianness(_Unknown3);
-            _Unknown4 = BinaryPrimitives.ReverseEndianness(_Unknown4);
-            _Unknown5 = BinaryPrimitives.ReverseEndianness(_Unknown5);
-        }
     };
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -68,33 +98,16 @@ namespace CATHODE.LEGACY
     {
         public int _Unknown1; //TODO: Is 'alien_pak_header' 40 bytes long instead?
         public int _Unknown2;
-        public int length;
-        public int lengthValidation; //should match length
-        public int offset;
+        public int Length;
+        public int DataLength; //TODO: Seems to be the aligned version of Length, aligned to 16 bytes.
+        public int Offset;
         public int _Unknown3;
         public int _Unknown4;
         public int _Unknown5;
-        public Int16 _Unknown6;
-        public Int16 indexBIN;
+        public Int16 UnknownIndex;
+        public Int16 BINIndex;
+        public int _Unknown6;
         public int _Unknown7;
         public int _Unknown8;
-        public int _Unknown9;
-
-        public void EndianSwap()
-        {
-            _Unknown1 = BinaryPrimitives.ReverseEndianness(_Unknown1);
-            _Unknown2 = BinaryPrimitives.ReverseEndianness(_Unknown2);
-            length = BinaryPrimitives.ReverseEndianness(length);
-            lengthValidation = BinaryPrimitives.ReverseEndianness(lengthValidation);
-            offset = BinaryPrimitives.ReverseEndianness(offset);
-            _Unknown3 = BinaryPrimitives.ReverseEndianness(_Unknown3);
-            _Unknown4 = BinaryPrimitives.ReverseEndianness(_Unknown4);
-            _Unknown5 = BinaryPrimitives.ReverseEndianness(_Unknown5);
-            _Unknown6 = BinaryPrimitives.ReverseEndianness(_Unknown6);
-            indexBIN = BinaryPrimitives.ReverseEndianness(indexBIN);
-            _Unknown7 = BinaryPrimitives.ReverseEndianness(_Unknown7);
-            _Unknown8 = BinaryPrimitives.ReverseEndianness(_Unknown8);
-            _Unknown9 = BinaryPrimitives.ReverseEndianness(_Unknown9);
-        }
     };
 }
