@@ -67,8 +67,8 @@ namespace CATHODE.Misc
             public int ModelIndex;
             public int MaterialLibraryIndex;
 
-            public int ModelLODIndex; // NOTE: Not sure, looks like it.
-            public byte ModelLODPrimitiveCount; // NOTE: Sure it is primitive count, not sure about the ModelLOD part.
+            public int ModelLODIndex = -1; // NOTE: Not sure, looks like it.
+            public byte ModelLODPrimitiveCount = 0; // NOTE: Sure it is primitive count, not sure about the ModelLOD part.
         }
     }
 }
