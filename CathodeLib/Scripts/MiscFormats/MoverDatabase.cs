@@ -1,7 +1,8 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System;
+using System.Linq;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #else
@@ -19,7 +20,7 @@ namespace CATHODE.Misc
         private int fileSize = 32;
         private int entryCount = 0;
         private int entrySize = 320;
-        private int nonCommandsEntries = 0;
+        private int entryCountUnknown = 0;
 
         public List<MOVER_DESCRIPTOR> Movers = new List<MOVER_DESCRIPTOR>();
 
@@ -34,7 +35,7 @@ namespace CATHODE.Misc
             BinaryReader stream = new BinaryReader(File.OpenRead(filePath));
             fileSize = stream.ReadInt32();
             entryCount = stream.ReadInt32();
-            nonCommandsEntries = stream.ReadInt32(); //this the number of entries that have a NodeID of 00-00-00-00
+            entryCountUnknown = stream.ReadInt32(); //a count of something - not sure what
             stream.BaseStream.Position += 4; 
             entrySize = stream.ReadInt32();
             stream.BaseStream.Position += 12;
@@ -49,17 +50,13 @@ namespace CATHODE.Misc
 
             fileSize = (Movers.Count * entrySize) + 32;
             entryCount = Movers.Count;
-            nonCommandsEntries = 0;
-            for (int i = 0; i < Movers.Count; i++)
-            {
-                if (Movers[i].NodeID == new ShortGuid(0)) nonCommandsEntries++;
-            }
+            entryCountUnknown = 0;
 
             BinaryWriter stream = new BinaryWriter(File.OpenWrite(filePath));
             stream.BaseStream.SetLength(0);
             stream.Write(fileSize);
             stream.Write(entryCount);
-            stream.Write(nonCommandsEntries);
+            stream.Write(entryCountUnknown);
             stream.Write(0);
             stream.Write(entrySize);
             stream.Write(0); stream.Write(0); stream.Write(0);
@@ -176,7 +173,7 @@ namespace CATHODE.Misc
 
          */
 
-        public Matrix4x4 Transform;
+        public Matrix4x4 transform;
         //64
         public GPU_CONSTANTS gpuConstants;
         //144
@@ -185,29 +182,30 @@ namespace CATHODE.Misc
         //160
         public RENDER_CONSTANTS renderConstants;
         //244
-        public UInt32 REDSIndex; // Index 45
-        public UInt32 ModelCount;
-        public UInt32 ResourcesBINIndex; // NOTE: This is actually 'IndexFromMVREntry' field on 'alien_resources_bin_entry'
+        public UInt32 renderableElementIndex; //reds.bin index
+        public UInt32 renderableElementCount; //reds.bin count
+
+        public UInt32 resourcesIndex;
         //256
         public Vector3 Unknowns5_;
-        public UInt32 Visibility; // pulled from iOS dump - should be visibility var?
+        public UInt32 visibility; // pulled from iOS dump - should be visibility var?
         //272
-        public ShortGuid NodeID; // Index 52
-        public ShortGuid ResourcesBINID; // NOTE: This is 'IDFromMVREntry' field on 'alien_resources_bin_entry'.
+        public ShortGuid commandsNodeID; // this is the ID of the node inside the composite, not the instanced composite node
+        public ShortGuid resourcesEntryID; // NOTE: This is 'IDFromMVREntry' field on 'alien_resources_bin_entry'.
         //280
-        public UInt32 EnvironmentMapBINIndex; //Converted to short in code
+        public UInt32 environmentMapIndex; //environment_map.bin index - converted to short in code
         //284
-        public float UnknownValue1; //emissive surface val1
-        public float UnknownValue; //emissive surface val2
-        public float Unknown5_; //emissive surface val3
+        public float emissive_val1; //emissive surface val1
+        public float emissive_val2; //emissive surface val2
+        public float emissive_val3; //emissive surface val3
         //296
-        public UInt32 CollisionMapThingID; //zone id? RenderableScene::create_instance, RenderableScene::initialize
-        public UInt32 Unknowns60_;  //zone activator? RenderableScene::create_instance, RenderableScene::initialize
+        public UInt32 zoneID; //zone id? RenderableScene::create_instance, RenderableScene::initialize
+        public UInt32 zoneActivator;  //zone activator? RenderableScene::create_instance, RenderableScene::initialize
         //304
         public UInt32 Unknowns61_; //uVar3 in reserve_light_light_master_sets, val of LightMasterSet, or an incrementer
         public UInt16 Unknown17_;   // TODO: It is -1 most of the time, but some times it isn't.
         //310
-        public UInt16 MoverFlags; //ushort - used for bitwise flags depending on mover RENDERABLE_INSTANCE::Type. Environment types seem to use first bit to decide if its position comes from MVR.
+        public UInt16 instanceTypeFlags; //ushort - used for bitwise flags depending on mover RENDERABLE_INSTANCE::Type. Environment types seem to use first bit to decide if its position comes from MVR.
         //312
         public UInt32 Unknowns70_;
         public UInt32 Unknowns71_;
