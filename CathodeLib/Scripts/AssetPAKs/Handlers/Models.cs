@@ -38,41 +38,8 @@ namespace CATHODE.Assets
                 return PAKReturnType.FAIL_TRIED_TO_LOAD_VIRTUAL_ARCHIVE;
             }
 
-            /* TODO: Verify the PAK loading is a ModelPAK by BIN version number */
-
             try
             {
-                #region MATERIAL
-                //First, parse the MTL file to find material info
-                string PathToMTL = _filePathPAK.Substring(0, _filePathPAK.Length - 3) + "MTL";
-                BinaryReader ArchiveFileMtl = new BinaryReader(File.OpenRead(PathToMTL));
-
-                //Header
-                ArchiveFileMtl.BaseStream.Position += 40; //There are some knowns here, just not required for us yet
-                int MaterialEntryCount = ArchiveFileMtl.ReadInt16();
-                ArchiveFileMtl.BaseStream.Position += 2; //Skip unknown
-
-                //Strings - more work will be done on materials eventually, 
-                //but taking their names for now is good enough for model export
-                List<string> MaterialEntries = new List<string>();
-                string ThisMaterialString = "";
-                for (int i = 0; i < MaterialEntryCount; i++)
-                {
-                    while (true)
-                    {
-                        byte ThisByte = ArchiveFileMtl.ReadByte();
-                        if (ThisByte == 0x00)
-                        {
-                            MaterialEntries.Add(ThisMaterialString);
-                            ThisMaterialString = "";
-                            break;
-                        }
-                        ThisMaterialString += (char)ThisByte;
-                    }
-                }
-                ArchiveFileMtl.Close();
-                #endregion
-
                 #region MODEL_BIN
                 //Read the header info from BIN
                 BinaryReader bin = new BinaryReader(File.OpenRead(_filePathBIN));

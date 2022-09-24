@@ -8,54 +8,57 @@ using System.Threading.Tasks;
 
 namespace CATHODE.Misc
 {
-    /* Handles Cathode ENVIRONMENTMAP.BIN files */
+    /* Loads and/or creates Cathode ENVIRONMENTMAP.BIN files */
     public class EnvironmentMapDatabase
     {
-        private string filepath;
-        private EnvironmentMapHeader header;
-        private EnvironmentMapEntry[] entries;
+        private int unkVal = 12;
 
-        /* Load the file */
+        private string filepath;
+        public string FilePath { get { return filepath; } }
+
+        private List<EnvironmentMapEntry> entries = new List<EnvironmentMapEntry>();
+        public List<EnvironmentMapEntry> EnvMaps { get { return entries; } }
+
         public EnvironmentMapDatabase(string path)
         {
             filepath = path;
+            if (!File.Exists(path)) return;
 
-            BinaryReader Stream = new BinaryReader(File.OpenRead(filepath));
-            header = Utilities.Consume<EnvironmentMapHeader>(Stream);
-            entries = Utilities.ConsumeArray<EnvironmentMapEntry>(Stream, (int)header.EntryCount);
-            Stream.Close();
+            BinaryReader bin = new BinaryReader(File.OpenRead(filepath));
+            bin.BaseStream.Position += 8;
+            int entryCount = bin.ReadInt32();
+            unkVal = bin.ReadInt32();
+            for (int i = 0; i < entryCount; i++)
+            {
+                EnvironmentMapEntry entry = new EnvironmentMapEntry();
+                entry.envMapIndex = bin.ReadInt32();
+                entry.mvrIndex = bin.ReadInt32();
+                entries.Add(entry);
+            }
+            bin.Close();
         }
 
-        /* Save the file */
         public void Save()
         {
-            BinaryWriter stream = new BinaryWriter(File.OpenWrite(filepath));
-            stream.BaseStream.SetLength(0);
-            Utilities.Write<EnvironmentMapHeader>(stream, header);
-            Utilities.Write<EnvironmentMapEntry>(stream, entries);
-            stream.Close();
-        }
-
-        /* Data accessors */
-        public int EntryCount { get { return entries.Length; } }
-        public EnvironmentMapEntry[] Entries { get { return entries; } }
-        public EnvironmentMapEntry GetEntry(int i)
-        {
-            return entries[i];
-        }
-
-        /* Data setters */
-        public void SetEntry(int i, EnvironmentMapEntry content)
-        {
-            entries[i] = content;
+            BinaryWriter bin = new BinaryWriter(File.OpenWrite(filepath));
+            bin.BaseStream.SetLength(0);
+            bin.Write(new char[] { 'e', 'n', 'v', 'm' });
+            bin.Write(1);
+            bin.Write(entries.Count);
+            bin.Write(unkVal); //TODO: what is this value? need to know for making new files.
+            for (int i = 0; i < entries.Count; i++)
+            {
+                bin.Write(entries[i].envMapIndex);
+                bin.Write(entries[i].mvrIndex);
+            }
+            bin.Close();
         }
     }
 
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct EnvironmentMapEntry
+    public class EnvironmentMapEntry
     {
-        public int EnvironmentMapIndex; //Environment map index within ?
-        public uint MoverIndex; //Mover index within MVR file
+        public int envMapIndex;
+        public int mvrIndex; //huh?
     };
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

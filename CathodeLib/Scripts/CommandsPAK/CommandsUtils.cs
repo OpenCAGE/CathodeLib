@@ -20,7 +20,17 @@ namespace CATHODE.Commands
             if (_functionTypeLUT.Count != 0) return;
 
             foreach (CathodeFunctionType functionType in Enum.GetValues(typeof(CathodeFunctionType)))
-                _functionTypeLUT.Add(ShortGuidUtils.Generate(functionType.ToString()), functionType);
+            {
+                string shortGuidString = functionType.ToString();
+                if (functionType == CathodeFunctionType.GCIP_WorldPickup) 
+                    shortGuidString = "n:\\content\\build\\library\\archetypes\\gameplay\\gcip_worldpickup";
+                if (functionType == CathodeFunctionType.PlayForMinDuration)
+                    shortGuidString = "n:\\content\\build\\library\\ayz\\animation\\logichelpers\\playforminduration";
+                if (functionType == CathodeFunctionType.Torch_Control)
+                    shortGuidString = "n:\\content\\build\\library\\archetypes\\script\\gameplay\\torch_control";
+
+                _functionTypeLUT.Add(ShortGuidUtils.Generate(shortGuidString), functionType);
+            }
         }
         public static CathodeFunctionType GetFunctionType(byte[] tag)
         {
