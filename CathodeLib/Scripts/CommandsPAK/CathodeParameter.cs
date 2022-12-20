@@ -19,7 +19,7 @@ namespace CATHODE.Commands
         STRING,
         SPLINE_DATA,
         ENUM,
-        SHORT_GUID,
+        RESOURCE,
         FILEPATH,
         BOOL,
         DIRECTION,
@@ -899,7 +899,7 @@ namespace CATHODE.Commands
                     return ((CathodeBool)x).value == ((CathodeBool)y).value;
                 case CathodeDataType.FLOAT:
                     return ((CathodeFloat)x).value == ((CathodeFloat)y).value;
-                case CathodeDataType.SHORT_GUID:
+                case CathodeDataType.RESOURCE:
                     return ((CathodeResource)x).resourceID == ((CathodeResource)y).resourceID;
                 case CathodeDataType.DIRECTION:
                     return ((CathodeVector3)x).value == ((CathodeVector3)y).value;
@@ -947,7 +947,7 @@ namespace CATHODE.Commands
                     return ((CathodeBool)this).value ? 1 : 0;
                 case CathodeDataType.FLOAT:
                     return Convert.ToInt32(((CathodeFloat)this).value.ToString().Replace(".", ""));
-                case CathodeDataType.SHORT_GUID:
+                case CathodeDataType.RESOURCE:
                     string x_g_s = ((CathodeString)this).value.ToString();
                     string num2 = "";
                     for (int i = 0; i < x_g_s.Length; i++) num2 += ((int)x_g_s[i]).ToString();
@@ -980,7 +980,7 @@ namespace CATHODE.Commands
             switch (dataType)
             {
                 case CathodeDataType.SPLINE_DATA:
-                case CathodeDataType.SHORT_GUID:
+                case CathodeDataType.RESOURCE:
                     return Utilities.CloneObject(this);
                 //HOTFIX FOR VECTOR 3 CLONE ISSUE - TODO: FIND WHY THIS ISN'T WORKING WITH MEMBERWISE CLONE
                 case CathodeDataType.DIRECTION:
@@ -1032,7 +1032,7 @@ namespace CATHODE.Commands
     [Serializable]
     public class CathodeResource : CathodeParameter
     {
-        public CathodeResource() { dataType = CathodeDataType.SHORT_GUID; }
+        public CathodeResource() { dataType = CathodeDataType.RESOURCE; }
         public List<CathodeResourceReference> value = new List<CathodeResourceReference>(); //TODO: i dont know if this can actually have multiple entries. need to assert
         public ShortGuid resourceID;
     }

@@ -65,7 +65,7 @@ namespace CATHODE.Commands
             _dataTypeLUT.Add(ShortGuidUtils.Generate("Direction"), CathodeDataType.DIRECTION);
             _dataTypeLUT.Add(ShortGuidUtils.Generate("Position"), CathodeDataType.POSITION);
             _dataTypeLUT.Add(ShortGuidUtils.Generate("Enum"), CathodeDataType.ENUM);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("ShortGuid"), CathodeDataType.SHORT_GUID);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("ShortGuid"), CathodeDataType.RESOURCE);
             _dataTypeLUT.Add(ShortGuidUtils.Generate("Object"), CathodeDataType.OBJECT);
             _dataTypeLUT.Add(ShortGuidUtils.Generate("ZonePtr"), CathodeDataType.ZONE_PTR);
             _dataTypeLUT.Add(ShortGuidUtils.Generate("ZoneLinkPtr"), CathodeDataType.ZONE_LINK_PTR);

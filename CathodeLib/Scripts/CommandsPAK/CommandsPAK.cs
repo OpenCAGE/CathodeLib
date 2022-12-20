@@ -160,7 +160,7 @@ namespace CATHODE.Commands
                     case CathodeDataType.FLOAT:
                         writer.Write(((CathodeFloat)parameters[i]).value);
                         break;
-                    case CathodeDataType.SHORT_GUID:
+                    case CathodeDataType.RESOURCE:
                         Utilities.Write<ShortGuid>(writer, ((CathodeResource)parameters[i]).resourceID);
                         break;
                     case CathodeDataType.DIRECTION:
@@ -697,7 +697,7 @@ namespace CATHODE.Commands
                         this_parameter = new CathodeFloat();
                         ((CathodeFloat)this_parameter).value = reader.ReadSingle();
                         break;
-                    case CathodeDataType.SHORT_GUID:
+                    case CathodeDataType.RESOURCE:
                         this_parameter = new CathodeResource();
                         ((CathodeResource)this_parameter).resourceID = new ShortGuid(reader);
                         break;
