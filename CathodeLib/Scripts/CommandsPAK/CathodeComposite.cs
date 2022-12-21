@@ -205,8 +205,6 @@ namespace CATHODE.Commands
         public List<OverrideEntity> overrides = new List<OverrideEntity>();
         public List<ProxyEntity> proxies = new List<ProxyEntity>();
 
-        public List<CathodeResourceReference> resources = new List<CathodeResourceReference>(); //Resources are per-entity, and also per-composite!
-
         /* If an entity exists in the composite, return it */
         public CathodeEntity GetEntityByID(ShortGuid id)
         {

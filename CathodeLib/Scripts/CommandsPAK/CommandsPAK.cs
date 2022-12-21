@@ -1066,10 +1066,11 @@ namespace CATHODE.Commands
                     }
                 }
 
-                //Remap resources (TODO: This can be optimised)
+                //Remap resources
                 List<CathodeEntity> ents = composite.GetEntities();
                 ShortGuid resParamID = ShortGuidUtils.Generate("resource");
-                //Check to see if this resource applies to a PARAMETER
+                ShortGuid physEntID = ShortGuidUtils.Generate("PhysicsSystem");
+                //Check to see if this resource applies to a PARAMETER on an entity
                 for (int z = 0; z < ents.Count; z++)
                 {
                     for (int y = 0; y < ents[z].parameters.Count; y++)
@@ -1081,13 +1082,13 @@ namespace CATHODE.Commands
                         resourceRefs.RemoveAll(o => o.resourceID == resourceParam.resourceID);
                     }
                 }
-                //Check to see if this resource applies to an ENTITY
+                //Check to see if this resource applies directly to an ENTITY
                 for (int z = 0; z < ents.Count; z++)
                 {
                     ents[z].resources.AddRange(resourceRefs.Where(o => o.resourceID == ents[z].shortGUID));
                     resourceRefs.RemoveAll(o => o.resourceID == ents[z].shortGUID);
 
-                    // Note, only these types of entities (always functions) seem to have their own non-parameterised resources:
+                    // TODO: only these types of entities (always functions) seem to have their own non-parameterised resources:
                     // - ParticleEmitterReference
                     // - RibbonEmitterReference
                     // - TRAV_1ShotSpline
@@ -1103,8 +1104,18 @@ namespace CATHODE.Commands
                     // - CollisionBarrier
                     // ... we should probably auto-generate these resources when adding new entities of these types.
                 }
-                //If it applied to none of the above, apply it to the COMPOSITE
-                composite.resources.AddRange(resourceRefs);
+                //Any that are left over will be applied to PhysicsSystem entities
+                if (resourceRefs.Count == 1 && resourceRefs[0].entryType == CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM)
+                {
+                    FunctionEntity physEnt = composite.functions.FirstOrDefault(o => o.function == physEntID);
+                    if (physEnt != null) physEnt.resources.Add(resourceRefs[0]);
+                    
+                    //TODO: similar to the above comment, we should also make DYNAMIC_PHYSICS_SYSTEM resources when making those entities.
+                }
+                else
+                {
+                    Console.WriteLine("WARNING: This CommandsPAK contains unexpected trailing resources!");
+                }
                 resourceRefs.Clear();
 
                 composites[i] = composite;
