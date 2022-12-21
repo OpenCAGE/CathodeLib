@@ -1069,19 +1069,6 @@ namespace CATHODE.Commands
                 //Remap resources (TODO: This can be optimised)
                 List<CathodeEntity> ents = composite.GetEntities();
                 ShortGuid resParamID = ShortGuidUtils.Generate("resource");
-                //Check to see if this resource applies to an ENTITY
-                List<CathodeResourceReference> resourceRefsCulled = new List<CathodeResourceReference>();
-                for (int x = 0; x < resourceRefs.Count; x++)
-                {
-                    CathodeEntity ent = ents.FirstOrDefault(o => o.shortGUID == resourceRefs[x].resourceID);
-                    if (ent != null)
-                    {
-                        ent.resources.Add(resourceRefs[x]);
-                        continue;
-                    }
-                    resourceRefsCulled.Add(resourceRefs[x]);
-                }
-                resourceRefs = resourceRefsCulled;
                 //Check to see if this resource applies to a PARAMETER
                 for (int z = 0; z < ents.Count; z++)
                 {
@@ -1090,24 +1077,35 @@ namespace CATHODE.Commands
                         if (ents[z].parameters[y].shortGUID != resParamID) continue;
 
                         CathodeResource resourceParam = (CathodeResource)ents[z].parameters[y].content;
-                        resourceRefsCulled = new List<CathodeResourceReference>();
-                        for (int m = 0; m < resourceRefs.Count; m++)
-                        {
-                            if (resourceParam.resourceID == resourceRefs[m].resourceID)
-                            {
-                                resourceParam.value.Add(resourceRefs[m]);
-                                continue;
-                            }
-                            resourceRefsCulled.Add(resourceRefs[m]);
-                        }
-                        resourceRefs = resourceRefsCulled;
+                        resourceParam.value.AddRange(resourceRefs.Where(o => o.resourceID == resourceParam.resourceID));
+                        resourceRefs.RemoveAll(o => o.resourceID == resourceParam.resourceID);
                     }
                 }
-                //If it applied to none of the above, apply it to the COMPOSITE
-                for (int z = 0; z < resourceRefs.Count; z++)
+                //Check to see if this resource applies to an ENTITY
+                for (int z = 0; z < ents.Count; z++)
                 {
-                    composite.resources.Add(resourceRefs[z]);
+                    ents[z].resources.AddRange(resourceRefs.Where(o => o.resourceID == ents[z].shortGUID));
+                    resourceRefs.RemoveAll(o => o.resourceID == ents[z].shortGUID);
+
+                    // Note, only these types of entities (always functions) seem to have their own non-parameterised resources:
+                    // - ParticleEmitterReference
+                    // - RibbonEmitterReference
+                    // - TRAV_1ShotSpline
+                    // - LightReference
+                    // - SurfaceEffectSphere
+                    // - FogSphere
+                    // - NavMeshBarrier
+                    // - FogBox
+                    // - SoundBarrier
+                    // - SurfaceEffectBox
+                    // - SimpleWater
+                    // - SimpleRefraction
+                    // - CollisionBarrier
+                    // ... we should probably auto-generate these resources when adding new entities of these types.
                 }
+                //If it applied to none of the above, apply it to the COMPOSITE
+                composite.resources.AddRange(resourceRefs);
+                resourceRefs.Clear();
 
                 composites[i] = composite;
             }
