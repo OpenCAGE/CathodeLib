@@ -1038,78 +1038,44 @@ namespace CATHODE.Commands
 
                 //Apply connections between entities
                 for (int x = 0; x < entityLinks.Count; x++)
-                {
-                    CathodeEntity entToApply = composite.GetEntityByID(entityLinks[x].parentID);
-                    if (entToApply == null)
-                    {
-                        //TODO: We shouldn't hit this, but we do... is this perhaps an ID from another composite, similar to proxies?
-                        entToApply = new CathodeEntity(entityLinks[x].parentID);
-                        composite.unknowns.Add(entToApply);
-                    }
-                    entToApply.childLinks.AddRange(entityLinks[x].childLinks);
-                }
+                    composite.GetEntityByID(entityLinks[x].parentID)?.childLinks.AddRange(entityLinks[x].childLinks);
 
-                //Apply parameters to entities
+                //Clone parameter data to entities
                 for (int x = 0; x < paramRefSets.Count; x++)
                 {
                     CathodeEntity entToApply = composite.GetEntityByID(paramRefSets[x].id);
-                    if (entToApply == null)
-                    {
-                        //TODO: We shouldn't hit this, but we do... is this perhaps an ID from another composite, similar to proxies?
-                        entToApply = new CathodeEntity(paramRefSets[x].id);
-                        composite.unknowns.Add(entToApply);
-                    }
+                    if (entToApply == null) continue;
                     for (int y = 0; y < paramRefSets[x].refs.Count; y++)
-                    {
                         entToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, (CathodeParameter)parameters[paramRefSets[x].refs[y].offset].Clone()));
-                    }
                 }
 
-                //Remap resources
+                //Remap resource references
                 List<CathodeEntity> ents = composite.GetEntities();
                 ShortGuid resParamID = ShortGuidUtils.Generate("resource");
                 ShortGuid physEntID = ShortGuidUtils.Generate("PhysicsSystem");
                 //Check to see if this resource applies to a PARAMETER on an entity
-                for (int z = 0; z < ents.Count; z++)
+                for (int x = 0; x < ents.Count; x++)
                 {
-                    for (int y = 0; y < ents[z].parameters.Count; y++)
+                    for (int y = 0; y < ents[x].parameters.Count; y++)
                     {
-                        if (ents[z].parameters[y].shortGUID != resParamID) continue;
+                        if (ents[x].parameters[y].shortGUID != resParamID) continue;
 
-                        CathodeResource resourceParam = (CathodeResource)ents[z].parameters[y].content;
+                        CathodeResource resourceParam = (CathodeResource)ents[x].parameters[y].content;
                         resourceParam.value.AddRange(resourceRefs.Where(o => o.resourceID == resourceParam.resourceID));
                         resourceRefs.RemoveAll(o => o.resourceID == resourceParam.resourceID);
                     }
                 }
                 //Check to see if this resource applies directly to an ENTITY
-                for (int z = 0; z < ents.Count; z++)
+                for (int x = 0; x < ents.Count; x++)
                 {
-                    ents[z].resources.AddRange(resourceRefs.Where(o => o.resourceID == ents[z].shortGUID));
-                    resourceRefs.RemoveAll(o => o.resourceID == ents[z].shortGUID);
-
-                    // TODO: only these types of entities (always functions) seem to have their own non-parameterised resources:
-                    // - ParticleEmitterReference
-                    // - RibbonEmitterReference
-                    // - TRAV_1ShotSpline
-                    // - LightReference
-                    // - SurfaceEffectSphere
-                    // - FogSphere
-                    // - NavMeshBarrier
-                    // - FogBox
-                    // - SoundBarrier
-                    // - SurfaceEffectBox
-                    // - SimpleWater
-                    // - SimpleRefraction
-                    // - CollisionBarrier
-                    // ... we should probably auto-generate these resources when adding new entities of these types.
+                    ents[x].resources.AddRange(resourceRefs.Where(o => o.resourceID == ents[x].shortGUID));
+                    resourceRefs.RemoveAll(o => o.resourceID == ents[x].shortGUID);
                 }
                 //Any that are left over will be applied to PhysicsSystem entities
                 if (resourceRefs.Count == 1 && resourceRefs[0].entryType == CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM)
                 {
                     FunctionEntity physEnt = composite.functions.FirstOrDefault(o => o.function == physEntID);
                     if (physEnt != null) physEnt.resources.Add(resourceRefs[0]);
-                    
-                    //TODO: similar to the above comment, we should also make DYNAMIC_PHYSICS_SYSTEM resources when making those entities.
                 }
                 else if (resourceRefs.Count != 0)
                 {

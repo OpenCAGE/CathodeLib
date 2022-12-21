@@ -119,7 +119,7 @@ namespace CATHODE.Commands
         }
         
         public ShortGuid shortGUID; //Translates to string in COMMANDS.BIN dump
-        public EntityVariant variant = EntityVariant.NOT_SETUP;
+        public EntityVariant variant;
 
         public List<CathodeEntityLink> childLinks = new List<CathodeEntityLink>();
         public List<CathodeLoadedParameter> parameters = new List<CathodeLoadedParameter>();
@@ -184,8 +184,6 @@ namespace CATHODE.Commands
 
         PROXY,
         OVERRIDE,
-
-        NOT_SETUP,
     }
 
     /* A script composite containing entities */
@@ -196,8 +194,6 @@ namespace CATHODE.Commands
         public string name = ""; //The string name of the composite
 
         public OffsetPair unknownPair;
-
-        public List<CathodeEntity> unknowns = new List<CathodeEntity>(); //These entities are generated using info from links & parameters. I know nothing else about them.
 
         public List<DatatypeEntity> datatypes = new List<DatatypeEntity>();
         public List<FunctionEntity> functions = new List<FunctionEntity>();
@@ -212,7 +208,6 @@ namespace CATHODE.Commands
             foreach (CathodeEntity entity in functions) if (entity.shortGUID == id) return entity;
             foreach (CathodeEntity entity in overrides) if (entity.shortGUID == id) return entity;
             foreach (CathodeEntity entity in proxies) if (entity.shortGUID == id) return entity;
-            foreach (CathodeEntity entity in unknowns) if (entity.shortGUID == id) return entity;
             return null;
         }
 
@@ -224,7 +219,6 @@ namespace CATHODE.Commands
             toReturn.AddRange(functions);
             toReturn.AddRange(overrides);
             toReturn.AddRange(proxies);
-            toReturn.AddRange(unknowns);
             return toReturn;
         }
 
@@ -235,7 +229,6 @@ namespace CATHODE.Commands
             functions.OrderBy(o => o.shortGUID.ToUInt32());
             overrides.OrderBy(o => o.shortGUID.ToUInt32());
             proxies.OrderBy(o => o.shortGUID.ToUInt32());
-            unknowns.OrderBy(o => o.shortGUID.ToUInt32());
         }
     }
 }
