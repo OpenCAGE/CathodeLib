@@ -228,13 +228,13 @@ namespace CATHODE.Commands
                 //Reconstruct resources
                 List<CathodeResourceReference> resourceReferences = new List<CathodeResourceReference>();
                 ShortGuid resourceParamID = ShortGuidUtils.Generate("resource");
-                for (int x = 0; x < ents.Count; x++)
+                for (int x = 0; x < _composites[i].functions.Count; x++)
                 {
-                    for (int y = 0; y < ents[x].resources.Count; y++)
-                        if (!resourceReferences.Contains(ents[x].resources[y]))
-                            resourceReferences.Add(ents[x].resources[y]);
+                    for (int y = 0; y < _composites[i].functions[x].resources.Count; y++)
+                        if (!resourceReferences.Contains(_composites[i].functions[x].resources[y]))
+                            resourceReferences.Add(_composites[i].functions[x].resources[y]);
 
-                    CathodeLoadedParameter resParam = ents[x].parameters.FirstOrDefault(o => o.shortGUID == resourceParamID);
+                    CathodeLoadedParameter resParam = _composites[i].functions[x].parameters.FirstOrDefault(o => o.shortGUID == resourceParamID);
                     if (resParam == null) continue;
                     List<CathodeResourceReference> resParamRef = ((CathodeResource)resParam.content).value;
                     for (int y = 0; y < resParamRef.Count; y++)
@@ -1050,26 +1050,25 @@ namespace CATHODE.Commands
                 }
 
                 //Remap resource references
-                List<CathodeEntity> ents = composite.GetEntities();
                 ShortGuid resParamID = ShortGuidUtils.Generate("resource");
                 ShortGuid physEntID = ShortGuidUtils.Generate("PhysicsSystem");
                 //Check to see if this resource applies to a PARAMETER on an entity
-                for (int x = 0; x < ents.Count; x++)
+                for (int x = 0; x < composite.functions.Count; x++)
                 {
-                    for (int y = 0; y < ents[x].parameters.Count; y++)
+                    for (int y = 0; y < composite.functions[x].parameters.Count; y++)
                     {
-                        if (ents[x].parameters[y].shortGUID != resParamID) continue;
+                        if (composite.functions[x].parameters[y].shortGUID != resParamID) continue;
 
-                        CathodeResource resourceParam = (CathodeResource)ents[x].parameters[y].content;
+                        CathodeResource resourceParam = (CathodeResource)composite.functions[x].parameters[y].content;
                         resourceParam.value.AddRange(resourceRefs.Where(o => o.resourceID == resourceParam.resourceID));
                         resourceRefs.RemoveAll(o => o.resourceID == resourceParam.resourceID);
                     }
                 }
                 //Check to see if this resource applies directly to an ENTITY
-                for (int x = 0; x < ents.Count; x++)
+                for (int x = 0; x < composite.functions.Count; x++)
                 {
-                    ents[x].resources.AddRange(resourceRefs.Where(o => o.resourceID == ents[x].shortGUID));
-                    resourceRefs.RemoveAll(o => o.resourceID == ents[x].shortGUID);
+                    composite.functions[x].resources.AddRange(resourceRefs.Where(o => o.resourceID == composite.functions[x].shortGUID));
+                    resourceRefs.RemoveAll(o => o.resourceID == composite.functions[x].shortGUID);
                 }
                 //Any that are left over will be applied to PhysicsSystem entities
                 if (resourceRefs.Count == 1 && resourceRefs[0].entryType == CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM)
@@ -1079,7 +1078,7 @@ namespace CATHODE.Commands
                 }
                 else if (resourceRefs.Count != 0)
                 {
-                    Console.WriteLine("WARNING: This CommandsPAK contains unexpected trailing resources!");
+                    Console.WriteLine("WARNING: This composite contains unexpected trailing resources!");
                 }
                 resourceRefs.Clear();
 

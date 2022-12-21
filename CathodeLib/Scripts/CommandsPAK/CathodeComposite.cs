@@ -123,7 +123,6 @@ namespace CATHODE.Commands
 
         public List<CathodeEntityLink> childLinks = new List<CathodeEntityLink>();
         public List<CathodeLoadedParameter> parameters = new List<CathodeLoadedParameter>();
-        public List<CathodeResourceReference> resources = new List<CathodeResourceReference>();
 
         public int CompareTo(CathodeEntity other)
         {
@@ -145,7 +144,8 @@ namespace CATHODE.Commands
     public class FunctionEntity : CathodeEntity
     {
         public FunctionEntity(ShortGuid id) : base(id) { variant = EntityVariant.FUNCTION; }
-        public ShortGuid function; 
+        public ShortGuid function;
+        public List<CathodeResourceReference> resources = new List<CathodeResourceReference>();
     }
     [Serializable]
     public class CAGEAnimation : FunctionEntity
