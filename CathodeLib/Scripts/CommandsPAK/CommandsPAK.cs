@@ -241,7 +241,6 @@ namespace CATHODE.Commands
                         if (!resourceReferences.Contains(resParamRef[y]))
                             resourceReferences.Add(resParamRef[y]);
                 }
-                resourceReferences.AddRange(_composites[i].resources);
 
                 //Sort
                 entitiesWithLinks = entitiesWithLinks.OrderBy(o => o.shortGUID.ToUInt32()).ToList();
@@ -1112,7 +1111,7 @@ namespace CATHODE.Commands
                     
                     //TODO: similar to the above comment, we should also make DYNAMIC_PHYSICS_SYSTEM resources when making those entities.
                 }
-                else
+                else if (resourceRefs.Count != 0)
                 {
                     Console.WriteLine("WARNING: This CommandsPAK contains unexpected trailing resources!");
                 }
