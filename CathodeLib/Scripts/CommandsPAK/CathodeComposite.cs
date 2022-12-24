@@ -97,8 +97,8 @@ namespace CATHODE.Commands
             return hashCode;
         }
 
-        public Vector3 position;
-        public Vector3 rotation;
+        public Vector3 position = new Vector3(0, 0, 0);
+        public Vector3 rotation = new Vector3(0, 0, 0);
 
         public ShortGuid resourceID;
         public CathodeResourceReferenceType entryType;
