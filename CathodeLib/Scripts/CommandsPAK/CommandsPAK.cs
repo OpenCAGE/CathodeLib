@@ -12,30 +12,6 @@ using UnityEngine;
 
 namespace CATHODE.Commands
 {
-    /*
-    
-    A:I iOS contains all symbols which has been super helpful. There's some new Commands info, as well as a bunch of info about REDS/MVR.
-
-    COMMANDS.BIN loads into CommandBuffer object.
-    CommandBuffer is looped through once for number of commands entries, adding or removing:
-       composite_template
-       alias_from_command
-       parameter_from_command
-       entity_to_seq_from_command
-       link
-       connector
-       resource
-       track_from_command
-    It's then looped through again, adding or removing:
-       entity
-       binding_from_command
-       **something undefined**
-       method
-       proxy_from_command
-       breakpoint_from_command
-
-    */
-
     public class CommandsPAK
     {
         public Action OnLoaded;
@@ -84,8 +60,8 @@ namespace CATHODE.Commands
             get
             {
                 if (_entryPointObjects != null) return _entryPointObjects;
-                _entryPointObjects = new Composite[_entryPoints.compositeIDs.Length];
-                for (int i = 0; i < _entryPoints.compositeIDs.Length; i++) _entryPointObjects[i] = GetComposite(_entryPoints.compositeIDs[i]);
+                _entryPointObjects = new Composite[_entryPoints.Length];
+                for (int i = 0; i < _entryPoints.Length; i++) _entryPointObjects[i] = GetComposite(_entryPoints[i]);
                 return _entryPointObjects;
             }
         }
@@ -93,20 +69,23 @@ namespace CATHODE.Commands
         /* Set the root composite for this COMMANDS.PAK (the root of the level - GLOBAL and PAUSEMENU are also instanced) */
         public void SetRootComposite(ShortGuid id)
         {
-            _entryPoints.compositeIDs[0] = id;
+            _entryPoints[0] = id;
             _entryPointObjects = null;
         }
         #endregion
 
         #region WRITING
         /* Save all changes back out */
-        public void Save()
+        public bool Save()
         {
+            if (_path == "" || _entryPoints == null) return false;
+
             BinaryWriter writer = new BinaryWriter(File.OpenWrite(_path));
             writer.BaseStream.SetLength(0);
 
             //Write entry points
-            Utilities.Write<CommandsEntryPoints>(writer, _entryPoints);
+            for (int i = 0; i < 3; i++)
+                Utilities.Write<ShortGuid>(writer, _entryPoints[i]);
 
             //Write placeholder info for parameter/composite offsets
             int offsetToRewrite = (int)writer.BaseStream.Position;
@@ -301,7 +280,7 @@ namespace CATHODE.Commands
                             foreach (Entity entityWithLink in entitiesWithLinks)
                             {
                                 offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, entityWithLink.childLinks.Count));
-                                Utilities.Write<CathodeEntityLink>(writer, entityWithLink.childLinks);
+                                Utilities.Write<EntityLink>(writer, entityWithLink.childLinks);
                             }
 
                             scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, entitiesWithLinks.Count);
@@ -644,6 +623,7 @@ namespace CATHODE.Commands
 
             writer.Close();
             OnSaved?.Invoke();
+            return true;
         }
 
         /* Filter down a list of parameters to contain only unique entries */
@@ -672,9 +652,11 @@ namespace CATHODE.Commands
         /* Read offset info & count, jump to the offset & return the count */
         private int JumpToOffset(ref BinaryReader reader)
         {
-            CommandsOffsetPair pair = Utilities.Consume<CommandsOffsetPair>(reader);
-            reader.BaseStream.Position = pair.offset * 4;
-            return pair.count;
+            int offset = reader.ReadInt32() * 4;
+            int count = reader.ReadInt32();
+
+            reader.BaseStream.Position = offset;
+            return count;
         }
 
         /* Read the parameter and composite offsets & get entry points */
@@ -684,7 +666,8 @@ namespace CATHODE.Commands
             BinaryReader reader = new BinaryReader(File.OpenRead(path));
 
             //Read entry points
-            _entryPoints = Utilities.Consume<CommandsEntryPoints>(reader);
+            _entryPoints = new ShortGuid[3];
+            for (int i = 0; i < 3; i++) _entryPoints[i] = Utilities.Consume<ShortGuid>(reader);
 
             //Read parameter/composite counts
             int parameter_offset_pos = reader.ReadInt32() * 4;
@@ -812,7 +795,7 @@ namespace CATHODE.Commands
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 entityLinks.Add(new CommandsEntityLinks(new ShortGuid(reader)));
                                 int NumberOfParams = JumpToOffset(ref reader);
-                                entityLinks[entityLinks.Count - 1].childLinks.AddRange(Utilities.ConsumeArray<CathodeEntityLink>(reader, NumberOfParams));
+                                entityLinks[entityLinks.Count - 1].childLinks.AddRange(Utilities.ConsumeArray<EntityLink>(reader, NumberOfParams));
                                 break;
                             }
                             case DataBlock.ENTITY_PARAMETERS:
@@ -1155,7 +1138,11 @@ namespace CATHODE.Commands
 
         private string _path = "";
 
-        private CommandsEntryPoints _entryPoints;
+        // This is always:
+        //  - Root Instance (the map's entry composite, usually containing entities that call mission/environment composites)
+        //  - Global Instance (the main data handler for keeping track of mission number, etc - kinda like a big singleton)
+        //  - Pause Menu Instance
+        private ShortGuid[] _entryPoints;
         private Composite[] _entryPointObjects = null;
 
         private List<Composite> _composites = null;
@@ -1163,35 +1150,39 @@ namespace CATHODE.Commands
         private bool _didLoadCorrectly = false;
         public bool Loaded { get { return _didLoadCorrectly; } }
         public string Filepath { get { return _path; } }
-    }
 
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CommandsEntryPoints
-    {
-        // This is always:
-        //  - Root Instance (the map's entry composite, usually containing entities that call mission/environment composites)
-        //  - Global Instance (the main data handler for keeping track of mission number, etc - kinda like a big singleton)
-        //  - Pause Menu Instance
+        /* -- */
 
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
-        public ShortGuid[] compositeIDs;
-    }
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct CathodeParameterReference
+        {
+            public ShortGuid paramID; //The ID of the param in the entity
+            public int offset;    //The offset of the param this reference points to (in memory this is *4)
+        }
 
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CommandsOffsetPair
-    {
-        public int offset;
-        public int count;
-    }
+        public class CommandsEntityLinks
+        {
+            public ShortGuid parentID;
+            public List<EntityLink> childLinks = new List<EntityLink>();
 
-    [Serializable]
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CathodeEntityLink
-    {
-        public ShortGuid connectionID;  //The unique ID for this connection
-        public ShortGuid parentParamID; //The ID of the parameter we're providing out 
-        public ShortGuid childParamID;  //The ID of the parameter we're providing into the child
-        public ShortGuid childID;       //The ID of the entity we're linking to to provide the value for
+            public CommandsEntityLinks(ShortGuid _id)
+            {
+                parentID = _id;
+            }
+        }
+
+        public class CommandsParamRefSet
+        {
+            public int Index = -1; //TEMP TEST
+
+            public ShortGuid id;
+            public List<CathodeParameterReference> refs = new List<CathodeParameterReference>();
+
+            public CommandsParamRefSet(ShortGuid _id)
+            {
+                id = _id;
+            }
+        }
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -1209,37 +1200,6 @@ namespace CATHODE.Commands
         {
             GlobalOffset = (int)_go;
             EntryCount = _ec;
-        }
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CathodeParameterReference
-    {
-        public ShortGuid paramID; //The ID of the param in the entity
-        public int offset;    //The offset of the param this reference points to (in memory this is *4)
-    }
-
-    public class CommandsEntityLinks
-    {
-        public ShortGuid parentID;
-        public List<CathodeEntityLink> childLinks = new List<CathodeEntityLink>();
-
-        public CommandsEntityLinks(ShortGuid _id)
-        {
-            parentID = _id;
-        }
-    }
-
-    public class CommandsParamRefSet
-    {
-        public int Index = -1; //TEMP TEST
-
-        public ShortGuid id;
-        public List<CathodeParameterReference> refs = new List<CathodeParameterReference>();
-
-        public CommandsParamRefSet(ShortGuid _id)
-        {
-            id = _id;
         }
     }
 
