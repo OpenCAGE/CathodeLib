@@ -104,20 +104,21 @@ namespace CATHODE.Commands
                     FunctionType type = CommandsUtils.GetFunctionType(_composites[i].functions[x].function);
                     switch (type)
                     {
-
-
-                        case FunctionType.ModelReference:
-                            break;
-
-
-                        case FunctionType.CollisionBarrier:
-                            break;
-
-
+                        // Types below require resources we can add, and information we should probably correct, so do it automatically!
                         case FunctionType.SoundBarrier:
+                            _composites[i].functions[x].AddResource(ResourceType.COLLISION_MAPPING);
                             break;
-
-
+                        case FunctionType.ExclusiveMaster:
+                            _composites[i].functions[x].AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE);
+                            break;
+                        case FunctionType.TRAV_1ShotSpline:
+                            //TODO: There are loads of TRAV_ entities which are unused in the vanilla game, so I'm not sure if they should apply to those too...
+                            _composites[i].functions[x].AddResource(ResourceType.TRAVERSAL_SEGMENT);
+                            break;
+                        case FunctionType.NavMeshBarrier:
+                            _composites[i].functions[x].AddResource(ResourceType.NAV_MESH_BARRIER_RESOURCE);
+                            _composites[i].functions[x].AddResource(ResourceType.COLLISION_MAPPING);
+                            break;
                         case FunctionType.PhysicsSystem:
                             ResourceReference dps = _composites[i].functions[x].GetResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
                             Parameter dps_index = _composites[i].functions[x].GetParameter("system_index");
@@ -128,17 +129,6 @@ namespace CATHODE.Commands
                             }
                             _composites[i].functions[x].AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE).startIndex = ((cInteger)dps_index.content).value;
                             break;
-                        case FunctionType.ExclusiveMaster:
-                            _composites[i].functions[x].AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE);
-                            break;
-                        //TODO: There are loads of TRAV_ entities which are unused in the vanilla game, so I'm not sure if they should apply to those too...
-                        case FunctionType.TRAV_1ShotSpline:
-                            _composites[i].functions[x].AddResource(ResourceType.TRAVERSAL_SEGMENT);
-                            break;
-                        case FunctionType.NavMeshBarrier:
-                            _composites[i].functions[x].AddResource(ResourceType.NAV_MESH_BARRIER_RESOURCE);
-                            _composites[i].functions[x].AddResource(ResourceType.COLLISION_MAPPING);
-                            break;
                         case FunctionType.EnvironmentModelReference:
                             Parameter rsc = _composites[i].functions[x].GetParameter("resource");
                             if (rsc == null)
@@ -146,7 +136,27 @@ namespace CATHODE.Commands
                                 rsc = new Parameter("resource", new cResource(_composites[i].functions[x].shortGUID));
                                 _composites[i].functions[x].parameters.Add(rsc);
                             }
-                            ((cResource)rsc.content).AddResource(ResourceType.ANIMATED_MODEL); //TODO: need to figure out what startIndex links to, so we can set that!
+                            cResource rsc_p = (cResource)rsc.content;
+                            rsc_p.AddResource(ResourceType.ANIMATED_MODEL); //TODO: need to figure out what startIndex links to, so we can set that!
+                            break;
+
+                        // Types below require various things, but we don't add them as they work without it, so just log a warning.
+                        case FunctionType.ModelReference:
+                            Parameter mdl = _composites[i].functions[x].GetParameter("resource");
+                            if (mdl == null)
+                            {
+                                mdl = new Parameter("resource", new cResource(_composites[i].functions[x].shortGUID));
+                                _composites[i].functions[x].parameters.Add(mdl);
+                            }
+                            cResource mdl_p = (cResource)mdl.content;
+                            if (mdl_p.GetResource(ResourceType.RENDERABLE_INSTANCE) == null)
+                                Console.WriteLine("WARNING: ModelReference resource parameter does not contain a RENDERABLE_INSTANCE resource reference!");
+                            if (mdl_p.GetResource(ResourceType.COLLISION_MAPPING) == null)
+                                Console.WriteLine("WARNING: ModelReference resource parameter does not contain a COLLISION_MAPPING resource reference!");
+                            break;
+                        case FunctionType.CollisionBarrier:
+                            if (_composites[i].functions[x].GetResource(ResourceType.COLLISION_MAPPING) == null)
+                                Console.WriteLine("WARNING: CollisionBarrier entity does not contain a COLLISION_MAPPING resource reference!");
                             break;
 
                         // Types below require only RENDERABLE_INSTANCE resource references on the entity, pointing to the commented model.
