@@ -9,7 +9,7 @@ using UnityEngine;
 namespace CATHODE.Commands
 {
     /* Blocks of data in each compiled composite */
-    public enum CommandsDataBlock
+    public enum DataBlock
     {
         COMPOSITE_HEADER,             //Defines the header of the composite, with global ID and string name
         ENTITY_CONNECTIONS,           //Defines the links between entities in the composite
@@ -29,25 +29,39 @@ namespace CATHODE.Commands
         NUMBER_OF_SCRIPT_BLOCKS,      //THIS IS NOT A DATA BLOCK: merely used as an easy way of sanity checking the number of blocks in-code!
     }
 
-    /* A reference to a parameter in a composite */
+    /* A reference to parameter data in a composite */
     [Serializable]
-    public class CathodeLoadedParameter
+    public class Parameter
     {
-        public CathodeLoadedParameter(ShortGuid id, CathodeParameter cont)
+        public Parameter(ShortGuid id, ParameterData data)
         {
             shortGUID = id;
-            content = cont;
+            content = data;
+        }
+        public Parameter(string name, ParameterData data)
+        {
+            shortGUID = ShortGuidUtils.Generate(name);
+            content = data;
         }
 
         public ShortGuid shortGUID; //The ID of the param in the entity
-        public CathodeParameter content = null;
+        public ParameterData content = null;
     }
 
     /* A reference to a game resource (E.G. a renderable element, a collision mapping, etc) */
     [Serializable]
-    public class CathodeResourceReference : ICloneable
+    public class ResourceReference : ICloneable
     {
-        public static bool operator ==(CathodeResourceReference x, CathodeResourceReference y)
+        public ResourceReference()
+        {
+
+        }
+        public ResourceReference(ResourceType type)
+        {
+            entryType = type;
+        }
+
+        public static bool operator ==(ResourceReference x, ResourceReference y)
         {
             if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
             if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
@@ -62,7 +76,7 @@ namespace CATHODE.Commands
 
             return true;
         }
-        public static bool operator !=(CathodeResourceReference x, CathodeResourceReference y)
+        public static bool operator !=(ResourceReference x, ResourceReference y)
         {
             return !(x == y);
         }
@@ -74,7 +88,7 @@ namespace CATHODE.Commands
 
         public override bool Equals(object obj)
         {
-            return obj is CathodeResourceReference reference &&
+            return obj is ResourceReference reference &&
                    EqualityComparer<Vector3>.Default.Equals(position, reference.position) &&
                    EqualityComparer<Vector3>.Default.Equals(rotation, reference.rotation) &&
                    EqualityComparer<ShortGuid>.Default.Equals(resourceID, reference.resourceID) &&
@@ -101,19 +115,19 @@ namespace CATHODE.Commands
         public Vector3 rotation = new Vector3(0, 0, 0);
 
         public ShortGuid resourceID;
-        public CathodeResourceReferenceType entryType;
+        public ResourceType entryType;
 
         public int startIndex = -1;
         public int count = 1;
 
-        public ShortGuid entityID;
+        public ShortGuid entityID = new ShortGuid("FF-FF-FF-FF");
     }
 
     /* An entity in a composite */
     [Serializable]
-    public class CathodeEntity : IComparable<CathodeEntity>
+    public class Entity : IComparable<Entity>
     {
-        public CathodeEntity(ShortGuid id)
+        public Entity(ShortGuid id)
         {
             shortGUID = id;
         }
@@ -122,9 +136,9 @@ namespace CATHODE.Commands
         public EntityVariant variant;
 
         public List<CathodeEntityLink> childLinks = new List<CathodeEntityLink>();
-        public List<CathodeLoadedParameter> parameters = new List<CathodeLoadedParameter>();
+        public List<Parameter> parameters = new List<Parameter>();
 
-        public int CompareTo(CathodeEntity other)
+        public int CompareTo(Entity other)
         {
             int TotalThis = shortGUID.val[0] + shortGUID.val[1] + shortGUID.val[2] + shortGUID.val[3];
             int TotalOther = other.shortGUID.val[0] + other.shortGUID.val[1] + other.shortGUID.val[2] + other.shortGUID.val[3];
@@ -134,18 +148,18 @@ namespace CATHODE.Commands
         }
     }
     [Serializable]
-    public class DatatypeEntity : CathodeEntity
+    public class DatatypeEntity : Entity
     {
         public DatatypeEntity(ShortGuid id) : base(id) { variant = EntityVariant.DATATYPE; }
-        public CathodeDataType type = CathodeDataType.NO_TYPE;
+        public DataType type = DataType.NO_TYPE;
         public ShortGuid parameter; //Translates to string in COMMANDS.BIN dump
     }
     [Serializable]
-    public class FunctionEntity : CathodeEntity
+    public class FunctionEntity : Entity
     {
         public FunctionEntity(ShortGuid id) : base(id) { variant = EntityVariant.FUNCTION; }
         public ShortGuid function;
-        public List<CathodeResourceReference> resources = new List<CathodeResourceReference>();
+        public List<ResourceReference> resources = new List<ResourceReference>();
     }
     [Serializable]
     public class CAGEAnimation : FunctionEntity
@@ -163,7 +177,7 @@ namespace CATHODE.Commands
         public List<CathodeTriggerSequenceEvent> events = new List<CathodeTriggerSequenceEvent>();
     }
     [Serializable]
-    public class ProxyEntity : CathodeEntity
+    public class ProxyEntity : Entity
     {
         public ProxyEntity(ShortGuid id) : base(id) { variant = EntityVariant.PROXY; }
         //todo: what does the proxy nodeID translate to? is it a composite id?
@@ -171,7 +185,7 @@ namespace CATHODE.Commands
         public List<ShortGuid> hierarchy = new List<ShortGuid>();
     }
     [Serializable]
-    public class OverrideEntity : CathodeEntity
+    public class OverrideEntity : Entity
     {
         public OverrideEntity(ShortGuid id) : base(id) { variant = EntityVariant.OVERRIDE; }
         public ShortGuid checksum; //TODO: This value is apparently a hash of the hierarchy GUIDs, but need to verify that, and work out the salt.
@@ -188,7 +202,7 @@ namespace CATHODE.Commands
 
     /* A script composite containing entities */
     [Serializable]
-    public class CathodeComposite
+    public class Composite
     {
         public ShortGuid shortGUID;  //The id when this composite is used as an entity in another composite
         public string name = ""; //The string name of the composite
@@ -202,19 +216,19 @@ namespace CATHODE.Commands
         public List<ProxyEntity> proxies = new List<ProxyEntity>();
 
         /* If an entity exists in the composite, return it */
-        public CathodeEntity GetEntityByID(ShortGuid id)
+        public Entity GetEntityByID(ShortGuid id)
         {
-            foreach (CathodeEntity entity in datatypes) if (entity.shortGUID == id) return entity;
-            foreach (CathodeEntity entity in functions) if (entity.shortGUID == id) return entity;
-            foreach (CathodeEntity entity in overrides) if (entity.shortGUID == id) return entity;
-            foreach (CathodeEntity entity in proxies) if (entity.shortGUID == id) return entity;
+            foreach (Entity entity in datatypes) if (entity.shortGUID == id) return entity;
+            foreach (Entity entity in functions) if (entity.shortGUID == id) return entity;
+            foreach (Entity entity in overrides) if (entity.shortGUID == id) return entity;
+            foreach (Entity entity in proxies) if (entity.shortGUID == id) return entity;
             return null;
         }
 
         /* Returns a collection of all entities in the composite */
-        public List<CathodeEntity> GetEntities()
+        public List<Entity> GetEntities()
         {
-            List<CathodeEntity> toReturn = new List<CathodeEntity>();
+            List<Entity> toReturn = new List<Entity>();
             toReturn.AddRange(datatypes);
             toReturn.AddRange(functions);
             toReturn.AddRange(overrides);

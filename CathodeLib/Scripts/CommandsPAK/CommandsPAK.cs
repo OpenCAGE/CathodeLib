@@ -65,26 +65,26 @@ namespace CATHODE.Commands
         }
 
         /* Get an individual composite */
-        public CathodeComposite GetComposite(ShortGuid id)
+        public Composite GetComposite(ShortGuid id)
         {
             if (id.val == null) return null;
             return _composites.FirstOrDefault(o => o.shortGUID == id);
         }
-        public CathodeComposite GetCompositeByIndex(int index)
+        public Composite GetCompositeByIndex(int index)
         {
             return (index >= _composites.Count || index < 0) ? null : _composites[index];
         }
 
         /* Get all composites */
-        public List<CathodeComposite> Composites { get { return _composites; } }
+        public List<Composite> Composites { get { return _composites; } }
 
         /* Get entry point composite objects */
-        public CathodeComposite[] EntryPoints
+        public Composite[] EntryPoints
         {
             get
             {
                 if (_entryPointObjects != null) return _entryPointObjects;
-                _entryPointObjects = new CathodeComposite[_entryPoints.compositeIDs.Length];
+                _entryPointObjects = new Composite[_entryPoints.compositeIDs.Length];
                 for (int i = 0; i < _entryPoints.compositeIDs.Length; i++) _entryPointObjects[i] = GetComposite(_entryPoints.compositeIDs[i]);
                 return _entryPointObjects;
             }
@@ -115,11 +115,45 @@ namespace CATHODE.Commands
             writer.Write(0); 
             writer.Write(0);
 
-            //Work out unique parameters to write
-            List<CathodeParameter> parameters = new List<CathodeParameter>();
+            //Fix entity-attached resource info
+            /*
+            ShortGuid system_index_param_id = ShortGuidUtils.Generate("system_index");
             for (int i = 0; i < _composites.Count; i++)
             {
-                List<CathodeEntity> fgEntities = _composites[i].GetEntities();
+                for (int x = 0; x < _composites[i].functions.Count; x++)
+                {
+                    if (GetComposite(_composites[i].functions[x].function) != null) continue;
+
+                    switch (CommandsUtils.GetFunctionType(_composites[i].functions[x].function))
+                    {
+                        case FunctionType.PhysicsSystem:
+                            ResourceReference dps = _composites[i].functions[x].resources.FirstOrDefault(o => o.entryType == ResourceType.DYNAMIC_PHYSICS_SYSTEM);
+                            cInteger dps_index = ((cInteger)_composites[i].functions[x].parameters.FirstOrDefault(o => o.shortGUID == system_index_param_id)?.content);
+                            if (dps_index == null)
+                            {
+                                _composites[i].functions[x].parameters.Add(new Parameter("system_index", new cInteger(0)));
+                            }
+                            if (dps == null)
+                            {
+                                dps = new ResourceReference(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
+                                dps.startIndex = dps_index.value;
+                            }
+                            else
+                            {
+                                _composites[i].functions[x].resources.Remove(dps);
+                            }
+                            if (_composites[i].functions[x].resources)
+                                break;
+                    }
+                }
+            }
+            */
+
+            //Work out unique parameters to write
+            List<ParameterData> parameters = new List<ParameterData>();
+            for (int i = 0; i < _composites.Count; i++)
+            {
+                List<Entity> fgEntities = _composites[i].GetEntities();
                 for (int x = 0; x < fgEntities.Count; x++)
                     for (int y = 0; y < fgEntities[x].parameters.Count; y++)
                         parameters.Add(fgEntities[x].parameters[y].content);
@@ -134,45 +168,45 @@ namespace CATHODE.Commands
                 Utilities.Write<ShortGuid>(writer, CommandsUtils.GetDataTypeGUID(parameters[i].dataType));
                 switch (parameters[i].dataType)
                 {
-                    case CathodeDataType.POSITION:
-                        Vector3 pos = ((CathodeTransform)parameters[i]).position;
-                        Vector3 rot = ((CathodeTransform)parameters[i]).rotation;
+                    case DataType.POSITION:
+                        Vector3 pos = ((cTransform)parameters[i]).position;
+                        Vector3 rot = ((cTransform)parameters[i]).rotation;
                         writer.Write(pos.x); writer.Write(pos.y); writer.Write(pos.z);
                         writer.Write(rot.y); writer.Write(rot.x); writer.Write(rot.z);
                         break;
-                    case CathodeDataType.INTEGER:
-                        writer.Write(((CathodeInteger)parameters[i]).value);
+                    case DataType.INTEGER:
+                        writer.Write(((cInteger)parameters[i]).value);
                         break;
-                    case CathodeDataType.STRING:
+                    case DataType.STRING:
                         int stringStart = ((int)writer.BaseStream.Position + 4) / 4;
                         byte[] stringStartRaw = BitConverter.GetBytes(stringStart);
                         stringStartRaw[3] = 0x80; 
                         writer.Write(stringStartRaw);
-                        string str = ((CathodeString)parameters[i]).value;
+                        string str = ((cString)parameters[i]).value;
                         writer.Write(ShortGuidUtils.Generate(str).val);
                         for (int x = 0; x < str.Length; x++) writer.Write(str[x]);
                         writer.Write((char)0x00);
                         Utilities.Align(writer, 4);
                         break;
-                    case CathodeDataType.BOOL:
-                        if (((CathodeBool)parameters[i]).value) writer.Write(1); else writer.Write(0);
+                    case DataType.BOOL:
+                        if (((cBool)parameters[i]).value) writer.Write(1); else writer.Write(0);
                         break;
-                    case CathodeDataType.FLOAT:
-                        writer.Write(((CathodeFloat)parameters[i]).value);
+                    case DataType.FLOAT:
+                        writer.Write(((cFloat)parameters[i]).value);
                         break;
-                    case CathodeDataType.RESOURCE:
-                        Utilities.Write<ShortGuid>(writer, ((CathodeResource)parameters[i]).resourceID);
+                    case DataType.RESOURCE:
+                        Utilities.Write<ShortGuid>(writer, ((cResource)parameters[i]).resourceID);
                         break;
-                    case CathodeDataType.DIRECTION:
-                        Vector3 dir = ((CathodeVector3)parameters[i]).value;
+                    case DataType.DIRECTION:
+                        Vector3 dir = ((cVector3)parameters[i]).value;
                         writer.Write(dir.x); writer.Write(dir.y); writer.Write(dir.z);
                         break;
-                    case CathodeDataType.ENUM:
-                        Utilities.Write<ShortGuid>(writer, ((CathodeEnum)parameters[i]).enumID);
-                        writer.Write(((CathodeEnum)parameters[i]).enumIndex);
+                    case DataType.ENUM:
+                        Utilities.Write<ShortGuid>(writer, ((cEnum)parameters[i]).enumID);
+                        writer.Write(((cEnum)parameters[i]).enumIndex);
                         break;
-                    case CathodeDataType.SPLINE_DATA:
-                        CathodeSpline thisSpline = ((CathodeSpline)parameters[i]);
+                    case DataType.SPLINE_DATA:
+                        cSpline thisSpline = ((cSpline)parameters[i]);
                         writer.Write(((int)writer.BaseStream.Position + 8) / 4);
                         writer.Write(thisSpline.splinePoints.Count);
                         for (int x = 0; x < thisSpline.splinePoints.Count; x++)
@@ -201,14 +235,14 @@ namespace CATHODE.Commands
                 Utilities.Align(writer, 4);
 
                 //Work out what we want to write
-                List<CathodeEntity> ents = _composites[i].GetEntities();
-                List<CathodeEntity> entitiesWithLinks = new List<CathodeEntity>(ents.FindAll(o => o.childLinks.Count != 0));
-                List<CathodeEntity> entitiesWithParams = new List<CathodeEntity>(ents.FindAll(o => o.parameters.Count != 0));
+                List<Entity> ents = _composites[i].GetEntities();
+                List<Entity> entitiesWithLinks = new List<Entity>(ents.FindAll(o => o.childLinks.Count != 0));
+                List<Entity> entitiesWithParams = new List<Entity>(ents.FindAll(o => o.parameters.Count != 0));
                 //TODO: find a nicer way to sort into entity class types
                 List<CAGEAnimation> cageAnimationEntities = new List<CAGEAnimation>();
                 List<TriggerSequence> triggerSequenceEntities = new List<TriggerSequence>();
-                ShortGuid cageAnimationGUID = CommandsUtils.GetFunctionTypeGUID(CathodeFunctionType.CAGEAnimation);
-                ShortGuid triggerSequenceGUID = CommandsUtils.GetFunctionTypeGUID(CathodeFunctionType.TriggerSequence);
+                ShortGuid cageAnimationGUID = CommandsUtils.GetFunctionTypeGUID(FunctionType.CAGEAnimation);
+                ShortGuid triggerSequenceGUID = CommandsUtils.GetFunctionTypeGUID(FunctionType.TriggerSequence);
                 for (int x = 0; x < _composites[i].functions.Count; x++)
                 {
                     if (_composites[i].functions[x].function == cageAnimationGUID)
@@ -226,17 +260,17 @@ namespace CATHODE.Commands
                 }
 
                 //Reconstruct resources
-                List<CathodeResourceReference> resourceReferences = new List<CathodeResourceReference>();
-                ShortGuid resourceParamID = ShortGuidUtils.Generate("resource");
+                List<ResourceReference> resourceReferences = new List<ResourceReference>();
+                ShortGuid resource_param_id = ShortGuidUtils.Generate("resource");
                 for (int x = 0; x < _composites[i].functions.Count; x++)
                 {
                     for (int y = 0; y < _composites[i].functions[x].resources.Count; y++)
                         if (!resourceReferences.Contains(_composites[i].functions[x].resources[y]))
                             resourceReferences.Add(_composites[i].functions[x].resources[y]);
 
-                    CathodeLoadedParameter resParam = _composites[i].functions[x].parameters.FirstOrDefault(o => o.shortGUID == resourceParamID);
+                    Parameter resParam = _composites[i].functions[x].parameters.FirstOrDefault(o => o.shortGUID == resource_param_id);
                     if (resParam == null) continue;
-                    List<CathodeResourceReference> resParamRef = ((CathodeResource)resParam.content).value;
+                    List<ResourceReference> resParamRef = ((cResource)resParam.content).value;
                     for (int y = 0; y < resParamRef.Count; y++)
                         if (!resourceReferences.Contains(resParamRef[y]))
                             resourceReferences.Add(resParamRef[y]);
@@ -249,22 +283,22 @@ namespace CATHODE.Commands
                 _composites[i].SortEntities();
 
                 //Write data
-                OffsetPair[] scriptPointerOffsetInfo = new OffsetPair[(int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS];
-                for (int x = 0; x < (int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS; x++)
+                OffsetPair[] scriptPointerOffsetInfo = new OffsetPair[(int)DataBlock.NUMBER_OF_SCRIPT_BLOCKS];
+                for (int x = 0; x < (int)DataBlock.NUMBER_OF_SCRIPT_BLOCKS; x++)
                 {
-                    switch ((CommandsDataBlock)x)
+                    switch ((DataBlock)x)
                     {
-                        case CommandsDataBlock.COMPOSITE_HEADER:
+                        case DataBlock.COMPOSITE_HEADER:
                         {
                             scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, 2);
                             Utilities.Write<ShortGuid>(writer, _composites[i].shortGUID);
                             writer.Write(0);
                             break;
                         }
-                        case CommandsDataBlock.ENTITY_CONNECTIONS:
+                        case DataBlock.ENTITY_CONNECTIONS:
                         {
                             List<OffsetPair> offsetPairs = new List<OffsetPair>();
-                            foreach (CathodeEntity entityWithLink in entitiesWithLinks)
+                            foreach (Entity entityWithLink in entitiesWithLinks)
                             {
                                 offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, entityWithLink.childLinks.Count));
                                 Utilities.Write<CathodeEntityLink>(writer, entityWithLink.childLinks);
@@ -280,10 +314,10 @@ namespace CATHODE.Commands
 
                             break;
                         }
-                        case CommandsDataBlock.ENTITY_PARAMETERS:
+                        case DataBlock.ENTITY_PARAMETERS:
                         {
                             List<OffsetPair> offsetPairs = new List<OffsetPair>();
-                            foreach (CathodeEntity entityWithParam in entitiesWithParams)
+                            foreach (Entity entityWithParam in entitiesWithParams)
                             {
                                 offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, entityWithParam.parameters.Count));
                                 for (int y = 0; y < entityWithParam.parameters.Count; y++)
@@ -313,7 +347,7 @@ namespace CATHODE.Commands
                             }
                             break;
                         }
-                        case CommandsDataBlock.ENTITY_OVERRIDES:
+                        case DataBlock.ENTITY_OVERRIDES:
                         {
                             List<OffsetPair> offsetPairs = new List<OffsetPair>();
                             for (int p = 0; p < _composites[i].overrides.Count; p++)
@@ -331,7 +365,7 @@ namespace CATHODE.Commands
                             }
                             break;
                         }
-                        case CommandsDataBlock.ENTITY_OVERRIDES_CHECKSUM:
+                        case DataBlock.ENTITY_OVERRIDES_CHECKSUM:
                         {
                             scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledChecksums.Count);
                             for (int p = 0; p < reshuffledChecksums.Count; p++)
@@ -341,7 +375,7 @@ namespace CATHODE.Commands
                             }
                             break;
                         }
-                        case CommandsDataBlock.COMPOSITE_EXPOSED_PARAMETERS:
+                        case DataBlock.COMPOSITE_EXPOSED_PARAMETERS:
                         {
                             scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _composites[i].datatypes.Count);
                             for (int p = 0; p < _composites[i].datatypes.Count; p++)
@@ -352,7 +386,7 @@ namespace CATHODE.Commands
                             }
                             break;
                         }
-                        case CommandsDataBlock.ENTITY_PROXIES:
+                        case DataBlock.ENTITY_PROXIES:
                         {
                             List<OffsetPair> offsetPairs = new List<OffsetPair>();
                             for (int p = 0; p < _composites[i].proxies.Count; p++)
@@ -372,7 +406,7 @@ namespace CATHODE.Commands
                             }
                             break;
                         }
-                        case CommandsDataBlock.ENTITY_FUNCTIONS:
+                        case DataBlock.ENTITY_FUNCTIONS:
                         {
                             scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _composites[i].functions.Count);
                             for (int p = 0; p < _composites[i].functions.Count; p++)
@@ -382,7 +416,7 @@ namespace CATHODE.Commands
                             }
                             break;
                         }
-                        case CommandsDataBlock.RESOURCE_REFERENCES:
+                        case DataBlock.RESOURCE_REFERENCES:
                         {
                             scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, resourceReferences.Count);
                             for (int p = 0; p < resourceReferences.Count; p++)
@@ -397,22 +431,22 @@ namespace CATHODE.Commands
                                 writer.Write(CommandsUtils.GetResourceEntryTypeGUID(resourceReferences[p].entryType).val);
                                 switch (resourceReferences[p].entryType)
                                 {
-                                    case CathodeResourceReferenceType.RENDERABLE_INSTANCE:
+                                    case ResourceType.RENDERABLE_INSTANCE:
                                         writer.Write(resourceReferences[p].startIndex);
                                         writer.Write(resourceReferences[p].count);
                                         break;
-                                    case CathodeResourceReferenceType.COLLISION_MAPPING:
+                                    case ResourceType.COLLISION_MAPPING:
                                         writer.Write(resourceReferences[p].startIndex);
                                         writer.Write(resourceReferences[p].entityID.val);
                                         break;
-                                    case CathodeResourceReferenceType.ANIMATED_MODEL:
-                                    case CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM:
+                                    case ResourceType.ANIMATED_MODEL:
+                                    case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
                                         writer.Write(resourceReferences[p].startIndex);
                                         writer.Write(-1);
                                         break;
-                                    case CathodeResourceReferenceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
-                                    case CathodeResourceReferenceType.NAV_MESH_BARRIER_RESOURCE:
-                                    case CathodeResourceReferenceType.TRAVERSAL_SEGMENT:
+                                    case ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
+                                    case ResourceType.NAV_MESH_BARRIER_RESOURCE:
+                                    case ResourceType.TRAVERSAL_SEGMENT:
                                         writer.Write(-1);
                                         writer.Write(-1);
                                         break;
@@ -420,7 +454,7 @@ namespace CATHODE.Commands
                             }
                             break;
                         }
-                        case CommandsDataBlock.TRIGGERSEQUENCE_DATA: //Actually CAGEANIMATION_DATA, but indexes are flipped
+                        case DataBlock.TRIGGERSEQUENCE_DATA: //Actually CAGEANIMATION_DATA, but indexes are flipped
                         {
                             List<int> globalOffsets = new List<int>();
                             for (int p = 0; p < cageAnimationEntities.Count; p++)
@@ -512,14 +546,14 @@ namespace CATHODE.Commands
                                 writer.Write(cageAnimationEntities[p].paramsData3.Count);
                             }
 
-                            scriptPointerOffsetInfo[(int)CommandsDataBlock.CAGEANIMATION_DATA] = new OffsetPair(writer.BaseStream.Position, globalOffsets.Count);
+                            scriptPointerOffsetInfo[(int)DataBlock.CAGEANIMATION_DATA] = new OffsetPair(writer.BaseStream.Position, globalOffsets.Count);
                             for (int p = 0; p < globalOffsets.Count; p++)
                             {
                                 writer.Write(globalOffsets[p] / 4);
                             }
                             break;
                         }
-                        case CommandsDataBlock.CAGEANIMATION_DATA: //Actually TRIGGERSEQUENCE_DATA, but indexes are flipped
+                        case DataBlock.CAGEANIMATION_DATA: //Actually TRIGGERSEQUENCE_DATA, but indexes are flipped
                         {
                             List<int> globalOffsets = new List<int>();
                             for (int p = 0; p < triggerSequenceEntities.Count; p++)
@@ -555,19 +589,19 @@ namespace CATHODE.Commands
                                 writer.Write(triggerSequenceEntities[p].events.Count);
                             }
 
-                            scriptPointerOffsetInfo[(int)CommandsDataBlock.TRIGGERSEQUENCE_DATA] = new OffsetPair(writer.BaseStream.Position, globalOffsets.Count);
+                            scriptPointerOffsetInfo[(int)DataBlock.TRIGGERSEQUENCE_DATA] = new OffsetPair(writer.BaseStream.Position, globalOffsets.Count);
                             for (int p = 0; p < globalOffsets.Count; p++)
                             {
                                 writer.Write(globalOffsets[p] / 4);
                             }
                             break;
                         }
-                        case CommandsDataBlock.UNUSED:
+                        case DataBlock.UNUSED:
                         {
                             scriptPointerOffsetInfo[x] = new OffsetPair(0, 0);
                             break;
                         }
-                        case CommandsDataBlock.UNKNOWN_COUNTS:
+                        case DataBlock.UNKNOWN_COUNTS:
                         {
                             //TODO: These count values are unknown. Temp fix in place for the div by 4 at the end on offset (as this isn't actually an offset!)
                             scriptPointerOffsetInfo[x] = new OffsetPair(_composites[i].unknownPair.GlobalOffset * 4, _composites[i].unknownPair.EntryCount);
@@ -579,7 +613,7 @@ namespace CATHODE.Commands
                 //Write pointers to the pointers of the content
                 compositeOffsets[i] = (int)writer.BaseStream.Position / 4;
                 writer.Write(0);
-                for (int x = 0; x < (int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS; x++)
+                for (int x = 0; x < (int)DataBlock.NUMBER_OF_SCRIPT_BLOCKS; x++)
                 {
                     if (x == 0)
                     {
@@ -613,9 +647,9 @@ namespace CATHODE.Commands
         }
 
         /* Filter down a list of parameters to contain only unique entries */
-        private List<CathodeParameter> PruneParameterList(List<CathodeParameter> parameters)
+        private List<ParameterData> PruneParameterList(List<ParameterData> parameters)
         {
-            List<CathodeParameter> prunedList = new List<CathodeParameter>();
+            List<ParameterData> prunedList = new List<ParameterData>();
             bool canAdd = true;
             for (int i = 0; i < parameters.Count; i++)
             {
@@ -665,78 +699,81 @@ namespace CATHODE.Commands
             int[] compositeOffsets = Utilities.ConsumeArray<int>(reader, composite_count);
 
             //Read all parameters from the PAK
-            Dictionary<int, CathodeParameter> parameters = new Dictionary<int, CathodeParameter>(parameter_count);
+            Dictionary<int, ParameterData> parameters = new Dictionary<int, ParameterData>(parameter_count);
             for (int i = 0; i < parameter_count; i++)
             {
                 reader.BaseStream.Position = parameterOffsets[i] * 4; 
-                CathodeParameter this_parameter = new CathodeParameter(CommandsUtils.GetDataType(new ShortGuid(reader)));
+                ParameterData this_parameter = new ParameterData(CommandsUtils.GetDataType(new ShortGuid(reader)));
                 switch (this_parameter.dataType)
                 {
-                    case CathodeDataType.POSITION:
-                        this_parameter = new CathodeTransform();
-                        ((CathodeTransform)this_parameter).position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                    case DataType.POSITION:
+                        this_parameter = new cTransform();
+                        ((cTransform)this_parameter).position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                         float _x, _y, _z; _y = reader.ReadSingle(); _x = reader.ReadSingle(); _z = reader.ReadSingle(); //Y,X,Z!
-                        ((CathodeTransform)this_parameter).rotation = new Vector3(_x, _y, _z);
+                        ((cTransform)this_parameter).rotation = new Vector3(_x, _y, _z);
                         break;
-                    case CathodeDataType.INTEGER:
-                        this_parameter = new CathodeInteger();
-                        ((CathodeInteger)this_parameter).value = reader.ReadInt32();
+                    case DataType.INTEGER:
+                        this_parameter = new cInteger();
+                        ((cInteger)this_parameter).value = reader.ReadInt32();
                         break;
-                    case CathodeDataType.STRING:
-                        this_parameter = new CathodeString();
+                    case DataType.STRING:
+                        this_parameter = new cString();
                         reader.BaseStream.Position += 8;
-                        ((CathodeString)this_parameter).value = Utilities.ReadString(reader);
+                        ((cString)this_parameter).value = Utilities.ReadString(reader);
                         Utilities.Align(reader, 4);
                         break;
-                    case CathodeDataType.BOOL:
-                        this_parameter = new CathodeBool();
-                        ((CathodeBool)this_parameter).value = (reader.ReadInt32() == 1);
+                    case DataType.BOOL:
+                        this_parameter = new cBool();
+                        ((cBool)this_parameter).value = (reader.ReadInt32() == 1);
                         break;
-                    case CathodeDataType.FLOAT:
-                        this_parameter = new CathodeFloat();
-                        ((CathodeFloat)this_parameter).value = reader.ReadSingle();
+                    case DataType.FLOAT:
+                        this_parameter = new cFloat();
+                        ((cFloat)this_parameter).value = reader.ReadSingle();
                         break;
-                    case CathodeDataType.RESOURCE:
-                        this_parameter = new CathodeResource();
-                        ((CathodeResource)this_parameter).resourceID = new ShortGuid(reader);
+                    case DataType.RESOURCE:
+                        this_parameter = new cResource();
+                        ((cResource)this_parameter).resourceID = new ShortGuid(reader);
                         break;
-                    case CathodeDataType.DIRECTION:
-                        this_parameter = new CathodeVector3();
-                        ((CathodeVector3)this_parameter).value = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                    case DataType.DIRECTION:
+                        this_parameter = new cVector3();
+                        ((cVector3)this_parameter).value = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                         break;
-                    case CathodeDataType.ENUM:
-                        this_parameter = new CathodeEnum();
-                        ((CathodeEnum)this_parameter).enumID = new ShortGuid(reader);
-                        ((CathodeEnum)this_parameter).enumIndex = reader.ReadInt32();
+                    case DataType.ENUM:
+                        this_parameter = new cEnum();
+                        ((cEnum)this_parameter).enumID = new ShortGuid(reader);
+                        ((cEnum)this_parameter).enumIndex = reader.ReadInt32();
                         break;
-                    case CathodeDataType.SPLINE_DATA:
-                        this_parameter = new CathodeSpline();
+                    case DataType.SPLINE_DATA:
+                        this_parameter = new cSpline();
                         reader.BaseStream.Position += 4;
                         int num_points = reader.ReadInt32();
                         for (int x = 0; x < num_points; x++)
                         {
-                            CathodeTransform this_point = new CathodeTransform();
+                            cTransform this_point = new cTransform();
                             this_point.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                             this_point.rotation = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()); //TODO is this YXZ?
-                            ((CathodeSpline)this_parameter).splinePoints.Add(this_point);
+                            ((cSpline)this_parameter).splinePoints.Add(this_point);
                         }
                         break;
                 }
                 parameters.Add(parameterOffsets[i], this_parameter);
             }
 
+            List<string> animmodels = new List<string>(/*File.ReadAllLines("test.csv")*/);
+            EntityNameLookup lookup = new EntityNameLookup();
+
             //Read all composites from the PAK
-            CathodeComposite[] composites = new CathodeComposite[composite_count];
+            Composite[] composites = new Composite[composite_count];
             for (int i = 0; i < composite_count; i++)
             {
                 reader.BaseStream.Position = compositeOffsets[i] * 4;
                 reader.BaseStream.Position += 4; //Skip 0x00,0x00,0x00,0x00
-                CathodeComposite composite = new CathodeComposite();
+                Composite composite = new Composite();
 
                 //Read the offsets and counts
-                OffsetPair[] offsetPairs = new OffsetPair[(int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS];
+                OffsetPair[] offsetPairs = new OffsetPair[(int)DataBlock.NUMBER_OF_SCRIPT_BLOCKS];
                 int scriptStartOffset = 0;
-                for (int x = 0; x < (int)CommandsDataBlock.NUMBER_OF_SCRIPT_BLOCKS; x++)
+                for (int x = 0; x < (int)DataBlock.NUMBER_OF_SCRIPT_BLOCKS; x++)
                 {
                     if (x == 0)
                     {
@@ -761,16 +798,16 @@ namespace CATHODE.Commands
                 //Pull data from those offsets
                 List<CommandsEntityLinks> entityLinks = new List<CommandsEntityLinks>();
                 List<CommandsParamRefSet> paramRefSets = new List<CommandsParamRefSet>();
-                List<CathodeResourceReference> resourceRefs = new List<CathodeResourceReference>();
+                List<ResourceReference> resourceRefs = new List<ResourceReference>();
                 Dictionary<ShortGuid, ShortGuid> overrideChecksums = new Dictionary<ShortGuid, ShortGuid>();
                 for (int x = 0; x < offsetPairs.Length; x++)
                 {
                     reader.BaseStream.Position = offsetPairs[x].GlobalOffset * 4;
                     for (int y = 0; y < offsetPairs[x].EntryCount; y++)
                     {
-                        switch ((CommandsDataBlock)x)
+                        switch ((DataBlock)x)
                         {
-                            case CommandsDataBlock.ENTITY_CONNECTIONS:
+                            case DataBlock.ENTITY_CONNECTIONS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 entityLinks.Add(new CommandsEntityLinks(new ShortGuid(reader)));
@@ -778,7 +815,7 @@ namespace CATHODE.Commands
                                 entityLinks[entityLinks.Count - 1].childLinks.AddRange(Utilities.ConsumeArray<CathodeEntityLink>(reader, NumberOfParams));
                                 break;
                             }
-                            case CommandsDataBlock.ENTITY_PARAMETERS:
+                            case DataBlock.ENTITY_PARAMETERS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 paramRefSets.Add(new CommandsParamRefSet(new ShortGuid(reader)));
@@ -786,7 +823,7 @@ namespace CATHODE.Commands
                                 paramRefSets[paramRefSets.Count - 1].refs.AddRange(Utilities.ConsumeArray<CathodeParameterReference>(reader, NumberOfParams));
                                 break;
                             }
-                            case CommandsDataBlock.ENTITY_OVERRIDES:
+                            case DataBlock.ENTITY_OVERRIDES:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 OverrideEntity overrider = new OverrideEntity(new ShortGuid(reader));
@@ -795,7 +832,7 @@ namespace CATHODE.Commands
                                 composite.overrides.Add(overrider);
                                 break;
                             }
-                            case CommandsDataBlock.ENTITY_OVERRIDES_CHECKSUM:
+                            case DataBlock.ENTITY_OVERRIDES_CHECKSUM:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
                                 overrideChecksums.Add(new ShortGuid(reader), new ShortGuid(reader));
@@ -803,7 +840,7 @@ namespace CATHODE.Commands
                                 }
                             //TODO: Really, I think these should be treated as parameters on the composite class as they are the pins we use for composite instances.
                             //      Need to look into this more and see if any of these entities actually contain much data other than links into the composite itself.
-                            case CommandsDataBlock.COMPOSITE_EXPOSED_PARAMETERS:
+                            case DataBlock.COMPOSITE_EXPOSED_PARAMETERS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 DatatypeEntity dtEntity = new DatatypeEntity(new ShortGuid(reader));
@@ -812,7 +849,7 @@ namespace CATHODE.Commands
                                 composite.datatypes.Add(dtEntity);
                                 break;
                             }
-                            case CommandsDataBlock.ENTITY_PROXIES:
+                            case DataBlock.ENTITY_PROXIES:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 20);
                                 ProxyEntity thisProxy = new ProxyEntity(new ShortGuid(reader));
@@ -826,7 +863,7 @@ namespace CATHODE.Commands
                                 composite.proxies.Add(thisProxy);
                                 break;
                             }
-                            case CommandsDataBlock.ENTITY_FUNCTIONS:
+                            case DataBlock.ENTITY_FUNCTIONS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
                                 ShortGuid entityID = new ShortGuid(reader);
@@ -834,14 +871,14 @@ namespace CATHODE.Commands
                                 if (CommandsUtils.FunctionTypeExists(functionID))
                                 {
                                     //This entity executes a hard-coded CATHODE function
-                                    CathodeFunctionType functionType = CommandsUtils.GetFunctionType(functionID);
+                                    FunctionType functionType = CommandsUtils.GetFunctionType(functionID);
                                     switch (functionType)
                                     {
-                                        case CathodeFunctionType.CAGEAnimation:
+                                        case FunctionType.CAGEAnimation:
                                             CAGEAnimation cageAnimation = new CAGEAnimation(entityID);
                                             composite.functions.Add(cageAnimation);
                                             break;
-                                        case CathodeFunctionType.TriggerSequence:
+                                        case FunctionType.TriggerSequence:
                                             TriggerSequence triggerSequence = new TriggerSequence(entityID);
                                             composite.functions.Add(triggerSequence);
                                             break;
@@ -861,45 +898,45 @@ namespace CATHODE.Commands
                                 }
                                 break;
                             }
-                            case CommandsDataBlock.RESOURCE_REFERENCES:
+                            case DataBlock.RESOURCE_REFERENCES:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 40);
 
-                                CathodeResourceReference resource = new CathodeResourceReference();
+                                ResourceReference resource = new ResourceReference();
                                 resource.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                                 resource.rotation = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()); 
                                 resource.resourceID = new ShortGuid(reader);
                                 resource.entryType = CommandsUtils.GetResourceEntryType(reader.ReadBytes(4));
                                 switch (resource.entryType)
                                 {
-                                    case CathodeResourceReferenceType.RENDERABLE_INSTANCE:
+                                    case ResourceType.RENDERABLE_INSTANCE:
                                         resource.startIndex = reader.ReadInt32(); //REDS.BIN entry index
                                         resource.count = reader.ReadInt32(); //REDS.BIN entry count
                                         break;
-                                    case CathodeResourceReferenceType.COLLISION_MAPPING:
+                                    case ResourceType.COLLISION_MAPPING:
                                         resource.startIndex = reader.ReadInt32(); //COLLISION.MAP entry index?
                                         resource.entityID = new ShortGuid(reader); //ID which maps to the entity using the resource (?) - check GetFriendlyName
                                         break;
-                                    case CathodeResourceReferenceType.ANIMATED_MODEL:
-                                    case CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM:
+                                    case ResourceType.ANIMATED_MODEL:
+                                    case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
                                         resource.startIndex = reader.ReadInt32(); //PHYSICS.MAP entry index?
                                         reader.BaseStream.Position += 4;
                                         break;
-                                    case CathodeResourceReferenceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
-                                    case CathodeResourceReferenceType.NAV_MESH_BARRIER_RESOURCE:
-                                    case CathodeResourceReferenceType.TRAVERSAL_SEGMENT:
+                                    case ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
+                                    case ResourceType.NAV_MESH_BARRIER_RESOURCE:
+                                    case ResourceType.TRAVERSAL_SEGMENT:
                                         reader.BaseStream.Position += 8;
                                         break;
                                 }
                                 resourceRefs.Add(resource);
                                 break;
                             }
-                            case CommandsDataBlock.CAGEANIMATION_DATA:
+                            case DataBlock.CAGEANIMATION_DATA:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
                                 reader.BaseStream.Position = (reader.ReadInt32() * 4);
 
-                                CathodeEntity thisEntity = composite.GetEntityByID(new ShortGuid(reader));
+                                Entity thisEntity = composite.GetEntityByID(new ShortGuid(reader));
                                 if (thisEntity.variant == EntityVariant.PROXY)
                                 {
                                     break; // We don't handle this just yet... need to resolve the proxy.
@@ -986,12 +1023,12 @@ namespace CATHODE.Commands
                                 }
                                 break;
                             }
-                            case CommandsDataBlock.TRIGGERSEQUENCE_DATA:
+                            case DataBlock.TRIGGERSEQUENCE_DATA:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
                                 reader.BaseStream.Position = (reader.ReadInt32() * 4);
 
-                                CathodeEntity thisEntity = composite.GetEntityByID(new ShortGuid(reader));
+                                Entity thisEntity = composite.GetEntityByID(new ShortGuid(reader));
                                 if (thisEntity.variant == EntityVariant.PROXY)
                                 {
                                     break; // We don't handle this just yet... need to resolve the proxy.
@@ -1043,10 +1080,10 @@ namespace CATHODE.Commands
                 //Clone parameter data to entities
                 for (int x = 0; x < paramRefSets.Count; x++)
                 {
-                    CathodeEntity entToApply = composite.GetEntityByID(paramRefSets[x].id);
+                    Entity entToApply = composite.GetEntityByID(paramRefSets[x].id);
                     if (entToApply == null) continue;
                     for (int y = 0; y < paramRefSets[x].refs.Count; y++)
-                        entToApply.parameters.Add(new CathodeLoadedParameter(paramRefSets[x].refs[y].paramID, (CathodeParameter)parameters[paramRefSets[x].refs[y].offset].Clone()));
+                        entToApply.parameters.Add(new Parameter(paramRefSets[x].refs[y].paramID, (ParameterData)parameters[paramRefSets[x].refs[y].offset].Clone()));
                 }
 
                 //Remap resource references
@@ -1059,7 +1096,7 @@ namespace CATHODE.Commands
                     {
                         if (composite.functions[x].parameters[y].shortGUID != resParamID) continue;
 
-                        CathodeResource resourceParam = (CathodeResource)composite.functions[x].parameters[y].content;
+                        cResource resourceParam = (cResource)composite.functions[x].parameters[y].content;
                         resourceParam.value.AddRange(resourceRefs.Where(o => o.resourceID == resourceParam.resourceID));
                         resourceRefs.RemoveAll(o => o.resourceID == resourceParam.resourceID);
                     }
@@ -1071,7 +1108,7 @@ namespace CATHODE.Commands
                     resourceRefs.RemoveAll(o => o.resourceID == composite.functions[x].shortGUID);
                 }
                 //Any that are left over will be applied to PhysicsSystem entities
-                if (resourceRefs.Count == 1 && resourceRefs[0].entryType == CathodeResourceReferenceType.DYNAMIC_PHYSICS_SYSTEM)
+                if (resourceRefs.Count == 1 && resourceRefs[0].entryType == ResourceType.DYNAMIC_PHYSICS_SYSTEM)
                 {
                     FunctionEntity physEnt = composite.functions.FirstOrDefault(o => o.function == physEntID);
                     if (physEnt != null) physEnt.resources.Add(resourceRefs[0]);
@@ -1082,9 +1119,33 @@ namespace CATHODE.Commands
                 }
                 resourceRefs.Clear();
 
+                /*
+                for (int x = 0; x < composite.functions.Count; x++)
+                {
+                    for (int y = 0; y < composite.functions[x].parameters.Count; y++)
+                    {
+                        if (composite.functions[x].parameters[y].shortGUID != resParamID) continue;
+
+                        CathodeResource resourceParam = (CathodeResource)composite.functions[x].parameters[y].content;
+                        foreach (CathodeResourceReference reference in resourceParam.value)
+                        {
+                            if (!animmodels.Contains(reference.entryType + ", PARAM, " + ShortGuidUtils.FindString(composite.functions[x].function)))
+                                animmodels.Add(reference.entryType + ", PARAM, " + ShortGuidUtils.FindString(composite.functions[x].function));
+                        }
+                    }
+                    foreach (CathodeResourceReference reference in composite.functions[x].resources)
+                    {
+                        if (!animmodels.Contains(reference.entryType + ", ENT, " + ShortGuidUtils.FindString(composite.functions[x].function)))
+                            animmodels.Add(reference.entryType + ", ENT, " + ShortGuidUtils.FindString(composite.functions[x].function));
+                    }
+                }
+                */
+
                 composites[i] = composite;
             }
-            _composites = composites.ToList<CathodeComposite>();
+            _composites = composites.ToList<Composite>();
+
+            //File.WriteAllLines("test.csv", animmodels);
 
             reader.Close();
             OnLoaded?.Invoke();
@@ -1095,9 +1156,9 @@ namespace CATHODE.Commands
         private string _path = "";
 
         private CommandsEntryPoints _entryPoints;
-        private CathodeComposite[] _entryPointObjects = null;
+        private Composite[] _entryPointObjects = null;
 
-        private List<CathodeComposite> _composites = null;
+        private List<Composite> _composites = null;
 
         private bool _didLoadCorrectly = false;
         public bool Loaded { get { return _didLoadCorrectly; } }
@@ -1187,11 +1248,11 @@ namespace CATHODE.Commands
     public class CathodeParameterKeyframeHeader
     {
         public ShortGuid ID;
-        public CathodeDataType unk2;
+        public DataType unk2;
         public ShortGuid keyframeDataID;
         //public float unk3;
         public ShortGuid parameterID;
-        public CathodeDataType parameterDataType;
+        public DataType parameterDataType;
         public ShortGuid parameterSubID; //if parameterID is position, this might be x for example
         public List<ShortGuid> connectedEntity; //path to controlled entity
     }

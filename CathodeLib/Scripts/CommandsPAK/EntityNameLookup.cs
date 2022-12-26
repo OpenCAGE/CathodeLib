@@ -44,10 +44,12 @@ namespace CATHODE.Commands
         /* Get the name of an entity contained within a composite */
         public string GetEntityName(ShortGuid compositeID, ShortGuid entityID)
         {
-            if (custom_composites.ContainsKey(compositeID) && custom_composites[compositeID].ContainsKey(entityID))
-                return custom_composites[compositeID][entityID];
-            if (vanilla_composites.ContainsKey(compositeID) && vanilla_composites[compositeID].ContainsKey(entityID))
-                return vanilla_composites[compositeID][entityID];
+            if (custom_composites != null)
+                if (custom_composites.ContainsKey(compositeID) && custom_composites[compositeID].ContainsKey(entityID))
+                    return custom_composites[compositeID][entityID];
+            if (vanilla_composites != null)
+                if (vanilla_composites.ContainsKey(compositeID) && vanilla_composites[compositeID].ContainsKey(entityID))
+                    return vanilla_composites[compositeID][entityID];
             return entityID.ToString();
         }
 
