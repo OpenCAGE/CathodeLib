@@ -37,7 +37,7 @@ namespace CATHODE.Commands
                     if (composite.Key == id) return entity.Value;
                 }
             }
-            return "";
+            return id.ToString();
         }
 #endif
 

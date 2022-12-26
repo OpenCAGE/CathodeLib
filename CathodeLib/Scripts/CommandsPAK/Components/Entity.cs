@@ -1,7 +1,9 @@
 ﻿using CATHODE.Assets.Utilities;
 using CATHODE.Commands;
+using CathodeLib.Properties;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace CATHODE.Commands
@@ -21,6 +23,7 @@ namespace CATHODE.Commands
         public List<EntityLink> childLinks = new List<EntityLink>();
         public List<Parameter> parameters = new List<Parameter>();
 
+        /* Implements IComparable for searching */
         public int CompareTo(Entity other)
         {
             int TotalThis = shortGUID.val[0] + shortGUID.val[1] + shortGUID.val[2] + shortGUID.val[3];
@@ -29,26 +32,57 @@ namespace CATHODE.Commands
             else if (TotalThis == TotalOther) return 0;
             return -1;
         }
+
+        /* Get parameter by string name or ShortGuid */
+        public Parameter GetParameter(string name)
+        {
+            ShortGuid id = ShortGuidUtils.Generate(name);
+            return GetParameter(id);
+        }
+        public Parameter GetParameter(ShortGuid id)
+        {
+            return parameters.FirstOrDefault(o => o.shortGUID == id);
+        }
     }
     [Serializable]
     public class DatatypeEntity : Entity
     {
         public DatatypeEntity(ShortGuid id) : base(id) { variant = EntityVariant.DATATYPE; }
-        public DataType type = DataType.NO_TYPE;
         public ShortGuid parameter; //Translates to string via ShortGuidUtils.FindString
+        public DataType type = DataType.NO_TYPE;
     }
     [Serializable]
     public class FunctionEntity : Entity
     {
         public FunctionEntity(ShortGuid id) : base(id) { variant = EntityVariant.FUNCTION; }
-        public ShortGuid function;
-        public List<ResourceReference> resources = new List<ResourceReference>();
+        public ShortGuid function; //Translates to string via ShortGuidUtils.FindString
+        public List<ResourceReference> resources = new List<ResourceReference>(); //TODO: can we replace this with a cResource to save duplicating functionality?
+
+        /* Add a new resource reference of type */
+        public ResourceReference AddResource(ResourceType type)
+        {
+            //We can only have one type of resource reference per function entity, so if it already exists, we just return the existing one.
+            ResourceReference rr = GetResource(type);
+            if (rr == null)
+            {
+                rr = new ResourceReference(type);
+                rr.resourceID = shortGUID;
+                resources.Add(rr);
+            }
+            return rr;
+        }
+
+        /* Find a resource reference of type */
+        public ResourceReference GetResource(ResourceType type)
+        {
+            return resources.FirstOrDefault(o => o.entryType == type);
+        }
     }
     [Serializable]
     public class ProxyEntity : Entity
     {
         public ProxyEntity(ShortGuid id) : base(id) { variant = EntityVariant.PROXY; }
-        public ShortGuid extraId;
+        public ShortGuid extraId; //TODO: I'm unsure if this is actually used by the game - we might not need to store it and just make up something when we write.
         public List<ShortGuid> hierarchy = new List<ShortGuid>();
     }
     [Serializable]

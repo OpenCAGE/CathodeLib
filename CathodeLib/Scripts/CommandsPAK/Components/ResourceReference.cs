@@ -69,7 +69,7 @@ namespace CATHODE.Commands
         public Vector3 position = new Vector3(0, 0, 0);
         public Vector3 rotation = new Vector3(0, 0, 0);
 
-        public ShortGuid resourceID;
+        public ShortGuid resourceID; //TODO: we could deprecate this, and just write it knowing what we know with our object structure
         public ResourceType entryType;
 
         public int startIndex = -1;

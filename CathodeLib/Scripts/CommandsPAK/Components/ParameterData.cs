@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CathodeLib.Properties;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -220,6 +221,26 @@ namespace CATHODE.Commands
 
         public List<ResourceReference> value = new List<ResourceReference>();
         public ShortGuid resourceID;
+
+        /* Add a new resource reference of type */
+        public ResourceReference AddResource(ResourceType type)
+        {
+            //We can only have one type of resource reference, so if it already exists, we just return the existing one.
+            ResourceReference rr = GetResource(type);
+            if (rr == null)
+            {
+                rr = new ResourceReference(type);
+                rr.resourceID = resourceID;
+                value.Add(rr);
+            }
+            return rr;
+        }
+
+        /* Find a resource reference of type */
+        public ResourceReference GetResource(ResourceType type)
+        {
+            return value.FirstOrDefault(o => o.entryType == type);
+        }
     }
     [Serializable]
     public class cVector3 : ParameterData

@@ -94,39 +94,82 @@ namespace CATHODE.Commands
             writer.Write(0); 
             writer.Write(0);
 
-            //Fix entity-attached resource info
-            /*
-            ShortGuid system_index_param_id = ShortGuidUtils.Generate("system_index");
+            //Fix (& verify) entity-attached resource info
             for (int i = 0; i < _composites.Count; i++)
             {
+                List<ResourceReference> animatedModels = new List<ResourceReference>();
                 for (int x = 0; x < _composites[i].functions.Count; x++)
                 {
-                    if (GetComposite(_composites[i].functions[x].function) != null) continue;
-
-                    switch (CommandsUtils.GetFunctionType(_composites[i].functions[x].function))
+                    if (!CommandsUtils.FunctionTypeExists(_composites[i].functions[x].function)) continue;
+                    FunctionType type = CommandsUtils.GetFunctionType(_composites[i].functions[x].function);
+                    switch (type)
                     {
+
+
+                        case FunctionType.ModelReference:
+                            break;
+
+
+                        case FunctionType.CollisionBarrier:
+                            break;
+
+
+                        case FunctionType.SoundBarrier:
+                            break;
+
+
                         case FunctionType.PhysicsSystem:
-                            ResourceReference dps = _composites[i].functions[x].resources.FirstOrDefault(o => o.entryType == ResourceType.DYNAMIC_PHYSICS_SYSTEM);
-                            cInteger dps_index = ((cInteger)_composites[i].functions[x].parameters.FirstOrDefault(o => o.shortGUID == system_index_param_id)?.content);
+                            ResourceReference dps = _composites[i].functions[x].GetResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
+                            Parameter dps_index = _composites[i].functions[x].GetParameter("system_index");
                             if (dps_index == null)
                             {
-                                _composites[i].functions[x].parameters.Add(new Parameter("system_index", new cInteger(0)));
+                                dps_index = new Parameter("system_index", new cInteger(0));
+                                _composites[i].functions[x].parameters.Add(dps_index);
                             }
-                            if (dps == null)
+                            _composites[i].functions[x].AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE).startIndex = ((cInteger)dps_index.content).value;
+                            break;
+                        case FunctionType.ExclusiveMaster:
+                            _composites[i].functions[x].AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE);
+                            break;
+                        //TODO: There are loads of TRAV_ entities which are unused in the vanilla game, so I'm not sure if they should apply to those too...
+                        case FunctionType.TRAV_1ShotSpline:
+                            _composites[i].functions[x].AddResource(ResourceType.TRAVERSAL_SEGMENT);
+                            break;
+                        case FunctionType.NavMeshBarrier:
+                            _composites[i].functions[x].AddResource(ResourceType.NAV_MESH_BARRIER_RESOURCE);
+                            _composites[i].functions[x].AddResource(ResourceType.COLLISION_MAPPING);
+                            break;
+                        case FunctionType.EnvironmentModelReference:
+                            Parameter rsc = _composites[i].functions[x].GetParameter("resource");
+                            if (rsc == null)
                             {
-                                dps = new ResourceReference(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
-                                dps.startIndex = dps_index.value;
+                                rsc = new Parameter("resource", new cResource(_composites[i].functions[x].shortGUID));
+                                _composites[i].functions[x].parameters.Add(rsc);
                             }
-                            else
-                            {
-                                _composites[i].functions[x].resources.Remove(dps);
-                            }
-                            if (_composites[i].functions[x].resources)
-                                break;
+                            ((cResource)rsc.content).AddResource(ResourceType.ANIMATED_MODEL); //TODO: need to figure out what startIndex links to, so we can set that!
+                            break;
+
+                        // Types below require only RENDERABLE_INSTANCE resource references on the entity, pointing to the commented model.
+                        // We can't add them automatically as we need to know REDS indexes!
+                        case FunctionType.ParticleEmitterReference:   /// [dynamic_mesh]
+                        case FunctionType.RibbonEmitterReference:     /// [dynamic_mesh]
+                        case FunctionType.SurfaceEffectBox:           /// Global/Props/fogbox.CS2 -> [VolumeFog]
+                        case FunctionType.FogBox:                     /// Global/Props/fogplane.CS2 -> [Plane01] 
+                        case FunctionType.SurfaceEffectSphere:        /// Global/Props/fogsphere.CS2 -> [Sphere01]
+                        case FunctionType.FogSphere:                  /// Global/Props/fogsphere.CS2 -> [Sphere01]
+                        case FunctionType.SimpleRefraction:           /// Global/Props/refraction.CS2 -> [Plane01]
+                        case FunctionType.SimpleWater:                /// Global/Props/noninteractive_water.CS2 -> [Plane01]
+                        case FunctionType.LightReference:             /// Global/Props/deferred_point_light.cs2 -> [Sphere01]
+                            //TODO: Disabling for now as some vanilla nodes don't have them due to compilation oddities!
+                            //if (_composites[i].functions[x].GetResource(ResourceType.RENDERABLE_INSTANCE) == null ||
+                            //    _composites[i].functions[x].resources.Count != 1) 
+                            //    throw new Exception("Function entity of type " + type + " was missing a RENDERABLE_INSTANCE resource reference!");
+                            if (_composites[i].functions[x].GetParameter("resource") != null)
+                                throw new Exception("Function entity of type " + type + " had an invalid resource parameter applied!");
+                            break;
                     }
                 }
             }
-            */
 
             //Work out unique parameters to write
             List<ParameterData> parameters = new List<ParameterData>();
@@ -742,9 +785,6 @@ namespace CATHODE.Commands
                 parameters.Add(parameterOffsets[i], this_parameter);
             }
 
-            List<string> animmodels = new List<string>(/*File.ReadAllLines("test.csv")*/);
-            EntityNameLookup lookup = new EntityNameLookup();
-
             //Read all composites from the PAK
             Composite[] composites = new Composite[composite_count];
             for (int i = 0; i < composite_count; i++)
@@ -820,7 +860,7 @@ namespace CATHODE.Commands
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
                                 overrideChecksums.Add(new ShortGuid(reader), new ShortGuid(reader));
                                 break;
-                                }
+                            }
                             //TODO: Really, I think these should be treated as parameters on the composite class as they are the pins we use for composite instances.
                             //      Need to look into this more and see if any of these entities actually contain much data other than links into the composite itself.
                             case DataBlock.COMPOSITE_EXPOSED_PARAMETERS:
@@ -1102,33 +1142,9 @@ namespace CATHODE.Commands
                 }
                 resourceRefs.Clear();
 
-                /*
-                for (int x = 0; x < composite.functions.Count; x++)
-                {
-                    for (int y = 0; y < composite.functions[x].parameters.Count; y++)
-                    {
-                        if (composite.functions[x].parameters[y].shortGUID != resParamID) continue;
-
-                        CathodeResource resourceParam = (CathodeResource)composite.functions[x].parameters[y].content;
-                        foreach (CathodeResourceReference reference in resourceParam.value)
-                        {
-                            if (!animmodels.Contains(reference.entryType + ", PARAM, " + ShortGuidUtils.FindString(composite.functions[x].function)))
-                                animmodels.Add(reference.entryType + ", PARAM, " + ShortGuidUtils.FindString(composite.functions[x].function));
-                        }
-                    }
-                    foreach (CathodeResourceReference reference in composite.functions[x].resources)
-                    {
-                        if (!animmodels.Contains(reference.entryType + ", ENT, " + ShortGuidUtils.FindString(composite.functions[x].function)))
-                            animmodels.Add(reference.entryType + ", ENT, " + ShortGuidUtils.FindString(composite.functions[x].function));
-                    }
-                }
-                */
-
                 composites[i] = composite;
             }
             _composites = composites.ToList<Composite>();
-
-            //File.WriteAllLines("test.csv", animmodels);
 
             reader.Close();
             OnLoaded?.Invoke();
