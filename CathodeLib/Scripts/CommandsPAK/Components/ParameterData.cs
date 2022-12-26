@@ -231,6 +231,14 @@ namespace CATHODE.Commands
             {
                 rr = new ResourceReference(type);
                 rr.resourceID = resourceID;
+                switch (rr.entryType)
+                {
+                    case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
+                    case ResourceType.RENDERABLE_INSTANCE:
+                    case ResourceType.ANIMATED_MODEL:
+                        rr.startIndex = 0;
+                        break;
+                }
                 value.Add(rr);
             }
             return rr;
