@@ -169,7 +169,7 @@ namespace CATHODE.Commands
                         case FunctionType.FogSphere:                  /// Global/Props/fogsphere.CS2 -> [Sphere01]
                         case FunctionType.SimpleRefraction:           /// Global/Props/refraction.CS2 -> [Plane01]
                         case FunctionType.SimpleWater:                /// Global/Props/noninteractive_water.CS2 -> [Plane01]
-                        case FunctionType.LightReference:             /// Global/Props/deferred_point_light.cs2 -> [Sphere01]
+                        case FunctionType.LightReference:             /// Global/Props/deferred_point_light.cs2 -> [Sphere01],  Global/Props/deferred_spot_light.cs2 -> [Sphere02], Global/Props/deferred_strip_light.cs2 -> [Sphere01]
                             if (_composites[i].functions[x].GetResource(ResourceType.RENDERABLE_INSTANCE) == null)
                                 Console.WriteLine("ERROR: " + type + " entity does not contain a RENDERABLE_INSTANCE resource reference!");
                             if (_composites[i].functions[x].GetParameter("resource") != null)
