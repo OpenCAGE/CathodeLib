@@ -21,7 +21,7 @@ namespace CATHODE.Commands
         {
             dataType = type;
         }
-        public DataType dataType = DataType.NO_TYPE;
+        public DataType dataType = DataType.NONE;
 
         public static bool operator ==(ParameterData x, ParameterData y)
         {
@@ -30,7 +30,7 @@ namespace CATHODE.Commands
             if (x.dataType != y.dataType) return false;
             switch (x.dataType)
             {
-                case DataType.POSITION:
+                case DataType.TRANSFORM:
                     cTransform x_t = (cTransform)x;
                     cTransform y_t = (cTransform)y;
                     return x_t.position == y_t.position && x_t.rotation == y_t.rotation;
@@ -44,15 +44,15 @@ namespace CATHODE.Commands
                     return ((cFloat)x).value == ((cFloat)y).value;
                 case DataType.RESOURCE:
                     return ((cResource)x).resourceID == ((cResource)y).resourceID;
-                case DataType.DIRECTION:
+                case DataType.VECTOR:
                     return ((cVector3)x).value == ((cVector3)y).value;
                 case DataType.ENUM:
                     cEnum x_e = (cEnum)x;
                     cEnum y_e = (cEnum)y;
                     return x_e.enumIndex == y_e.enumIndex && x_e.enumID == y_e.enumID;
-                case DataType.SPLINE_DATA:
+                case DataType.SPLINE:
                     return ((cSpline)x).splinePoints == ((cSpline)y).splinePoints;
-                case DataType.NO_TYPE:
+                case DataType.NONE:
                     return true;
                 default:
                     return false;
@@ -74,7 +74,7 @@ namespace CATHODE.Commands
             //this is gross
             switch (dataType)
             {
-                case DataType.POSITION:
+                case DataType.TRANSFORM:
                     cTransform x_t = (cTransform)this;
                     return Convert.ToInt32(
                         x_t.rotation.x.ToString() + x_t.rotation.y.ToString() + x_t.rotation.z.ToString() +
@@ -95,7 +95,7 @@ namespace CATHODE.Commands
                     string num2 = "";
                     for (int i = 0; i < x_g_s.Length; i++) num2 += ((int)x_g_s[i]).ToString();
                     return Convert.ToInt32(num2);
-                case DataType.DIRECTION:
+                case DataType.VECTOR:
                     cVector3 x_v = (cVector3)this;
                     return Convert.ToInt32(x_v.value.x.ToString() + x_v.value.y.ToString() + x_v.value.z.ToString());
                 case DataType.ENUM:
@@ -104,7 +104,7 @@ namespace CATHODE.Commands
                     string num3 = "";
                     for (int i = 0; i < x_e_s.Length; i++) num3 += ((int)x_e_s[i]).ToString();
                     return Convert.ToInt32(num3 + x_e.enumIndex.ToString());
-                case DataType.SPLINE_DATA:
+                case DataType.SPLINE:
                     cSpline x_sd = (cSpline)this;
                     string x_sd_s = "";
                     for (int i = 0; i < x_sd.splinePoints.Count; i++) x_sd_s += x_sd.splinePoints[i].position.GetHashCode().ToString();
@@ -122,15 +122,15 @@ namespace CATHODE.Commands
         {
             switch (dataType)
             {
-                case DataType.SPLINE_DATA:
+                case DataType.SPLINE:
                 case DataType.RESOURCE:
                     return Utilities.CloneObject(this);
                 //HOTFIX FOR VECTOR 3 CLONE ISSUE - TODO: FIND WHY THIS ISN'T WORKING WITH MEMBERWISE CLONE
-                case DataType.DIRECTION:
+                case DataType.VECTOR:
                     cVector3 v3 = (cVector3)this.MemberwiseClone();
                     v3.value = (Vector3)((cVector3)this).value.Clone();
                     return v3;
-                case DataType.POSITION:
+                case DataType.TRANSFORM:
                     cTransform tr = (cTransform)this.MemberwiseClone();
                     tr.position = (Vector3)((cTransform)this).position.Clone();
                     tr.rotation = (Vector3)((cTransform)this).rotation.Clone();
@@ -144,12 +144,12 @@ namespace CATHODE.Commands
     [Serializable]
     public class cTransform : ParameterData
     {
-        public cTransform() { dataType = DataType.POSITION; }
+        public cTransform() { dataType = DataType.TRANSFORM; }
         public cTransform(Vector3 position, Vector3 rotation)
         {
             this.position = position;
             this.rotation = rotation;
-            dataType = DataType.POSITION;
+            dataType = DataType.TRANSFORM;
         }
 
         public Vector3 position = new Vector3();
@@ -245,11 +245,11 @@ namespace CATHODE.Commands
     [Serializable]
     public class cVector3 : ParameterData
     {
-        public cVector3() { dataType = DataType.DIRECTION; }
+        public cVector3() { dataType = DataType.VECTOR; }
         public cVector3(Vector3 value)
         {
             this.value = value;
-            dataType = DataType.RESOURCE;
+            dataType = DataType.VECTOR;
         }
 
         public Vector3 value = new Vector3();
@@ -277,11 +277,11 @@ namespace CATHODE.Commands
     [Serializable]
     public class cSpline : ParameterData
     {
-        public cSpline() { dataType = DataType.SPLINE_DATA; }
+        public cSpline() { dataType = DataType.SPLINE; }
         public cSpline(List<cTransform> splinePoints)
         {
             this.splinePoints = splinePoints;
-            dataType = DataType.SPLINE_DATA;
+            dataType = DataType.SPLINE;
         }
 
         public List<cTransform> splinePoints = new List<cTransform>();

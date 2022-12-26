@@ -198,7 +198,7 @@ namespace CATHODE.Commands
                 Utilities.Write<ShortGuid>(writer, CommandsUtils.GetDataTypeGUID(parameters[i].dataType));
                 switch (parameters[i].dataType)
                 {
-                    case DataType.POSITION:
+                    case DataType.TRANSFORM:
                         Vector3 pos = ((cTransform)parameters[i]).position;
                         Vector3 rot = ((cTransform)parameters[i]).rotation;
                         writer.Write(pos.x); writer.Write(pos.y); writer.Write(pos.z);
@@ -227,7 +227,7 @@ namespace CATHODE.Commands
                     case DataType.RESOURCE:
                         Utilities.Write<ShortGuid>(writer, ((cResource)parameters[i]).resourceID);
                         break;
-                    case DataType.DIRECTION:
+                    case DataType.VECTOR:
                         Vector3 dir = ((cVector3)parameters[i]).value;
                         writer.Write(dir.x); writer.Write(dir.y); writer.Write(dir.z);
                         break;
@@ -235,7 +235,7 @@ namespace CATHODE.Commands
                         Utilities.Write<ShortGuid>(writer, ((cEnum)parameters[i]).enumID);
                         writer.Write(((cEnum)parameters[i]).enumIndex);
                         break;
-                    case DataType.SPLINE_DATA:
+                    case DataType.SPLINE:
                         cSpline thisSpline = ((cSpline)parameters[i]);
                         writer.Write(((int)writer.BaseStream.Position + 8) / 4);
                         writer.Write(thisSpline.splinePoints.Count);
@@ -740,54 +740,46 @@ namespace CATHODE.Commands
                 ParameterData this_parameter = new ParameterData(CommandsUtils.GetDataType(new ShortGuid(reader)));
                 switch (this_parameter.dataType)
                 {
-                    case DataType.POSITION:
+                    case DataType.TRANSFORM:
                         this_parameter = new cTransform();
                         ((cTransform)this_parameter).position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                         float _x, _y, _z; _y = reader.ReadSingle(); _x = reader.ReadSingle(); _z = reader.ReadSingle(); //Y,X,Z!
                         ((cTransform)this_parameter).rotation = new Vector3(_x, _y, _z);
                         break;
                     case DataType.INTEGER:
-                        this_parameter = new cInteger();
-                        ((cInteger)this_parameter).value = reader.ReadInt32();
+                        this_parameter = new cInteger(reader.ReadInt32());
                         break;
                     case DataType.STRING:
-                        this_parameter = new cString();
                         reader.BaseStream.Position += 8;
-                        ((cString)this_parameter).value = Utilities.ReadString(reader);
+                        this_parameter = new cString(Utilities.ReadString(reader));
                         Utilities.Align(reader, 4);
                         break;
                     case DataType.BOOL:
-                        this_parameter = new cBool();
-                        ((cBool)this_parameter).value = (reader.ReadInt32() == 1);
+                        this_parameter = new cBool((reader.ReadInt32() == 1));
                         break;
                     case DataType.FLOAT:
-                        this_parameter = new cFloat();
-                        ((cFloat)this_parameter).value = reader.ReadSingle();
+                        this_parameter = new cFloat(reader.ReadSingle());
                         break;
                     case DataType.RESOURCE:
-                        this_parameter = new cResource();
-                        ((cResource)this_parameter).resourceID = new ShortGuid(reader);
+                        this_parameter = new cResource(new ShortGuid(reader));
                         break;
-                    case DataType.DIRECTION:
-                        this_parameter = new cVector3();
-                        ((cVector3)this_parameter).value = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                    case DataType.VECTOR:
+                        this_parameter = new cVector3(new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()));
                         break;
                     case DataType.ENUM:
-                        this_parameter = new cEnum();
-                        ((cEnum)this_parameter).enumID = new ShortGuid(reader);
-                        ((cEnum)this_parameter).enumIndex = reader.ReadInt32();
+                        this_parameter = new cEnum(new ShortGuid(reader), reader.ReadInt32());
                         break;
-                    case DataType.SPLINE_DATA:
-                        this_parameter = new cSpline();
+                    case DataType.SPLINE:
                         reader.BaseStream.Position += 4;
-                        int num_points = reader.ReadInt32();
-                        for (int x = 0; x < num_points; x++)
+                        List<cTransform> points = new List<cTransform>(reader.ReadInt32());
+                        for (int x = 0; x < points.Capacity; x++)
                         {
-                            cTransform this_point = new cTransform();
-                            this_point.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                            this_point.rotation = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()); //TODO is this YXZ?
-                            ((cSpline)this_parameter).splinePoints.Add(this_point);
+                            points.Add(new cTransform(
+                                new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()),
+                                new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()) //TODO is this YXZ?
+                            ));
                         }
+                        this_parameter = new cSpline(points);
                         break;
                 }
                 parameters.Add(parameterOffsets[i], this_parameter);

@@ -17,19 +17,20 @@ namespace CATHODE.Commands
     /* Data types */
     public enum DataType
     {
-        POSITION,
-        FLOAT,
         STRING,
-        SPLINE_DATA,
+        FLOAT,
+        INTEGER,
+        BOOL,
+        VECTOR,
+        TRANSFORM,
         ENUM,
+        SPLINE,
+
+        NONE, //Translates to a blank string
+
         RESOURCE,
         FILEPATH,
-        BOOL,
-        DIRECTION,
-        INTEGER,
-
         OBJECT,
-        NO_TYPE, //Translates to a blank string
         ZONE_LINK_PTR,
         ZONE_PTR,
         MARKER,

@@ -49,7 +49,7 @@ namespace CATHODE.Commands
     {
         public DatatypeEntity(ShortGuid id) : base(id) { variant = EntityVariant.DATATYPE; }
         public ShortGuid parameter; //Translates to string via ShortGuidUtils.FindString
-        public DataType type = DataType.NO_TYPE;
+        public DataType type = DataType.NONE;
     }
     [Serializable]
     public class FunctionEntity : Entity
