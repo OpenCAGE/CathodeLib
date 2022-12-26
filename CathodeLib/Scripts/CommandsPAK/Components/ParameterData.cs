@@ -220,7 +220,7 @@ namespace CATHODE.Commands
         }
 
         public List<ResourceReference> value = new List<ResourceReference>();
-        public ShortGuid resourceID;
+        public ShortGuid resourceID; //TODO: this is only ever gonna be the parent of the resouce (node or entity) - should we just generate on compilation?
 
         /* Add a new resource reference of type */
         public ResourceReference AddResource(ResourceType type)

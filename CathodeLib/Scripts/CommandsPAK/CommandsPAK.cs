@@ -120,14 +120,13 @@ namespace CATHODE.Commands
                             _composites[i].functions[x].AddResource(ResourceType.COLLISION_MAPPING);
                             break;
                         case FunctionType.PhysicsSystem:
-                            ResourceReference dps = _composites[i].functions[x].GetResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
                             Parameter dps_index = _composites[i].functions[x].GetParameter("system_index");
                             if (dps_index == null)
                             {
                                 dps_index = new Parameter("system_index", new cInteger(0));
                                 _composites[i].functions[x].parameters.Add(dps_index);
                             }
-                            _composites[i].functions[x].AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE).startIndex = ((cInteger)dps_index.content).value;
+                            _composites[i].functions[x].AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).startIndex = ((cInteger)dps_index.content).value;
                             break;
                         case FunctionType.EnvironmentModelReference:
                             Parameter rsc = _composites[i].functions[x].GetParameter("resource");
