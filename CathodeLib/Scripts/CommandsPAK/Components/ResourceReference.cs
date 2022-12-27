@@ -13,6 +13,14 @@ namespace CATHODE.Commands
         }
         public ResourceReference(ResourceType type)
         {
+            switch (type)
+            {
+                case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
+                case ResourceType.RENDERABLE_INSTANCE:
+                case ResourceType.ANIMATED_MODEL:
+                    startIndex = 0;
+                    break;
+            }
             entryType = type;
         }
 
