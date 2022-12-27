@@ -58,7 +58,7 @@ namespace CATHODE.Commands
         }
 
         /* Applies all default parameter data to a Function entity (DESTRUCTIVE!) */
-        public void ApplyDefaults(FunctionEntity entity)
+        public static void ApplyDefaults(FunctionEntity entity)
         {
             ApplyDefaultsInternal(entity);
         }
@@ -161,7 +161,7 @@ namespace CATHODE.Commands
         }
 
         /* Applies all default parameter data to a Function entity (DESTRUCTIVE!) */
-        private void ApplyDefaultsInternal(FunctionEntity newEntity)
+        private static void ApplyDefaultsInternal(FunctionEntity newEntity)
         {
             switch (CommandsUtils.GetFunctionType(newEntity.function))
             {
