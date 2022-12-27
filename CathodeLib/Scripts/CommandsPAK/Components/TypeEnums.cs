@@ -863,7 +863,6 @@ namespace CATHODE.Commands
     /* Resource reference types */
     public enum ResourceType
     {
-        //CATHODE_COVER_SEGMENT,
         COLLISION_MAPPING,
         DYNAMIC_PHYSICS_SYSTEM,
         EXCLUSIVE_MASTER_STATE_RESOURCE,
@@ -871,6 +870,12 @@ namespace CATHODE.Commands
         RENDERABLE_INSTANCE,
         TRAVERSAL_SEGMENT,
         ANIMATED_MODEL,
+
+        // Any below this point are referenced in code, but not used in the vanilla game's CommandsPAKs
+        CATHODE_COVER_SEGMENT,
+        CHOKE_POINT_RESOURCE,
+        ANIMATION_MASK_RESOURCE,
+        PLAY_ANIMATION_DATA_RESOURCE,
     }
 
     /* Blocks of data in each compiled composite */
