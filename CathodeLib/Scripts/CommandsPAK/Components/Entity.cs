@@ -3,6 +3,7 @@ using CATHODE.Commands;
 using CathodeLib.Properties;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 
@@ -42,6 +43,30 @@ namespace CATHODE.Commands
         public Parameter GetParameter(ShortGuid id)
         {
             return parameters.FirstOrDefault(o => o.shortGUID == id);
+        }
+
+        /* Add a parameter by string name or ShortGuid, and return it */
+        public Parameter AddParameter(string name, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER)
+        {
+            ShortGuid id = ShortGuidUtils.Generate(name);
+            return AddParameter(id, data, variant);
+        }
+        public Parameter AddParameter(ShortGuid id, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER)
+        {
+            //We can only have one parameter matching a name/guid per entity, so if it already exists, we just return that, regardless of the datatype
+            Parameter param = GetParameter(id);
+            if (param == null)
+            {
+                param = new Parameter(id, data, variant);
+                parameters.Add(param);
+            }
+            else
+            {
+                Console.WriteLine("WARNING: Updating data and variant type in parameter " + id);
+                param.content = data;
+                param.variant = variant;
+            }
+            return param;
         }
     }
     [Serializable]
