@@ -9,14 +9,14 @@ using System.Text;
 
 namespace CATHODE.Commands
 {
-    //This should be initialised per-commandspak, and serves as a helpful extension to manage entity & composite names
-    public class EntityNameLookup
+    //This should be initialised per-commandspak, and serves as a helpful extension to manage entity names
+    public class EntityUtils
     {
         private CommandsPAK commandsPAK;
         private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> vanilla_composites;
         private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> custom_composites;
 
-        public EntityNameLookup(CommandsPAK commands = null)
+        public EntityUtils(CommandsPAK commands = null)
         {
             commandsPAK = commands;
             if (commandsPAK != null) 
@@ -26,23 +26,8 @@ namespace CATHODE.Commands
             LoadCustomNames();
         }
 
-#if DEBUG
-        /* For testing only: get from any composite */
-        public string GetFromAnyComposite(ShortGuid id)
-        {
-            foreach (KeyValuePair<ShortGuid, Dictionary<ShortGuid, string>> composite in vanilla_composites)
-            {
-                foreach (KeyValuePair<ShortGuid, string> entity in composite.Value)
-                {
-                    if (composite.Key == id) return entity.Value;
-                }
-            }
-            return id.ToString();
-        }
-#endif
-
         /* Get the name of an entity contained within a composite */
-        public string GetEntityName(ShortGuid compositeID, ShortGuid entityID)
+        public string GetName(ShortGuid compositeID, ShortGuid entityID)
         {
             if (custom_composites != null)
                 if (custom_composites.ContainsKey(compositeID) && custom_composites[compositeID].ContainsKey(entityID))
@@ -54,7 +39,7 @@ namespace CATHODE.Commands
         }
 
         /* Set the name of an entity contained within a composite */
-        public void SetEntityName(ShortGuid compositeID, ShortGuid entityID, string name)
+        public void SetName(ShortGuid compositeID, ShortGuid entityID, string name)
         {
             if (!custom_composites.ContainsKey(compositeID))
                 custom_composites.Add(compositeID, new Dictionary<ShortGuid, string>());
@@ -66,10 +51,10 @@ namespace CATHODE.Commands
         }
 
         /* Clear the name of an entity contained within a composite */
-        public void ClearEntityName(ShortGuid compositeID, ShortGuid entityID)
+        public void ClearName(ShortGuid compositeID, ShortGuid entityID)
         {
             if (custom_composites.ContainsKey(compositeID))
-                vanilla_composites[compositeID].Remove(entityID);
+                custom_composites[compositeID].Remove(entityID);
         }
 
 

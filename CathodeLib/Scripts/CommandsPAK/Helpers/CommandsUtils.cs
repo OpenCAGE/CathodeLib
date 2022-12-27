@@ -5,6 +5,7 @@ using System.Text;
 
 namespace CATHODE.Commands
 {
+    //Helpful lookup tables for various Cathode Commands types
     public static class CommandsUtils
     {
         static CommandsUtils()
@@ -14,6 +15,7 @@ namespace CATHODE.Commands
             SetupResourceEntryTypeLUT();
         }
 
+        /* Function Types */
         private static Dictionary<ShortGuid, FunctionType> _functionTypeLUT = new Dictionary<ShortGuid, FunctionType>();
         private static void SetupFunctionTypeLUT()
         {
@@ -51,6 +53,7 @@ namespace CATHODE.Commands
             return _functionTypeLUT.ContainsKey(tag);
         }
 
+        /* Data Types */
         private static Dictionary<ShortGuid, DataType> _dataTypeLUT = new Dictionary<ShortGuid, DataType>();
         private static void SetupDataTypeLUT()
         {
@@ -93,6 +96,7 @@ namespace CATHODE.Commands
             return _dataTypeLUT.ContainsKey(tag);
         }
 
+        /* Resource Reference Types */
         private static Dictionary<ShortGuid, ResourceType> _resourceReferenceTypeLUT = new Dictionary<ShortGuid, ResourceType>();
         private static void SetupResourceEntryTypeLUT()
         {

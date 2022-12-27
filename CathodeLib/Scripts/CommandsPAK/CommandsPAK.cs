@@ -160,7 +160,8 @@ namespace CATHODE.Commands
 
                         // Types below require only RENDERABLE_INSTANCE resource references on the entity, pointing to the commented model.
                         // We can't add them automatically as we need to know REDS indexes!
-                        case FunctionType.ParticleEmitterReference:   /// [dynamic_mesh]
+                        // UPDATE: I think the game can handle any resource being set here!
+                        case FunctionType.ParticleEmitterReference:   /// [dynamic_mesh]       /// - I think i've also seen 1000 particle system too
                         case FunctionType.RibbonEmitterReference:     /// [dynamic_mesh]
                         case FunctionType.SurfaceEffectBox:           /// Global/Props/fogbox.CS2 -> [VolumeFog]
                         case FunctionType.FogBox:                     /// Global/Props/fogplane.CS2 -> [Plane01] 
