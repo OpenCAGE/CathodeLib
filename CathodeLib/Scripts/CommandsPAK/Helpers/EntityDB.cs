@@ -27,16 +27,9 @@ namespace CathodeLib
 
     public class EntityDB
     {
-        private enum DatabaseType
-        {
-            ENUM_LOOKUP,
-            COMPOSITE_LOOKUP,
-        }
-
         static EntityDB()
         {
-            lookup_enum = ReadDB(Properties.Resources.cathode_enum_lut, DatabaseType.ENUM_LOOKUP).Cast<EnumDescriptor>().ToList(); //Correctly formatted enum list from EXE
-            //SetupEntityParameterList();
+            lookup_enum = ReadDB(Properties.Resources.cathode_enum_lut).Cast<EnumDescriptor>().ToList(); //Correctly formatted enum list from EXE
         }
 
         //Check the formatted enum dump for content
@@ -53,26 +46,18 @@ namespace CathodeLib
         }
 
         //Read a generic entity database file
-        private static List<EntityDBDescriptor> ReadDB(byte[] db_content, DatabaseType db_type)
+        private static List<EntityDBDescriptor> ReadDB(byte[] db_content)
         {
             List<EntityDBDescriptor> toReturn = new List<EntityDBDescriptor>();
             BinaryReader reader = new BinaryReader(new MemoryStream(db_content));
-            switch (db_type)
+            while (reader.BaseStream.Position < reader.BaseStream.Length)
             {
-                case DatabaseType.ENUM_LOOKUP:
-                {
-                    reader.BaseStream.Position += 1;
-                    while (reader.BaseStream.Position < reader.BaseStream.Length)
-                    {
-                        EnumDescriptor thisDesc = new EnumDescriptor();
-                        thisDesc.ID = new ShortGuid(reader.ReadBytes(4));
-                        thisDesc.Name = reader.ReadString();
-                        int entryCount = reader.ReadInt32();
-                        for (int i = 0; i < entryCount; i++) thisDesc.Entries.Add(reader.ReadString());
-                        toReturn.Add(thisDesc);
-                    }
-                    break;
-                }
+                EnumDescriptor thisDesc = new EnumDescriptor();
+                thisDesc.ID = new ShortGuid(reader.ReadBytes(4));
+                thisDesc.Name = reader.ReadString();
+                int entryCount = reader.ReadInt32();
+                for (int i = 0; i < entryCount; i++) thisDesc.Entries.Add(reader.ReadString());
+                toReturn.Add(thisDesc);
             }
             reader.Close();
             for (int i = 0; i < toReturn.Count; i++) toReturn[i].ID_cachedstring = toReturn[i].ID.ToString();
