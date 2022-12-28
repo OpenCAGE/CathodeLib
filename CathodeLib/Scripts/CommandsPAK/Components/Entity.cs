@@ -70,9 +70,9 @@ namespace CATHODE.Commands
         }
     }
     [Serializable]
-    public class DatatypeEntity : Entity
+    public class VariableEntity : Entity
     {
-        public DatatypeEntity(ShortGuid id) : base(id) { variant = EntityVariant.DATATYPE; }
+        public VariableEntity(ShortGuid id) : base(id) { variant = EntityVariant.DATATYPE; }
         public ShortGuid parameter; //Translates to string via ShortGuidUtils.FindString
         public DataType type = DataType.NONE;
     }

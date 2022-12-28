@@ -407,12 +407,12 @@ namespace CATHODE.Commands
                         }
                         case DataBlock.COMPOSITE_EXPOSED_PARAMETERS:
                         {
-                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _composites[i].datatypes.Count);
-                            for (int p = 0; p < _composites[i].datatypes.Count; p++)
+                            scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _composites[i].variables.Count);
+                            for (int p = 0; p < _composites[i].variables.Count; p++)
                             {
-                                writer.Write(_composites[i].datatypes[p].shortGUID.val);
-                                writer.Write(CommandsUtils.GetDataTypeGUID(_composites[i].datatypes[p].type).val);
-                                writer.Write(_composites[i].datatypes[p].parameter.val);
+                                writer.Write(_composites[i].variables[p].shortGUID.val);
+                                writer.Write(CommandsUtils.GetDataTypeGUID(_composites[i].variables[p].type).val);
+                                writer.Write(_composites[i].variables[p].parameter.val);
                             }
                             break;
                         }
@@ -866,10 +866,10 @@ namespace CATHODE.Commands
                             case DataBlock.COMPOSITE_EXPOSED_PARAMETERS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-                                DatatypeEntity dtEntity = new DatatypeEntity(new ShortGuid(reader));
+                                VariableEntity dtEntity = new VariableEntity(new ShortGuid(reader));
                                 dtEntity.type = CommandsUtils.GetDataType(new ShortGuid(reader));
                                 dtEntity.parameter = new ShortGuid(reader);
-                                composite.datatypes.Add(dtEntity);
+                                composite.variables.Add(dtEntity);
                                 break;
                             }
                             case DataBlock.ENTITY_PROXIES:

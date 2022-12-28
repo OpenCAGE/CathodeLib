@@ -17,16 +17,16 @@ namespace CATHODE.Commands
 
         public OffsetPair unknownPair;
 
-        public List<DatatypeEntity> datatypes = new List<DatatypeEntity>();
-        public List<FunctionEntity> functions = new List<FunctionEntity>();
+        public List<VariableEntity> variables = new List<VariableEntity>(); //Variables which can be accessed outside of this flowgraph as parameters, and connected to nodes as parameters internally
+        public List<FunctionEntity> functions = new List<FunctionEntity>(); //Functional nodes, including hard-coded functions and references to other composites
 
-        public List<OverrideEntity> overrides = new List<OverrideEntity>();
-        public List<ProxyEntity> proxies = new List<ProxyEntity>();
+        public List<OverrideEntity> overrides = new List<OverrideEntity>(); //Overrides of parameters in child composites
+        public List<ProxyEntity> proxies = new List<ProxyEntity>();         //Instances of entities from other composites
 
         /* If an entity exists in the composite, return it */
         public Entity GetEntityByID(ShortGuid id)
         {
-            foreach (Entity entity in datatypes) if (entity.shortGUID == id) return entity;
+            foreach (Entity entity in variables) if (entity.shortGUID == id) return entity;
             foreach (Entity entity in functions) if (entity.shortGUID == id) return entity;
             foreach (Entity entity in overrides) if (entity.shortGUID == id) return entity;
             foreach (Entity entity in proxies) if (entity.shortGUID == id) return entity;
@@ -37,7 +37,7 @@ namespace CATHODE.Commands
         public List<Entity> GetEntities()
         {
             List<Entity> toReturn = new List<Entity>();
-            toReturn.AddRange(datatypes);
+            toReturn.AddRange(variables);
             toReturn.AddRange(functions);
             toReturn.AddRange(overrides);
             toReturn.AddRange(proxies);
@@ -47,7 +47,7 @@ namespace CATHODE.Commands
         /* Sort all entity arrays */
         public void SortEntities()
         {
-            datatypes.OrderBy(o => o.shortGUID.ToUInt32());
+            variables.OrderBy(o => o.shortGUID.ToUInt32());
             functions.OrderBy(o => o.shortGUID.ToUInt32());
             overrides.OrderBy(o => o.shortGUID.ToUInt32());
             proxies.OrderBy(o => o.shortGUID.ToUInt32());
