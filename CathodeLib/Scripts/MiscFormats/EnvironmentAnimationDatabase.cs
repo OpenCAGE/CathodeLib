@@ -1,6 +1,8 @@
 ﻿using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
+using System;
+using CATHODE.Commands;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #else
@@ -10,108 +12,121 @@ using System.Numerics;
 namespace CATHODE.Misc
 {
     /* Handles Cathode ENVIRONMENT_ANIMATION.DAT files */
-    public class EnvironmentAnimationDatabase
+    public class EnvironmentAnimationDatabase : CathodeFile
     {
-        //This file is referenced by ANIMATED_MODEL resource type in COMMANDS
+        private List<EnvironmentAnimation> anims = new List<EnvironmentAnimation>();
+        public List<EnvironmentAnimation> Animations { get { return anims; } }
 
-        private string filepath;
-        private EnvironmentAnimationHeader Header;
-        private EnvironmentAnimationEntry1[] Entries0;
-        private Matrix4x4[] Matrices0;
-        private Matrix4x4[] Matrices1;
-        private int[] IDs0;
-        private int[] IDs1;
-        private EnvironmentAnimationEntry2[] Entries1;
+        public EnvironmentAnimationDatabase(string path) : base(path) { }
 
         /* Load the file */
-        public EnvironmentAnimationDatabase(string path)
+        protected override void Load()
         {
-            filepath = path;
+            BinaryReader reader = new BinaryReader(File.OpenRead(_filepath));
+            
+            //Read header
+            reader.BaseStream.Position += 8; //Skip version and filesize
+            OffsetPair matrix0 = Utilities.Consume<OffsetPair>(reader);
+            OffsetPair matrix1 = Utilities.Consume<OffsetPair>(reader);
+            OffsetPair entries1 = Utilities.Consume<OffsetPair>(reader);
+            OffsetPair entries0 = Utilities.Consume<OffsetPair>(reader);
+            OffsetPair ids0 = Utilities.Consume<OffsetPair>(reader);
+            OffsetPair ids1 = Utilities.Consume<OffsetPair>(reader);
+            reader.BaseStream.Position += 8; //Skip unknown
 
-            BinaryReader Stream = new BinaryReader(File.OpenRead(filepath));
-            Header = Utilities.Consume<EnvironmentAnimationHeader>(Stream);
-            Entries0 = Utilities.ConsumeArray<EnvironmentAnimationEntry1>(Stream, (int)Header.EntryCount0);
-            Matrices0 = Utilities.ConsumeArray<Matrix4x4>(Stream, (int)Header.EntryCount0);
-            Matrices1 = Utilities.ConsumeArray<Matrix4x4>(Stream, (int)Header.EntryCount0);
-            IDs0 = Utilities.ConsumeArray<int>(Stream, (int)Header.EntryCount0);
-            IDs1 = Utilities.ConsumeArray<int>(Stream, (int)Header.EntryCount0);
-            Entries1 = Utilities.ConsumeArray<EnvironmentAnimationEntry2>( Stream, (int)Header.EntryCount0);
-            Stream.Close();
+            //Jump down and read all content we'll consume into our EnvironmentAnimation
+            reader.BaseStream.Position = matrix0.GlobalOffset;
+            Matrix4x4[] Matrices0 = Utilities.ConsumeArray<Matrix4x4>(reader, matrix0.EntryCount);
+            Matrix4x4[] Matrices1 = Utilities.ConsumeArray<Matrix4x4>(reader, matrix1.EntryCount);
+            int[] IDs0 = Utilities.ConsumeArray<int>(reader, ids0.EntryCount);
+            int[] IDs1 = Utilities.ConsumeArray<int>(reader, ids1.EntryCount);
+            EnvironmentAnimationInfo[] Entries1 = Utilities.ConsumeArray<EnvironmentAnimationInfo>(reader, entries1.EntryCount);
+
+            //Jump back to our main definition and read all additional content in
+            reader.BaseStream.Position = entries0.GlobalOffset;
+            for (int i = 0; i < entries0.EntryCount; i++)
+            {
+                EnvironmentAnimation anim = new EnvironmentAnimation();
+                anim.Matrix = Utilities.Consume<Matrix4x4>(reader);
+                anim.ID = Utilities.Consume<ShortGuid>(reader);
+                reader.BaseStream.Position += 4;
+                anim.ResourceIndex = reader.ReadInt32();
+
+                anim.Indexes0 = PopulateArray<int>(reader, IDs0);
+                anim.Indexes1 = PopulateArray<int>(reader, IDs1);
+
+                int matrix_count = reader.ReadInt32();
+                int matrix_index = reader.ReadInt32();
+                anim.Matrices0 = PopulateArray<Matrix4x4>(matrix_count, matrix_index, Matrices0);
+                anim.Matrices1 = PopulateArray<Matrix4x4>(matrix_count, matrix_index, Matrices1);
+
+                anim.Data0 = PopulateArray<EnvironmentAnimationInfo>(reader, Entries1);
+
+                reader.BaseStream.Position += 4; //TODO: i think this might be a flag - it's usually zero but has been 1 on hab_airport
+                anims.Add(anim);
+            }
+
+            reader.Close();
         }
 
-        /* Save the file */
-        public void Save()
+        /* Save the database */
+        public override void Save()
         {
-            BinaryWriter stream = new BinaryWriter(File.OpenWrite(filepath));
-            stream.BaseStream.SetLength(0);
-            Utilities.Write<EnvironmentAnimationHeader>(stream, Header);
-            Utilities.Write<EnvironmentAnimationEntry1>(stream, Entries0);
-            Utilities.Write<Matrix4x4>(stream, Matrices0);
-            Utilities.Write<Matrix4x4>(stream, Matrices1);
-            Utilities.Write<int>(stream, IDs0);
-            Utilities.Write<int>(stream, IDs1);
-            Utilities.Write<EnvironmentAnimationEntry2>(stream, Entries1);
-            stream.Close();
+            base.Save();
         }
-        
 
-        //TODO: edit functions
+
+        private List<T> PopulateArray<T>(BinaryReader reader, T[] array)
+        {
+            List<T> arr = new List<T>();
+            int count = reader.ReadInt32();
+            int index = reader.ReadInt32(); 
+            if (typeof(T) == typeof(EnvironmentAnimationInfo)) 
+            {
+                //Hacky fix for EnvironmentAnimationInfo pointers count/index order being inverted
+                for (int x = 0; x < index; x++)
+                    arr.Add(array[count + x]);
+            }
+            else
+            {
+                for (int x = 0; x < count; x++)
+                    arr.Add(array[index + x]);
+            }
+            return arr;
+        }
+        private List<T> PopulateArray<T>(int count, int index, T[] array)
+        {
+            List<T> arr = new List<T>();
+            for (int x = 0; x < count; x++)
+                arr.Add(array[index + x]);
+            return arr;
+        }
+
+
+        public class EnvironmentAnimation
+        {
+            public Matrix4x4 Matrix;
+            public ShortGuid ID;
+            public int ResourceIndex; //This matches the ANIMATED_MODEL resource reference
+
+            public List<int> Indexes0;
+            public List<int> Indexes1;
+
+            public List<Matrix4x4> Matrices0;
+            public List<Matrix4x4> Matrices1;
+
+            public List<EnvironmentAnimationInfo> Data0;
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct EnvironmentAnimationInfo
+        {
+            public ShortGuid ID;
+            public Vector3 P;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)]
+            public float[] V;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
+            public byte[] Unknown_;
+        };
     }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct EnvironmentAnimationHeader
-    {
-        public int Version;
-        public int TotalFileSize;
-
-        public int MatricesOffset0;
-        public int MatrixCount0;
-
-        public int MatricesOffset1;
-        public int MatrixCount1;
-
-        public int EntriesOffset1;
-        public int EntryCount1;
-
-        public int EntriesOffset0;
-        public int EntryCount0;
-
-        public int IDsOffset0;
-        public int IDCount0;
-
-        public int IDsOffset1;
-        public int IDCount1;
-
-        public int Unknown0_;
-        public int Unknown1_;
-    };
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct EnvironmentAnimationEntry1
-    {
-        public Matrix4x4 Matrix;
-        public int ID;
-        public int UnknownZero0_;
-        public int ResourceIndex;
-        public int IDCount0;
-        public int IDIndex0;
-        public int IDCount1;
-        public int IDIndex1;
-        public int MatrixCount;
-        public int MatrixIndex;
-        public int EntryIndex1;
-        public int EntryCount1;
-        public int UnknownZero1_;
-    };
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct EnvironmentAnimationEntry2
-    {
-        public int ID;
-        public Vector3 P;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)]
-        public int[] V;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
-        public byte[] Unknown_;
-    };
 }

@@ -9,27 +9,26 @@ using System.Threading.Tasks;
 namespace CATHODE.Misc
 {
     /* Handles Cathode COLLISION.MAP files */
-    public class CollisionMap
+    public class CollisionMap : CathodeFile
     {
-        private string filepath;
         public CollisionMapHeader header;
         public CollisionMapEntry[] entries;
 
-        /* Load the file */
-        public CollisionMap(string path)
-        {
-            filepath = path;
+        public CollisionMap(string path) : base(path) { }
 
-            BinaryReader stream = new BinaryReader(File.OpenRead(path));
+        /* Load the file */
+        protected override void Load()
+        {
+            BinaryReader stream = new BinaryReader(File.OpenRead(_filepath));
             header = Utilities.Consume<CollisionMapHeader>(stream);
             entries = Utilities.ConsumeArray<CollisionMapEntry>(stream, header.EntryCount);
             stream.Close();
         }
 
         /* Save the file */
-        public void Save()
+        override public void Save()
         {
-            BinaryWriter stream = new BinaryWriter(File.OpenWrite(filepath));
+            BinaryWriter stream = new BinaryWriter(File.OpenWrite(_filepath));
             stream.BaseStream.SetLength(0);
             Utilities.Write<CollisionMapHeader>(stream, header);
             Utilities.Write<CollisionMapEntry>(stream, entries);
@@ -49,22 +48,22 @@ namespace CATHODE.Misc
         {
             entries[i] = content;
         }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct CollisionMapHeader
+        {
+            public int DataSize;
+            public int EntryCount;
+        };
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct CollisionMapEntry
+        {
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+            public int[] Unknowns1; //12
+            public int ID;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 7)]
+            public int[] Unknowns2; //12
+        };
     }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CollisionMapHeader
-    {
-        public int DataSize;
-        public int EntryCount;
-    };
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CollisionMapEntry
-    {
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-        public int[] Unknowns1; //12
-        public int ID;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 7)]
-        public int[] Unknowns2; //12
-    };
 }

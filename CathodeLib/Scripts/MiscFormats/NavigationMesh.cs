@@ -7,7 +7,7 @@ using System.Text;
 namespace CATHODE.Misc
 {
     /* CATHODE uses a slightly modified version of Detour */
-    public class NavigationMesh
+    public class NavigationMesh : CathodeFile
     {
         dtMeshHeader Header;
 
@@ -20,9 +20,12 @@ namespace CATHODE.Misc
         public dtBVNode[] BoundingVolumeTree;
         public dtOffMeshConnection[] OffMeshConnections;
 
-        public NavigationMesh(string path)
+        public NavigationMesh(string path) : base(path) { }
+
+        /* Load the file */
+        protected override void Load()
         {
-            BinaryReader stream = new BinaryReader(File.OpenRead(path));
+            BinaryReader stream = new BinaryReader(File.OpenRead(_filepath));
             Header = Utilities.Consume<dtMeshHeader>(stream);
             Vertices = Utilities.ConsumeArray<System.Numerics.Vector3>(stream, Header.vertCount);
             Polygons = Utilities.ConsumeArray<dtPoly>(stream, Header.polyCount);

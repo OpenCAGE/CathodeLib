@@ -10,9 +10,8 @@ using System.Threading.Tasks;
 namespace CATHODE.Misc
 {
     /* Handles Cathode PROGRESSION.AIS files */
-    public class MissionSave
+    public class MissionSave : CathodeFile
     {
-        private string filepath;
         private alien_mission_ais header;
 
         // From the iOS decomp: the saves work with a "leaf and node" system, where you have
@@ -20,11 +19,12 @@ namespace CATHODE.Misc
         // "parameter" to apply to the system
 
         /* Load the file */
-        public MissionSave(string pathToAIS)
-        {
-            filepath = pathToAIS;
+        public MissionSave(string path) : base(path) { }
 
-            BinaryReader reader = new BinaryReader(File.OpenRead(filepath));
+        /* Load the file */
+        protected override void Load()
+        {
+            BinaryReader reader = new BinaryReader(File.OpenRead(_filepath));
 
             header = Utilities.Consume<alien_mission_ais>(reader);
             string levelname = Utilities.ReadString(reader.ReadBytes(128));
@@ -126,27 +126,27 @@ namespace CATHODE.Misc
         }
 
         /* Save the file */
-        public void Save()
+        override public void Save()
         {
-            BinaryWriter stream = new BinaryWriter(File.OpenWrite(filepath));
+            BinaryWriter stream = new BinaryWriter(File.OpenWrite(_filepath));
             stream.BaseStream.SetLength(0);
             Utilities.Write<alien_mission_ais>(stream, header);
             stream.Close();
         }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct alien_mission_ais
+        {
+            public fourcc FourCC;
+            public int VersionNum;
+
+            public ShortGuid unk1;
+            public ShortGuid unk2;
+            public ShortGuid unk3;
+
+            public int Offset1;
+            public int save_root_offset;
+            public int Offset3;
+        };
     }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct alien_mission_ais
-    {
-        public fourcc FourCC;
-        public int VersionNum;
-
-        public ShortGuid unk1;
-        public ShortGuid unk2;
-        public ShortGuid unk3;
-
-        public int Offset1;
-        public int save_root_offset;
-        public int Offset3;
-    };
 }

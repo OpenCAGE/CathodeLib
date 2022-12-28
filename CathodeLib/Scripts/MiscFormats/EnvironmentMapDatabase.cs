@@ -9,22 +9,21 @@ using System.Threading.Tasks;
 namespace CATHODE.Misc
 {
     /* Loads and/or creates Cathode ENVIRONMENTMAP.BIN files */
-    public class EnvironmentMapDatabase
+    public class EnvironmentMapDatabase : CathodeFile
     {
         private int unkVal = 12;
-
-        private string filepath;
-        public string FilePath { get { return filepath; } }
 
         private List<EnvironmentMapEntry> entries = new List<EnvironmentMapEntry>();
         public List<EnvironmentMapEntry> EnvMaps { get { return entries; } }
 
-        public EnvironmentMapDatabase(string path)
-        {
-            filepath = path;
-            if (!File.Exists(path)) return;
+        public EnvironmentMapDatabase(string path) : base(path) { }
 
-            BinaryReader bin = new BinaryReader(File.OpenRead(filepath));
+        /* Load the file */
+        protected override void Load()
+        {
+            if (!File.Exists(_filepath)) return;
+
+            BinaryReader bin = new BinaryReader(File.OpenRead(_filepath));
             bin.BaseStream.Position += 8;
             int entryCount = bin.ReadInt32();
             unkVal = bin.ReadInt32();
@@ -40,7 +39,7 @@ namespace CATHODE.Misc
 
         public void Save()
         {
-            BinaryWriter bin = new BinaryWriter(File.OpenWrite(filepath));
+            BinaryWriter bin = new BinaryWriter(File.OpenWrite(_filepath));
             bin.BaseStream.SetLength(0);
             bin.Write(new char[] { 'e', 'n', 'v', 'm' });
             bin.Write(1);
@@ -53,20 +52,20 @@ namespace CATHODE.Misc
             }
             bin.Close();
         }
+
+        public class EnvironmentMapEntry
+        {
+            public int envMapIndex;
+            public int mvrIndex; //huh?
+        };
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct EnvironmentMapHeader
+        {
+            public fourcc FourCC;
+            public uint Unknown0_;
+            public int EntryCount;
+            public uint Unknown1_;
+        };
     }
-
-    public class EnvironmentMapEntry
-    {
-        public int envMapIndex;
-        public int mvrIndex; //huh?
-    };
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct EnvironmentMapHeader
-    {
-        public fourcc FourCC;
-        public uint Unknown0_;
-        public int EntryCount;
-        public uint Unknown1_;
-    };
 }

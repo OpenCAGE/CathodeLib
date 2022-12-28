@@ -8,24 +8,24 @@ using System.Threading.Tasks;
 
 namespace CATHODE.Misc
 {
-    /* Handles Cathode REDS.BIN files */
-    public class RenderableElementsDatabase
+    /* Handles reading/creating/writing Cathode REDS.BIN files */
+    public class RenderableElementsDatabase : CathodeFile
     {
-        private string filepath;
-
         private List<RenderableElement> entries;
         public List<RenderableElement> RenderableElements { get { return entries; } }
 
         /* Load the file */
-        public RenderableElementsDatabase(string path)
+        public RenderableElementsDatabase(string path) : base(path) { }
+
+        /* Load the file */
+        protected override void Load()
         {
-            filepath = path;
             entries = new List<RenderableElement>();
 
             //Don't try and read a REDS that doesn't exist, we will make one when saving.
-            if (!File.Exists(path)) return;
+            if (!File.Exists(_filepath)) return;
 
-            BinaryReader reds = new BinaryReader(File.OpenRead(path));
+            BinaryReader reds = new BinaryReader(File.OpenRead(_filepath));
             int entryCount = reds.ReadInt32();
             for (int i = 0; i < entryCount; i++)
             {
@@ -43,9 +43,9 @@ namespace CATHODE.Misc
         }
 
         /* Save the file */
-        public void Save()
+        override public void Save()
         {
-            BinaryWriter reds = new BinaryWriter(File.OpenWrite(filepath));
+            BinaryWriter reds = new BinaryWriter(File.OpenWrite(_filepath));
             reds.BaseStream.SetLength(0);
             reds.Write(entries.Count);
             for (int i = 0; i < entries.Count; i++)

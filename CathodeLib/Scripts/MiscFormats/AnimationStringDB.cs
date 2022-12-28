@@ -10,20 +10,17 @@ using CathodeLib;
 namespace CATHODE.Misc
 {
     /* Handles Cathode animation string DB files (ANIM_STRING_DB.BIN, ANIM_STRING_DB_DEBUG.BIN) */
-    public class AnimationStringDB
+    public class AnimationStringDB : CathodeFile
     {
-        public string Filepath { get { return filepath; } }
-        private string filepath;
-
         private Dictionary<uint, string> cachedStrings = new Dictionary<uint, string>();
 
-        /* Load the file */
-        public AnimationStringDB(string path)
-        {
-            filepath = path;
+        public AnimationStringDB(string path) : base(path) { }
 
+        /* Load the file */
+        protected override void Load()
+        {
             //Read all data in
-            BinaryReader stream = new BinaryReader(File.OpenRead(path));
+            BinaryReader stream = new BinaryReader(File.OpenRead(_filepath));
             int EntryCount = stream.ReadInt32();
             int StringCount = stream.ReadInt32();
             Entry[] entries = Utilities.ConsumeArray<Entry>(stream, EntryCount);
@@ -53,9 +50,9 @@ namespace CATHODE.Misc
         }
 
         /* Save the file */
-        public void Save()
+        override public void Save()
         {
-            BinaryWriter writer = new BinaryWriter(File.OpenWrite(filepath));
+            BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath));
             writer.Write(cachedStrings.Count); 
             writer.Write(cachedStrings.Count);
             int count = 0;

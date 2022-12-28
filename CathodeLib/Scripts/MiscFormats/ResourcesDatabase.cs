@@ -11,18 +11,18 @@ namespace CATHODE.Misc
 {
     /* Handles CATHODE RESOURCES.BIN files */
     //This file seems to govern data being drawn from either MVR or COMMANDS
-    public class ResourcesDatabase
+    public class ResourcesDatabase : CathodeFile
     {
-        private string filepath;
         public CathodeResourcesHeader header;
         public CathodeResourcesEntry[] entries;
 
         /* Load the file */
-        public ResourcesDatabase(string path)
-        {
-            filepath = path;
+        public ResourcesDatabase(string path) : base(path) { }
 
-            BinaryReader Stream = new BinaryReader(File.OpenRead(path));
+        /* Load the file */
+        protected override void Load()
+        {
+            BinaryReader Stream = new BinaryReader(File.OpenRead(_filepath));
             header = Utilities.Consume<CathodeResourcesHeader>(Stream);
             entries = Utilities.ConsumeArray<CathodeResourcesEntry>(Stream, header.EntryCount);
             Stream.Close();
@@ -39,9 +39,9 @@ namespace CATHODE.Misc
         */
 
         /* Save the file */
-        public void Save()
+        override public void Save()
         {
-            BinaryWriter stream = new BinaryWriter(File.OpenWrite(filepath));
+            BinaryWriter stream = new BinaryWriter(File.OpenWrite(_filepath));
             stream.BaseStream.SetLength(0);
             Utilities.Write<CathodeResourcesHeader>(stream, header);
             Utilities.Write<CathodeResourcesEntry>(stream, entries);
@@ -61,22 +61,22 @@ namespace CATHODE.Misc
         {
             entries[i] = content;
         }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct CathodeResourcesHeader
+        {
+            public fourcc Magic;
+            public int UnknownOne_; //maybe file version
+            public int EntryCount;
+            public int UnknownZero_;
+        };
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct CathodeResourcesEntry
+        {
+            public ShortGuid NodeID;
+            public int IDFromMVREntry; //ResourceID?
+            public int IndexFromMVREntry; // NOTE: This is an entry index in this file itself.
+        };
     }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CathodeResourcesHeader
-    {
-        public fourcc Magic;
-        public int UnknownOne_; //maybe file version
-        public int EntryCount;
-        public int UnknownZero_;
-    };
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CathodeResourcesEntry
-    {
-        public ShortGuid NodeID;
-        public int IDFromMVREntry; //ResourceID?
-        public int IndexFromMVREntry; // NOTE: This is an entry index in this file itself.
-    };
 }
