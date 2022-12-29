@@ -265,14 +265,13 @@ namespace CATHODE.Commands
     [Serializable]
     public class cEnum : ParameterData
     {
-        public cEnum() { dataType = DataType.ENUM; }
         public cEnum(ShortGuid enumID, int enumIndex)
         {
             this.enumID = enumID;
             this.enumIndex = enumIndex;
             dataType = DataType.ENUM;
         }
-        public cEnum(string enumName, int enumIndex)
+        public cEnum(string enumName = "ALERTNESS_STATE", int enumIndex = 0)
         {
             this.enumID = ShortGuidUtils.Generate(enumName);
             this.enumIndex = enumIndex;
