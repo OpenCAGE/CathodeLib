@@ -52,15 +52,11 @@ namespace CATHODE.Commands
             return parameters.FirstOrDefault(o => o.shortGUID == id);
         }
 
-        /* Add a parameter by string name or ShortGuid, and return it */
+        /* Add a data-supplying parameter to the entity */
         public Parameter AddParameter(string name, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER)
         {
+            //TODO: we are limiting data-supplying params to ONE per entity here - is this correct? I think links are the only place where you can have multiple of the same.
             ShortGuid id = ShortGuidUtils.Generate(name);
-            return AddParameter(id, data, variant);
-        }
-        public Parameter AddParameter(ShortGuid id, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER)
-        {
-            //We can only have one parameter matching a name/guid per entity, so if it already exists, we just return that, regardless of the datatype
             Parameter param = GetParameter(id);
             if (param == null)
             {
@@ -74,6 +70,28 @@ namespace CATHODE.Commands
                 param.variant = variant;
             }
             return param;
+        }
+
+        /* Remove a parameter from the entity */
+        public void RemoveParameter(string name)
+        {
+            ShortGuid name_id = ShortGuidUtils.Generate(name);
+            parameters.RemoveAll(o => o.shortGUID == name_id);
+        }
+
+        /* Add a link from a parameter on us out to a parameter on another entity */
+        public void AddParameterLink(string parameter, Entity childEntity, string childParameter)
+        {
+            childLinks.Add(new EntityLink(childEntity.shortGUID, ShortGuidUtils.Generate(parameter), ShortGuidUtils.Generate(childParameter)));
+        }
+
+        /* Remove a link to another entity */
+        public void RemoveParameterLink(string parameter, Entity childEntity, string childParameter)
+        {
+            ShortGuid parameter_id = ShortGuidUtils.Generate(parameter);
+            ShortGuid childParameter_id = ShortGuidUtils.Generate(childParameter);
+            //TODO: do we want to do RemoveAll? should probably just remove the first
+            childLinks.RemoveAll(o => o.parentParamID == parameter_id && o.childID == childEntity.shortGUID && o.childParamID == childParameter_id);
         }
     }
     [Serializable]
@@ -237,6 +255,14 @@ namespace CATHODE.Commands
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct EntityLink
     {
+        public EntityLink(ShortGuid childEntityID, ShortGuid parentParam, ShortGuid childParam)
+        {
+            connectionID = ShortGuidUtils.GenerateRandom();
+            parentParamID = parentParam;
+            childParamID = childParam;
+            childID = childEntityID;
+        }
+
         public ShortGuid connectionID;  //The unique ID for this connection
         public ShortGuid parentParamID; //The ID of the parameter we're providing out 
         public ShortGuid childParamID;  //The ID of the parameter we're providing into the child
