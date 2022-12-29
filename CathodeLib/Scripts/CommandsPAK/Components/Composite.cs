@@ -52,5 +52,27 @@ namespace CATHODE.Commands
             overrides.OrderBy(o => o.shortGUID.ToUInt32());
             proxies.OrderBy(o => o.shortGUID.ToUInt32());
         }
+
+        /* Add a new function entity */
+        public FunctionEntity AddFunction(string function, bool autopopulateParameters = false)
+        {
+            FunctionEntity func = new FunctionEntity(function, autopopulateParameters);
+            functions.Add(func);
+            return func;
+        }
+        public FunctionEntity AddFunction(Composite function, bool autopopulateParameters = false)
+        {
+            FunctionEntity func = new FunctionEntity(function.shortGUID, autopopulateParameters);
+            functions.Add(func);
+            return func;
+        }
+
+        /* Add a new variable entity */
+        public VariableEntity AddVariable(string parameter, DataType type, bool addDefaultParam = false)
+        {
+            VariableEntity vari = new VariableEntity(parameter, type, addDefaultParam);
+            variables.Add(vari);
+            return vari;
+        }
     }
 }

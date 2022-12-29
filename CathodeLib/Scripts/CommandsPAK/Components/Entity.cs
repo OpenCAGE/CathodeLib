@@ -4,6 +4,7 @@ using CathodeLib.Properties;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.SymbolStore;
 using System.Linq;
 using System.Runtime.InteropServices;
 
@@ -13,9 +14,15 @@ namespace CATHODE.Commands
     [Serializable]
     public class Entity : IComparable<Entity>
     {
-        public Entity(ShortGuid id)
+        public Entity(EntityVariant variant)
         {
-            shortGUID = id;
+            this.shortGUID = ShortGuidUtils.GenerateRandom();
+            this.variant = variant;
+        }
+        public Entity(ShortGuid shortGUID, EntityVariant variant)
+        {
+            this.shortGUID = shortGUID;
+            this.variant = variant;
         }
 
         public ShortGuid shortGUID; //Translates to string via EntityNameLookup.GetEntityName
@@ -72,14 +79,94 @@ namespace CATHODE.Commands
     [Serializable]
     public class VariableEntity : Entity
     {
-        public VariableEntity(ShortGuid id) : base(id) { variant = EntityVariant.DATATYPE; }
+        public VariableEntity(bool addDefaultParam = false) : base(EntityVariant.DATATYPE) { if (addDefaultParam) AddDefaultParam(); }
+        public VariableEntity(ShortGuid shortGUID, bool addDefaultParam = false) : base(shortGUID, EntityVariant.DATATYPE) { if (addDefaultParam) AddDefaultParam(); }
+
+        public VariableEntity(string parameter, DataType type, bool addDefaultParam = false) : base(EntityVariant.DATATYPE)
+        {
+            this.parameter = ShortGuidUtils.Generate(parameter);
+            this.type = type;
+            if (addDefaultParam) AddDefaultParam();
+        }
+
+        public VariableEntity(ShortGuid shortGUID, ShortGuid parameter, DataType type, bool addDefaultParam = false) : base(shortGUID, EntityVariant.DATATYPE)
+        {
+            this.parameter = parameter;
+            this.type = type;
+            if (addDefaultParam) AddDefaultParam();
+        }
+        public VariableEntity(ShortGuid shortGUID, string parameter, DataType type, bool addDefaultParam = false) : base(shortGUID, EntityVariant.DATATYPE)
+        {
+            this.parameter = ShortGuidUtils.Generate(parameter);
+            this.type = type;
+            if (addDefaultParam) AddDefaultParam();
+        }
+        
+        /* Add a default parameter on us when created, to provide a value from */
+        private void AddDefaultParam()
+        {
+            ParameterData thisParam = null;
+            switch (type)
+            {
+                case DataType.STRING:
+                    thisParam = new cString("");
+                    break;
+                case DataType.FLOAT:
+                    thisParam = new cFloat(0.0f);
+                    break;
+                case DataType.INTEGER:
+                    thisParam = new cInteger(0);
+                    break;
+                case DataType.BOOL:
+                    thisParam = new cBool(true);
+                    break;
+                case DataType.VECTOR:
+                    thisParam = new cVector3(new Vector3(0, 0, 0));
+                    break;
+                case DataType.TRANSFORM:
+                    thisParam = new cTransform(new Vector3(0, 0, 0), new Vector3(0, 0, 0));
+                    break;
+                case DataType.ENUM:
+                    thisParam = new cEnum("ALERTNESS_STATE", 0); //ALERTNESS_STATE is the first alphabetically
+                    break;
+                case DataType.SPLINE:
+                    thisParam = new cSpline();
+                    break;
+            }
+            parameters.Add(new Parameter(parameter, thisParam));
+        }
+
         public ShortGuid parameter; //Translates to string via ShortGuidUtils.FindString
         public DataType type = DataType.NONE;
     }
     [Serializable]
     public class FunctionEntity : Entity
     {
-        public FunctionEntity(ShortGuid id) : base(id) { variant = EntityVariant.FUNCTION; }
+        public FunctionEntity() : base(EntityVariant.FUNCTION) { }
+        public FunctionEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.FUNCTION) { }
+
+        public FunctionEntity(string function, bool autoGenerateParameters = false) : base(EntityVariant.FUNCTION)
+        {
+            this.function = ShortGuidUtils.Generate(function);
+            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
+        }
+        public FunctionEntity(ShortGuid function, bool autoGenerateParameters = false) : base(EntityVariant.FUNCTION)
+        {
+            this.function = function;
+            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
+        }
+
+        public FunctionEntity(ShortGuid shortGUID, ShortGuid function, bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.FUNCTION)
+        {
+            this.function = function;
+            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
+        }
+        public FunctionEntity(ShortGuid shortGUID, string function, bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.FUNCTION)
+        {
+            this.function = ShortGuidUtils.Generate(function);
+            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
+        }
+
         public ShortGuid function; //Translates to string via ShortGuidUtils.FindString
         public List<ResourceReference> resources = new List<ResourceReference>(); //TODO: can we replace this with a cResource to save duplicating functionality?
 
@@ -114,14 +201,16 @@ namespace CATHODE.Commands
     [Serializable]
     public class ProxyEntity : Entity
     {
-        public ProxyEntity(ShortGuid id) : base(id) { variant = EntityVariant.PROXY; }
+        public ProxyEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.PROXY) { }
+
         public ShortGuid extraId; //TODO: I'm unsure if this is actually used by the game - we might not need to store it and just make up something when we write.
         public List<ShortGuid> hierarchy = new List<ShortGuid>();
     }
     [Serializable]
     public class OverrideEntity : Entity
     {
-        public OverrideEntity(ShortGuid id) : base(id) { variant = EntityVariant.OVERRIDE; }
+        public OverrideEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.OVERRIDE) { }
+
         public ShortGuid checksum; //TODO: This value is apparently a hash of the hierarchy GUIDs, but need to verify that, and work out the salt.
         public List<ShortGuid> hierarchy = new List<ShortGuid>();
     }

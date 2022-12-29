@@ -163,6 +163,16 @@ namespace CATHODE.Commands
         /* Applies all default parameter data to a Function entity (DESTRUCTIVE!) */
         private static void ApplyDefaultsInternal(FunctionEntity newEntity)
         {
+            //Function entity points to a composite
+            if (!CommandsUtils.FunctionTypeExists(newEntity.function))
+            {
+                //TODO - look up composite parameters
+                //if (commandsPAK == null) return;
+                //commandsPAK.Composites.FirstOrDefault(o => o.shortGUID = newEntity.function)
+                return;
+            }
+
+            //Function entity points to a hard-coded function
             switch (CommandsUtils.GetFunctionType(newEntity.function))
             {
                 case FunctionType.EntityMethodInterface:

@@ -61,6 +61,13 @@ namespace CATHODE.Commands
             return vanilla.cacheReversed[guid];
         }
 
+        /* Generate a random unique ShortGuid */
+        public static ShortGuid GenerateRandom()
+        {
+            //TODO: we should really check the caches here to make sure it IS random, and then go again if not
+            return Generate(DateTime.Now.ToString("G") + (new Random()).Next(0, 9999));
+        }
+
         /* Cache a pre-generated ShortGuid */
         private static void Cache(ShortGuid guid, string value, bool isVanilla = false)
         {
