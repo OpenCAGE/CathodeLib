@@ -889,7 +889,7 @@ namespace CATHODE.Commands
         NAV_MESH_BARRIER_RESOURCE,
         RENDERABLE_INSTANCE,
         TRAVERSAL_SEGMENT,
-        ANIMATED_MODEL,
+        ANIMATED_MODEL,                   //Links to ResourceIndex in ENVIRONMENT_ANIMATION.DAT
 
         // Any below this point are referenced in code, but not used in the vanilla game's CommandsPAKs
         CATHODE_COVER_SEGMENT,

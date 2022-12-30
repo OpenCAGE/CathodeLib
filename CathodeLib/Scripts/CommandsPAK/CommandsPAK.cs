@@ -136,7 +136,7 @@ namespace CATHODE.Commands
                                 _composites[i].functions[x].parameters.Add(rsc);
                             }
                             cResource rsc_p = (cResource)rsc.content;
-                            rsc_p.AddResource(ResourceType.ANIMATED_MODEL); //TODO: need to figure out what startIndex links to, so we can set that!
+                            rsc_p.AddResource(ResourceType.ANIMATED_MODEL);
                             break;
 
                         // Types below require various things, but we don't add them as they work without it, so just log a warning.
