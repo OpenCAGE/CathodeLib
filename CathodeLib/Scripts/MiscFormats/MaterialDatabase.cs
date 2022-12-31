@@ -11,46 +11,61 @@ namespace CATHODE.Misc
     /* Handles Cathode MODELS.MTL files */
     public class MaterialDatabase : CathodeFile
     {
-        public MaterialHeader Header;
-        public MaterialEntry[] Materials;
-        public List<int> TextureReferenceCounts;
-        public List<string> MaterialNames;
+        //TODO: tidy how we access these
+        public Header _header;
+        public Entry[] _materials;
+        public List<int> _textureReferenceCounts;
+        public List<string> _materialNames;
 
         public MaterialDatabase(string path) : base(path) { }
 
+        #region FILE_IO
         /* Load the file */
-        protected override void Load()
+        protected override bool Load()
         {
-            BinaryReader Stream = new BinaryReader(File.OpenRead(_filepath));
+            if (!File.Exists(_filepath)) return false;
 
-            Header = Utilities.Consume<MaterialHeader>(Stream);
-
-            MaterialNames = new List<string>(Header.MaterialCount);
-            for (int MaterialIndex = 0; MaterialIndex < Header.MaterialCount; ++MaterialIndex)
+            BinaryReader reader = new BinaryReader(File.OpenRead(_filepath));
+            try
             {
-                MaterialNames.Add(Utilities.ReadString(Stream));
-            }
+                _header = Utilities.Consume<Header>(reader);
 
-            Stream.BaseStream.Position = Header.FirstMaterialOffset + Marshal.SizeOf(Header.BytesRemainingAfterThis);
-
-            Materials = Utilities.ConsumeArray<MaterialEntry>(Stream, Header.MaterialCount);
-            TextureReferenceCounts = new List<int>(Header.MaterialCount);
-            for (int MaterialIndex = 0; MaterialIndex < Header.MaterialCount; ++MaterialIndex)
-            {
-                MaterialEntry Material = Materials[MaterialIndex];
-
-                int count = 0;
-                for (int I = 0; I < Material.TextureReferences.Length; ++I)
+                _materialNames = new List<string>(_header.MaterialCount);
+                for (int MaterialIndex = 0; MaterialIndex < _header.MaterialCount; ++MaterialIndex)
                 {
-                    MaterialTextureReference Pair = Material.TextureReferences[I];
-                    if (Pair.TextureTableIndex == 2 || Pair.TextureTableIndex == 0) count++;
+                    _materialNames.Add(Utilities.ReadString(reader));
                 }
-                TextureReferenceCounts.Add(count);
-            }
-        }
 
+                reader.BaseStream.Position = _header.FirstMaterialOffset + Marshal.SizeOf(_header.BytesRemainingAfterThis);
+
+                _materials = Utilities.ConsumeArray<Entry>(reader, _header.MaterialCount);
+                _textureReferenceCounts = new List<int>(_header.MaterialCount);
+                for (int MaterialIndex = 0; MaterialIndex < _header.MaterialCount; ++MaterialIndex)
+                {
+                    Entry Material = _materials[MaterialIndex];
+
+                    int count = 0;
+                    for (int I = 0; I < Material.TextureReferences.Length; ++I)
+                    {
+                        TextureReference Pair = Material.TextureReferences[I];
+                        if (Pair.TextureTableIndex == 2 || Pair.TextureTableIndex == 0) count++;
+                    }
+                    _textureReferenceCounts.Add(count);
+                }
+            }
+            catch
+            {
+                reader.Close();
+                return false;
+            }
+            reader.Close();
+            return true;
+        }
+        #endregion
+
+        #region STRUCTURES
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct MaterialHeader
+        public struct Header
         {
             public int BytesRemainingAfterThis; // TODO: Weird, is there any case where this is not true? Assert!
             public int Unknown0_;
@@ -64,17 +79,17 @@ namespace CATHODE.Misc
         };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct MaterialTextureReference
+        public struct TextureReference
         {
             public Int16 TextureIndex; // NOTE: Entry index in texture BIN file. Max value seen matches the BIN file entry count;
             public Int16 TextureTableIndex; // NOTE: Only seen as -1, 0 or 2 so far.
         };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct MaterialEntry
+        public struct Entry
         {
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 12)]
-            public MaterialTextureReference[] TextureReferences; //12
+            public TextureReference[] TextureReferences; //12
             public int UnknownZero0_; // NOTE: Only seen as 0 so far.
             public int MaterialIndex;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5)]
@@ -97,5 +112,6 @@ namespace CATHODE.Misc
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
             public int[] UnknownZeros2_; //2
         };
+        #endregion
     }
 }

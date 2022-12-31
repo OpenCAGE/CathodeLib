@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #else
@@ -12,53 +13,79 @@ namespace CATHODE.Misc
     /* Handles Cathode PHYSICS.MAP files */
     public class PhysicsMap : CathodeFile
     {
-        public PhysicsMapHeader header;
-        public PhysicsMapEntry[] entries;
+        //TODO: tidy how we access these
+        public Header _header;
+        public Entry[] _entries;
 
         public PhysicsMap(string path) : base(path) { }
 
+        #region FILE_IO
         /* Load the file */
-        protected override void Load()
+        protected override bool Load()
         {
+            if (!File.Exists(_filepath)) return false;
+
             BinaryReader stream = new BinaryReader(File.OpenRead(_filepath));
-            header = Utilities.Consume<PhysicsMapHeader>(stream);
-            entries = Utilities.ConsumeArray<PhysicsMapEntry>(stream, header.EntryCount);
+            try
+            {
+                _header = Utilities.Consume<Header>(stream);
+                _entries = Utilities.ConsumeArray<Entry>(stream, _header.EntryCount);
+            }
+            catch
+            {
+                stream.Close();
+                return false;
+            }
             stream.Close();
+            return true;
         }
 
         /* Save the file */
-        override public void Save()
+        override public bool Save()
         {
             BinaryWriter stream = new BinaryWriter(File.OpenWrite(_filepath));
-            stream.BaseStream.SetLength(0);
-            Utilities.Write<PhysicsMapHeader>(stream, header);
-            Utilities.Write<PhysicsMapEntry>(stream, entries);
+            try
+            {
+                stream.BaseStream.SetLength(0);
+                Utilities.Write<Header>(stream, _header);
+                Utilities.Write<Entry>(stream, _entries);
+            }
+            catch
+            {
+                stream.Close();
+                return false;
+            }
             stream.Close();
+            return true;
         }
+        #endregion
 
+        #region ACCESSORS
         /* Data accessors */
-        public int EntryCount { get { return entries.Length; } }
-        public PhysicsMapEntry[] Entries { get { return entries; } }
-        public PhysicsMapEntry GetEntry(int i)
+        public int EntryCount { get { return _entries.Length; } }
+        public Entry[] Entries { get { return _entries; } }
+        public Entry GetEntry(int i)
         {
-            return entries[i];
+            return _entries[i];
         }
 
         /* Data setters */
-        public void SetEntry(int i, PhysicsMapEntry content)
+        public void SetEntry(int i, Entry content)
         {
-            entries[i] = content;
+            _entries[i] = content;
         }
+        #endregion
 
+        #region STRUCTURES
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct PhysicsMapHeader
+        public struct Header
         {
             public int FileSizeExcludingThis;
             public int EntryCount;
         };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct PhysicsMapEntry
+        public struct Entry
         {
             public int UnknownNotableValue_;
             public int UnknownZero;
@@ -70,5 +97,6 @@ namespace CATHODE.Misc
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
             public int[] UnknownZeros_; //2
         };
+        #endregion
     }
 }

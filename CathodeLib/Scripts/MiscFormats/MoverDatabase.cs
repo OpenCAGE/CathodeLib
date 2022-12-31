@@ -15,48 +15,72 @@ namespace CATHODE.Misc
     /* Handles Cathode MODELS.MVR files */
     public class MoverDatabase : CathodeFile
     {
-        private int fileSize = 32;
-        private int entryCount = 0;
-        private int entrySize = 320;
-        private int entryCountUnknown = 0;
+        private int _fileSize = 32;
+        private int _entryCount = 0;
+        private int _entrySize = 320;
+        private int _entryCountUnk = 0;
 
-        public List<MOVER_DESCRIPTOR> Movers = new List<MOVER_DESCRIPTOR>();
+        private List<MOVER_DESCRIPTOR> _movers = new List<MOVER_DESCRIPTOR>();
+        public List<MOVER_DESCRIPTOR> Movers { get { return _movers; } }
         
         public MoverDatabase(string path) : base(path) { }
 
+        #region FILE_IO
         /* Load the file */
-        protected override void Load()
+        protected override bool Load()
         {
+            if (!File.Exists(_filepath)) return false;
+
             BinaryReader stream = new BinaryReader(File.OpenRead(_filepath));
-            fileSize = stream.ReadInt32();
-            entryCount = stream.ReadInt32();
-            entryCountUnknown = stream.ReadInt32(); //a count of something - not sure what
-            stream.BaseStream.Position += 4; 
-            entrySize = stream.ReadInt32();
-            stream.BaseStream.Position += 12;
-            Movers = new List<MOVER_DESCRIPTOR>(Utilities.ConsumeArray<MOVER_DESCRIPTOR>(stream, entryCount));
+            try
+            {
+                _fileSize = stream.ReadInt32();
+                _entryCount = stream.ReadInt32();
+                _entryCountUnk = stream.ReadInt32(); //a count of something - not sure what
+                stream.BaseStream.Position += 4;
+                _entrySize = stream.ReadInt32();
+                stream.BaseStream.Position += 12;
+                _movers = new List<MOVER_DESCRIPTOR>(Utilities.ConsumeArray<MOVER_DESCRIPTOR>(stream, _entryCount));
+            }
+            catch
+            {
+                stream.Close();
+                return false;
+            }
             stream.Close();
+            return true;
         }
 
         /* Save the file */
-        override public void Save()
+        override public bool Save()
         {
-            fileSize = (Movers.Count * entrySize) + 32;
-            entryCount = Movers.Count;
-            entryCountUnknown = 0;
+            _fileSize = (_movers.Count * _entrySize) + 32;
+            _entryCount = _movers.Count;
+            _entryCountUnk = 0;
 
             BinaryWriter stream = new BinaryWriter(File.OpenWrite(_filepath));
-            stream.BaseStream.SetLength(0);
-            stream.Write(fileSize);
-            stream.Write(entryCount);
-            stream.Write(entryCountUnknown);
-            stream.Write(0);
-            stream.Write(entrySize);
-            stream.Write(0); stream.Write(0); stream.Write(0);
-            Utilities.Write<MOVER_DESCRIPTOR>(stream, Movers);
+            try
+            {
+                stream.BaseStream.SetLength(0);
+                stream.Write(_fileSize);
+                stream.Write(_entryCount);
+                stream.Write(_entryCountUnk);
+                stream.Write(0);
+                stream.Write(_entrySize);
+                stream.Write(0); stream.Write(0); stream.Write(0);
+                Utilities.Write<MOVER_DESCRIPTOR>(stream, _movers);
+            }
+            catch
+            {
+                stream.Close();
+                return false;
+            }
             stream.Close();
+            return true;
         }
+        #endregion
 
+        #region STRUCTURES
         //Pulled from the iOS decomp
         public enum RENDERABLE_INSTANCE_Type
         {
@@ -271,5 +295,6 @@ namespace CATHODE.Misc
             public byte[] blankSpace3;
             //244
         }
+        #endregion
     }
 }

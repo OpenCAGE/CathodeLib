@@ -57,7 +57,7 @@ namespace CATHODE.Commands
                 custom_composites[compositeID].Remove(entityID);
         }
 
-        /* Applies all default parameter data to a Function entity (DESTRUCTIVE!) */
+        /* Applies all default parameter data to a Function entity (POTENTIALLY DESTRUCTIVE!) */
         public static void ApplyDefaults(FunctionEntity entity)
         {
             ApplyDefaultsInternal(entity);

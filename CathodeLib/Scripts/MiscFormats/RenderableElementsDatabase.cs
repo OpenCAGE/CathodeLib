@@ -11,56 +11,74 @@ namespace CATHODE.Misc
     /* Handles reading/creating/writing Cathode REDS.BIN files */
     public class RenderableElementsDatabase : CathodeFile
     {
-        private List<RenderableElement> entries;
+        private List<RenderableElement> entries = new List<RenderableElement>();
         public List<RenderableElement> RenderableElements { get { return entries; } }
 
         /* Load the file */
         public RenderableElementsDatabase(string path) : base(path) { }
 
+        #region FILE_IO
         /* Load the file */
-        protected override void Load()
+        protected override bool Load()
         {
-            entries = new List<RenderableElement>();
+            if (!File.Exists(_filepath)) return false;
 
-            //Don't try and read a REDS that doesn't exist, we will make one when saving.
-            if (!File.Exists(_filepath)) return;
-
-            BinaryReader reds = new BinaryReader(File.OpenRead(_filepath));
-            int entryCount = reds.ReadInt32();
-            for (int i = 0; i < entryCount; i++)
+            BinaryReader reader = new BinaryReader(File.OpenRead(_filepath));
+            try
             {
-                RenderableElement element = new RenderableElement();
-                reds.BaseStream.Position += 4;
-                element.ModelIndex = reds.ReadInt32();
-                reds.BaseStream.Position += 5;
-                element.MaterialLibraryIndex = reds.ReadInt32();
-                reds.BaseStream.Position += 1;
-                element.ModelLODIndex = reds.ReadInt32();
-                element.ModelLODPrimitiveCount = reds.ReadByte(); //TODO: convert to int for ease of use?
-                entries.Add(element);
+                int entryCount = reader.ReadInt32();
+                for (int i = 0; i < entryCount; i++)
+                {
+                    RenderableElement element = new RenderableElement();
+                    reader.BaseStream.Position += 4;
+                    element.ModelIndex = reader.ReadInt32();
+                    reader.BaseStream.Position += 5;
+                    element.MaterialLibraryIndex = reader.ReadInt32();
+                    reader.BaseStream.Position += 1;
+                    element.ModelLODIndex = reader.ReadInt32();
+                    element.ModelLODPrimitiveCount = reader.ReadByte(); //TODO: convert to int for ease of use?
+                    entries.Add(element);
+                }
             }
-            reds.Close();
+            catch
+            {
+                reader.Close();
+                return false;
+            }
+            reader.Close();
+            return true;
         }
 
         /* Save the file */
-        override public void Save()
+        override public bool Save()
         {
-            BinaryWriter reds = new BinaryWriter(File.OpenWrite(_filepath));
-            reds.BaseStream.SetLength(0);
-            reds.Write(entries.Count);
-            for (int i = 0; i < entries.Count; i++)
+            BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath));
+            try
             {
-                reds.Write(new byte[] { 0x00, 0x00, 0x00, 0x00 });
-                reds.Write(entries[i].ModelIndex);
-                reds.Write(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00 });
-                reds.Write(entries[i].MaterialLibraryIndex);
-                reds.Write((byte)0x00);
-                reds.Write(entries[i].ModelLODIndex);
-                reds.Write((byte)entries[i].ModelLODPrimitiveCount);
+                writer.BaseStream.SetLength(0);
+                writer.Write(entries.Count);
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    writer.Write(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                    writer.Write(entries[i].ModelIndex);
+                    writer.Write(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00 });
+                    writer.Write(entries[i].MaterialLibraryIndex);
+                    writer.Write((byte)0x00);
+                    writer.Write(entries[i].ModelLODIndex);
+                    writer.Write((byte)entries[i].ModelLODPrimitiveCount);
+                }
             }
-            reds.Close();
+            catch
+            {
+                writer.Close();
+                return false;
+            }
+            writer.Close();
+            return true;
         }
+        #endregion
 
+        #region STRUCTURES
         /* Definition of a Renderable Element in CATHODE */
         public class RenderableElement
         {
@@ -70,5 +88,6 @@ namespace CATHODE.Misc
             public int ModelLODIndex = -1; // NOTE: Not sure, looks like it.
             public byte ModelLODPrimitiveCount = 0; // NOTE: Sure it is primitive count, not sure about the ModelLOD part.
         }
+        #endregion
     }
 }

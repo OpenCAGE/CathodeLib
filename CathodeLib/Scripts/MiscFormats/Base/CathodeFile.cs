@@ -6,7 +6,7 @@ namespace CATHODE.Misc
 {
     public class CathodeFile
     {
-        public string FilePath { get { return _filepath; } }
+        public string Filepath { get { return _filepath; } }
         protected string _filepath = "";
 
         public CathodeFile(string filepath)
@@ -15,14 +15,16 @@ namespace CATHODE.Misc
             Load();
         }
 
-        protected virtual void Load()
+        protected virtual bool Load()
         {
             Console.WriteLine("WARNING: This class does not implement loading functionality!");
+            return false;
         }
 
-        public virtual void Save()
+        public virtual bool Save()
         {
             Console.WriteLine("WARNING: This class does not implement saving functionality!");
+            return false;
         }
     }
 }

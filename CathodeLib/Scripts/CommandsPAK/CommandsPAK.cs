@@ -1,5 +1,6 @@
 //#define DO_PRETTY_COMPOSITES
 
+using CATHODE.Misc;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
@@ -12,75 +13,32 @@ using UnityEngine;
 
 namespace CATHODE.Commands
 {
-    public class CommandsPAK
+    public class CommandsPAK : CathodeFile
     {
         public Action OnLoaded;
         public Action OnSaved;
 
-        /* Load and parse the COMMANDS.PAK */
-        public CommandsPAK(string pathToPak)
-        {
-            _path = pathToPak;
-            _didLoadCorrectly = Load(_path);
-        }
+        // This is always:
+        //  - Root Instance (the map's entry composite, usually containing entities that call mission/environment composites)
+        //  - Global Instance (the main data handler for keeping track of mission number, etc - kinda like a big singleton)
+        //  - Pause Menu Instance
+        private ShortGuid[] _entryPoints;
+        private Composite[] _entryPointObjects = null;
 
-        #region ACCESSORS
-        /* Return a list of filenames for composites in the CommandsPAK archive */
-        public string[] GetCompositeNames()
-        {
-            string[] toReturn = new string[_composites.Count];
-            for (int i = 0; i < _composites.Count; i++) toReturn[i] = _composites[i].name;
-            return toReturn;
-        }
+        private List<Composite> _composites = null;
 
-        /* Find the a script entry object by name */
-        public int GetFileIndex(string FileName)
-        {
-            for (int i = 0; i < _composites.Count; i++) if (_composites[i].name == FileName || _composites[i].name == FileName.Replace('/', '\\')) return i;
-            return -1;
-        }
+        //TODO: deprecate this idea of being "loaded" once we can fully write our own PAKs
+        public bool Loaded { get { return _entryPoints != null && _entryPoints.Length == 3 && _entryPoints[0] != null; } }
 
-        /* Get an individual composite */
-        public Composite GetComposite(ShortGuid id)
-        {
-            if (id.val == null) return null;
-            return _composites.FirstOrDefault(o => o.shortGUID == id);
-        }
-        public Composite GetCompositeByIndex(int index)
-        {
-            return (index >= _composites.Count || index < 0) ? null : _composites[index];
-        }
+        public CommandsPAK(string path) : base(path) { }
 
-        /* Get all composites */
-        public List<Composite> Composites { get { return _composites; } }
-
-        /* Get entry point composite objects */
-        public Composite[] EntryPoints
-        {
-            get
-            {
-                if (_entryPointObjects != null) return _entryPointObjects;
-                _entryPointObjects = new Composite[_entryPoints.Length];
-                for (int i = 0; i < _entryPoints.Length; i++) _entryPointObjects[i] = GetComposite(_entryPoints[i]);
-                return _entryPointObjects;
-            }
-        }
-
-        /* Set the root composite for this COMMANDS.PAK (the root of the level - GLOBAL and PAUSEMENU are also instanced) */
-        public void SetRootComposite(ShortGuid id)
-        {
-            _entryPoints[0] = id;
-            _entryPointObjects = null;
-        }
-        #endregion
-
-        #region WRITING
+        #region FILE_IO
         /* Save all changes back out */
-        public bool Save()
+        override public bool Save()
         {
-            if (_path == "" || _entryPoints == null) return false;
+            if (!Loaded) return false;
 
-            BinaryWriter writer = new BinaryWriter(File.OpenWrite(_path));
+            BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath));
             writer.BaseStream.SetLength(0);
 
             //Write entry points
@@ -677,44 +635,12 @@ namespace CATHODE.Commands
             return true;
         }
 
-        /* Filter down a list of parameters to contain only unique entries */
-        private List<ParameterData> PruneParameterList(List<ParameterData> parameters)
-        {
-            List<ParameterData> prunedList = new List<ParameterData>();
-            bool canAdd = true;
-            for (int i = 0; i < parameters.Count; i++)
-            {
-                canAdd = true;
-                for (int x = 0; x < prunedList.Count; x++)
-                {
-                    if (prunedList[x] == parameters[i]) //This is where the bulk of our logic lies
-                    {
-                        canAdd = false;
-                        break;
-                    }
-                }
-                if (canAdd) prunedList.Add(parameters[i]);
-            }
-            return prunedList;
-        }
-        #endregion
-
-        #region READING
-        /* Read offset info & count, jump to the offset & return the count */
-        private int JumpToOffset(ref BinaryReader reader)
-        {
-            int offset = reader.ReadInt32() * 4;
-            int count = reader.ReadInt32();
-
-            reader.BaseStream.Position = offset;
-            return count;
-        }
-
         /* Read the parameter and composite offsets & get entry points */
-        private bool Load(string path)
+        override protected bool Load()
         {
-            if (!File.Exists(path)) return false;
-            BinaryReader reader = new BinaryReader(File.OpenRead(path));
+            if (!File.Exists(_filepath)) return false;
+
+            BinaryReader reader = new BinaryReader(File.OpenRead(_filepath));
 
             //Read entry points
             _entryPoints = new ShortGuid[3];
@@ -1152,20 +1078,88 @@ namespace CATHODE.Commands
         }
         #endregion
 
-        private string _path = "";
+        #region ACCESSORS
+        /* Return a list of filenames for composites in the CommandsPAK archive */
+        public string[] GetCompositeNames()
+        {
+            string[] toReturn = new string[_composites.Count];
+            for (int i = 0; i < _composites.Count; i++) toReturn[i] = _composites[i].name;
+            return toReturn;
+        }
 
-        // This is always:
-        //  - Root Instance (the map's entry composite, usually containing entities that call mission/environment composites)
-        //  - Global Instance (the main data handler for keeping track of mission number, etc - kinda like a big singleton)
-        //  - Pause Menu Instance
-        private ShortGuid[] _entryPoints;
-        private Composite[] _entryPointObjects = null;
+        /* Find the a script entry object by name */
+        public int GetFileIndex(string FileName)
+        {
+            for (int i = 0; i < _composites.Count; i++) if (_composites[i].name == FileName || _composites[i].name == FileName.Replace('/', '\\')) return i;
+            return -1;
+        }
 
-        private List<Composite> _composites = null;
+        /* Get an individual composite */
+        public Composite GetComposite(ShortGuid id)
+        {
+            if (id.val == null) return null;
+            return _composites.FirstOrDefault(o => o.shortGUID == id);
+        }
+        public Composite GetCompositeByIndex(int index)
+        {
+            return (index >= _composites.Count || index < 0) ? null : _composites[index];
+        }
 
-        private bool _didLoadCorrectly = false;
-        public bool Loaded { get { return _didLoadCorrectly; } }
-        public string Filepath { get { return _path; } }
+        /* Get all composites */
+        public List<Composite> Composites { get { return _composites; } }
+
+        /* Get entry point composite objects */
+        public Composite[] EntryPoints
+        {
+            get
+            {
+                if (_entryPointObjects != null) return _entryPointObjects;
+                _entryPointObjects = new Composite[_entryPoints.Length];
+                for (int i = 0; i < _entryPoints.Length; i++) _entryPointObjects[i] = GetComposite(_entryPoints[i]);
+                return _entryPointObjects;
+            }
+        }
+
+        /* Set the root composite for this COMMANDS.PAK (the root of the level - GLOBAL and PAUSEMENU are also instanced) */
+        public void SetRootComposite(ShortGuid id)
+        {
+            _entryPoints[0] = id;
+            _entryPointObjects = null;
+        }
+        #endregion
+
+        #region HELPERS
+        /* Read offset info & count, jump to the offset & return the count */
+        private int JumpToOffset(ref BinaryReader reader)
+        {
+            int offset = reader.ReadInt32() * 4;
+            int count = reader.ReadInt32();
+
+            reader.BaseStream.Position = offset;
+            return count;
+        }
+
+        /* Filter down a list of parameters to contain only unique entries */
+        private List<ParameterData> PruneParameterList(List<ParameterData> parameters)
+        {
+            List<ParameterData> prunedList = new List<ParameterData>();
+            bool canAdd = true;
+            for (int i = 0; i < parameters.Count; i++)
+            {
+                canAdd = true;
+                for (int x = 0; x < prunedList.Count; x++)
+                {
+                    if (prunedList[x] == parameters[i]) //This is where the bulk of our logic lies
+                    {
+                        canAdd = false;
+                        break;
+                    }
+                }
+                if (canAdd) prunedList.Add(parameters[i]);
+            }
+            return prunedList;
+        }
+        #endregion
 
         /* -- */
 

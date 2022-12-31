@@ -11,28 +11,52 @@ namespace CATHODE.Misc
     /* Handles Cathode PROGRESSION.AIS files */
     public class ProgressionSave : CathodeFile
     {
-        private alien_progression_ais content;
+        private Progression _content;
+        public Progression Content { get { return _content; } }
 
         public ProgressionSave(string path) : base(path) { }
 
+        #region FILE_IO
         /* Load the file */
-        protected override void Load()
+        protected override bool Load()
         {
+            if (!File.Exists(_filepath)) return false;
+
             BinaryReader Stream = new BinaryReader(File.OpenRead(_filepath));
-            content = Utilities.Consume<alien_progression_ais>(Stream);
+            try
+            {
+                _content = Utilities.Consume<Progression>(Stream);
+            }
+            catch
+            {
+                Stream.Close();
+                return false;
+            }
             Stream.Close();
+            return true;
         }
 
         /* Save the file */
-        override public void Save()
+        override public bool Save()
         {
             BinaryWriter stream = new BinaryWriter(File.OpenWrite(_filepath));
-            Utilities.Write<alien_progression_ais>(stream, content);
+            try
+            {
+                Utilities.Write<Progression>(stream, _content);
+            }
+            catch
+            {
+                stream.Close();
+                return false;
+            }
             stream.Close();
+            return true;
         }
+        #endregion
 
+        #region STRUCTURES
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct alien_progression_ais
+        public struct Progression
         {
             public fourcc FourCC;
             public int VersionNum;
@@ -58,5 +82,6 @@ namespace CATHODE.Misc
 
             public byte aimAssist;
         };
+        #endregion
     }
 }

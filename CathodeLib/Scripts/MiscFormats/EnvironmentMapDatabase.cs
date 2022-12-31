@@ -11,48 +11,69 @@ namespace CATHODE.Misc
     /* Loads and/or creates Cathode ENVIRONMENTMAP.BIN files */
     public class EnvironmentMapDatabase : CathodeFile
     {
-        private int unkVal = 12;
+        private int _unknownValue = 12;
 
-        private List<EnvironmentMapEntry> entries = new List<EnvironmentMapEntry>();
-        public List<EnvironmentMapEntry> EnvMaps { get { return entries; } }
+        private List<EnvironmentMapEntry> _entries = new List<EnvironmentMapEntry>();
+        public List<EnvironmentMapEntry> EnvironmentMaps { get { return _entries; } }
 
         public EnvironmentMapDatabase(string path) : base(path) { }
 
+        #region FILE_IO
         /* Load the file */
-        protected override void Load()
+        protected override bool Load()
         {
-            if (!File.Exists(_filepath)) return;
+            if (!File.Exists(_filepath)) return false;
 
-            BinaryReader bin = new BinaryReader(File.OpenRead(_filepath));
-            bin.BaseStream.Position += 8;
-            int entryCount = bin.ReadInt32();
-            unkVal = bin.ReadInt32();
-            for (int i = 0; i < entryCount; i++)
+            BinaryReader reader = new BinaryReader(File.OpenRead(_filepath));
+            try
             {
-                EnvironmentMapEntry entry = new EnvironmentMapEntry();
-                entry.envMapIndex = bin.ReadInt32();
-                entry.mvrIndex = bin.ReadInt32();
-                entries.Add(entry);
+                reader.BaseStream.Position += 8;
+                int entryCount = reader.ReadInt32();
+                _unknownValue = reader.ReadInt32();
+                for (int i = 0; i < entryCount; i++)
+                {
+                    EnvironmentMapEntry entry = new EnvironmentMapEntry();
+                    entry.envMapIndex = reader.ReadInt32();
+                    entry.mvrIndex = reader.ReadInt32();
+                    _entries.Add(entry);
+                }
             }
-            bin.Close();
+            catch
+            {
+                reader.Close();
+                return false;
+            }
+            reader.Close();
+            return true;
         }
 
-        public void Save()
+        override public bool Save()
         {
-            BinaryWriter bin = new BinaryWriter(File.OpenWrite(_filepath));
-            bin.BaseStream.SetLength(0);
-            bin.Write(new char[] { 'e', 'n', 'v', 'm' });
-            bin.Write(1);
-            bin.Write(entries.Count);
-            bin.Write(unkVal); //TODO: what is this value? need to know for making new files.
-            for (int i = 0; i < entries.Count; i++)
+            BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath));
+            try
             {
-                bin.Write(entries[i].envMapIndex);
-                bin.Write(entries[i].mvrIndex);
+                writer.BaseStream.SetLength(0);
+                writer.Write(new char[] { 'e', 'n', 'v', 'm' });
+                writer.Write(1);
+                writer.Write(_entries.Count);
+                writer.Write(_unknownValue); //TODO: what is this value? need to know for making new files.
+                for (int i = 0; i < _entries.Count; i++)
+                {
+                    writer.Write(_entries[i].envMapIndex);
+                    writer.Write(_entries[i].mvrIndex);
+                }
             }
-            bin.Close();
+            catch
+            {
+                writer.Close();
+                return false;
+            }
+            writer.Close();
+            return true;
         }
+        #endregion
 
+        #region STRUCTURES
         public class EnvironmentMapEntry
         {
             public int envMapIndex;
@@ -67,5 +88,6 @@ namespace CATHODE.Misc
             public int EntryCount;
             public uint Unknown1_;
         };
+        #endregion
     }
 }

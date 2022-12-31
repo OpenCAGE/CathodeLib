@@ -22,24 +22,36 @@ namespace CATHODE.Misc
 
         public NavigationMesh(string path) : base(path) { }
 
+        #region FILE_IO
         /* Load the file */
-        protected override void Load()
+        protected override bool Load()
         {
+            if (!File.Exists(_filepath)) return false;
+
             BinaryReader stream = new BinaryReader(File.OpenRead(_filepath));
-            Header = Utilities.Consume<dtMeshHeader>(stream);
-            Vertices = Utilities.ConsumeArray<System.Numerics.Vector3>(stream, Header.vertCount);
-            Polygons = Utilities.ConsumeArray<dtPoly>(stream, Header.polyCount);
-            Links = Utilities.ConsumeArray<dtLink>(stream, Header.maxLinkCount);
-            DetailMeshes = Utilities.ConsumeArray<dtPolyDetail>(stream, Header.detailMeshCount);
-            DetailVertices = Utilities.ConsumeArray<System.Numerics.Vector3>(stream, Header.vertCount);
-            DetailIndices = Utilities.ConsumeArray<byte>(stream, Header.detailTriCount * 4);
-            BoundingVolumeTree = Utilities.ConsumeArray<dtBVNode>(stream, Header.bvNodeCount);
-            OffMeshConnections = Utilities.ConsumeArray<dtOffMeshConnection>(stream, Header.offMeshConCount);
+            try
+            {
+                Header = Utilities.Consume<dtMeshHeader>(stream);
+                Vertices = Utilities.ConsumeArray<System.Numerics.Vector3>(stream, Header.vertCount);
+                Polygons = Utilities.ConsumeArray<dtPoly>(stream, Header.polyCount);
+                Links = Utilities.ConsumeArray<dtLink>(stream, Header.maxLinkCount);
+                DetailMeshes = Utilities.ConsumeArray<dtPolyDetail>(stream, Header.detailMeshCount);
+                DetailVertices = Utilities.ConsumeArray<System.Numerics.Vector3>(stream, Header.vertCount);
+                DetailIndices = Utilities.ConsumeArray<byte>(stream, Header.detailTriCount * 4);
+                BoundingVolumeTree = Utilities.ConsumeArray<dtBVNode>(stream, Header.bvNodeCount);
+                OffMeshConnections = Utilities.ConsumeArray<dtOffMeshConnection>(stream, Header.offMeshConCount);
+            }
+            catch
+            {
+                stream.Close();
+                return false;
+            }
             stream.Close();
+            return true;
         }
+        #endregion
 
-
-
+        #region STRUCTURES
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public struct dtMeshHeader
         {
@@ -177,5 +189,6 @@ namespace CATHODE.Misc
             /// The id of the offmesh connection. (User assigned when the navigation mesh is built.)
             public int userId;
         };
+        #endregion
     }
 }

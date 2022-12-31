@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System;
 using CATHODE.Commands;
+using static CATHODE.Misc.CollisionMap;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #else
@@ -14,68 +15,73 @@ namespace CATHODE.Misc
     /* Handles Cathode ENVIRONMENT_ANIMATION.DAT files */
     public class EnvironmentAnimationDatabase : CathodeFile
     {
-        private List<EnvironmentAnimation> anims = new List<EnvironmentAnimation>();
-        public List<EnvironmentAnimation> Animations { get { return anims; } }
+        private List<EnvironmentAnimation> _animations = new List<EnvironmentAnimation>();
+        public List<EnvironmentAnimation> Animations { get { return _animations; } }
 
         public EnvironmentAnimationDatabase(string path) : base(path) { }
 
+        #region FILE_IO
         /* Load the file */
-        protected override void Load()
+        protected override bool Load()
         {
+            if (!File.Exists(_filepath)) return false;
+
             BinaryReader reader = new BinaryReader(File.OpenRead(_filepath));
-            
-            //Read header
-            reader.BaseStream.Position += 8; //Skip version and filesize
-            OffsetPair matrix0 = Utilities.Consume<OffsetPair>(reader);
-            OffsetPair matrix1 = Utilities.Consume<OffsetPair>(reader);
-            OffsetPair entries1 = Utilities.Consume<OffsetPair>(reader);
-            OffsetPair entries0 = Utilities.Consume<OffsetPair>(reader);
-            OffsetPair ids0 = Utilities.Consume<OffsetPair>(reader);
-            OffsetPair ids1 = Utilities.Consume<OffsetPair>(reader);
-            reader.BaseStream.Position += 8; //Skip unknown
-
-            //Jump down and read all content we'll consume into our EnvironmentAnimation
-            reader.BaseStream.Position = matrix0.GlobalOffset;
-            Matrix4x4[] Matrices0 = Utilities.ConsumeArray<Matrix4x4>(reader, matrix0.EntryCount);
-            Matrix4x4[] Matrices1 = Utilities.ConsumeArray<Matrix4x4>(reader, matrix1.EntryCount);
-            int[] IDs0 = Utilities.ConsumeArray<int>(reader, ids0.EntryCount);
-            int[] IDs1 = Utilities.ConsumeArray<int>(reader, ids1.EntryCount);
-            EnvironmentAnimationInfo[] Entries1 = Utilities.ConsumeArray<EnvironmentAnimationInfo>(reader, entries1.EntryCount);
-
-            //Jump back to our main definition and read all additional content in
-            reader.BaseStream.Position = entries0.GlobalOffset;
-            for (int i = 0; i < entries0.EntryCount; i++)
+            try
             {
-                EnvironmentAnimation anim = new EnvironmentAnimation();
-                anim.Matrix = Utilities.Consume<Matrix4x4>(reader);
-                anim.ID = Utilities.Consume<ShortGuid>(reader);
-                reader.BaseStream.Position += 4;
-                anim.ResourceIndex = reader.ReadInt32();
+                //Read header
+                reader.BaseStream.Position += 8; //Skip version and filesize
+                OffsetPair matrix0 = Utilities.Consume<OffsetPair>(reader);
+                OffsetPair matrix1 = Utilities.Consume<OffsetPair>(reader);
+                OffsetPair entries1 = Utilities.Consume<OffsetPair>(reader);
+                OffsetPair entries0 = Utilities.Consume<OffsetPair>(reader);
+                OffsetPair ids0 = Utilities.Consume<OffsetPair>(reader);
+                OffsetPair ids1 = Utilities.Consume<OffsetPair>(reader);
+                reader.BaseStream.Position += 8; //Skip unknown
 
-                anim.Indexes0 = PopulateArray<int>(reader, IDs0);
-                anim.Indexes1 = PopulateArray<int>(reader, IDs1);
+                //Jump down and read all content we'll consume into our EnvironmentAnimation
+                reader.BaseStream.Position = matrix0.GlobalOffset;
+                Matrix4x4[] Matrices0 = Utilities.ConsumeArray<Matrix4x4>(reader, matrix0.EntryCount);
+                Matrix4x4[] Matrices1 = Utilities.ConsumeArray<Matrix4x4>(reader, matrix1.EntryCount);
+                int[] IDs0 = Utilities.ConsumeArray<int>(reader, ids0.EntryCount);
+                int[] IDs1 = Utilities.ConsumeArray<int>(reader, ids1.EntryCount);
+                EnvironmentAnimationInfo[] Entries1 = Utilities.ConsumeArray<EnvironmentAnimationInfo>(reader, entries1.EntryCount);
 
-                int matrix_count = reader.ReadInt32();
-                int matrix_index = reader.ReadInt32();
-                anim.Matrices0 = PopulateArray<Matrix4x4>(matrix_count, matrix_index, Matrices0);
-                anim.Matrices1 = PopulateArray<Matrix4x4>(matrix_count, matrix_index, Matrices1);
+                //Jump back to our main definition and read all additional content in
+                reader.BaseStream.Position = entries0.GlobalOffset;
+                for (int i = 0; i < entries0.EntryCount; i++)
+                {
+                    EnvironmentAnimation anim = new EnvironmentAnimation();
+                    anim.Matrix = Utilities.Consume<Matrix4x4>(reader);
+                    anim.ID = Utilities.Consume<ShortGuid>(reader);
+                    reader.BaseStream.Position += 4;
+                    anim.ResourceIndex = reader.ReadInt32();
 
-                anim.Data0 = PopulateArray<EnvironmentAnimationInfo>(reader, Entries1);
+                    anim.Indexes0 = PopulateArray<int>(reader, IDs0);
+                    anim.Indexes1 = PopulateArray<int>(reader, IDs1);
 
-                reader.BaseStream.Position += 4; //TODO: i think this might be a flag - it's usually zero but has been 1 on hab_airport
-                anims.Add(anim);
+                    int matrix_count = reader.ReadInt32();
+                    int matrix_index = reader.ReadInt32();
+                    anim.Matrices0 = PopulateArray<Matrix4x4>(matrix_count, matrix_index, Matrices0);
+                    anim.Matrices1 = PopulateArray<Matrix4x4>(matrix_count, matrix_index, Matrices1);
+
+                    anim.Data0 = PopulateArray<EnvironmentAnimationInfo>(reader, Entries1);
+
+                    reader.BaseStream.Position += 4; //TODO: i think this might be a flag - it's usually zero but has been 1 on hab_airport
+                    _animations.Add(anim);
+                }
             }
-
+            catch
+            {
+                reader.Close();
+                return false;
+            }
             reader.Close();
+            return true;
         }
+        #endregion
 
-        /* Save the database */
-        public override void Save()
-        {
-            base.Save();
-        }
-
-
+        #region HELPERS
         private List<T> PopulateArray<T>(BinaryReader reader, T[] array)
         {
             List<T> arr = new List<T>();
@@ -101,8 +107,9 @@ namespace CATHODE.Misc
                 arr.Add(array[index + x]);
             return arr;
         }
+        #endregion
 
-
+        #region STRUCTURES
         public class EnvironmentAnimation
         {
             public Matrix4x4 Matrix;
@@ -128,5 +135,6 @@ namespace CATHODE.Misc
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
             public byte[] Unknown_;
         };
+        #endregion
     }
 }
