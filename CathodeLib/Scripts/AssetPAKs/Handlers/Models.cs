@@ -63,7 +63,7 @@ namespace CATHODE.Assets
 
                     AlienVBF VertexInput = new AlienVBF();
                     VertexInput.ElementCount = count;
-                    VertexInput.Elements = CATHODE.Utilities.ConsumeArray<AlienVBFE>(bin, VertexInput.ElementCount).ToList();
+                    VertexInput.Elements = CathodeLib.Utilities.ConsumeArray<AlienVBFE>(bin, VertexInput.ElementCount).ToList();
                     _vertexFormats.Add(VertexInput);
                 }
 
@@ -71,15 +71,15 @@ namespace CATHODE.Assets
                 byte[] filenames = bin.ReadBytes(bin.ReadInt32());
 
                 //Read all model metadata
-                _metadata = CATHODE.Utilities.ConsumeArray<CS2>(bin, modelCount).ToList();
+                _metadata = CathodeLib.Utilities.ConsumeArray<CS2>(bin, modelCount).ToList();
 
                 //Fetch filenames from chunk
                 _filePaths = new List<string>();
                 _partNames = new List<string>();
                 for (int i = 0; i < _metadata.Count; ++i)
                 {
-                    _filePaths.Add(CATHODE.Utilities.ReadString(filenames, _metadata[i].FileNameOffset).Replace('\\', '/'));
-                    _partNames.Add(CATHODE.Utilities.ReadString(filenames, _metadata[i].ModelPartNameOffset).Replace('\\', '/'));
+                    _filePaths.Add(CathodeLib.Utilities.ReadString(filenames, _metadata[i].FileNameOffset).Replace('\\', '/'));
+                    _partNames.Add(CathodeLib.Utilities.ReadString(filenames, _metadata[i].ModelPartNameOffset).Replace('\\', '/'));
                 }
 
                 //Read bone chunk

@@ -1,13 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
+﻿using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
 using CATHODE.Commands;
+using CathodeLib;
 
-namespace CATHODE.Misc
+namespace CATHODE
 {
     /* Handles CATHODE RESOURCES.BIN files */
     //This file seems to govern data being drawn from either MVR or COMMANDS

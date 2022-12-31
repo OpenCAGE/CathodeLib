@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace CATHODE.Misc
+namespace CathodeLib
 {
     public class CathodeFile
     {

@@ -2,15 +2,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System;
-using System.Linq;
-#if UNITY_EDITOR || UNITY_STANDALONE
-using UnityEngine;
-#else
-using System.Numerics;
-#endif
 using CATHODE.Commands;
+using CathodeLib;
+using System.Numerics;
 
-namespace CATHODE.Misc
+namespace CATHODE
 {
     /* Handles Cathode MODELS.MVR files */
     public class MoverDatabase : CathodeFile
@@ -203,7 +199,7 @@ namespace CATHODE.Misc
 
             public UInt32 resourcesIndex;
             //256
-            public Vector3 Unknowns5_;
+            public CathodeLib.Vector3 Unknowns5_;
             public UInt32 visibility; // pulled from iOS dump - should be visibility var?
                                       //272
             public ShortGuid commandsNodeID; // this is the ID of the node inside the composite, not the instanced composite node
@@ -289,7 +285,7 @@ namespace CATHODE.Misc
             public UInt32[] Unknowns2_;
             //184
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public Vector3[] UnknownMinMax_; // NOTE: Sometimes I see 'nan's here too.
+            public CathodeLib.Vector3[] UnknownMinMax_; // NOTE: Sometimes I see 'nan's here too.
                                              //208
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 36)]
             public byte[] blankSpace3;

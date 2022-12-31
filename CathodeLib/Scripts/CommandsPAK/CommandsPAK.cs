@@ -1,15 +1,11 @@
 //#define DO_PRETTY_COMPOSITES
 
-using CATHODE.Misc;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-#if UNITY_EDITOR || UNITY_STANDALONE
-using UnityEngine;
-#endif
 
 namespace CATHODE.Commands
 {

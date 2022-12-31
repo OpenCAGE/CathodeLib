@@ -1,14 +1,9 @@
-﻿using CathodeLib.Properties;
+﻿using CathodeLib;
+using CathodeLib.Properties;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-#if UNITY_EDITOR || UNITY_STANDALONE
-using UnityEngine;
-#else
-using System.Numerics;
-using System.Runtime.Serialization.Formatters.Binary;
-#endif
 
 namespace CATHODE.Commands
 {

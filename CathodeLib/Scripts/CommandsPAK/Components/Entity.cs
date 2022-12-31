@@ -1,5 +1,6 @@
 ﻿using CATHODE.Assets.Utilities;
 using CATHODE.Commands;
+using CathodeLib;
 using CathodeLib.Properties;
 using System;
 using System.Collections.Generic;

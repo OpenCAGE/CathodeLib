@@ -1,16 +1,11 @@
 ﻿using System.Collections.Generic;
 using System.IO;
-using System.Runtime.InteropServices;
-using System;
-using CATHODE.Commands;
-using static CATHODE.Misc.CollisionMap;
-#if UNITY_EDITOR || UNITY_STANDALONE
-using UnityEngine;
-#else
 using System.Numerics;
-#endif
+using System.Runtime.InteropServices;
+using CATHODE.Commands;
+using CathodeLib;
 
-namespace CATHODE.Misc
+namespace CATHODE
 {
     /* Handles Cathode ENVIRONMENT_ANIMATION.DAT files */
     public class EnvironmentAnimationDatabase : CathodeFile
@@ -129,7 +124,7 @@ namespace CATHODE.Misc
         public struct EnvironmentAnimationInfo
         {
             public ShortGuid ID;
-            public Vector3 P;
+            public CathodeLib.Vector3 P;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)]
             public float[] V;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]

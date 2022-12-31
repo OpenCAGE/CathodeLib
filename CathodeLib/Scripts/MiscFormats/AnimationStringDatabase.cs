@@ -7,14 +7,14 @@ using System.Text;
 using CATHODE.Commands;
 using CathodeLib;
 
-namespace CATHODE.Misc
+namespace CATHODE
 {
     /* Handles Cathode animation string DB files (ANIM_STRING_DB.BIN, ANIM_STRING_DB_DEBUG.BIN) */
-    public class AnimationStringDB : CathodeFile
+    public class AnimationStringDatabase : CathodeFile
     {
         private Dictionary<uint, string> _strings = new Dictionary<uint, string>();
 
-        public AnimationStringDB(string path) : base(path) { }
+        public AnimationStringDatabase(string path) : base(path) { }
 
         #region FILE_IO
         /* Load the file */

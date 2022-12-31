@@ -1,10 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
+using CathodeLib;
 
-namespace CATHODE.Misc
+namespace CATHODE
 {
     /* CATHODE uses a slightly modified version of Detour */
     public class NavigationMesh : CathodeFile

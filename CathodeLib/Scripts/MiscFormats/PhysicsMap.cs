@@ -1,14 +1,9 @@
-﻿using System.Collections.Generic;
-using System.IO;
-using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.ComTypes;
-#if UNITY_EDITOR || UNITY_STANDALONE
-using UnityEngine;
-#else
+﻿using System.IO;
 using System.Numerics;
-#endif
+using System.Runtime.InteropServices;
+using CathodeLib;
 
-namespace CATHODE.Misc
+namespace CATHODE
 {
     /* Handles Cathode PHYSICS.MAP files */
     public class PhysicsMap : CathodeFile

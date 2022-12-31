@@ -1,23 +1,17 @@
-﻿using CATHODE.Commands;
-using System;
-using System.Collections.Generic;
+﻿using CathodeLib;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.ComTypes;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace CATHODE.Misc
+namespace CATHODE
 {
     /* Handles Cathode COLLISION.MAP files */
-    public class CollisionMap : CathodeFile
+    public class CollisionMappings : CathodeFile
     {
         //TODO: tidy how we access these
         public Header _header;
         public Entry[] _entries;
 
-        public CollisionMap(string path) : base(path) { }
+        public CollisionMappings(string path) : base(path) { }
 
         #region FILE_IO
         /* Load the file */

@@ -1,12 +1,9 @@
-﻿using System;
+﻿using CathodeLib;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace CATHODE.Misc
+namespace CATHODE
 {
     /* Loads and/or creates Cathode ENVIRONMENTMAP.BIN files */
     public class EnvironmentMapDatabase : CathodeFile

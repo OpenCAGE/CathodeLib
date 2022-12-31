@@ -17,7 +17,7 @@ namespace CathodeLib
             int compositeCount = reader.ReadInt32();
             pathLookup = new Dictionary<ShortGuid, string>(compositeCount);
             for (int i = 0; i < compositeCount; i++)
-                pathLookup.Add(CATHODE.Utilities.Consume<ShortGuid>(reader), reader.ReadString());
+                pathLookup.Add(CathodeLib.Utilities.Consume<ShortGuid>(reader), reader.ReadString());
         }
 
         public static string GetFullPath(ShortGuid guid)

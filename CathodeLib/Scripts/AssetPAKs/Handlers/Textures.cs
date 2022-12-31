@@ -58,7 +58,7 @@ namespace CATHODE.Assets
                 for (int i = 0; i < NumberOfEntriesBIN; i++)
                 {
                     TEX4 TextureEntry = new TEX4();
-                    TextureEntry.FileName = CATHODE.Utilities.ReadString(bin);
+                    TextureEntry.FileName = CathodeLib.Utilities.ReadString(bin);
                     //TODO: maybe we should stop doing this & just do in AlienPAK instead
                     if (Path.GetExtension(TextureEntry.FileName).ToUpper() != ".DDS")
                         TextureEntry.FileName += ".dds";
@@ -228,7 +228,7 @@ namespace CATHODE.Assets
                 bin.Write(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
                 for (int i = 0; i < _entries.Count; i++)
                 {
-                    CATHODE.Utilities.Write<string>(bin, _entries[i].FileName); //TODO: does this need converting to char array?
+                    CathodeLib.Utilities.Write<string>(bin, _entries[i].FileName); //TODO: does this need converting to char array?
                     bin.Write((byte)0x00);
                 }
                 int binHeaderStart = (int)bin.BaseStream.Position - 12;
