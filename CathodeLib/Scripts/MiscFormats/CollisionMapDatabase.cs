@@ -1,18 +1,17 @@
-﻿using System.IO;
-using System.Numerics;
+﻿using CathodeLib;
+using System.IO;
 using System.Runtime.InteropServices;
-using CathodeLib;
 
 namespace CATHODE
 {
-    /* Handles Cathode PHYSICS.MAP files */
-    public class PhysicsMap : CathodeFile
+    /* Handles Cathode COLLISION.MAP files */
+    public class CollisionMapDatabase : CathodeFile
     {
         //TODO: tidy how we access these
         public Header _header;
         public Entry[] _entries;
 
-        public PhysicsMap(string path) : base(path) { }
+        public CollisionMapDatabase(string path) : base(path) { }
 
         #region FILE_IO
         /* Load the file */
@@ -75,22 +74,18 @@ namespace CATHODE
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public struct Header
         {
-            public int FileSizeExcludingThis;
+            public int DataSize;
             public int EntryCount;
         };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public struct Entry
         {
-            public int UnknownNotableValue_;
-            public int UnknownZero;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-            public int[] IDs; //4
-            public Vector4 Row0; // NOTE: This is a 3x4 matrix, seems to have rotation data on the leftmost 3x3 matrix, and position
-            public Vector4 Row1; //   on the rightmost 3x1 matrix.
-            public Vector4 Row2;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public int[] UnknownZeros_; //2
+            public int[] Unknowns1; //12
+            public int ID;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 7)]
+            public int[] Unknowns2; //12
         };
         #endregion
     }

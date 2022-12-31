@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-namespace CATHODE.Commands
+namespace CATHODE.Scripting
 {
     //Helpful lookup tables for various Cathode Commands types
     public static class CommandsUtils

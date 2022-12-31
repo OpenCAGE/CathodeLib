@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace CATHODE.Commands
+namespace CATHODE.Scripting
 {
     /* A parameter which consists of a name and data, with a variant for how it is used */
     [Serializable]

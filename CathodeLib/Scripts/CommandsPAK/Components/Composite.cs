@@ -6,7 +6,7 @@ using UnityEngine;
 #else
 #endif
 
-namespace CATHODE.Commands
+namespace CATHODE.Scripting
 {
     /* A script composite containing entities */
     [Serializable]

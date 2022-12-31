@@ -3,7 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 
-namespace CATHODE.Commands
+namespace CATHODE.Scripting
 {
     /* A unique id assigned to CATHODE objects */
     [Serializable]

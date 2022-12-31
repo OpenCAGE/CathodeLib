@@ -1,5 +1,6 @@
 //#define DO_PRETTY_COMPOSITES
 
+using CATHODE.Scripting;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
@@ -7,9 +8,9 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 
-namespace CATHODE.Commands
+namespace CATHODE
 {
-    public class CommandsPAK : CathodeFile
+    public class Commands : CathodeFile
     {
         public Action OnLoaded;
         public Action OnSaved;
@@ -26,7 +27,7 @@ namespace CATHODE.Commands
         //TODO: deprecate this idea of being "loaded" once we can fully write our own PAKs
         public bool Loaded { get { return _entryPoints != null && _entryPoints.Length == 3 && _entryPoints[0] != null; } }
 
-        public CommandsPAK(string path) : base(path) { }
+        public Commands(string path) : base(path) { }
 
         #region FILE_IO
         /* Save all changes back out */

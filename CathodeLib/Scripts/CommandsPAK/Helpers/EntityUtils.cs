@@ -7,16 +7,16 @@ using System.Runtime.InteropServices;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
 
-namespace CATHODE.Commands
+namespace CATHODE.Scripting
 {
     //This should be initialised per-commandspak, and serves as a helpful extension to manage entity names
     public class EntityUtils
     {
-        private CommandsPAK commandsPAK;
+        private Commands commandsPAK;
         private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> vanilla_composites;
         private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> custom_composites;
 
-        public EntityUtils(CommandsPAK commands = null)
+        public EntityUtils(Commands commands = null)
         {
             commandsPAK = commands;
             if (commandsPAK != null) 

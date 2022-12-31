@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System;
-using CATHODE.Commands;
+using CATHODE.Scripting;
 using CathodeLib;
 using System.Numerics;
 

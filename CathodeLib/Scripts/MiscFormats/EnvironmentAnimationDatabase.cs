@@ -2,7 +2,7 @@
 using System.IO;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using CATHODE.Commands;
+using CATHODE.Scripting;
 using CathodeLib;
 
 namespace CATHODE

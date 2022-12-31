@@ -1,18 +1,18 @@
-﻿using CATHODE.Commands;
+﻿using CATHODE.Scripting;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace CATHODE.Commands
+namespace CATHODE.Scripting
 {
     public static class ShortGuidUtils
     {
         private static ShortGuidTable vanilla = new ShortGuidTable();
         private static ShortGuidTable custom = new ShortGuidTable();
 
-        private static CommandsPAK commandsPAK;
+        private static Commands commandsPAK;
 
         /* Pull in strings we know are cached as ShortGuid in Cathode */
         static ShortGuidUtils(/*CommandsPAK pak = null*/)

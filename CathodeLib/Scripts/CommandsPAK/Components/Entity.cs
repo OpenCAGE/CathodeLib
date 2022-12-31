@@ -1,5 +1,5 @@
 ﻿using CATHODE.Assets.Utilities;
-using CATHODE.Commands;
+using CATHODE.Scripting;
 using CathodeLib;
 using CathodeLib.Properties;
 using System;
@@ -9,7 +9,7 @@ using System.Diagnostics.SymbolStore;
 using System.Linq;
 using System.Runtime.InteropServices;
 
-namespace CATHODE.Commands
+namespace CATHODE.Scripting
 {
     /* An entity in a composite */
     [Serializable]

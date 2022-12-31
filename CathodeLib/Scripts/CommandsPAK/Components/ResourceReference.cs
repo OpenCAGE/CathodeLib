@@ -2,7 +2,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace CATHODE.Commands
+namespace CATHODE.Scripting
 {
     /* A reference to a game resource (E.G. a renderable element, a collision mapping, etc) */
     [Serializable]

@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace CATHODE.Commands
+namespace CATHODE.Scripting
 {
     /* Entity variants */
     public enum EntityVariant

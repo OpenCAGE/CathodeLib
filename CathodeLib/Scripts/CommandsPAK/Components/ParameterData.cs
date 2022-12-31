@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace CATHODE.Commands
+namespace CATHODE.Scripting
 {
     /* Data which can be used within a parameter */
     [Serializable]
