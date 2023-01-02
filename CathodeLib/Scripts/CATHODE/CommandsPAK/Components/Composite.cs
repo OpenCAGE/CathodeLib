@@ -12,6 +12,14 @@ namespace CATHODE.Scripting
     [Serializable]
     public class Composite
     {
+        public Composite() { }
+        public Composite(string name)
+        {
+            shortGUID = ShortGuidUtils.GenerateRandom();
+            this.name = name;
+            unknownPair = new OffsetPair(0, 0);
+        }
+
         public ShortGuid shortGUID;  //The id when this composite is used as an entity in another composite
         public string name = ""; //The string name of the composite
 
