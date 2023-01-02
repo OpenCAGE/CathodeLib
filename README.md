@@ -3,7 +3,12 @@
 An open source library providing functionality to parse and write various formats from the Cathode engine, used for modding Alien: Isolation.
 
 - For scripting:
-    - `CATHODE.Commands` handles `COMMANDS.PAK` files
+    - `CATHODE.Commands` handles `COMMANDS.PAK` files (for scripting)
+	    - The file consists of `Composite` scripts which hold various `Entity` types for logic
+		    - `FunctionEntity` = functions which execute functionality, with parameters and links to child `Entity` objects
+			- `VariableEntity` = variables which can be used externally as parameters on an instanced `Composite` via a `FunctionEntity`
+			- `ProxyEntity` = a proxy of a `FunctionEntity` within another `Composite`, useful for acting on events in another composite
+			- `OverrideEntity` = an override of a parameter value on an entity within an instanced `Composite` in this `Composite`
     
 - For assets:
     - `CATHODE.Assets.PAK2` handles `UI.PAK` and `ANIMATIONS.PAK` files
@@ -24,9 +29,10 @@ An open source library providing functionality to parse and write various format
     - `CATHODE.AnimationStringDatabase` handles `ANIM_STRING_DB.BIN` and `ANIM_STRING_DB_DEBUG.BIN` files
     - `CATHODE.NavigationMesh` handles `NAV_MESH` files
 
+- For configurations:
+    - `CATHODE.BML` handles any `.BML` files
+	    - Get/set content as an `XmlDocument` via `BML.Content`
+
 - For saves:
     - `CATHODE.ProgressionSave` handles `PROGRESSION.AIS` files
     - `CATHODE.MissionSave` handles `PROGRESSION.AIS` files
-
-- For configurations:
-    - `CATHODE.BML.AlienBML` converts any `*.BML` files to XML

@@ -9,10 +9,13 @@ namespace CathodeLib
         public string Filepath { get { return _filepath; } }
         protected string _filepath = "";
 
+        public bool Loaded { get { return _loaded; } }
+        protected bool _loaded = false;
+
         public CathodeFile(string filepath)
         {
             _filepath = filepath;
-            Load();
+            _loaded = Load();
         }
 
         protected virtual bool Load()

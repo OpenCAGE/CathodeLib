@@ -39,9 +39,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\AlienBML\AlienBML\AlienBML.cs" Link="Scripts\File Handlers\BML\AlienBML.cs" />
-    <Compile Include="..\AlienBML\AlienBML\BML.cs" Link="Scripts\File Handlers\BML\BML.cs" />
-    <Compile Include="..\AlienBML\AlienBML\BMLString.cs" Link="Scripts\File Handlers\BML\BMLString.cs" />
+    <Compile Include="..\AlienBML\BML.cs" Link="Scripts\CATHODE\BML.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -71,10 +69,6 @@
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Scripts\File Handlers\BML\" />
   </ItemGroup>
 
 </Project>

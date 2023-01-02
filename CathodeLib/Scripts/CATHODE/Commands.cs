@@ -24,16 +24,14 @@ namespace CATHODE
 
         private List<Composite> _composites = null;
 
-        //TODO: deprecate this idea of being "loaded" once we can fully write our own PAKs
-        public bool Loaded { get { return _entryPoints != null && _entryPoints.Length == 3 && _entryPoints[0] != null; } }
-
         public Commands(string path) : base(path) { }
 
         #region FILE_IO
         /* Save all changes back out */
         override public bool Save()
         {
-            if (!Loaded) return false;
+            if (_entryPoints == null || _entryPoints.Length != 3 || _entryPoints[0] == null)
+                return false;
 
             BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath));
             writer.BaseStream.SetLength(0);
@@ -1110,6 +1108,7 @@ namespace CATHODE
         {
             get
             {
+                if (_entryPoints == null) return null;
                 if (_entryPointObjects != null) return _entryPointObjects;
                 _entryPointObjects = new Composite[_entryPoints.Length];
                 for (int i = 0; i < _entryPoints.Length; i++) _entryPointObjects[i] = GetComposite(_entryPoints[i]);
