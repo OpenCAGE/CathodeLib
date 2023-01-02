@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Diagnostics.SymbolStore;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Xml.Linq;
 
 namespace CATHODE.Scripting.Internal
 {
@@ -57,8 +58,11 @@ namespace CATHODE.Scripting.Internal
         /* Add a data-supplying parameter to the entity */
         public Parameter AddParameter(string name, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER)
         {
+            return AddParameter(ShortGuidUtils.Generate(name), data, variant);
+        }
+        public Parameter AddParameter(ShortGuid id, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER)
+        {
             //TODO: we are limiting data-supplying params to ONE per entity here - is this correct? I think links are the only place where you can have multiple of the same.
-            ShortGuid id = ShortGuidUtils.Generate(name);
             Parameter param = GetParameter(id);
             if (param == null)
             {

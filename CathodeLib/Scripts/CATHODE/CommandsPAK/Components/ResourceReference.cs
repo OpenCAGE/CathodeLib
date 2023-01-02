@@ -36,7 +36,7 @@ namespace CATHODE.Scripting
             if (x.entryType != y.entryType) return false;
             if (x.startIndex != y.startIndex) return false;
             if (x.count != y.count) return false;
-            if (x.entityID != y.entityID) return false;
+            if (x.collisionID != y.collisionID) return false;
 
             return true;
         }
@@ -59,7 +59,7 @@ namespace CATHODE.Scripting
                    entryType == reference.entryType &&
                    startIndex == reference.startIndex &&
                    count == reference.count &&
-                   EqualityComparer<ShortGuid>.Default.Equals(entityID, reference.entityID);
+                   EqualityComparer<ShortGuid>.Default.Equals(collisionID, reference.collisionID);
         }
 
         public override int GetHashCode()
@@ -71,7 +71,7 @@ namespace CATHODE.Scripting
             hashCode = hashCode * -1521134295 + entryType.GetHashCode();
             hashCode = hashCode * -1521134295 + startIndex.GetHashCode();
             hashCode = hashCode * -1521134295 + count.GetHashCode();
-            hashCode = hashCode * -1521134295 + entityID.GetHashCode();
+            hashCode = hashCode * -1521134295 + collisionID.GetHashCode();
             return hashCode;
         }
 
@@ -84,6 +84,6 @@ namespace CATHODE.Scripting
         public int startIndex = -1;
         public int count = 1;
 
-        public ShortGuid entityID = new ShortGuid("FF-FF-FF-FF");
+        public ShortGuid collisionID = new ShortGuid("FF-FF-FF-FF");
     }
 }

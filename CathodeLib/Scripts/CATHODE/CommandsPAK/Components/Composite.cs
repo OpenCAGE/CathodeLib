@@ -18,7 +18,7 @@ namespace CATHODE.Scripting
         {
             shortGUID = ShortGuidUtils.GenerateRandom();
             this.name = name;
-            unknownPair = new OffsetPair(0, 0);
+            unknownPair = new OffsetPair(5, 6); //TODO: what on earth this this?
         }
 
         public ShortGuid shortGUID;  //The id when this composite is used as an entity in another composite
