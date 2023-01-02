@@ -1,12 +1,14 @@
 //#define DO_PRETTY_COMPOSITES
 
 using CATHODE.Scripting;
+using CATHODE.Scripting.Internal;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
 
 namespace CATHODE
 {
@@ -19,10 +21,11 @@ namespace CATHODE
         //  - Root Instance (the map's entry composite, usually containing entities that call mission/environment composites)
         //  - Global Instance (the main data handler for keeping track of mission number, etc - kinda like a big singleton)
         //  - Pause Menu Instance
-        private ShortGuid[] _entryPoints;
+        private ShortGuid[] _entryPoints = null;
         private Composite[] _entryPointObjects = null;
 
-        private List<Composite> _composites = null;
+        public List<Composite> Composites { get { return _composites; } }
+        private List<Composite> _composites = new List<Composite>();
 
         public Commands(string path) : base(path) { }
 
@@ -30,15 +33,52 @@ namespace CATHODE
         /* Save all changes back out */
         override public bool Save()
         {
-            if (_entryPoints == null || _entryPoints.Length != 3 || _entryPoints[0] == null)
-                return false;
+            //Validate entry points and composite count
+            if (_composites.Count == 0) return false;
+            if (_entryPoints == null) _entryPoints = new ShortGuid[3];
+            if (_entryPoints[0].val == null && _entryPoints[1].val == null && _entryPoints[2].val == null && _composites.Count == 0) return false;
+
+            //If we have composites but the entry points are broken, correct them first!
+            if (GetComposite(_entryPoints[2]) == null)
+            {
+                Composite pausemenu = GetComposite("PAUSEMENU");
+                if (pausemenu == null)
+                {
+                    Console.WriteLine("WARNING: PAUSEMENU composite does not exist! Creating blank placeholder.");
+                    pausemenu = AddComposite("PAUSEMENU");
+                    pausemenu.shortGUID = new ShortGuid("FE-7B-FE-B3");
+                }
+                _entryPoints[2] = pausemenu.shortGUID;
+            }
+            if (GetComposite(_entryPoints[1]) == null)
+            {
+                Composite global = GetComposite("GLOBAL");
+                if (global == null)
+                {
+                    Console.WriteLine("WARNING: GLOBAL composite does not exist! Creating blank placeholder. This may cause issues with GLOBAL references.");
+                    global = AddComposite("GLOBAL");
+                    global.shortGUID = new ShortGuid("1D-2E-CE-E5");
+                }
+                _entryPoints[1] = global.shortGUID;
+            }
+            if (GetComposite(_entryPoints[0]) == null)
+            {
+                Console.WriteLine("WARNING: Entry point was not set! Defaulting to composite at index zero.");
+                _entryPoints[0] = _composites[0].shortGUID;
+            }
+            RefreshEntryPointObjects();
 
             BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath));
             writer.BaseStream.SetLength(0);
 
             //Write entry points
             for (int i = 0; i < 3; i++)
-                Utilities.Write<ShortGuid>(writer, _entryPoints[i]);
+            {
+                if (_entryPoints[i].val == null || GetComposite(_entryPoints[i]) == null) 
+                    writer.Write(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                else
+                    Utilities.Write<ShortGuid>(writer, _entryPoints[i]);
+            }
 
             //Write placeholder info for parameter/composite offsets
             int offsetToRewrite = (int)writer.BaseStream.Position;
@@ -420,7 +460,7 @@ namespace CATHODE
                                         break;
                                     case ResourceType.COLLISION_MAPPING:
                                         writer.Write(resourceReferences[p].startIndex);
-                                        writer.Write(resourceReferences[p].entityID.val);
+                                        writer.Write(resourceReferences[p].collisionID.val);
                                         break;
                                     case ResourceType.ANIMATED_MODEL:
                                     case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
@@ -859,7 +899,7 @@ namespace CATHODE
                                         break;
                                     case ResourceType.COLLISION_MAPPING:
                                         resource.startIndex = reader.ReadInt32(); //COLLISION.MAP entry index?
-                                        resource.entityID = new ShortGuid(reader); //ID which maps to the entity using the resource (?) - check GetFriendlyName
+                                        resource.collisionID = new ShortGuid(reader); //ID which maps to *something*
                                         break;
                                     case ResourceType.ANIMATED_MODEL:
                                     case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
@@ -1074,6 +1114,15 @@ namespace CATHODE
         #endregion
 
         #region ACCESSORS
+        /* Add a new composite */
+        public Composite AddComposite(string name, bool isRoot = false)
+        {
+            Composite comp = new Composite(name);
+            _composites.Add(comp);
+            if (isRoot) SetRootComposite(comp);
+            return comp;
+        }
+
         /* Return a list of filenames for composites in the CommandsPAK archive */
         public string[] GetCompositeNames()
         {
@@ -1082,26 +1131,16 @@ namespace CATHODE
             return toReturn;
         }
 
-        /* Find the a script entry object by name */
-        public int GetFileIndex(string FileName)
-        {
-            for (int i = 0; i < _composites.Count; i++) if (_composites[i].name == FileName || _composites[i].name == FileName.Replace('/', '\\')) return i;
-            return -1;
-        }
-
         /* Get an individual composite */
+        public Composite GetComposite(string name)
+        {
+            return _composites.FirstOrDefault(o => o.name == name || o.name == name.Replace('/', '\\'));
+        }
         public Composite GetComposite(ShortGuid id)
         {
             if (id.val == null) return null;
             return _composites.FirstOrDefault(o => o.shortGUID == id);
         }
-        public Composite GetCompositeByIndex(int index)
-        {
-            return (index >= _composites.Count || index < 0) ? null : _composites[index];
-        }
-
-        /* Get all composites */
-        public List<Composite> Composites { get { return _composites; } }
 
         /* Get entry point composite objects */
         public Composite[] EntryPoints
@@ -1110,16 +1149,22 @@ namespace CATHODE
             {
                 if (_entryPoints == null) return null;
                 if (_entryPointObjects != null) return _entryPointObjects;
-                _entryPointObjects = new Composite[_entryPoints.Length];
-                for (int i = 0; i < _entryPoints.Length; i++) _entryPointObjects[i] = GetComposite(_entryPoints[i]);
+                RefreshEntryPointObjects();
                 return _entryPointObjects;
             }
         }
 
         /* Set the root composite for this COMMANDS.PAK (the root of the level - GLOBAL and PAUSEMENU are also instanced) */
-        public void SetRootComposite(ShortGuid id)
+        public void SetRootComposite(Composite composite)
         {
-            _entryPoints[0] = id;
+            SetRootComposite(composite.shortGUID);
+        }
+        public void SetRootComposite(ShortGuid compositeID)
+        {
+            if (_entryPoints == null)
+                _entryPoints = new ShortGuid[3];
+
+            _entryPoints[0] = compositeID;
             _entryPointObjects = null;
         }
         #endregion
@@ -1154,6 +1199,13 @@ namespace CATHODE
                 if (canAdd) prunedList.Add(parameters[i]);
             }
             return prunedList;
+        }
+
+        /* Refresh the composite pointers for our entry points */
+        private void RefreshEntryPointObjects()
+        {
+            _entryPointObjects = new Composite[_entryPoints.Length];
+            for (int i = 0; i < _entryPoints.Length; i++) _entryPointObjects[i] = GetComposite(_entryPoints[i]);
         }
         #endregion
 

@@ -1,5 +1,6 @@
 ﻿using CATHODE.Assets.Utilities;
 using CATHODE.Scripting;
+using CATHODE.Scripting.Internal;
 using CathodeLib;
 using CathodeLib.Properties;
 using System;
@@ -8,8 +9,9 @@ using System.Diagnostics;
 using System.Diagnostics.SymbolStore;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Xml.Linq;
 
-namespace CATHODE.Scripting
+namespace CATHODE.Scripting.Internal
 {
     /* An entity in a composite */
     [Serializable]
@@ -56,8 +58,11 @@ namespace CATHODE.Scripting
         /* Add a data-supplying parameter to the entity */
         public Parameter AddParameter(string name, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER)
         {
+            return AddParameter(ShortGuidUtils.Generate(name), data, variant);
+        }
+        public Parameter AddParameter(ShortGuid id, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER)
+        {
             //TODO: we are limiting data-supplying params to ONE per entity here - is this correct? I think links are the only place where you can have multiple of the same.
-            ShortGuid id = ShortGuidUtils.Generate(name);
             Parameter param = GetParameter(id);
             if (param == null)
             {
@@ -95,6 +100,9 @@ namespace CATHODE.Scripting
             childLinks.RemoveAll(o => o.parentParamID == parameter_id && o.childID == childEntity.shortGUID && o.childParamID == childParameter_id);
         }
     }
+}
+namespace CATHODE.Scripting
+{ 
     [Serializable]
     public class VariableEntity : Entity
     {
@@ -174,6 +182,11 @@ namespace CATHODE.Scripting
             this.function = function;
             if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
+        public FunctionEntity(FunctionType function, bool autoGenerateParameters = false) : base(EntityVariant.FUNCTION)
+        {
+            this.function = CommandsUtils.GetFunctionTypeGUID(function);
+            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
+        }
 
         public FunctionEntity(ShortGuid shortGUID, ShortGuid function, bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.FUNCTION)
         {
@@ -183,6 +196,11 @@ namespace CATHODE.Scripting
         public FunctionEntity(ShortGuid shortGUID, string function, bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.FUNCTION)
         {
             this.function = ShortGuidUtils.Generate(function);
+            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
+        }
+        public FunctionEntity(ShortGuid shortGUID, FunctionType function, bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.FUNCTION)
+        {
+            this.function = CommandsUtils.GetFunctionTypeGUID(function);
             if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
 

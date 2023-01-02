@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CATHODE.Scripting.Internal;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 #if UNITY_EDITOR || UNITY_STANDALONE
@@ -12,6 +13,14 @@ namespace CATHODE.Scripting
     [Serializable]
     public class Composite
     {
+        public Composite() { }
+        public Composite(string name)
+        {
+            shortGUID = ShortGuidUtils.GenerateRandom();
+            this.name = name;
+            unknownPair = new OffsetPair(5, 6); //TODO: what on earth this this?
+        }
+
         public ShortGuid shortGUID;  //The id when this composite is used as an entity in another composite
         public string name = ""; //The string name of the composite
 
@@ -54,6 +63,12 @@ namespace CATHODE.Scripting
         }
 
         /* Add a new function entity */
+        public FunctionEntity AddFunction(FunctionType function, bool autopopulateParameters = false)
+        {
+            FunctionEntity func = new FunctionEntity(function, autopopulateParameters);
+            functions.Add(func);
+            return func;
+        }
         public FunctionEntity AddFunction(string function, bool autopopulateParameters = false)
         {
             FunctionEntity func = new FunctionEntity(function, autopopulateParameters);
