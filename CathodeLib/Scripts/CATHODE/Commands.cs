@@ -1,12 +1,14 @@
 //#define DO_PRETTY_COMPOSITES
 
 using CATHODE.Scripting;
+using CATHODE.Scripting.Internal;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
 
 namespace CATHODE
 {
@@ -19,10 +21,11 @@ namespace CATHODE
         //  - Root Instance (the map's entry composite, usually containing entities that call mission/environment composites)
         //  - Global Instance (the main data handler for keeping track of mission number, etc - kinda like a big singleton)
         //  - Pause Menu Instance
-        private ShortGuid[] _entryPoints;
+        private ShortGuid[] _entryPoints = null;
         private Composite[] _entryPointObjects = null;
 
-        private List<Composite> _composites = null;
+        public List<Composite> Composites { get { return _composites; } }
+        private List<Composite> _composites = new List<Composite>();
 
         public Commands(string path) : base(path) { }
 
@@ -30,7 +33,7 @@ namespace CATHODE
         /* Save all changes back out */
         override public bool Save()
         {
-            if (_entryPoints == null || _entryPoints.Length != 3 || _entryPoints[0] == null)
+            if (_entryPoints == null || _entryPoints[0].val == null)
                 return false;
 
             BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath));
@@ -38,7 +41,12 @@ namespace CATHODE
 
             //Write entry points
             for (int i = 0; i < 3; i++)
-                Utilities.Write<ShortGuid>(writer, _entryPoints[i]);
+            {
+                if (_entryPoints[i].val == null || GetComposite(_entryPoints[i]) == null) 
+                    writer.Write(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                else
+                    Utilities.Write<ShortGuid>(writer, _entryPoints[i]);
+            }
 
             //Write placeholder info for parameter/composite offsets
             int offsetToRewrite = (int)writer.BaseStream.Position;
@@ -1074,6 +1082,15 @@ namespace CATHODE
         #endregion
 
         #region ACCESSORS
+        /* Add a new composite */
+        public Composite AddComposite(string name, bool isRoot = false)
+        {
+            Composite comp = new Composite(name);
+            _composites.Add(comp);
+            if (isRoot) SetRootComposite(comp);
+            return comp;
+        }
+
         /* Return a list of filenames for composites in the CommandsPAK archive */
         public string[] GetCompositeNames()
         {
@@ -1082,26 +1099,16 @@ namespace CATHODE
             return toReturn;
         }
 
-        /* Find the a script entry object by name */
-        public int GetFileIndex(string FileName)
-        {
-            for (int i = 0; i < _composites.Count; i++) if (_composites[i].name == FileName || _composites[i].name == FileName.Replace('/', '\\')) return i;
-            return -1;
-        }
-
         /* Get an individual composite */
+        public Composite GetComposite(string name)
+        {
+            return _composites.FirstOrDefault(o => o.name == name || o.name == name.Replace('/', '\\'));
+        }
         public Composite GetComposite(ShortGuid id)
         {
             if (id.val == null) return null;
             return _composites.FirstOrDefault(o => o.shortGUID == id);
         }
-        public Composite GetCompositeByIndex(int index)
-        {
-            return (index >= _composites.Count || index < 0) ? null : _composites[index];
-        }
-
-        /* Get all composites */
-        public List<Composite> Composites { get { return _composites; } }
 
         /* Get entry point composite objects */
         public Composite[] EntryPoints
@@ -1117,9 +1124,16 @@ namespace CATHODE
         }
 
         /* Set the root composite for this COMMANDS.PAK (the root of the level - GLOBAL and PAUSEMENU are also instanced) */
-        public void SetRootComposite(ShortGuid id)
+        public void SetRootComposite(Composite composite)
         {
-            _entryPoints[0] = id;
+            SetRootComposite(composite.shortGUID);
+        }
+        public void SetRootComposite(ShortGuid compositeID)
+        {
+            if (_entryPoints == null)
+                _entryPoints = new ShortGuid[3];
+
+            _entryPoints[0] = compositeID;
             _entryPointObjects = null;
         }
         #endregion

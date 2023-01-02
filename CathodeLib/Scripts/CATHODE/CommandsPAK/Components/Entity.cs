@@ -1,5 +1,6 @@
 ﻿using CATHODE.Assets.Utilities;
 using CATHODE.Scripting;
+using CATHODE.Scripting.Internal;
 using CathodeLib;
 using CathodeLib.Properties;
 using System;
@@ -9,7 +10,7 @@ using System.Diagnostics.SymbolStore;
 using System.Linq;
 using System.Runtime.InteropServices;
 
-namespace CATHODE.Scripting
+namespace CATHODE.Scripting.Internal
 {
     /* An entity in a composite */
     [Serializable]
@@ -95,6 +96,9 @@ namespace CATHODE.Scripting
             childLinks.RemoveAll(o => o.parentParamID == parameter_id && o.childID == childEntity.shortGUID && o.childParamID == childParameter_id);
         }
     }
+}
+namespace CATHODE.Scripting
+{ 
     [Serializable]
     public class VariableEntity : Entity
     {
@@ -174,6 +178,11 @@ namespace CATHODE.Scripting
             this.function = function;
             if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
+        public FunctionEntity(FunctionType function, bool autoGenerateParameters = false) : base(EntityVariant.FUNCTION)
+        {
+            this.function = CommandsUtils.GetFunctionTypeGUID(function);
+            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
+        }
 
         public FunctionEntity(ShortGuid shortGUID, ShortGuid function, bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.FUNCTION)
         {
@@ -183,6 +192,11 @@ namespace CATHODE.Scripting
         public FunctionEntity(ShortGuid shortGUID, string function, bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.FUNCTION)
         {
             this.function = ShortGuidUtils.Generate(function);
+            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
+        }
+        public FunctionEntity(ShortGuid shortGUID, FunctionType function, bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.FUNCTION)
+        {
+            this.function = CommandsUtils.GetFunctionTypeGUID(function);
             if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
 

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CATHODE.Scripting.Internal;
+using System;
 using System.Collections.Generic;
 using System.Text;
 

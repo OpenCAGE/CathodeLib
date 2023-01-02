@@ -1,11 +1,10 @@
-﻿using CathodeLib;
-using CathodeLib.Properties;
+﻿using CATHODE.Scripting.Internal;
+using CathodeLib;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 
-namespace CATHODE.Scripting
+namespace CATHODE.Scripting.Internal
 {
     /* Data which can be used within a parameter */
     [Serializable]
@@ -136,6 +135,10 @@ namespace CATHODE.Scripting
             }
         }
     }
+}
+
+namespace CATHODE.Scripting
+{ 
     [Serializable]
     public class cTransform : ParameterData
     {

@@ -64,8 +64,10 @@ namespace CATHODE.Scripting
         /* Generate a random unique ShortGuid */
         public static ShortGuid GenerateRandom()
         {
-            //TODO: we should really check the caches here to make sure it IS random, and then go again if not
-            return Generate(DateTime.Now.ToString("G") + (new Random()).Next(0, 9999));
+            string guid = DateTime.Now.ToString("G") + (new Random()).Next(0, 9999);
+            while (vanilla.cache.ContainsKey(guid) || custom.cache.ContainsKey(guid))
+                guid += "_";
+            return Generate(guid);
         }
 
         /* Cache a pre-generated ShortGuid */

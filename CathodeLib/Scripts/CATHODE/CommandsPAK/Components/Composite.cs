@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CATHODE.Scripting.Internal;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 #if UNITY_EDITOR || UNITY_STANDALONE
@@ -62,6 +63,12 @@ namespace CATHODE.Scripting
         }
 
         /* Add a new function entity */
+        public FunctionEntity AddFunction(FunctionType function, bool autopopulateParameters = false)
+        {
+            FunctionEntity func = new FunctionEntity(function, autopopulateParameters);
+            functions.Add(func);
+            return func;
+        }
         public FunctionEntity AddFunction(string function, bool autopopulateParameters = false)
         {
             FunctionEntity func = new FunctionEntity(function, autopopulateParameters);
