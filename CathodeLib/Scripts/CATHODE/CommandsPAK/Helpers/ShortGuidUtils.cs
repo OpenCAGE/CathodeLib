@@ -1,19 +1,18 @@
-﻿using System;
+﻿using CATHODE.Scripting;
+using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace CATHODE.Commands
+namespace CATHODE.Scripting
 {
     public static class ShortGuidUtils
     {
         private static ShortGuidTable vanilla = new ShortGuidTable();
         private static ShortGuidTable custom = new ShortGuidTable();
 
-        private static CommandsPAK commandsPAK;
+        private static Commands commandsPAK;
 
         /* Pull in strings we know are cached as ShortGuid in Cathode */
         static ShortGuidUtils(/*CommandsPAK pak = null*/)
@@ -60,6 +59,13 @@ namespace CATHODE.Commands
             //TODO: check custom cache
 
             return vanilla.cacheReversed[guid];
+        }
+
+        /* Generate a random unique ShortGuid */
+        public static ShortGuid GenerateRandom()
+        {
+            //TODO: we should really check the caches here to make sure it IS random, and then go again if not
+            return Generate(DateTime.Now.ToString("G") + (new Random()).Next(0, 9999));
         }
 
         /* Cache a pre-generated ShortGuid */
@@ -148,97 +154,6 @@ namespace CATHODE.Commands
         {
             public Dictionary<string, ShortGuid> cache = new Dictionary<string, ShortGuid>();
             public Dictionary<ShortGuid, string> cacheReversed = new Dictionary<ShortGuid, string>();
-        }
-    }
-
-    /* A unique id assigned to CATHODE objects */
-    [Serializable]
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct ShortGuid : IComparable<ShortGuid>
-    {
-        public ShortGuid(float num)
-        {
-            val = BitConverter.GetBytes(num);
-        }
-        public ShortGuid(int num)
-        {
-            val = BitConverter.GetBytes(num);
-        }
-        public ShortGuid(byte[] id)
-        {
-            val = id;
-        }
-        public ShortGuid(BinaryReader reader)
-        {
-            val = reader.ReadBytes(4);
-        }
-        public ShortGuid(string id)
-        {
-            String[] arr = id.Split('-');
-            if (arr.Length != 4) throw new Exception("Tried to initialise cGUID without 4-byte ID string.");
-            byte[] array = new byte[arr.Length];
-            for (int i = 0; i < arr.Length; i++) array[i] = Convert.ToByte(arr[i], 16);
-            val = array;
-        }
-
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-        public byte[] val;
-
-        public override bool Equals(object obj)
-        {
-            if (!(obj is ShortGuid)) return false;
-            if (((ShortGuid)obj).val == null) return this.val == null;
-            if (this.val == null) return ((ShortGuid)obj).val == null;
-            return ((ShortGuid)obj).val.SequenceEqual(this.val);
-        }
-        public static bool operator ==(ShortGuid x, ShortGuid y)
-        {
-            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
-            if (x.val == null) return y.val == null;
-            if (y.val == null) return x.val == null;
-            return x.val.SequenceEqual(y.val);
-        }
-        public static bool operator !=(ShortGuid x, ShortGuid y)
-        {
-            return !x.val.SequenceEqual(y.val);
-        }
-        public static bool operator ==(ShortGuid x, string y)
-        {
-            return x.ToString() == y;
-        }
-        public static bool operator !=(ShortGuid x, string y)
-        {
-            return x.ToString() != y;
-        }
-        public override int GetHashCode()
-        {
-            return BitConverter.ToInt32(val, 0);
-        }
-
-        public int CompareTo(ShortGuid x)
-        {
-            if (x == null) return 0;
-            if (x.val == null && val != null) return 0;
-            if (x.val != null && val == null) return 0;
-            if (x.val.Length != val.Length) return 0;
-
-            int comp = 0;
-            for (int i = 0; i < x.val.Length; i++)
-            {
-                comp += x.val[i].CompareTo(val[i]);
-            }
-            comp /= x.val.Length;
-
-            return comp;
-        }
-
-        public override string ToString()
-        {
-            return BitConverter.ToString(val);
-        }
-        public uint ToUInt32()
-        {
-            return BitConverter.ToUInt32(val, 0);
         }
     }
 }

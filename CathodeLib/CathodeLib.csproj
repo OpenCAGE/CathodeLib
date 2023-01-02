@@ -9,11 +9,11 @@
     <PackageId>CathodeLib</PackageId>
     <Authors>Matt Filer</Authors>
     <Description>Provides support for parsing and writing common Alien: Isolation formats from the Cathode engine.</Description>
-    <Copyright>Matt Filer 2022</Copyright>
-    <Version>0.2.0</Version>
+    <Copyright>Matt Filer 2023</Copyright>
+    <Version>0.3.0</Version>
     <OutputType>Library</OutputType>
-    <AssemblyVersion>0.2.0.0</AssemblyVersion>
-    <FileVersion>0.2.0.0</FileVersion>
+    <AssemblyVersion>0.3.0.0</AssemblyVersion>
+    <FileVersion>0.3.0.0</FileVersion>
     <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
   </PropertyGroup>
 
@@ -39,9 +39,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\AlienBML\AlienBML\AlienBML.cs" Link="Scripts\File Handlers\BML\AlienBML.cs" />
-    <Compile Include="..\AlienBML\AlienBML\BML.cs" Link="Scripts\File Handlers\BML\BML.cs" />
-    <Compile Include="..\AlienBML\AlienBML\BMLString.cs" Link="Scripts\File Handlers\BML\BMLString.cs" />
+    <Compile Include="..\AlienBML\BML.cs" Link="Scripts\CATHODE\BML.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -71,10 +69,6 @@
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Scripts\File Handlers\BML\" />
   </ItemGroup>
 
 </Project>

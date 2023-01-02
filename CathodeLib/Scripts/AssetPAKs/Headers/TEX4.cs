@@ -20,41 +20,49 @@ namespace CATHODE.Assets
     //The Tex4 Entry
     class TEX4
     {
-        //Misc header info (used for rewriting and not a lot else)
-        public string Magic = ""; 
-        public int Length_V2 = -1;
-        public int Length_V1 = -1;
-        public Int16 Unk_V2 = -1;
-        public Int16 Unk_V1 = -1;
-        public byte[] UnknownHeaderBytes = new byte[20];
-
-        //The filename and path
         public string FileName = "";
 
-        //Misc metadata
         public TextureFormat Format;
-        public int HeaderPos = -1;
+        public int Type = -1; //AlienTextureType
+        public AlienUnknownTextureThing UnknownTexThing;
 
-        //Actual texture content
-        public TEX4_Part Texture_V1 = new TEX4_Part();
-        public TEX4_Part Texture_V2 = new TEX4_Part(); //V2 is the largest, unless we don't have a V2 in which case V1 is.
+        public TEX4_Part tex_LowRes = new TEX4_Part();
+        public TEX4_Part tex_HighRes = new TEX4_Part(); //We don't always have this
+    }
+
+    public enum AlienTextureType
+    {
+        SPECULAR_OR_NORMAL = 0,
+        DIFFUSE = 1,
+        LUT = 21,
+
+        DECAL = 5,
+        ENVIRONMENT_MAP = 7,
+
+    }
+
+    public enum AlienUnknownTextureThing
+    {
+        REGULAR_TEXTURE = 0,
+        SOME_SPECIAL_TEXTURE = 9,
     }
 
     //The Tex4 Sub-Parts
     class TEX4_Part
     {
-        public Int16 Width = -1;
-        public Int16 Height = -1;
-        
-        public bool Saved = false;
-        public int HeaderPos = -1;
+        public Int16 Width = 0;
+        public Int16 Height = 0;
 
-        public int StartPos = -1;
-        public int Length = -1;
+        public Int16 Depth = 0;
+        public Int16 MipLevels = 0;
 
-        //Misc header info (used for rewriting) - all byte arrays will be BIG ENDIAN
-        public byte[] UnknownHeaderLead = new byte[8];
-        public byte[] UnknownHeaderTrail_1 = new byte[18];
-        public byte[] UnknownHeaderTrail_2 = new byte[12];
+        public int Offset = 0;
+        public int Length = 0;
+
+        //Saving these so we can re-write without issue
+        public UInt32 unk1 = 0;
+        public UInt16 unk2 = 0;
+        public UInt32 unk3 = 0;
+        public UInt32 unk4 = 0;
     }
 }

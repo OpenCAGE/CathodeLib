@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CathodeLib;
+using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
@@ -13,7 +14,7 @@ namespace CATHODE.LEGACY
     {
         public List<ModelData> Models;
 
-        private alien_model_bin modelBIN;
+        public alien_model_bin modelBIN;
 
         private string pathToPAK, pathToBIN;
 
@@ -29,8 +30,8 @@ namespace CATHODE.LEGACY
         {
             LoadPAK(pathToPAK, true);
 
-            Models = new List<ModelData>(header.entryCount);
-            for (int i = 0; i < header.entryCount; ++i)
+            Models = new List<ModelData>(header.EntryCount);
+            for (int i = 0; i < header.EntryCount; ++i)
             {
                 BinaryReader modelBuffer = new BinaryReader(new MemoryStream(entryContents[i]));
 
@@ -51,7 +52,7 @@ namespace CATHODE.LEGACY
 
                     ModelDataEntry newChunk = new ModelDataEntry();
                     modelBuffer.BaseStream.Position = SubmeshInfo[x].Offset;
-                    newChunk.content = modelBuffer.ReadBytes(SubmeshInfo[x].Size);
+                    newChunk.content = (SubmeshInfo[x].Size != -1) ? modelBuffer.ReadBytes(SubmeshInfo[x].Size) : new byte[] { };
                     newChunk.binIndex = SubmeshInfo[x].BINIndex;
                     Model.Submeshes.Add(newChunk);
                 }

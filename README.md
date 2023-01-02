@@ -1,15 +1,44 @@
-# CathodeLib
+<img src="https://i.imgur.com/TZNGZVA.jpg" width="100%">
 
-An open source library providing functionality to parse and write various formats from the Cathode engine, used for modding Alien: Isolation.
+# CathodeLib - Alien: Isolation C# Library
 
-## Supported files & formats
+### CathodeLib is an open source library providing functionality to parse and write various formats from the Cathode game engine, for modding Alien: Isolation. Used to power [OpenCAGE](https://github.com/MattFiler/OpenCAGE)!
 
-* COMMANDS.PAK
-  * The Commands file forms the scripted logic for a game's level. This logic was created through a node-based scripting system similar to Blueprint in UE, and can be parsed using CathodeLib's `CATHODE.Commands.CommandsPAK` class. A `CommandsPAK` is made up of `CathodeComposite` objects (composites essentially being scripting functions), each containing various types of `CathodeEntity` objects (entities being nodes to script logic within the functions). Each `CathodeEntity` contains various information, with all containing `CathodeParameter` objects, which specify additional parameters on the scripting node (e.g. `position`, etc).
+Available as a [NuGet package](https://www.nuget.org/packages/CathodeLib/), or alternatively just include this repo as a submodule in your project!
 
-* MODELS.MVR
-  * The Mover file is a legacy format carried over from Viking: Battle for Asgard (a game which used an early version of Cathode), however it is still heavily utilised in Cathode alongside the Commands system. The Mover file sets up all Movers in a level, where a "Mover" is an instanced entity, containing a model and material/position data. Movers are given a type enum value which specifies how much data is used from the MVR file, and how much comes from the Commands.PAK file. Each Mover is defined in a `MoverEntry` object, however considerable work is still required to understand the Mover description completely.
+---
 
+## For scripting:
+- `CATHODE.Commands` handles `COMMANDS.PAK` files (for scripting)
+    - The file consists of `Composite` scripts which hold various `Entity` types for logic
+	    - `FunctionEntity` = functions which execute functionality, with parameters and links to child `Entity` objects
+		- `VariableEntity` = variables which can be used externally as parameters on an instanced `Composite` via a `FunctionEntity`
+		- `ProxyEntity` = a proxy of a `FunctionEntity` within another `Composite`, useful for acting on events in another composite
+		- `OverrideEntity` = an override of a parameter value on an entity within an instanced `Composite` in this `Composite`
+    
+## For assets:
+- `CATHODE.Assets.PAK2` handles `UI.PAK` and `ANIMATIONS.PAK` files
+- `CATHODE.Assets.Models` handles `LEVEL_MODELS.PAK` files, paired with a `MODELS_LEVEL.BIN`
+- `CATHODE.Assets.Textures` handles `LEVEL_TEXTURES.ALL.PAK` files, paired with a `LEVEL_TEXTURE_HEADERS.ALL.BIN`
+- `CATHODE.Assets.MaterialMapping` handles `MATERIAL_MAPPINGS.PAK` files
+- `CATHODE.Assets.Shaders` handles various `SHADERS` `PAK` files
 
+## For level data and mappings:
+- `CATHODE.MoverDatabase` handles `MODELS.MVR` files
+- `CATHODE.RenderableElementsDatabase` handles `REDS.BIN` files
+- `CATHODE.ResourcesDatabase` handles `RESOURCES.BIN` files
+- `CATHODE.MaterialDatabase` handles `MODELS.MTL` files
+- `CATHODE.EnvironmentMapDatabase` handles `ENVIRONMENTMAP.BIN` files
+- `CATHODE.EnvironmentAnimationDatabase` handles `ENVIRONMENT_ANIMATION.DAT` files
+- `CATHODE.PhysicsMapDatabase` handles `PHYSICS.MAP` files
+- `CATHODE.CollisionMapDatabase` handles `COLLISION.MAP` files
+- `CATHODE.AnimationStringDatabase` handles `ANIM_STRING_DB.BIN` and `ANIM_STRING_DB_DEBUG.BIN` files
+- `CATHODE.NavigationMesh` handles `NAV_MESH` files
 
-**still writing this...**
+## For configurations:
+- `CATHODE.BML` handles any `.BML` files
+    - Get/set content as an `XmlDocument` via `BML.Content`
+
+## For saves:
+- `CATHODE.ProgressionSave` handles `PROGRESSION.AIS` files
+- `CATHODE.MissionSave` handles `PROGRESSION.AIS` files

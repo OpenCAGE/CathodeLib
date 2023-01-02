@@ -1,32 +1,53 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-#if UNITY_EDITOR || UNITY_STANDALONE
-using UnityEngine;
-#else
-using System.Numerics;
-using System.Runtime.Serialization.Formatters.Binary;
-#endif
+using System.Text;
 
-namespace CATHODE.Commands
+namespace CATHODE.Scripting
 {
-    /* Data types in the CATHODE scripting system */
-    public enum CathodeDataType
+    /* Entity variants */
+    public enum EntityVariant
     {
-        POSITION,
-        FLOAT,
-        STRING,
-        SPLINE_DATA,
-        ENUM,
-        SHORT_GUID,
-        FILEPATH,
-        BOOL,
-        DIRECTION,
-        INTEGER,
+        DATATYPE,
+        FUNCTION,
 
+        PROXY,
+        OVERRIDE,
+    }
+
+    /* Parameter variants */
+    public enum ParameterVariant
+    {
+        //Only on EntityMethodInterface
+        METHOD,
+        FINISHED,
+        RELAY,
+
+        //On implementations of the interface
+        STATE,
+        PARAMETER,
+        TARGET,
+        INPUT,
+        INTERNAL,
+        OUTPUT
+    }
+
+    /* Data types */
+    public enum DataType
+    {
+        STRING,
+        FLOAT,
+        INTEGER,
+        BOOL,
+        VECTOR,
+        TRANSFORM,
+        ENUM,
+        SPLINE,
+
+        NONE, //Translates to a blank string
+
+        RESOURCE,
+        FILEPATH,
         OBJECT,
-        NO_TYPE, //Translates to a blank string
         ZONE_LINK_PTR,
         ZONE_PTR,
         MARKER,
@@ -34,9 +55,29 @@ namespace CATHODE.Commands
         CAMERA
     }
 
-    /* Function types in the CATHODE scripting system */
-    public enum CathodeFunctionType
+    /* Function types */
+    public enum FunctionType
     {
+        //TODO: move these interface types outside of FunctionType
+        EntityMethodInterface,
+        AttachmentInterface,
+        BooleanLogicInterface,
+        CameraBehaviorInterface,
+        CloseableInterface,
+        CompositeInterface,
+        EvaluatorInterface,
+        GateInterface,
+        GateResourceInterface,
+        GetComponentInterface,
+        InspectorInterface,
+        ModifierInterface,
+        ProxyInterface,
+        ScriptInterface,
+        SensorAttachmentInterface,
+        SensorInterface,
+        TransformerInterface,
+        ZoneInterface,
+
         AccessTerminal,
         AchievementMonitor,
         AchievementStat,
@@ -57,13 +98,11 @@ namespace CATHODE.Commands
         ApplyRelativeTransform,
         AreaHitMonitor,
         AssetSpawner,
-        AttachmentInterface,
         Benchmark,
         BindObjectsMultiplexer,
         BlendLowResFrame,
         BloomSettings,
         BoneAttachedCamera,
-        BooleanLogicInterface,
         BooleanLogicOperation,
         Box,
         BroadcastTrigger,
@@ -71,7 +110,6 @@ namespace CATHODE.Commands
         ButtonMashPrompt,
         CAGEAnimation,
         CameraAimAssistant,
-        CameraBehaviorInterface,
         CameraCollisionBox,
         CameraDofController,
         CameraFinder,
@@ -130,7 +168,6 @@ namespace CATHODE.Commands
         ClearPrimaryObjective,
         ClearSubObjective,
         ClipPlanesController,
-        CloseableInterface,
         CMD_AimAt,
         CMD_AimAtCurrentTarget,
         CMD_Die,
@@ -155,7 +192,6 @@ namespace CATHODE.Commands
         CollisionBarrier,
         ColourCorrectionTransition,
         ColourSettings,
-        CompositeInterface,
         CompoundVolume,
         ControllableRange,
         Convo,
@@ -209,7 +245,6 @@ namespace CATHODE.Commands
         EnvironmentMap,
         EnvironmentModelReference,
         EQUIPPABLE_ITEM,
-        EvaluatorInterface,
         ExclusiveMaster,
         Explosion_AINotifier,
         ExternalVariableBool,
@@ -310,8 +345,6 @@ namespace CATHODE.Commands
         GameOverCredits,
         GameplayTip,
         GameStateChanged,
-        GateInterface,
-        GateResourceInterface,
         GCIP_WorldPickup, //n:\\content\\build\\library\\archetypes\\gameplay\\gcip_worldpickup
         GenericHighlightEntity,
         GetBlueprintAvailable,
@@ -322,7 +355,6 @@ namespace CATHODE.Commands
         GetClosestPoint,
         GetClosestPointFromSet,
         GetClosestPointOnSpline,
-        GetComponentInterface,
         GetCurrentCameraFov,
         GetCurrentCameraPos,
         GetCurrentCameraTarget,
@@ -357,7 +389,6 @@ namespace CATHODE.Commands
         IdleTask,
         ImpactSphere,
         InhibitActionsUntilRelease,
-        InspectorInterface,
         IntegerAbsolute,
         IntegerAdd,
         IntegerAdd_All,
@@ -456,7 +487,6 @@ namespace CATHODE.Commands
         Minigames,
         MissionNumber,
         ModelReference,
-        ModifierInterface,
         MonitorActionMap,
         MonitorBase,
         MonitorPadInput,
@@ -603,7 +633,6 @@ namespace CATHODE.Commands
         ProjectiveDecal,
         ProximityDetector,
         ProximityTrigger,
-        ProxyInterface,
         QueryGCItemPool,
         RadiosityIsland,
         RadiosityProxy,
@@ -641,10 +670,7 @@ namespace CATHODE.Commands
         ScreenFadeOutToBlackTimed,
         ScreenFadeOutToWhite,
         ScreenFadeOutToWhiteTimed,
-        ScriptInterface,
         ScriptVariable,
-        SensorAttachmentInterface,
-        SensorInterface,
         SetAsActiveMissionLevel,
         SetBlueprintInfo,
         SetBool,
@@ -728,7 +754,6 @@ namespace CATHODE.Commands
         TogglePlayerTorch,
         Torch_Control, //n:\\content\\build\\library\\archetypes\\script\\gameplay\\torch_control
         TorchDynamicMovement,
-        TransformerInterface,
         TRAV_1ShotClimbUnder,
         TRAV_1ShotFloorVentEntrance,
         TRAV_1ShotFloorVentExit,
@@ -851,208 +876,259 @@ namespace CATHODE.Commands
         WEAPON_TargetObjectFilter,
         Zone,
         ZoneExclusionLink,
-        ZoneInterface,
         ZoneLink,
         ZoneLoaded,
     }
 
     /* Resource reference types */
-    public enum CathodeResourceReferenceType
+    public enum ResourceType
     {
-        //CATHODE_COVER_SEGMENT,
-        COLLISION_MAPPING,               //This one seems to be called in another script block that I'm not currently parsing 
-        DYNAMIC_PHYSICS_SYSTEM,          //This is a count (usually small) and then a -1 32-bit int
-        EXCLUSIVE_MASTER_STATE_RESOURCE, //This just seems to be two -1 32-bit integers (same as above)
-        NAV_MESH_BARRIER_RESOURCE,       //This just seems to be two -1 32-bit integers (same as above)
-        RENDERABLE_INSTANCE,             //This one references an entry in the REnDerable elementS (REDS.BIN) database
-        TRAVERSAL_SEGMENT,               //This just seems to be two -1 32-bit integers
-        ANIMATED_MODEL,                  //This is a count (usually small) and then a -1 32-bit int (same as above)
+        COLLISION_MAPPING,
+        DYNAMIC_PHYSICS_SYSTEM,
+        EXCLUSIVE_MASTER_STATE_RESOURCE,
+        NAV_MESH_BARRIER_RESOURCE,
+        RENDERABLE_INSTANCE,
+        TRAVERSAL_SEGMENT,
+        ANIMATED_MODEL,                   //Links to ResourceIndex in ENVIRONMENT_ANIMATION.DAT
+
+        // Any below this point are referenced in code, but not used in the vanilla game's CommandsPAKs
+        CATHODE_COVER_SEGMENT,
+        CHOKE_POINT_RESOURCE,
+        ANIMATION_MASK_RESOURCE,
+        PLAY_ANIMATION_DATA_RESOURCE,
+
+
+        CAMERA_INSTANCE,
+        VENT_ENTRANCE,
+        LOGIC_CHARACTER,
+        NPC_AREA_RESOURCE,
+        GAME_VARIABLE,
+        TUTORIAL_ENTRY_ID,
+        INVENTORY_ITEM_QUANTITY,
+        ANIM_SET,
+        ANIM_TREE_SET,
+        ATTRIBUTE_SET,
+        CHR_SKELETON_SET,
+        SOUND_TORSO_GROUP,
+        SOUND_LEG_GROUP,
+        SOUND_FOOTWEAR_GROUP,
+        IDTAG_ID,
+        SOUND_OBJECT,
+        SOUND_EVENT,
+        SOUND_ARGUMENT,
+        SOUND_SWITCH,
+        SOUND_REVERB,
+        SOUND_STATE,
+        SOUND_RTPC,
+        SOUND_PARAMETER,
+        EQUIPPABLE_ITEM_INSTANCE,
+        TERMINAL_CONTENT_DETAILS,
+        TERMINAL_FOLDER_DETAILS,
+        SEVASTOPOL_LOG_ID,
+        NOSTROMO_LOG_ID,
+        MAP_KEYFRAME_ID,
+        REWIRE_SYSTEM,
+        REWIRE_LOCATION,
+        REWIRE_ACCESS_POINT,
+        GAMEPLAY_TIP_STRING_ID,
+        BLUEPRINT_TYPE,
+        AUTODETECT,
+        OBJECTIVE_ENTRY_ID,
+        ACHIEVEMENT_ID,
+        ACHIEVEMENT_STAT_ID,
+        PRESENCE_ID,
+        CHARACTER,
     }
 
-    /* A parameter compiled in COMMANDS.PAK */
-    [Serializable]
-    public class CathodeParameter : ICloneable
+    /* Enums available within Cathode */
+    public enum EnumType
     {
-        public CathodeParameter() { }
-        public CathodeParameter(CathodeDataType type)
-        {
-            dataType = type;
-        }
-        public CathodeDataType dataType = CathodeDataType.NO_TYPE;
+        AGGRESSION_GAIN,
+        ALERTNESS_STATE,
+        ALIEN_CONFIGURATION_TYPE,
+        ALIEN_DEVELOPMENT_MANAGER_ABILITIES,
+        ALIEN_DEVELOPMENT_MANAGER_ABILITY_MASKS,
+        ALIEN_DEVELOPMENT_MANAGER_STAGES,
+        ALLIANCE_GROUP,
+        ALLIANCE_STANCE,
+        AMBUSH_TYPE,
+        AMMO_TYPE,
+        ANIM_CALLBACK_ENUM,
+        ANIM_MODE,
+        ANIM_TRACK_TYPE,
+        ANIM_TREE_ENUM,
+        ANIMATION_EFFECT_TYPE,
+        AREA_SWEEP_TYPE,
+        AREA_SWEEP_TYPE_CODE,
+        AUTODETECT,
+        BEHAVIOR_TREE_BRANCH_TYPE,
+        BEHAVIOUR_MOOD_SET,
+        BEHAVIOUR_TREE_FLAGS,
+        BLEND_MODE,
+        BLUEPRINT_LEVEL,
+        BUTTON_TYPE,
+        CAMERA_PATH_CLASS,
+        CAMERA_PATH_TYPE,
+        CHARACTER_BB_ENTRY_TYPE,
+        CHARACTER_CLASS,
+        CHARACTER_CLASS_COMBINATION,
+        CHARACTER_FOLEY_SOUND,
+        CHARACTER_NODE,
+        CHARACTER_STANCE,
+        CHECKPOINT_TYPE,
+        CI_MESSAGE_TYPE,
+        CLIPPING_PLANES_PRESETS,
+        COLLISION_TYPE,
+        COMBAT_BEHAVIOUR,
+        CROUCH_MODE,
+        CUSTOM_CHARACTER_ACCESSORY_OVERRIDE,
+        CUSTOM_CHARACTER_ASSETS,
+        CUSTOM_CHARACTER_BUILD,
+        CUSTOM_CHARACTER_COMPONENT,
+        CUSTOM_CHARACTER_ETHNICITY,
+        CUSTOM_CHARACTER_GENDER,
+        CUSTOM_CHARACTER_MODEL,
+        CUSTOM_CHARACTER_POPULATION,
+        CUSTOM_CHARACTER_SLEEVETYPE,
+        CUSTOM_CHARACTER_TYPE,
+        DAMAGE_EFFECT_TYPE_FLAGS,
+        DAMAGE_EFFECTS,
+        DAMAGE_MODE,
+        DEATH_STYLE,
+        DEVICE_INTERACTION_MODE,
+        DIALOGUE_ACTION,
+        DIALOGUE_ARGUMENT,
+        DIALOGUE_NPC_COMBAT_MODE,
+        DIALOGUE_NPC_CONTEXT,
+        DIALOGUE_NPC_EVENT,
+        DIALOGUE_VOICE_ACTOR,
+        DIFFICULTY_SETTING_TYPE,
+        DOOR_MECHANISM,
+        DOOR_STATE,
+        DUCK_HEIGHT,
+        ENEMY_TYPE,
+        ENVIRONMENT_ARCHETYPE,
+        EQUIPMENT_SLOT,
+        EVENT_OCCURED_TYPE,
+        EXIT_WAYPOINT,
+        FLAG_CHANGE_SOURCE_TYPE,
+        FLASH_INVOKE_TYPE,
+        FLASH_SCRIPT_RENDER_TYPE,
+        FOG_BOX_TYPE,
+        FOLDER_LOCK_TYPE,
+        FOLLOW_CAMERA_MODIFIERS,
+        FOLLOW_TYPE,
+        FRAME_FLAGS,
+        FRONTEND_STATE,
+        GAME_CLIP,
+        GATING_TOOL_TYPE,
+        IDLE,
+        IDLE_STYLE,
+        IMPACT_CHARACTER_BODY_LOCATION_TYPE,
+        INPUT_DEVICE_TYPE,
+        JOB_TYPE,
+        LEVEL_HEAP_TAG,
+        LEVER_TYPE,
+        LIGHT_ADAPTATION_MECHANISM,
+        LIGHT_ANIM,
+        LIGHT_FADE_TYPE,
+        LIGHT_TRANSITION,
+        LIGHT_TYPE,
+        LOCOMOTION_STATE,
+        LOCOMOTION_TARGET_SPEED,
+        LOGIC_CHARACTER_FLAGS,
+        LOGIC_CHARACTER_GAUGE_TYPE,
+        LOGIC_CHARACTER_TIMER_TYPE,
+        LOOK_SPEED,
+        MAP_ICON_TYPE,
+        MELEE_ATTACK_TYPE,
+        MELEE_CONTEXT_TYPE,
+        MOOD,
+        MOOD_INTENSITY,
+        MOVE,
+        MUSIC_RTPC_MODE,
+        NAV_MESH_AREA_TYPE,
+        NAVIGATION_CHARACTER_CLASS,
+        NAVIGATION_CHARACTER_CLASS_COMBINATION,
+        NOISE_TYPE,
+        NPC_AGGRO_LEVEL,
+        NPC_COMBAT_STATE,
+        NPC_COVER_REQUEST_TYPE,
+        NPC_GUN_AIM_MODE,
+        ORIENTATION_AXIS,
+        PATH_DRIVEN_TYPE,
+        PAUSE_SENSES_TYPE,
+        PICKUP_CATEGORY,
+        PLATFORM_TYPE,
+        PLAYER_INVENTORY_SET,
+        POPUP_MESSAGE_ICON,
+        POPUP_MESSAGE_SOUND,
+        PRIORITY,
+        RANGE_TEST_SHAPE,
+        RAYCAST_PRIORITY,
+        RESPAWN_MODE,
+        REWIRE_SYSTEM_NAME,
+        REWIRE_SYSTEM_TYPE,
+        SECONDARY_ANIMATION_LAYER,
+        SENSE_SET,
+        SENSE_SET_DEFAULT,
+        SENSE_SET_SYSTEM,
+        SENSORY_TYPE,
+        SHAKE_TYPE,
+        SIDE,
+        SOUND_POOL,
+        SPEECH_PRIORITY,
+        STEAL_CAMERA_TYPE,
+        SUB_OBJECTIVE_TYPE,
+        SUSPECT_RESPONSE_PHASE,
+        SUSPICIOUS_ITEM,
+        SUSPICIOUS_ITEM_BEHAVIOUR_TREE_PRIORITY,
+        SUSPICIOUS_ITEM_CLOSE_REACTION_DETAIL,
+        SUSPICIOUS_ITEM_REACTION,
+        SUSPICIOUS_ITEM_STAGE,
+        SUSPICIOUS_ITEM_START_OR_CONTINUE_STATE,
+        SUSPICIOUS_ITEM_TRIGGER,
+        TASK_CHARACTER_CLASS_FILTER,
+        TASK_OPERATION_MODE,
+        TASK_PRIORITY,
+        TERMINAL_LOCATION,
+        TEXT_ALIGNMENT,
+        THRESHOLD_QUALIFIER,
+        TRANSITION_DIRECTION,
+        TRAVERSAL_ANIMS,
+        TRAVERSAL_TYPE,
+        UI_ICON_ICON,
+        UI_KEYGATE_TYPE,
+        VENT_LOCK_REASON,
+        VIEWCONE_TYPE,
+        VISIBILITY_SETTINGS_TYPE,
+        WAVE_SHAPE,
+        WEAPON_HANDEDNESS,
+        WEAPON_IMPACT_EFFECT_ORIENTATION,
+        WEAPON_IMPACT_EFFECT_TYPE,
+        WEAPON_IMPACT_FILTER_ORIENTATION,
+        WEAPON_PROPERTY,
+        WEAPON_TYPE,
+    }
 
-        public static bool operator ==(CathodeParameter x, CathodeParameter y)
-        {
-            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
-            if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
-            if (x.dataType != y.dataType) return false;
-            switch (x.dataType)
-            {
-                case CathodeDataType.POSITION:
-                    CathodeTransform x_t = (CathodeTransform)x;
-                    CathodeTransform y_t = (CathodeTransform)y;
-                    return x_t.position == y_t.position && x_t.rotation == y_t.rotation;
-                case CathodeDataType.INTEGER:
-                    return ((CathodeInteger)x).value == ((CathodeInteger)y).value;
-                case CathodeDataType.STRING:
-                    return ((CathodeString)x).value == ((CathodeString)y).value;
-                case CathodeDataType.BOOL:
-                    return ((CathodeBool)x).value == ((CathodeBool)y).value;
-                case CathodeDataType.FLOAT:
-                    return ((CathodeFloat)x).value == ((CathodeFloat)y).value;
-                case CathodeDataType.SHORT_GUID:
-                    return ((CathodeResource)x).resourceID == ((CathodeResource)y).resourceID;
-                case CathodeDataType.DIRECTION:
-                    return ((CathodeVector3)x).value == ((CathodeVector3)y).value;
-                case CathodeDataType.ENUM:
-                    CathodeEnum x_e = (CathodeEnum)x;
-                    CathodeEnum y_e = (CathodeEnum)y;
-                    return x_e.enumIndex == y_e.enumIndex && x_e.enumID == y_e.enumID;
-                case CathodeDataType.SPLINE_DATA:
-                    return ((CathodeSpline)x).splinePoints == ((CathodeSpline)y).splinePoints;
-                case CathodeDataType.NO_TYPE:
-                    return true;
-                default:
-                    return false;
-            }
-        }
-        public static bool operator !=(CathodeParameter x, CathodeParameter y)
-        {
-            return !(x == y);
-        }
+    /* Blocks of data in each compiled composite */
+    public enum DataBlock
+    {
+        COMPOSITE_HEADER,             //Defines the header of the composite, with global ID and string name
+        ENTITY_CONNECTIONS,           //Defines the links between entities in the composite
+        ENTITY_PARAMETERS,            //Defines parameters to be applied to entities in the composite 
+        ENTITY_OVERRIDES,             //Defines overrides to apply to nested instances of composites in this composite
+        ENTITY_OVERRIDES_CHECKSUM,    //Defines a checksum value for the hierarchy override (TODO)
+        COMPOSITE_EXPOSED_PARAMETERS, //Defines variables which are exposed when instancing this composite which are then connected in to entities (think variable pins in UE4 blueprint)
+        ENTITY_PROXIES,               //Defines "proxies" similar to the overrides hierarchy (TODO)
+        ENTITY_FUNCTIONS,             //Defines entities with an attached script function within Cathode
+        RESOURCE_REFERENCES,          //Defines renderable data which is referenced by entities in this composite
+        CAGEANIMATION_DATA,           //Appears to define additional data for CAGEAnimation type entities (TODO)
+        TRIGGERSEQUENCE_DATA,         //Appears to define additional data for TriggerSequence type entities (TODO)
 
-        public override bool Equals(object obj)
-        {
-            if (!(obj is CathodeParameter)) return false;
-            return ((CathodeParameter)obj) == this;
-        }
+        UNUSED,                       //Unused values
+        UNKNOWN_COUNTS,               //TODO - unused?
 
-        public override int GetHashCode()
-        {
-            //this is gross
-            switch (dataType)
-            {
-                case CathodeDataType.POSITION:
-                    CathodeTransform x_t = (CathodeTransform)this;
-                    return Convert.ToInt32(
-                        x_t.rotation.x.ToString() + x_t.rotation.y.ToString() + x_t.rotation.z.ToString() +
-                        x_t.position.x.ToString() + x_t.position.y.ToString() + x_t.position.z.ToString());
-                case CathodeDataType.INTEGER:
-                    return ((CathodeInteger)this).value;
-                case CathodeDataType.STRING:
-                    CathodeString x_s = (CathodeString)this;
-                    string num = "";
-                    for (int i = 0; i < x_s.value.Length; i++) num += ((int)x_s.value[i]).ToString();
-                    return Convert.ToInt32(num);
-                case CathodeDataType.BOOL:
-                    return ((CathodeBool)this).value ? 1 : 0;
-                case CathodeDataType.FLOAT:
-                    return Convert.ToInt32(((CathodeFloat)this).value.ToString().Replace(".", ""));
-                case CathodeDataType.SHORT_GUID:
-                    string x_g_s = ((CathodeString)this).value.ToString();
-                    string num2 = "";
-                    for (int i = 0; i < x_g_s.Length; i++) num2 += ((int)x_g_s[i]).ToString();
-                    return Convert.ToInt32(num2);
-                case CathodeDataType.DIRECTION:
-                    CathodeVector3 x_v = (CathodeVector3)this;
-                    return Convert.ToInt32(x_v.value.x.ToString() + x_v.value.y.ToString() + x_v.value.z.ToString());
-                case CathodeDataType.ENUM:
-                    CathodeEnum x_e = (CathodeEnum)this;
-                    string x_e_s = x_e.enumID.ToString();
-                    string num3 = "";
-                    for (int i = 0; i < x_e_s.Length; i++) num3 += ((int)x_e_s[i]).ToString();
-                    return Convert.ToInt32(num3 + x_e.enumIndex.ToString());
-                case CathodeDataType.SPLINE_DATA:
-                    CathodeSpline x_sd = (CathodeSpline)this;
-                    string x_sd_s = "";
-                    for (int i = 0; i < x_sd.splinePoints.Count; i++) x_sd_s += x_sd.splinePoints[i].position.GetHashCode().ToString();
-                    ShortGuid x_sd_g = ShortGuidUtils.Generate(x_sd_s);
-                    string x_sd_g_s = x_sd_g.ToString();
-                    string num4 = "";
-                    for (int i = 0; i < x_sd_g_s.Length; i++) num4 += ((int)x_sd_g_s[i]).ToString();
-                    return Convert.ToInt32(num4);
-                default:
-                    return -1;
-            }
-        }
-
-        public object Clone()
-        {
-            switch (dataType)
-            {
-                case CathodeDataType.SPLINE_DATA:
-                case CathodeDataType.SHORT_GUID:
-                    return Utilities.CloneObject(this);
-                //HOTFIX FOR VECTOR 3 CLONE ISSUE - TODO: FIND WHY THIS ISN'T WORKING WITH MEMBERWISE CLONE
-                case CathodeDataType.DIRECTION:
-                    CathodeVector3 v3 = (CathodeVector3)this.MemberwiseClone();
-                    v3.value = (Vector3)((CathodeVector3)this).value.Clone();
-                    return v3;
-                case CathodeDataType.POSITION:
-                    CathodeTransform tr = (CathodeTransform)this.MemberwiseClone();
-                    tr.position = (Vector3)((CathodeTransform)this).position.Clone();
-                    tr.rotation = (Vector3)((CathodeTransform)this).rotation.Clone();
-                    return tr;
-                //END OF HOTFIX - SHOULD THIS ALSO APPLY TO OTHERS??
-                default:
-                    return this.MemberwiseClone();
-            }
-        }
-    }
-    [Serializable]
-    public class CathodeTransform : CathodeParameter
-    {
-        public CathodeTransform() { dataType = CathodeDataType.POSITION; }
-        public Vector3 position = new Vector3();
-        public Vector3 rotation = new Vector3(); //In CATHODE this is named Roll/Pitch/Yaw
-    }
-    [Serializable]
-    public class CathodeInteger : CathodeParameter
-    {
-        public CathodeInteger() { dataType = CathodeDataType.INTEGER; }
-        public int value = 0;
-    }
-    [Serializable]
-    public class CathodeString : CathodeParameter
-    {
-        public CathodeString() { dataType = CathodeDataType.STRING; }
-        public string value = "";
-    }
-    [Serializable]
-    public class CathodeBool : CathodeParameter
-    {
-        public CathodeBool() { dataType = CathodeDataType.BOOL; }
-        public bool value = false;
-    }
-    [Serializable]
-    public class CathodeFloat : CathodeParameter
-    {
-        public CathodeFloat() { dataType = CathodeDataType.FLOAT; }
-        public float value = 0.0f;
-    }
-    [Serializable]
-    public class CathodeResource : CathodeParameter
-    {
-        public CathodeResource() { dataType = CathodeDataType.SHORT_GUID; }
-        public List<CathodeResourceReference> value = new List<CathodeResourceReference>(); //TODO: i dont know if this can actually have multiple entries. need to assert
-        public ShortGuid resourceID;
-    }
-    [Serializable]
-    public class CathodeVector3 : CathodeParameter
-    {
-        public CathodeVector3() { dataType = CathodeDataType.DIRECTION; }
-        public Vector3 value = new Vector3();
-    }
-    [Serializable]
-    public class CathodeEnum : CathodeParameter
-    {
-        public CathodeEnum() { dataType = CathodeDataType.ENUM; }
-        public ShortGuid enumID;
-        public int enumIndex = 0;
-    }
-    [Serializable]
-    public class CathodeSpline : CathodeParameter
-    {
-        public CathodeSpline() { dataType = CathodeDataType.SPLINE_DATA; }
-        public List<CathodeTransform> splinePoints = new List<CathodeTransform>();
+        NUMBER_OF_SCRIPT_BLOCKS,      //THIS IS NOT A DATA BLOCK: merely used as an easy way of sanity checking the number of blocks in-code!
     }
 }
