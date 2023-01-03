@@ -88,6 +88,7 @@ namespace CATHODE
             writer.Write(0);
 
             //Fix (& verify) entity-attached resource info
+            _composites = _composites.OrderBy(o => o.shortGUID.ToUInt32()).ToList<Composite>();
             for (int i = 0; i < _composites.Count; i++)
             {
                 List<ResourceReference> animatedModels = new List<ResourceReference>();
@@ -184,10 +185,10 @@ namespace CATHODE
             parameters = PruneParameterList(parameters);
 
             //Write out parameters & track offsets
-            int[] parameterOffsets = new int[parameters.Count];
+            Dictionary<ParameterData, int> parameterOffsets = new Dictionary<ParameterData, int>();
             for (int i = 0; i < parameters.Count; i++)
             {
-                parameterOffsets[i] = (int)writer.BaseStream.Position / 4;
+                parameterOffsets.Add(parameters[i], (int)writer.BaseStream.Position / 4);
                 Utilities.Write<ShortGuid>(writer, CommandsUtils.GetDataTypeGUID(parameters[i].dataType));
                 switch (parameters[i].dataType)
                 {
@@ -306,19 +307,19 @@ namespace CATHODE
                 _composites[i].SortEntities();
 
                 //Write data
-                OffsetPair[] scriptPointerOffsetInfo = new OffsetPair[(int)DataBlock.NUMBER_OF_SCRIPT_BLOCKS];
-                for (int x = 0; x < (int)DataBlock.NUMBER_OF_SCRIPT_BLOCKS; x++)
+                OffsetPair[] scriptPointerOffsetInfo = new OffsetPair[(int)CompositeFileData.NUMBER_OF_SCRIPT_BLOCKS];
+                for (int x = 0; x < (int)CompositeFileData.NUMBER_OF_SCRIPT_BLOCKS; x++)
                 {
-                    switch ((DataBlock)x)
+                    switch ((CompositeFileData)x)
                     {
-                        case DataBlock.COMPOSITE_HEADER:
+                        case CompositeFileData.COMPOSITE_HEADER:
                         {
                             scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, 2);
                             Utilities.Write<ShortGuid>(writer, _composites[i].shortGUID);
                             writer.Write(0);
                             break;
                         }
-                        case DataBlock.ENTITY_CONNECTIONS:
+                        case CompositeFileData.ENTITY_CONNECTIONS:
                         {
                             List<OffsetPair> offsetPairs = new List<OffsetPair>();
                             foreach (Entity entityWithLink in entitiesWithLinks)
@@ -337,27 +338,22 @@ namespace CATHODE
 
                             break;
                         }
-                        case DataBlock.ENTITY_PARAMETERS:
+                        case CompositeFileData.ENTITY_PARAMETERS:
                         {
                             List<OffsetPair> offsetPairs = new List<OffsetPair>();
                             foreach (Entity entityWithParam in entitiesWithParams)
                             {
                                 offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, entityWithParam.parameters.Count));
+
+                                Dictionary<ShortGuid, int> paramsWithOffsets = new Dictionary<ShortGuid, int>();
                                 for (int y = 0; y < entityWithParam.parameters.Count; y++)
+                                    paramsWithOffsets.Add(entityWithParam.parameters[y].shortGUID, parameterOffsets[entityWithParam.parameters[y].content]);
+                                paramsWithOffsets = paramsWithOffsets.OrderBy(o => o.Value).ToDictionary(o => o.Key, o => o.Value);
+
+                                foreach (KeyValuePair<ShortGuid, int> entry in paramsWithOffsets)
                                 {
-                                    Utilities.Write<ShortGuid>(writer, entityWithParam.parameters[y].shortGUID);
-                                    //TODO: this is super slow! Find a better way to lookup parameter content offsets (precalculate a nicer structure)
-                                    int paramOffset = -1;
-                                    for (int z = 0; z < parameters.Count; z++)
-                                    {
-                                        if (parameters[z] == entityWithParam.parameters[y].content)
-                                        {
-                                            paramOffset = parameterOffsets[z];
-                                            break;
-                                        }
-                                    }
-                                    if (paramOffset == -1) throw new Exception("Error writing parameter offset. Could not find parameter content!");
-                                    writer.Write(paramOffset);
+                                    Utilities.Write<ShortGuid>(writer, entry.Key);
+                                    writer.Write(entry.Value);
                                 }
                             }
 
@@ -370,7 +366,7 @@ namespace CATHODE
                             }
                             break;
                         }
-                        case DataBlock.ENTITY_OVERRIDES:
+                        case CompositeFileData.ENTITY_OVERRIDES:
                         {
                             List<OffsetPair> offsetPairs = new List<OffsetPair>();
                             for (int p = 0; p < _composites[i].overrides.Count; p++)
@@ -388,7 +384,7 @@ namespace CATHODE
                             }
                             break;
                         }
-                        case DataBlock.ENTITY_OVERRIDES_CHECKSUM:
+                        case CompositeFileData.ENTITY_OVERRIDES_CHECKSUM:
                         {
                             scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledChecksums.Count);
                             for (int p = 0; p < reshuffledChecksums.Count; p++)
@@ -398,7 +394,7 @@ namespace CATHODE
                             }
                             break;
                         }
-                        case DataBlock.COMPOSITE_EXPOSED_PARAMETERS:
+                        case CompositeFileData.COMPOSITE_EXPOSED_PARAMETERS:
                         {
                             scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _composites[i].variables.Count);
                             for (int p = 0; p < _composites[i].variables.Count; p++)
@@ -409,7 +405,7 @@ namespace CATHODE
                             }
                             break;
                         }
-                        case DataBlock.ENTITY_PROXIES:
+                        case CompositeFileData.ENTITY_PROXIES:
                         {
                             List<OffsetPair> offsetPairs = new List<OffsetPair>();
                             for (int p = 0; p < _composites[i].proxies.Count; p++)
@@ -429,7 +425,7 @@ namespace CATHODE
                             }
                             break;
                         }
-                        case DataBlock.ENTITY_FUNCTIONS:
+                        case CompositeFileData.ENTITY_FUNCTIONS:
                         {
                             scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _composites[i].functions.Count);
                             for (int p = 0; p < _composites[i].functions.Count; p++)
@@ -439,7 +435,7 @@ namespace CATHODE
                             }
                             break;
                         }
-                        case DataBlock.RESOURCE_REFERENCES:
+                        case CompositeFileData.RESOURCE_REFERENCES:
                         {
                             scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, resourceReferences.Count);
                             for (int p = 0; p < resourceReferences.Count; p++)
@@ -477,7 +473,7 @@ namespace CATHODE
                             }
                             break;
                         }
-                        case DataBlock.TRIGGERSEQUENCE_DATA: //Actually CAGEANIMATION_DATA, but indexes are flipped
+                        case CompositeFileData.TRIGGERSEQUENCE_DATA: //Actually CAGEANIMATION_DATA, but indexes are flipped
                         {
                             List<int> globalOffsets = new List<int>();
                             for (int p = 0; p < cageAnimationEntities.Count; p++)
@@ -569,14 +565,14 @@ namespace CATHODE
                                 writer.Write(cageAnimationEntities[p].paramsData3.Count);
                             }
 
-                            scriptPointerOffsetInfo[(int)DataBlock.CAGEANIMATION_DATA] = new OffsetPair(writer.BaseStream.Position, globalOffsets.Count);
+                            scriptPointerOffsetInfo[(int)CompositeFileData.CAGEANIMATION_DATA] = new OffsetPair(writer.BaseStream.Position, globalOffsets.Count);
                             for (int p = 0; p < globalOffsets.Count; p++)
                             {
                                 writer.Write(globalOffsets[p] / 4);
                             }
                             break;
                         }
-                        case DataBlock.CAGEANIMATION_DATA: //Actually TRIGGERSEQUENCE_DATA, but indexes are flipped
+                        case CompositeFileData.CAGEANIMATION_DATA: //Actually TRIGGERSEQUENCE_DATA, but indexes are flipped
                         {
                             List<int> globalOffsets = new List<int>();
                             for (int p = 0; p < triggerSequenceEntities.Count; p++)
@@ -612,22 +608,16 @@ namespace CATHODE
                                 writer.Write(triggerSequenceEntities[p].events.Count);
                             }
 
-                            scriptPointerOffsetInfo[(int)DataBlock.TRIGGERSEQUENCE_DATA] = new OffsetPair(writer.BaseStream.Position, globalOffsets.Count);
+                            scriptPointerOffsetInfo[(int)CompositeFileData.TRIGGERSEQUENCE_DATA] = new OffsetPair(writer.BaseStream.Position, globalOffsets.Count);
                             for (int p = 0; p < globalOffsets.Count; p++)
                             {
                                 writer.Write(globalOffsets[p] / 4);
                             }
                             break;
                         }
-                        case DataBlock.UNUSED:
+                        case CompositeFileData.UNUSED:
                         {
                             scriptPointerOffsetInfo[x] = new OffsetPair(0, 0);
-                            break;
-                        }
-                        case DataBlock.UNKNOWN_COUNTS:
-                        {
-                            //TODO: These count values are unknown. Temp fix in place for the div by 4 at the end on offset (as this isn't actually an offset!)
-                            scriptPointerOffsetInfo[x] = new OffsetPair(_composites[i].unknownPair.GlobalOffset * 4, _composites[i].unknownPair.EntryCount);
                             break;
                         }
                     }
@@ -636,7 +626,7 @@ namespace CATHODE
                 //Write pointers to the pointers of the content
                 compositeOffsets[i] = (int)writer.BaseStream.Position / 4;
                 writer.Write(0);
-                for (int x = 0; x < (int)DataBlock.NUMBER_OF_SCRIPT_BLOCKS; x++)
+                for (int x = 0; x < (int)CompositeFileData.NUMBER_OF_SCRIPT_BLOCKS; x++)
                 {
                     if (x == 0)
                     {
@@ -648,11 +638,16 @@ namespace CATHODE
                     writer.Write(scriptPointerOffsetInfo[x].EntryCount);
                     if (x == 0) Utilities.Write<ShortGuid>(writer, _composites[i].shortGUID);
                 }
+
+                //Write function count (TODO: sometimes this count excludes some entities in the vanilla paks - why?)
+                writer.Write(_composites[i].functions.FindAll(o => CommandsUtils.FunctionTypeExists(o.function)).Count);
+                writer.Write(_composites[i].functions.Count);
             }
 
             //Write out parameter offsets
             int parameterOffsetPos = (int)writer.BaseStream.Position;
-            Utilities.Write<int>(writer, parameterOffsets);
+            foreach (KeyValuePair<ParameterData, int> offset in parameterOffsets)
+                writer.Write(offset.Value);
 
             //Write out composite offsets
             int compositeOffsetPos = (int)writer.BaseStream.Position;
@@ -755,9 +750,9 @@ namespace CATHODE
                 Composite composite = new Composite();
 
                 //Read the offsets and counts
-                OffsetPair[] offsetPairs = new OffsetPair[(int)DataBlock.NUMBER_OF_SCRIPT_BLOCKS];
+                OffsetPair[] offsetPairs = new OffsetPair[(int)CompositeFileData.NUMBER_OF_SCRIPT_BLOCKS];
                 int scriptStartOffset = 0;
-                for (int x = 0; x < (int)DataBlock.NUMBER_OF_SCRIPT_BLOCKS; x++)
+                for (int x = 0; x < (int)CompositeFileData.NUMBER_OF_SCRIPT_BLOCKS; x++)
                 {
                     if (x == 0)
                     {
@@ -768,7 +763,7 @@ namespace CATHODE
                     offsetPairs[x] = Utilities.Consume<OffsetPair>(reader);
                     if (x == 0) composite.shortGUID = new ShortGuid(reader);
                 }
-                composite.unknownPair = offsetPairs[12];
+                reader.BaseStream.Position += 8;
 
                 //Read script ID and string name
                 reader.BaseStream.Position = (scriptStartOffset * 4) + 4;
@@ -789,9 +784,9 @@ namespace CATHODE
                     reader.BaseStream.Position = offsetPairs[x].GlobalOffset * 4;
                     for (int y = 0; y < offsetPairs[x].EntryCount; y++)
                     {
-                        switch ((DataBlock)x)
+                        switch ((CompositeFileData)x)
                         {
-                            case DataBlock.ENTITY_CONNECTIONS:
+                            case CompositeFileData.ENTITY_CONNECTIONS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 entityLinks.Add(new CommandsEntityLinks(new ShortGuid(reader)));
@@ -799,7 +794,7 @@ namespace CATHODE
                                 entityLinks[entityLinks.Count - 1].childLinks.AddRange(Utilities.ConsumeArray<EntityLink>(reader, NumberOfParams));
                                 break;
                             }
-                            case DataBlock.ENTITY_PARAMETERS:
+                            case CompositeFileData.ENTITY_PARAMETERS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 paramRefSets.Add(new CommandsParamRefSet(new ShortGuid(reader)));
@@ -807,7 +802,7 @@ namespace CATHODE
                                 paramRefSets[paramRefSets.Count - 1].refs.AddRange(Utilities.ConsumeArray<CathodeParameterReference>(reader, NumberOfParams));
                                 break;
                             }
-                            case DataBlock.ENTITY_OVERRIDES:
+                            case CompositeFileData.ENTITY_OVERRIDES:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 OverrideEntity overrider = new OverrideEntity(new ShortGuid(reader));
@@ -816,7 +811,7 @@ namespace CATHODE
                                 composite.overrides.Add(overrider);
                                 break;
                             }
-                            case DataBlock.ENTITY_OVERRIDES_CHECKSUM:
+                            case CompositeFileData.ENTITY_OVERRIDES_CHECKSUM:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
                                 overrideChecksums.Add(new ShortGuid(reader), new ShortGuid(reader));
@@ -824,7 +819,7 @@ namespace CATHODE
                             }
                             //TODO: Really, I think these should be treated as parameters on the composite class as they are the pins we use for composite instances.
                             //      Need to look into this more and see if any of these entities actually contain much data other than links into the composite itself.
-                            case DataBlock.COMPOSITE_EXPOSED_PARAMETERS:
+                            case CompositeFileData.COMPOSITE_EXPOSED_PARAMETERS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                 VariableEntity dtEntity = new VariableEntity(new ShortGuid(reader));
@@ -833,7 +828,7 @@ namespace CATHODE
                                 composite.variables.Add(dtEntity);
                                 break;
                             }
-                            case DataBlock.ENTITY_PROXIES:
+                            case CompositeFileData.ENTITY_PROXIES:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 20);
                                 ProxyEntity thisProxy = new ProxyEntity(new ShortGuid(reader));
@@ -847,7 +842,7 @@ namespace CATHODE
                                 composite.proxies.Add(thisProxy);
                                 break;
                             }
-                            case DataBlock.ENTITY_FUNCTIONS:
+                            case CompositeFileData.ENTITY_FUNCTIONS:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
                                 ShortGuid entityID = new ShortGuid(reader);
@@ -882,7 +877,7 @@ namespace CATHODE
                                 }
                                 break;
                             }
-                            case DataBlock.RESOURCE_REFERENCES:
+                            case CompositeFileData.RESOURCE_REFERENCES:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 40);
 
@@ -915,7 +910,7 @@ namespace CATHODE
                                 resourceRefs.Add(resource);
                                 break;
                             }
-                            case DataBlock.CAGEANIMATION_DATA:
+                            case CompositeFileData.CAGEANIMATION_DATA:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
                                 reader.BaseStream.Position = (reader.ReadInt32() * 4);
@@ -1007,7 +1002,7 @@ namespace CATHODE
                                 }
                                 break;
                             }
-                            case DataBlock.TRIGGERSEQUENCE_DATA:
+                            case CompositeFileData.TRIGGERSEQUENCE_DATA:
                             {
                                 reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
                                 reader.BaseStream.Position = (reader.ReadInt32() * 4);

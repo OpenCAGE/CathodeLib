@@ -35,7 +35,7 @@ namespace CATHODE.Scripting
             if (vanilla_composites != null)
                 if (vanilla_composites.ContainsKey(compositeID) && vanilla_composites[compositeID].ContainsKey(entityID))
                     return vanilla_composites[compositeID][entityID];
-            return entityID.ToString();
+            return entityID.ToByteString();
         }
 
         /* Set the name of an entity contained within a composite */
@@ -1085,7 +1085,7 @@ namespace CATHODE.Scripting
                 case FunctionType.CollisionBarrier:
                     newEntity.AddParameter("on_damaged", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("deleted", new cBool(false), ParameterVariant.STATE); //bool
-                    newEntity.AddParameter("collision_type", new cEnum("COLLISION_TYPE", 0), ParameterVariant.PARAMETER); //COLLISION_TYPE
+                    newEntity.AddParameter("collision_type", new cEnum(EnumType.COLLISION_TYPE, 0), ParameterVariant.PARAMETER); //COLLISION_TYPE
                     newEntity.AddParameter("static_collision", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.PlayerTriggerBox:
@@ -1162,7 +1162,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("occlusion_geometry", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.RENDERABLE_INSTANCE) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.INPUT); //RENDERABLE_INSTANCE
                     newEntity.AddParameter("mastered_by_visibility", new cFloat(), ParameterVariant.INPUT); //Object
                     newEntity.AddParameter("exclude_shadow_entities", new cFloat(), ParameterVariant.INPUT); //Object
-                    newEntity.AddParameter("type", new cEnum("LIGHT_TYPE", 0), ParameterVariant.PARAMETER); //LIGHT_TYPE
+                    newEntity.AddParameter("type", new cEnum(EnumType.LIGHT_TYPE, 0), ParameterVariant.PARAMETER); //LIGHT_TYPE
                     newEntity.AddParameter("defocus_attenuation", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("start_attenuation", new cFloat(0.1f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("end_attenuation", new cFloat(2.0f), ParameterVariant.PARAMETER); //float
@@ -1181,7 +1181,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("flare_spot_offset", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("flare_intensity_scale", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("cast_shadow", new cBool(false), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("fade_type", new cEnum("LIGHT_FADE_TYPE", 1), ParameterVariant.PARAMETER); //LIGHT_FADE_TYPE
+                    newEntity.AddParameter("fade_type", new cEnum(EnumType.LIGHT_FADE_TYPE, 1), ParameterVariant.PARAMETER); //LIGHT_FADE_TYPE
                     newEntity.AddParameter("is_specular", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("has_lens_flare", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("has_noclip", new cBool(false), ParameterVariant.PARAMETER); //bool
@@ -1544,7 +1544,7 @@ namespace CATHODE.Scripting
                 case FunctionType.FogBox:
                     newEntity.AddParameter("deleted", new cBool(false), ParameterVariant.STATE); //bool
                     newEntity.AddParameter("show_on_reset", new cBool(true), ParameterVariant.STATE); //bool
-                    newEntity.AddParameter("GEOMETRY_TYPE", new cEnum("FOG_BOX_TYPE", 1), ParameterVariant.PARAMETER); //FOG_BOX_TYPE
+                    newEntity.AddParameter("GEOMETRY_TYPE", new cEnum(EnumType.FOG_BOX_TYPE, 1), ParameterVariant.PARAMETER); //FOG_BOX_TYPE
                     newEntity.AddParameter("COLOUR_TINT", new cVector3(), ParameterVariant.PARAMETER); //Direction
                     newEntity.AddParameter("DISTANCE_FADE", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("ANGLE_FADE", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
@@ -1731,18 +1731,18 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("is_camera_transformation_local", new cBool(), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("camera_transformation", new cTransform(), ParameterVariant.PARAMETER); //Position
                     newEntity.AddParameter("fov", new cFloat(45.0f), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("clipping_planes_preset", new cEnum("CLIPPING_PLANES_PRESETS", 2), ParameterVariant.PARAMETER); //CLIPPING_PLANES_PRESETS
+                    newEntity.AddParameter("clipping_planes_preset", new cEnum(EnumType.CLIPPING_PLANES_PRESETS, 2), ParameterVariant.PARAMETER); //CLIPPING_PLANES_PRESETS
                     newEntity.AddParameter("is_ghost", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("converge_to_player_camera", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("reset_player_camera_on_exit", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("enable_enter_transition", new cBool(true), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("transition_curve_direction", new cEnum("TRANSITION_DIRECTION", 4), ParameterVariant.PARAMETER); //TRANSITION_DIRECTION
+                    newEntity.AddParameter("transition_curve_direction", new cEnum(EnumType.TRANSITION_DIRECTION, 4), ParameterVariant.PARAMETER); //TRANSITION_DIRECTION
                     newEntity.AddParameter("transition_curve_strength", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("transition_duration", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("transition_ease_in", new cFloat(0.2f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("transition_ease_out", new cFloat(0.2f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("enable_exit_transition", new cBool(false), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("exit_transition_curve_direction", new cEnum("TRANSITION_DIRECTION", 4), ParameterVariant.PARAMETER); //TRANSITION_DIRECTION
+                    newEntity.AddParameter("exit_transition_curve_direction", new cEnum(EnumType.TRANSITION_DIRECTION, 4), ParameterVariant.PARAMETER); //TRANSITION_DIRECTION
                     newEntity.AddParameter("exit_transition_curve_strength", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("exit_transition_duration", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("exit_transition_ease_in", new cFloat(0.2f), ParameterVariant.PARAMETER); //float
@@ -1764,7 +1764,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("blend_out", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     break;
                 case FunctionType.HandCamera:
-                    newEntity.AddParameter("noise_type", new cEnum("NOISE_TYPE", 0), ParameterVariant.PARAMETER); //NOISE_TYPE
+                    newEntity.AddParameter("noise_type", new cEnum(EnumType.NOISE_TYPE, 0), ParameterVariant.PARAMETER); //NOISE_TYPE
                     newEntity.AddParameter("frequency", new cVector3(), ParameterVariant.PARAMETER); //Direction
                     newEntity.AddParameter("damping", new cVector3(), ParameterVariant.PARAMETER); //Direction
                     newEntity.AddParameter("rotation_intensity", new cVector3(), ParameterVariant.PARAMETER); //Direction
@@ -1777,7 +1777,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("relative_transformation", new cTransform(), ParameterVariant.INPUT); //Position
                     newEntity.AddParameter("impulse_intensity", new cFloat(0.0f), ParameterVariant.INPUT); //float
                     newEntity.AddParameter("impulse_position", new cVector3(), ParameterVariant.INPUT); //Direction
-                    newEntity.AddParameter("shake_type", new cEnum("SHAKE_TYPE", 0), ParameterVariant.PARAMETER); //SHAKE_TYPE
+                    newEntity.AddParameter("shake_type", new cEnum(EnumType.SHAKE_TYPE, 0), ParameterVariant.PARAMETER); //SHAKE_TYPE
                     newEntity.AddParameter("shake_frequency", new cVector3(), ParameterVariant.PARAMETER); //Direction
                     newEntity.AddParameter("max_rotation_angles", new cVector3(), ParameterVariant.PARAMETER); //Direction
                     newEntity.AddParameter("max_position_offset", new cVector3(), ParameterVariant.PARAMETER); //Direction
@@ -1800,7 +1800,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("target_path_transform", new cTransform(), ParameterVariant.INPUT); //Position
                     newEntity.AddParameter("reference_path_transform", new cTransform(), ParameterVariant.INPUT); //Position
                     newEntity.AddParameter("point_to_project", new cVector3(), ParameterVariant.INPUT); //Direction
-                    newEntity.AddParameter("path_driven_type", new cEnum("PATH_DRIVEN_TYPE", 2), ParameterVariant.PARAMETER); //PATH_DRIVEN_TYPE
+                    newEntity.AddParameter("path_driven_type", new cEnum(EnumType.PATH_DRIVEN_TYPE, 2), ParameterVariant.PARAMETER); //PATH_DRIVEN_TYPE
                     newEntity.AddParameter("invert_progression", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("position_path_offset", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("target_path_offset", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
@@ -1844,7 +1844,7 @@ namespace CATHODE.Scripting
                 case FunctionType.StealCamera:
                     newEntity.AddParameter("on_converged", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("focus_position", new cTransform(), ParameterVariant.INPUT); //Position
-                    newEntity.AddParameter("steal_type", new cEnum("STEAL_CAMERA_TYPE", 0), ParameterVariant.PARAMETER); //STEAL_CAMERA_TYPE
+                    newEntity.AddParameter("steal_type", new cEnum(EnumType.STEAL_CAMERA_TYPE, 0), ParameterVariant.PARAMETER); //STEAL_CAMERA_TYPE
                     newEntity.AddParameter("check_line_of_sight", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("blend_in_duration", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     break;
@@ -1852,7 +1852,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("enable_on_reset", new cBool(false), ParameterVariant.STATE); //bool
                     newEntity.AddParameter("position_curve", new cFloat(), ParameterVariant.INPUT); //Object
                     newEntity.AddParameter("target_curve", new cFloat(), ParameterVariant.INPUT); //Object
-                    newEntity.AddParameter("modifier_type", new cEnum("FOLLOW_CAMERA_MODIFIERS", 0), ParameterVariant.PARAMETER); //FOLLOW_CAMERA_MODIFIERS
+                    newEntity.AddParameter("modifier_type", new cEnum(EnumType.FOLLOW_CAMERA_MODIFIERS, 0), ParameterVariant.PARAMETER); //FOLLOW_CAMERA_MODIFIERS
                     newEntity.AddParameter("position_offset", new cVector3(), ParameterVariant.PARAMETER); //Direction
                     newEntity.AddParameter("target_offset", new cVector3(), ParameterVariant.PARAMETER); //Direction
                     newEntity.AddParameter("field_of_view", new cFloat(35.0f), ParameterVariant.PARAMETER); //float
@@ -1880,8 +1880,8 @@ namespace CATHODE.Scripting
                 case FunctionType.CameraPath:
                     newEntity.AddParameter("linked_splines", new cSpline(), ParameterVariant.INPUT); //SPLINE
                     newEntity.AddParameter("path_name", new cString(""), ParameterVariant.PARAMETER); //String
-                    newEntity.AddParameter("path_type", new cEnum("CAMERA_PATH_TYPE", 0), ParameterVariant.PARAMETER); //CAMERA_PATH_TYPE
-                    newEntity.AddParameter("path_class", new cEnum("CAMERA_PATH_CLASS", 0), ParameterVariant.PARAMETER); //CAMERA_PATH_CLASS
+                    newEntity.AddParameter("path_type", new cEnum(EnumType.CAMERA_PATH_TYPE, 0), ParameterVariant.PARAMETER); //CAMERA_PATH_TYPE
+                    newEntity.AddParameter("path_class", new cEnum(EnumType.CAMERA_PATH_CLASS, 0), ParameterVariant.PARAMETER); //CAMERA_PATH_CLASS
                     newEntity.AddParameter("is_local", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("relative_position", new cTransform(), ParameterVariant.PARAMETER); //Position
                     newEntity.AddParameter("is_loop", new cBool(false), ParameterVariant.PARAMETER); //bool
@@ -1912,7 +1912,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("end_frame", new cInteger(), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("play_speed", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("loop_play", new cBool(false), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("clipping_planes_preset", new cEnum("CLIPPING_PLANES_PRESETS", 2), ParameterVariant.PARAMETER); //CLIPPING_PLANES_PRESETS
+                    newEntity.AddParameter("clipping_planes_preset", new cEnum(EnumType.CLIPPING_PLANES_PRESETS, 2), ParameterVariant.PARAMETER); //CLIPPING_PLANES_PRESETS
                     newEntity.AddParameter("is_cinematic", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("dof_key", new cInteger(-1), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("shot_number", new cInteger(), ParameterVariant.PARAMETER); //int
@@ -1939,7 +1939,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("roll_factor", new cFloat(15.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("use_ik_solver", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("use_horizontal_plane", new cBool(false), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("stick", new cEnum("SIDE", 0), ParameterVariant.PARAMETER); //SIDE
+                    newEntity.AddParameter("stick", new cEnum(EnumType.SIDE, 0), ParameterVariant.PARAMETER); //SIDE
                     newEntity.AddParameter("disable_collision_test", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.CameraDofController:
@@ -1978,8 +1978,8 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("exitted_outer_radius", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("failed", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("Waypoint", new cTransform(), ParameterVariant.INPUT); //Position
-                    newEntity.AddParameter("idle_stance", new cEnum("IDLE", 0), ParameterVariant.PARAMETER); //IDLE
-                    newEntity.AddParameter("move_type", new cEnum("MOVE", 1), ParameterVariant.PARAMETER); //MOVE
+                    newEntity.AddParameter("idle_stance", new cEnum(EnumType.IDLE, 0), ParameterVariant.PARAMETER); //IDLE
+                    newEntity.AddParameter("move_type", new cEnum(EnumType.MOVE, 1), ParameterVariant.PARAMETER); //MOVE
                     newEntity.AddParameter("inner_radius", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("outer_radius", new cFloat(2.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("prefer_traversals", new cBool(false), ParameterVariant.PARAMETER); //bool
@@ -1988,8 +1988,8 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("failed", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("target_to_follow", new cTransform(), ParameterVariant.INPUT); //Position
                     newEntity.AddParameter("who_Im_leading", new cFloat(), ParameterVariant.INPUT); //Object
-                    newEntity.AddParameter("fastest_allowed_move_type", new cEnum("MOVE", 3), ParameterVariant.PARAMETER); //MOVE
-                    newEntity.AddParameter("slowest_allowed_move_type", new cEnum("MOVE", 0), ParameterVariant.PARAMETER); //MOVE
+                    newEntity.AddParameter("fastest_allowed_move_type", new cEnum(EnumType.MOVE, 3), ParameterVariant.PARAMETER); //MOVE
+                    newEntity.AddParameter("slowest_allowed_move_type", new cEnum(EnumType.MOVE, 0), ParameterVariant.PARAMETER); //MOVE
                     newEntity.AddParameter("centre_job_restart_radius", new cFloat(2.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("inner_radius", new cFloat(4.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("outer_radius", new cFloat(8.0f), ParameterVariant.PARAMETER); //float
@@ -2000,7 +2000,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("prefer_traversals", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("avoid_player", new cBool(true), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("allow_teleports", new cBool(false), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("follow_type", new cEnum("FOLLOW_TYPE", 0), ParameterVariant.PARAMETER); //FOLLOW_TYPE
+                    newEntity.AddParameter("follow_type", new cEnum(EnumType.FOLLOW_TYPE, 0), ParameterVariant.PARAMETER); //FOLLOW_TYPE
                     newEntity.AddParameter("clamp_speed", new cBool(true), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.NPC_FollowOffset:
@@ -2090,9 +2090,9 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("target_to_face", new cTransform(), ParameterVariant.INPUT); //Position
                     newEntity.AddParameter("should_face_target", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("should_raise_gun_while_turning", new cBool(false), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("desired_stance", new cEnum("CHARACTER_STANCE", 0), ParameterVariant.PARAMETER); //CHARACTER_STANCE
+                    newEntity.AddParameter("desired_stance", new cEnum(EnumType.CHARACTER_STANCE, 0), ParameterVariant.PARAMETER); //CHARACTER_STANCE
                     newEntity.AddParameter("duration", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("idle_style", new cEnum("IDLE_STYLE", 1), ParameterVariant.PARAMETER); //IDLE_STYLE
+                    newEntity.AddParameter("idle_style", new cEnum(EnumType.IDLE_STYLE, 1), ParameterVariant.PARAMETER); //IDLE_STYLE
                     newEntity.AddParameter("lock_cameras", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("anchor", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("start_instantly", new cBool(false), ParameterVariant.PARAMETER); //bool
@@ -2102,7 +2102,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("failed", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("Waypoint", new cTransform(), ParameterVariant.INPUT); //Position
                     newEntity.AddParameter("AimTarget", new cFloat(), ParameterVariant.INPUT); //Object
-                    newEntity.AddParameter("move_type", new cEnum("MOVE", 1), ParameterVariant.PARAMETER); //MOVE
+                    newEntity.AddParameter("move_type", new cEnum(EnumType.MOVE, 1), ParameterVariant.PARAMETER); //MOVE
                     newEntity.AddParameter("enable_lookaround", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("use_stopping_anim", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("always_stop_at_radius", new cBool(false), ParameterVariant.PARAMETER); //bool
@@ -2123,7 +2123,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("entered_cover", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("CoverPoint", new cTransform(), ParameterVariant.INPUT); //Position
                     newEntity.AddParameter("AimTarget", new cFloat(), ParameterVariant.INPUT); //Object
-                    newEntity.AddParameter("move_type", new cEnum("MOVE", 1), ParameterVariant.PARAMETER); //MOVE
+                    newEntity.AddParameter("move_type", new cEnum(EnumType.MOVE, 1), ParameterVariant.PARAMETER); //MOVE
                     newEntity.AddParameter("SearchRadius", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("enable_lookaround", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("duration", new cFloat(-1.0f), ParameterVariant.PARAMETER); //float
@@ -2137,7 +2137,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("failed", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("MoveTarget", new cTransform(), ParameterVariant.INPUT); //Position
                     newEntity.AddParameter("AimTarget", new cFloat(), ParameterVariant.INPUT); //Object
-                    newEntity.AddParameter("move_type", new cEnum("MOVE", 1), ParameterVariant.PARAMETER); //MOVE
+                    newEntity.AddParameter("move_type", new cEnum(EnumType.MOVE, 1), ParameterVariant.PARAMETER); //MOVE
                     newEntity.AddParameter("disallow_traversal", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("should_be_aiming", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("use_current_target_as_aim", new cBool(false), ParameterVariant.PARAMETER); //bool
@@ -2145,17 +2145,17 @@ namespace CATHODE.Scripting
                     break;
                 case FunctionType.CMD_Die:
                     newEntity.AddParameter("Killer", new cFloat(), ParameterVariant.INPUT); //Object
-                    newEntity.AddParameter("death_style", new cEnum("DEATH_STYLE", 0), ParameterVariant.PARAMETER); //DEATH_STYLE
+                    newEntity.AddParameter("death_style", new cEnum(EnumType.DEATH_STYLE, 0), ParameterVariant.PARAMETER); //DEATH_STYLE
                     break;
                 case FunctionType.CMD_LaunchMeleeAttack:
                     newEntity.AddParameter("finished", new cFloat(), ParameterVariant.TARGET); //
-                    newEntity.AddParameter("melee_attack_type", new cEnum("MELEE_ATTACK_TYPE", 0), ParameterVariant.PARAMETER); //MELEE_ATTACK_TYPE
-                    newEntity.AddParameter("enemy_type", new cEnum("ENEMY_TYPE", 15), ParameterVariant.PARAMETER); //ENEMY_TYPE
+                    newEntity.AddParameter("melee_attack_type", new cEnum(EnumType.MELEE_ATTACK_TYPE, 0), ParameterVariant.PARAMETER); //MELEE_ATTACK_TYPE
+                    newEntity.AddParameter("enemy_type", new cEnum(EnumType.ENEMY_TYPE, 15), ParameterVariant.PARAMETER); //ENEMY_TYPE
                     newEntity.AddParameter("melee_attack_index", new cInteger(0), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("skip_convergence", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.CMD_ModifyCombatBehaviour:
-                    newEntity.AddParameter("behaviour_type", new cEnum("COMBAT_BEHAVIOUR", 0), ParameterVariant.PARAMETER); //COMBAT_BEHAVIOUR
+                    newEntity.AddParameter("behaviour_type", new cEnum(EnumType.COMBAT_BEHAVIOUR, 0), ParameterVariant.PARAMETER); //COMBAT_BEHAVIOUR
                     newEntity.AddParameter("status", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.CMD_HolsterWeapon:
@@ -2163,7 +2163,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("success", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("should_holster", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("skip_anims", new cBool(false), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("equipment_slot", new cEnum("EQUIPMENT_SLOT", -2), ParameterVariant.PARAMETER); //EQUIPMENT_SLOT
+                    newEntity.AddParameter("equipment_slot", new cEnum(EnumType.EQUIPMENT_SLOT, -2), ParameterVariant.PARAMETER); //EQUIPMENT_SLOT
                     newEntity.AddParameter("force_player_unarmed_on_holster", new cBool(true), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("force_drop_held_item", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
@@ -2171,8 +2171,8 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("success", new cFloat(), ParameterVariant.TARGET); //
                     break;
                 case FunctionType.CMD_ForceMeleeAttack:
-                    newEntity.AddParameter("melee_attack_type", new cEnum("MELEE_ATTACK_TYPE", 0), ParameterVariant.PARAMETER); //MELEE_ATTACK_TYPE
-                    newEntity.AddParameter("enemy_type", new cEnum("ENEMY_TYPE", 15), ParameterVariant.PARAMETER); //ENEMY_TYPE
+                    newEntity.AddParameter("melee_attack_type", new cEnum(EnumType.MELEE_ATTACK_TYPE, 0), ParameterVariant.PARAMETER); //MELEE_ATTACK_TYPE
+                    newEntity.AddParameter("enemy_type", new cEnum(EnumType.ENEMY_TYPE, 15), ParameterVariant.PARAMETER); //ENEMY_TYPE
                     newEntity.AddParameter("melee_attack_index", new cInteger(0), ParameterVariant.PARAMETER); //int
                     break;
                 case FunctionType.CHR_ModifyBreathing:
@@ -2206,7 +2206,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("BlendInTime", new cFloat(0.3f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("GaitSyncStart", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("Mirror", new cBool(false), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("AnimationLayer", new cEnum("SECONDARY_ANIMATION_LAYER", 0), ParameterVariant.PARAMETER); //SECONDARY_ANIMATION_LAYER
+                    newEntity.AddParameter("AnimationLayer", new cEnum(EnumType.SECONDARY_ANIMATION_LAYER, 0), ParameterVariant.PARAMETER); //SECONDARY_ANIMATION_LAYER
                     newEntity.AddParameter("AutomaticZoning", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("ManualLoading", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
@@ -2223,15 +2223,15 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("Is_In_Spacesuit", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.CHR_SetMood:
-                    newEntity.AddParameter("mood", new cEnum("MOOD", 0), ParameterVariant.PARAMETER); //MOOD
-                    newEntity.AddParameter("moodIntensity", new cEnum("MOOD_INTENSITY", 0), ParameterVariant.PARAMETER); //MOOD_INTENSITY
+                    newEntity.AddParameter("mood", new cEnum(EnumType.MOOD, 0), ParameterVariant.PARAMETER); //MOOD
+                    newEntity.AddParameter("moodIntensity", new cEnum(EnumType.MOOD_INTENSITY, 0), ParameterVariant.PARAMETER); //MOOD_INTENSITY
                     newEntity.AddParameter("timeOut", new cFloat(10.0f), ParameterVariant.PARAMETER); //float
                     break;
                 case FunctionType.CHR_LocomotionEffect:
-                    newEntity.AddParameter("Effect", new cEnum("ANIMATION_EFFECT_TYPE", 0), ParameterVariant.PARAMETER); //ANIMATION_EFFECT_TYPE
+                    newEntity.AddParameter("Effect", new cEnum(EnumType.ANIMATION_EFFECT_TYPE, 0), ParameterVariant.PARAMETER); //ANIMATION_EFFECT_TYPE
                     break;
                 case FunctionType.CHR_LocomotionDuck:
-                    newEntity.AddParameter("Height", new cEnum("DUCK_HEIGHT", 0), ParameterVariant.PARAMETER); //DUCK_HEIGHT
+                    newEntity.AddParameter("Height", new cEnum(EnumType.DUCK_HEIGHT, 0), ParameterVariant.PARAMETER); //DUCK_HEIGHT
                     break;
                 case FunctionType.CMD_ShootAt:
                     newEntity.AddParameter("succeeded", new cFloat(), ParameterVariant.TARGET); //
@@ -2267,13 +2267,13 @@ namespace CATHODE.Scripting
                     break;
                 case FunctionType.CHR_SetTacticalPosition:
                     newEntity.AddParameter("tactical_position", new cTransform(), ParameterVariant.INPUT); //Position
-                    newEntity.AddParameter("sweep_type", new cEnum("AREA_SWEEP_TYPE", 0), ParameterVariant.PARAMETER); //AREA_SWEEP_TYPE
+                    newEntity.AddParameter("sweep_type", new cEnum(EnumType.AREA_SWEEP_TYPE, 0), ParameterVariant.PARAMETER); //AREA_SWEEP_TYPE
                     newEntity.AddParameter("fixed_sweep_radius", new cFloat(10.0f), ParameterVariant.PARAMETER); //float
                     break;
                 case FunctionType.CHR_SetFocalPoint:
                     newEntity.AddParameter("focal_point", new cTransform(), ParameterVariant.INPUT); //Position
-                    newEntity.AddParameter("priority", new cEnum("PRIORITY", 0), ParameterVariant.PARAMETER); //PRIORITY
-                    newEntity.AddParameter("speed", new cEnum("LOOK_SPEED", 1), ParameterVariant.PARAMETER); //LOOK_SPEED
+                    newEntity.AddParameter("priority", new cEnum(EnumType.PRIORITY, 0), ParameterVariant.PARAMETER); //PRIORITY
+                    newEntity.AddParameter("speed", new cEnum(EnumType.LOOK_SPEED, 1), ParameterVariant.PARAMETER); //LOOK_SPEED
                     newEntity.AddParameter("steal_camera", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("line_of_sight_test", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
@@ -2282,18 +2282,18 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("throw_position", new cTransform(), ParameterVariant.INPUT); //Position
                     break;
                 case FunctionType.CHR_SetAlliance:
-                    newEntity.AddParameter("Alliance", new cEnum("ALLIANCE_GROUP", 0), ParameterVariant.PARAMETER); //ALLIANCE_GROUP
+                    newEntity.AddParameter("Alliance", new cEnum(EnumType.ALLIANCE_GROUP, 0), ParameterVariant.PARAMETER); //ALLIANCE_GROUP
                     break;
                 case FunctionType.CHR_GetAlliance:
                     newEntity.AddParameter("Alliance", new cEnum(), ParameterVariant.OUTPUT); //Enum
                     break;
                 case FunctionType.ALLIANCE_SetDisposition:
-                    newEntity.AddParameter("A", new cEnum("ALLIANCE_GROUP", 1), ParameterVariant.PARAMETER); //ALLIANCE_GROUP
-                    newEntity.AddParameter("B", new cEnum("ALLIANCE_GROUP", 5), ParameterVariant.PARAMETER); //ALLIANCE_GROUP
-                    newEntity.AddParameter("Disposition", new cEnum("ALLIANCE_STANCE", 1), ParameterVariant.PARAMETER); //ALLIANCE_STANCE
+                    newEntity.AddParameter("A", new cEnum(EnumType.ALLIANCE_GROUP, 1), ParameterVariant.PARAMETER); //ALLIANCE_GROUP
+                    newEntity.AddParameter("B", new cEnum(EnumType.ALLIANCE_GROUP, 5), ParameterVariant.PARAMETER); //ALLIANCE_GROUP
+                    newEntity.AddParameter("Disposition", new cEnum(EnumType.ALLIANCE_STANCE, 1), ParameterVariant.PARAMETER); //ALLIANCE_STANCE
                     break;
                 case FunctionType.CHR_SetInvincibility:
-                    newEntity.AddParameter("damage_mode", new cEnum("DAMAGE_MODE", 0), ParameterVariant.PARAMETER); //DAMAGE_MODE
+                    newEntity.AddParameter("damage_mode", new cEnum(EnumType.DAMAGE_MODE, 0), ParameterVariant.PARAMETER); //DAMAGE_MODE
                     break;
                 case FunctionType.CHR_SetHealth:
                     newEntity.AddParameter("HealthPercentage", new cInteger(100), ParameterVariant.PARAMETER); //int
@@ -2308,7 +2308,7 @@ namespace CATHODE.Scripting
                 case FunctionType.CHR_TakeDamage:
                     newEntity.AddParameter("Damage", new cInteger(100), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("DamageIsAPercentage", new cBool(false), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("AmmoType", new cEnum("AMMO_TYPE", 0), ParameterVariant.PARAMETER); //AMMO_TYPE
+                    newEntity.AddParameter("AmmoType", new cEnum(EnumType.AMMO_TYPE, 0), ParameterVariant.PARAMETER); //AMMO_TYPE
                     break;
                 case FunctionType.CHR_SetSubModelVisibility:
                     newEntity.AddParameter("is_visible", new cBool(true), ParameterVariant.PARAMETER); //bool
@@ -2325,7 +2325,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("InstigatorFilter", new cBool(true), ParameterVariant.INPUT); //bool
                     newEntity.AddParameter("DamageDone", new cInteger(), ParameterVariant.OUTPUT); //int
                     newEntity.AddParameter("Instigator", new cFloat(), ParameterVariant.OUTPUT); //Object
-                    newEntity.AddParameter("DamageType", new cEnum("DAMAGE_EFFECTS", -65536), ParameterVariant.PARAMETER); //DAMAGE_EFFECTS
+                    newEntity.AddParameter("DamageType", new cEnum(EnumType.DAMAGE_EFFECTS, -65536), ParameterVariant.PARAMETER); //DAMAGE_EFFECTS
                     break;
                 case FunctionType.CHR_KnockedOutMonitor:
                     newEntity.AddParameter("on_knocked_out", new cFloat(), ParameterVariant.TARGET); //
@@ -2336,7 +2336,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("killed", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("KillerFilter", new cBool(true), ParameterVariant.INPUT); //bool
                     newEntity.AddParameter("Killer", new cFloat(), ParameterVariant.OUTPUT); //Object
-                    newEntity.AddParameter("DamageType", new cEnum("DAMAGE_EFFECTS", -65536), ParameterVariant.PARAMETER); //DAMAGE_EFFECTS
+                    newEntity.AddParameter("DamageType", new cEnum(EnumType.DAMAGE_EFFECTS, -65536), ParameterVariant.PARAMETER); //DAMAGE_EFFECTS
                     break;
                 case FunctionType.CHR_RetreatMonitor:
                     newEntity.AddParameter("reached_retreat", new cFloat(), ParameterVariant.TARGET); //
@@ -2364,7 +2364,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("despawned", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("all_despawned", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("AreAny", new cBool(), ParameterVariant.OUTPUT); //bool
-                    newEntity.AddParameter("character_class", new cEnum("CHARACTER_CLASS_COMBINATION", 2), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_class", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 2), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     newEntity.AddParameter("trigger_on_start", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("trigger_on_checkpoint_restart", new cBool(), ParameterVariant.PARAMETER); //bool
                     break;
@@ -2384,7 +2384,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("personalSpaceRadius", new cFloat(0.4f), ParameterVariant.PARAMETER); //float
                     break;
                 case FunctionType.NPC_NotifyDynamicDialogueEvent:
-                    newEntity.AddParameter("DialogueEvent", new cEnum("DIALOGUE_NPC_EVENT", -1), ParameterVariant.PARAMETER); //DIALOGUE_NPC_EVENT
+                    newEntity.AddParameter("DialogueEvent", new cEnum(EnumType.DIALOGUE_NPC_EVENT, -1), ParameterVariant.PARAMETER); //DIALOGUE_NPC_EVENT
                     break;
                 case FunctionType.NPC_Squad_DialogueMonitor:
                     newEntity.AddParameter("Suspicious_Item_Initial", new cFloat(), ParameterVariant.TARGET); //
@@ -2435,7 +2435,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("CheckAllNPCs", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.NPC_SenseLimiter:
-                    newEntity.AddParameter("Sense", new cEnum("SENSORY_TYPE", -1), ParameterVariant.PARAMETER); //SENSORY_TYPE
+                    newEntity.AddParameter("Sense", new cEnum(EnumType.SENSORY_TYPE, -1), ParameterVariant.PARAMETER); //SENSORY_TYPE
                     break;
                 case FunctionType.NPC_ResetSensesAndMemory:
                     newEntity.AddParameter("ResetMenaceToFull", new cBool(false), ParameterVariant.PARAMETER); //bool
@@ -2450,7 +2450,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("AlienConfigString", new cString(" "), ParameterVariant.PARAMETER); //String
                     break;
                 case FunctionType.NPC_SetSenseSet:
-                    newEntity.AddParameter("SenseSet", new cEnum("SENSE_SET", 0), ParameterVariant.PARAMETER); //SENSE_SET
+                    newEntity.AddParameter("SenseSet", new cEnum(EnumType.SENSE_SET, 0), ParameterVariant.PARAMETER); //SENSE_SET
                     break;
                 case FunctionType.NPC_GetLastSensedPositionOfTarget:
                     newEntity.AddParameter("NoRecentSense", new cFloat(), ParameterVariant.TARGET); //
@@ -2469,7 +2469,7 @@ namespace CATHODE.Scripting
                 case FunctionType.NPC_Gain_Aggression_In_Radius:
                     newEntity.AddParameter("Position", new cTransform(), ParameterVariant.INPUT); //Position
                     newEntity.AddParameter("Radius", new cFloat(5.0f), ParameterVariant.INPUT); //float
-                    newEntity.AddParameter("AggressionGain", new cEnum("AGGRESSION_GAIN", 1), ParameterVariant.PARAMETER); //AGGRESSION_GAIN
+                    newEntity.AddParameter("AggressionGain", new cEnum(EnumType.AGGRESSION_GAIN, 1), ParameterVariant.PARAMETER); //AGGRESSION_GAIN
                     break;
                 case FunctionType.NPC_Aggression_Monitor:
                     newEntity.AddParameter("on_interrogative", new cFloat(), ParameterVariant.TARGET); //
@@ -2482,7 +2482,7 @@ namespace CATHODE.Scripting
                 case FunctionType.Explosion_AINotifier:
                     newEntity.AddParameter("on_character_damage_fx", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("ExplosionPos", new cVector3(), ParameterVariant.PARAMETER); //Direction
-                    newEntity.AddParameter("AmmoType", new cEnum("AMMO_TYPE", 12), ParameterVariant.PARAMETER); //AMMO_TYPE
+                    newEntity.AddParameter("AmmoType", new cEnum(EnumType.AMMO_TYPE, 12), ParameterVariant.PARAMETER); //AMMO_TYPE
                     break;
                 case FunctionType.NPC_Sleeping_Android_Monitor:
                     newEntity.AddParameter("Twitch", new cFloat(), ParameterVariant.TARGET); //
@@ -2555,21 +2555,21 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("lower_activation", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("normal_activation", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("upper_activation", new cFloat(), ParameterVariant.TARGET); //
-                    newEntity.AddParameter("Sense", new cEnum("SENSORY_TYPE", -1), ParameterVariant.PARAMETER); //SENSORY_TYPE
+                    newEntity.AddParameter("Sense", new cEnum(EnumType.SENSORY_TYPE, -1), ParameterVariant.PARAMETER); //SENSORY_TYPE
                     break;
                 case FunctionType.NPC_FakeSense:
                     newEntity.AddParameter("SensedObject", new cFloat(), ParameterVariant.INPUT); //Object
                     newEntity.AddParameter("FakePosition", new cTransform(), ParameterVariant.INPUT); //Position
-                    newEntity.AddParameter("Sense", new cEnum("SENSORY_TYPE", -1), ParameterVariant.PARAMETER); //SENSORY_TYPE
-                    newEntity.AddParameter("ForceThreshold", new cEnum("THRESHOLD_QUALIFIER", 2), ParameterVariant.PARAMETER); //THRESHOLD_QUALIFIER
+                    newEntity.AddParameter("Sense", new cEnum(EnumType.SENSORY_TYPE, -1), ParameterVariant.PARAMETER); //SENSORY_TYPE
+                    newEntity.AddParameter("ForceThreshold", new cEnum(EnumType.THRESHOLD_QUALIFIER, 2), ParameterVariant.PARAMETER); //THRESHOLD_QUALIFIER
                     break;
                 case FunctionType.NPC_SuspiciousItem:
                     newEntity.AddParameter("ItemPosition", new cTransform(), ParameterVariant.INPUT); //Position
-                    newEntity.AddParameter("Item", new cEnum("SUSPICIOUS_ITEM", 0), ParameterVariant.PARAMETER); //SUSPICIOUS_ITEM
+                    newEntity.AddParameter("Item", new cEnum(EnumType.SUSPICIOUS_ITEM, 0), ParameterVariant.PARAMETER); //SUSPICIOUS_ITEM
                     newEntity.AddParameter("InitialReactionValidStartDuration", new cFloat(0.5f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("FurtherReactionValidStartDuration", new cFloat(6.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("RetriggerDelay", new cFloat(10.0f), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("Trigger", new cEnum("SUSPICIOUS_ITEM_TRIGGER", 1), ParameterVariant.PARAMETER); //SUSPICIOUS_ITEM_TRIGGER
+                    newEntity.AddParameter("Trigger", new cEnum(EnumType.SUSPICIOUS_ITEM_TRIGGER, 1), ParameterVariant.PARAMETER); //SUSPICIOUS_ITEM_TRIGGER
                     newEntity.AddParameter("ShouldMakeAggressive", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("MaxGroupMembersInteract", new cInteger(2), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("SystematicSearchRadius", new cFloat(8.0f), ParameterVariant.PARAMETER); //float
@@ -2578,7 +2578,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("SamePriorityCloserDistanceConstraint", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("UseSamePriorityRecentTimeConstraint", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("SamePriorityRecentTimeConstraint", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("BehaviourTreePriority", new cEnum("SUSPICIOUS_ITEM_BEHAVIOUR_TREE_PRIORITY", 0), ParameterVariant.PARAMETER); //SUSPICIOUS_ITEM_BEHAVIOUR_TREE_PRIORITY
+                    newEntity.AddParameter("BehaviourTreePriority", new cEnum(EnumType.SUSPICIOUS_ITEM_BEHAVIOUR_TREE_PRIORITY, 0), ParameterVariant.PARAMETER); //SUSPICIOUS_ITEM_BEHAVIOUR_TREE_PRIORITY
                     newEntity.AddParameter("InteruptSubPriority", new cInteger(1), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("DetectableByBackstageAlien", new cBool(true), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("DoIntialReaction", new cBool(false), ParameterVariant.PARAMETER); //bool
@@ -2586,7 +2586,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("DoCloseToReaction", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("DoCloseToWaitForGroupMembers", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("DoSystematicSearch", new cBool(false), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("GroupNotify", new cEnum("SUSPICIOUS_ITEM_STAGE", 1), ParameterVariant.PARAMETER); //SUSPICIOUS_ITEM_STAGE
+                    newEntity.AddParameter("GroupNotify", new cEnum(EnumType.SUSPICIOUS_ITEM_STAGE, 1), ParameterVariant.PARAMETER); //SUSPICIOUS_ITEM_STAGE
                     newEntity.AddParameter("DoIntialReactionSubsequentGroupMember", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("MoveCloseToSuspectPositionSubsequentGroupMember", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("DoCloseToReactionSubsequentGroupMember", new cBool(false), ParameterVariant.PARAMETER); //bool
@@ -2594,7 +2594,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("DoSystematicSearchSubsequentGroupMember", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.NPC_SetAlienDevelopmentStage:
-                    newEntity.AddParameter("AlienStage", new cEnum("ALIEN_DEVELOPMENT_MANAGER_STAGES", 0), ParameterVariant.PARAMETER); //ALIEN_DEVELOPMENT_MANAGER_STAGES
+                    newEntity.AddParameter("AlienStage", new cEnum(EnumType.ALIEN_DEVELOPMENT_MANAGER_STAGES, 0), ParameterVariant.PARAMETER); //ALIEN_DEVELOPMENT_MANAGER_STAGES
                     newEntity.AddParameter("Reset", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.NPC_TargetAcquire:
@@ -2606,7 +2606,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("Position", new cTransform(), ParameterVariant.INPUT); //Position
                     newEntity.AddParameter("Radius", new cFloat(1.0f), ParameterVariant.INPUT); //float
                     newEntity.AddParameter("Height", new cFloat(0.0f), ParameterVariant.INPUT); //float
-                    newEntity.AddParameter("Range_test_shape", new cEnum("RANGE_TEST_SHAPE", 0), ParameterVariant.PARAMETER); //RANGE_TEST_SHAPE
+                    newEntity.AddParameter("Range_test_shape", new cEnum(EnumType.RANGE_TEST_SHAPE, 0), ParameterVariant.PARAMETER); //RANGE_TEST_SHAPE
                     break;
                 case FunctionType.NPC_ForceCombatTarget:
                     newEntity.AddParameter("Target", new cFloat(), ParameterVariant.INPUT); //Object
@@ -2637,7 +2637,7 @@ namespace CATHODE.Scripting
                 case FunctionType.NPC_MeleeContext:
                     newEntity.AddParameter("ConvergePos", new cTransform(), ParameterVariant.INPUT); //Position
                     newEntity.AddParameter("Radius", new cFloat(0.0f), ParameterVariant.INPUT); //float
-                    newEntity.AddParameter("Context_Type", new cEnum("MELEE_CONTEXT_TYPE", 0), ParameterVariant.PARAMETER); //MELEE_CONTEXT_TYPE
+                    newEntity.AddParameter("Context_Type", new cEnum(EnumType.MELEE_CONTEXT_TYPE, 0), ParameterVariant.PARAMETER); //MELEE_CONTEXT_TYPE
                     break;
                 case FunctionType.NPC_SetSafePoint:
                     newEntity.AddParameter("SafePositions", new cTransform(), ParameterVariant.INPUT); //Position
@@ -2658,7 +2658,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("AreaObjects", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.NPC_AREA_RESOURCE) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.INPUT); //NPC_AREA_RESOURCE
                     break;
                 case FunctionType.NPC_SetAlertness:
-                    newEntity.AddParameter("AlertState", new cEnum("ALERTNESS_STATE", 0), ParameterVariant.PARAMETER); //ALERTNESS_STATE
+                    newEntity.AddParameter("AlertState", new cEnum(EnumType.ALERTNESS_STATE, 0), ParameterVariant.PARAMETER); //ALERTNESS_STATE
                     break;
                 case FunctionType.NPC_SetStartPos:
                     newEntity.AddParameter("StartPos", new cTransform(), ParameterVariant.INPUT); //Position
@@ -2667,13 +2667,13 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("allow_progression", new cBool(), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.NPC_SetLocomotionTargetSpeed:
-                    newEntity.AddParameter("Speed", new cEnum("LOCOMOTION_TARGET_SPEED", 1), ParameterVariant.PARAMETER); //LOCOMOTION_TARGET_SPEED
+                    newEntity.AddParameter("Speed", new cEnum(EnumType.LOCOMOTION_TARGET_SPEED, 1), ParameterVariant.PARAMETER); //LOCOMOTION_TARGET_SPEED
                     break;
                 case FunctionType.NPC_SetGunAimMode:
-                    newEntity.AddParameter("AimingMode", new cEnum("NPC_GUN_AIM_MODE", 0), ParameterVariant.PARAMETER); //NPC_GUN_AIM_MODE
+                    newEntity.AddParameter("AimingMode", new cEnum(EnumType.NPC_GUN_AIM_MODE, 0), ParameterVariant.PARAMETER); //NPC_GUN_AIM_MODE
                     break;
                 case FunctionType.NPC_set_behaviour_tree_flags:
-                    newEntity.AddParameter("BehaviourTreeFlag", new cEnum("BEHAVIOUR_TREE_FLAGS", 2), ParameterVariant.PARAMETER); //BEHAVIOUR_TREE_FLAGS
+                    newEntity.AddParameter("BehaviourTreeFlag", new cEnum(EnumType.BEHAVIOUR_TREE_FLAGS, 2), ParameterVariant.PARAMETER); //BEHAVIOUR_TREE_FLAGS
                     newEntity.AddParameter("FlagSetting", new cBool(true), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.NPC_SetHidingSearchRadius:
@@ -2693,7 +2693,7 @@ namespace CATHODE.Scripting
                 case FunctionType.NPC_behaviour_monitor:
                     newEntity.AddParameter("state_set", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("state_unset", new cFloat(), ParameterVariant.TARGET); //
-                    newEntity.AddParameter("behaviour", new cEnum("BEHAVIOR_TREE_BRANCH_TYPE", 0), ParameterVariant.PARAMETER); //BEHAVIOR_TREE_BRANCH_TYPE
+                    newEntity.AddParameter("behaviour", new cEnum(EnumType.BEHAVIOR_TREE_BRANCH_TYPE, 0), ParameterVariant.PARAMETER); //BEHAVIOR_TREE_BRANCH_TYPE
                     newEntity.AddParameter("trigger_on_start", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("trigger_on_checkpoint_restart", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
@@ -2735,14 +2735,14 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("setup", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("abandoned", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("trap_sprung", new cFloat(), ParameterVariant.TARGET); //
-                    newEntity.AddParameter("ambush_type", new cEnum("AMBUSH_TYPE", 0), ParameterVariant.PARAMETER); //AMBUSH_TYPE
+                    newEntity.AddParameter("ambush_type", new cEnum(EnumType.AMBUSH_TYPE, 0), ParameterVariant.PARAMETER); //AMBUSH_TYPE
                     newEntity.AddParameter("trigger_on_start", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("trigger_on_checkpoint_restart", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.NPC_navmesh_type_monitor:
                     newEntity.AddParameter("state_set", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("state_unset", new cFloat(), ParameterVariant.TARGET); //
-                    newEntity.AddParameter("nav_mesh_type", new cEnum("NAV_MESH_AREA_TYPE", 0), ParameterVariant.PARAMETER); //NAV_MESH_AREA_TYPE
+                    newEntity.AddParameter("nav_mesh_type", new cEnum(EnumType.NAV_MESH_AREA_TYPE, 0), ParameterVariant.PARAMETER); //NAV_MESH_AREA_TYPE
                     newEntity.AddParameter("trigger_on_start", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("trigger_on_checkpoint_restart", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
@@ -2750,7 +2750,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("on_true", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("on_false", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("Result", new cBool(), ParameterVariant.OUTPUT); //bool
-                    newEntity.AddParameter("weapon_type", new cEnum("WEAPON_TYPE", 0), ParameterVariant.PARAMETER); //WEAPON_TYPE
+                    newEntity.AddParameter("weapon_type", new cEnum(EnumType.WEAPON_TYPE, 0), ParameterVariant.PARAMETER); //WEAPON_TYPE
                     newEntity.AddParameter("check_if_weapon_draw", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.NPC_TriggerAimRequest:
@@ -2774,7 +2774,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("clear_current_requests", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.Squad_SetMaxEscalationLevel:
-                    newEntity.AddParameter("max_level", new cEnum("NPC_AGGRO_LEVEL", 5), ParameterVariant.PARAMETER); //NPC_AGGRO_LEVEL
+                    newEntity.AddParameter("max_level", new cEnum(EnumType.NPC_AGGRO_LEVEL, 5), ParameterVariant.PARAMETER); //NPC_AGGRO_LEVEL
                     newEntity.AddParameter("squad_coordinator", new cFloat(), ParameterVariant.PARAMETER); //Object
                     break;
                 case FunctionType.Chr_PlayerCrouch:
@@ -2855,11 +2855,11 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("character_activate_animation_context", new cString(""), ParameterVariant.PARAMETER); //String
                     newEntity.AddParameter("left_handed", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("inventory_name", new cString(" "), ParameterVariant.PARAMETER); //String
-                    newEntity.AddParameter("equipment_slot", new cEnum("EQUIPMENT_SLOT", 0), ParameterVariant.PARAMETER); //EQUIPMENT_SLOT
+                    newEntity.AddParameter("equipment_slot", new cEnum(EnumType.EQUIPMENT_SLOT, 0), ParameterVariant.PARAMETER); //EQUIPMENT_SLOT
                     newEntity.AddParameter("holsters_on_owner", new cBool(), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("holster_node", new cString(" "), ParameterVariant.PARAMETER); //String
                     newEntity.AddParameter("holster_scale", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("weapon_handedness", new cEnum("WEAPON_HANDEDNESS", 0), ParameterVariant.PARAMETER); //WEAPON_HANDEDNESS
+                    newEntity.AddParameter("weapon_handedness", new cEnum(EnumType.WEAPON_HANDEDNESS, 0), ParameterVariant.PARAMETER); //WEAPON_HANDEDNESS
                     break;
                 case FunctionType.AIMED_ITEM:
                     newEntity.AddParameter("on_started_aiming", new cFloat(), ParameterVariant.TARGET); //
@@ -2907,11 +2907,11 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("ammoThatWasInClip", new cInteger(), ParameterVariant.OUTPUT); //int
                     newEntity.AddParameter("charge_percentage", new cFloat(), ParameterVariant.OUTPUT); //float
                     newEntity.AddParameter("charge_noise_percentage", new cFloat(), ParameterVariant.OUTPUT); //float
-                    newEntity.AddParameter("weapon_type", new cEnum("WEAPON_TYPE", 2), ParameterVariant.PARAMETER); //WEAPON_TYPE
+                    newEntity.AddParameter("weapon_type", new cEnum(EnumType.WEAPON_TYPE, 2), ParameterVariant.PARAMETER); //WEAPON_TYPE
                     newEntity.AddParameter("requires_turning_on", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("ejectsShellsOnFiring", new cBool(true), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("aim_assist_scale", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("default_ammo_type", new cEnum("AMMO_TYPE", 0), ParameterVariant.PARAMETER); //AMMO_TYPE
+                    newEntity.AddParameter("default_ammo_type", new cEnum(EnumType.AMMO_TYPE, 0), ParameterVariant.PARAMETER); //AMMO_TYPE
                     newEntity.AddParameter("starting_ammo", new cInteger(0), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("clip_size", new cInteger(0), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("consume_ammo_over_time_when_turned_on", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
@@ -2943,7 +2943,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("on_clip_below_percentage", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("on_clip_empty", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("on_clip_full", new cFloat(), ParameterVariant.TARGET); //
-                    newEntity.AddParameter("weapon_type", new cEnum("WEAPON_TYPE", 2), ParameterVariant.PARAMETER); //WEAPON_TYPE
+                    newEntity.AddParameter("weapon_type", new cEnum(EnumType.WEAPON_TYPE, 2), ParameterVariant.PARAMETER); //WEAPON_TYPE
                     newEntity.AddParameter("ammo_percentage_in_clip", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     break;
                 case FunctionType.PlayerDiscardsWeapons:
@@ -2974,7 +2974,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("is_holstered", new cBool(true), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.WEAPON_GiveToPlayer:
-                    newEntity.AddParameter("weapon", new cEnum("EQUIPMENT_SLOT", 1), ParameterVariant.PARAMETER); //EQUIPMENT_SLOT
+                    newEntity.AddParameter("weapon", new cEnum(EnumType.EQUIPMENT_SLOT, 1), ParameterVariant.PARAMETER); //EQUIPMENT_SLOT
                     newEntity.AddParameter("holster", new cBool(true), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("starting_ammo", new cInteger(0), ParameterVariant.PARAMETER); //int
                     break;
@@ -2982,8 +2982,8 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("StaticEffects", new cFloat(), ParameterVariant.INPUT); //Object
                     newEntity.AddParameter("DynamicEffects", new cFloat(), ParameterVariant.INPUT); //Object
                     newEntity.AddParameter("DynamicAttachedEffects", new cFloat(), ParameterVariant.INPUT); //Object
-                    newEntity.AddParameter("Type", new cEnum("WEAPON_IMPACT_EFFECT_TYPE", 0), ParameterVariant.PARAMETER); //WEAPON_IMPACT_EFFECT_TYPE
-                    newEntity.AddParameter("Orientation", new cEnum("WEAPON_IMPACT_EFFECT_ORIENTATION", 0), ParameterVariant.PARAMETER); //WEAPON_IMPACT_EFFECT_ORIENTATION
+                    newEntity.AddParameter("Type", new cEnum(EnumType.WEAPON_IMPACT_EFFECT_TYPE, 0), ParameterVariant.PARAMETER); //WEAPON_IMPACT_EFFECT_TYPE
+                    newEntity.AddParameter("Orientation", new cEnum(EnumType.WEAPON_IMPACT_EFFECT_ORIENTATION, 0), ParameterVariant.PARAMETER); //WEAPON_IMPACT_EFFECT_ORIENTATION
                     newEntity.AddParameter("Priority", new cInteger(16), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("SafeDistant", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("LifeTime", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
@@ -3025,15 +3025,15 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("AttackerFilter", new cBool(true), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("TargetFilter", new cBool(true), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("DamageThreshold", new cInteger(0), ParameterVariant.PARAMETER); //int
-                    newEntity.AddParameter("DamageType", new cEnum("DAMAGE_EFFECTS", 33554432), ParameterVariant.PARAMETER); //DAMAGE_EFFECTS
+                    newEntity.AddParameter("DamageType", new cEnum(EnumType.DAMAGE_EFFECTS, 33554432), ParameterVariant.PARAMETER); //DAMAGE_EFFECTS
                     newEntity.AddParameter("UseAmmoFilter", new cBool(false), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("AmmoType", new cEnum("AMMO_TYPE", 22), ParameterVariant.PARAMETER); //AMMO_TYPE
+                    newEntity.AddParameter("AmmoType", new cEnum(EnumType.AMMO_TYPE, 22), ParameterVariant.PARAMETER); //AMMO_TYPE
                     break;
                 case FunctionType.WEAPON_ImpactCharacterFilter:
                     newEntity.AddParameter("passed", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("failed", new cFloat(), ParameterVariant.TARGET); //
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
-                    newEntity.AddParameter("character_body_location", new cEnum("IMPACT_CHARACTER_BODY_LOCATION_TYPE", 0), ParameterVariant.PARAMETER); //IMPACT_CHARACTER_BODY_LOCATION_TYPE
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_body_location", new cEnum(EnumType.IMPACT_CHARACTER_BODY_LOCATION_TYPE, 0), ParameterVariant.PARAMETER); //IMPACT_CHARACTER_BODY_LOCATION_TYPE
                     break;
                 case FunctionType.WEAPON_Effect:
                     newEntity.AddParameter("WorldPos", new cFloat(), ParameterVariant.INPUT); //Object
@@ -3044,7 +3044,7 @@ namespace CATHODE.Scripting
                 case FunctionType.WEAPON_AmmoTypeFilter:
                     newEntity.AddParameter("passed", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("failed", new cFloat(), ParameterVariant.TARGET); //
-                    newEntity.AddParameter("AmmoType", new cEnum("DAMAGE_EFFECTS", 33554432), ParameterVariant.PARAMETER); //DAMAGE_EFFECTS
+                    newEntity.AddParameter("AmmoType", new cEnum(EnumType.DAMAGE_EFFECTS, 33554432), ParameterVariant.PARAMETER); //DAMAGE_EFFECTS
                     break;
                 case FunctionType.WEAPON_ImpactAngleFilter:
                     newEntity.AddParameter("greater", new cFloat(), ParameterVariant.TARGET); //
@@ -3055,7 +3055,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("passed", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("failed", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("ThresholdAngle", new cFloat(15.0f), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("Orientation", new cEnum("WEAPON_IMPACT_FILTER_ORIENTATION", 2), ParameterVariant.PARAMETER); //WEAPON_IMPACT_FILTER_ORIENTATION
+                    newEntity.AddParameter("Orientation", new cEnum(EnumType.WEAPON_IMPACT_FILTER_ORIENTATION, 2), ParameterVariant.PARAMETER); //WEAPON_IMPACT_FILTER_ORIENTATION
                     break;
                 case FunctionType.EFFECT_ImpactGenerator:
                     newEntity.AddParameter("on_impact", new cFloat(), ParameterVariant.TARGET); //
@@ -3169,7 +3169,7 @@ namespace CATHODE.Scripting
                 case FunctionType.GameDVR:
                     newEntity.AddParameter("start_time", new cInteger(0), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("duration", new cInteger(0), ParameterVariant.PARAMETER); //int
-                    newEntity.AddParameter("moment_ID", new cEnum("GAME_CLIP", 0), ParameterVariant.PARAMETER); //GAME_CLIP
+                    newEntity.AddParameter("moment_ID", new cEnum(EnumType.GAME_CLIP, 0), ParameterVariant.PARAMETER); //GAME_CLIP
                     break;
                 case FunctionType.Zone:
                     newEntity.AddParameter("composites", new cFloat(), ParameterVariant.INPUT); //Object
@@ -3270,7 +3270,7 @@ namespace CATHODE.Scripting
                 case FunctionType.FloatModulate:
                     newEntity.AddParameter("on_think", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("Result", new cFloat(), ParameterVariant.OUTPUT); //float
-                    newEntity.AddParameter("wave_shape", new cEnum("WAVE_SHAPE", 0), ParameterVariant.PARAMETER); //WAVE_SHAPE
+                    newEntity.AddParameter("wave_shape", new cEnum(EnumType.WAVE_SHAPE, 0), ParameterVariant.PARAMETER); //WAVE_SHAPE
                     newEntity.AddParameter("frequency", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("phase", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("amplitude", new cFloat(0.5f), ParameterVariant.PARAMETER); //float
@@ -3281,14 +3281,14 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("on_full_switched_off", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("on_think", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("Result", new cFloat(), ParameterVariant.OUTPUT); //float
-                    newEntity.AddParameter("switch_on_anim", new cEnum("LIGHT_TRANSITION", 1), ParameterVariant.PARAMETER); //LIGHT_TRANSITION
+                    newEntity.AddParameter("switch_on_anim", new cEnum(EnumType.LIGHT_TRANSITION, 1), ParameterVariant.PARAMETER); //LIGHT_TRANSITION
                     newEntity.AddParameter("switch_on_delay", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("switch_on_custom_frequency", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("switch_on_duration", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("switch_off_anim", new cEnum("LIGHT_TRANSITION", 1), ParameterVariant.PARAMETER); //LIGHT_TRANSITION
+                    newEntity.AddParameter("switch_off_anim", new cEnum(EnumType.LIGHT_TRANSITION, 1), ParameterVariant.PARAMETER); //LIGHT_TRANSITION
                     newEntity.AddParameter("switch_off_custom_frequency", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("switch_off_duration", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("behaviour_anim", new cEnum("LIGHT_ANIM", 1), ParameterVariant.PARAMETER); //LIGHT_ANIM
+                    newEntity.AddParameter("behaviour_anim", new cEnum(EnumType.LIGHT_ANIM, 1), ParameterVariant.PARAMETER); //LIGHT_ANIM
                     newEntity.AddParameter("behaviour_frequency", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("behaviour_frequency_variance", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("behaviour_offset", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
@@ -3595,7 +3595,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("axis", new cVector3(), ParameterVariant.INPUT); //Direction
                     newEntity.AddParameter("local_offset", new cVector3(), ParameterVariant.INPUT); //Direction
                     newEntity.AddParameter("result", new cTransform(), ParameterVariant.OUTPUT); //Position
-                    newEntity.AddParameter("axis_is", new cEnum("ORIENTATION_AXIS", 2), ParameterVariant.PARAMETER); //ORIENTATION_AXIS
+                    newEntity.AddParameter("axis_is", new cEnum(EnumType.ORIENTATION_AXIS, 2), ParameterVariant.PARAMETER); //ORIENTATION_AXIS
                     break;
                 case FunctionType.ApplyRelativeTransform:
                     newEntity.AddParameter("origin", new cTransform(), ParameterVariant.INPUT); //Position
@@ -3758,7 +3758,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("proxy_enable_on_reset", new cBool(false), ParameterVariant.STATE); //bool
                     newEntity.AddParameter("attach_on_reset", new cBool(false), ParameterVariant.STATE); //bool
                     newEntity.AddParameter("duration", new cFloat(), ParameterVariant.OUTPUT); //float
-                    newEntity.AddParameter("trigger_mode", new cEnum("ANIM_MODE", 0), ParameterVariant.PARAMETER); //ANIM_MODE
+                    newEntity.AddParameter("trigger_mode", new cEnum(EnumType.ANIM_MODE, 0), ParameterVariant.PARAMETER); //ANIM_MODE
                     newEntity.AddParameter("random_seed", new cFloat(0.5f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("use_random_intervals", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("no_duplicates", new cBool(false), ParameterVariant.PARAMETER); //bool
@@ -3777,7 +3777,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("is_first_autorun_checkpoint", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("section", new cString(""), ParameterVariant.PARAMETER); //String
                     newEntity.AddParameter("mission_number", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("checkpoint_type", new cEnum("CHECKPOINT_TYPE", 0), ParameterVariant.PARAMETER); //CHECKPOINT_TYPE
+                    newEntity.AddParameter("checkpoint_type", new cEnum(EnumType.CHECKPOINT_TYPE, 0), ParameterVariant.PARAMETER); //CHECKPOINT_TYPE
                     break;
                 case FunctionType.MissionNumber:
                     newEntity.AddParameter("on_changed", new cFloat(), ParameterVariant.TARGET); //
@@ -3841,7 +3841,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("namespace", new cString(""), ParameterVariant.PARAMETER); //String
                     newEntity.AddParameter("size", new cInteger(), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("colour", new cVector3(), ParameterVariant.PARAMETER); //Direction
-                    newEntity.AddParameter("ci_type", new cEnum("CI_MESSAGE_TYPE", 0), ParameterVariant.PARAMETER); //CI_MESSAGE_TYPE
+                    newEntity.AddParameter("ci_type", new cEnum(EnumType.CI_MESSAGE_TYPE, 0), ParameterVariant.PARAMETER); //CI_MESSAGE_TYPE
                     newEntity.AddParameter("needs_debug_opt_to_render", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.DebugText:
@@ -3856,12 +3856,12 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("namespace", new cString(""), ParameterVariant.PARAMETER); //String
                     newEntity.AddParameter("size", new cInteger(), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("colour", new cVector3(), ParameterVariant.PARAMETER); //Direction
-                    newEntity.AddParameter("alignment", new cEnum("TEXT_ALIGNMENT", 4), ParameterVariant.PARAMETER); //TEXT_ALIGNMENT
+                    newEntity.AddParameter("alignment", new cEnum(EnumType.TEXT_ALIGNMENT, 4), ParameterVariant.PARAMETER); //TEXT_ALIGNMENT
                     newEntity.AddParameter("duration", new cFloat(5.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("pause_game", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("cancel_pause_with_button_press", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("priority", new cInteger(), ParameterVariant.PARAMETER); //int
-                    newEntity.AddParameter("ci_type", new cEnum("CI_MESSAGE_TYPE", 0), ParameterVariant.PARAMETER); //CI_MESSAGE_TYPE
+                    newEntity.AddParameter("ci_type", new cEnum(EnumType.CI_MESSAGE_TYPE, 0), ParameterVariant.PARAMETER); //CI_MESSAGE_TYPE
                     break;
                 case FunctionType.TutorialMessage:
                     newEntity.AddParameter("text", new cString(" "), ParameterVariant.PARAMETER); //String
@@ -3980,7 +3980,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("min_dist", new cFloat(), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("preferred_dist", new cFloat(), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("max_dist", new cFloat(), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("respawn_mode", new cEnum("RESPAWN_MODE", 0), ParameterVariant.PARAMETER); //RESPAWN_MODE
+                    newEntity.AddParameter("respawn_mode", new cEnum(EnumType.RESPAWN_MODE, 0), ParameterVariant.PARAMETER); //RESPAWN_MODE
                     newEntity.AddParameter("respawn_wait_time", new cInteger(), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("uncollidable_time", new cInteger(), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("is_default", new cBool(true), ParameterVariant.PARAMETER); //bool
@@ -4084,7 +4084,7 @@ namespace CATHODE.Scripting
                     break;
                 case FunctionType.TriggerBindAllCharactersOfType:
                     newEntity.AddParameter("bound_trigger", new cFloat(), ParameterVariant.TARGET); //
-                    newEntity.AddParameter("character_class", new cEnum("CHARACTER_CLASS_COMBINATION", 2), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_class", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 2), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     break;
                 case FunctionType.TriggerBindCharactersInSquad:
                     newEntity.AddParameter("bound_trigger", new cFloat(), ParameterVariant.TARGET); //
@@ -4203,7 +4203,7 @@ namespace CATHODE.Scripting
                 case FunctionType.TriggerCheckDifficulty:
                     newEntity.AddParameter("on_success", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("on_failure", new cFloat(), ParameterVariant.TARGET); //
-                    newEntity.AddParameter("DifficultyLevel", new cEnum("DIFFICULTY_SETTING_TYPE", 2), ParameterVariant.PARAMETER); //DIFFICULTY_SETTING_TYPE
+                    newEntity.AddParameter("DifficultyLevel", new cEnum(EnumType.DIFFICULTY_SETTING_TYPE, 2), ParameterVariant.PARAMETER); //DIFFICULTY_SETTING_TYPE
                     break;
                 case FunctionType.TriggerSync:
                     newEntity.AddParameter("Pin1_Synced", new cFloat(), ParameterVariant.TARGET); //
@@ -4327,7 +4327,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("is_waiting", new cBool(), ParameterVariant.OUTPUT); //bool
                     newEntity.AddParameter("unlocked_text", new cString(" "), ParameterVariant.PARAMETER); //String
                     newEntity.AddParameter("locked_text", new cString(" "), ParameterVariant.PARAMETER); //String
-                    newEntity.AddParameter("icon_keyframe", new cEnum("UI_ICON_ICON", 0), ParameterVariant.PARAMETER); //UI_ICON_ICON
+                    newEntity.AddParameter("icon_keyframe", new cEnum(EnumType.UI_ICON_ICON, 0), ParameterVariant.PARAMETER); //UI_ICON_ICON
                     newEntity.AddParameter("detach_anim", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("invert_nav_mesh_barrier", new cBool(), ParameterVariant.PARAMETER); //bool
                     break;
@@ -4430,7 +4430,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("intersect_with_geometry", new cBool(false), ParameterVariant.INPUT); //bool
                     newEntity.AddParameter("visible_target", new cFloat(), ParameterVariant.OUTPUT); //Object
                     newEntity.AddParameter("target_offset", new cTransform(), ParameterVariant.PARAMETER); //Position
-                    newEntity.AddParameter("visible_area_type", new cEnum("VIEWCONE_TYPE", 1), ParameterVariant.PARAMETER); //VIEWCONE_TYPE
+                    newEntity.AddParameter("visible_area_type", new cEnum(EnumType.VIEWCONE_TYPE, 1), ParameterVariant.PARAMETER); //VIEWCONE_TYPE
                     newEntity.AddParameter("visible_area_horizontal", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("visible_area_vertical", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("raycast_grace", new cFloat(0.5f), ParameterVariant.PARAMETER); //float
@@ -4444,7 +4444,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("intersect_with_geometry", new cBool(false), ParameterVariant.INPUT); //bool
                     newEntity.AddParameter("use_camera_fov", new cBool(true), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("target_offset", new cTransform(), ParameterVariant.PARAMETER); //Position
-                    newEntity.AddParameter("visible_area_type", new cEnum("VIEWCONE_TYPE", 1), ParameterVariant.PARAMETER); //VIEWCONE_TYPE
+                    newEntity.AddParameter("visible_area_type", new cEnum(EnumType.VIEWCONE_TYPE, 1), ParameterVariant.PARAMETER); //VIEWCONE_TYPE
                     newEntity.AddParameter("visible_area_horizontal", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("visible_area_vertical", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("raycast_grace", new cFloat(0.5f), ParameterVariant.PARAMETER); //float
@@ -4485,7 +4485,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("intersect_with_geometry", new cBool(false), ParameterVariant.INPUT); //bool
                     newEntity.AddParameter("number_of_inputs", new cInteger(), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("use_camera_fov", new cBool(true), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("visible_area_type", new cEnum("VIEWCONE_TYPE", 1), ParameterVariant.PARAMETER); //VIEWCONE_TYPE
+                    newEntity.AddParameter("visible_area_type", new cEnum(EnumType.VIEWCONE_TYPE, 1), ParameterVariant.PARAMETER); //VIEWCONE_TYPE
                     newEntity.AddParameter("visible_area_horizontal", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("visible_area_vertical", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("raycast_grace", new cFloat(0.5f), ParameterVariant.PARAMETER); //float
@@ -4526,9 +4526,9 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("is_player", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("is_backstage", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("force_backstage_on_respawn", new cBool(false), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("character_class", new cEnum("CHARACTER_CLASS", 3), ParameterVariant.PARAMETER); //CHARACTER_CLASS
-                    newEntity.AddParameter("alliance_group", new cEnum("ALLIANCE_GROUP", 0), ParameterVariant.PARAMETER); //ALLIANCE_GROUP
-                    newEntity.AddParameter("dialogue_voice", new cEnum("DIALOGUE_VOICE_ACTOR", 0), ParameterVariant.PARAMETER); //DIALOGUE_VOICE_ACTOR
+                    newEntity.AddParameter("character_class", new cEnum(EnumType.CHARACTER_CLASS, 3), ParameterVariant.PARAMETER); //CHARACTER_CLASS
+                    newEntity.AddParameter("alliance_group", new cEnum(EnumType.ALLIANCE_GROUP, 0), ParameterVariant.PARAMETER); //ALLIANCE_GROUP
+                    newEntity.AddParameter("dialogue_voice", new cEnum(EnumType.DIALOGUE_VOICE_ACTOR, 0), ParameterVariant.PARAMETER); //DIALOGUE_VOICE_ACTOR
                     newEntity.AddParameter("spawn_id", new cInteger(0), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("position", new cTransform(), ParameterVariant.PARAMETER); //Position
                     newEntity.AddParameter("display_model", new cString(" "), ParameterVariant.PARAMETER); //String
@@ -4536,13 +4536,13 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("torso_sound", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.SOUND_TORSO_GROUP) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.PARAMETER); //SOUND_TORSO_GROUP
                     newEntity.AddParameter("leg_sound", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.SOUND_LEG_GROUP) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.PARAMETER); //SOUND_LEG_GROUP
                     newEntity.AddParameter("footwear_sound", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.SOUND_FOOTWEAR_GROUP) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.PARAMETER); //SOUND_FOOTWEAR_GROUP
-                    newEntity.AddParameter("custom_character_type", new cEnum("CUSTOM_CHARACTER_TYPE", 0), ParameterVariant.PARAMETER); //CUSTOM_CHARACTER_TYPE
-                    newEntity.AddParameter("custom_character_accessory_override", new cEnum("CUSTOM_CHARACTER_ACCESSORY_OVERRIDE", 0), ParameterVariant.PARAMETER); //CUSTOM_CHARACTER_ACCESSORY_OVERRIDE
-                    newEntity.AddParameter("custom_character_population_type", new cEnum("CUSTOM_CHARACTER_POPULATION", 0), ParameterVariant.PARAMETER); //CUSTOM_CHARACTER_POPULATION
+                    newEntity.AddParameter("custom_character_type", new cEnum(EnumType.CUSTOM_CHARACTER_TYPE, 0), ParameterVariant.PARAMETER); //CUSTOM_CHARACTER_TYPE
+                    newEntity.AddParameter("custom_character_accessory_override", new cEnum(EnumType.CUSTOM_CHARACTER_ACCESSORY_OVERRIDE, 0), ParameterVariant.PARAMETER); //CUSTOM_CHARACTER_ACCESSORY_OVERRIDE
+                    newEntity.AddParameter("custom_character_population_type", new cEnum(EnumType.CUSTOM_CHARACTER_POPULATION, 0), ParameterVariant.PARAMETER); //CUSTOM_CHARACTER_POPULATION
                     newEntity.AddParameter("named_custom_character", new cString(""), ParameterVariant.PARAMETER); //String
-                    newEntity.AddParameter("named_custom_character_assets_set", new cEnum("CUSTOM_CHARACTER_ASSETS", 0), ParameterVariant.PARAMETER); //CUSTOM_CHARACTER_ASSETS
+                    newEntity.AddParameter("named_custom_character_assets_set", new cEnum(EnumType.CUSTOM_CHARACTER_ASSETS, 0), ParameterVariant.PARAMETER); //CUSTOM_CHARACTER_ASSETS
                     newEntity.AddParameter("gcip_distribution_bias", new cFloat(1.0f), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("inventory_set", new cEnum("PLAYER_INVENTORY_SET", 0), ParameterVariant.PARAMETER); //PLAYER_INVENTORY_SET
+                    newEntity.AddParameter("inventory_set", new cEnum(EnumType.PLAYER_INVENTORY_SET, 0), ParameterVariant.PARAMETER); //PLAYER_INVENTORY_SET
                     break;
                 case FunctionType.RegisterCharacterModel:
                     newEntity.AddParameter("display_model", new cString(""), ParameterVariant.PARAMETER); //String
@@ -4568,7 +4568,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("use_alliance_at_death", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.FilterIsEnemyOfAllianceGroup:
-                    newEntity.AddParameter("alliance_group", new cEnum("ALLIANCE_GROUP", 0), ParameterVariant.PARAMETER); //ALLIANCE_GROUP
+                    newEntity.AddParameter("alliance_group", new cEnum(EnumType.ALLIANCE_GROUP, 0), ParameterVariant.PARAMETER); //ALLIANCE_GROUP
                     break;
                 case FunctionType.FilterIsPhysicsObject:
                     newEntity.AddParameter("object", new cFloat(), ParameterVariant.INPUT); //Object
@@ -4584,28 +4584,28 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("tolerance", new cFloat(45.0f), ParameterVariant.PARAMETER); //float
                     break;
                 case FunctionType.FilterBelongsToAlliance:
-                    newEntity.AddParameter("alliance_group", new cEnum("ALLIANCE_GROUP", 0), ParameterVariant.PARAMETER); //ALLIANCE_GROUP
+                    newEntity.AddParameter("alliance_group", new cEnum(EnumType.ALLIANCE_GROUP, 0), ParameterVariant.PARAMETER); //ALLIANCE_GROUP
                     break;
                 case FunctionType.FilterHasWeaponOfType:
-                    newEntity.AddParameter("weapon_type", new cEnum("WEAPON_TYPE", 0), ParameterVariant.PARAMETER); //WEAPON_TYPE
+                    newEntity.AddParameter("weapon_type", new cEnum(EnumType.WEAPON_TYPE, 0), ParameterVariant.PARAMETER); //WEAPON_TYPE
                     break;
                 case FunctionType.FilterHasWeaponEquipped:
-                    newEntity.AddParameter("weapon_type", new cEnum("WEAPON_TYPE", 0), ParameterVariant.PARAMETER); //WEAPON_TYPE
+                    newEntity.AddParameter("weapon_type", new cEnum(EnumType.WEAPON_TYPE, 0), ParameterVariant.PARAMETER); //WEAPON_TYPE
                     break;
                 case FunctionType.FilterIsinInventory:
                     newEntity.AddParameter("ItemName", new cString(" "), ParameterVariant.INPUT); //String
                     break;
                 case FunctionType.FilterIsCharacterClass:
-                    newEntity.AddParameter("character_class", new cEnum("CHARACTER_CLASS", 3), ParameterVariant.PARAMETER); //CHARACTER_CLASS
+                    newEntity.AddParameter("character_class", new cEnum(EnumType.CHARACTER_CLASS, 3), ParameterVariant.PARAMETER); //CHARACTER_CLASS
                     break;
                 case FunctionType.FilterIsCharacterClassCombo:
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     break;
                 case FunctionType.FilterIsInAlertnessState:
-                    newEntity.AddParameter("AlertState", new cEnum("ALERTNESS_STATE", 0), ParameterVariant.PARAMETER); //ALERTNESS_STATE
+                    newEntity.AddParameter("AlertState", new cEnum(EnumType.ALERTNESS_STATE, 0), ParameterVariant.PARAMETER); //ALERTNESS_STATE
                     break;
                 case FunctionType.FilterIsInLocomotionState:
-                    newEntity.AddParameter("State", new cEnum("LOCOMOTION_STATE", 0), ParameterVariant.PARAMETER); //LOCOMOTION_STATE
+                    newEntity.AddParameter("State", new cEnum(EnumType.LOCOMOTION_STATE, 0), ParameterVariant.PARAMETER); //LOCOMOTION_STATE
                     break;
                 case FunctionType.FilterCanSeeTarget:
                     newEntity.AddParameter("Target", new cFloat(), ParameterVariant.INPUT); //Object
@@ -4624,25 +4624,25 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("Target", new cFloat(), ParameterVariant.INPUT); //Object
                     break;
                 case FunctionType.FilterIsPlatform:
-                    newEntity.AddParameter("Platform", new cEnum("PLATFORM_TYPE", 5), ParameterVariant.PARAMETER); //PLATFORM_TYPE
+                    newEntity.AddParameter("Platform", new cEnum(EnumType.PLATFORM_TYPE, 5), ParameterVariant.PARAMETER); //PLATFORM_TYPE
                     break;
                 case FunctionType.FilterIsUsingDevice:
-                    newEntity.AddParameter("Device", new cEnum("INPUT_DEVICE_TYPE", 0), ParameterVariant.PARAMETER); //INPUT_DEVICE_TYPE
+                    newEntity.AddParameter("Device", new cEnum(EnumType.INPUT_DEVICE_TYPE, 0), ParameterVariant.PARAMETER); //INPUT_DEVICE_TYPE
                     break;
                 case FunctionType.FilterSmallestUsedDifficulty:
-                    newEntity.AddParameter("difficulty", new cEnum("DIFFICULTY_SETTING_TYPE", 2), ParameterVariant.PARAMETER); //DIFFICULTY_SETTING_TYPE
+                    newEntity.AddParameter("difficulty", new cEnum(EnumType.DIFFICULTY_SETTING_TYPE, 2), ParameterVariant.PARAMETER); //DIFFICULTY_SETTING_TYPE
                     break;
                 case FunctionType.FilterHasPlayerCollectedIdTag:
                     newEntity.AddParameter("tag_id", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.IDTAG_ID) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.PARAMETER); //IDTAG_ID
                     break;
                 case FunctionType.FilterHasBehaviourTreeFlagSet:
-                    newEntity.AddParameter("BehaviourTreeFlag", new cEnum("BEHAVIOUR_TREE_FLAGS", 2), ParameterVariant.PARAMETER); //BEHAVIOUR_TREE_FLAGS
+                    newEntity.AddParameter("BehaviourTreeFlag", new cEnum(EnumType.BEHAVIOUR_TREE_FLAGS, 2), ParameterVariant.PARAMETER); //BEHAVIOUR_TREE_FLAGS
                     break;
                 case FunctionType.Job:
                     newEntity.AddParameter("start_on_reset", new cBool(true), ParameterVariant.STATE); //bool
                     break;
                 case FunctionType.JOB_Idle:
-                    newEntity.AddParameter("task_operation_mode", new cEnum("TASK_OPERATION_MODE", 0), ParameterVariant.PARAMETER); //TASK_OPERATION_MODE
+                    newEntity.AddParameter("task_operation_mode", new cEnum(EnumType.TASK_OPERATION_MODE, 0), ParameterVariant.PARAMETER); //TASK_OPERATION_MODE
                     newEntity.AddParameter("should_perform_all_tasks", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.JOB_SpottingPosition:
@@ -4659,13 +4659,13 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("should_stop_moving_when_reached", new cBool(true), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("should_orientate_when_reached", new cBool(true), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("reached_distance_threshold", new cFloat(0.6f), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("selection_priority", new cEnum("TASK_PRIORITY", 0), ParameterVariant.PARAMETER); //TASK_PRIORITY
+                    newEntity.AddParameter("selection_priority", new cEnum(EnumType.TASK_PRIORITY, 0), ParameterVariant.PARAMETER); //TASK_PRIORITY
                     newEntity.AddParameter("timeout", new cFloat(5.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("always_on_tracker", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.FlareTask:
                     newEntity.AddParameter("specific_character", new cFloat(), ParameterVariant.INPUT); //Object
-                    newEntity.AddParameter("filter_options", new cEnum("TASK_CHARACTER_CLASS_FILTER", 1024), ParameterVariant.PARAMETER); //TASK_CHARACTER_CLASS_FILTER
+                    newEntity.AddParameter("filter_options", new cEnum(EnumType.TASK_CHARACTER_CLASS_FILTER, 1024), ParameterVariant.PARAMETER); //TASK_CHARACTER_CLASS_FILTER
                     break;
                 case FunctionType.IdleTask:
                     newEntity.AddParameter("start_pre_move", new cFloat(), ParameterVariant.TARGET); //
@@ -4676,7 +4676,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("ignored_for_auto_selection", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("has_pre_move_script", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("has_interrupt_script", new cBool(false), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("filter_options", new cEnum("TASK_CHARACTER_CLASS_FILTER", 1024), ParameterVariant.PARAMETER); //TASK_CHARACTER_CLASS_FILTER
+                    newEntity.AddParameter("filter_options", new cEnum(EnumType.TASK_CHARACTER_CLASS_FILTER, 1024), ParameterVariant.PARAMETER); //TASK_CHARACTER_CLASS_FILTER
                     break;
                 case FunctionType.FollowTask:
                     newEntity.AddParameter("can_initially_end_early", new cBool(false), ParameterVariant.PARAMETER); //bool
@@ -4752,7 +4752,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("on_speech_started", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("character", new cFloat(), ParameterVariant.INPUT); //Object
                     newEntity.AddParameter("alt_character", new cFloat(), ParameterVariant.INPUT); //Object
-                    newEntity.AddParameter("speech_priority", new cEnum("SPEECH_PRIORITY", 2), ParameterVariant.PARAMETER); //SPEECH_PRIORITY
+                    newEntity.AddParameter("speech_priority", new cEnum(EnumType.SPEECH_PRIORITY, 2), ParameterVariant.PARAMETER); //SPEECH_PRIORITY
                     newEntity.AddParameter("queue_time", new cFloat(4.0f), ParameterVariant.PARAMETER); //float
                     break;
                 case FunctionType.NPC_DynamicDialogueGlobalRange:
@@ -4763,7 +4763,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("on_speech_finished", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("queue_time", new cFloat(4.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("sound_event", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.SOUND_EVENT) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.PARAMETER); //SOUND_EVENT
-                    newEntity.AddParameter("speech_priority", new cEnum("SPEECH_PRIORITY", 0), ParameterVariant.PARAMETER); //SPEECH_PRIORITY
+                    newEntity.AddParameter("speech_priority", new cEnum(EnumType.SPEECH_PRIORITY, 0), ParameterVariant.PARAMETER); //SPEECH_PRIORITY
                     newEntity.AddParameter("dialogue_mode", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.SOUND_ARGUMENT) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.PARAMETER); //SOUND_ARGUMENT
                     newEntity.AddParameter("action", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.SOUND_ARGUMENT) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.PARAMETER); //SOUND_ARGUMENT
                     break;
@@ -4779,7 +4779,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("alt_character_03", new cFloat(), ParameterVariant.INPUT); //Object
                     newEntity.AddParameter("alt_character_04", new cFloat(), ParameterVariant.INPUT); //Object
                     newEntity.AddParameter("alt_character_05", new cFloat(), ParameterVariant.INPUT); //Object
-                    newEntity.AddParameter("speech_priority", new cEnum("SPEECH_PRIORITY", 2), ParameterVariant.PARAMETER); //SPEECH_PRIORITY
+                    newEntity.AddParameter("speech_priority", new cEnum(EnumType.SPEECH_PRIORITY, 2), ParameterVariant.PARAMETER); //SPEECH_PRIORITY
                     newEntity.AddParameter("is_occludable", new cBool(true), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("line_01_event", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.SOUND_EVENT) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.PARAMETER); //SOUND_EVENT
                     newEntity.AddParameter("line_01_character", new cInteger(1), ParameterVariant.PARAMETER); //int
@@ -4834,12 +4834,12 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("bank_loaded", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("sound_bank", new cString(""), ParameterVariant.INPUT); //String
                     newEntity.AddParameter("trigger_via_pin", new cBool(false), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("memory_pool", new cEnum("SOUND_POOL", 0), ParameterVariant.PARAMETER); //SOUND_POOL
+                    newEntity.AddParameter("memory_pool", new cEnum(EnumType.SOUND_POOL, 0), ParameterVariant.PARAMETER); //SOUND_POOL
                     break;
                 case FunctionType.SoundLoadSlot:
                     newEntity.AddParameter("bank_loaded", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("sound_bank", new cString(" "), ParameterVariant.PARAMETER); //String
-                    newEntity.AddParameter("memory_pool", new cEnum("SOUND_POOL", 0), ParameterVariant.PARAMETER); //SOUND_POOL
+                    newEntity.AddParameter("memory_pool", new cEnum(EnumType.SOUND_POOL, 0), ParameterVariant.PARAMETER); //SOUND_POOL
                     break;
                 case FunctionType.SoundSetRTPC:
                     newEntity.AddParameter("rtpc_value", new cFloat(0.0f), ParameterVariant.INPUT); //float
@@ -4889,10 +4889,10 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("queue_time", new cFloat(), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("interrupt_all", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("trigger_once", new cBool(false), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("rtpc_set_mode", new cEnum("MUSIC_RTPC_MODE", 0), ParameterVariant.PARAMETER); //MUSIC_RTPC_MODE
+                    newEntity.AddParameter("rtpc_set_mode", new cEnum(EnumType.MUSIC_RTPC_MODE, 0), ParameterVariant.PARAMETER); //MUSIC_RTPC_MODE
                     newEntity.AddParameter("rtpc_target_value", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("rtpc_duration", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("rtpc_set_return_mode", new cEnum("MUSIC_RTPC_MODE", 0), ParameterVariant.PARAMETER); //MUSIC_RTPC_MODE
+                    newEntity.AddParameter("rtpc_set_return_mode", new cEnum(EnumType.MUSIC_RTPC_MODE, 0), ParameterVariant.PARAMETER); //MUSIC_RTPC_MODE
                     newEntity.AddParameter("rtpc_return_value", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
                     break;
                 case FunctionType.SoundLevelInitialiser:
@@ -5038,7 +5038,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("filename", new cString(" "), ParameterVariant.PARAMETER); //String
                     newEntity.AddParameter("layer_name", new cString(""), ParameterVariant.PARAMETER); //String
                     newEntity.AddParameter("target_texture_name", new cString(" "), ParameterVariant.PARAMETER); //String
-                    newEntity.AddParameter("type", new cEnum("FLASH_SCRIPT_RENDER_TYPE", 0), ParameterVariant.PARAMETER); //FLASH_SCRIPT_RENDER_TYPE
+                    newEntity.AddParameter("type", new cEnum(EnumType.FLASH_SCRIPT_RENDER_TYPE, 0), ParameterVariant.PARAMETER); //FLASH_SCRIPT_RENDER_TYPE
                     break;
                 case FunctionType.UI_KeyGate:
                     newEntity.AddParameter("keycard_success", new cFloat(), ParameterVariant.TARGET); //
@@ -5052,7 +5052,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("light_on_reset", new cBool(true), ParameterVariant.STATE); //bool
                     newEntity.AddParameter("code", new cString(" "), ParameterVariant.PARAMETER); //String
                     newEntity.AddParameter("carduid", new cInteger(0), ParameterVariant.PARAMETER); //int
-                    newEntity.AddParameter("key_type", new cEnum("UI_KEYGATE_TYPE", 1), ParameterVariant.PARAMETER); //UI_KEYGATE_TYPE
+                    newEntity.AddParameter("key_type", new cEnum(EnumType.UI_KEYGATE_TYPE, 1), ParameterVariant.PARAMETER); //UI_KEYGATE_TYPE
                     break;
                 case FunctionType.RTT_MoviePlayer:
                     newEntity.AddParameter("start", new cFloat(), ParameterVariant.TARGET); //
@@ -5082,7 +5082,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("layer_name", new cString(" "), ParameterVariant.INPUT); //String
                     newEntity.AddParameter("mrtt_texture", new cString(" "), ParameterVariant.INPUT); //String
                     newEntity.AddParameter("method", new cString(" "), ParameterVariant.PARAMETER); //String
-                    newEntity.AddParameter("invoke_type", new cEnum("FLASH_INVOKE_TYPE", 0), ParameterVariant.PARAMETER); //FLASH_INVOKE_TYPE
+                    newEntity.AddParameter("invoke_type", new cEnum(EnumType.FLASH_INVOKE_TYPE, 0), ParameterVariant.PARAMETER); //FLASH_INVOKE_TYPE
                     newEntity.AddParameter("int_argument_0", new cInteger(0), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("int_argument_1", new cInteger(0), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("int_argument_2", new cInteger(0), ParameterVariant.PARAMETER); //int
@@ -5105,8 +5105,8 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("header_text", new cString(" "), ParameterVariant.PARAMETER); //String
                     newEntity.AddParameter("main_text", new cString(" "), ParameterVariant.PARAMETER); //String
                     newEntity.AddParameter("duration", new cFloat(5.0f), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("sound_event", new cEnum("POPUP_MESSAGE_SOUND", 1), ParameterVariant.PARAMETER); //POPUP_MESSAGE_SOUND
-                    newEntity.AddParameter("icon_keyframe", new cEnum("POPUP_MESSAGE_ICON", 0), ParameterVariant.PARAMETER); //POPUP_MESSAGE_ICON
+                    newEntity.AddParameter("sound_event", new cEnum(EnumType.POPUP_MESSAGE_SOUND, 1), ParameterVariant.PARAMETER); //POPUP_MESSAGE_SOUND
+                    newEntity.AddParameter("icon_keyframe", new cEnum(EnumType.POPUP_MESSAGE_ICON, 0), ParameterVariant.PARAMETER); //POPUP_MESSAGE_ICON
                     break;
                 case FunctionType.UIBreathingGameIcon:
                     newEntity.AddParameter("fill_percentage", new cInteger(0), ParameterVariant.PARAMETER); //int
@@ -5136,9 +5136,9 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("unlocked_text", new cString(" "), ParameterVariant.PARAMETER); //String
                     newEntity.AddParameter("locked_text", new cString(" "), ParameterVariant.PARAMETER); //String
                     newEntity.AddParameter("action_text", new cString(""), ParameterVariant.PARAMETER); //String
-                    newEntity.AddParameter("icon_keyframe", new cEnum("UI_ICON_ICON", 0), ParameterVariant.PARAMETER); //UI_ICON_ICON
+                    newEntity.AddParameter("icon_keyframe", new cEnum(EnumType.UI_ICON_ICON, 0), ParameterVariant.PARAMETER); //UI_ICON_ICON
                     newEntity.AddParameter("can_be_used", new cBool(true), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("category", new cEnum("PICKUP_CATEGORY", 0), ParameterVariant.PARAMETER); //PICKUP_CATEGORY
+                    newEntity.AddParameter("category", new cEnum(EnumType.PICKUP_CATEGORY, 0), ParameterVariant.PARAMETER); //PICKUP_CATEGORY
                     newEntity.AddParameter("push_hold_time", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
                     break;
                 case FunctionType.UI_Attached:
@@ -5211,7 +5211,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("content1", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.TERMINAL_CONTENT_DETAILS) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.INPUT); //TERMINAL_CONTENT_DETAILS
                     newEntity.AddParameter("code", new cString(" "), ParameterVariant.PARAMETER); //String
                     newEntity.AddParameter("folder_title", new cString(" "), ParameterVariant.PARAMETER); //String
-                    newEntity.AddParameter("folder_lock_type", new cEnum("FOLDER_LOCK_TYPE", 1), ParameterVariant.PARAMETER); //FOLDER_LOCK_TYPE
+                    newEntity.AddParameter("folder_lock_type", new cEnum(EnumType.FOLDER_LOCK_TYPE, 1), ParameterVariant.PARAMETER); //FOLDER_LOCK_TYPE
                     break;
                 case FunctionType.AccessTerminal:
                     newEntity.AddParameter("closed", new cFloat(), ParameterVariant.TARGET); //
@@ -5223,20 +5223,20 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("folder2", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.TERMINAL_FOLDER_DETAILS) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.INPUT); //TERMINAL_FOLDER_DETAILS
                     newEntity.AddParameter("folder3", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.TERMINAL_FOLDER_DETAILS) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.INPUT); //TERMINAL_FOLDER_DETAILS
                     newEntity.AddParameter("all_data_read", new cBool(), ParameterVariant.OUTPUT); //bool
-                    newEntity.AddParameter("location", new cEnum("TERMINAL_LOCATION", 0), ParameterVariant.PARAMETER); //TERMINAL_LOCATION
+                    newEntity.AddParameter("location", new cEnum(EnumType.TERMINAL_LOCATION, 0), ParameterVariant.PARAMETER); //TERMINAL_LOCATION
                     break;
                 case FunctionType.SetGatingToolLevel:
                     newEntity.AddParameter("level", new cInteger(0), ParameterVariant.PARAMETER); //int
-                    newEntity.AddParameter("tool_type", new cEnum("GATING_TOOL_TYPE", 0), ParameterVariant.PARAMETER); //GATING_TOOL_TYPE
+                    newEntity.AddParameter("tool_type", new cEnum(EnumType.GATING_TOOL_TYPE, 0), ParameterVariant.PARAMETER); //GATING_TOOL_TYPE
                     break;
                 case FunctionType.GetGatingToolLevel:
                     newEntity.AddParameter("level", new cInteger(), ParameterVariant.OUTPUT); //int
-                    newEntity.AddParameter("tool_type", new cEnum("GATING_TOOL_TYPE", 0), ParameterVariant.PARAMETER); //GATING_TOOL_TYPE
+                    newEntity.AddParameter("tool_type", new cEnum(EnumType.GATING_TOOL_TYPE, 0), ParameterVariant.PARAMETER); //GATING_TOOL_TYPE
                     break;
                 case FunctionType.GetPlayerHasGatingTool:
                     newEntity.AddParameter("has_tool", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("doesnt_have_tool", new cFloat(), ParameterVariant.TARGET); //
-                    newEntity.AddParameter("tool_type", new cEnum("GATING_TOOL_TYPE", 0), ParameterVariant.PARAMETER); //GATING_TOOL_TYPE
+                    newEntity.AddParameter("tool_type", new cEnum(EnumType.GATING_TOOL_TYPE, 0), ParameterVariant.PARAMETER); //GATING_TOOL_TYPE
                     break;
                 case FunctionType.GetPlayerHasKeycard:
                     newEntity.AddParameter("has_card", new cFloat(), ParameterVariant.TARGET); //
@@ -5247,7 +5247,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("card_uid", new cInteger(0), ParameterVariant.PARAMETER); //int
                     break;
                 case FunctionType.SetPlayerHasGatingTool:
-                    newEntity.AddParameter("tool_type", new cEnum("GATING_TOOL_TYPE", 0), ParameterVariant.PARAMETER); //GATING_TOOL_TYPE
+                    newEntity.AddParameter("tool_type", new cEnum(EnumType.GATING_TOOL_TYPE, 0), ParameterVariant.PARAMETER); //GATING_TOOL_TYPE
                     break;
                 case FunctionType.CollectSevastopolLog:
                     newEntity.AddParameter("log_id", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.SEVASTOPOL_LOG_ID) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.PARAMETER); //SEVASTOPOL_LOG_ID
@@ -5279,7 +5279,7 @@ namespace CATHODE.Scripting
                     break;
                 case FunctionType.MapItem:
                     newEntity.AddParameter("show_ui_on_reset", new cBool(false), ParameterVariant.STATE); //bool
-                    newEntity.AddParameter("item_type", new cEnum("MAP_ICON_TYPE", 0), ParameterVariant.PARAMETER); //MAP_ICON_TYPE
+                    newEntity.AddParameter("item_type", new cEnum(EnumType.MAP_ICON_TYPE, 0), ParameterVariant.PARAMETER); //MAP_ICON_TYPE
                     newEntity.AddParameter("map_keyframe", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.MAP_KEYFRAME_ID) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.PARAMETER); //MAP_KEYFRAME_ID
                     break;
                 case FunctionType.UnlockMapDetail:
@@ -5291,10 +5291,10 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("off", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("world_pos", new cTransform(), ParameterVariant.INPUT); //Position
                     newEntity.AddParameter("display_name", new cString(""), ParameterVariant.PARAMETER); //String
-                    newEntity.AddParameter("display_name_enum", new cEnum("REWIRE_SYSTEM_NAME", 0), ParameterVariant.PARAMETER); //REWIRE_SYSTEM_NAME
+                    newEntity.AddParameter("display_name_enum", new cEnum(EnumType.REWIRE_SYSTEM_NAME, 0), ParameterVariant.PARAMETER); //REWIRE_SYSTEM_NAME
                     newEntity.AddParameter("on_by_default", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("running_cost", new cInteger(0), ParameterVariant.PARAMETER); //int
-                    newEntity.AddParameter("system_type", new cEnum("REWIRE_SYSTEM_TYPE", 0), ParameterVariant.PARAMETER); //REWIRE_SYSTEM_TYPE
+                    newEntity.AddParameter("system_type", new cEnum(EnumType.REWIRE_SYSTEM_TYPE, 0), ParameterVariant.PARAMETER); //REWIRE_SYSTEM_TYPE
                     newEntity.AddParameter("map_name", new cString(" "), ParameterVariant.PARAMETER); //String
                     newEntity.AddParameter("element_name", new cString(" "), ParameterVariant.PARAMETER); //String
                     break;
@@ -5362,7 +5362,7 @@ namespace CATHODE.Scripting
                     break;
                 case FunctionType.SetBlueprintInfo:
                     newEntity.AddParameter("type", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.BLUEPRINT_TYPE) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.PARAMETER); //BLUEPRINT_TYPE
-                    newEntity.AddParameter("level", new cEnum("BLUEPRINT_LEVEL", 1), ParameterVariant.PARAMETER); //BLUEPRINT_LEVEL
+                    newEntity.AddParameter("level", new cEnum(EnumType.BLUEPRINT_LEVEL, 1), ParameterVariant.PARAMETER); //BLUEPRINT_LEVEL
                     newEntity.AddParameter("available", new cBool(true), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.GetBlueprintLevel:
@@ -5401,7 +5401,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("objective_id", new cInteger(0), ParameterVariant.PARAMETER); //int
                     break;
                 case FunctionType.GoToFrontend:
-                    newEntity.AddParameter("frontend_state", new cEnum("FRONTEND_STATE", 0), ParameterVariant.PARAMETER); //FRONTEND_STATE
+                    newEntity.AddParameter("frontend_state", new cEnum(EnumType.FRONTEND_STATE, 0), ParameterVariant.PARAMETER); //FRONTEND_STATE
                     break;
                 case FunctionType.TriggerLooper:
                     newEntity.AddParameter("target", new cFloat(), ParameterVariant.TARGET); //
@@ -5422,7 +5422,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT); //SPLINE
                     newEntity.AddParameter("InUse", new cBool(), ParameterVariant.OUTPUT); //bool
                     newEntity.AddParameter("RungSpacing", new cFloat(), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     break;
                 case FunctionType.TRAV_ContinuousPipe:
                     newEntity.AddParameter("OnEnter", new cFloat(), ParameterVariant.TARGET); //
@@ -5430,7 +5430,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("enable_on_reset", new cBool(true), ParameterVariant.STATE); //bool
                     newEntity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT); //SPLINE
                     newEntity.AddParameter("InUse", new cBool(), ParameterVariant.OUTPUT); //bool
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     break;
                 case FunctionType.TRAV_ContinuousLedge:
                     newEntity.AddParameter("OnEnter", new cFloat(), ParameterVariant.TARGET); //
@@ -5440,7 +5440,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("InUse", new cBool(), ParameterVariant.OUTPUT); //bool
                     newEntity.AddParameter("Dangling", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.AUTODETECT) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.PARAMETER); //AUTODETECT
                     newEntity.AddParameter("Sidling", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.AUTODETECT) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.PARAMETER); //AUTODETECT
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     break;
                 case FunctionType.TRAV_ContinuousClimbingWall:
                     newEntity.AddParameter("OnEnter", new cFloat(), ParameterVariant.TARGET); //
@@ -5448,7 +5448,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT); //SPLINE
                     newEntity.AddParameter("InUse", new cBool(), ParameterVariant.OUTPUT); //bool
                     newEntity.AddParameter("Dangling", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.AUTODETECT) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.PARAMETER); //AUTODETECT
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     break;
                 case FunctionType.TRAV_ContinuousCinematicSidle:
                     newEntity.AddParameter("OnEnter", new cFloat(), ParameterVariant.TARGET); //
@@ -5456,7 +5456,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("enable_on_reset", new cBool(true), ParameterVariant.STATE); //bool
                     newEntity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT); //SPLINE
                     newEntity.AddParameter("InUse", new cBool(), ParameterVariant.OUTPUT); //bool
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     break;
                 case FunctionType.TRAV_ContinuousBalanceBeam:
                     newEntity.AddParameter("OnEnter", new cFloat(), ParameterVariant.TARGET); //
@@ -5464,7 +5464,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("enable_on_reset", new cBool(true), ParameterVariant.STATE); //bool
                     newEntity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT); //SPLINE
                     newEntity.AddParameter("InUse", new cBool(), ParameterVariant.OUTPUT); //bool
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     break;
                 case FunctionType.TRAV_ContinuousTightGap:
                     newEntity.AddParameter("OnEnter", new cFloat(), ParameterVariant.TARGET); //
@@ -5472,14 +5472,14 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("enable_on_reset", new cBool(true), ParameterVariant.STATE); //bool
                     newEntity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT); //SPLINE
                     newEntity.AddParameter("InUse", new cBool(), ParameterVariant.OUTPUT); //bool
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     break;
                 case FunctionType.TRAV_1ShotVentEntrance:
                     newEntity.AddParameter("OnEnter", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("Completed", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("enable_on_reset", new cBool(true), ParameterVariant.STATE); //bool
                     newEntity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT); //SPLINE
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     newEntity.AddResource(ResourceType.TRAVERSAL_SEGMENT);
                     break;
                 case FunctionType.TRAV_1ShotVentExit:
@@ -5487,7 +5487,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("Completed", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("enable_on_reset", new cBool(true), ParameterVariant.STATE); //bool
                     newEntity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT); //SPLINE
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     newEntity.AddResource(ResourceType.TRAVERSAL_SEGMENT);
                     break;
                 case FunctionType.TRAV_1ShotFloorVentEntrance:
@@ -5495,7 +5495,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("Completed", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("enable_on_reset", new cBool(true), ParameterVariant.STATE); //bool
                     newEntity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT); //SPLINE
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     newEntity.AddResource(ResourceType.TRAVERSAL_SEGMENT);
                     break;
                 case FunctionType.TRAV_1ShotFloorVentExit:
@@ -5503,7 +5503,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("Completed", new cFloat(), ParameterVariant.TARGET); //
                     newEntity.AddParameter("enable_on_reset", new cBool(true), ParameterVariant.STATE); //bool
                     newEntity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT); //SPLINE
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     newEntity.AddResource(ResourceType.TRAVERSAL_SEGMENT);
                     break;
                 case FunctionType.TRAV_1ShotClimbUnder:
@@ -5512,7 +5512,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("enable_on_reset", new cBool(true), ParameterVariant.STATE); //bool
                     newEntity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT); //SPLINE
                     newEntity.AddParameter("InUse", new cBool(), ParameterVariant.OUTPUT); //bool
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     break;
                 case FunctionType.TRAV_1ShotLeap:
                     newEntity.AddParameter("OnEnter", new cFloat(), ParameterVariant.TARGET); //
@@ -5525,7 +5525,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("InUse", new cBool(), ParameterVariant.OUTPUT); //bool
                     newEntity.AddParameter("MissDistance", new cFloat(), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("NearMissDistance", new cFloat(), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     break;
                 case FunctionType.TRAV_1ShotSpline:
                     newEntity.AddParameter("OnEnter", new cFloat(), ParameterVariant.TARGET); //
@@ -5542,10 +5542,10 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("headroom", new cFloat(), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("extra_cost", new cFloat(), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("fit_end_to_edge", new cBool(), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("min_speed", new cEnum("LOCOMOTION_TARGET_SPEED", 0), ParameterVariant.PARAMETER); //LOCOMOTION_TARGET_SPEED
-                    newEntity.AddParameter("max_speed", new cEnum("LOCOMOTION_TARGET_SPEED", 0), ParameterVariant.PARAMETER); //LOCOMOTION_TARGET_SPEED
+                    newEntity.AddParameter("min_speed", new cEnum(EnumType.LOCOMOTION_TARGET_SPEED, 0), ParameterVariant.PARAMETER); //LOCOMOTION_TARGET_SPEED
+                    newEntity.AddParameter("max_speed", new cEnum(EnumType.LOCOMOTION_TARGET_SPEED, 0), ParameterVariant.PARAMETER); //LOCOMOTION_TARGET_SPEED
                     newEntity.AddParameter("animationTree", new cString(""), ParameterVariant.PARAMETER); //String
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     newEntity.AddResource(ResourceType.TRAVERSAL_SEGMENT);
                     break;
                 case FunctionType.NavMeshBarrier:
@@ -5553,8 +5553,8 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("position", new cTransform(), ParameterVariant.PARAMETER); //Position
                     newEntity.AddParameter("half_dimensions", new cVector3(), ParameterVariant.PARAMETER); //Direction
                     newEntity.AddParameter("opaque", new cBool(true), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("allowed_character_classes_when_open", new cEnum("CHARACTER_CLASS_COMBINATION", 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
-                    newEntity.AddParameter("allowed_character_classes_when_closed", new cEnum("CHARACTER_CLASS_COMBINATION", 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("allowed_character_classes_when_open", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("allowed_character_classes_when_closed", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     newEntity.AddResource(ResourceType.NAV_MESH_BARRIER_RESOURCE);
                     break;
                 case FunctionType.NavMeshWalkablePlatform:
@@ -5568,7 +5568,7 @@ namespace CATHODE.Scripting
                 case FunctionType.NavMeshArea:
                     newEntity.AddParameter("position", new cTransform(), ParameterVariant.PARAMETER); //Position
                     newEntity.AddParameter("half_dimensions", new cVector3(), ParameterVariant.PARAMETER); //Direction
-                    newEntity.AddParameter("area_type", new cEnum("NAV_MESH_AREA_TYPE", 0), ParameterVariant.PARAMETER); //NAV_MESH_AREA_TYPE
+                    newEntity.AddParameter("area_type", new cEnum(EnumType.NAV_MESH_AREA_TYPE, 0), ParameterVariant.PARAMETER); //NAV_MESH_AREA_TYPE
                     break;
                 case FunctionType.NavMeshReachabilitySeedPoint:
                     newEntity.AddParameter("position", new cTransform(), ParameterVariant.PARAMETER); //Position
@@ -5595,7 +5595,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("build_into_navmesh", new cBool(true), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("position", new cTransform(), ParameterVariant.PARAMETER); //Position
                     newEntity.AddParameter("extra_cost", new cFloat(), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     break;
                 case FunctionType.PathfindingWaitNode:
                     newEntity.AddParameter("character_getting_near", new cFloat(), ParameterVariant.TARGET); //
@@ -5607,7 +5607,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("build_into_navmesh", new cBool(true), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("position", new cTransform(), ParameterVariant.PARAMETER); //Position
                     newEntity.AddParameter("extra_cost", new cFloat(), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 0), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     break;
                 case FunctionType.PathfindingManualNode:
                     newEntity.AddParameter("character_arriving", new cFloat(), ParameterVariant.TARGET); //
@@ -5620,7 +5620,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("build_into_navmesh", new cBool(true), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("position", new cTransform(), ParameterVariant.PARAMETER); //Position
                     newEntity.AddParameter("extra_cost", new cFloat(), ParameterVariant.PARAMETER); //float
-                    newEntity.AddParameter("character_classes", new cEnum("CHARACTER_CLASS_COMBINATION", 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
+                    newEntity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER); //CHARACTER_CLASS_COMBINATION
                     break;
                 case FunctionType.PathfindingAlienBackstageNode:
                     newEntity.AddParameter("started_animating_Entry", new cFloat(), ParameterVariant.TARGET); //
@@ -5763,7 +5763,7 @@ namespace CATHODE.Scripting
                 case FunctionType.PostprocessingSettings:
                     newEntity.AddParameter("intensity", new cFloat(1.0f), ParameterVariant.INPUT); //float
                     newEntity.AddParameter("priority", new cInteger(100), ParameterVariant.PARAMETER); //int
-                    newEntity.AddParameter("blend_mode", new cEnum("BLEND_MODE", 2), ParameterVariant.PARAMETER); //BLEND_MODE
+                    newEntity.AddParameter("blend_mode", new cEnum(EnumType.BLEND_MODE, 2), ParameterVariant.PARAMETER); //BLEND_MODE
                     break;
                 case FunctionType.BloomSettings:
                     newEntity.AddParameter("frame_buffer_scale", new cFloat(1.0f), ParameterVariant.INPUT); //float
@@ -5871,7 +5871,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("adaptation_percentile", new cFloat(0.3f), ParameterVariant.INPUT); //float
                     newEntity.AddParameter("low_bracket", new cFloat(0.0f), ParameterVariant.INPUT); //float
                     newEntity.AddParameter("high_bracket", new cFloat(1.0f), ParameterVariant.INPUT); //float
-                    newEntity.AddParameter("adaptation_mechanism", new cEnum("LIGHT_ADAPTATION_MECHANISM", 0), ParameterVariant.PARAMETER); //LIGHT_ADAPTATION_MECHANISM
+                    newEntity.AddParameter("adaptation_mechanism", new cEnum(EnumType.LIGHT_ADAPTATION_MECHANISM, 0), ParameterVariant.PARAMETER); //LIGHT_ADAPTATION_MECHANISM
                     break;
                 case FunctionType.ColourCorrectionTransition:
                     newEntity.AddParameter("interpolate", new cFloat(0.0f), ParameterVariant.INPUT); //float
@@ -6067,7 +6067,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("hit_object", new cFloat(), ParameterVariant.OUTPUT); //Object
                     newEntity.AddParameter("hit_distance", new cFloat(), ParameterVariant.OUTPUT); //float
                     newEntity.AddParameter("hit_position", new cTransform(), ParameterVariant.OUTPUT); //Position
-                    newEntity.AddParameter("priority", new cEnum("RAYCAST_PRIORITY", 2), ParameterVariant.PARAMETER); //RAYCAST_PRIORITY
+                    newEntity.AddParameter("priority", new cEnum(EnumType.RAYCAST_PRIORITY, 2), ParameterVariant.PARAMETER); //RAYCAST_PRIORITY
                     break;
                 case FunctionType.PhysicsApplyImpulse:
                     newEntity.AddParameter("objects", new cFloat(), ParameterVariant.INPUT); //Object
@@ -6122,8 +6122,8 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("attach_on_reset", new cBool(true), ParameterVariant.STATE); //bool
                     newEntity.AddParameter("character", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.CHARACTER) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.INPUT); //CHARACTER
                     newEntity.AddParameter("attachment", new cFloat(), ParameterVariant.INPUT); //ReferenceFramePtr
-                    newEntity.AddParameter("Node", new cEnum("CHARACTER_NODE", 1), ParameterVariant.PARAMETER); //CHARACTER_NODE
-                    newEntity.AddParameter("AdditiveNode", new cEnum("CHARACTER_NODE", 1), ParameterVariant.PARAMETER); //CHARACTER_NODE
+                    newEntity.AddParameter("Node", new cEnum(EnumType.CHARACTER_NODE, 1), ParameterVariant.PARAMETER); //CHARACTER_NODE
+                    newEntity.AddParameter("AdditiveNode", new cEnum(EnumType.CHARACTER_NODE, 1), ParameterVariant.PARAMETER); //CHARACTER_NODE
                     newEntity.AddParameter("AdditiveNodeIntensity", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("UseOffset", new cBool(true), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("Translation", new cVector3(), ParameterVariant.PARAMETER); //Direction
@@ -6141,7 +6141,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("attachment_04", new cFloat(), ParameterVariant.INPUT); //ReferenceFramePtr
                     newEntity.AddParameter("character_05", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.CHARACTER) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.INPUT); //CHARACTER
                     newEntity.AddParameter("attachment_05", new cFloat(), ParameterVariant.INPUT); //ReferenceFramePtr
-                    newEntity.AddParameter("node", new cEnum("CHARACTER_NODE", 1), ParameterVariant.PARAMETER); //CHARACTER_NODE
+                    newEntity.AddParameter("node", new cEnum(EnumType.CHARACTER_NODE, 1), ParameterVariant.PARAMETER); //CHARACTER_NODE
                     newEntity.AddParameter("use_offset", new cBool(true), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("translation", new cVector3(), ParameterVariant.PARAMETER); //Direction
                     newEntity.AddParameter("rotation", new cVector3(), ParameterVariant.PARAMETER); //Direction
@@ -6188,7 +6188,7 @@ namespace CATHODE.Scripting
                     break;
                 case FunctionType.AddExitObjective:
                     newEntity.AddParameter("marker", new cTransform(), ParameterVariant.INPUT); //Position
-                    newEntity.AddParameter("level_name", new cEnum("EXIT_WAYPOINT", 0), ParameterVariant.PARAMETER); //EXIT_WAYPOINT
+                    newEntity.AddParameter("level_name", new cEnum(EnumType.EXIT_WAYPOINT, 0), ParameterVariant.PARAMETER); //EXIT_WAYPOINT
                     break;
                 case FunctionType.SetPrimaryObjective:
                     newEntity.AddParameter("title", new cString(" "), ParameterVariant.PARAMETER); //String
@@ -6204,7 +6204,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("title_list", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.OBJECTIVE_ENTRY_ID) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.PARAMETER); //OBJECTIVE_ENTRY_ID
                     newEntity.AddParameter("map_description_list", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.OBJECTIVE_ENTRY_ID) }.ToList<ResourceReference>(), newEntity.shortGUID), ParameterVariant.PARAMETER); //OBJECTIVE_ENTRY_ID
                     newEntity.AddParameter("slot_number", new cInteger(0), ParameterVariant.PARAMETER); //int
-                    newEntity.AddParameter("objective_type", new cEnum("SUB_OBJECTIVE_TYPE", 0), ParameterVariant.PARAMETER); //SUB_OBJECTIVE_TYPE
+                    newEntity.AddParameter("objective_type", new cEnum(EnumType.SUB_OBJECTIVE_TYPE, 0), ParameterVariant.PARAMETER); //SUB_OBJECTIVE_TYPE
                     newEntity.AddParameter("show_message", new cBool(true), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.ClearPrimaryObjective:
@@ -6345,7 +6345,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("movement_threshold", new cFloat(30.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("momentum_damping", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
                     newEntity.AddParameter("track_bone_position", new cBool(false), ParameterVariant.PARAMETER); //bool
-                    newEntity.AddParameter("character_node", new cEnum("CHARACTER_NODE", 9), ParameterVariant.PARAMETER); //CHARACTER_NODE
+                    newEntity.AddParameter("character_node", new cEnum(EnumType.CHARACTER_NODE, 9), ParameterVariant.PARAMETER); //CHARACTER_NODE
                     newEntity.AddParameter("track_position", new cTransform(), ParameterVariant.PARAMETER); //Position
                     break;
                 case FunctionType.PlayForMinDuration:
@@ -6389,8 +6389,8 @@ namespace CATHODE.Scripting
                     break;
                 case FunctionType.DoorStatus:
                     newEntity.AddParameter("hacking_difficulty", new cInteger(0), ParameterVariant.PARAMETER); //int
-                    newEntity.AddParameter("door_mechanism", new cEnum("DOOR_MECHANISM", 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
-                    newEntity.AddParameter("gate_type", new cEnum("UI_KEYGATE_TYPE", 0), ParameterVariant.PARAMETER); //UI_KEYGATE_TYPE
+                    newEntity.AddParameter("door_mechanism", new cEnum(EnumType.DOOR_MECHANISM, 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
+                    newEntity.AddParameter("gate_type", new cEnum(EnumType.UI_KEYGATE_TYPE, 0), ParameterVariant.PARAMETER); //UI_KEYGATE_TYPE
                     newEntity.AddParameter("has_correct_keycard", new cBool(false), ParameterVariant.PARAMETER); //bool
                     newEntity.AddParameter("cutting_tool_level", new cInteger(0), ParameterVariant.PARAMETER); //int
                     newEntity.AddParameter("is_locked", new cBool(false), ParameterVariant.PARAMETER); //bool
@@ -6398,36 +6398,36 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("is_cutting_complete", new cBool(false), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.DeleteHacking:
-                    newEntity.AddParameter("door_mechanism", new cEnum("DOOR_MECHANISM", 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
+                    newEntity.AddParameter("door_mechanism", new cEnum(EnumType.DOOR_MECHANISM, 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
                     break;
                 case FunctionType.DeleteKeypad:
-                    newEntity.AddParameter("door_mechanism", new cEnum("DOOR_MECHANISM", 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
+                    newEntity.AddParameter("door_mechanism", new cEnum(EnumType.DOOR_MECHANISM, 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
                     break;
                 case FunctionType.DeleteCuttingPanel:
-                    newEntity.AddParameter("door_mechanism", new cEnum("DOOR_MECHANISM", 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
+                    newEntity.AddParameter("door_mechanism", new cEnum(EnumType.DOOR_MECHANISM, 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
                     break;
                 case FunctionType.DeleteBlankPanel:
-                    newEntity.AddParameter("door_mechanism", new cEnum("DOOR_MECHANISM", 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
+                    newEntity.AddParameter("door_mechanism", new cEnum(EnumType.DOOR_MECHANISM, 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
                     break;
                 case FunctionType.DeleteHousing:
-                    newEntity.AddParameter("door_mechanism", new cEnum("DOOR_MECHANISM", 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
+                    newEntity.AddParameter("door_mechanism", new cEnum(EnumType.DOOR_MECHANISM, 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
                     newEntity.AddParameter("is_door", new cBool(true), ParameterVariant.PARAMETER); //bool
                     break;
                 case FunctionType.DeletePullLever:
-                    newEntity.AddParameter("door_mechanism", new cEnum("DOOR_MECHANISM", 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
-                    newEntity.AddParameter("lever_type", new cEnum("LEVER_TYPE", 0), ParameterVariant.PARAMETER); //LEVER_TYPE
+                    newEntity.AddParameter("door_mechanism", new cEnum(EnumType.DOOR_MECHANISM, 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
+                    newEntity.AddParameter("lever_type", new cEnum(EnumType.LEVER_TYPE, 0), ParameterVariant.PARAMETER); //LEVER_TYPE
                     break;
                 case FunctionType.DeleteRotateLever:
-                    newEntity.AddParameter("door_mechanism", new cEnum("DOOR_MECHANISM", 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
-                    newEntity.AddParameter("lever_type", new cEnum("LEVER_TYPE", 0), ParameterVariant.PARAMETER); //LEVER_TYPE
+                    newEntity.AddParameter("door_mechanism", new cEnum(EnumType.DOOR_MECHANISM, 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
+                    newEntity.AddParameter("lever_type", new cEnum(EnumType.LEVER_TYPE, 0), ParameterVariant.PARAMETER); //LEVER_TYPE
                     break;
                 case FunctionType.DeleteButtonDisk:
-                    newEntity.AddParameter("door_mechanism", new cEnum("DOOR_MECHANISM", 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
-                    newEntity.AddParameter("button_type", new cEnum("BUTTON_TYPE", 0), ParameterVariant.PARAMETER); //BUTTON_TYPE
+                    newEntity.AddParameter("door_mechanism", new cEnum(EnumType.DOOR_MECHANISM, 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
+                    newEntity.AddParameter("button_type", new cEnum(EnumType.BUTTON_TYPE, 0), ParameterVariant.PARAMETER); //BUTTON_TYPE
                     break;
                 case FunctionType.DeleteButtonKeys:
-                    newEntity.AddParameter("door_mechanism", new cEnum("DOOR_MECHANISM", 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
-                    newEntity.AddParameter("button_type", new cEnum("BUTTON_TYPE", 0), ParameterVariant.PARAMETER); //BUTTON_TYPE
+                    newEntity.AddParameter("door_mechanism", new cEnum(EnumType.DOOR_MECHANISM, 0), ParameterVariant.PARAMETER); //DOOR_MECHANISM
+                    newEntity.AddParameter("button_type", new cEnum(EnumType.BUTTON_TYPE, 0), ParameterVariant.PARAMETER); //BUTTON_TYPE
                     break;
                 case FunctionType.Interaction:
                     newEntity.AddParameter("on_damaged", new cFloat(), ParameterVariant.TARGET); //

@@ -56,6 +56,31 @@ namespace CATHODE.Scripting.Internal
         }
 
         /* Add a data-supplying parameter to the entity */
+        /*
+        public Parameter AddParameter<T>(string name, T data, ParameterVariant variant = ParameterVariant.PARAMETER)
+        {
+            ShortGuid id = ShortGuidUtils.Generate(name);
+            switch (Type.GetTypeCode(typeof(T)))
+            {
+                case TypeCode.String:
+                    return AddParameter(id, new cString((string)(object)data), variant);
+                case TypeCode.Int16:
+                case TypeCode.Int32:
+                case TypeCode.Int64:
+                case TypeCode.UInt16:
+                case TypeCode.UInt32:
+                case TypeCode.UInt64:
+                    return AddParameter(id, new cInteger((int)(object)data), variant);
+                case TypeCode.Boolean:
+                    return AddParameter(id, new cBool((bool)(object)data), variant);
+                case TypeCode.Double:
+                    return AddParameter(id, new cFloat((float)((double)(object)data)), variant);
+                case TypeCode.Single:
+                    return AddParameter(id, new cFloat((float)(object)data), variant);
+            }
+            throw new Exception("Tried to AddParameter using templated function, but type is not supported.");
+        }
+        */
         public Parameter AddParameter(string name, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER)
         {
             return AddParameter(ShortGuidUtils.Generate(name), data, variant);
@@ -154,7 +179,7 @@ namespace CATHODE.Scripting
                     thisParam = new cTransform(new Vector3(0, 0, 0), new Vector3(0, 0, 0));
                     break;
                 case DataType.ENUM:
-                    thisParam = new cEnum("ALERTNESS_STATE", 0); //ALERTNESS_STATE is the first alphabetically
+                    thisParam = new cEnum(EnumType.ALERTNESS_STATE, 0);
                     break;
                 case DataType.SPLINE:
                     thisParam = new cSpline();
@@ -165,6 +190,11 @@ namespace CATHODE.Scripting
 
         public ShortGuid parameter; //Translates to string via ShortGuidUtils.FindString
         public DataType type = DataType.NONE;
+
+        public override string ToString()
+        {
+            return parameter.ToString();
+        }
     }
     [Serializable]
     public class FunctionEntity : Entity
@@ -233,6 +263,11 @@ namespace CATHODE.Scripting
         public ResourceReference GetResource(ResourceType type)
         {
             return resources.FirstOrDefault(o => o.entryType == type);
+        }
+
+        public override string ToString()
+        {
+            return function.ToString();
         }
     }
     [Serializable]
