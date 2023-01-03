@@ -70,43 +70,27 @@ namespace CATHODE.Scripting.Internal
             {
                 case DataType.TRANSFORM:
                     cTransform x_t = (cTransform)this;
-                    return Convert.ToInt32(
-                        x_t.rotation.x.ToString() + x_t.rotation.y.ToString() + x_t.rotation.z.ToString() +
-                        x_t.position.x.ToString() + x_t.position.y.ToString() + x_t.position.z.ToString());
+                    return x_t.position.GetHashCode() + x_t.rotation.GetHashCode();
                 case DataType.INTEGER:
-                    return ((cInteger)this).value;
+                    return ((cInteger)this).value.GetHashCode();
                 case DataType.STRING:
-                    cString x_s = (cString)this;
-                    string num = "";
-                    for (int i = 0; i < x_s.value.Length; i++) num += ((int)x_s.value[i]).ToString();
-                    return Convert.ToInt32(num);
+                    return ((cString)this).value.GetHashCode();
                 case DataType.BOOL:
-                    return ((cBool)this).value ? 1 : 0;
+                    return ((cBool)this).value.GetHashCode();
                 case DataType.FLOAT:
-                    return Convert.ToInt32(((cFloat)this).value.ToString().Replace(".", ""));
+                    return ((cFloat)this).value.GetHashCode();
                 case DataType.RESOURCE:
-                    string x_g_s = ((cString)this).value.ToString();
-                    string num2 = "";
-                    for (int i = 0; i < x_g_s.Length; i++) num2 += ((int)x_g_s[i]).ToString();
-                    return Convert.ToInt32(num2);
+                    return ((cResource)this).resourceID.GetHashCode();
                 case DataType.VECTOR:
-                    cVector3 x_v = (cVector3)this;
-                    return Convert.ToInt32(x_v.value.x.ToString() + x_v.value.y.ToString() + x_v.value.z.ToString());
+                    return ((cVector3)this).value.GetHashCode();
                 case DataType.ENUM:
                     cEnum x_e = (cEnum)this;
-                    string x_e_s = x_e.enumID.ToByteString();
-                    string num3 = "";
-                    for (int i = 0; i < x_e_s.Length; i++) num3 += ((int)x_e_s[i]).ToString();
-                    return Convert.ToInt32(num3 + x_e.enumIndex.ToString());
+                    return x_e.enumID.ToByteString().GetHashCode() + x_e.enumIndex;
                 case DataType.SPLINE:
                     cSpline x_sd = (cSpline)this;
-                    string x_sd_s = "";
-                    for (int i = 0; i < x_sd.splinePoints.Count; i++) x_sd_s += x_sd.splinePoints[i].position.GetHashCode().ToString();
-                    ShortGuid x_sd_g = ShortGuidUtils.Generate(x_sd_s);
-                    string x_sd_g_s = x_sd_g.ToByteString();
-                    string num4 = "";
-                    for (int i = 0; i < x_sd_g_s.Length; i++) num4 += ((int)x_sd_g_s[i]).ToString();
-                    return Convert.ToInt32(num4);
+                    int x_sd_i = 0;
+                    for (int i = 0; i < x_sd.splinePoints.Count; i++) x_sd_i += x_sd.splinePoints[i].GetHashCode();
+                    return x_sd_i;
                 default:
                     return -1;
             }

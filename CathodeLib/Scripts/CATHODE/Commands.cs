@@ -88,6 +88,7 @@ namespace CATHODE
             writer.Write(0);
 
             //Fix (& verify) entity-attached resource info
+            _composites = _composites.OrderBy(o => o.shortGUID.ToUInt32()).ToList<Composite>();
             for (int i = 0; i < _composites.Count; i++)
             {
                 List<ResourceReference> animatedModels = new List<ResourceReference>();
@@ -184,10 +185,10 @@ namespace CATHODE
             parameters = PruneParameterList(parameters);
 
             //Write out parameters & track offsets
-            int[] parameterOffsets = new int[parameters.Count];
+            Dictionary<ParameterData, int> parameterOffsets = new Dictionary<ParameterData, int>();
             for (int i = 0; i < parameters.Count; i++)
             {
-                parameterOffsets[i] = (int)writer.BaseStream.Position / 4;
+                parameterOffsets.Add(parameters[i], (int)writer.BaseStream.Position / 4);
                 Utilities.Write<ShortGuid>(writer, CommandsUtils.GetDataTypeGUID(parameters[i].dataType));
                 switch (parameters[i].dataType)
                 {
@@ -343,21 +344,16 @@ namespace CATHODE
                             foreach (Entity entityWithParam in entitiesWithParams)
                             {
                                 offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, entityWithParam.parameters.Count));
+
+                                Dictionary<ShortGuid, int> paramsWithOffsets = new Dictionary<ShortGuid, int>();
                                 for (int y = 0; y < entityWithParam.parameters.Count; y++)
+                                    paramsWithOffsets.Add(entityWithParam.parameters[y].shortGUID, parameterOffsets[entityWithParam.parameters[y].content]);
+                                paramsWithOffsets = paramsWithOffsets.OrderBy(o => o.Value).ToDictionary(o => o.Key, o => o.Value);
+
+                                foreach (KeyValuePair<ShortGuid, int> entry in paramsWithOffsets)
                                 {
-                                    Utilities.Write<ShortGuid>(writer, entityWithParam.parameters[y].shortGUID);
-                                    //TODO: this is super slow! Find a better way to lookup parameter content offsets (precalculate a nicer structure)
-                                    int paramOffset = -1;
-                                    for (int z = 0; z < parameters.Count; z++)
-                                    {
-                                        if (parameters[z] == entityWithParam.parameters[y].content)
-                                        {
-                                            paramOffset = parameterOffsets[z];
-                                            break;
-                                        }
-                                    }
-                                    if (paramOffset == -1) throw new Exception("Error writing parameter offset. Could not find parameter content!");
-                                    writer.Write(paramOffset);
+                                    Utilities.Write<ShortGuid>(writer, entry.Key);
+                                    writer.Write(entry.Value);
                                 }
                             }
 
@@ -643,14 +639,15 @@ namespace CATHODE
                     if (x == 0) Utilities.Write<ShortGuid>(writer, _composites[i].shortGUID);
                 }
 
-                //Write function entity counts (TODO: these values still aren't correct!)
+                //Write function count (TODO: sometimes this count excludes some entities in the vanilla paks - why?)
+                writer.Write(_composites[i].functions.FindAll(o => CommandsUtils.FunctionTypeExists(o.function)).Count);
                 writer.Write(_composites[i].functions.Count);
-                writer.Write(_composites[i].functions.Count); 
             }
 
             //Write out parameter offsets
             int parameterOffsetPos = (int)writer.BaseStream.Position;
-            Utilities.Write<int>(writer, parameterOffsets);
+            foreach (KeyValuePair<ParameterData, int> offset in parameterOffsets)
+                writer.Write(offset.Value);
 
             //Write out composite offsets
             int compositeOffsetPos = (int)writer.BaseStream.Position;

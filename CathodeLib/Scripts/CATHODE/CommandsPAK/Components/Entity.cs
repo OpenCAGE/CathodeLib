@@ -190,6 +190,11 @@ namespace CATHODE.Scripting
 
         public ShortGuid parameter; //Translates to string via ShortGuidUtils.FindString
         public DataType type = DataType.NONE;
+
+        public override string ToString()
+        {
+            return parameter.ToString();
+        }
     }
     [Serializable]
     public class FunctionEntity : Entity
@@ -258,6 +263,11 @@ namespace CATHODE.Scripting
         public ResourceReference GetResource(ResourceType type)
         {
             return resources.FirstOrDefault(o => o.entryType == type);
+        }
+
+        public override string ToString()
+        {
+            return function.ToString();
         }
     }
     [Serializable]
