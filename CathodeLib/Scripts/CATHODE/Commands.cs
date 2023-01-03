@@ -1117,7 +1117,7 @@ namespace CATHODE
         public Composite AddComposite(string name, bool isRoot = false)
         {
             Composite comp = new Composite(name);
-            _composites.Add(comp);
+            _composites.Insert(0, comp);
             if (isRoot) SetRootComposite(comp);
             return comp;
         }

@@ -131,12 +131,6 @@ namespace CATHODE.Scripting
     [Serializable]
     public class VariableEntity : Entity
     {
-        //TEMP
-        public override string ToString()
-        {
-            return parameter.ToString();
-        }
-
         public VariableEntity(bool addDefaultParam = false) : base(EntityVariant.DATATYPE) { if (addDefaultParam) AddDefaultParam(); }
         public VariableEntity(ShortGuid shortGUID, bool addDefaultParam = false) : base(shortGUID, EntityVariant.DATATYPE) { if (addDefaultParam) AddDefaultParam(); }
 
@@ -196,16 +190,15 @@ namespace CATHODE.Scripting
 
         public ShortGuid parameter; //Translates to string via ShortGuidUtils.FindString
         public DataType type = DataType.NONE;
+
+        public override string ToString()
+        {
+            return parameter.ToString();
+        }
     }
     [Serializable]
     public class FunctionEntity : Entity
     {
-        //TEMP
-        public override string ToString()
-        {
-            return function.ToString();
-        }
-
         public FunctionEntity() : base(EntityVariant.FUNCTION) { }
         public FunctionEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.FUNCTION) { }
 
@@ -270,6 +263,11 @@ namespace CATHODE.Scripting
         public ResourceReference GetResource(ResourceType type)
         {
             return resources.FirstOrDefault(o => o.entryType == type);
+        }
+
+        public override string ToString()
+        {
+            return function.ToString();
         }
     }
     [Serializable]

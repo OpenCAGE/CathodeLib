@@ -1,4 +1,4 @@
-﻿using CATHODE.Scripting.Internal;
+using CATHODE.Scripting.Internal;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,12 +13,6 @@ namespace CATHODE.Scripting
     [Serializable]
     public class Composite
     {
-        //TEMP
-        public override string ToString()
-        {
-            return "[" + unk1 + ", " + unk2 + "]";
-        }
-
         public Composite() { }
         public Composite(string name)
         {
@@ -81,9 +75,9 @@ namespace CATHODE.Scripting
             functions.Add(func);
             return func;
         }
-        public FunctionEntity AddFunction(Composite function, bool autopopulateParameters = false)
+        public FunctionEntity AddFunction(Composite composite, bool autopopulateParameters = false)
         {
-            FunctionEntity func = new FunctionEntity(function.shortGUID, autopopulateParameters);
+            FunctionEntity func = new FunctionEntity(composite.shortGUID, autopopulateParameters);
             functions.Add(func);
             return func;
         }
@@ -94,6 +88,11 @@ namespace CATHODE.Scripting
             VariableEntity vari = new VariableEntity(parameter, type, addDefaultParam);
             variables.Add(vari);
             return vari;
+        }
+
+        public override string ToString()
+        {
+            return name;
         }
     }
 }
