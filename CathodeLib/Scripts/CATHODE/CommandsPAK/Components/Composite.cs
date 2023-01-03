@@ -53,10 +53,10 @@ namespace CATHODE.Scripting
         /* Sort all entity arrays */
         public void SortEntities()
         {
-            variables.OrderBy(o => o.shortGUID.ToUInt32());
-            functions.OrderBy(o => o.shortGUID.ToUInt32());
-            overrides.OrderBy(o => o.shortGUID.ToUInt32());
-            proxies.OrderBy(o => o.shortGUID.ToUInt32());
+            variables.OrderBy(o => o.parameters.Count);
+            functions.OrderBy(o => o.parameters.Count);
+            overrides.OrderBy(o => o.parameters.Count);
+            proxies.OrderBy(o => o.parameters.Count);
         }
 
         /* Add a new function entity */
