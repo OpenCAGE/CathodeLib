@@ -54,7 +54,7 @@ namespace CATHODE.Scripting
         public static string FindString(ShortGuid guid)
         {
             if (!vanilla.cacheReversed.ContainsKey(guid))
-                return guid.ToString();
+                return guid.ToByteString();
 
             //TODO: check custom cache
 

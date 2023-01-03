@@ -1110,9 +1110,11 @@ namespace CATHODE.Scripting
         WEAPON_PROPERTY,
         WEAPON_TYPE,
     }
-
+}
+namespace CATHODE.Scripting.Internal
+{ 
     /* Blocks of data in each compiled composite */
-    public enum DataBlock
+    public enum CompositeFileData
     {
         COMPOSITE_HEADER,             //Defines the header of the composite, with global ID and string name
         ENTITY_CONNECTIONS,           //Defines the links between entities in the composite
@@ -1125,9 +1127,7 @@ namespace CATHODE.Scripting
         RESOURCE_REFERENCES,          //Defines renderable data which is referenced by entities in this composite
         CAGEANIMATION_DATA,           //Appears to define additional data for CAGEAnimation type entities (TODO)
         TRIGGERSEQUENCE_DATA,         //Appears to define additional data for TriggerSequence type entities (TODO)
-
         UNUSED,                       //Unused values
-        UNKNOWN_COUNTS,               //TODO - unused?
 
         NUMBER_OF_SCRIPT_BLOCKS,      //THIS IS NOT A DATA BLOCK: merely used as an easy way of sanity checking the number of blocks in-code!
     }

@@ -18,13 +18,10 @@ namespace CATHODE.Scripting
         {
             shortGUID = ShortGuidUtils.GenerateRandom();
             this.name = name;
-            unknownPair = new OffsetPair(5, 6); //TODO: what on earth this this?
         }
 
         public ShortGuid shortGUID;  //The id when this composite is used as an entity in another composite
         public string name = ""; //The string name of the composite
-
-        public OffsetPair unknownPair;
 
         public List<VariableEntity> variables = new List<VariableEntity>(); //Variables which can be accessed outside of this flowgraph as parameters, and connected to nodes as parameters internally
         public List<FunctionEntity> functions = new List<FunctionEntity>(); //Functional nodes, including hard-coded functions and references to other composites

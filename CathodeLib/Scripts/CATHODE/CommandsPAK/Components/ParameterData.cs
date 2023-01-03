@@ -94,7 +94,7 @@ namespace CATHODE.Scripting.Internal
                     return Convert.ToInt32(x_v.value.x.ToString() + x_v.value.y.ToString() + x_v.value.z.ToString());
                 case DataType.ENUM:
                     cEnum x_e = (cEnum)this;
-                    string x_e_s = x_e.enumID.ToString();
+                    string x_e_s = x_e.enumID.ToByteString();
                     string num3 = "";
                     for (int i = 0; i < x_e_s.Length; i++) num3 += ((int)x_e_s[i]).ToString();
                     return Convert.ToInt32(num3 + x_e.enumIndex.ToString());
@@ -103,7 +103,7 @@ namespace CATHODE.Scripting.Internal
                     string x_sd_s = "";
                     for (int i = 0; i < x_sd.splinePoints.Count; i++) x_sd_s += x_sd.splinePoints[i].position.GetHashCode().ToString();
                     ShortGuid x_sd_g = ShortGuidUtils.Generate(x_sd_s);
-                    string x_sd_g_s = x_sd_g.ToString();
+                    string x_sd_g_s = x_sd_g.ToByteString();
                     string num4 = "";
                     for (int i = 0; i < x_sd_g_s.Length; i++) num4 += ((int)x_sd_g_s[i]).ToString();
                     return Convert.ToInt32(num4);
@@ -263,15 +263,21 @@ namespace CATHODE.Scripting
     [Serializable]
     public class cEnum : ParameterData
     {
-        public cEnum(ShortGuid enumID, int enumIndex)
+        public cEnum()
+        {
+            this.enumID = ShortGuidUtils.Generate(((EnumType)0).ToString());
+            this.enumIndex = 0;
+            dataType = DataType.ENUM;
+        }
+        public cEnum(ShortGuid enumID, int enumIndex) //todo: deprecate?
         {
             this.enumID = enumID;
             this.enumIndex = enumIndex;
             dataType = DataType.ENUM;
         }
-        public cEnum(string enumName = "ALERTNESS_STATE", int enumIndex = 0)
+        public cEnum(EnumType enumType, int enumIndex = 0) 
         {
-            this.enumID = ShortGuidUtils.Generate(enumName);
+            this.enumID = ShortGuidUtils.Generate(enumType.ToString());
             this.enumIndex = enumIndex;
             dataType = DataType.ENUM;
         }

@@ -58,11 +58,11 @@ namespace CATHODE.Scripting
         }
         public static bool operator ==(ShortGuid x, string y)
         {
-            return x.ToString() == y;
+            return x.ToByteString() == y;
         }
         public static bool operator !=(ShortGuid x, string y)
         {
-            return x.ToString() != y;
+            return x.ToByteString() != y;
         }
         public override int GetHashCode()
         {
@@ -87,6 +87,10 @@ namespace CATHODE.Scripting
         }
 
         public override string ToString()
+        {
+            return ShortGuidUtils.FindString(this);
+        }
+        public string ToByteString()
         {
             return BitConverter.ToString(val);
         }
