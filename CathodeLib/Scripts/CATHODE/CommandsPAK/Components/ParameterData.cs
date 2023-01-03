@@ -76,10 +76,7 @@ namespace CATHODE.Scripting.Internal
                 case DataType.INTEGER:
                     return ((cInteger)this).value;
                 case DataType.STRING:
-                    cString x_s = (cString)this;
-                    string num = "";
-                    for (int i = 0; i < x_s.value.Length; i++) num += ((int)x_s.value[i]).ToString();
-                    return Convert.ToInt32(num);
+                    return ((cString)this).value.GetHashCode();
                 case DataType.BOOL:
                     return ((cBool)this).value ? 1 : 0;
                 case DataType.FLOAT:
