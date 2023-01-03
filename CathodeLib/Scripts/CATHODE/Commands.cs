@@ -643,9 +643,9 @@ namespace CATHODE
                     if (x == 0) Utilities.Write<ShortGuid>(writer, _composites[i].shortGUID);
                 }
 
-                //Write function entity counts
+                //Write function entity counts (TODO: these values still aren't correct!)
                 writer.Write(_composites[i].functions.Count);
-                writer.Write(_composites[i].functions.Count);
+                writer.Write(_composites[i].functions.Count); 
             }
 
             //Write out parameter offsets
