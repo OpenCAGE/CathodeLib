@@ -13,6 +13,12 @@ namespace CATHODE.Scripting
     [Serializable]
     public class Composite
     {
+        //TEMP
+        public override string ToString()
+        {
+            return "[" + unk1 + ", " + unk2 + "]";
+        }
+
         public Composite() { }
         public Composite(string name)
         {
@@ -28,6 +34,9 @@ namespace CATHODE.Scripting
 
         public List<OverrideEntity> overrides = new List<OverrideEntity>(); //Overrides of parameters in child composites
         public List<ProxyEntity> proxies = new List<ProxyEntity>();         //Instances of entities from other composites
+
+        public int unk1 = -1;
+        public int unk2 = -1;
 
         /* If an entity exists in the composite, return it */
         public Entity GetEntityByID(ShortGuid id)

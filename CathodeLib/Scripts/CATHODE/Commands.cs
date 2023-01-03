@@ -644,8 +644,8 @@ namespace CATHODE
                 }
 
                 //Write function entity counts (TODO: these values still aren't correct!)
-                writer.Write(_composites[i].functions.Count);
-                writer.Write(_composites[i].functions.Count); 
+                writer.Write(_composites[i].unk1 == -1 ? _composites[i].functions.Count : _composites[i].unk1);
+                writer.Write(_composites[i].unk2 == -1 ? _composites[i].functions.Count : _composites[i].unk2);
             }
 
             //Write out parameter offsets
@@ -766,7 +766,8 @@ namespace CATHODE
                     offsetPairs[x] = Utilities.Consume<OffsetPair>(reader);
                     if (x == 0) composite.shortGUID = new ShortGuid(reader);
                 }
-                reader.BaseStream.Position += 8;
+                composite.unk1 = reader.ReadInt32();
+                composite.unk2 = reader.ReadInt32();
 
                 //Read script ID and string name
                 reader.BaseStream.Position = (scriptStartOffset * 4) + 4;
