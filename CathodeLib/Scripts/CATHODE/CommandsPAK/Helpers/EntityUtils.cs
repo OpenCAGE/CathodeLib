@@ -1019,8 +1019,8 @@ namespace CATHODE.Scripting
                     break;
                 case FunctionType.EnvironmentModelReference:
                     cResource resourceData2 = new cResource(newEntity.shortGUID);
-                    resourceData2.AddResource(ResourceType.ANIMATED_MODEL); //TODO: need to figure out what startIndex links to, so we can set that!
-                    newEntity.parameters.Add(new Parameter("resource", resourceData2));
+                    resourceData2.AddResource(ResourceType.ANIMATED_MODEL);
+                    newEntity.parameters.Add(new Parameter("resource", resourceData2, ParameterVariant.INTERNAL));
                     break;
                 case FunctionType.SplinePath:
                     newEntity.AddParameter("loop", new cBool(false), ParameterVariant.PARAMETER); //bool
@@ -1153,7 +1153,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("alpha_light_average_normal", new cVector3(), ParameterVariant.INTERNAL); //Direction
                     cResource resourceData = new cResource(newEntity.shortGUID);
                     resourceData.AddResource(ResourceType.RENDERABLE_INSTANCE);
-                    newEntity.parameters.Add(new Parameter("resource", resourceData));
+                    newEntity.parameters.Add(new Parameter("resource", resourceData, ParameterVariant.INTERNAL));
                     break;
                 case FunctionType.LightReference:
                     newEntity.AddParameter("deleted", new cBool(false), ParameterVariant.STATE); //bool

@@ -42,21 +42,12 @@ namespace CATHODE.Scripting
         /* Returns a collection of all entities in the composite */
         public List<Entity> GetEntities()
         {
-            List<Entity> toReturn = new List<Entity>();
+            List<Entity> toReturn = new List<Entity>(variables.Count + functions.Count + overrides.Count + proxies.Count);
             toReturn.AddRange(variables);
             toReturn.AddRange(functions);
             toReturn.AddRange(overrides);
             toReturn.AddRange(proxies);
             return toReturn;
-        }
-
-        /* Sort all entity arrays */
-        public void SortEntities()
-        {
-            variables.OrderBy(o => o.shortGUID.ToUInt32());
-            functions.OrderBy(o => o.shortGUID.ToUInt32());
-            overrides.OrderBy(o => o.shortGUID.ToUInt32());
-            proxies.OrderBy(o => o.shortGUID.ToUInt32());
         }
 
         /* Add a new function entity */
