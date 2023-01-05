@@ -53,13 +53,18 @@ namespace CATHODE.Scripting
         /* Add a new function entity */
         public FunctionEntity AddFunction(FunctionType function, bool autopopulateParameters = false)
         {
-            FunctionEntity func = new FunctionEntity(function, autopopulateParameters);
-            functions.Add(func);
-            return func;
-        }
-        public FunctionEntity AddFunction(string function, bool autopopulateParameters = false)
-        {
-            FunctionEntity func = new FunctionEntity(function, autopopulateParameters);
+            FunctionEntity func = null;
+            switch (function) {
+                case FunctionType.CAGEAnimation:
+                    func = new CAGEAnimation(autopopulateParameters);
+                    break;
+                case FunctionType.TriggerSequence:
+                    func = new TriggerSequence(autopopulateParameters);
+                    break;
+                default:
+                    func = new FunctionEntity(function, autopopulateParameters);
+                    break;
+            }
             functions.Add(func);
             return func;
         }
