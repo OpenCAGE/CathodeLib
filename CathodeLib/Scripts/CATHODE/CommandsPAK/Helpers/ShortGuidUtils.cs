@@ -31,7 +31,7 @@ namespace CATHODE.Scripting
         }
 
         /* Generate a ShortGuid to interface with the Cathode scripting system */
-        public static ShortGuid Generate(string value)
+        public static ShortGuid Generate(string value, bool cache = true)
         {
             if (vanilla.cache.ContainsKey(value)) return vanilla.cache[value];
 
@@ -46,7 +46,7 @@ namespace CATHODE.Scripting
             };
             byte[] hash2 = sha1.ComputeHash(Encoding.UTF8.GetBytes(BitConverter.ToString(arrangedHash).Replace("-", string.Empty)));
             ShortGuid guid = new ShortGuid(new byte[] { hash2[0], hash2[1], hash2[2], hash2[3] });
-            Cache(guid, value);
+            if (cache) Cache(guid, value);
             return guid;
         }
 
@@ -64,10 +64,25 @@ namespace CATHODE.Scripting
         /* Generate a random unique ShortGuid */
         public static ShortGuid GenerateRandom()
         {
-            string guid = DateTime.Now.ToString("G") + (new Random()).Next(0, 9999);
-            while (vanilla.cache.ContainsKey(guid) || custom.cache.ContainsKey(guid))
-                guid += "_";
-            return Generate(guid);
+            string str = DateTime.Now.ToString("G");
+            ShortGuid guid = Generate(str, false);
+            int i = 0;
+            char c = (char)0;
+            int c_i = 0;
+            while (vanilla.cache.ContainsKey(str) || custom.cache.ContainsKey(str) || vanilla.cacheReversed.ContainsKey(guid) || custom.cacheReversed.ContainsKey(guid))
+            {
+                str = guid.ToByteString();
+                if (i > 1000)
+                {
+                    str += (char)c_i;
+                    c_i++;
+                    i = 0;
+                }
+                guid = Generate(str, false);
+                i++;
+            }
+            Cache(guid, str);
+            return guid;
         }
 
         /* Cache a pre-generated ShortGuid */
