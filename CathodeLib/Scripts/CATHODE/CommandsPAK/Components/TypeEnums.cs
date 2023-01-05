@@ -41,11 +41,12 @@ namespace CATHODE.Scripting
         VECTOR,
         TRANSFORM,
         ENUM,
+
         SPLINE,
+        RESOURCE,
 
         NONE, //Translates to a blank string
 
-        RESOURCE,
         FILEPATH,
         OBJECT,
         ZONE_LINK_PTR,
