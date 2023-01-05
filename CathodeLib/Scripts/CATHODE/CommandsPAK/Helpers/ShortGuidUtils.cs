@@ -67,7 +67,6 @@ namespace CATHODE.Scripting
             string str = DateTime.Now.ToString("G");
             ShortGuid guid = Generate(str, false);
             int i = 0;
-            char c = (char)0;
             int c_i = 0;
             while (vanilla.cache.ContainsKey(str) || custom.cache.ContainsKey(str) || vanilla.cacheReversed.ContainsKey(guid) || custom.cacheReversed.ContainsKey(guid))
             {
