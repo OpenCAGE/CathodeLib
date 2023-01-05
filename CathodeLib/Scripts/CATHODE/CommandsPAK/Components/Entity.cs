@@ -52,7 +52,7 @@ namespace CATHODE.Scripting.Internal
         }
         public Parameter GetParameter(ShortGuid id)
         {
-            return parameters.FirstOrDefault(o => o.shortGUID == id);
+            return parameters.FirstOrDefault(o => o.name == id);
         }
 
         /* Add a data-supplying parameter to the entity */
@@ -107,7 +107,7 @@ namespace CATHODE.Scripting.Internal
         public void RemoveParameter(string name)
         {
             ShortGuid name_id = ShortGuidUtils.Generate(name);
-            parameters.RemoveAll(o => o.shortGUID == name_id);
+            parameters.RemoveAll(o => o.name == name_id);
         }
 
         /* Add a link from a parameter on us out to a parameter on another entity */
@@ -136,20 +136,20 @@ namespace CATHODE.Scripting
 
         public VariableEntity(string parameter, DataType type, bool addDefaultParam = false) : base(EntityVariant.DATATYPE)
         {
-            this.parameter = ShortGuidUtils.Generate(parameter);
+            this.name = ShortGuidUtils.Generate(parameter);
             this.type = type;
             if (addDefaultParam) AddDefaultParam();
         }
 
         public VariableEntity(ShortGuid shortGUID, ShortGuid parameter, DataType type, bool addDefaultParam = false) : base(shortGUID, EntityVariant.DATATYPE)
         {
-            this.parameter = parameter;
+            this.name = parameter;
             this.type = type;
             if (addDefaultParam) AddDefaultParam();
         }
         public VariableEntity(ShortGuid shortGUID, string parameter, DataType type, bool addDefaultParam = false) : base(shortGUID, EntityVariant.DATATYPE)
         {
-            this.parameter = ShortGuidUtils.Generate(parameter);
+            this.name = ShortGuidUtils.Generate(parameter);
             this.type = type;
             if (addDefaultParam) AddDefaultParam();
         }
@@ -184,16 +184,19 @@ namespace CATHODE.Scripting
                 case DataType.SPLINE:
                     thisParam = new cSpline();
                     break;
+                case DataType.RESOURCE:
+                    thisParam = new cResource();
+                    break;
             }
-            parameters.Add(new Parameter(parameter, thisParam));
+            parameters.Add(new Parameter(name, thisParam));
         }
 
-        public ShortGuid parameter; //Translates to string via ShortGuidUtils.FindString
+        public ShortGuid name;
         public DataType type = DataType.NONE;
 
         public override string ToString()
         {
-            return parameter.ToString();
+            return name.ToString();
         }
     }
     [Serializable]
@@ -234,7 +237,7 @@ namespace CATHODE.Scripting
             if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
 
-        public ShortGuid function; //Translates to string via ShortGuidUtils.FindString
+        public ShortGuid function;
         public List<ResourceReference> resources = new List<ResourceReference>(); //TODO: can we replace this with a cResource to save duplicating functionality?
 
         /* Add a new resource reference of type */

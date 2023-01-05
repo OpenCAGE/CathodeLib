@@ -72,7 +72,6 @@ namespace CATHODE
             //Fix (& verify) entity-attached resource info
             for (int i = 0; i < _composites.Count; i++)
             {
-                List<ResourceReference> animatedModels = new List<ResourceReference>();
                 for (int x = 0; x < _composites[i].functions.Count; x++)
                 {
                     if (!CommandsUtils.FunctionTypeExists(_composites[i].functions[x].function)) continue;
@@ -269,7 +268,7 @@ namespace CATHODE
                         writer.Write(((cFloat)parameters[i]).value);
                         break;
                     case DataType.RESOURCE:
-                        Utilities.Write<ShortGuid>(writer, ((cResource)parameters[i]).resourceID);
+                        Utilities.Write<ShortGuid>(writer, ((cResource)parameters[i]).shortGUID);
                         break;
                     case DataType.VECTOR:
                         Vector3 dir = ((cVector3)parameters[i]).value;
@@ -352,7 +351,7 @@ namespace CATHODE
                                     //TODO: OPTIMISE THIS
                                     Dictionary<ShortGuid, int> paramsWithOffsets = new Dictionary<ShortGuid, int>();
                                     for (int y = 0; y < entityWithParam.parameters.Count; y++)
-                                        paramsWithOffsets.Add(entityWithParam.parameters[y].shortGUID, GetParameterOffset(ref parameterOffsets, ref parameters, ref entityWithParam.parameters[y].content));
+                                        paramsWithOffsets.Add(entityWithParam.parameters[y].name, GetParameterOffset(ref parameterOffsets, ref parameters, ref entityWithParam.parameters[y].content));
                                     paramsWithOffsets = paramsWithOffsets.OrderBy(o => o.Value).ToDictionary(o => o.Key, o => o.Value);
 
                                     foreach (KeyValuePair<ShortGuid, int> entry in paramsWithOffsets)
@@ -406,7 +405,7 @@ namespace CATHODE
                                 {
                                     writer.Write(_composites[i].variables[p].shortGUID.val);
                                     writer.Write(CommandsUtils.GetDataTypeGUID(_composites[i].variables[p].type).val);
-                                    writer.Write(_composites[i].variables[p].parameter.val);
+                                    writer.Write(_composites[i].variables[p].name.val);
                                 }
                                 break;
                             }
@@ -828,7 +827,7 @@ namespace CATHODE
                                     reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                     VariableEntity dtEntity = new VariableEntity(new ShortGuid(reader));
                                     dtEntity.type = CommandsUtils.GetDataType(new ShortGuid(reader));
-                                    dtEntity.parameter = new ShortGuid(reader);
+                                    dtEntity.name = new ShortGuid(reader);
                                     composite.variables.Add(dtEntity);
                                     break;
                                 }
@@ -1077,11 +1076,11 @@ namespace CATHODE
                 {
                     for (int y = 0; y < composite.functions[x].parameters.Count; y++)
                     {
-                        if (composite.functions[x].parameters[y].shortGUID != resParamID) continue;
+                        if (composite.functions[x].parameters[y].name != resParamID) continue;
 
                         cResource resourceParam = (cResource)composite.functions[x].parameters[y].content;
-                        resourceParam.value.AddRange(resourceRefs.Where(o => o.resourceID == resourceParam.resourceID));
-                        resourceRefs.RemoveAll(o => o.resourceID == resourceParam.resourceID);
+                        resourceParam.value.AddRange(resourceRefs.Where(o => o.resourceID == resourceParam.shortGUID));
+                        resourceRefs.RemoveAll(o => o.resourceID == resourceParam.shortGUID);
                     }
                 }
                 //Check to see if this resource applies directly to an ENTITY
