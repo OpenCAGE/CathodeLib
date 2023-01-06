@@ -115,7 +115,7 @@ namespace CATHODE.Scripting.Internal
                     data = new cSpline();
                     break;
                 case DataType.RESOURCE:
-                    data = new cResource();
+                    data = new cResource(shortGUID);
                     break;
                 default:
                     Console.WriteLine("WARNING: Tried to add parameter of type which is currently unsupported by CathodeLib (" + type + ")");
