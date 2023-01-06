@@ -10,7 +10,7 @@ using UnityEngine;
 
 namespace CathodeLib
 {
-    public class EnumUtils
+    public static class EnumUtils
     {
         private static List<EnumDescriptor> lookup_enum;
         static EnumUtils()

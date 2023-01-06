@@ -81,6 +81,48 @@ namespace CATHODE.Scripting.Internal
             throw new Exception("Tried to AddParameter using templated function, but type is not supported.");
         }
         */
+        public Parameter AddParameter(string name, DataType type, ParameterVariant variant = ParameterVariant.PARAMETER)
+        {
+            return AddParameter(ShortGuidUtils.Generate(name), type, variant);
+        }
+        public Parameter AddParameter(ShortGuid id, DataType type, ParameterVariant variant = ParameterVariant.PARAMETER)
+        {
+            ParameterData data = null;
+            switch (type)
+            {
+                case DataType.STRING:
+                    data = new cString();
+                    break;
+                case DataType.FLOAT:
+                    data = new cFloat();
+                    break;
+                case DataType.INTEGER:
+                    data = new cInteger();
+                    break;
+                case DataType.BOOL:
+                    data = new cBool();
+                    break;
+                case DataType.VECTOR:
+                    data = new cVector3();
+                    break;
+                case DataType.TRANSFORM:
+                    data = new cTransform();
+                    break;
+                case DataType.ENUM:
+                    data = new cEnum();
+                    break;
+                case DataType.SPLINE:
+                    data = new cSpline();
+                    break;
+                case DataType.RESOURCE:
+                    data = new cResource();
+                    break;
+                default:
+                    Console.WriteLine("WARNING: Tried to add parameter of type which is currently unsupported by CathodeLib (" + type + ")");
+                    return null;
+            }
+            return AddParameter(id, data, variant);
+        }
         public Parameter AddParameter(string name, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER)
         {
             return AddParameter(ShortGuidUtils.Generate(name), data, variant);
@@ -131,64 +173,27 @@ namespace CATHODE.Scripting
     [Serializable]
     public class VariableEntity : Entity
     {
-        public VariableEntity(bool addDefaultParam = false) : base(EntityVariant.DATATYPE) { if (addDefaultParam) AddDefaultParam(); }
-        public VariableEntity(ShortGuid shortGUID, bool addDefaultParam = false) : base(shortGUID, EntityVariant.DATATYPE) { if (addDefaultParam) AddDefaultParam(); }
+        public VariableEntity(bool addDefaultParam = false) : base(EntityVariant.DATATYPE) { if (addDefaultParam) AddParameter(name, type); }
+        public VariableEntity(ShortGuid shortGUID, bool addDefaultParam = false) : base(shortGUID, EntityVariant.DATATYPE) { if (addDefaultParam) AddParameter(name, type); }
 
         public VariableEntity(string parameter, DataType type, bool addDefaultParam = false) : base(EntityVariant.DATATYPE)
         {
             this.name = ShortGuidUtils.Generate(parameter);
             this.type = type;
-            if (addDefaultParam) AddDefaultParam();
+            if (addDefaultParam) AddParameter(name, type);
         }
 
         public VariableEntity(ShortGuid shortGUID, ShortGuid parameter, DataType type, bool addDefaultParam = false) : base(shortGUID, EntityVariant.DATATYPE)
         {
             this.name = parameter;
             this.type = type;
-            if (addDefaultParam) AddDefaultParam();
+            if (addDefaultParam) AddParameter(name, type);
         }
         public VariableEntity(ShortGuid shortGUID, string parameter, DataType type, bool addDefaultParam = false) : base(shortGUID, EntityVariant.DATATYPE)
         {
             this.name = ShortGuidUtils.Generate(parameter);
             this.type = type;
-            if (addDefaultParam) AddDefaultParam();
-        }
-        
-        /* Add a default parameter on us when created, to provide a value from */
-        private void AddDefaultParam()
-        {
-            ParameterData thisParam = null;
-            switch (type)
-            {
-                case DataType.STRING:
-                    thisParam = new cString("");
-                    break;
-                case DataType.FLOAT:
-                    thisParam = new cFloat(0.0f);
-                    break;
-                case DataType.INTEGER:
-                    thisParam = new cInteger(0);
-                    break;
-                case DataType.BOOL:
-                    thisParam = new cBool(true);
-                    break;
-                case DataType.VECTOR:
-                    thisParam = new cVector3(new Vector3(0, 0, 0));
-                    break;
-                case DataType.TRANSFORM:
-                    thisParam = new cTransform(new Vector3(0, 0, 0), new Vector3(0, 0, 0));
-                    break;
-                case DataType.ENUM:
-                    thisParam = new cEnum(EnumType.ALERTNESS_STATE, 0);
-                    break;
-                case DataType.SPLINE:
-                    thisParam = new cSpline();
-                    break;
-                case DataType.RESOURCE:
-                    thisParam = new cResource();
-                    break;
-            }
-            parameters.Add(new Parameter(name, thisParam));
+            if (addDefaultParam) AddParameter(name, type);
         }
 
         public ShortGuid name;
