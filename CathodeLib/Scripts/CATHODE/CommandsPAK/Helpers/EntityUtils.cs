@@ -95,12 +95,14 @@ namespace CATHODE.Scripting
         {
             _custom = (EntityNameTable)CustomTable.ReadTable(filepath, CustomEndTables.ENTITY_NAMES);
             if (_custom == null) _custom = new EntityNameTable();
+            Console.WriteLine("Loaded " + _custom.names.Count + " custom entity names!");
         }
 
         /* Write non-vanilla entity names to the CommandsPAK */
         private static void SaveCustomNames(string filepath)
         {
             CustomTable.WriteTable(filepath, CustomEndTables.ENTITY_NAMES, _custom);
+            Console.WriteLine("Saved " + _custom.names.Count + " custom entity names!");
         }
 
         /* Applies all default parameter data to a Function entity (DESTRUCTIVE!) */

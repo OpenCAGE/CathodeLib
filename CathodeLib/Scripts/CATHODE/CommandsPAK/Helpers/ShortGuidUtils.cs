@@ -1,6 +1,7 @@
 ﻿using CATHODE.Scripting.Internal;
 using CathodeLib;
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -118,12 +119,14 @@ namespace CATHODE.Scripting
         {
             _custom = (GuidNameTable)CustomTable.ReadTable(filepath, CustomEndTables.SHORT_GUIDS);
             if (_custom == null) _custom = new GuidNameTable();
+            Console.WriteLine("Loaded " + _custom.cache.Count + " custom ShortGuids!");
         }
 
         /* Write non-vanilla entity names to the CommandsPAK */
         private static void SaveCustomNames(string filepath)
         {
             CustomTable.WriteTable(filepath, CustomEndTables.SHORT_GUIDS, _custom);
+            Console.WriteLine("Saved " + _custom.cache.Count + " custom ShortGuids!");
         }
     }
 }
