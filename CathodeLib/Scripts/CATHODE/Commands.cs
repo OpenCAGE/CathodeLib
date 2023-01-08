@@ -347,17 +347,11 @@ namespace CATHODE
                                 foreach (Entity entityWithParam in parameterisedEntities[i])
                                 {
                                     offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, entityWithParam.parameters.Count));
-
-                                    //TODO: OPTIMISE THIS
-                                    Dictionary<ShortGuid, int> paramsWithOffsets = new Dictionary<ShortGuid, int>();
-                                    for (int y = 0; y < entityWithParam.parameters.Count; y++)
-                                        paramsWithOffsets.Add(entityWithParam.parameters[y].name, GetParameterOffset(ref parameterOffsets, ref parameters, ref entityWithParam.parameters[y].content));
-                                    paramsWithOffsets = paramsWithOffsets.OrderBy(o => o.Value).ToDictionary(o => o.Key, o => o.Value);
-
-                                    foreach (KeyValuePair<ShortGuid, int> entry in paramsWithOffsets)
+                                    List<Parameter> sortedParams = entityWithParam.parameters.OrderBy(o => o.name.ToUInt32()).ToList();
+                                    for (int y = 0; y < sortedParams.Count; y++)
                                     {
-                                        Utilities.Write<ShortGuid>(writer, entry.Key);
-                                        writer.Write(entry.Value);
+                                        Utilities.Write<ShortGuid>(writer, sortedParams[y].name);
+                                        writer.Write(GetParameterOffset(ref parameterOffsets, ref parameters, ref sortedParams[y].content));
                                     }
                                 }
 
