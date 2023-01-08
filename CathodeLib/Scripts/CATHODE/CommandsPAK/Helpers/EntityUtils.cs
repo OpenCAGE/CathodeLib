@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
@@ -36,6 +37,10 @@ namespace CATHODE.Scripting
         }
 
         /* Get the name of an entity contained within a composite */
+        public static string GetName(Composite composite, Entity entity)
+        {
+            return GetName(composite.shortGUID, entity.shortGUID);
+        }
         public static string GetName(ShortGuid compositeID, ShortGuid entityID)
         {
             if (custom_composites != null)
@@ -48,6 +53,10 @@ namespace CATHODE.Scripting
         }
 
         /* Set the name of an entity contained within a composite */
+        public static void SetName(Composite composite, Entity entity, string name)
+        {
+            SetName(composite.shortGUID, entity.shortGUID, name);
+        }
         public static void SetName(ShortGuid compositeID, ShortGuid entityID, string name)
         {
             if (!custom_composites.ContainsKey(compositeID))

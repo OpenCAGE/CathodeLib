@@ -173,23 +173,23 @@ namespace CATHODE.Scripting
     [Serializable]
     public class VariableEntity : Entity
     {
-        public VariableEntity(bool addDefaultParam = false) : base(EntityVariant.DATATYPE) { if (addDefaultParam) AddParameter(name, type); }
-        public VariableEntity(ShortGuid shortGUID, bool addDefaultParam = false) : base(shortGUID, EntityVariant.DATATYPE) { if (addDefaultParam) AddParameter(name, type); }
+        public VariableEntity(bool addDefaultParam = false) : base(EntityVariant.VARIABLE) { if (addDefaultParam) AddParameter(name, type); }
+        public VariableEntity(ShortGuid shortGUID, bool addDefaultParam = false) : base(shortGUID, EntityVariant.VARIABLE) { if (addDefaultParam) AddParameter(name, type); }
 
-        public VariableEntity(string parameter, DataType type, bool addDefaultParam = false) : base(EntityVariant.DATATYPE)
+        public VariableEntity(string parameter, DataType type, bool addDefaultParam = false) : base(EntityVariant.VARIABLE)
         {
             this.name = ShortGuidUtils.Generate(parameter);
             this.type = type;
             if (addDefaultParam) AddParameter(name, type);
         }
 
-        public VariableEntity(ShortGuid shortGUID, ShortGuid parameter, DataType type, bool addDefaultParam = false) : base(shortGUID, EntityVariant.DATATYPE)
+        public VariableEntity(ShortGuid shortGUID, ShortGuid parameter, DataType type, bool addDefaultParam = false) : base(shortGUID, EntityVariant.VARIABLE)
         {
             this.name = parameter;
             this.type = type;
             if (addDefaultParam) AddParameter(name, type);
         }
-        public VariableEntity(ShortGuid shortGUID, string parameter, DataType type, bool addDefaultParam = false) : base(shortGUID, EntityVariant.DATATYPE)
+        public VariableEntity(ShortGuid shortGUID, string parameter, DataType type, bool addDefaultParam = false) : base(shortGUID, EntityVariant.VARIABLE)
         {
             this.name = ShortGuidUtils.Generate(parameter);
             this.type = type;

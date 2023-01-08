@@ -31,7 +31,11 @@ namespace CATHODE.Scripting
         }
 
         /* Generate a ShortGuid to interface with the Cathode scripting system */
-        public static ShortGuid Generate(string value, bool cache = true)
+        public static ShortGuid Generate(string value)
+        {
+            return Generate(value, true);
+        }
+        private static ShortGuid Generate(string value, bool cache = true)
         {
             if (vanilla.cache.ContainsKey(value)) return vanilla.cache[value];
 

@@ -7,7 +7,7 @@ namespace CATHODE.Scripting
     /* Entity variants */
     public enum EntityVariant
     {
-        DATATYPE,
+        VARIABLE,
         FUNCTION,
 
         PROXY,
