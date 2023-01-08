@@ -136,6 +136,11 @@ namespace CATHODE.Scripting
 
         public Vector3 position = new Vector3();
         public Vector3 rotation = new Vector3(); //In CATHODE this is named Roll/Pitch/Yaw
+
+        public override string ToString()
+        {
+            return position.ToString() + ", " + rotation.ToString();
+        }
     }
     [Serializable]
     public class cInteger : ParameterData
@@ -148,6 +153,11 @@ namespace CATHODE.Scripting
         }
 
         public int value = 0;
+
+        public override string ToString()
+        {
+            return value.ToString();
+        }
     }
     [Serializable]
     public class cString : ParameterData
@@ -160,6 +170,11 @@ namespace CATHODE.Scripting
         }
 
         public string value = "";
+
+        public override string ToString()
+        {
+            return value;
+        }
     }
     [Serializable]
     public class cBool : ParameterData
@@ -172,6 +187,11 @@ namespace CATHODE.Scripting
         }
 
         public bool value = false;
+
+        public override string ToString()
+        {
+            return value.ToString();
+        }
     }
     [Serializable]
     public class cFloat : ParameterData
@@ -184,6 +204,11 @@ namespace CATHODE.Scripting
         }
 
         public float value = 0.0f;
+
+        public override string ToString()
+        {
+            return value.ToString();
+        }
     }
     [Serializable]
     public class cResource : ParameterData
@@ -247,6 +272,11 @@ namespace CATHODE.Scripting
         }
 
         public Vector3 value = new Vector3();
+
+        public override string ToString()
+        {
+            return value.ToString();
+        }
     }
     [Serializable]
     public class cEnum : ParameterData
@@ -272,6 +302,11 @@ namespace CATHODE.Scripting
 
         public ShortGuid enumID;
         public int enumIndex = 0;
+
+        public override string ToString()
+        {
+            return enumID.ToString() + " -> " + enumIndex;
+        }
     }
     [Serializable]
     public class cSpline : ParameterData

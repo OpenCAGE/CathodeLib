@@ -279,6 +279,10 @@ namespace CathodeLib
             if (x.z != y.z) return false;
             return true;
         }
+        public static Vector3 operator +(Vector3 x, Vector3 y)
+        {
+            return new Vector3(x.x + y.x, x.y + y.y, x.z + y.z);
+        }
         public static bool operator !=(Vector3 x, Vector3 y)
         {
             return !(x == y);
