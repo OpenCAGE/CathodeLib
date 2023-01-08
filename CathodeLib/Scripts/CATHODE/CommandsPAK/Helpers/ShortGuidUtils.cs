@@ -1,6 +1,6 @@
-﻿using CATHODE.Scripting;
+﻿using CATHODE.Scripting.Internal;
+using CathodeLib;
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -9,25 +9,33 @@ namespace CATHODE.Scripting
 {
     public static class ShortGuidUtils
     {
-        private static ShortGuidTable vanilla = new ShortGuidTable();
-        private static ShortGuidTable custom = new ShortGuidTable();
+        private static GuidNameTable _vanilla = null;
+        private static GuidNameTable _custom = null;
 
-        private static Commands commandsPAK;
+        private static Commands _commands;
 
         /* Pull in strings we know are cached as ShortGuid in Cathode */
-        static ShortGuidUtils(/*CommandsPAK pak = null*/)
+        static ShortGuidUtils()
         {
-            /*
-            commandsPAK = pak;
-            commandsPAK.OnSaved += SaveCustomNames;
-            */
-
             BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.entity_parameter_names));
+            _vanilla = new GuidNameTable();
+            _custom = new GuidNameTable();
             while (reader.BaseStream.Position < reader.BaseStream.Length)
                 Cache(new ShortGuid(reader), reader.ReadString(), true);
             reader.Close();
+        }
 
-            LoadCustomNames();
+        /* Optionally, link a Commands file which can be used to save custom ShortGuids to */
+        public static void LinkCommands(Commands commands)
+        {
+            if (_commands != null)
+                _commands.OnSaved -= SaveCustomNames;
+
+            _commands = commands;
+            if (_commands != null)
+                _commands.OnSaved += SaveCustomNames;
+
+            LoadCustomNames(commands.Filepath);
         }
 
         /* Generate a ShortGuid to interface with the Cathode scripting system */
@@ -37,7 +45,7 @@ namespace CATHODE.Scripting
         }
         private static ShortGuid Generate(string value, bool cache = true)
         {
-            if (vanilla.cache.ContainsKey(value)) return vanilla.cache[value];
+            if (_vanilla.cache.ContainsKey(value)) return _vanilla.cache[value];
 
             SHA1Managed sha1 = new SHA1Managed();
             byte[] hash1 = sha1.ComputeHash(Encoding.UTF8.GetBytes(value));
@@ -57,12 +65,12 @@ namespace CATHODE.Scripting
         /* Attempts to look up the string for a given ShortGuid */
         public static string FindString(ShortGuid guid)
         {
-            if (!vanilla.cacheReversed.ContainsKey(guid))
-                return guid.ToByteString();
+            if (_custom.cacheReversed.ContainsKey(guid))
+                return _custom.cacheReversed[guid];
+            if (_vanilla.cacheReversed.ContainsKey(guid))
+                return _vanilla.cacheReversed[guid];
 
-            //TODO: check custom cache
-
-            return vanilla.cacheReversed[guid];
+            return guid.ToByteString();
         }
 
         /* Generate a random unique ShortGuid */
@@ -72,7 +80,7 @@ namespace CATHODE.Scripting
             ShortGuid guid = Generate(str, false);
             int i = 0;
             int c_i = 0;
-            while (vanilla.cache.ContainsKey(str) || custom.cache.ContainsKey(str) || vanilla.cacheReversed.ContainsKey(guid) || custom.cacheReversed.ContainsKey(guid))
+            while (_vanilla.cache.ContainsKey(str) || _custom.cache.ContainsKey(str) || _vanilla.cacheReversed.ContainsKey(guid) || _custom.cacheReversed.ContainsKey(guid))
             {
                 str = guid.ToByteString();
                 if (i > 1000)
@@ -93,87 +101,29 @@ namespace CATHODE.Scripting
         {
             if (isVanilla)
             {
-                if (vanilla.cache.ContainsKey(value)) return;
-                vanilla.cache.Add(value, guid);
-                vanilla.cacheReversed.Add(guid, value);
+                if (_vanilla.cache.ContainsKey(value)) return;
+                _vanilla.cache.Add(value, guid);
+                _vanilla.cacheReversed.Add(guid, value);
             }
             else
             {
-                if (custom.cache.ContainsKey(value)) return;
-                custom.cache.Add(value, guid);
-                custom.cacheReversed.Add(guid, value);
+                if (_custom.cache.ContainsKey(value)) return;
+                _custom.cache.Add(value, guid);
+                _custom.cacheReversed.Add(guid, value);
             }
         }
 
         /* Pull non-vanilla ShortGuid from the CommandsPAK */
-        private static void LoadCustomNames()
+        private static void LoadCustomNames(string filepath)
         {
-            /*
-            if (commandsPAK == null) return;
-            int endPos = GetEndOfCommands();
-            BinaryReader reader = new BinaryReader(File.OpenRead(commandsPAK.Filepath));
-            reader.BaseStream.Position = endPos;
-            if ((int)reader.BaseStream.Length - endPos == 0 || reader.ReadByte() != (byte)254)
-            {
-                custom_composites = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>();
-                reader.Close();
-                return;
-            }
-            reader.BaseStream.Position += 4;
-            int compCount = reader.ReadInt32();
-            reader.BaseStream.Position += 8;
-            custom_composites = ConsumeDatabase(reader, compCount);
-            reader.Close();
-            */
+            _custom = (GuidNameTable)CustomTable.ReadTable(filepath, CustomEndTables.SHORT_GUIDS);
+            if (_custom == null) _custom = new GuidNameTable();
         }
 
         /* Write non-vanilla entity names to the CommandsPAK */
-        private static void SaveCustomNames()
+        private static void SaveCustomNames(string filepath)
         {
-            /*
-            if (commandsPAK == null) return;
-            int endPos = GetEndOfCommands();
-            //TODO: move this writing functionality into its own thing
-            BinaryWriter writer = new BinaryWriter(File.OpenWrite(commandsPAK.Filepath));
-            bool hasAlreadyWritten = (int)writer.BaseStream.Length - endPos != 0;
-            int posToJumpBackTo = 0;
-            writer.BaseStream.Position = endPos;
-            writer.Write((byte)254);
-            if (hasAlreadyWritten)
-            {
-                //Get position here
-                writer.BaseStream.Position += 8;
-            }
-            else
-            {
-                writer.Write(0);
-                writer.Write(0);
-            }
-            posToJumpBackTo = (int)writer.BaseStream.Position;
-            writer.Write(0);
-            writer.Write(0);
-            //Jump to got position here
-            int posToWrite = (int)writer.BaseStream.Position;
-            writer.BaseStream.Position = posToJumpBackTo;
-            writer.Write(posToWrite);
-            writer.Close();
-            */
-        }
-
-        /* Get the position where we start writing our own data */
-        private static int GetEndOfCommands()
-        {
-            BinaryReader reader = new BinaryReader(File.OpenRead(commandsPAK.Filepath));
-            reader.BaseStream.Position = 20;
-            int end_of_pak = (reader.ReadInt32() * 4) + (reader.ReadInt32() * 4);
-            reader.Close();
-            return end_of_pak;
-        }
-
-        private class ShortGuidTable
-        {
-            public Dictionary<string, ShortGuid> cache = new Dictionary<string, ShortGuid>();
-            public Dictionary<ShortGuid, string> cacheReversed = new Dictionary<ShortGuid, string>();
+            CustomTable.WriteTable(filepath, CustomEndTables.SHORT_GUIDS, _custom);
         }
     }
 }

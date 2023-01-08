@@ -8,14 +8,14 @@ using CATHODE.Scripting;
 using UnityEngine;
 #endif
 
-namespace CathodeLib
+namespace CATHODE.Scripting
 {
     public static class EnumUtils
     {
         private static List<EnumDescriptor> lookup_enum;
         static EnumUtils()
         {
-            lookup_enum = ReadDB(Properties.Resources.cathode_enum_lut).Cast<EnumDescriptor>().ToList();
+            lookup_enum = ReadDB(CathodeLib.Properties.Resources.cathode_enum_lut).Cast<EnumDescriptor>().ToList();
         }
 
         //Check the formatted enum dump for content

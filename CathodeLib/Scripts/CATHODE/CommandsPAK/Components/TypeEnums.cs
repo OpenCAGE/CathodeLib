@@ -1132,4 +1132,17 @@ namespace CATHODE.Scripting.Internal
 
         NUMBER_OF_SCRIPT_BLOCKS,      //THIS IS NOT A DATA BLOCK: merely used as an easy way of sanity checking the number of blocks in-code!
     }
+
+    /* Custom tables written at the end of the PAK to store extra info */
+    public enum CustomEndTables
+    {
+        //NOTE: NEVER remove options from here, or re-order them.
+        //      Doing this will cause issues with backwards compatibility.
+        ENTITY_NAMES,
+        SHORT_GUIDS,
+
+        //Add new entries here
+
+        NUMBER_OF_END_TABLES, //USED FOR COUNTING ONLY
+    }
 }
