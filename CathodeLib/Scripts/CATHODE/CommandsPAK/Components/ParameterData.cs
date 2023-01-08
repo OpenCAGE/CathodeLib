@@ -37,7 +37,7 @@ namespace CATHODE.Scripting.Internal
                 case DataType.FLOAT:
                     return ((cFloat)x).value == ((cFloat)y).value;
                 case DataType.RESOURCE:
-                    return ((cResource)x).resourceID == ((cResource)y).resourceID;
+                    return ((cResource)x).shortGUID == ((cResource)y).shortGUID;
                 case DataType.VECTOR:
                     return ((cVector3)x).value == ((cVector3)y).value;
                 case DataType.ENUM:
@@ -80,7 +80,7 @@ namespace CATHODE.Scripting.Internal
                 case DataType.FLOAT:
                     return ((cFloat)this).value.GetHashCode();
                 case DataType.RESOURCE:
-                    return ((cResource)this).resourceID.GetHashCode();
+                    return ((cResource)this).shortGUID.GetHashCode();
                 case DataType.VECTOR:
                     return ((cVector3)this).value.GetHashCode();
                 case DataType.ENUM:
@@ -188,21 +188,25 @@ namespace CATHODE.Scripting
     [Serializable]
     public class cResource : ParameterData
     {
-        public cResource() { dataType = DataType.RESOURCE; }
-        public cResource(ShortGuid resourceID)
+        public cResource() 
         {
-            this.resourceID = resourceID;
+            this.shortGUID = ShortGuidUtils.GenerateRandom();
+            dataType = DataType.RESOURCE; 
+        }
+        public cResource(ShortGuid shortGuid)
+        {
+            this.shortGUID = shortGuid;
             dataType = DataType.RESOURCE;
         }
         public cResource(List<ResourceReference> value, ShortGuid resourceID)
         {
             this.value = value;
-            this.resourceID = resourceID;
+            this.shortGUID = resourceID;
             dataType = DataType.RESOURCE;
         }
 
         public List<ResourceReference> value = new List<ResourceReference>();
-        public ShortGuid resourceID; //TODO: this is only ever gonna be the parent of the resouce (node or entity) - should we just generate on compilation?
+        public ShortGuid shortGUID; 
 
         /* Add a new resource reference of type */
         public ResourceReference AddResource(ResourceType type)
@@ -212,7 +216,7 @@ namespace CATHODE.Scripting
             if (rr == null)
             {
                 rr = new ResourceReference(type);
-                rr.resourceID = resourceID;
+                rr.resourceID = shortGUID;
                 switch (rr.entryType)
                 {
                     case ResourceType.DYNAMIC_PHYSICS_SYSTEM:

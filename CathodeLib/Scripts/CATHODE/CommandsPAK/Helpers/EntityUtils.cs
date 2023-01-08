@@ -1,60 +1,87 @@
-﻿using CathodeLib;
+﻿using CATHODE.Scripting.Internal;
+using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
 
 namespace CATHODE.Scripting
 {
-    //This should be initialised per-commandspak, and serves as a helpful extension to manage entity names
-    public class EntityUtils
+    //This serves as a helpful extension to manage entity names
+    public static class EntityUtils
     {
-        private Commands commandsPAK;
-        private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> vanilla_composites;
-        private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> custom_composites;
+        private static EntityNameTable _vanilla;
+        private static EntityNameTable _custom;
 
-        public EntityUtils(Commands commands = null)
+        private static Commands _commands;
+
+        /* Load all standard entity/composite names from our offline DB */
+        static EntityUtils()
         {
-            commandsPAK = commands;
-            if (commandsPAK != null) 
-                commandsPAK.OnSaved += SaveCustomNames;
+            BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.composite_entity_names));
+            _vanilla = new EntityNameTable(reader);
+            _custom = new EntityNameTable();
+            reader.Close();
+        }
 
-            LoadVanillaNames();
-            LoadCustomNames();
+        /* Optionally, link a Commands file which can be used to save custom entity names to */
+        public static void LinkCommands(Commands commands)
+        {
+            if (_commands != null)
+            {
+                _commands.OnLoaded -= LoadCustomNames;
+                _commands.OnSaved -= SaveCustomNames;
+            }
+
+            _commands = commands;
+            if (_commands != null)
+            {
+                _commands.OnLoaded += LoadCustomNames;
+                _commands.OnSaved += SaveCustomNames;
+            }
+
+            LoadCustomNames(_commands.Filepath);
         }
 
         /* Get the name of an entity contained within a composite */
-        public string GetName(ShortGuid compositeID, ShortGuid entityID)
+        public static string GetName(Composite composite, Entity entity)
         {
-            if (custom_composites != null)
-                if (custom_composites.ContainsKey(compositeID) && custom_composites[compositeID].ContainsKey(entityID))
-                    return custom_composites[compositeID][entityID];
-            if (vanilla_composites != null)
-                if (vanilla_composites.ContainsKey(compositeID) && vanilla_composites[compositeID].ContainsKey(entityID))
-                    return vanilla_composites[compositeID][entityID];
+            return GetName(composite.shortGUID, entity.shortGUID);
+        }
+        public static string GetName(ShortGuid compositeID, ShortGuid entityID)
+        {
+            if (_custom.names.ContainsKey(compositeID) && _custom.names[compositeID].ContainsKey(entityID))
+                return _custom.names[compositeID][entityID];
+            if (_vanilla.names.ContainsKey(compositeID) && _vanilla.names[compositeID].ContainsKey(entityID))
+                return _vanilla.names[compositeID][entityID];
             return entityID.ToByteString();
         }
 
         /* Set the name of an entity contained within a composite */
-        public void SetName(ShortGuid compositeID, ShortGuid entityID, string name)
+        public static void SetName(Composite composite, Entity entity, string name)
         {
-            if (!custom_composites.ContainsKey(compositeID))
-                custom_composites.Add(compositeID, new Dictionary<ShortGuid, string>());
+            SetName(composite.shortGUID, entity.shortGUID, name);
+        }
+        public static void SetName(ShortGuid compositeID, ShortGuid entityID, string name)
+        {
+            if (!_custom.names.ContainsKey(compositeID))
+                _custom.names.Add(compositeID, new Dictionary<ShortGuid, string>());
 
-            if (!custom_composites[compositeID].ContainsKey(entityID))
-                custom_composites[compositeID].Add(entityID, name);
+            if (!_custom.names[compositeID].ContainsKey(entityID))
+                _custom.names[compositeID].Add(entityID, name);
             else
-                custom_composites[compositeID][entityID] = name;
+                _custom.names[compositeID][entityID] = name;
         }
 
         /* Clear the name of an entity contained within a composite */
-        public void ClearName(ShortGuid compositeID, ShortGuid entityID)
+        public static void ClearName(ShortGuid compositeID, ShortGuid entityID)
         {
-            if (custom_composites.ContainsKey(compositeID))
-                custom_composites[compositeID].Remove(entityID);
+            if (_custom.names.ContainsKey(compositeID))
+                _custom.names[compositeID].Remove(entityID);
         }
 
         /* Applies all default parameter data to a Function entity (POTENTIALLY DESTRUCTIVE!) */
@@ -63,101 +90,19 @@ namespace CATHODE.Scripting
             ApplyDefaultsInternal(entity);
         }
 
-
-        /* Load all standard entity/composite names from our offline DB */
-        private void LoadVanillaNames()
-        {
-            BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.composite_entity_names));
-            vanilla_composites = ConsumeDatabase(reader, reader.ReadInt32());
-            reader.Close();
-        }
-
         /* Pull non-vanilla entity names from the CommandsPAK */
-        private void LoadCustomNames()
+        private static void LoadCustomNames(string filepath)
         {
-            if (commandsPAK == null) return;
-            int endPos = GetEndOfCommands();
-            BinaryReader reader = new BinaryReader(File.OpenRead(commandsPAK.Filepath));
-            reader.BaseStream.Position = endPos;
-            if ((int)reader.BaseStream.Length - endPos == 0 || reader.ReadByte() != (byte)254)
-            {
-                custom_composites = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>();
-                reader.Close();
-                return;
-            }
-            reader.BaseStream.Position += 4;
-            int compCount = reader.ReadInt32();
-            reader.BaseStream.Position += 8;
-            custom_composites = ConsumeDatabase(reader, compCount);
-            reader.Close();
+            _custom = (EntityNameTable)CustomTable.ReadTable(filepath, CustomEndTables.ENTITY_NAMES);
+            if (_custom == null) _custom = new EntityNameTable();
+            Console.WriteLine("Loaded " + _custom.names.Count + " custom entity names!");
         }
 
         /* Write non-vanilla entity names to the CommandsPAK */
-        private void SaveCustomNames()
+        private static void SaveCustomNames(string filepath)
         {
-            if (commandsPAK == null) return;
-            int endPos = GetEndOfCommands();
-            //TODO: move this writing functionality into its own thing
-            BinaryWriter writer = new BinaryWriter(File.OpenWrite(commandsPAK.Filepath));
-            bool hasAlreadyWritten = (int)writer.BaseStream.Length - endPos != 0;
-            int posToJumpBackTo = 0;
-            writer.BaseStream.Position = endPos;
-            writer.Write((byte)254);
-            writer.Write((int)writer.BaseStream.Position + 16);
-            writer.Write(custom_composites.Count);
-            if (hasAlreadyWritten)
-            {
-                writer.BaseStream.Position += 8;
-            }
-            else
-            {
-                posToJumpBackTo = (int)writer.BaseStream.Position;
-                writer.Write(0);
-                writer.Write(0);
-            }
-            foreach (KeyValuePair<ShortGuid, Dictionary<ShortGuid, string>> composite in custom_composites)
-            {
-                Utilities.Write<ShortGuid>(writer, composite.Key);
-                writer.Write(composite.Value.Count);
-                foreach (KeyValuePair<ShortGuid, string> entity in composite.Value)
-                {
-                    Utilities.Write<ShortGuid>(writer, entity.Key);
-                    writer.Write(entity.Value);
-                }
-            }
-            int posToWrite = (int)writer.BaseStream.Position;
-            writer.BaseStream.Position = posToJumpBackTo;
-            writer.Write(posToWrite);
-            writer.Close();
-        }
-
-        /* Consume our stored entity info */
-        private Dictionary<ShortGuid, Dictionary<ShortGuid, string>> ConsumeDatabase(BinaryReader reader, int compCount)
-        {
-            Dictionary<ShortGuid, Dictionary<ShortGuid, string>> composites = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>(compCount);
-            for (int i = 0; i < compCount; i++)
-            {
-                ShortGuid compositeID = Utilities.Consume<ShortGuid>(reader);
-                int entityCount = reader.ReadInt32();
-                composites.Add(compositeID, new Dictionary<ShortGuid, string>(entityCount));
-                for (int x = 0; x < entityCount; x++)
-                {
-                    ShortGuid entityID = Utilities.Consume<ShortGuid>(reader);
-                    composites[compositeID].Add(entityID, reader.ReadString());
-                }
-            }
-            Console.WriteLine("Loaded names for " + compCount + " composites!");
-            return composites;
-        }
-
-        /* Get the position where we start writing our own data */
-        private int GetEndOfCommands()
-        {
-            BinaryReader reader = new BinaryReader(File.OpenRead(commandsPAK.Filepath));
-            reader.BaseStream.Position = 20;
-            int end_of_pak = (reader.ReadInt32() * 4) + (reader.ReadInt32() * 4);
-            reader.Close();
-            return end_of_pak;
+            CustomTable.WriteTable(filepath, CustomEndTables.ENTITY_NAMES, _custom);
+            Console.WriteLine("Saved " + _custom.names.Count + " custom entity names!");
         }
 
         /* Applies all default parameter data to a Function entity (DESTRUCTIVE!) */
@@ -166,9 +111,13 @@ namespace CATHODE.Scripting
             //Function entity points to a composite
             if (!CommandsUtils.FunctionTypeExists(newEntity.function))
             {
-                //TODO - look up composite parameters
-                //if (commandsPAK == null) return;
-                //commandsPAK.Composites.FirstOrDefault(o => o.shortGUID = newEntity.function)
+                if (_commands == null) return;
+                Composite comp = _commands.Composites.FirstOrDefault(o => o.shortGUID == newEntity.function);
+                if (comp == null) return;
+                for (int i = 0; i < comp.variables.Count; i++)
+                { 
+                    newEntity.AddParameter(comp.variables[i].name, comp.variables[i].type, ParameterVariant.PARAMETER); //TODO: These are not always parameters - how can we distinguish?
+                }
                 return;
             }
 
@@ -1019,8 +968,8 @@ namespace CATHODE.Scripting
                     break;
                 case FunctionType.EnvironmentModelReference:
                     cResource resourceData2 = new cResource(newEntity.shortGUID);
-                    resourceData2.AddResource(ResourceType.ANIMATED_MODEL); //TODO: need to figure out what startIndex links to, so we can set that!
-                    newEntity.parameters.Add(new Parameter("resource", resourceData2));
+                    resourceData2.AddResource(ResourceType.ANIMATED_MODEL);
+                    newEntity.parameters.Add(new Parameter("resource", resourceData2, ParameterVariant.INTERNAL));
                     break;
                 case FunctionType.SplinePath:
                     newEntity.AddParameter("loop", new cBool(false), ParameterVariant.PARAMETER); //bool
@@ -1153,7 +1102,7 @@ namespace CATHODE.Scripting
                     newEntity.AddParameter("alpha_light_average_normal", new cVector3(), ParameterVariant.INTERNAL); //Direction
                     cResource resourceData = new cResource(newEntity.shortGUID);
                     resourceData.AddResource(ResourceType.RENDERABLE_INSTANCE);
-                    newEntity.parameters.Add(new Parameter("resource", resourceData));
+                    newEntity.parameters.Add(new Parameter("resource", resourceData, ParameterVariant.INTERNAL));
                     break;
                 case FunctionType.LightReference:
                     newEntity.AddParameter("deleted", new cBool(false), ParameterVariant.STATE); //bool

@@ -11,18 +11,18 @@ namespace CATHODE.Scripting
     {
         public Parameter(string name, ParameterData data, ParameterVariant var = ParameterVariant.PARAMETER)
         {
-            shortGUID = ShortGuidUtils.Generate(name);
+            this.name = ShortGuidUtils.Generate(name);
             content = data;
             variant = var;
         }
         public Parameter(ShortGuid id, ParameterData data, ParameterVariant var = ParameterVariant.PARAMETER)
         {
-            shortGUID = id;
+            name = id;
             content = data;
             variant = var;
         }
 
-        public ShortGuid shortGUID; //The ID of the param in the entity
+        public ShortGuid name; 
         public ParameterData content = null;
         public ParameterVariant variant = ParameterVariant.PARAMETER;
     }

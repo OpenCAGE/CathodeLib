@@ -52,7 +52,7 @@ namespace CATHODE.Scripting.Internal
         }
         public Parameter GetParameter(ShortGuid id)
         {
-            return parameters.FirstOrDefault(o => o.shortGUID == id);
+            return parameters.FirstOrDefault(o => o.name == id);
         }
 
         /* Add a data-supplying parameter to the entity */
@@ -81,6 +81,48 @@ namespace CATHODE.Scripting.Internal
             throw new Exception("Tried to AddParameter using templated function, but type is not supported.");
         }
         */
+        public Parameter AddParameter(string name, DataType type, ParameterVariant variant = ParameterVariant.PARAMETER)
+        {
+            return AddParameter(ShortGuidUtils.Generate(name), type, variant);
+        }
+        public Parameter AddParameter(ShortGuid id, DataType type, ParameterVariant variant = ParameterVariant.PARAMETER)
+        {
+            ParameterData data = null;
+            switch (type)
+            {
+                case DataType.STRING:
+                    data = new cString();
+                    break;
+                case DataType.FLOAT:
+                    data = new cFloat();
+                    break;
+                case DataType.INTEGER:
+                    data = new cInteger();
+                    break;
+                case DataType.BOOL:
+                    data = new cBool();
+                    break;
+                case DataType.VECTOR:
+                    data = new cVector3();
+                    break;
+                case DataType.TRANSFORM:
+                    data = new cTransform();
+                    break;
+                case DataType.ENUM:
+                    data = new cEnum();
+                    break;
+                case DataType.SPLINE:
+                    data = new cSpline();
+                    break;
+                case DataType.RESOURCE:
+                    data = new cResource(shortGUID);
+                    break;
+                default:
+                    Console.WriteLine("WARNING: Tried to add parameter of type which is currently unsupported by CathodeLib (" + type + ")");
+                    return null;
+            }
+            return AddParameter(id, data, variant);
+        }
         public Parameter AddParameter(string name, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER)
         {
             return AddParameter(ShortGuidUtils.Generate(name), data, variant);
@@ -107,7 +149,7 @@ namespace CATHODE.Scripting.Internal
         public void RemoveParameter(string name)
         {
             ShortGuid name_id = ShortGuidUtils.Generate(name);
-            parameters.RemoveAll(o => o.shortGUID == name_id);
+            parameters.RemoveAll(o => o.name == name_id);
         }
 
         /* Add a link from a parameter on us out to a parameter on another entity */
@@ -131,69 +173,35 @@ namespace CATHODE.Scripting
     [Serializable]
     public class VariableEntity : Entity
     {
-        public VariableEntity(bool addDefaultParam = false) : base(EntityVariant.DATATYPE) { if (addDefaultParam) AddDefaultParam(); }
-        public VariableEntity(ShortGuid shortGUID, bool addDefaultParam = false) : base(shortGUID, EntityVariant.DATATYPE) { if (addDefaultParam) AddDefaultParam(); }
+        public VariableEntity(bool addDefaultParam = false) : base(EntityVariant.VARIABLE) { if (addDefaultParam) AddParameter(name, type); }
+        public VariableEntity(ShortGuid shortGUID, bool addDefaultParam = false) : base(shortGUID, EntityVariant.VARIABLE) { if (addDefaultParam) AddParameter(name, type); }
 
-        public VariableEntity(string parameter, DataType type, bool addDefaultParam = false) : base(EntityVariant.DATATYPE)
+        public VariableEntity(string parameter, DataType type, bool addDefaultParam = false) : base(EntityVariant.VARIABLE)
         {
-            this.parameter = ShortGuidUtils.Generate(parameter);
+            this.name = ShortGuidUtils.Generate(parameter);
             this.type = type;
-            if (addDefaultParam) AddDefaultParam();
-        }
-
-        public VariableEntity(ShortGuid shortGUID, ShortGuid parameter, DataType type, bool addDefaultParam = false) : base(shortGUID, EntityVariant.DATATYPE)
-        {
-            this.parameter = parameter;
-            this.type = type;
-            if (addDefaultParam) AddDefaultParam();
-        }
-        public VariableEntity(ShortGuid shortGUID, string parameter, DataType type, bool addDefaultParam = false) : base(shortGUID, EntityVariant.DATATYPE)
-        {
-            this.parameter = ShortGuidUtils.Generate(parameter);
-            this.type = type;
-            if (addDefaultParam) AddDefaultParam();
-        }
-        
-        /* Add a default parameter on us when created, to provide a value from */
-        private void AddDefaultParam()
-        {
-            ParameterData thisParam = null;
-            switch (type)
-            {
-                case DataType.STRING:
-                    thisParam = new cString("");
-                    break;
-                case DataType.FLOAT:
-                    thisParam = new cFloat(0.0f);
-                    break;
-                case DataType.INTEGER:
-                    thisParam = new cInteger(0);
-                    break;
-                case DataType.BOOL:
-                    thisParam = new cBool(true);
-                    break;
-                case DataType.VECTOR:
-                    thisParam = new cVector3(new Vector3(0, 0, 0));
-                    break;
-                case DataType.TRANSFORM:
-                    thisParam = new cTransform(new Vector3(0, 0, 0), new Vector3(0, 0, 0));
-                    break;
-                case DataType.ENUM:
-                    thisParam = new cEnum(EnumType.ALERTNESS_STATE, 0);
-                    break;
-                case DataType.SPLINE:
-                    thisParam = new cSpline();
-                    break;
-            }
-            parameters.Add(new Parameter(parameter, thisParam));
+            if (addDefaultParam) AddParameter(name, type);
         }
 
-        public ShortGuid parameter; //Translates to string via ShortGuidUtils.FindString
+        public VariableEntity(ShortGuid shortGUID, ShortGuid parameter, DataType type, bool addDefaultParam = false) : base(shortGUID, EntityVariant.VARIABLE)
+        {
+            this.name = parameter;
+            this.type = type;
+            if (addDefaultParam) AddParameter(name, type);
+        }
+        public VariableEntity(ShortGuid shortGUID, string parameter, DataType type, bool addDefaultParam = false) : base(shortGUID, EntityVariant.VARIABLE)
+        {
+            this.name = ShortGuidUtils.Generate(parameter);
+            this.type = type;
+            if (addDefaultParam) AddParameter(name, type);
+        }
+
+        public ShortGuid name;
         public DataType type = DataType.NONE;
 
         public override string ToString()
         {
-            return parameter.ToString();
+            return name.ToString();
         }
     }
     [Serializable]
@@ -234,7 +242,7 @@ namespace CATHODE.Scripting
             if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
 
-        public ShortGuid function; //Translates to string via ShortGuidUtils.FindString
+        public ShortGuid function;
         public List<ResourceReference> resources = new List<ResourceReference>(); //TODO: can we replace this with a cResource to save duplicating functionality?
 
         /* Add a new resource reference of type */
@@ -291,7 +299,9 @@ namespace CATHODE.Scripting
     [Serializable]
     public class CAGEAnimation : FunctionEntity
     {
-        public CAGEAnimation(ShortGuid id) : base(id) { function = ShortGuidUtils.Generate("CAGEAnimation"); }
+        public CAGEAnimation(bool autoGenerateParameters = false) : base(FunctionType.CAGEAnimation, autoGenerateParameters) { }
+        public CAGEAnimation(ShortGuid id, bool autoGenerateParameters = false) : base(id, FunctionType.CAGEAnimation, autoGenerateParameters) { }
+
         public List<CathodeParameterKeyframeHeader> keyframeHeaders = new List<CathodeParameterKeyframeHeader>();
         public List<CathodeParameterKeyframe> keyframeData = new List<CathodeParameterKeyframe>();
         public List<TEMP_CAGEAnimationExtraDataHolder3> paramsData3 = new List<TEMP_CAGEAnimationExtraDataHolder3>(); //events?
@@ -299,7 +309,9 @@ namespace CATHODE.Scripting
     [Serializable]
     public class TriggerSequence : FunctionEntity
     {
-        public TriggerSequence(ShortGuid id) : base(id) { function = ShortGuidUtils.Generate("TriggerSequence"); }
+        public TriggerSequence(bool autoGenerateParameters = false) : base(FunctionType.TriggerSequence, autoGenerateParameters) { }
+        public TriggerSequence(ShortGuid id, bool autoGenerateParameters = false) : base(id, FunctionType.TriggerSequence, autoGenerateParameters) { }
+
         public List<CathodeTriggerSequenceTrigger> triggers = new List<CathodeTriggerSequenceTrigger>();
         public List<CathodeTriggerSequenceEvent> events = new List<CathodeTriggerSequenceEvent>();
     }

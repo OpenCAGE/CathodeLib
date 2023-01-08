@@ -42,7 +42,7 @@ namespace CATHODE.Scripting
         /* Returns a collection of all entities in the composite */
         public List<Entity> GetEntities()
         {
-            List<Entity> toReturn = new List<Entity>();
+            List<Entity> toReturn = new List<Entity>(variables.Count + functions.Count + overrides.Count + proxies.Count);
             toReturn.AddRange(variables);
             toReturn.AddRange(functions);
             toReturn.AddRange(overrides);
@@ -50,25 +50,21 @@ namespace CATHODE.Scripting
             return toReturn;
         }
 
-        /* Sort all entity arrays */
-        public void SortEntities()
-        {
-            variables.OrderBy(o => o.shortGUID.ToUInt32());
-            functions.OrderBy(o => o.shortGUID.ToUInt32());
-            overrides.OrderBy(o => o.shortGUID.ToUInt32());
-            proxies.OrderBy(o => o.shortGUID.ToUInt32());
-        }
-
         /* Add a new function entity */
         public FunctionEntity AddFunction(FunctionType function, bool autopopulateParameters = false)
         {
-            FunctionEntity func = new FunctionEntity(function, autopopulateParameters);
-            functions.Add(func);
-            return func;
-        }
-        public FunctionEntity AddFunction(string function, bool autopopulateParameters = false)
-        {
-            FunctionEntity func = new FunctionEntity(function, autopopulateParameters);
+            FunctionEntity func = null;
+            switch (function) {
+                case FunctionType.CAGEAnimation:
+                    func = new CAGEAnimation(autopopulateParameters);
+                    break;
+                case FunctionType.TriggerSequence:
+                    func = new TriggerSequence(autopopulateParameters);
+                    break;
+                default:
+                    func = new FunctionEntity(function, autopopulateParameters);
+                    break;
+            }
             functions.Add(func);
             return func;
         }
