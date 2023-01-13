@@ -281,15 +281,47 @@ namespace CATHODE.Scripting
     [Serializable]
     public class ProxyEntity : Entity
     {
-        public ProxyEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.PROXY) { }
+        public ProxyEntity(List<ShortGuid> hierarchy, bool autoGenerateParameters = false) : base(EntityVariant.PROXY)
+        {
+            this.hierarchy = hierarchy;
+            extraId = ShortGuidUtils.GenerateRandom();
+            if (autoGenerateParameters) ApplyDefaults();
+        }
+        public ProxyEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy, bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.PROXY)
+        {
+            this.shortGUID = shortGUID;
+            this.hierarchy = hierarchy;
+            extraId = ShortGuidUtils.GenerateRandom();
+            if (autoGenerateParameters) ApplyDefaults();
+        }
 
         public ShortGuid extraId; //TODO: I'm unsure if this is actually used by the game - we might not need to store it and just make up something when we write.
         public List<ShortGuid> hierarchy = new List<ShortGuid>();
+
+        private void ApplyDefaults()
+        {
+            AddParameter("proxy_filter_targets", new cBool(false));
+            AddParameter("proxy_enable_on_reset", new cBool(false));
+            AddParameter("proxy_enable", new cFloat(0.0f));
+            AddParameter("proxy_enabled", new cFloat(0.0f));
+            AddParameter("proxy_disable", new cFloat(0.0f));
+            AddParameter("proxy_disabled", new cFloat(0.0f));
+            AddParameter("reference", new cString(""));
+            AddParameter("trigger", new cFloat(0.0f));
+        }
     }
     [Serializable]
     public class OverrideEntity : Entity
     {
-        public OverrideEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.OVERRIDE) { }
+        public OverrideEntity(List<ShortGuid> hierarchy) : base(EntityVariant.OVERRIDE)
+        {
+            checksum = ShortGuidUtils.GenerateRandom();
+        }
+        public OverrideEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy) : base(shortGUID, EntityVariant.OVERRIDE)
+        {
+            this.shortGUID = shortGUID;
+            checksum = ShortGuidUtils.GenerateRandom();
+        }
 
         public ShortGuid checksum; //TODO: This value is apparently a hash of the hierarchy GUIDs, but need to verify that, and work out the salt.
         public List<ShortGuid> hierarchy = new List<ShortGuid>();

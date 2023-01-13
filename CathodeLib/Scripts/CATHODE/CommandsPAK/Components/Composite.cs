@@ -1,7 +1,6 @@
 using CATHODE.Scripting.Internal;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #else
@@ -81,6 +80,22 @@ namespace CATHODE.Scripting
             VariableEntity vari = new VariableEntity(parameter, type, addDefaultParam);
             variables.Add(vari);
             return vari;
+        }
+
+        /* Add a new proxy entity */
+        public ProxyEntity AddProxy(List<ShortGuid> hierarchy, bool addDefaultParam = false)
+        {
+            ProxyEntity proxy = new ProxyEntity(hierarchy, addDefaultParam);
+            proxies.Add(proxy);
+            return proxy;
+        }
+
+        /* Add a new override entity */
+        public OverrideEntity AddOverride(List<ShortGuid> hierarchy, bool addDefaultParam = false)
+        {
+            OverrideEntity ovrride = new OverrideEntity(hierarchy);
+            proxies.Add(ovrride);
+            return ovrride;
         }
 
         public override string ToString()
