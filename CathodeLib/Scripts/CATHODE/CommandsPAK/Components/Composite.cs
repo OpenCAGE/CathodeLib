@@ -91,10 +91,10 @@ namespace CATHODE.Scripting
         }
 
         /* Add a new override entity */
-        public OverrideEntity AddOverride(List<ShortGuid> hierarchy, bool addDefaultParam = false)
+        public OverrideEntity AddOverride(List<ShortGuid> hierarchy)
         {
             OverrideEntity ovrride = new OverrideEntity(hierarchy);
-            proxies.Add(ovrride);
+            overrides.Add(ovrride);
             return ovrride;
         }
 

@@ -281,17 +281,19 @@ namespace CATHODE.Scripting
     [Serializable]
     public class ProxyEntity : Entity
     {
-        public ProxyEntity(List<ShortGuid> hierarchy, bool autoGenerateParameters = false) : base(EntityVariant.PROXY)
+        public ProxyEntity(List<ShortGuid> hierarchy = null, bool autoGenerateParameters = false) : base(EntityVariant.PROXY)
         {
             this.hierarchy = hierarchy;
             extraId = ShortGuidUtils.GenerateRandom();
+            if (hierarchy != null) this.hierarchy = hierarchy;
             if (autoGenerateParameters) ApplyDefaults();
         }
-        public ProxyEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy, bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.PROXY)
+        public ProxyEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null, bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.PROXY)
         {
             this.shortGUID = shortGUID;
             this.hierarchy = hierarchy;
             extraId = ShortGuidUtils.GenerateRandom();
+            if (hierarchy != null) this.hierarchy = hierarchy;
             if (autoGenerateParameters) ApplyDefaults();
         }
 
@@ -313,14 +315,16 @@ namespace CATHODE.Scripting
     [Serializable]
     public class OverrideEntity : Entity
     {
-        public OverrideEntity(List<ShortGuid> hierarchy) : base(EntityVariant.OVERRIDE)
+        public OverrideEntity(List<ShortGuid> hierarchy = null) : base(EntityVariant.OVERRIDE)
         {
             checksum = ShortGuidUtils.GenerateRandom();
+            if (hierarchy != null) this.hierarchy = hierarchy;
         }
-        public OverrideEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy) : base(shortGUID, EntityVariant.OVERRIDE)
+        public OverrideEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null) : base(shortGUID, EntityVariant.OVERRIDE)
         {
             this.shortGUID = shortGUID;
             checksum = ShortGuidUtils.GenerateRandom();
+            if (hierarchy != null) this.hierarchy = hierarchy;
         }
 
         public ShortGuid checksum; //TODO: This value is apparently a hash of the hierarchy GUIDs, but need to verify that, and work out the salt.
