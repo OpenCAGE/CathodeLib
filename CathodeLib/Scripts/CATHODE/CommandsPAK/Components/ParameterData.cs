@@ -3,6 +3,11 @@ using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+using UnityEngine;
+#else
+using System.Numerics;
+#endif
 
 namespace CATHODE.Scripting.Internal
 {
@@ -106,14 +111,17 @@ namespace CATHODE.Scripting.Internal
                 //HOTFIX FOR VECTOR 3 CLONE ISSUE - TODO: FIND WHY THIS ISN'T WORKING WITH MEMBERWISE CLONE
                 case DataType.VECTOR:
                     cVector3 v3 = (cVector3)this.MemberwiseClone();
-                    v3.value = (Vector3)((cVector3)this).value.Clone();
+                    Vector3 v3_v = (Vector3)((cVector3)this).value;
+                    v3.value = new Vector3(v3_v.x, v3_v.y, v3_v.z);
                     return v3;
                 case DataType.TRANSFORM:
                     cTransform tr = (cTransform)this.MemberwiseClone();
-                    tr.position = (Vector3)((cTransform)this).position.Clone();
-                    tr.rotation = (Vector3)((cTransform)this).rotation.Clone();
+                    Vector3 tr_p = (Vector3)((cTransform)this).position;
+                    tr.position = new Vector3(tr_p.x, tr_p.y, tr_p.z);
+                    Vector3 tr_r = (Vector3)((cTransform)this).rotation;
+                    tr.rotation = new Vector3(tr_r.x, tr_r.y, tr_r.z);
                     return tr;
-                //END OF HOTFIX - SHOULD THIS ALSO APPLY TO OTHERS??
+                //END OF HOTFIX - SHOULD THIS ALSO APPLY TO OTHERS?? SPLINE?
                 default:
                     return this.MemberwiseClone();
             }

@@ -252,7 +252,7 @@ namespace CathodeLib
         }
     }
 
-#if !(UNITY_EDITOR || UNITY_STANDALONE)
+/*
     [Serializable]
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct Vector3 : ICloneable
@@ -332,7 +332,7 @@ namespace CathodeLib
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
         private float[] vals;
     }
-#endif
+*/
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct fourcc
