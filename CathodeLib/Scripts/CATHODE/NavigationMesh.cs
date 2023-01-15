@@ -2,6 +2,11 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using CathodeLib;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+using UnityEngine;
+#else
+using System.Numerics;
+#endif
 
 namespace CATHODE
 {
@@ -10,11 +15,11 @@ namespace CATHODE
     {
         dtMeshHeader Header;
 
-        public System.Numerics.Vector3[] Vertices;
+        public Vector3[] Vertices;
         public dtPoly[] Polygons;
         public dtLink[] Links;
         public dtPolyDetail[] DetailMeshes;
-        public System.Numerics.Vector3[] DetailVertices;
+        public Vector3[] DetailVertices;
         public byte[] DetailIndices;
         public dtBVNode[] BoundingVolumeTree;
         public dtOffMeshConnection[] OffMeshConnections;
@@ -31,11 +36,11 @@ namespace CATHODE
             try
             {
                 Header = Utilities.Consume<dtMeshHeader>(stream);
-                Vertices = Utilities.ConsumeArray<System.Numerics.Vector3>(stream, Header.vertCount);
+                Vertices = Utilities.ConsumeArray<Vector3>(stream, Header.vertCount);
                 Polygons = Utilities.ConsumeArray<dtPoly>(stream, Header.polyCount);
                 Links = Utilities.ConsumeArray<dtLink>(stream, Header.maxLinkCount);
                 DetailMeshes = Utilities.ConsumeArray<dtPolyDetail>(stream, Header.detailMeshCount);
-                DetailVertices = Utilities.ConsumeArray<System.Numerics.Vector3>(stream, Header.vertCount);
+                DetailVertices = Utilities.ConsumeArray<Vector3>(stream, Header.vertCount);
                 DetailIndices = Utilities.ConsumeArray<byte>(stream, Header.detailTriCount * 4);
                 BoundingVolumeTree = Utilities.ConsumeArray<dtBVNode>(stream, Header.bvNodeCount);
                 OffMeshConnections = Utilities.ConsumeArray<dtOffMeshConnection>(stream, Header.offMeshConCount);
