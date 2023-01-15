@@ -112,14 +112,26 @@ namespace CATHODE.Scripting.Internal
                 case DataType.VECTOR:
                     cVector3 v3 = (cVector3)this.MemberwiseClone();
                     Vector3 v3_v = (Vector3)((cVector3)this).value;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
                     v3.value = new Vector3(v3_v.x, v3_v.y, v3_v.z);
+#else
+                    v3.value = new Vector3(v3_v.X, v3_v.Y, v3_v.Z);
+#endif
                     return v3;
                 case DataType.TRANSFORM:
                     cTransform tr = (cTransform)this.MemberwiseClone();
                     Vector3 tr_p = (Vector3)((cTransform)this).position;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
                     tr.position = new Vector3(tr_p.x, tr_p.y, tr_p.z);
+#else
+                    tr.position = new Vector3(tr_p.X, tr_p.Y, tr_p.Z);
+#endif
                     Vector3 tr_r = (Vector3)((cTransform)this).rotation;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
                     tr.rotation = new Vector3(tr_r.x, tr_r.y, tr_r.z);
+#else
+                    tr.rotation = new Vector3(tr_r.X, tr_r.Y, tr_r.Z);
+#endif
                     return tr;
                 //END OF HOTFIX - SHOULD THIS ALSO APPLY TO OTHERS?? SPLINE?
                 default:
