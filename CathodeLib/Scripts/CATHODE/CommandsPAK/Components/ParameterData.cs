@@ -105,7 +105,6 @@ namespace CATHODE.Scripting.Internal
         {
             switch (dataType)
             {
-                case DataType.SPLINE:
                 case DataType.RESOURCE:
                     return Utilities.CloneObject(this);
                 //HOTFIX FOR VECTOR 3 CLONE ISSUE - TODO: FIND WHY THIS ISN'T WORKING WITH MEMBERWISE CLONE
