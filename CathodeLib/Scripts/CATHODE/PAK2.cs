@@ -56,7 +56,7 @@ namespace CATHODE
                 for (int i = 0; i < entryCount; i++)
                 {
                     //Must pass to RemoveLeadingNulls as each file starts with 0-3 null bytes to align files to a 4-byte block reader
-                    Entries[i].Content = ExtraBinaryUtils.RemoveLeadingNulls(reader.ReadBytes(FileOffsets[i + 1] - FileOffsets[i]));
+                    Entries[i].Content = Utilities.RemoveLeadingNulls(reader.ReadBytes(FileOffsets[i + 1] - FileOffsets[i]));
                 }
             }
             return true;
@@ -69,7 +69,7 @@ namespace CATHODE
                 writer.BaseStream.SetLength(0);
 
                 //Write header
-                ExtraBinaryUtils.WriteString("PAK2", writer);
+                Utilities.WriteString("PAK2", writer);
                 int OffsetListBegin_New = 0;
                 for (int i = 0; i < Entries.Count; i++)
                 {
@@ -81,10 +81,7 @@ namespace CATHODE
 
                 //Write filenames
                 for (int i = 0; i < Entries.Count; i++)
-                {
-                    ExtraBinaryUtils.WriteString(Entries[i].Filename.Replace("\\", "/"), writer);
-                    writer.Write((byte)0x00);
-                }
+                    Utilities.WriteString(Entries[i].Filename.Replace("\\", "/"), writer, true);
 
                 //Write placeholder offsets for now, we'll correct them after writing the content
                 int offsetListBegin = (int)writer.BaseStream.Position;

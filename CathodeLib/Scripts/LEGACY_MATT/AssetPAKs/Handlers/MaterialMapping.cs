@@ -201,11 +201,11 @@ namespace CATHODE.LEGACY.Assets
                     pak.Write(entry.MapEntryCoupleCount);
                     pak.Write(entry.MapJunk);
                     pak.Write(entry.MapFilename.Length);
-                    ExtraBinaryUtils.WriteString(entry.MapFilename, pak);
+                    Utilities.WriteString(entry.MapFilename, pak);
                     foreach (string name in entry.MapMatEntries)
                     {
                         pak.Write(name.Length);
-                        ExtraBinaryUtils.WriteString(name, pak);
+                        Utilities.WriteString(name, pak);
                     }
                 }
                 pak.Close();

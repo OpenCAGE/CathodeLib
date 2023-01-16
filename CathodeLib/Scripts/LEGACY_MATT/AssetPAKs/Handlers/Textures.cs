@@ -235,7 +235,7 @@ namespace CATHODE.LEGACY.Assets
                 int binEntryCount = 0;
                 for (int i = 0; i < _entries.Count; i++)
                 {
-                    ExtraBinaryUtils.WriteString("tex4", bin);
+                    Utilities.WriteString("tex4", bin);
                     bin.Write(BitConverter.GetBytes((int)_entries[i].Format));
                     bin.Write(_entries[i].tex_HighRes.Length);
                     bin.Write(_entries[i].tex_LowRes.Length);

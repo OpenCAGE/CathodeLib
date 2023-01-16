@@ -71,11 +71,11 @@ namespace CATHODE
                     writer.Write(entry.MapEntryCoupleCount);
                     writer.Write(entry.MapJunk);
                     writer.Write(entry.MapFilename.Length);
-                    ExtraBinaryUtils.WriteString(entry.MapFilename, writer);
+                    Utilities.WriteString(entry.MapFilename, writer);
                     foreach (string name in entry.MapMatEntries)
                     {
                         writer.Write(name.Length);
-                        ExtraBinaryUtils.WriteString(name, writer);
+                        Utilities.WriteString(name, writer);
                     }
                 }
             }

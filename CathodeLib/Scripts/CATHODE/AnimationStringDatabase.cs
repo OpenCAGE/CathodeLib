@@ -57,8 +57,7 @@ namespace CATHODE
                 foreach (KeyValuePair<uint, string> value in _strings)
                 {
                     stringOffsets.Add((int)writer.BaseStream.Position - baseline);
-                    ExtraBinaryUtils.WriteString(value.Value, writer);
-                    writer.Write((char)0x00);
+                    Utilities.WriteString(value.Value, writer, true);
                 }
                 writer.BaseStream.Position = (_strings.Count * 4 * 2) + 8;
                 for (int i = 0; i < stringOffsets.Count; i++)

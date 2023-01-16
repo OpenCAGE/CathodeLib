@@ -147,7 +147,7 @@ namespace CATHODE
                 int binEntryCount = 0;
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    ExtraBinaryUtils.WriteString("tex4", bin);
+                    Utilities.WriteString("tex4", bin);
                     bin.Write(BitConverter.GetBytes((int)Entries[i].Format));
                     bin.Write(Entries[i].tex_HighRes.Length);
                     bin.Write(Entries[i].tex_LowRes.Length);

@@ -9,6 +9,7 @@ namespace CathodeLib
 {
     public class Utilities
     {
+        //Read a single templated object
         public static T Consume<T>(BinaryReader reader)
         {
             byte[] bytes = reader.ReadBytes(Marshal.SizeOf(typeof(T)));
@@ -22,6 +23,7 @@ namespace CathodeLib
             return theStructure;
         }
 
+        //Read a templated array
         public static T[] ConsumeArray<T>(BinaryReader reader, int count)
         {
             T[] toReturn = new T[count];
@@ -35,6 +37,7 @@ namespace CathodeLib
             return toReturn;
         }
 
+        //Align the stream
         public static void Align(BinaryReader reader, int val)
         {
             while (reader.BaseStream.Position % val != 0)
@@ -50,6 +53,7 @@ namespace CathodeLib
             }
         }
 
+        //Reads a string up to a trailing 0x00 byte
         public static string ReadString(byte[] bytes, int position)
         {
             string to_return = "";
@@ -84,6 +88,52 @@ namespace CathodeLib
             return to_return;
         }
 
+        //Writes a string without a leading length value
+        public static void WriteString(string string_to_write, BinaryWriter writer, bool trailingByte = false)
+        {
+            foreach (char character in string_to_write)
+                writer.Write(character);
+
+            if (trailingByte) writer.Write((char)0x00);
+        }
+
+
+        //Gets a string from a byte array (at position) by reading chars until a null is hit
+        public static string GetStringFromByteArray(byte[] byte_array, int position)
+        {
+            string to_return = "";
+            for (int i = 0; i < 999999999; i++)
+            {
+                byte this_byte = byte_array[position + i];
+                if (this_byte == 0x00)
+                {
+                    break;
+                }
+                to_return += (char)this_byte;
+            }
+            return to_return;
+        }
+
+        //Removes the leading nulls from a byte array, useful for cleaning byte-aligned file extracts
+        public static byte[] RemoveLeadingNulls(byte[] extracted_file)
+        {
+            //Remove from leading
+            int start_offset = 0;
+            for (int i = 0; i < 4; i++)
+            {
+                if (extracted_file[i] == 0x00)
+                {
+                    start_offset = i + 1;
+                    continue;
+                }
+                break;
+            }
+            byte[] to_return = new byte[extracted_file.Length - start_offset];
+            Array.Copy(extracted_file, start_offset, to_return, 0, to_return.Length);
+            return to_return;
+        }
+
+        //Write a templated type
         public static void Write<T>(BinaryWriter stream, T aux)
         {
             int length = Marshal.SizeOf(aux);
@@ -105,6 +155,7 @@ namespace CathodeLib
             Write<T>(stream, aux.ToArray<T>());
         }
 
+        //Clones an object (slow!)
         public static T CloneObject<T>(T obj)
         {
             //A somewhat hacky an inefficient way of deep cloning an object (TODO: optimise this as we use it a lot!)
@@ -203,52 +254,6 @@ namespace CathodeLib
         public static byte[] FlipEndian(UInt16 ThisEndian)
         {
             return FlipEndian(BitConverter.GetBytes(ThisEndian));
-        }
-    }
-    public static class ExtraBinaryUtils
-    {
-        //Gets a string from a byte array (at position) by reading chars until a null is hit
-        public static string GetStringFromByteArray(byte[] byte_array, int position)
-        {
-            string to_return = "";
-            for (int i = 0; i < 999999999; i++)
-            {
-                byte this_byte = byte_array[position + i];
-                if (this_byte == 0x00)
-                {
-                    break;
-                }
-                to_return += (char)this_byte;
-            }
-            return to_return;
-        }
-
-        //Removes the leading nulls from a byte array, useful for cleaning byte-aligned file extracts
-        public static byte[] RemoveLeadingNulls(byte[] extracted_file)
-        {
-            //Remove from leading
-            int start_offset = 0;
-            for (int i = 0; i < 4; i++)
-            {
-                if (extracted_file[i] == 0x00)
-                {
-                    start_offset = i + 1;
-                    continue;
-                }
-                break;
-            }
-            byte[] to_return = new byte[extracted_file.Length - start_offset];
-            Array.Copy(extracted_file, start_offset, to_return, 0, to_return.Length);
-            return to_return;
-        }
-
-        //Writes a string without a leading length value (C# BinaryWriter default)
-        public static void WriteString(string string_to_write, BinaryWriter writer)
-        {
-            foreach (char character in string_to_write)
-            {
-                writer.Write(character);
-            }
         }
     }
 
