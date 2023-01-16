@@ -17,17 +17,17 @@ Available as a [NuGet package](https://www.nuget.org/packages/CathodeLib/), or a
 		- `OverrideEntity` = an override of a parameter value on an entity within an instanced `Composite` in this `Composite`
     
 ## For assets:
-- `CATHODE.Assets.PAK2` handles `UI.PAK` and `ANIMATIONS.PAK` files
-- `CATHODE.Assets.Models` handles `LEVEL_MODELS.PAK` files, paired with a `MODELS_LEVEL.BIN`
-- `CATHODE.Assets.Textures` handles `LEVEL_TEXTURES.ALL.PAK` files, paired with a `LEVEL_TEXTURE_HEADERS.ALL.BIN`
-- `CATHODE.Assets.MaterialMapping` handles `MATERIAL_MAPPINGS.PAK` files
-- `CATHODE.Assets.Shaders` handles various `SHADERS` `PAK` files
+- `CATHODE.PAK2` handles `UI.PAK` and `ANIMATIONS.PAK` files
+- `CATHODE.Models` handles `LEVEL_MODELS.PAK` files, paired with a `MODELS_LEVEL.BIN`
+- `CATHODE.Textures` handles `LEVEL_TEXTURES.ALL.PAK` files, paired with a `LEVEL_TEXTURE_HEADERS.ALL.BIN`
+- `CATHODE.LEGACY.Assets.Shaders` handles various `SHADERS` `PAK` files
 
 ## For level data and mappings:
 - `CATHODE.MoverDatabase` handles `MODELS.MVR` files
 - `CATHODE.RenderableElementsDatabase` handles `REDS.BIN` files
 - `CATHODE.ResourcesDatabase` handles `RESOURCES.BIN` files
 - `CATHODE.MaterialDatabase` handles `MODELS.MTL` files
+- `CATHODE.MaterialMapping` handles `MATERIAL_MAPPINGS.PAK` files
 - `CATHODE.EnvironmentMapDatabase` handles `ENVIRONMENTMAP.BIN` files
 - `CATHODE.EnvironmentAnimationDatabase` handles `ENVIRONMENT_ANIMATION.DAT` files
 - `CATHODE.PhysicsMapDatabase` handles `PHYSICS.MAP` files

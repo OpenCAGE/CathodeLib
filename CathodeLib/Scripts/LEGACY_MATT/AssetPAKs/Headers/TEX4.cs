@@ -17,19 +17,6 @@ namespace CATHODE.LEGACY.Assets
         DXGI_FORMAT_BC7_UNORM = 0xD
     }
 
-    //The Tex4 Entry
-    class TEX4
-    {
-        public string FileName = "";
-
-        public TextureFormat Format;
-        public int Type = -1; //AlienTextureType
-        public AlienUnknownTextureThing UnknownTexThing;
-
-        public TEX4_Part tex_LowRes = new TEX4_Part();
-        public TEX4_Part tex_HighRes = new TEX4_Part(); //We don't always have this
-    }
-
     public enum AlienTextureType
     {
         SPECULAR_OR_NORMAL = 0,
@@ -45,24 +32,5 @@ namespace CATHODE.LEGACY.Assets
     {
         REGULAR_TEXTURE = 0,
         SOME_SPECIAL_TEXTURE = 9,
-    }
-
-    //The Tex4 Sub-Parts
-    class TEX4_Part
-    {
-        public Int16 Width = 0;
-        public Int16 Height = 0;
-
-        public Int16 Depth = 0;
-        public Int16 MipLevels = 0;
-
-        public int Offset = 0;
-        public int Length = 0;
-
-        //Saving these so we can re-write without issue
-        public UInt32 unk1 = 0;
-        public UInt16 unk2 = 0;
-        public UInt32 unk3 = 0;
-        public UInt32 unk4 = 0;
     }
 }

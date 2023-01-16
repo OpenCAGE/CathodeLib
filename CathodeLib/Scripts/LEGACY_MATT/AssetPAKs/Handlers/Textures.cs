@@ -14,7 +14,7 @@ namespace CATHODE.LEGACY.Assets
     */
     public class Textures : AssetPAK
     {
-        private List<TEX4> _entries = new List<TEX4>();
+        private List<CATHODE.Textures.TEX4> _entries = new List<CATHODE.Textures.TEX4>();
         private int HeaderListBeginBIN = -1;
         private int NumberOfEntriesPAK = -1;
         private int NumberOfEntriesBIN = -1;
@@ -57,7 +57,7 @@ namespace CATHODE.LEGACY.Assets
                 //Read all file names from BIN and create texture entry
                 for (int i = 0; i < NumberOfEntriesBIN; i++)
                 {
-                    TEX4 TextureEntry = new TEX4();
+                    CATHODE.Textures.TEX4 TextureEntry = new CATHODE.Textures.TEX4();
                     TextureEntry.FileName = CathodeLib.Utilities.ReadString(bin);
                     //TODO: maybe we should stop doing this & just do in AlienPAK instead
                     if (Path.GetExtension(TextureEntry.FileName).ToUpper() != ".DDS")
@@ -135,7 +135,7 @@ namespace CATHODE.LEGACY.Assets
                     UInt32 unk4 = BigEndianUtils.ReadUInt32(pak);
 
                     //Find the entry
-                    TEX4_Part texFullRes = (isHighRes == 1) ? _entries[index].tex_HighRes : _entries[index].tex_LowRes;
+                    CATHODE.Textures.TEX4_Part texFullRes = (isHighRes == 1) ? _entries[index].tex_HighRes : _entries[index].tex_LowRes;
                     if (length != texFullRes.Length) { return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR; }
 
                     //Write out the info
@@ -165,7 +165,7 @@ namespace CATHODE.LEGACY.Assets
         public override List<string> GetFileNames()
         {
             List<string> FileNameList = new List<string>();
-            foreach (TEX4 ArchiveFile in _entries)
+            foreach (CATHODE.Textures.TEX4 ArchiveFile in _entries)
             {
                 FileNameList.Add(ArchiveFile.FileName);
             }
@@ -212,7 +212,7 @@ namespace CATHODE.LEGACY.Assets
                 //Update our internal knowledge of the textures
                 //TODO: update low and high res - take lowest mip of high?
                 DDSReader newTexture = new DDSReader(PathToNewFile);
-                TEX4_Part texFullRes = _entries[index].tex_HighRes;
+                CATHODE.Textures.TEX4_Part texFullRes = _entries[index].tex_HighRes;
                 if (texFullRes.Length == 0)
                     texFullRes = _entries[index].tex_LowRes;
                 if (texFullRes.Length == 0)
@@ -266,7 +266,7 @@ namespace CATHODE.LEGACY.Assets
                 {
                     for (int x = 0; x < 2; x++)
                     {
-                        TEX4_Part currentRes = (x == 0) ? _entries[i].tex_LowRes : _entries[i].tex_HighRes;
+                        CATHODE.Textures.TEX4_Part currentRes = (x == 0) ? _entries[i].tex_LowRes : _entries[i].tex_HighRes;
                         if (currentRes.Length == 0) continue;
                         pak.Write(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
                         pak.Write(BigEndianUtils.FlipEndian(currentRes.Length));
@@ -309,7 +309,7 @@ namespace CATHODE.LEGACY.Assets
                 if (FileIndex == -1) return PAKReturnType.FAIL_GENERAL_LOGIC_ERROR; //CHANGED FOR OPENCAGE
 
                 //Get the biggest texture part stored
-                TEX4_Part TexturePart = _entries[FileIndex].tex_HighRes;
+                CATHODE.Textures.TEX4_Part TexturePart = _entries[FileIndex].tex_HighRes;
                 if (TexturePart.Length == 0)
                     TexturePart = _entries[FileIndex].tex_LowRes;
                 if (TexturePart.Length == 0)
