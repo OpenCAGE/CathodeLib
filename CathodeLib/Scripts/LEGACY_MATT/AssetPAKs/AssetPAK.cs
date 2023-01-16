@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using CathodeLib;
 
-namespace CATHODE.Assets
+namespace CATHODE.LEGACY.Assets
 {
     public class AssetPAK
     {

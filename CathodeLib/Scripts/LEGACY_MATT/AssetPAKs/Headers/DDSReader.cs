@@ -1,6 +1,6 @@
 ﻿using System.IO;
 using CATHODE;
-using CATHODE.Assets;
+using CATHODE.LEGACY.Assets;
 
 namespace CathodeLib
 {

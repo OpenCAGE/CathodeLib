@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CATHODE.Assets
+namespace CATHODE.LEGACY.Assets
 {
     public enum TextureFormat : int
     {

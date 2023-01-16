@@ -6,7 +6,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using CathodeLib;
 
-namespace CATHODE.Assets
+namespace CATHODE.LEGACY.Assets
 {
     /*
      *

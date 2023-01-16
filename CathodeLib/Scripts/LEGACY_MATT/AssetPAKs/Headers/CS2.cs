@@ -11,7 +11,7 @@ using UnityEngine;
 using System.Numerics;
 #endif
 
-namespace CATHODE.Assets
+namespace CATHODE.LEGACY.Assets
 {
     public class AlienVBF
     {

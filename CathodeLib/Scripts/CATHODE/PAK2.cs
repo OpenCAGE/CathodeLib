@@ -1,4 +1,4 @@
-﻿using CATHODE.Assets;
+﻿using CATHODE.LEGACY.Assets;
 using CathodeLib;
 using System.Collections.Generic;
 using System.IO;

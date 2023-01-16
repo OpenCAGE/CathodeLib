@@ -5,7 +5,7 @@ using System.Linq;
 using System.Xml.Linq;
 using CathodeLib;
 
-namespace CATHODE.Assets
+namespace CATHODE.LEGACY.Assets
 {
     /*
      *

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CATHODE.Scripting.Internal;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -15,6 +16,7 @@ namespace CATHODE.Scripting
             SetupResourceEntryTypeLUT();
         }
 
+        #region FUNCTION_TYPE_UTILS
         /* Function Types */
         private static Dictionary<ShortGuid, FunctionType> _functionTypeLUT = new Dictionary<ShortGuid, FunctionType>();
         private static void SetupFunctionTypeLUT()
@@ -52,7 +54,9 @@ namespace CATHODE.Scripting
         {
             return _functionTypeLUT.ContainsKey(tag);
         }
+        #endregion
 
+        #region DATATYPE_TYPE_UTILS
         /* Data Types */
         private static Dictionary<ShortGuid, DataType> _dataTypeLUT = new Dictionary<ShortGuid, DataType>();
         private static void SetupDataTypeLUT()
@@ -95,7 +99,9 @@ namespace CATHODE.Scripting
         {
             return _dataTypeLUT.ContainsKey(tag);
         }
+        #endregion
 
+        #region RESOURCE_TYPE_UTILS
         /* Resource Reference Types */
         private static Dictionary<ShortGuid, ResourceType> _resourceReferenceTypeLUT = new Dictionary<ShortGuid, ResourceType>();
         private static void SetupResourceEntryTypeLUT()
@@ -119,5 +125,174 @@ namespace CATHODE.Scripting
             SetupResourceEntryTypeLUT();
             return _resourceReferenceTypeLUT.FirstOrDefault(x => x.Value == type).Key;
         }
+        #endregion
+
+        #region HELPER_FUNCS
+        /* Resolve an entity hierarchy */
+        public static Entity ResolveHierarchy(Commands commands, Composite composite, List<ShortGuid> hierarchy, out Composite containedFlowgraph, out string asString)
+        {
+            if (hierarchy.Count == 0)
+            {
+                containedFlowgraph = null;
+                asString = "";
+                return null;
+            }
+
+            List<ShortGuid> hierarchyCopy = new List<ShortGuid>();
+            for (int x = 0; x < hierarchy.Count; x++)
+                hierarchyCopy.Add(new ShortGuid((byte[])hierarchy[x].val.Clone()));
+
+            Composite currentFlowgraphToSearch = composite;
+            if (currentFlowgraphToSearch == null || currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[0]) == null)
+            {
+                currentFlowgraphToSearch = commands.EntryPoints[0];
+                if (currentFlowgraphToSearch == null || currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[0]) == null)
+                {
+                    currentFlowgraphToSearch = commands.GetComposite(hierarchyCopy[0]);
+                    if (currentFlowgraphToSearch == null || currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[1]) == null)
+                    {
+                        containedFlowgraph = null;
+                        asString = "";
+                        return null;
+                    }
+                    hierarchyCopy.RemoveAt(0);
+                }
+            }
+
+            Entity entity = null;
+            string hierarchyString = "";
+            for (int i = 0; i < hierarchyCopy.Count; i++)
+            {
+                entity = currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[i]);
+
+                if (entity == null) break;
+                hierarchyString += "[" + entity.shortGUID + "] " + EntityUtils.GetName(currentFlowgraphToSearch.shortGUID, entity.shortGUID);
+                if (i >= hierarchyCopy.Count - 2) break; //Last is always 00-00-00-00
+                hierarchyString += " -> ";
+
+                if (entity.variant == EntityVariant.FUNCTION)
+                {
+                    Composite flowRef = commands.GetComposite(((FunctionEntity)entity).function);
+                    if (flowRef != null)
+                    {
+                        currentFlowgraphToSearch = flowRef;
+                    }
+                    else
+                    {
+                        entity = null;
+                        break;
+                    }
+                }
+            }
+            containedFlowgraph = (entity == null) ? null : currentFlowgraphToSearch;
+            asString = hierarchyString;
+            return entity;
+        }
+
+        /* CA's CAGE doesn't properly tidy up hierarchies pointing to deleted entities - so we can do that to save confusion */
+        public static void PurgeDeadLinks(Commands commands, Composite composite)
+        {
+            int originalUnknownCount = 0;
+            int originalProxyCount = 0;
+            int newProxyCount = 0;
+            int originalOverrideCount = 0;
+            int newOverrideCount = 0;
+            int originalTriggerCount = 0;
+            int newTriggerCount = 0;
+            int originalAnimCount = 0;
+            int newAnimCount = 0;
+            int originalLinkCount = 0;
+            int newLinkCount = 0;
+            int originalFuncCount = 0;
+            int newFuncCount = 0;
+
+            //Clear functions
+            List<FunctionEntity> functionsPurged = new List<FunctionEntity>();
+            for (int i = 0; i < composite.functions.Count; i++)
+                if (CommandsUtils.FunctionTypeExists(composite.functions[i].function) || commands.GetComposite(composite.functions[i].function) != null)
+                    functionsPurged.Add(composite.functions[i]);
+            originalFuncCount += composite.functions.Count;
+            newFuncCount += functionsPurged.Count;
+            composite.functions = functionsPurged;
+
+            //Clear overrides
+            List<OverrideEntity> overridePurged = new List<OverrideEntity>();
+            for (int i = 0; i < composite.overrides.Count; i++)
+                if (ResolveHierarchy(commands, composite, composite.overrides[i].hierarchy, out Composite flowTemp, out string hierarchy) != null)
+                    overridePurged.Add(composite.overrides[i]);
+            originalOverrideCount += composite.overrides.Count;
+            newOverrideCount += overridePurged.Count;
+            composite.overrides = overridePurged;
+
+            //Clear proxies
+            List<ProxyEntity> proxyPurged = new List<ProxyEntity>();
+            for (int i = 0; i < composite.proxies.Count; i++)
+                if (ResolveHierarchy(commands, composite, composite.proxies[i].hierarchy, out Composite flowTemp, out string hierarchy) != null)
+                    proxyPurged.Add(composite.proxies[i]);
+            originalProxyCount += composite.proxies.Count;
+            newProxyCount += proxyPurged.Count;
+            composite.proxies = proxyPurged;
+
+            //Clear TriggerSequence and CAGEAnimation entities
+            for (int i = 0; i < composite.functions.Count; i++)
+            {
+                //TODO: will this also clear up TriggerSequence/CAGEAnimation data for proxies?
+                switch (ShortGuidUtils.FindString(composite.functions[i].function))
+                {
+                    case "TriggerSequence":
+                        TriggerSequence trig = (TriggerSequence)composite.functions[i];
+                        List<TriggerSequence.Trigger> trigSeq = new List<TriggerSequence.Trigger>();
+                        for (int x = 0; x < trig.triggers.Count; x++)
+                            if (ResolveHierarchy(commands, composite, trig.triggers[x].hierarchy, out Composite flowTemp, out string hierarchy) != null)
+                                trigSeq.Add(trig.triggers[x]);
+                        originalTriggerCount += trig.triggers.Count;
+                        newTriggerCount += trigSeq.Count;
+                        trig.triggers = trigSeq;
+                        break;
+                    case "CAGEAnimation":
+                        CAGEAnimation anim = (CAGEAnimation)composite.functions[i];
+                        List<CAGEAnimation.Header> headers = new List<CAGEAnimation.Header>();
+                        for (int x = 0; x < anim.keyframeHeaders.Count; x++)
+                            if (ResolveHierarchy(commands, composite, anim.keyframeHeaders[x].connectedEntity, out Composite flowTemp, out string hierarchy) != null)
+                                headers.Add(anim.keyframeHeaders[x]);
+                        originalAnimCount += anim.keyframeHeaders.Count;
+                        newAnimCount += headers.Count;
+                        anim.keyframeHeaders = headers;
+                        break;
+                }
+            }
+
+            //Clear links 
+            List<Entity> entities = composite.GetEntities();
+            for (int i = 0; i < entities.Count; i++)
+            {
+                List<EntityLink> childLinksPurged = new List<EntityLink>();
+                for (int x = 0; x < entities[i].childLinks.Count; x++)
+                    if (composite.GetEntityByID(entities[i].childLinks[x].childID) != null)
+                        childLinksPurged.Add(entities[i].childLinks[x]);
+                originalLinkCount += entities[i].childLinks.Count;
+                newLinkCount += childLinksPurged.Count;
+                entities[i].childLinks = childLinksPurged;
+            }
+
+            if (originalUnknownCount +
+                (originalFuncCount - newFuncCount) +
+                (originalProxyCount - newProxyCount) +
+                (originalOverrideCount - newOverrideCount) +
+                (originalTriggerCount - newTriggerCount) +
+                (originalAnimCount - newAnimCount) +
+                (originalLinkCount - newLinkCount) == 0)
+                return;
+            Console.WriteLine(
+                "Purged all dead hierarchies and entities in " + composite.name + "!" +
+                "\n - " + originalUnknownCount + " unknown entities" +
+                "\n - " + (originalFuncCount - newFuncCount) + " functions (of " + originalFuncCount + ")" +
+                "\n - " + (originalProxyCount - newProxyCount) + " proxies (of " + originalProxyCount + ")" +
+                "\n - " + (originalOverrideCount - newOverrideCount) + " overrides (of " + originalOverrideCount + ")" +
+                "\n - " + (originalTriggerCount - newTriggerCount) + " triggers (of " + originalTriggerCount + ")" +
+                "\n - " + (originalAnimCount - newAnimCount) + " anims (of " + originalAnimCount + ")" +
+                "\n - " + (originalLinkCount - newLinkCount) + " links (of " + originalLinkCount + ")");
+        }
+        #endregion
     }
 }

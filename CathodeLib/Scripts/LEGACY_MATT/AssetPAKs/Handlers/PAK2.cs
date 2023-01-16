@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using CathodeLib;
 
-namespace CATHODE.Assets
+namespace CATHODE.LEGACY.Assets
 {
     /*
      *

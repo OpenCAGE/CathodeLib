@@ -335,9 +335,65 @@ namespace CATHODE.Scripting
         public CAGEAnimation(bool autoGenerateParameters = false) : base(FunctionType.CAGEAnimation, autoGenerateParameters) { }
         public CAGEAnimation(ShortGuid id, bool autoGenerateParameters = false) : base(id, FunctionType.CAGEAnimation, autoGenerateParameters) { }
 
-        public List<CathodeParameterKeyframeHeader> keyframeHeaders = new List<CathodeParameterKeyframeHeader>();
-        public List<CathodeParameterKeyframe> keyframeData = new List<CathodeParameterKeyframe>();
-        public List<TEMP_CAGEAnimationExtraDataHolder3> paramsData3 = new List<TEMP_CAGEAnimationExtraDataHolder3>(); //events?
+        public List<Header> keyframeHeaders = new List<Header>();
+        public List<Keyframe> keyframeData = new List<Keyframe>(); //anim keyframes
+        public List<Keyframe2> keyframeData2 = new List<Keyframe2>(); //TODO: events? 
+
+        [Serializable]
+        public class Header
+        {
+            public ShortGuid ID;
+            public DataType unk2;
+            public ShortGuid keyframeDataID;
+            //public float unk3;
+            public ShortGuid parameterID;
+            public DataType parameterDataType;
+            public ShortGuid parameterSubID; //if parameterID is position, this might be x for example
+            public List<ShortGuid> connectedEntity; //path to controlled entity
+        }
+
+        [Serializable]
+        public class Keyframe
+        {
+            public float minSeconds;
+            public float maxSeconds;
+            public ShortGuid ID;
+            public List<Data> keyframes = new List<Data>();
+
+            [Serializable]
+            public class Data
+            {
+                public float unk1;
+                public float secondsSinceStart;
+                public float secondsSinceStartValidation;
+                public float paramValue;
+                public float unk2;
+                public float unk3;
+                public float unk4;
+                public float unk5;
+            }
+        }
+
+        //TODO: what actually is this?
+        [Serializable]
+        public class Keyframe2
+        {
+            public float minSeconds;
+            public float maxSeconds;
+            public ShortGuid ID;
+            public List<Data> keyframes = new List<Data>();
+
+            [Serializable]
+            public class Data
+            {
+                public float unk1;
+                public float secondsSinceStart;
+                public float unk2;
+                public float unk3;
+                public float unk4;
+                public float unk5;
+            }
+        }
     }
     [Serializable]
     public class TriggerSequence : FunctionEntity
@@ -345,8 +401,22 @@ namespace CATHODE.Scripting
         public TriggerSequence(bool autoGenerateParameters = false) : base(FunctionType.TriggerSequence, autoGenerateParameters) { }
         public TriggerSequence(ShortGuid id, bool autoGenerateParameters = false) : base(id, FunctionType.TriggerSequence, autoGenerateParameters) { }
 
-        public List<CathodeTriggerSequenceTrigger> triggers = new List<CathodeTriggerSequenceTrigger>();
-        public List<CathodeTriggerSequenceEvent> events = new List<CathodeTriggerSequenceEvent>();
+        public List<Trigger> triggers = new List<Trigger>();
+        public List<Event> events = new List<Event>(); //TODO: what is this actually? custom params? how are they timed?
+
+        [Serializable]
+        public class Trigger
+        {
+            public float timing;
+            public List<ShortGuid> hierarchy;
+        }
+        [Serializable]
+        public class Event
+        {
+            public ShortGuid EventID; //Assumed
+            public ShortGuid StartedID; //Assumed
+            public ShortGuid FinishedID;
+        }
     }
     #endregion
 
