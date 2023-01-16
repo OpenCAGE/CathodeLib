@@ -9,13 +9,18 @@ using System.IO;
 namespace CATHODE
 {
     /* Handles Cathode LEVEL_TEXTURES.*.PAK files, when in the same folder as a corresponding LEVEL_TEXTURE_HEADERS.*.BIN */
-    public class Textures : CathodeFile
+    public class Textures : CathodeFile, IDisposable
     {
         public List<TEX4> Entries = new List<TEX4>();
 
         private string _filepathBIN;
 
         public Textures(string path) : base(path) { }
+
+        public void Dispose()
+        {
+            Entries.Clear();
+        }
 
         #region FILE_IO
         /* Load the file */
