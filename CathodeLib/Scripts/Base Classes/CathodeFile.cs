@@ -28,33 +28,41 @@ namespace CathodeLib
                 return false;
             }
 
+#if !CATHODE_FAIL_HARD
             try
             {
-                return LoadInternal();
+#endif
+            return LoadInternal();
+#if !CATHODE_FAIL_HARD
             }
             catch
             {
                 return false;
             }
+#endif
         }
 
         /* Save the file back to its original filepath */
         public bool Save()
         {
+#if !CATHODE_FAIL_HARD
             try
             {
-                return SaveInternal();
+#endif
+            return SaveInternal();
+#if !CATHODE_FAIL_HARD
             }
             catch
             {
-                return false;
+               return false;
             }
+#endif
         }
 
         /* Save the file to a new path, and optionally remember it for future saves */
         public bool Save(string path = "", bool updatePath = true)
         {
-            if (path != "" && updatePath) 
+            if (path != "" && updatePath)
                 _filepath = path;
 
             return Save();
