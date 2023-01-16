@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 
 namespace CathodeLib
@@ -18,18 +19,36 @@ namespace CathodeLib
             _loaded = Load();
         }
 
-        /* Load the file */
-        protected virtual bool Load()
+        #region EXTERNAL_FUNCS
+        /* Try and load the file, if it exists */
+        private bool Load()
         {
-            Console.WriteLine("WARNING: This class does not implement loading functionality!");
-            return false;
+            if (!File.Exists(_filepath))
+            {
+                return false;
+            }
+
+            try
+            {
+                return LoadInternal();
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /* Save the file back to its original filepath */
-        public virtual bool Save()
+        public bool Save()
         {
-            Console.WriteLine("WARNING: This class does not implement saving functionality!");
-            return false;
+            try
+            {
+                return SaveInternal();
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /* Save the file to a new path, and optionally remember it for future saves */
@@ -40,5 +59,22 @@ namespace CathodeLib
 
             return Save();
         }
+        #endregion
+
+        #region TO_OVERRIDE
+        /* Virtual function to override in inherited classes for loading the file */
+        protected virtual bool LoadInternal()
+        {
+            Console.WriteLine("WARNING: This class does not implement loading functionality!");
+            return false;
+        }
+
+        /* Virtual function to override in inherited classes for saving the file */
+        protected virtual bool SaveInternal()
+        {
+            Console.WriteLine("WARNING: This class does not implement saving functionality!");
+            return false;
+        }
+        #endregion
     }
 }

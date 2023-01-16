@@ -18,12 +18,9 @@ namespace CATHODE
 
         #region FILE_IO
         /* Load the file */
-        protected override bool Load()
+        override protected bool LoadInternal()
         {
-            if (!File.Exists(_filepath)) return false;
-
-            BinaryReader stream = new BinaryReader(File.OpenRead(_filepath));
-            try
+            using (BinaryReader stream = new BinaryReader(File.OpenRead(_filepath)))
             {
                 //Read all data in
                 int EntryCount = stream.ReadInt32();
@@ -37,20 +34,13 @@ namespace CATHODE
                 for (int i = 0; i < entries.Length; i++) _strings.Add(entries[i].StringID, strings[entries[i].StringIndex]);
                 //TODO: encoding on a couple strings here is wrong
             }
-            catch
-            {
-                stream.Close();
-                return false;
-            }
-            stream.Close();
             return true;
         }
 
         /* Save the file */
-        override public bool Save()
+        override protected bool SaveInternal()
         {
-            BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath));
-            try
+            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.Write(_strings.Count);
                 writer.Write(_strings.Count);
@@ -76,12 +66,6 @@ namespace CATHODE
                     writer.Write(stringOffsets[i]);
                 }
             }
-            catch
-            {
-                writer.Close();
-                return false;
-            }
-            writer.Close();
             return true;
         }
         #endregion

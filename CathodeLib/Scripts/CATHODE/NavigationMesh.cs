@@ -28,29 +28,20 @@ namespace CATHODE
 
         #region FILE_IO
         /* Load the file */
-        protected override bool Load()
+        override protected bool LoadInternal()
         {
-            if (!File.Exists(_filepath)) return false;
-
-            BinaryReader stream = new BinaryReader(File.OpenRead(_filepath));
-            try
+            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
-                Header = Utilities.Consume<dtMeshHeader>(stream);
-                Vertices = Utilities.ConsumeArray<Vector3>(stream, Header.vertCount);
-                Polygons = Utilities.ConsumeArray<dtPoly>(stream, Header.polyCount);
-                Links = Utilities.ConsumeArray<dtLink>(stream, Header.maxLinkCount);
-                DetailMeshes = Utilities.ConsumeArray<dtPolyDetail>(stream, Header.detailMeshCount);
-                DetailVertices = Utilities.ConsumeArray<Vector3>(stream, Header.vertCount);
-                DetailIndices = Utilities.ConsumeArray<byte>(stream, Header.detailTriCount * 4);
-                BoundingVolumeTree = Utilities.ConsumeArray<dtBVNode>(stream, Header.bvNodeCount);
-                OffMeshConnections = Utilities.ConsumeArray<dtOffMeshConnection>(stream, Header.offMeshConCount);
+                Header = Utilities.Consume<dtMeshHeader>(reader);
+                Vertices = Utilities.ConsumeArray<Vector3>(reader, Header.vertCount);
+                Polygons = Utilities.ConsumeArray<dtPoly>(reader, Header.polyCount);
+                Links = Utilities.ConsumeArray<dtLink>(reader, Header.maxLinkCount);
+                DetailMeshes = Utilities.ConsumeArray<dtPolyDetail>(reader, Header.detailMeshCount);
+                DetailVertices = Utilities.ConsumeArray<Vector3>(reader, Header.vertCount);
+                DetailIndices = Utilities.ConsumeArray<byte>(reader, Header.detailTriCount * 4);
+                BoundingVolumeTree = Utilities.ConsumeArray<dtBVNode>(reader, Header.bvNodeCount);
+                OffMeshConnections = Utilities.ConsumeArray<dtOffMeshConnection>(reader, Header.offMeshConCount);
             }
-            catch
-            {
-                stream.Close();
-                return false;
-            }
-            stream.Close();
             return true;
         }
         #endregion

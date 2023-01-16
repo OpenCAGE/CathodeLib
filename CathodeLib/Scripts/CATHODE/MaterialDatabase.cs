@@ -19,12 +19,9 @@ namespace CATHODE
 
         #region FILE_IO
         /* Load the file */
-        protected override bool Load()
+        override protected bool LoadInternal()
         {
-            if (!File.Exists(_filepath)) return false;
-
-            BinaryReader reader = new BinaryReader(File.OpenRead(_filepath));
-            try
+            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
                 _header = Utilities.Consume<Header>(reader);
 
@@ -51,12 +48,6 @@ namespace CATHODE
                     _textureReferenceCounts.Add(count);
                 }
             }
-            catch
-            {
-                reader.Close();
-                return false;
-            }
-            reader.Close();
             return true;
         }
         #endregion

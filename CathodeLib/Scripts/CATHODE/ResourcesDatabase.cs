@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
 using CATHODE.Scripting;
 using CathodeLib;
 
@@ -18,39 +19,25 @@ namespace CATHODE
 
         #region FILE_IO
         /* Load the file */
-        protected override bool Load()
+        override protected bool LoadInternal()
         {
-            BinaryReader stream = new BinaryReader(File.OpenRead(_filepath));
-            try
+            using (BinaryReader stream = new BinaryReader(File.OpenRead(_filepath)))
             {
                 _header = Utilities.Consume<Header>(stream);
                 _entries = Utilities.ConsumeArray<Entry>(stream, _header.EntryCount);
             }
-            catch
-            {
-                stream.Close();
-                return false;
-            }
-            stream.Close();
             return true;
         }
 
         /* Save the file */
-        override public bool Save()
+        override protected bool SaveInternal()
         {
-            BinaryWriter stream = new BinaryWriter(File.OpenWrite(_filepath));
-            try
+            using (BinaryWriter stream = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 stream.BaseStream.SetLength(0);
                 Utilities.Write<Header>(stream, _header);
                 Utilities.Write<Entry>(stream, _entries);
             }
-            catch
-            {
-                stream.Close();
-                return false;
-            }
-            stream.Close();
             return true;
         }
         #endregion

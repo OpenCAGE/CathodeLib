@@ -17,12 +17,9 @@ namespace CATHODE
 
         #region FILE_IO
         /* Load the file */
-        protected override bool Load()
+        override protected bool LoadInternal()
         {
-            if (!File.Exists(_filepath)) return false;
-
-            BinaryReader reader = new BinaryReader(File.OpenRead(_filepath));
-            try
+            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
                 reader.BaseStream.Position += 8;
                 int entryCount = reader.ReadInt32();
@@ -35,19 +32,12 @@ namespace CATHODE
                     _entries.Add(entry);
                 }
             }
-            catch
-            {
-                reader.Close();
-                return false;
-            }
-            reader.Close();
             return true;
         }
 
-        override public bool Save()
+        override protected bool SaveInternal()
         {
-            BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath));
-            try
+            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
                 writer.Write(new char[] { 'e', 'n', 'v', 'm' });
@@ -60,12 +50,6 @@ namespace CATHODE
                     writer.Write(_entries[i].mvrIndex);
                 }
             }
-            catch
-            {
-                writer.Close();
-                return false;
-            }
-            writer.Close();
             return true;
         }
         #endregion

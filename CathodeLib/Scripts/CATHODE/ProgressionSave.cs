@@ -14,38 +14,22 @@ namespace CATHODE
 
         #region FILE_IO
         /* Load the file */
-        protected override bool Load()
+        override protected bool LoadInternal()
         {
-            if (!File.Exists(_filepath)) return false;
-
-            BinaryReader Stream = new BinaryReader(File.OpenRead(_filepath));
-            try
+            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
-                _content = Utilities.Consume<Progression>(Stream);
+                _content = Utilities.Consume<Progression>(reader);
             }
-            catch
-            {
-                Stream.Close();
-                return false;
-            }
-            Stream.Close();
             return true;
         }
 
         /* Save the file */
-        override public bool Save()
+        override protected bool SaveInternal()
         {
-            BinaryWriter stream = new BinaryWriter(File.OpenWrite(_filepath));
-            try
+            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
-                Utilities.Write<Progression>(stream, _content);
+                Utilities.Write<Progression>(writer, _content);
             }
-            catch
-            {
-                stream.Close();
-                return false;
-            }
-            stream.Close();
             return true;
         }
         #endregion

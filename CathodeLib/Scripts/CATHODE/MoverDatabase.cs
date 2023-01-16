@@ -27,55 +27,39 @@ namespace CATHODE
 
         #region FILE_IO
         /* Load the file */
-        protected override bool Load()
+        override protected bool LoadInternal()
         {
-            if (!File.Exists(_filepath)) return false;
-
-            BinaryReader stream = new BinaryReader(File.OpenRead(_filepath));
-            try
+            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
-                _fileSize = stream.ReadInt32();
-                _entryCount = stream.ReadInt32();
-                _entryCountUnk = stream.ReadInt32(); //a count of something - not sure what
-                stream.BaseStream.Position += 4;
-                _entrySize = stream.ReadInt32();
-                stream.BaseStream.Position += 12;
-                _movers = new List<MOVER_DESCRIPTOR>(Utilities.ConsumeArray<MOVER_DESCRIPTOR>(stream, _entryCount));
+                _fileSize = reader.ReadInt32();
+                _entryCount = reader.ReadInt32();
+                _entryCountUnk = reader.ReadInt32(); //a count of something - not sure what
+                reader.BaseStream.Position += 4;
+                _entrySize = reader.ReadInt32();
+                reader.BaseStream.Position += 12;
+                _movers = new List<MOVER_DESCRIPTOR>(Utilities.ConsumeArray<MOVER_DESCRIPTOR>(reader, _entryCount));
             }
-            catch
-            {
-                stream.Close();
-                return false;
-            }
-            stream.Close();
             return true;
         }
 
         /* Save the file */
-        override public bool Save()
+        override protected bool SaveInternal()
         {
             _fileSize = (_movers.Count * _entrySize) + 32;
             _entryCount = _movers.Count;
             _entryCountUnk = 0;
 
-            BinaryWriter stream = new BinaryWriter(File.OpenWrite(_filepath));
-            try
+            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
-                stream.BaseStream.SetLength(0);
-                stream.Write(_fileSize);
-                stream.Write(_entryCount);
-                stream.Write(_entryCountUnk);
-                stream.Write(0);
-                stream.Write(_entrySize);
-                stream.Write(0); stream.Write(0); stream.Write(0);
-                Utilities.Write<MOVER_DESCRIPTOR>(stream, _movers);
+                writer.BaseStream.SetLength(0);
+                writer.Write(_fileSize);
+                writer.Write(_entryCount);
+                writer.Write(_entryCountUnk);
+                writer.Write(0);
+                writer.Write(_entrySize);
+                writer.Write(0); writer.Write(0); writer.Write(0);
+                Utilities.Write<MOVER_DESCRIPTOR>(writer, _movers);
             }
-            catch
-            {
-                stream.Close();
-                return false;
-            }
-            stream.Close();
             return true;
         }
         #endregion
