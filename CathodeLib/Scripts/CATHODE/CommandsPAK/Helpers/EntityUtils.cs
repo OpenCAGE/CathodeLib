@@ -8,6 +8,9 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
+#if UNITY_EDITOR || UNITY_STANDALONE
+using UnityEngine;
+#endif
 
 namespace CATHODE.Scripting
 {
@@ -22,7 +25,11 @@ namespace CATHODE.Scripting
         /* Load all standard entity/composite names from our offline DB */
         static EntityUtils()
         {
+#if UNITY_EDITOR || UNITY_STANDALONE
+            BinaryReader reader = new BinaryReader(File.OpenRead(Application.streamingAssetsPath + "/NodeDBs/composite_entity_names.bin"));
+#else
             BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.composite_entity_names));
+#endif
             _vanilla = new EntityNameTable(reader);
             _custom = new EntityNameTable();
             reader.Close();

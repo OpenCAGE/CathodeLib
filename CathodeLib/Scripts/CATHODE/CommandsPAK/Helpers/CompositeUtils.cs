@@ -3,6 +3,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+#if UNITY_EDITOR || UNITY_STANDALONE
+using UnityEngine;
+#endif
 
 namespace CathodeLib
 {
@@ -13,7 +16,11 @@ namespace CathodeLib
 
         static CompositeUtils()
         {
-            BinaryReader reader = new BinaryReader(new MemoryStream(Properties.Resources.composite_paths));
+#if UNITY_EDITOR || UNITY_STANDALONE
+            BinaryReader reader = new BinaryReader(File.OpenRead(Application.streamingAssetsPath + "/NodeDBs/composite_paths.bin"));
+#else
+            BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.composite_paths));
+#endif
             int compositeCount = reader.ReadInt32();
             pathLookup = new Dictionary<ShortGuid, string>(compositeCount);
             for (int i = 0; i < compositeCount; i++)

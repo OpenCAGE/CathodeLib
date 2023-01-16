@@ -1,9 +1,13 @@
 ﻿using System.Collections.Generic;
 using System.IO;
-using System.Numerics;
 using System.Runtime.InteropServices;
 using CATHODE.Scripting;
 using CathodeLib;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+using UnityEngine;
+#else
+using System.Numerics;
+#endif
 
 namespace CATHODE
 {
@@ -124,7 +128,7 @@ namespace CATHODE
         public struct EnvironmentAnimationInfo
         {
             public ShortGuid ID;
-            public CathodeLib.Vector3 P;
+            public Vector3 P;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)]
             public float[] V;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]

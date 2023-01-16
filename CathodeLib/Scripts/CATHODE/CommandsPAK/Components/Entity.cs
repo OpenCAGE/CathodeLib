@@ -283,7 +283,6 @@ namespace CATHODE.Scripting
     {
         public ProxyEntity(List<ShortGuid> hierarchy = null, bool autoGenerateParameters = false) : base(EntityVariant.PROXY)
         {
-            this.hierarchy = hierarchy;
             extraId = ShortGuidUtils.GenerateRandom();
             if (hierarchy != null) this.hierarchy = hierarchy;
             if (autoGenerateParameters) ApplyDefaults();
@@ -291,7 +290,6 @@ namespace CATHODE.Scripting
         public ProxyEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null, bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.PROXY)
         {
             this.shortGUID = shortGUID;
-            this.hierarchy = hierarchy;
             extraId = ShortGuidUtils.GenerateRandom();
             if (hierarchy != null) this.hierarchy = hierarchy;
             if (autoGenerateParameters) ApplyDefaults();

@@ -1,25 +1,25 @@
-﻿using System;
+﻿using CathodeLib;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-/*
 namespace CATHODE.LEGACY
 {
     public class IDXRemap : CathodePAK
     {
         public List<alien_shader_idx_remap_data> Datas;
-        public void Load(string FullFilePath)
+        public IDXRemap(string FullFilePath)
         {
             LoadPAK(FullFilePath, false);
 
-            Datas = new List<alien_shader_idx_remap_data>(PAKHeader.EntryCount);
+            Datas = new List<alien_shader_idx_remap_data>(header.EntryCount);
 
-            for (int EntryIndex = 0; EntryIndex < PAKHeader.EntryCount; ++EntryIndex)
+            for (int EntryIndex = 0; EntryIndex < header.EntryCount; ++EntryIndex)
             {
-                Datas.Add(Utilities.Consume<alien_shader_idx_remap_data>(EntryDatas[EntryIndex]));
+                Datas.Add(Utilities.Consume<alien_shader_idx_remap_data>(entryContents[EntryIndex]));
             }
         }
     }
@@ -32,4 +32,3 @@ namespace CATHODE.LEGACY
         public int[] Unknown0_; //3
     };
 }
-*/

@@ -4,7 +4,11 @@ using System.Runtime.InteropServices;
 using System;
 using CATHODE.Scripting;
 using CathodeLib;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+using UnityEngine;
+#else
 using System.Numerics;
+#endif
 
 namespace CATHODE
 {
@@ -199,7 +203,7 @@ namespace CATHODE
 
             public UInt32 resourcesIndex;
             //256
-            public CathodeLib.Vector3 Unknowns5_;
+            public Vector3 Unknowns5_;
             public UInt32 visibility; // pulled from iOS dump - should be visibility var?
                                       //272
             public ShortGuid commandsNodeID; // this is the ID of the node inside the composite, not the instanced composite node
@@ -285,7 +289,7 @@ namespace CATHODE
             public UInt32[] Unknowns2_;
             //184
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public CathodeLib.Vector3[] UnknownMinMax_; // NOTE: Sometimes I see 'nan's here too.
+            public Vector3[] UnknownMinMax_; // NOTE: Sometimes I see 'nan's here too.
                                              //208
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 36)]
             public byte[] blankSpace3;

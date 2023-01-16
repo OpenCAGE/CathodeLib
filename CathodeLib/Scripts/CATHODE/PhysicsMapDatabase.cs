@@ -1,7 +1,11 @@
 ﻿using System.IO;
-using System.Numerics;
 using System.Runtime.InteropServices;
 using CathodeLib;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+using UnityEngine;
+#else
+using System.Numerics;
+#endif 
 
 namespace CATHODE
 {

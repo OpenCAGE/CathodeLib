@@ -13,11 +13,13 @@ namespace CATHODE.LEGACY
 {
     public class CathodePAK
     {
-        protected GenericPAKHeader header;
-        protected byte[] data;
+        public GenericPAKHeader header;
+        public byte[] data;
 
-        protected GenericPAKEntry[] entryHeaders;
-        protected List<byte[]> entryContents;
+        public byte[] dataStart;
+
+        public GenericPAKEntry[] entryHeaders;
+        public List<byte[]> entryContents;
 
         protected void LoadPAK(string filepath, bool BigEndian)
         {
@@ -53,7 +55,7 @@ namespace CATHODE.LEGACY
 
             //todo-mattf; remove the need for this
             long resetpos = Stream.BaseStream.Position;
-            byte[] DataStart = Stream.ReadBytes((int)Stream.BaseStream.Length - (int)resetpos);
+            dataStart = Stream.ReadBytes((int)Stream.BaseStream.Length - (int)resetpos);
             Stream.BaseStream.Position = resetpos;
 
             List<byte[]> EntryDatas = new List<byte[]>(Header.MaxEntryCount);

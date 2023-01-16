@@ -9,6 +9,11 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+using UnityEngine;
+#else
+using System.Numerics;
+#endif
 
 namespace CATHODE
 {
@@ -244,8 +249,13 @@ namespace CATHODE
                     case DataType.TRANSFORM:
                         Vector3 pos = ((cTransform)parameters[i]).position;
                         Vector3 rot = ((cTransform)parameters[i]).rotation;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
                         writer.Write(pos.x); writer.Write(pos.y); writer.Write(pos.z);
                         writer.Write(rot.y); writer.Write(rot.x); writer.Write(rot.z);
+#else
+                        writer.Write(pos.X); writer.Write(pos.Y); writer.Write(pos.Z);
+                        writer.Write(rot.Y); writer.Write(rot.X); writer.Write(rot.Z);
+#endif
                         break;
                     case DataType.INTEGER:
                         writer.Write(((cInteger)parameters[i]).value);
@@ -272,7 +282,11 @@ namespace CATHODE
                         break;
                     case DataType.VECTOR:
                         Vector3 dir = ((cVector3)parameters[i]).value;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
                         writer.Write(dir.x); writer.Write(dir.y); writer.Write(dir.z);
+#else
+                        writer.Write(dir.X); writer.Write(dir.Y); writer.Write(dir.Z);
+#endif
                         break;
                     case DataType.ENUM:
                         Utilities.Write<ShortGuid>(writer, ((cEnum)parameters[i]).enumID);
@@ -284,6 +298,7 @@ namespace CATHODE
                         writer.Write(thisSpline.splinePoints.Count);
                         for (int x = 0; x < thisSpline.splinePoints.Count; x++)
                         {
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
                             writer.Write(thisSpline.splinePoints[x].position.x);
                             writer.Write(thisSpline.splinePoints[x].position.y);
                             writer.Write(thisSpline.splinePoints[x].position.z);
@@ -291,13 +306,22 @@ namespace CATHODE
                             writer.Write(thisSpline.splinePoints[x].rotation.x);
                             writer.Write(thisSpline.splinePoints[x].rotation.y);
                             writer.Write(thisSpline.splinePoints[x].rotation.z);
+#else
+                            writer.Write(thisSpline.splinePoints[x].position.X);
+                            writer.Write(thisSpline.splinePoints[x].position.Y);
+                            writer.Write(thisSpline.splinePoints[x].position.Z);
+                            //todo: is this YXZ
+                            writer.Write(thisSpline.splinePoints[x].rotation.X);
+                            writer.Write(thisSpline.splinePoints[x].rotation.Y);
+                            writer.Write(thisSpline.splinePoints[x].rotation.Z);
+#endif
                         }
                         break;
                 }
             }
-            #endregion
+#endregion
 
-            #region WRITE_COMPOSITES
+#region WRITE_COMPOSITES
             //Write out composites in order of their IDs & track offsets
             int[] compositeOffsets = new int[_composites.Count];
             for (int i = 0; i < _composites.Count; i++)
@@ -438,12 +462,21 @@ namespace CATHODE
                                 scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, resourceReferences[i].Count);
                                 for (int p = 0; p < resourceReferences[i].Count; p++)
                                 {
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
                                     writer.Write(resourceReferences[i][p].position.x);
                                     writer.Write(resourceReferences[i][p].position.y);
                                     writer.Write(resourceReferences[i][p].position.z);
                                     writer.Write(resourceReferences[i][p].rotation.x);
                                     writer.Write(resourceReferences[i][p].rotation.y);
                                     writer.Write(resourceReferences[i][p].rotation.z);
+#else
+                                    writer.Write(resourceReferences[i][p].position.X);
+                                    writer.Write(resourceReferences[i][p].position.Y);
+                                    writer.Write(resourceReferences[i][p].position.Z);
+                                    writer.Write(resourceReferences[i][p].rotation.X);
+                                    writer.Write(resourceReferences[i][p].rotation.Y);
+                                    writer.Write(resourceReferences[i][p].rotation.Z);
+#endif
                                     writer.Write(resourceReferences[i][p].resourceID.val); //Sometimes this is the entity ID that uses the resource, other times it's the "resource" parameter ID link
                                     writer.Write(CommandsUtils.GetResourceEntryTypeGUID(resourceReferences[i][p].entryType).val);
                                     switch (resourceReferences[i][p].entryType)
@@ -640,7 +673,7 @@ namespace CATHODE
                 writer.Write(_composites[i].functions.FindAll(o => CommandsUtils.FunctionTypeExists(o.function)).Count);
                 writer.Write(_composites[i].functions.Count);
             }
-            #endregion
+#endregion
 
             //Write out parameter offsets
             int parameterOffsetPos = (int)writer.BaseStream.Position;
@@ -1103,9 +1136,9 @@ namespace CATHODE
             OnLoaded?.Invoke(_filepath);
             return true;
         }
-        #endregion
+#endregion
 
-        #region ACCESSORS
+#region ACCESSORS
         /* Add a new composite */
         public Composite AddComposite(string name, bool isRoot = false)
         {
@@ -1159,9 +1192,9 @@ namespace CATHODE
             _entryPoints[0] = compositeID;
             _entryPointObjects = null;
         }
-        #endregion
+#endregion
 
-        #region HELPERS
+#region HELPERS
         /* Read offset info & count, jump to the offset & return the count */
         private int JumpToOffset(ref BinaryReader reader)
         {
@@ -1189,7 +1222,7 @@ namespace CATHODE
             _entryPointObjects = new Composite[_entryPoints.Length];
             for (int i = 0; i < _entryPoints.Length; i++) _entryPointObjects[i] = GetComposite(_entryPoints[i]);
         }
-        #endregion
+#endregion
 
         /* -- */
 
