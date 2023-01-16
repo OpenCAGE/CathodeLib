@@ -1,4 +1,6 @@
-﻿using CATHODE.LEGACY.Assets;
+﻿//#define APPEND_DDS
+
+using CATHODE.LEGACY.Assets;
 using CATHODE.Scripting;
 using CathodeLib;
 using System;
@@ -35,31 +37,33 @@ namespace CATHODE
                 //Read the header info from the BIN
                 if ((FileIdentifiers)bin.ReadInt32() != FileIdentifiers.TEXTURE_DATA)
                     return false;
-                int numberOfEntries = bin.ReadInt32();
+                int entryCount = bin.ReadInt32();
                 int headerListBegin = bin.ReadInt32();
 
                 //Read all file names from BIN and create texture entry
-                for (int i = 0; i < numberOfEntries; i++)
+                for (int i = 0; i < entryCount; i++)
                 {
                     TEX4 TextureEntry = new TEX4();
                     TextureEntry.FileName = Utilities.ReadString(bin);
+#if APPEND_DDS
                     //TODO: maybe we should stop doing this
                     if (Path.GetExtension(TextureEntry.FileName).ToUpper() != ".DDS")
                         TextureEntry.FileName += ".dds";
+#endif
                     Entries.Add(TextureEntry);
                 }
 
                 //Read the texture headers from the BIN
                 bin.BaseStream.Position = headerListBegin + 12;
-                for (int i = 0; i < numberOfEntries; i++)
+                for (int i = 0; i < entryCount; i++)
                 {
-                    bin.BaseStream.Position += 4; //TEX4 magic
+                    bin.BaseStream.Position += 4; //fourcc
                     Entries[i].Format = (TextureFormat)bin.ReadInt32();
                     Entries[i].tex_HighRes.Length = bin.ReadInt32();
                     Entries[i].tex_LowRes.Length = bin.ReadInt32();
                     Entries[i].tex_LowRes.Width = bin.ReadInt16();
                     Entries[i].tex_LowRes.Height = bin.ReadInt16();
-                    Entries[i].tex_HighRes.Depth = bin.ReadInt16();
+                    Entries[i].tex_LowRes.Depth = bin.ReadInt16();
                     Entries[i].tex_HighRes.Width = bin.ReadInt16();
                     Entries[i].tex_HighRes.Height = bin.ReadInt16();
                     Entries[i].tex_HighRes.Depth = bin.ReadInt16();
@@ -80,12 +84,12 @@ namespace CATHODE
                 pak.BaseStream.Position += 4; //Skip unused
                 if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.ASSET_FILE) return false;
                 if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.TEXTURE_DATA) return false;
-                int numberOfEntries = BigEndianUtils.ReadInt32(pak);
-                if (BigEndianUtils.ReadInt32(pak) != numberOfEntries) return false;
+                int entryCount = BigEndianUtils.ReadInt32(pak);
+                if (BigEndianUtils.ReadInt32(pak) != entryCount) return false;
                 pak.BaseStream.Position += 12; //Skip unused
 
                 //Read the texture headers from the PAK
-                for (int i = 0; i < numberOfEntries; i++)
+                for (int i = 0; i < entryCount; i++)
                 {
                     pak.BaseStream.Position += 8; //Skip unused
 
@@ -135,39 +139,42 @@ namespace CATHODE
             using (BinaryWriter bin = new BinaryWriter(File.OpenWrite(_filepathBIN)))
             {
                 bin.BaseStream.SetLength(0);
-                bin.Write(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
+                bin.Write(new byte[12]);
                 List<int> filenameOffsets = new List<int>();
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    filenameOffsets.Add((int)bin.BaseStream.Position);
-                    Utilities.Write<string>(bin, Entries[i].FileName); //TODO: does this need converting to char array?
-                    bin.Write((byte)0x00);
+                    filenameOffsets.Add((int)bin.BaseStream.Position - 12);
+                    Utilities.WriteString(Entries[i].FileName, bin, true); 
                 }
-                int binHeaderStart = (int)bin.BaseStream.Position - 12;
-                int binEntryCount = 0;
+                Utilities.Align(bin, 4);
+                bin.Write(new byte[12]);
+                int headerListBegin = (int)bin.BaseStream.Position - 12;
+                int entryCount = 0;
                 for (int i = 0; i < Entries.Count; i++)
                 {
                     Utilities.WriteString("tex4", bin);
-                    bin.Write(BitConverter.GetBytes((int)Entries[i].Format));
-                    bin.Write(Entries[i].tex_HighRes.Length);
-                    bin.Write(Entries[i].tex_LowRes.Length);
-                    bin.Write(Entries[i].tex_LowRes.Width);
-                    bin.Write(Entries[i].tex_LowRes.Height);
-                    bin.Write(Entries[i].tex_LowRes.Depth);
-                    bin.Write(Entries[i].tex_HighRes.Width);
-                    bin.Write(Entries[i].tex_HighRes.Height);
-                    bin.Write(Entries[i].tex_HighRes.Depth);
-                    bin.Write(Entries[i].Type);
+                    bin.Write((Int32)Entries[i].Format);
+                    bin.Write((Int32)Entries[i].tex_HighRes.Length);
+                    bin.Write((Int32)Entries[i].tex_LowRes.Length);
+                    bin.Write((Int16)Entries[i].tex_LowRes.Width);
+                    bin.Write((Int16)Entries[i].tex_LowRes.Height);
+                    bin.Write((Int16)Entries[i].tex_LowRes.Depth);
+                    bin.Write((Int16)Entries[i].tex_HighRes.Width);
+                    bin.Write((Int16)Entries[i].tex_HighRes.Height);
+                    bin.Write((Int16)Entries[i].tex_HighRes.Depth);
+                    bin.Write((Int16)Entries[i].tex_LowRes.MipLevels);
+                    bin.Write((Int16)Entries[i].tex_HighRes.MipLevels);
+                    bin.Write((Int32)Entries[i].Type);
                     bin.Write((Int16)Entries[i].UnknownTexThing);
                     bin.Write((Int16)2048); //TODO: derive this from the actual texture
-                    bin.Write(filenameOffsets[i]);
-                    bin.Write(new byte[] { 0x00, 0x00, 0x00, 0x00 });
-                    binEntryCount++;
+                    bin.Write((Int32)filenameOffsets[i]);
+                    bin.Write(new byte[4]);
+                    entryCount++;
                 }
                 bin.BaseStream.Position = 0;
                 bin.Write((int)FileIdentifiers.TEXTURE_DATA);
-                bin.Write(binEntryCount);
-                bin.Write(binHeaderStart);
+                bin.Write(entryCount);
+                bin.Write(headerListBegin);
             }
 
             //Update headers in PAK for all entries
