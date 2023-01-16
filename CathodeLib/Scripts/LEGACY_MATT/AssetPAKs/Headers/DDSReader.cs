@@ -1,6 +1,5 @@
 ﻿using System.IO;
 using CATHODE;
-using CATHODE.LEGACY.Assets;
 
 namespace CathodeLib
 {
@@ -14,7 +13,7 @@ namespace CathodeLib
     */
     public class DDSReader
     {
-        public TextureFormat Format;
+        public Textures.TextureFormat Format;
         public int Width = -1;
         public int Height = -1;
         public byte[] DataBlock;
@@ -36,22 +35,22 @@ namespace CathodeLib
             switch(TextureReader.ReadInt32())
             {
                 case 83:
-                    Format = TextureFormat.DXGI_FORMAT_BC5_UNORM;
+                    Format = Textures.TextureFormat.DXGI_FORMAT_BC5_UNORM;
                     break;
                 case 71:
-                    Format = TextureFormat.DXGI_FORMAT_BC1_UNORM;
+                    Format = Textures.TextureFormat.DXGI_FORMAT_BC1_UNORM;
                     break;
                 case 77:
-                    Format = TextureFormat.DXGI_FORMAT_BC3_UNORM;
+                    Format = Textures.TextureFormat.DXGI_FORMAT_BC3_UNORM;
                     break;
                 case 87:
-                    Format = TextureFormat.DXGI_FORMAT_B8G8R8A8_UNORM;
+                    Format = Textures.TextureFormat.DXGI_FORMAT_B8G8R8A8_UNORM;
                     break;
                 case 98:
-                    Format = TextureFormat.DXGI_FORMAT_BC7_UNORM;
+                    Format = Textures.TextureFormat.DXGI_FORMAT_BC7_UNORM;
                     break;
                 default:
-                    Format = TextureFormat.DXGI_FORMAT_B8G8R8_UNORM; //Fingers crossed
+                    Format = Textures.TextureFormat.DXGI_FORMAT_B8G8R8_UNORM; //Fingers crossed
                     break;
             }
 

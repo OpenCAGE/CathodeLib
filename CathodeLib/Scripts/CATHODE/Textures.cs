@@ -1,4 +1,4 @@
-﻿//#define APPEND_DDS
+//#define APPEND_DDS
 
 using CATHODE.LEGACY.Assets;
 using CathodeLib;
@@ -26,14 +26,13 @@ namespace CATHODE
         /* Load the file */
         override protected bool LoadInternal()
         {
-            if (Path.GetFileName(_filepath).Substring(0, 5).ToUpper() == "LEVEL")
-                _filepathBIN = _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "LEVEL_TEXTURE_HEADERS.ALL.BIN";
-            else
+            if (Path.GetFileName(_filepath).Substring(0, 5).ToUpper() != "LEVEL")
                 _filepathBIN = _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "GLOBAL_TEXTURES_HEADERS.ALL.BIN";
+            else
+                _filepathBIN = _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "LEVEL_TEXTURE_HEADERS.ALL.BIN";
 
             if (!File.Exists(_filepathBIN)) return false;
 
-            /* First, parse the BIN and pull ALL info from it */
             using (BinaryReader bin = new BinaryReader(File.OpenRead(_filepathBIN)))
             {
                 //Read the header info from the BIN
@@ -78,7 +77,6 @@ namespace CATHODE
                 }
             }
 
-            /* Second, parse the PAK and pull ONLY header info from it - we'll pull textures when requested (to save memory) */
             using (BinaryReader pak = new BinaryReader(File.OpenRead(_filepath)))
             {
                 //Read & check the header info from the PAK
@@ -275,11 +273,38 @@ namespace CATHODE
 
             public byte[] Content = null;
 
-            //Saving these so we can re-write without issue
+            //Saving these so we can re-write without issue (TODO: figure them out)
             public UInt32 unk1 = 0;
             public UInt16 unk2 = 0;
             public UInt32 unk3 = 0;
             public UInt32 unk4 = 0;
+        }
+
+        public enum TextureFormat : int
+        {
+            DXGI_FORMAT_B8G8R8A8_UNORM = 0x2,
+            SIGNED_DISTANCE_FIELD = 0x4,
+            DXGI_FORMAT_B8G8R8_UNORM = 0x5,
+            DXGI_FORMAT_BC1_UNORM = 0x6,
+            DXGI_FORMAT_BC3_UNORM = 0x9,
+            DXGI_FORMAT_BC5_UNORM = 0x8,
+            DXGI_FORMAT_BC7_UNORM = 0xD
+        }
+
+        public enum AlienTextureType
+        {
+            SPECULAR_OR_NORMAL = 0,
+            DIFFUSE = 1,
+            LUT = 21,
+
+            DECAL = 5,
+            ENVIRONMENT_MAP = 7,
+        }
+
+        public enum AlienUnknownTextureThing
+        {
+            REGULAR_TEXTURE = 0,
+            SOME_SPECIAL_TEXTURE = 9,
         }
         #endregion
     }
