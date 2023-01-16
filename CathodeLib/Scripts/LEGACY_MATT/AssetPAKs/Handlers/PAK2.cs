@@ -13,7 +13,7 @@ namespace CATHODE.Assets
     */
     public class PAK2 : AssetPAK
     {
-        private List<EntryPAK2> _entries = new List<EntryPAK2>();
+        private List<CATHODE.PAK2.Entry> _entries = new List<CATHODE.PAK2.Entry>();
 
         /* Initialise the PAK2 class with the intended PAK2 location (existing or not) */
         public PAK2(string PathToPAK)
@@ -51,7 +51,7 @@ namespace CATHODE.Assets
                         ThisFileName += (char)b;
                     }
 
-                    EntryPAK2 NewPakFile = new EntryPAK2();
+                    CATHODE.PAK2.Entry NewPakFile = new CATHODE.PAK2.Entry();
                     NewPakFile.Filename = ThisFileName;
                     _entries.Add(NewPakFile);
                 }
@@ -85,7 +85,7 @@ namespace CATHODE.Assets
         public override List<string> GetFileNames()
         {
             List<string> FileNameList = new List<string>();
-            foreach (EntryPAK2 ArchiveFile in _entries)
+            foreach (CATHODE.PAK2.Entry ArchiveFile in _entries)
             {
                 FileNameList.Add(ArchiveFile.Filename);
             }
@@ -116,7 +116,7 @@ namespace CATHODE.Assets
         {
             try
             {
-                EntryPAK2 NewFile = new EntryPAK2();
+                CATHODE.PAK2.Entry NewFile = new CATHODE.PAK2.Entry();
                 if (TrimFromPath == 0) { NewFile.Filename = Path.GetFileName(PathToNewFile).ToUpper(); } //Virtual directory support here would be nice too
                 else { NewFile.Filename = PathToNewFile.Substring(TrimFromPath).ToUpper(); } //Easy to fail here, so be careful on function usage!
                 NewFile.Content = File.ReadAllBytes(PathToNewFile);

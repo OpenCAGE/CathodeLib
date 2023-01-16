@@ -1,5 +1,4 @@
-﻿using CATHODE.Assets.Utilities;
-using CATHODE.Scripting;
+﻿using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using CathodeLib;
 using CathodeLib.Properties;

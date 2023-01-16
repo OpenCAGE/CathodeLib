@@ -9,7 +9,8 @@ namespace CATHODE
     /* Loads and/or creates Cathode PAK2 files: ANIMATION and UI */
     public class PAK2 : CathodeFile
     {
-        private List<EntryPAK2> _entries = new List<EntryPAK2>();
+        //Files within the PAK2 archive
+        public List<Entry> Entries = new List<Entry>();
 
         public PAK2(string path) : base(path) { }
 
@@ -36,9 +37,9 @@ namespace CATHODE
                         ThisFileName += (char)b;
                     }
 
-                    EntryPAK2 NewPakFile = new EntryPAK2();
+                    Entry NewPakFile = new Entry();
                     NewPakFile.Filename = ThisFileName;
-                    _entries.Add(NewPakFile);
+                    Entries.Add(NewPakFile);
                 }
 
                 //Read all file offsets
@@ -48,14 +49,14 @@ namespace CATHODE
                 for (int i = 0; i < entryCount; i++)
                 {
                     FileOffsets.Add(reader.ReadInt32());
-                    _entries[i].Offset = FileOffsets[i];
+                    Entries[i].Offset = FileOffsets[i];
                 }
 
                 //Read in the files to entries
                 for (int i = 0; i < entryCount; i++)
                 {
                     //Must pass to RemoveLeadingNulls as each file starts with 0-3 null bytes to align files to a 4-byte block reader
-                    _entries[i].Content = ExtraBinaryUtils.RemoveLeadingNulls(reader.ReadBytes(FileOffsets[i + 1] - FileOffsets[i]));
+                    Entries[i].Content = ExtraBinaryUtils.RemoveLeadingNulls(reader.ReadBytes(FileOffsets[i + 1] - FileOffsets[i]));
                 }
             }
             return true;
@@ -70,47 +71,56 @@ namespace CATHODE
                 //Write header
                 ExtraBinaryUtils.WriteString("PAK2", writer);
                 int OffsetListBegin_New = 0;
-                for (int i = 0; i < _entries.Count; i++)
+                for (int i = 0; i < Entries.Count; i++)
                 {
-                    OffsetListBegin_New += _entries[i].Filename.Length + 1;
+                    OffsetListBegin_New += Entries[i].Filename.Length + 1;
                 }
                 writer.Write(OffsetListBegin_New);
-                writer.Write(_entries.Count);
+                writer.Write(Entries.Count);
                 writer.Write(4);
 
                 //Write filenames
-                for (int i = 0; i < _entries.Count; i++)
+                for (int i = 0; i < Entries.Count; i++)
                 {
-                    ExtraBinaryUtils.WriteString(_entries[i].Filename.Replace("\\", "/"), writer);
+                    ExtraBinaryUtils.WriteString(Entries[i].Filename.Replace("\\", "/"), writer);
                     writer.Write((byte)0x00);
                 }
 
                 //Write placeholder offsets for now, we'll correct them after writing the content
                 int offsetListBegin = (int)writer.BaseStream.Position;
-                for (int i = 0; i < _entries.Count; i++)
+                for (int i = 0; i < Entries.Count; i++)
                 {
                     writer.Write(0);
                 }
 
                 //Write files
-                for (int i = 0; i < _entries.Count; i++)
+                for (int i = 0; i < Entries.Count; i++)
                 {
                     while (writer.BaseStream.Position % 4 != 0)
                     {
                         writer.Write((byte)0x00);
                     }
-                    writer.Write(_entries[i].Content);
-                    _entries[i].Offset = (int)writer.BaseStream.Position;
+                    writer.Write(Entries[i].Content);
+                    Entries[i].Offset = (int)writer.BaseStream.Position;
                 }
 
                 //Re-write offsets with correct values
                 writer.BaseStream.Position = offsetListBegin;
-                for (int i = 0; i < _entries.Count; i++)
+                for (int i = 0; i < Entries.Count; i++)
                 {
-                    writer.Write(_entries[i].Offset);
+                    writer.Write(Entries[i].Offset);
                 }
             }
             return true;
+        }
+        #endregion
+
+        #region STRUCTURES
+        public class Entry
+        {
+            public string Filename = "";
+            public int Offset = 0;
+            public byte[] Content; //better than a byte list, initialise it with the calculated size
         }
         #endregion
     }

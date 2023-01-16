@@ -17,7 +17,7 @@ namespace CATHODE.Assets
     */
     public class MaterialMapping : AssetPAK
     {
-        List<EntryMaterialMappingsPAK> _entries = new List<EntryMaterialMappingsPAK>();
+        List<MaterialMappings.Entry> _entries = new List<MaterialMappings.Entry>();
         byte[] _headerJunk = new byte[8];
 
         /* Initialise the MaterialMapPAK class with the intended location (existing or not) */
@@ -47,7 +47,7 @@ namespace CATHODE.Assets
                 for (int x = 0; x < entryCount; x++)
                 {
                     //This entry
-                    EntryMaterialMappingsPAK entry = new EntryMaterialMappingsPAK();
+                    MaterialMappings.Entry entry = new MaterialMappings.Entry();
                     entry.MapHeader = pak.ReadBytes(4); //TODO: Work out the significance of this value, to be able to construct new PAKs from scratch.
                     entry.MapEntryCoupleCount = pak.ReadInt32();
                     entry.MapJunk = pak.ReadBytes(4); //TODO: Work out if this is always null.
@@ -86,7 +86,7 @@ namespace CATHODE.Assets
         public override List<string> GetFileNames()
         {
             List<string> FileNameList = new List<string>();
-            foreach (EntryMaterialMappingsPAK MapEntry in _entries)
+            foreach (MaterialMappings.Entry MapEntry in _entries)
             {
                 FileNameList.Add(MapEntry.MapFilename);
             }
@@ -124,7 +124,7 @@ namespace CATHODE.Assets
             { 
                 //Pull the new mapping info from the import XML
                 XDocument InputFile = XDocument.Load(PathToNewFile);
-                EntryMaterialMappingsPAK MaterialMapping = _entries[GetFileIndex(FileName)];
+                MaterialMappings.Entry MaterialMapping = _entries[GetFileIndex(FileName)];
                 List<string> NewOverrides = new List<string>();
                 foreach (XElement ThisMap in InputFile.Element("material_mappings").Elements())
                 {
@@ -155,7 +155,7 @@ namespace CATHODE.Assets
                 XElement MaterialPair = XElement.Parse("<map><original arrow='false'></original><override arrow='false'></override></map>");
 
                 int ThisEntryNum = 0;
-                EntryMaterialMappingsPAK ThisEntry = _entries[GetFileIndex(FileName)];
+                MaterialMappings.Entry ThisEntry = _entries[GetFileIndex(FileName)];
                 for (int i = 0; i < ThisEntry.MapEntryCoupleCount; i++)
                 {
                     for (int x = 0; x < 2; x++)
@@ -195,7 +195,7 @@ namespace CATHODE.Assets
                 pak.BaseStream.SetLength(0);
                 pak.Write(_headerJunk);
                 pak.Write(_entries.Count);
-                foreach (EntryMaterialMappingsPAK entry in _entries)
+                foreach (MaterialMappings.Entry entry in _entries)
                 {
                     pak.Write(entry.MapHeader);
                     pak.Write(entry.MapEntryCoupleCount);
