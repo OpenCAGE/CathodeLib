@@ -189,30 +189,30 @@ namespace CATHODE
                     {
                         TEX4_Part currentRes = (x == 0) ? Entries[i].tex_LowRes : Entries[i].tex_HighRes;
                         if (currentRes.Length == 0) continue;
-                        pak.Write(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
-                        pak.Write(BigEndianUtils.FlipEndian(currentRes.Length));
-                        pak.Write(BigEndianUtils.FlipEndian(currentRes.Length));
-                        pak.Write(BigEndianUtils.FlipEndian(currentRes.Offset)); //TODO: need to calculate this
-                        pak.Write(new byte[] { 0x00, 0x00 });
-                        pak.Write((Int16)x); //isHighRes
-                        pak.Write(new byte[] { 0x00, 0x00 });
-                        pak.Write((Int16)256); //TODO: derive this from the actual texture
-                        pak.Write(BigEndianUtils.FlipEndian(currentRes.unk1));
-                        pak.Write(BigEndianUtils.FlipEndian(currentRes.unk2));
+                        pak.Write(new byte[8]);
+                        pak.Write(BigEndianUtils.FlipEndian((Int32)currentRes.Length));
+                        pak.Write(BigEndianUtils.FlipEndian((Int32)currentRes.Length));
+                        pak.Write(BigEndianUtils.FlipEndian((Int32)currentRes.Offset)); //TODO: need to calculate this
+                        pak.Write(new byte[2]);
+                        pak.Write(BigEndianUtils.FlipEndian((Int16)x)); //isHighRes
+                        pak.Write(new byte[2]);
+                        pak.Write(BigEndianUtils.FlipEndian((Int16)256)); //TODO: derive this from the actual texture
+                        pak.Write(BigEndianUtils.FlipEndian((Int32)currentRes.unk1));
+                        pak.Write(BigEndianUtils.FlipEndian((Int16)currentRes.unk2));
                         pak.Write(BigEndianUtils.FlipEndian((Int16)i));
-                        pak.Write(new byte[] { 0x00, 0x00, 0x00, 0x00 });
-                        pak.Write(BigEndianUtils.FlipEndian(currentRes.unk3));
-                        pak.Write(BigEndianUtils.FlipEndian(currentRes.unk4));
+                        pak.Write(new byte[4]);
+                        pak.Write(BigEndianUtils.FlipEndian((Int32)currentRes.unk3));
+                        pak.Write(BigEndianUtils.FlipEndian((Int32)currentRes.unk4));
                         pakEntryCount++;
                     }
                 }
                 //TODO: Pull all PAK content for textures & then rewrite properly using new info
                 pak.BaseStream.Position = 0;
                 pak.Write(0);
-                pak.Write((int)FileIdentifiers.ASSET_FILE);
-                pak.Write((int)FileIdentifiers.TEXTURE_DATA);
-                pak.Write(pakEntryCount);
-                pak.Write(pakEntryCount);
+                pak.Write(BigEndianUtils.FlipEndian((int)FileIdentifiers.ASSET_FILE));
+                pak.Write(BigEndianUtils.FlipEndian((int)FileIdentifiers.TEXTURE_DATA));
+                pak.Write(BigEndianUtils.FlipEndian(pakEntryCount));
+                pak.Write(BigEndianUtils.FlipEndian(pakEntryCount));
             }
             return true;
         }
