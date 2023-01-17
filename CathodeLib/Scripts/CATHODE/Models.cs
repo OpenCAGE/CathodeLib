@@ -19,8 +19,6 @@ namespace CATHODE
     {
         public List<CS2> Entries = new List<CS2>();
 
-        byte[] _boneBuffer;
-
         private string _filepathBIN;
 
         public Models(string path) : base(path) { }
@@ -63,16 +61,15 @@ namespace CATHODE
 
                 //Read filenames and submesh names
                 Dictionary<int, string> stringOffsets = new Dictionary<int, string>();
+                byte[] filenames = bin.ReadBytes(bin.ReadInt32());
+                using (BinaryReader reader = new BinaryReader(new MemoryStream(filenames)))
                 {
-                    byte[] filenames = bin.ReadBytes(bin.ReadInt32());
-                    using (BinaryReader reader = new BinaryReader(new MemoryStream(filenames)))
-                    {
-                        while (reader.BaseStream.Position < reader.BaseStream.Length)
-                            stringOffsets.Add((int)reader.BaseStream.Position, Utilities.ReadString(reader)/*.Replace('\\', '/')*/);
-                    }
+                    while (reader.BaseStream.Position < reader.BaseStream.Length)
+                        stringOffsets.Add((int)reader.BaseStream.Position, Utilities.ReadString(reader)/*.Replace('\\', '/')*/);
                 }
 
                 //Read model metadata
+                Dictionary<CS2_submesh, int> boneOffsets = new Dictionary<CS2_submesh, int>();
                 for (int i = 0; i < modelCount; i++)
                 {
                     int FileNameOffset = bin.ReadInt32();
@@ -102,8 +99,7 @@ namespace CATHODE
                     submesh.UnknownIndex = bin.ReadInt32(); // NOTE: -1 means no index. Seems to be related to Next/Parent.
                     submesh.BlockSize = bin.ReadUInt32();
                     submesh.CollisionIndex_ = bin.ReadInt32(); // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
-                    submesh.BoneArrayOffset_ = bin.ReadInt32(); // TODO: This indexes on the leftover data and points to an array of linearly growing indices.
-                                          //  And the array count is BoneCount.
+                    int boneArrayOffset = bin.ReadInt32();
 
                     int vbfIndex = bin.ReadUInt16();
                     int vbfIndexLowDetail = bin.ReadUInt16();
@@ -115,32 +111,27 @@ namespace CATHODE
                     submesh.HeadRelated_ = bin.ReadInt16(); // NOTE: Seems to be valid on some 'HEAD' models, otherwise -1. Maybe morphing related???
                     submesh.VertexCount = bin.ReadUInt16();
                     submesh.IndexCount = bin.ReadUInt16();
-                    submesh.BoneCount = bin.ReadUInt16();
+                    submesh.boneIndices.Capacity = bin.ReadUInt16();
                     cs2.submeshes.Add(submesh);
 
                     submeshBinIndexes.Add(i, submesh);
+
+                    if (submesh.boneIndices.Capacity != 0) 
+                        boneOffsets.Add(submesh, boneArrayOffset);
                 }
 
-                //Read bone chunk (TODO: parse)
-                _boneBuffer = bin.ReadBytes(bin.ReadInt32());
-            }
-
-            /*
-            for (int i = 0; i < Entries.Count; i++)
-            {
-                for (int y = 0; y < Entries[i].submeshes.Count; y++)
+                //Read bone data
+                byte[] bones = bin.ReadBytes(bin.ReadInt32());
+                using (BinaryReader reader = new BinaryReader(new MemoryStream(bones)))
                 {
-                    if (Entries[i].submeshes[y].LODMaxDistance_ != 10000)
+                    foreach (KeyValuePair<CS2_submesh, int> offset in boneOffsets)
                     {
-                        string sdff = "";
-                    }
-                    if (Entries[i].submeshes[y].LODMinDistance_ != 0)
-                    {
-                        string sdff = "";
+                        reader.BaseStream.Position = offset.Value;
+                        for (int i = 0; i < offset.Key.boneIndices.Capacity; i++)
+                            offset.Key.boneIndices.Add((int)reader.ReadByte());
                     }
                 }
             }
-            */
 
             using (BinaryReader pak = new BinaryReader(File.OpenRead(_filepath)))
             {
@@ -257,6 +248,7 @@ namespace CATHODE
 
                 //Write model metadata
                 int y = 0;
+                int boneOffset = 0;
                 for (int i = 0; i < Entries.Count; i++)
                 {
                     for (int x = 0; x < Entries[i].submeshes.Count; x++)
@@ -276,7 +268,7 @@ namespace CATHODE
                         bin.Write((Int32)Entries[i].submeshes[x].UnknownIndex);
                         bin.Write((Int32)Entries[i].submeshes[x].BlockSize);
                         bin.Write((Int32)Entries[i].submeshes[x].CollisionIndex_);
-                        bin.Write((Int32)Entries[i].submeshes[x].BoneArrayOffset_);
+                        bin.Write((Int32)boneOffset);
                         bin.Write((Int16)vertexFormats.IndexOf(Entries[i].submeshes[x].VertexFormat));
                         bin.Write((Int16)vertexFormats.IndexOf(Entries[i].submeshes[x].VertexFormatLowDetail));
                         bin.Write((Int16)vertexFormats.IndexOf(Entries[i].submeshes[x].VertexFormat));
@@ -284,16 +276,25 @@ namespace CATHODE
                         bin.Write((Int16)Entries[i].submeshes[x].HeadRelated_);
                         bin.Write((Int16)Entries[i].submeshes[x].VertexCount);
                         bin.Write((Int16)Entries[i].submeshes[x].IndexCount);
-                        bin.Write((Int16)Entries[i].submeshes[x].BoneCount);
+                        bin.Write((Int16)Entries[i].submeshes[x].boneIndices.Count);
 
                         binIndexes.Add(Entries[i].submeshes[x], y);
                         y++;
+                        boneOffset += Entries[i].submeshes[x].boneIndices.Count;
                     }
                 }
 
-                //Bone buffer (TODO)
-                bin.Write(_boneBuffer.Length);
-                bin.Write(_boneBuffer);
+                //Bone data
+                bin.Write(boneOffset);
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    for (int x = 0; x < Entries[i].submeshes.Count; x++)
+                    {
+                        if (Entries[i].submeshes[x].boneIndices.Count == 0) continue;
+                        for (int z = 0; z < Entries[i].submeshes[x].boneIndices.Count; z++)
+                            bin.Write((byte)Entries[i].submeshes[x].boneIndices[z]);
+                    }
+                }
             }
 
             using (BinaryWriter pak = new BinaryWriter(File.OpenWrite(_filepath)))
@@ -438,7 +439,6 @@ namespace CATHODE
             public int UnknownIndex; // NOTE: -1 means no index. Seems to be related to Next/Parent.
             public uint BlockSize;
             public int CollisionIndex_; // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
-            public int BoneArrayOffset_; // TODO: This indexes on the leftover data and points to an array of linearly growing indices. And the array count is BoneCount.
 
             public AlienVBF VertexFormat;
             public AlienVBF VertexFormatLowDetail;
@@ -448,7 +448,8 @@ namespace CATHODE
 
             public UInt16 VertexCount;
             public UInt16 IndexCount;
-            public UInt16 BoneCount;
+
+            public List<int> boneIndices = new List<int>();
 
             /* FROM PAK */
 
