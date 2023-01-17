@@ -14,11 +14,6 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
-    class PakEntryStuff
-    {
-        int unk1 = 0;
-    }
-
     /* Handles Cathode LEVEL_MODELS.PAK/MODELS_LEVEL.BIN files */
     public class Models : CathodeFile
     {
@@ -39,6 +34,7 @@ namespace CATHODE
             
             if (!File.Exists(_filepathBIN)) return false;
 
+            Dictionary<int, CS2_submesh> submeshBinIndexes = new Dictionary<int, CS2_submesh>();
             using (BinaryReader bin = new BinaryReader(File.OpenRead(_filepathBIN)))
             {
                 bin.BaseStream.Position += 4; //Magic
@@ -84,17 +80,17 @@ namespace CATHODE
                     bin.BaseStream.Position += 4; //skip unused
                     string filename = stringOffsets[FileNameOffset];
 
-                    CS2 cs2 = Entries.FirstOrDefault(o => o.filename == filename);
+                    CS2 cs2 = Entries.FirstOrDefault(o => o.name == filename);
                     if (cs2 == null)
                     {
                         cs2 = new CS2();
-                        cs2.filename = filename;
+                        cs2.name = filename;
                         Entries.Add(cs2);
                     }
 
                     CS2_submesh submesh = new CS2_submesh();
                     int ModelPartNameOffset = bin.ReadInt32();
-                    submesh.modelPartName = stringOffsets[ModelPartNameOffset];
+                    submesh.name = stringOffsets[ModelPartNameOffset];
                     bin.BaseStream.Position += 4; //skip unused
                     submesh.AABBMin = Utilities.Consume<Vector3>(bin);
                     submesh.LODMinDistance_ = bin.ReadSingle();
@@ -118,6 +114,8 @@ namespace CATHODE
                     submesh.IndexCount = bin.ReadUInt16();
                     submesh.BoneCount = bin.ReadUInt16();
                     cs2.submeshes.Add(submesh);
+
+                    submeshBinIndexes.Add(i, submesh);
                 }
 
                 //Read bone chunk (TODO: parse)
@@ -147,38 +145,32 @@ namespace CATHODE
                 pak.BaseStream.Position += 4; //Skip unused
                 if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.ASSET_FILE) return false;
                 if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.MODEL_DATA) return false;
-                int pakEntryCount = BigEndianUtils.ReadInt32(pak);
-                int submeshCount = BigEndianUtils.ReadInt32(pak); 
+                int entryCount = BigEndianUtils.ReadInt32(pak);       // Number of non-empty entries
+                int entryCountActual = BigEndianUtils.ReadInt32(pak); // Total number of entries including empty ones
                 pak.BaseStream.Position += 12; //Skip unused
 
-                //Get PAK entry information
-                List<int> lengths = new List<int>();
-                for (int i = 0; i < pakEntryCount; i++)
+                int endOfHeaders = 32 + (entryCountActual * 48);
+                for (int i = 0; i < entryCount; i++)
                 {
+                    //Read model info
                     pak.BaseStream.Position += 8;
-                    int Length = BigEndianUtils.ReadInt32(pak);
-                    int DataLength = BigEndianUtils.ReadInt32(pak); //TODO: Seems to be the aligned version of Length, aligned to 16 bytes.
-                    int Offset = BigEndianUtils.ReadInt32(pak);
-                    pak.BaseStream.Position += 12;
-                    int UnknownIndex = BigEndianUtils.ReadInt16(pak);
-                    if (UnknownIndex != 0)
-                    {
-                        string asdsda = "";
-                    }
-                    int BINIndex = BigEndianUtils.ReadInt16(pak);
-                    pak.BaseStream.Position += 12;
+                    int length = BigEndianUtils.ReadInt32(pak);
+                    pak.BaseStream.Position += 4; //length again 
+                    int offset = BigEndianUtils.ReadInt32(pak);
+                    pak.BaseStream.Position += 10;
+                    int unk1 = BigEndianUtils.ReadInt16(pak);  //used to store some info on BSP_LV426_PT02
+                    pak.BaseStream.Position += 2;
+                    int binIndex = BigEndianUtils.ReadInt16(pak);
+                    pak.BaseStream.Position += 8;
+                    int unk2 = BigEndianUtils.ReadInt16(pak); //used to store info on BSP_LV426_PT02
+                    int unk3 = BigEndianUtils.ReadInt16(pak); //used to store info on BSP_LV426_PT02
 
-                    lengths.Add(DataLength);
-                }
-
-                //Pull all content from PAK
-                List<byte[]> content = new List<byte[]>();
-                foreach (int length in lengths)
-                {
-                    if (length == -1)
-                        content.Add(new byte[] { });
-                    else
-                        content.Add(pak.ReadBytes(length));
+                    //Read content
+                    int offsetToReturnTo = (int)pak.BaseStream.Position;
+                    pak.BaseStream.Position = endOfHeaders + offset;
+                    submeshBinIndexes[binIndex].content = pak.ReadBytes(length);
+                    Console.WriteLine(pak.BaseStream.Position + " -> " + pak.BaseStream.Length);
+                    pak.BaseStream.Position = offsetToReturnTo;
                 }
             }
 
@@ -221,17 +213,17 @@ namespace CATHODE
                 Utilities.WriteString("\\content\\build\\library\\", bin, true);
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    if (!stringOffsets.ContainsKey(Entries[i].filename))
+                    if (!stringOffsets.ContainsKey(Entries[i].name))
                     {
-                        stringOffsets.Add(Entries[i].filename, (int)bin.BaseStream.Position - startPos);
-                        Utilities.WriteString(Entries[i].filename, bin, true);
+                        stringOffsets.Add(Entries[i].name, (int)bin.BaseStream.Position - startPos);
+                        Utilities.WriteString(Entries[i].name, bin, true);
                     }
                     for (int y = 0; y < Entries[i].submeshes.Count; y++)
                     {
-                        if (!stringOffsets.ContainsKey(Entries[i].submeshes[y].modelPartName))
+                        if (!stringOffsets.ContainsKey(Entries[i].submeshes[y].name))
                         {
-                            stringOffsets.Add(Entries[i].submeshes[y].modelPartName, (int)bin.BaseStream.Position - startPos);
-                            Utilities.WriteString(Entries[i].submeshes[y].modelPartName, bin, true);
+                            stringOffsets.Add(Entries[i].submeshes[y].name, (int)bin.BaseStream.Position - startPos);
+                            Utilities.WriteString(Entries[i].submeshes[y].name, bin, true);
                         }
                     }
                 }
@@ -246,9 +238,9 @@ namespace CATHODE
                 {
                     for (int y = 0; y < Entries[i].submeshes.Count; y++)
                     {
-                        bin.Write(stringOffsets[Entries[i].filename]);
+                        bin.Write(stringOffsets[Entries[i].name]);
                         bin.Write(new byte[4]);
-                        bin.Write(stringOffsets[Entries[i].submeshes[y].modelPartName]);
+                        bin.Write(stringOffsets[Entries[i].submeshes[y].name]);
                         bin.Write(new byte[4]);
                         Utilities.Write<Vector3>(bin, Entries[i].submeshes[y].AABBMin);
                         bin.Write(Entries[i].submeshes[y].LODMinDistance_);
@@ -285,7 +277,7 @@ namespace CATHODE
                 pak.Write(new byte[4]);
                 pak.Write(BigEndianUtils.FlipEndian((Int32)FileIdentifiers.ASSET_FILE));
                 pak.Write(BigEndianUtils.FlipEndian((Int32)FileIdentifiers.MODEL_DATA));
-                pak.Write(Entries.Count); //todo: need to calc this
+                pak.Write(Entries.Count); //todo: need to calc this (number of entries with data in pak)
                 pak.Write(submeshCount);
                 pak.Write(new byte[12]);
             }
@@ -347,18 +339,20 @@ namespace CATHODE
 
         public class CS2
         {
-            public string filename;
+            public string name;
             public List<CS2_submesh> submeshes = new List<CS2_submesh>();
 
             public override string ToString()
             {
-                return filename;
+                return name;
             }
         }
 
         public class CS2_submesh
         { 
-            public string modelPartName;
+            public string name;
+
+            /* FROM BIN */
 
             public Vector3 AABBMin;
             public Vector3 AABBMax;
@@ -386,9 +380,13 @@ namespace CATHODE
             public UInt16 IndexCount;
             public UInt16 BoneCount;
 
+            /* FROM PAK */
+
+            public byte[] content = null;
+
             public override string ToString()
             {
-                return modelPartName;
+                return name;
             }
         }       
         #endregion

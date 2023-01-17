@@ -83,11 +83,11 @@ namespace CATHODE
                 pak.BaseStream.Position += 4; //Skip unused
                 if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.ASSET_FILE) return false;
                 if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.TEXTURE_DATA) return false;
-                int entryCount = BigEndianUtils.ReadInt32(pak);
-                if (BigEndianUtils.ReadInt32(pak) != entryCount) return false;
+                int entryCount = BigEndianUtils.ReadInt32(pak);       // Number of non-empty entries
+                int entryCountActual = BigEndianUtils.ReadInt32(pak); // Total number of entries including empty ones
                 pak.BaseStream.Position += 12; //Skip unused
 
-                //Read the texture headers from the PAK
+                int endOfHeaders = 32 + (entryCountActual * 48);
                 for (int i = 0; i < entryCount; i++)
                 {
                     //Read texture info
@@ -116,7 +116,7 @@ namespace CATHODE
 
                     //Pull in texture content
                     int offsetToReturnTo = (int)pak.BaseStream.Position;
-                    pak.BaseStream.Position = offset + 32 + (entryCount * 32);
+                    pak.BaseStream.Position = endOfHeaders + offset;
                     tex.Content = pak.ReadBytes(length);
                     pak.BaseStream.Position = offsetToReturnTo;
                 }
