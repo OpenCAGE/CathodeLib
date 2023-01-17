@@ -83,11 +83,10 @@ namespace CATHODE
                 pak.BaseStream.Position += 4; //Skip unused
                 if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.ASSET_FILE) return false;
                 if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.TEXTURE_DATA) return false;
-                int entryCount = BigEndianUtils.ReadInt32(pak);       // Number of non-empty entries
-                int entryCountActual = BigEndianUtils.ReadInt32(pak); // Total number of entries including empty ones
-                pak.BaseStream.Position += 12; //Skip unused
+                int entryCount = BigEndianUtils.ReadInt32(pak);
+                pak.BaseStream.Position += 16; //Skip count actual (since doesn't matter) and unused
 
-                int endOfHeaders = 32 + (entryCountActual * 48);
+                int endOfHeaders = 32 + (entryCount * 48);
                 for (int i = 0; i < entryCount; i++)
                 {
                     //Read texture info
