@@ -2,7 +2,6 @@ using CATHODE.LEGACY.Assets;
 using CATHODE.Scripting;
 using CathodeLib;
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -10,6 +9,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
+using System.Xml.Linq;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #else
@@ -26,27 +26,27 @@ namespace CATHODE
     {
         public List<CS2> Entries = new List<CS2>();
 
-        public int SubmeshCount 
-        { 
+        public int SubmeshCount
+        {
             get
             {
                 int count = 0;
                 for (int i = 0; i < Entries.Count; i++)
                     count += Entries[i].Submeshes.Count;
                 return count;
-            } 
+            }
         }
 
         private string _filepathBIN;
 
         public Models(string path) : base(path) { }
 
-#region FILE_IO
+        #region FILE_IO
         /* Load the file */
         override protected bool LoadInternal()
         {
             _filepathBIN = _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "MODELS_" + Path.GetFileName(_filepath).Substring(0, Path.GetFileName(_filepath).Length - 11) + ".BIN";
-            
+
             if (!File.Exists(_filepathBIN)) return false;
 
             Dictionary<int, CS2_submesh> submeshBinIndexes = new Dictionary<int, CS2_submesh>();
@@ -134,7 +134,7 @@ namespace CATHODE
 
                     submeshBinIndexes.Add(i, submesh);
 
-                    if (submesh.boneIndices.Capacity != 0) 
+                    if (submesh.boneIndices.Capacity != 0)
                         boneOffsets.Add(submesh, boneArrayOffset);
                 }
 
@@ -177,10 +177,35 @@ namespace CATHODE
                     int unk2 = BigEndianUtils.ReadInt16(pak); //used to store info on BSP_LV426_PT02
                     int unk3 = BigEndianUtils.ReadInt16(pak); //used to store info on BSP_LV426_PT02
 
-                    //Read content
+                    //Find model
+                    CS2 model = FindModelForSubmesh(submeshBinIndexes[binIndex]);
+                    int submeshIndex = model.Submeshes.IndexOf(submeshBinIndexes[binIndex]);
+
+                    //Read submesh content
                     int offsetToReturnTo = (int)pak.BaseStream.Position;
                     pak.BaseStream.Position = endOfHeaders + offset;
-                    submeshBinIndexes[binIndex].content = pak.ReadBytes(length);
+                    byte[] content = pak.ReadBytes(length);
+                    using (BinaryReader reader = new BinaryReader(new MemoryStream(content)))
+                    {
+                        int firstIndex = BigEndianUtils.ReadInt32(reader);
+                        int submeshCount = BigEndianUtils.ReadInt32(reader);
+                        reader.BaseStream.Position += 16;
+                        Dictionary<int, int[]> entryOffsets = new Dictionary<int, int[]>(); //bin index, [start,length]
+                        for (int x = 0; x < submeshCount; x++)
+                        {
+                            entryOffsets.Add(BigEndianUtils.ReadInt32(reader), new int[2] { BigEndianUtils.ReadInt32(reader), BigEndianUtils.ReadInt32(reader) });
+                            reader.BaseStream.Position += 4;
+                        }
+                        reader.BaseStream.Position += 12;
+
+                        foreach (KeyValuePair<int, int[]> offsetData in entryOffsets)
+                        {
+                            CS2_submesh submesh = GetSubmeshAtWriteIndex(offsetData.Key);
+                            reader.BaseStream.Position = offsetData.Value[0];
+                            submesh.content = reader.ReadBytes(offsetData.Value[1]);
+                        }
+
+                    }
                     pak.BaseStream.Position = offsetToReturnTo;
                 }
             }
@@ -451,58 +476,58 @@ namespace CATHODE
                             switch (format.VariableType)
                             {
                                 case VBFE_InputType.VECTOR3:
-                                {
+                                    {
 #if UNITY_EDITOR || UNITY_STANDALONE
                                     Vector3 v = new Vector3(reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32());
 #else
-                                    Vector3D v = new Vector3D(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                                        Vector3D v = new Vector3D(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
 #endif
-                                    switch (format.ShaderSlot)
-                                    {
-                                        case VBFE_InputSlot.NORMAL:
-                                            normals.Add(v);
-                                            break;
-                                        case VBFE_InputSlot.TANGENT:
+                                        switch (format.ShaderSlot)
+                                        {
+                                            case VBFE_InputSlot.NORMAL:
+                                                normals.Add(v);
+                                                break;
+                                            case VBFE_InputSlot.TANGENT:
 #if UNITY_EDITOR || UNITY_STANDALONE
                                             tangents.Add(new Vector4((float)v.x, (float)v.y, (float)v.z, 0));
 #else
-                                            tangents.Add(new Vector4((float)v.X, (float)v.Y, (float)v.Z, 0));
+                                                tangents.Add(new Vector4((float)v.X, (float)v.Y, (float)v.Z, 0));
 #endif
-                                            break;
-                                        case VBFE_InputSlot.UV:
-                                            //TODO: 3D UVW
-                                            break;
-                                    };
-                                    break;
-                                }
+                                                break;
+                                            case VBFE_InputSlot.UV:
+                                                //TODO: 3D UVW
+                                                break;
+                                        };
+                                        break;
+                                    }
                                 case VBFE_InputType.INT32:
-                                {
-                                    int v = reader.ReadInt32();
-                                    switch (format.ShaderSlot)
                                     {
-                                        case VBFE_InputSlot.COLOUR:
-                                            //??
-                                            break;
+                                        int v = reader.ReadInt32();
+                                        switch (format.ShaderSlot)
+                                        {
+                                            case VBFE_InputSlot.COLOUR:
+                                                //??
+                                                break;
+                                        }
+                                        break;
                                     }
-                                    break;
-                                }
                                 case VBFE_InputType.VECTOR4_BYTE:
-                                {
-                                    Vector4 v = new Vector4(reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
-                                    switch (format.ShaderSlot)
                                     {
-                                        case VBFE_InputSlot.BONE_INDICES:
-                                            boneIndex.Add(v);
-                                            break;
+                                        Vector4 v = new Vector4(reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
+                                        switch (format.ShaderSlot)
+                                        {
+                                            case VBFE_InputSlot.BONE_INDICES:
+                                                boneIndex.Add(v);
+                                                break;
+                                        }
+                                        break;
                                     }
-                                    break;
-                                }
                                 case VBFE_InputType.VECTOR4_BYTE_DIV255:
-                                {
-                                    Vector4 v = new Vector4(reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
-                                    v /= 255.0f;
-                                    switch (format.ShaderSlot)
                                     {
+                                        Vector4 v = new Vector4(reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
+                                        v /= 255.0f;
+                                        switch (format.ShaderSlot)
+                                        {
 #if UNITY_EDITOR || UNITY_STANDALONE
                                         case VBFE_InputSlot.BONE_WEIGHTS:
                                             boneWeight.Add(v / (v.x + v.y + v.z + v.w));
@@ -512,79 +537,79 @@ namespace CATHODE
                                             uv3.Add(new Vector2(v.z, v.w));
                                             break;
 #else
-                                        case VBFE_InputSlot.BONE_WEIGHTS:
-                                            boneWeight.Add(v / (v.X + v.Y + v.Z + v.W));
-                                            break;
-                                        case VBFE_InputSlot.UV:
-                                            uv2.Add(new System.Windows.Point(v.X, v.Y));
-                                            uv3.Add(new System.Windows.Point(v.Z, v.W));
-                                            break;
+                                            case VBFE_InputSlot.BONE_WEIGHTS:
+                                                boneWeight.Add(v / (v.X + v.Y + v.Z + v.W));
+                                                break;
+                                            case VBFE_InputSlot.UV:
+                                                uv2.Add(new System.Windows.Point(v.X, v.Y));
+                                                uv3.Add(new System.Windows.Point(v.Z, v.W));
+                                                break;
 #endif
+                                        }
+                                        break;
                                     }
-                                    break;
-                                }
                                 case VBFE_InputType.VECTOR2_INT16_DIV2048:
-                                {
+                                    {
 #if UNITY_EDITOR || UNITY_STANDALONE
                                     Vector2 v = new Vector2(reader.ReadInt16(), reader.ReadInt16());
                                     v /= 2048.0f;
 #else
-                                    System.Windows.Point v = new System.Windows.Point(reader.ReadInt16() / 2048.0f, reader.ReadInt16() / 2048.0f);
+                                        System.Windows.Point v = new System.Windows.Point(reader.ReadInt16() / 2048.0f, reader.ReadInt16() / 2048.0f);
 #endif
-                                    switch (format.ShaderSlot)
-                                    {
-                                        case VBFE_InputSlot.UV:
-                                            if (format.VariantIndex == 0) uv0.Add(v);
-                                            else if (format.VariantIndex == 1)
-                                            {
-                                                // TODO: We can figure this out based on AlienVBFE.
-                                                //Material->Material.Flags |= Material_HasTexCoord1;
-                                                uv1.Add(v);
-                                            }
-                                            else if (format.VariantIndex == 2) uv2.Add(v);
-                                            else if (format.VariantIndex == 3) uv3.Add(v);
-                                            else if (format.VariantIndex == 7) uv7.Add(v);
-                                            break;
+                                        switch (format.ShaderSlot)
+                                        {
+                                            case VBFE_InputSlot.UV:
+                                                if (format.VariantIndex == 0) uv0.Add(v);
+                                                else if (format.VariantIndex == 1)
+                                                {
+                                                    // TODO: We can figure this out based on AlienVBFE.
+                                                    //Material->Material.Flags |= Material_HasTexCoord1;
+                                                    uv1.Add(v);
+                                                }
+                                                else if (format.VariantIndex == 2) uv2.Add(v);
+                                                else if (format.VariantIndex == 3) uv3.Add(v);
+                                                else if (format.VariantIndex == 7) uv7.Add(v);
+                                                break;
+                                        }
+                                        break;
                                     }
-                                    break;
-                                }
                                 case VBFE_InputType.VECTOR4_INT16_DIVMAX:
-                                {
-                                    Vector4 v = new Vector4(reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16());
-                                    v /= (float)Int16.MaxValue;
-                                    switch (format.ShaderSlot)
                                     {
-                                        case VBFE_InputSlot.VERTEX:
+                                        Vector4 v = new Vector4(reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16());
+                                        v /= (float)Int16.MaxValue;
+                                        switch (format.ShaderSlot)
+                                        {
+                                            case VBFE_InputSlot.VERTEX:
 #if UNITY_EDITOR || UNITY_STANDALONE
                                             vertices.Add(v);
 #else
-                                            vertices.Add(new Point3D(v.X, v.Y, v.Z));
+                                                vertices.Add(new Point3D(v.X, v.Y, v.Z));
 #endif
-                                            break;
+                                                break;
+                                        }
+                                        break;
                                     }
-                                    break;
-                                }
                                 case VBFE_InputType.VECTOR4_BYTE_NORM:
-                                {
-                                    Vector4 v = new Vector4(reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
-                                    v /= (float)byte.MaxValue - 0.5f;
-                                    v = Vector4.Normalize(v);
-                                    switch (format.ShaderSlot)
                                     {
-                                        case VBFE_InputSlot.NORMAL:
+                                        Vector4 v = new Vector4(reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
+                                        v /= (float)byte.MaxValue - 0.5f;
+                                        v = Vector4.Normalize(v);
+                                        switch (format.ShaderSlot)
+                                        {
+                                            case VBFE_InputSlot.NORMAL:
 #if UNITY_EDITOR || UNITY_STANDALONE
                                             normals.Add(v);
 #else
-                                            normals.Add(new Vector3D(v.X, v.Y, v.Z));
+                                                normals.Add(new Vector3D(v.X, v.Y, v.Z));
 #endif
-                                            break;
-                                        case VBFE_InputSlot.TANGENT:
-                                            break;
-                                        case VBFE_InputSlot.BITANGENT:
-                                            break;
+                                                break;
+                                            case VBFE_InputSlot.TANGENT:
+                                                break;
+                                            case VBFE_InputSlot.BITANGENT:
+                                                break;
+                                        }
+                                        break;
                                     }
-                                    break;
-                                }
                             }
                         }
                     }
@@ -623,13 +648,55 @@ namespace CATHODE
 #endif
             return mesh;
         }
-#endregion
+        #endregion
 
-#region HELPERS
+        #region HELPERS
+        /* Find a model that contains a given submesh */
+        public CS2 FindModelForSubmesh(CS2_submesh submesh)
+        {
+            for (int i = 0; i < Entries.Count; i++)
+            {
+                if (Entries[i].Submeshes.Contains(submesh))
+                    return Entries[i];
+            }
+            return null;
+        }
 
-#endregion
+        /* Get the current BIN index for a submesh (useful for cross-ref'ing with compiled binaries)
+         * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
+        public int GetWriteIndexForSubmesh(CS2_submesh submesh)
+        {
+            int y = 0;
+            for (int i = 0; i < Entries.Count; i++)
+            {
+                for (int x = 0; x < Entries[i].Submeshes.Count; x++)
+                {
+                    if (Entries[i].Submeshes[x] == submesh)
+                        return y;
+                    y++;
+                }
+            }
+            return -1;
+        }
 
-#region STRUCTURES
+        /* Get a submesh by its current BIN index (useful for cross-ref'ing with compiled binaries)
+         * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
+        public CS2_submesh GetSubmeshAtWriteIndex(int index)
+        {
+            int y = 0;
+            for (int i = 0; i < Entries.Count; i++)
+            {
+                for (int x = 0; x < Entries[i].Submeshes.Count; x++)
+                {
+                    if (y == index) return Entries[i].Submeshes[x];
+                    y++;
+                }
+            }
+            return null;
+        }
+        #endregion
+
+        #region STRUCTURES
         public class AlienVBF
         {
             public int ElementCount;
@@ -685,10 +752,8 @@ namespace CATHODE
         }
 
         public class CS2_submesh
-        { 
+        {
             public string Name;
-
-            /* FROM BIN */
 
             public Vector3 AABBMin;
             public Vector3 AABBMax;
@@ -716,15 +781,13 @@ namespace CATHODE
 
             public List<int> boneIndices = new List<int>();
 
-            /* FROM PAK */
-
             public byte[] content = new byte[0];
 
             public override string ToString()
             {
                 return Name;
             }
-        }       
-#endregion
+        }
+        #endregion
     }
 }
