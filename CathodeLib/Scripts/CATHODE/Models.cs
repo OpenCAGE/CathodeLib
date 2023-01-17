@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Numerics;
 using System.Runtime.InteropServices;
 
@@ -15,11 +16,10 @@ namespace CATHODE
     /* Handles Cathode LEVEL_MODELS.PAK/MODELS_LEVEL.BIN files */
     public class Models : CathodeFile
     {
-        List<CS2> _metadata = new List<CS2>();
-        List<AlienVBF> _vertexFormats = new List<AlienVBF>();
+        public List<CS2> Entries = new List<CS2>();
 
-        public List<string> _filePaths;
-        public List<string> _partNames;
+        List<AlienVBF> _vertexFormats = new List<AlienVBF>();
+        byte[] _boneBuffer;
 
         private string _filepathBIN;
 
@@ -37,10 +37,11 @@ namespace CATHODE
             {
                 bin.BaseStream.Position += 4; //Magic
                 int modelCount = bin.ReadInt32();
-                bin.BaseStream.Position += 4; //Unknown
+                if ((FileIdentifiers)BigEndianUtils.ReadInt16(bin) != FileIdentifiers.HEADER_FILE) return false;
+                if ((FileIdentifiers)BigEndianUtils.ReadInt16(bin) != FileIdentifiers.MODEL_DATA) return false;
                 int vbfCount = bin.ReadInt32();
 
-                //Read all vertex buffer formats
+                //Read vertex buffer formats
                 _vertexFormats = new List<AlienVBF>(vbfCount);
                 for (int EntryIndex = 0; EntryIndex < vbfCount; ++EntryIndex)
                 {
@@ -59,24 +60,58 @@ namespace CATHODE
                     _vertexFormats.Add(VertexInput);
                 }
 
-                //Read filename chunk
-                byte[] filenames = bin.ReadBytes(bin.ReadInt32());
-
-                //Read all model metadata
-                _metadata = Utilities.ConsumeArray<CS2>(bin, modelCount).ToList();
-
-                //Fetch filenames from chunk
-                _filePaths = new List<string>();
-                _partNames = new List<string>();
-                for (int i = 0; i < _metadata.Count; ++i)
+                //Read filenames and fileparts
+                Dictionary<int, string> stringOffsets = new Dictionary<int, string>();
                 {
-                    _filePaths.Add(Utilities.ReadString(filenames, _metadata[i].FileNameOffset).Replace('\\', '/'));
-                    _partNames.Add(Utilities.ReadString(filenames, _metadata[i].ModelPartNameOffset).Replace('\\', '/'));
+                    byte[] filenames = bin.ReadBytes(bin.ReadInt32());
+                    using (BinaryReader reader = new BinaryReader(new MemoryStream(filenames)))
+                    {
+                        while (reader.BaseStream.Position < reader.BaseStream.Length)
+                            stringOffsets.Add((int)reader.BaseStream.Position, Utilities.ReadString(reader)/*.Replace('\\', '/')*/);
+                    }
                 }
 
-                //Read bone chunk
-                byte[] BoneBuffer = bin.ReadBytes(bin.ReadInt32());
-                //TODO: Parse bone chunk!
+                //Read model metadata
+                for (int i = 0; i < modelCount; i++)
+                {
+                    CS2 cs2 = new CS2();
+                    int FileNameOffset = bin.ReadInt32();
+                    cs2.filename = stringOffsets[FileNameOffset];
+                    bin.BaseStream.Position += 4; //skip unused
+                    int ModelPartNameOffset = bin.ReadInt32();
+                    cs2.modelPartName = stringOffsets[ModelPartNameOffset];
+                    bin.BaseStream.Position += 4; //skip unused
+                    cs2.AABBMin = Utilities.Consume<Vector3>(bin);
+                    cs2.LODMinDistance_ = bin.ReadSingle();
+                    cs2.AABBMax = Utilities.Consume<Vector3>(bin);
+                    cs2.LODMaxDistance_ = bin.ReadSingle();
+                    cs2.NextInLODGroup_ = bin.ReadInt32();
+                    cs2.FirstModelInGroupForNextLOD_ = bin.ReadInt32();
+                    cs2.MaterialLibraryIndex = bin.ReadInt32();
+                    cs2.Unknown2_ = bin.ReadUInt32(); // NOTE: Flags?
+                    cs2.UnknownIndex = bin.ReadInt32(); // NOTE: -1 means no index. Seems to be related to Next/Parent.
+                    cs2.BlockSize = bin.ReadUInt32();
+                    cs2.CollisionIndex_ = bin.ReadInt32(); // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
+                    cs2.BoneArrayOffset_ = bin.ReadInt32(); // TODO: This indexes on the leftover data and points to an array of linearly growing indices.
+                                          //  And the array count is BoneCount.
+                    cs2.VertexFormatIndex = bin.ReadUInt16();
+                    cs2.VertexFormatIndexLowDetail = bin.ReadUInt16();
+                    bin.BaseStream.Position += 2; //this is VertexFormatIndex again
+                    cs2.ScaleFactor = bin.ReadUInt16();
+                    cs2.HeadRelated_ = bin.ReadInt16(); // NOTE: Seems to be valid on some 'HEAD' models, otherwise -1. Maybe morphing related???
+                    cs2.VertexCount = bin.ReadUInt16();
+                    cs2.IndexCount = bin.ReadUInt16();
+                    cs2.BoneCount = bin.ReadUInt16();
+                    Entries.Add(cs2);
+                }
+
+                //Read bone chunk (TODO: parse)
+                _boneBuffer = bin.ReadBytes(bin.ReadInt32());
+            }
+
+            for (int i = 0;i < Entries.Count; i++)
+            {
+                //Console.WriteLine(_metadata[i].Unknown2_);
             }
 
             using (BinaryReader pak = new BinaryReader(File.OpenRead(_filepath)))
@@ -127,11 +162,14 @@ namespace CATHODE
             {
                 bin.BaseStream.SetLength(0);
 
-                Utilities.WriteString("XMDB", bin); //magic
-                bin.Write(_metadata.Count);
-                bin.Write(0); //unknown 4
+                //Write header
+                Utilities.WriteString("XMDB", bin);
+                bin.Write(Entries.Count);
+                bin.Write((Int16)FileIdentifiers.HEADER_FILE);
+                bin.Write((Int16)FileIdentifiers.MODEL_DATA);
                 bin.Write(_vertexFormats.Count);
 
+                //Write vertex buffers
                 for (int i = 0; i < _vertexFormats.Count; i++)
                 {
                     for (int y = 0; y < _vertexFormats[i].Elements.Count; y++)
@@ -141,11 +179,63 @@ namespace CATHODE
                     }
                 }
 
-                //for (int i = 0; i < _metadata.Count; i++)
-                //{
-                //    Utilities.WriteString(_filePaths[i], bin, true);
-                //    Utilities.WriteString(_partNames[i], bin, true);
-                //}
+                //Write filenames/fileparts
+                bin.Write(0); //placeholder
+                Dictionary<string, int> stringOffsets = new Dictionary<string, int>();
+                int startPos = (int)bin.BaseStream.Position;
+                stringOffsets.Add("\\content\\build\\library\\", 0);
+                Utilities.WriteString("\\content\\build\\library\\", bin, true);
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    if (!stringOffsets.ContainsKey(Entries[i].filename))
+                    {
+                        stringOffsets.Add(Entries[i].filename, (int)bin.BaseStream.Position - startPos);
+                        Utilities.WriteString(Entries[i].filename, bin, true);
+                    }
+                    if (!stringOffsets.ContainsKey(Entries[i].modelPartName))
+                    {
+                        stringOffsets.Add(Entries[i].modelPartName, (int)bin.BaseStream.Position - startPos);
+                        Utilities.WriteString(Entries[i].modelPartName, bin, true);
+                    }
+                }
+                Utilities.Align(bin, 16);
+                int stringLength = (int)bin.BaseStream.Position - startPos;
+                bin.BaseStream.Position = startPos - 4;
+                bin.Write(stringLength);
+                bin.BaseStream.Position += stringLength;
+
+                //Write model metadata
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    bin.Write(stringOffsets[Entries[i].filename]);
+                    bin.Write(new byte[4]);
+                    bin.Write(stringOffsets[Entries[i].modelPartName]);
+                    bin.Write(new byte[4]);
+                    Utilities.Write<Vector3>(bin, Entries[i].AABBMin);
+                    bin.Write(Entries[i].LODMinDistance_);
+                    Utilities.Write<Vector3>(bin, Entries[i].AABBMax);
+                    bin.Write(Entries[i].LODMaxDistance_);
+                    bin.Write(Entries[i].NextInLODGroup_);
+                    bin.Write(Entries[i].FirstModelInGroupForNextLOD_);
+                    bin.Write(Entries[i].MaterialLibraryIndex);
+                    bin.Write(Entries[i].Unknown2_);
+                    bin.Write(Entries[i].UnknownIndex);
+                    bin.Write(Entries[i].BlockSize);
+                    bin.Write(Entries[i].CollisionIndex_);
+                    bin.Write(Entries[i].BoneArrayOffset_);
+                    bin.Write(Entries[i].VertexFormatIndex);
+                    bin.Write(Entries[i].VertexFormatIndexLowDetail);
+                    bin.Write(Entries[i].VertexFormatIndex);
+                    bin.Write(Entries[i].ScaleFactor);
+                    bin.Write(Entries[i].HeadRelated_);
+                    bin.Write(Entries[i].VertexCount);
+                    bin.Write(Entries[i].IndexCount);
+                    bin.Write(Entries[i].BoneCount);
+                }
+
+                //Bone buffer (TODO)
+                bin.Write(_boneBuffer.Length);
+                bin.Write(_boneBuffer);
             }
             return true;
         }
@@ -203,35 +293,43 @@ namespace CATHODE
             AlienVertexInputSlot_C = 0x0A, // NOTE: Color? Specular? What is this?
         };
 
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct CS2
+        public class CS2
         {
-            public int FileNameOffset;
-            public int UnknownZero_; // NOTE: Always 0 on starting area.
-            public int ModelPartNameOffset;
-            public float UnknownValue0_; // NOTE: Always 0 on starting area.
+            public string filename;
+            public string modelPartName;
+
             public Vector3 AABBMin;
-            public float LODMinDistance_;
             public Vector3 AABBMax;
+
+            public float LODMinDistance_;
             public float LODMaxDistance_;
             public int NextInLODGroup_;
             public int FirstModelInGroupForNextLOD_;
+
             public int MaterialLibraryIndex;
+
             public uint Unknown2_; // NOTE: Flags?
             public int UnknownIndex; // NOTE: -1 means no index. Seems to be related to Next/Parent.
             public uint BlockSize;
             public int CollisionIndex_; // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
-            public int BoneArrayOffset_; // TODO: This indexes on the leftover data and points to an array of linearly growing indices.
-                                         //  And the array count is BoneCount.
+            public int BoneArrayOffset_; // TODO: This indexes on the leftover data and points to an array of linearly growing indices. And the array count is BoneCount.
+
             public UInt16 VertexFormatIndex;
             public UInt16 VertexFormatIndexLowDetail;
             public UInt16 VertexFormatIndexDefault_; // TODO: This is always equals to the VertexFormatIndex
+
             public UInt16 ScaleFactor;
             public Int16 HeadRelated_; // NOTE: Seems to be valid on some 'HEAD' models, otherwise -1. Maybe morphing related???
+
             public UInt16 VertexCount;
             public UInt16 IndexCount;
             public UInt16 BoneCount;
-        };
+
+            public override string ToString()
+            {
+                return filename + " -> " + modelPartName;
+            }
+        }       
         #endregion
     }
 }

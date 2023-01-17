@@ -45,6 +45,7 @@ namespace CATHODE.LEGACY.Assets
 
     public enum FileIdentifiers
     {
+        HEADER_FILE = 96,
         ASSET_FILE = 14,
 
         SHADER_DATA = 3,
