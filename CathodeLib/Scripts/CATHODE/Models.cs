@@ -10,13 +10,13 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
-using System.Windows.Media.TextFormatting;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #else
 using System.Numerics;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
+using System.Windows.Media.TextFormatting;
 #endif
 
 namespace CATHODE
@@ -25,6 +25,17 @@ namespace CATHODE
     public class Models : CathodeFile
     {
         public List<CS2> Entries = new List<CS2>();
+
+        public int SubmeshCount 
+        { 
+            get
+            {
+                int count = 0;
+                for (int i = 0; i < Entries.Count; i++)
+                    count += Entries[i].Submeshes.Count;
+                return count;
+            } 
+        }
 
         private string _filepathBIN;
 
@@ -420,7 +431,7 @@ namespace CATHODE
 
             using (BinaryReader reader = new BinaryReader(new MemoryStream(submesh.content)))
             {
-                reader.BaseStream.Position = submesh.BlockSize - submesh.content.Length; //Skip header
+                reader.BaseStream.Position = submesh.content.Length - submesh.BlockSize; //Skip header
 
                 for (int i = 0; i < formats.Count; ++i)
                 {
@@ -512,7 +523,7 @@ namespace CATHODE
                                     }
                                     break;
                                 }
-                                case VBFE_InputType.VECTOR2_INT15_DIV2048:
+                                case VBFE_InputType.VECTOR2_INT16_DIV2048:
                                 {
 #if UNITY_EDITOR || UNITY_STANDALONE
                                     Vector2 v = new Vector2(reader.ReadInt16(), reader.ReadInt16());
@@ -644,7 +655,7 @@ namespace CATHODE
             INT32 = 0x05,
             VECTOR4_BYTE = 0x06,
             VECTOR4_BYTE_DIV255 = 0x09,
-            VECTOR2_INT15_DIV2048 = 0x0A,
+            VECTOR2_INT16_DIV2048 = 0x0A,
             VECTOR4_INT16_DIVMAX = 0x0B,
             VECTOR4_BYTE_NORM = 0x0F,
             AlienVertexInputType_u16 = 0x13,
