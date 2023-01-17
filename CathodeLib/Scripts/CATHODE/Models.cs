@@ -418,6 +418,9 @@ namespace CATHODE
             List<Vector4> boneIndex = new List<Vector4>(); //The indexes of 4 bones that affect each vertex
             List<Vector4> boneWeight = new List<Vector4>(); //The weights for each bone
 
+            if (submesh.content == null)
+                return mesh;
+
             using (BinaryReader reader = new BinaryReader(new MemoryStream(submesh.content)))
             {
                 for (int i = 0; i < formats.Count; ++i)
