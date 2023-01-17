@@ -182,7 +182,7 @@ namespace CATHODE
                         writeCount++;
                     }
                 }
-                int contentOffset = 32 + (writeCount * 32);
+                int contentOffset = 32 + (writeCount * 48);
 
                 //Write texture content
                 pak.BaseStream.SetLength(contentOffset);
