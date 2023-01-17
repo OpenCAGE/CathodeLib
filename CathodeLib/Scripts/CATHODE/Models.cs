@@ -19,7 +19,6 @@ namespace CATHODE
     {
         public List<CS2> Entries = new List<CS2>();
 
-        List<AlienVBF> _vertexFormats = new List<AlienVBF>();
         byte[] _boneBuffer;
 
         private string _filepathBIN;
@@ -44,7 +43,7 @@ namespace CATHODE
                 int vbfCount = bin.ReadInt32();
 
                 //Read vertex buffer formats
-                _vertexFormats = new List<AlienVBF>(vbfCount);
+                List<AlienVBF> vertexFormats = new List<AlienVBF>(vbfCount);
                 for (int EntryIndex = 0; EntryIndex < vbfCount; ++EntryIndex)
                 {
                     long startPos = bin.BaseStream.Position;
@@ -59,7 +58,7 @@ namespace CATHODE
                     AlienVBF VertexInput = new AlienVBF();
                     VertexInput.ElementCount = count;
                     VertexInput.Elements = Utilities.ConsumeArray<AlienVBFE>(bin, VertexInput.ElementCount).ToList();
-                    _vertexFormats.Add(VertexInput);
+                    vertexFormats.Add(VertexInput);
                 }
 
                 //Read filenames and submesh names
@@ -105,8 +104,12 @@ namespace CATHODE
                     submesh.CollisionIndex_ = bin.ReadInt32(); // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
                     submesh.BoneArrayOffset_ = bin.ReadInt32(); // TODO: This indexes on the leftover data and points to an array of linearly growing indices.
                                           //  And the array count is BoneCount.
-                    submesh.VertexFormatIndex = bin.ReadUInt16();
-                    submesh.VertexFormatIndexLowDetail = bin.ReadUInt16();
+
+                    int vbfIndex = bin.ReadUInt16();
+                    int vbfIndexLowDetail = bin.ReadUInt16();
+                    submesh.VertexFormat = vertexFormats[vbfIndex];
+                    submesh.VertexFormatLowDetail = vertexFormats[vbfIndexLowDetail];
+
                     bin.BaseStream.Position += 2; //this is VertexFormatIndex again
                     submesh.ScaleFactor = bin.ReadUInt16();
                     submesh.HeadRelated_ = bin.ReadInt16(); // NOTE: Seems to be valid on some 'HEAD' models, otherwise -1. Maybe morphing related???
@@ -189,6 +192,18 @@ namespace CATHODE
                     if (Entries[i].submeshes[x].content != null)
                         countWithContent++;
 
+            List<AlienVBF> vertexFormats = new List<AlienVBF>();
+            for (int i = 0; i < Entries.Count; i++)
+            {
+                for (int x = 0; x < Entries[i].submeshes.Count; x++)
+                {
+                    if (!vertexFormats.Contains(Entries[i].submeshes[x].VertexFormat))
+                        vertexFormats.Add(Entries[i].submeshes[x].VertexFormat);
+                    if (!vertexFormats.Contains(Entries[i].submeshes[x].VertexFormatLowDetail))
+                        vertexFormats.Add(Entries[i].submeshes[x].VertexFormatLowDetail);
+                }
+            }
+
             Dictionary<CS2_submesh, int> binIndexes = new Dictionary<CS2_submesh, int>();
             using (BinaryWriter bin = new BinaryWriter(File.OpenWrite(_filepathBIN)))
             {
@@ -199,14 +214,14 @@ namespace CATHODE
                 bin.Write(submeshCount);
                 bin.Write((Int16)FileIdentifiers.HEADER_FILE);
                 bin.Write((Int16)FileIdentifiers.MODEL_DATA);
-                bin.Write(_vertexFormats.Count);
+                bin.Write(vertexFormats.Count);
 
                 //Write vertex buffers
-                for (int i = 0; i < _vertexFormats.Count; i++)
+                for (int i = 0; i < vertexFormats.Count; i++)
                 {
-                    for (int x = 0; x < _vertexFormats[i].Elements.Count; x++)
+                    for (int x = 0; x < vertexFormats[i].Elements.Count; x++)
                     {
-                        Utilities.Write<AlienVBFE>(bin, _vertexFormats[i].Elements[x]);
+                        Utilities.Write<AlienVBFE>(bin, vertexFormats[i].Elements[x]);
                         //TODO: last element must always have ArrayIndex = 255
                     }
                 }
@@ -233,6 +248,7 @@ namespace CATHODE
                         }
                     }
                 }
+                bin.Write((char)0x00);
                 Utilities.Align(bin, 16);
                 int stringLength = (int)bin.BaseStream.Position - startPos;
                 bin.BaseStream.Position = startPos - 4;
@@ -245,30 +261,30 @@ namespace CATHODE
                 {
                     for (int x = 0; x < Entries[i].submeshes.Count; x++)
                     {
-                        bin.Write(stringOffsets[Entries[i].name]);
+                        bin.Write((Int32)stringOffsets[Entries[i].name]);
                         bin.Write(new byte[4]);
-                        bin.Write(stringOffsets[Entries[i].submeshes[x].name]);
+                        bin.Write((Int32)stringOffsets[Entries[i].submeshes[x].name]);
                         bin.Write(new byte[4]);
                         Utilities.Write<Vector3>(bin, Entries[i].submeshes[x].AABBMin);
-                        bin.Write(Entries[i].submeshes[x].LODMinDistance_);
+                        bin.Write((float)Entries[i].submeshes[x].LODMinDistance_);
                         Utilities.Write<Vector3>(bin, Entries[i].submeshes[x].AABBMax);
-                        bin.Write(Entries[i].submeshes[x].LODMaxDistance_);
-                        bin.Write(Entries[i].submeshes[x].NextInLODGroup_);
-                        bin.Write(Entries[i].submeshes[x].FirstModelInGroupForNextLOD_);
-                        bin.Write(Entries[i].submeshes[x].MaterialLibraryIndex);
-                        bin.Write(Entries[i].submeshes[x].Unknown2_);
-                        bin.Write(Entries[i].submeshes[x].UnknownIndex);
-                        bin.Write(Entries[i].submeshes[x].BlockSize);
-                        bin.Write(Entries[i].submeshes[x].CollisionIndex_);
-                        bin.Write(Entries[i].submeshes[x].BoneArrayOffset_);
-                        bin.Write(Entries[i].submeshes[x].VertexFormatIndex);
-                        bin.Write(Entries[i].submeshes[x].VertexFormatIndexLowDetail);
-                        bin.Write(Entries[i].submeshes[x].VertexFormatIndex);
-                        bin.Write(Entries[i].submeshes[x].ScaleFactor);
-                        bin.Write(Entries[i].submeshes[x].HeadRelated_);
-                        bin.Write(Entries[i].submeshes[x].VertexCount);
-                        bin.Write(Entries[i].submeshes[x].IndexCount);
-                        bin.Write(Entries[i].submeshes[x].BoneCount);
+                        bin.Write((float)Entries[i].submeshes[x].LODMaxDistance_);
+                        bin.Write((Int32)Entries[i].submeshes[x].NextInLODGroup_);
+                        bin.Write((Int32)Entries[i].submeshes[x].FirstModelInGroupForNextLOD_);
+                        bin.Write((Int32)Entries[i].submeshes[x].MaterialLibraryIndex);
+                        bin.Write((Int32)Entries[i].submeshes[x].Unknown2_);
+                        bin.Write((Int32)Entries[i].submeshes[x].UnknownIndex);
+                        bin.Write((Int32)Entries[i].submeshes[x].BlockSize);
+                        bin.Write((Int32)Entries[i].submeshes[x].CollisionIndex_);
+                        bin.Write((Int32)Entries[i].submeshes[x].BoneArrayOffset_);
+                        bin.Write((Int16)vertexFormats.IndexOf(Entries[i].submeshes[x].VertexFormat));
+                        bin.Write((Int16)vertexFormats.IndexOf(Entries[i].submeshes[x].VertexFormatLowDetail));
+                        bin.Write((Int16)vertexFormats.IndexOf(Entries[i].submeshes[x].VertexFormat));
+                        bin.Write((Int16)Entries[i].submeshes[x].ScaleFactor);
+                        bin.Write((Int16)Entries[i].submeshes[x].HeadRelated_);
+                        bin.Write((Int16)Entries[i].submeshes[x].VertexCount);
+                        bin.Write((Int16)Entries[i].submeshes[x].IndexCount);
+                        bin.Write((Int16)Entries[i].submeshes[x].BoneCount);
 
                         binIndexes.Add(Entries[i].submeshes[x], y);
                         y++;
@@ -424,8 +440,8 @@ namespace CATHODE
             public int CollisionIndex_; // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
             public int BoneArrayOffset_; // TODO: This indexes on the leftover data and points to an array of linearly growing indices. And the array count is BoneCount.
 
-            public UInt16 VertexFormatIndex;
-            public UInt16 VertexFormatIndexLowDetail;
+            public AlienVBF VertexFormat;
+            public AlienVBF VertexFormatLowDetail;
 
             public UInt16 ScaleFactor;
             public Int16 HeadRelated_; // NOTE: Seems to be valid on some 'HEAD' models, otherwise -1. Maybe morphing related???
