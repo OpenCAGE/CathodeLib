@@ -187,7 +187,7 @@ namespace CATHODE
             int countWithContent = 0;
             for (int i = 0; i < Entries.Count; i++)
                 for (int x = 0; x < Entries[i].Submeshes.Count; x++)
-                    if (Entries[i].Submeshes[x].content != null)
+                    if (Entries[i].Submeshes[x].content.Length != 0)
                         countWithContent++;
 
             List<AlienVBF> vertexFormats = new List<AlienVBF>();
@@ -315,7 +315,7 @@ namespace CATHODE
                 {
                     for (int x = 0; x < Entries[i].Submeshes.Count; x++)
                     {
-                        if (Entries[i].Submeshes[x].content == null) continue;
+                        if (Entries[i].Submeshes[x].content.Length == 0) continue;
                         offsets.Add((int)pak.BaseStream.Position - contentOffset);
                         pak.Write(Entries[i].Submeshes[x].content);
                     }
@@ -328,7 +328,7 @@ namespace CATHODE
                 {
                     for (int x = 0; x < Entries[i].Submeshes.Count; x++)
                     {
-                        if (Entries[i].Submeshes[x].content == null) continue;
+                        if (Entries[i].Submeshes[x].content.Length == 0) continue;
                         pak.Write(new byte[8]);
                         pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].Submeshes[x].content.Length));
                         pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].Submeshes[x].content.Length));
@@ -418,11 +418,10 @@ namespace CATHODE
             List<Vector4> boneIndex = new List<Vector4>(); //The indexes of 4 bones that affect each vertex
             List<Vector4> boneWeight = new List<Vector4>(); //The weights for each bone
 
-            if (submesh.content == null)
-                return mesh;
-
             using (BinaryReader reader = new BinaryReader(new MemoryStream(submesh.content)))
             {
+                reader.BaseStream.Position = submesh.BlockSize - submesh.content.Length; //Skip header
+
                 for (int i = 0; i < formats.Count; ++i)
                 {
                     if (formats[i][0].ArrayIndex == 0xFF)
@@ -708,7 +707,7 @@ namespace CATHODE
 
             /* FROM PAK */
 
-            public byte[] content = null;
+            public byte[] content = new byte[0];
 
             public override string ToString()
             {
