@@ -45,7 +45,7 @@ namespace CATHODE
                 for (int i = 0; i < entryCount; i++)
                 {
                     TEX4 TextureEntry = new TEX4();
-                    TextureEntry.FileName = Utilities.ReadString(bin);
+                    TextureEntry.Name = Utilities.ReadString(bin);
 #if APPEND_DDS
                     //TODO: maybe we should stop doing this
                     if (Path.GetExtension(TextureEntry.FileName).ToUpper() != ".DDS")
@@ -135,7 +135,7 @@ namespace CATHODE
                 for (int i = 0; i < Entries.Count; i++)
                 {
                     filenameOffsets.Add((int)bin.BaseStream.Position - 12);
-                    Utilities.WriteString(Entries[i].FileName, bin, true); 
+                    Utilities.WriteString(Entries[i].Name, bin, true); 
                 }
                 Utilities.Align(bin, 8);
                 int headerListBegin = (int)bin.BaseStream.Position - 12;
@@ -252,7 +252,7 @@ namespace CATHODE
         #region STRUCTURES
         public class TEX4
         {
-            public string FileName = "";
+            public string Name = "";
 
             public TextureFormat Format;
             public AlienTextureType Type;
