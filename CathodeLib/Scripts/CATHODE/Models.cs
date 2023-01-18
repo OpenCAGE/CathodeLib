@@ -68,14 +68,14 @@ namespace CATHODE
                     int count = 1;
                     while (bin.ReadByte() != 0xFF)
                     {
-                        bin.BaseStream.Position += Marshal.SizeOf(typeof(AlienVBFE)) - 1;
+                        bin.BaseStream.Position += 23;
                         count++;
                     }
                     bin.BaseStream.Position = startPos;
 
                     AlienVBF VertexInput = new AlienVBF();
                     VertexInput.ElementCount = count;
-                    VertexInput.Elements = Utilities.ConsumeArray<AlienVBFE>(bin, VertexInput.ElementCount).ToList();
+                    VertexInput.Elements = Utilities.ConsumeArray<AlienVBF.Element>(bin, VertexInput.ElementCount).ToList();
                     vertexFormats.Add(VertexInput);
                 }
 
@@ -85,7 +85,7 @@ namespace CATHODE
                 using (BinaryReader reader = new BinaryReader(new MemoryStream(filenames)))
                 {
                     while (reader.BaseStream.Position < reader.BaseStream.Length)
-                        stringOffsets.Add((int)reader.BaseStream.Position, Utilities.ReadString(reader)/*.Replace('\\', '/')*/);
+                        stringOffsets.Add((int)reader.BaseStream.Position, Utilities.ReadString(reader));
                 }
 
                 //Read model metadata
@@ -161,12 +161,8 @@ namespace CATHODE
                 }
             }
 
-            List<List<CS2.Submesh.Part>> groupedParts = new List<List<CS2.Submesh.Part>>();
-
             using (BinaryReader pak = new BinaryReader(File.OpenRead(_filepath)))
             {
-                List<Submesh.Part> groupedPart = new List<Submesh.Part>();
-
                 //Read & check the header info from the PAK
                 pak.BaseStream.Position += 4; //Skip unused
                 if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.ASSET_FILE) return false;
@@ -211,20 +207,13 @@ namespace CATHODE
                         foreach (KeyValuePair<int, int[]> offsetData in entryOffsets)
                         {
                             CS2.Submesh.Part part = GetSubmeshPartForIndex(offsetData.Key);
-                            groupedPart.Add(part);
                             reader.BaseStream.Position = offsetData.Value[0];
-                            //part.content = reader.ReadBytes(offsetData.Value[1]);
+                            part.content = reader.ReadBytes(offsetData.Value[1]);
                         }
                     }
                     pak.BaseStream.Position = offsetToReturnTo;
                 }
-
-                groupedParts.Add(groupedPart);
             }
-
-            File.WriteAllText("things.json", JsonConvert.SerializeObject(groupedParts, Formatting.Indented));
-
-            File.WriteAllText("things2.json", JsonConvert.SerializeObject(Entries, Formatting.Indented));
 
             return true;
         }
@@ -257,7 +246,7 @@ namespace CATHODE
                 {
                     for (int x = 0; x < vertexFormats[i].Elements.Count; x++)
                     {
-                        Utilities.Write<AlienVBFE>(bin, vertexFormats[i].Elements[x]);
+                        Utilities.Write<AlienVBF.Element>(bin, vertexFormats[i].Elements[x]);
                         //TODO: last element must always have ArrayIndex = 255
                     }
                 }
@@ -451,17 +440,17 @@ namespace CATHODE
             Model3DGroup mesh = new Model3DGroup();
 #endif
 
-            List<List<AlienVBFE>> formats = new List<List<AlienVBFE>>();
-            foreach (AlienVBFE formatElement in part.VertexFormat.Elements)
+            List<List<AlienVBF.Element>> formats = new List<List<AlienVBF.Element>>();
+            foreach (AlienVBF.Element formatElement in part.VertexFormat.Elements)
             {
                 if (formatElement.ArrayIndex == 0xFF)
                 {
-                    formats.Add(new List<AlienVBFE>() { formatElement });
+                    formats.Add(new List<AlienVBF.Element>() { formatElement });
                     continue;
                 }
 
                 while (formats.Count - 1 < formatElement.ArrayIndex)
-                    formats.Add(new List<AlienVBFE>());
+                    formats.Add(new List<AlienVBF.Element>());
 
                 formats[formatElement.ArrayIndex].Add(formatElement);
             }
@@ -492,10 +481,11 @@ namespace CATHODE
             List<Vector4> boneIndex = new List<Vector4>(); //The indexes of 4 bones that affect each vertex
             List<Vector4> boneWeight = new List<Vector4>(); //The weights for each bone
 
+            if (part.content.Length == 0)
+                return mesh;
+
             using (BinaryReader reader = new BinaryReader(new MemoryStream(part.content)))
             {
-                reader.BaseStream.Position = part.content.Length - part.BlockSize; //Skip header
-
                 for (int i = 0; i < formats.Count; ++i)
                 {
                     if (formats[i][0].ArrayIndex == 0xFF)
@@ -510,7 +500,7 @@ namespace CATHODE
                     {
                         for (int y = 0; y < formats[i].Count; ++y)
                         {
-                            AlienVBFE format = formats[i][y];
+                            AlienVBF.Element format = formats[i][y];
                             switch (format.VariableType)
                             {
                                 case VBFE_InputType.VECTOR3:
@@ -746,19 +736,19 @@ namespace CATHODE
         public class AlienVBF
         {
             public int ElementCount;
-            public List<AlienVBFE> Elements;
-        }
+            public List<Element> Elements;
 
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct AlienVBFE
-        {
-            public int ArrayIndex;
-            public int Offset; // NOTE: Offset within data structure, generally not important.
-            public VBFE_InputType VariableType; //(int)
-            public VBFE_InputSlot ShaderSlot; //(int)
-            public int VariantIndex; // NOTE: Variant index such as UVs: (UV0, UV1, UV2...)
-            public int Unknown_; // NOTE: Seems to be always 2?
-        };
+            [StructLayout(LayoutKind.Sequential, Pack = 1)]
+            public struct Element
+            {
+                public int ArrayIndex;
+                public int Offset; // NOTE: Offset within data structure, generally not important.
+                public VBFE_InputType VariableType; //(int)
+                public VBFE_InputSlot ShaderSlot; //(int)
+                public int VariantIndex; // NOTE: Variant index such as UVs: (UV0, UV1, UV2...)
+                public int Unknown_; // NOTE: Seems to be always 2?
+            };
+        }
 
         public enum VBFE_InputType
         {
@@ -822,6 +812,9 @@ namespace CATHODE
                     public int UnknownIndex; // NOTE: -1 means no index. Seems to be related to Next/Parent.
                     public uint BlockSize;
                     public int CollisionIndex_; // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
+
+                    public bool IS_IN_PAK = false;
+                    public bool IS_FIRST_ENTRY_IN_PAK = false;
 
                     public AlienVBF VertexFormat;
                     public AlienVBF VertexFormatLowDetail;
