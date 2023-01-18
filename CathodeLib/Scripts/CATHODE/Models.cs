@@ -10,6 +10,8 @@ using System.Linq.Expressions;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Xml.Linq;
+using static CATHODE.Models.CS2;
+using Newtonsoft.Json;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #else
@@ -49,7 +51,7 @@ namespace CATHODE
 
             if (!File.Exists(_filepathBIN)) return false;
 
-            Dictionary<int, CS2_submesh> submeshBinIndexes = new Dictionary<int, CS2_submesh>();
+            Dictionary<int, CS2.Submesh> submeshBinIndexes = new Dictionary<int, CS2.Submesh>();
             using (BinaryReader bin = new BinaryReader(File.OpenRead(_filepathBIN)))
             {
                 bin.BaseStream.Position += 4; //Magic
@@ -66,14 +68,14 @@ namespace CATHODE
                     int count = 1;
                     while (bin.ReadByte() != 0xFF)
                     {
-                        bin.BaseStream.Position += Marshal.SizeOf(typeof(AlienVBFE)) - 1;
+                        bin.BaseStream.Position += Marshal.SizeOf(typeof(AlienVBF.Element)) - 1;
                         count++;
                     }
                     bin.BaseStream.Position = startPos;
 
                     AlienVBF VertexInput = new AlienVBF();
                     VertexInput.ElementCount = count;
-                    VertexInput.Elements = Utilities.ConsumeArray<AlienVBFE>(bin, VertexInput.ElementCount).ToList();
+                    VertexInput.Elements = Utilities.ConsumeArray<AlienVBF.Element>(bin, VertexInput.ElementCount).ToList();
                     vertexFormats.Add(VertexInput);
                 }
 
@@ -87,7 +89,7 @@ namespace CATHODE
                 }
 
                 //Read model metadata
-                Dictionary<CS2_submesh, int> boneOffsets = new Dictionary<CS2_submesh, int>();
+                Dictionary<CS2.Submesh, int> boneOffsets = new Dictionary<CS2.Submesh, int>();
                 for (int i = 0; i < modelCount; i++)
                 {
                     int FileNameOffset = bin.ReadInt32();
@@ -102,7 +104,7 @@ namespace CATHODE
                         Entries.Add(cs2);
                     }
 
-                    CS2_submesh submesh = new CS2_submesh();
+                    CS2.Submesh submesh = new CS2.Submesh();
                     int ModelPartNameOffset = bin.ReadInt32();
                     submesh.Name = stringOffsets[ModelPartNameOffset];
                     bin.BaseStream.Position += 4; //skip unused
@@ -114,8 +116,9 @@ namespace CATHODE
                     submesh.FirstModelInGroupForNextLOD_ = bin.ReadInt32();
                     submesh.MaterialLibraryIndex = bin.ReadInt32();
                     submesh.Unknown2_ = bin.ReadUInt32(); // NOTE: Flags?
+
                     submesh.UnknownIndex = bin.ReadInt32(); // NOTE: -1 means no index. Seems to be related to Next/Parent.
-                    submesh.BlockSize = bin.ReadUInt32();
+                    bin.BaseStream.Position += 4; //length
                     submesh.CollisionIndex_ = bin.ReadInt32(); // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
                     int boneArrayOffset = bin.ReadInt32();
 
@@ -142,7 +145,7 @@ namespace CATHODE
                 byte[] bones = bin.ReadBytes(bin.ReadInt32());
                 using (BinaryReader reader = new BinaryReader(new MemoryStream(bones)))
                 {
-                    foreach (KeyValuePair<CS2_submesh, int> offset in boneOffsets)
+                    foreach (KeyValuePair<CS2.Submesh, int> offset in boneOffsets)
                     {
                         reader.BaseStream.Position = offset.Value;
                         for (int i = 0; i < offset.Key.boneIndices.Capacity; i++)
@@ -151,6 +154,7 @@ namespace CATHODE
                 }
             }
 
+            List<List<string>> pakGroups = new List<List<string>>();
             using (BinaryReader pak = new BinaryReader(File.OpenRead(_filepath)))
             {
                 //Read & check the header info from the PAK
@@ -164,6 +168,7 @@ namespace CATHODE
                 int endOfHeaders = 32 + (entryCountActual * 48);
                 for (int i = 0; i < entryCount; i++)
                 {
+                    List<string> group = new List<string>();
                     //Read model info
                     pak.BaseStream.Position += 8;
                     int length = BigEndianUtils.ReadInt32(pak);
@@ -195,18 +200,37 @@ namespace CATHODE
                         }
                         reader.BaseStream.Position += 8;
 
+                        int c = 0;
                         foreach (KeyValuePair<int, int[]> offsetData in entryOffsets)
                         {
-                            CS2_submesh submesh = GetSubmeshAtWriteIndex(offsetData.Key);
+                            CS2.Submesh submesh = GetSubmeshForWriteIndex(offsetData.Key);
+                            group.Add(FindModelForSubmesh(submesh).Name + " -> " + submesh.Name + " [" + BitConverter.ToString(BitConverter.GetBytes(submesh.Unknown2_)) + "]");
                             reader.BaseStream.Position = offsetData.Value[0];
                             submesh.content = reader.ReadBytes(offsetData.Value[1]);
+
+                            if (c == 0 && submeshCount != 1)
+                            {
+                                byte b = BitConverter.GetBytes(submesh.Unknown2_)[1];
+                                if (b != 0x3C &&
+                                    b != 0xFC)
+                                {
+                                    string bleh = "";
+                                }
+                            }
+                            c++;
                         }
+
                     }
+                    pakGroups.Add(group);
                     pak.BaseStream.Position = offsetToReturnTo;
                 }
             }
 
-            return true;
+            File.WriteAllText("bruh_moment2.json", JsonConvert.SerializeObject(GetAllSubmeshes().FindAll(o => o.content == null), Formatting.Indented));
+
+            File.WriteAllText("bruh_moment.json", JsonConvert.SerializeObject(pakGroups, Formatting.Indented));
+
+             return true;
         }
 
         /* Save the file */
@@ -234,7 +258,6 @@ namespace CATHODE
                 }
             }
 
-            Dictionary<CS2_submesh, int> binIndexes = new Dictionary<CS2_submesh, int>();
             using (BinaryWriter bin = new BinaryWriter(File.OpenWrite(_filepathBIN)))
             {
                 bin.BaseStream.SetLength(0);
@@ -251,7 +274,7 @@ namespace CATHODE
                 {
                     for (int x = 0; x < vertexFormats[i].Elements.Count; x++)
                     {
-                        Utilities.Write<AlienVBFE>(bin, vertexFormats[i].Elements[x]);
+                        Utilities.Write<AlienVBF.Element>(bin, vertexFormats[i].Elements[x]);
                         //TODO: last element must always have ArrayIndex = 255
                     }
                 }
@@ -286,7 +309,6 @@ namespace CATHODE
                 bin.BaseStream.Position += stringLength;
 
                 //Write model metadata
-                int y = 0;
                 int boneOffset = 0;
                 for (int i = 0; i < Entries.Count; i++)
                 {
@@ -305,7 +327,7 @@ namespace CATHODE
                         bin.Write((Int32)Entries[i].Submeshes[x].MaterialLibraryIndex);
                         bin.Write((Int32)Entries[i].Submeshes[x].Unknown2_);
                         bin.Write((Int32)Entries[i].Submeshes[x].UnknownIndex);
-                        bin.Write((Int32)Entries[i].Submeshes[x].BlockSize);
+                        bin.Write((Int32)Entries[i].Submeshes[x].content.Length);
                         bin.Write((Int32)Entries[i].Submeshes[x].CollisionIndex_);
                         bin.Write((Int32)boneOffset);
                         bin.Write((Int16)vertexFormats.IndexOf(Entries[i].Submeshes[x].VertexFormat));
@@ -317,8 +339,6 @@ namespace CATHODE
                         bin.Write((Int16)Entries[i].Submeshes[x].IndexCount);
                         bin.Write((Int16)Entries[i].Submeshes[x].boneIndices.Count);
 
-                        binIndexes.Add(Entries[i].Submeshes[x], y);
-                        y++;
                         boneOffset += Entries[i].Submeshes[x].boneIndices.Count;
                     }
                 }
@@ -380,7 +400,7 @@ namespace CATHODE
 
                         pak.Write(new byte[2]); //used to store some info on BSP_LV426_PT01
                         pak.Write(new byte[2]);
-                        pak.Write(BigEndianUtils.FlipEndian((Int16)binIndexes[Entries[i].Submeshes[x]]));
+                        pak.Write(BigEndianUtils.FlipEndian((Int16)GetWriteIndexForSubmesh(Entries[i].Submeshes[x])));
                         pak.Write(new byte[8]);
                         pak.Write(new byte[2]); //used to store info on BSP_LV426_PT02
                         pak.Write(new byte[2]); //used to store info on BSP_LV426_PT02
@@ -406,9 +426,9 @@ namespace CATHODE
         #region ACCESSORS
         /* Get a mesh from the models PAK as a usable mesh format */
 #if UNITY_EDITOR || UNITY_STANDALONE
-        public Mesh GetMesh(CS2_submesh submesh)
+        public Mesh GetMesh(CS2.Submesh submesh)
 #else
-        public Model3DGroup GetMesh(CS2_submesh submesh)
+        public Model3DGroup GetMesh(CS2.Submesh submesh)
 #endif
         {
 #if UNITY_EDITOR || UNITY_STANDALONE
@@ -417,17 +437,17 @@ namespace CATHODE
             Model3DGroup mesh = new Model3DGroup();
 #endif
 
-            List<List<AlienVBFE>> formats = new List<List<AlienVBFE>>();
-            foreach (AlienVBFE formatElement in submesh.VertexFormat.Elements)
+            List<List<AlienVBF.Element>> formats = new List<List<AlienVBF.Element>>();
+            foreach (AlienVBF.Element formatElement in submesh.VertexFormat.Elements)
             {
                 if (formatElement.ArrayIndex == 0xFF)
                 {
-                    formats.Add(new List<AlienVBFE>() { formatElement });
+                    formats.Add(new List<AlienVBF.Element>() { formatElement });
                     continue;
                 }
 
                 while (formats.Count - 1 < formatElement.ArrayIndex)
-                    formats.Add(new List<AlienVBFE>());
+                    formats.Add(new List<AlienVBF.Element>());
 
                 formats[formatElement.ArrayIndex].Add(formatElement);
             }
@@ -458,10 +478,11 @@ namespace CATHODE
             List<Vector4> boneIndex = new List<Vector4>(); //The indexes of 4 bones that affect each vertex
             List<Vector4> boneWeight = new List<Vector4>(); //The weights for each bone
 
+            if (submesh.content.Length == 0)
+                return mesh;
+
             using (BinaryReader reader = new BinaryReader(new MemoryStream(submesh.content)))
             {
-                reader.BaseStream.Position = submesh.content.Length - submesh.BlockSize; //Skip header
-
                 for (int i = 0; i < formats.Count; ++i)
                 {
                     if (formats[i][0].ArrayIndex == 0xFF)
@@ -476,13 +497,13 @@ namespace CATHODE
                     {
                         for (int y = 0; y < formats[i].Count; ++y)
                         {
-                            AlienVBFE format = formats[i][y];
+                            AlienVBF.Element format = formats[i][y];
                             switch (format.VariableType)
                             {
                                 case VBFE_InputType.VECTOR3:
                                     {
 #if UNITY_EDITOR || UNITY_STANDALONE
-                                    Vector3 v = new Vector3(reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32());
+                                        Vector3 v = new Vector3(reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32());
 #else
                                         Vector3D v = new Vector3D(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
 #endif
@@ -493,7 +514,7 @@ namespace CATHODE
                                                 break;
                                             case VBFE_InputSlot.TANGENT:
 #if UNITY_EDITOR || UNITY_STANDALONE
-                                            tangents.Add(new Vector4((float)v.x, (float)v.y, (float)v.z, 0));
+                                                tangents.Add(new Vector4((float)v.x, (float)v.y, (float)v.z, 0));
 #else
                                                 tangents.Add(new Vector4((float)v.X, (float)v.Y, (float)v.Z, 0));
 #endif
@@ -533,13 +554,13 @@ namespace CATHODE
                                         switch (format.ShaderSlot)
                                         {
 #if UNITY_EDITOR || UNITY_STANDALONE
-                                        case VBFE_InputSlot.BONE_WEIGHTS:
-                                            boneWeight.Add(v / (v.x + v.y + v.z + v.w));
-                                            break;
-                                        case VBFE_InputSlot.UV:
-                                            uv2.Add(new Vector2(v.x, v.y));
-                                            uv3.Add(new Vector2(v.z, v.w));
-                                            break;
+                                            case VBFE_InputSlot.BONE_WEIGHTS:
+                                                boneWeight.Add(v / (v.x + v.y + v.z + v.w));
+                                                break;
+                                            case VBFE_InputSlot.UV:
+                                                uv2.Add(new Vector2(v.x, v.y));
+                                                uv3.Add(new Vector2(v.z, v.w));
+                                                break;
 #else
                                             case VBFE_InputSlot.BONE_WEIGHTS:
                                                 boneWeight.Add(v / (v.X + v.Y + v.Z + v.W));
@@ -555,8 +576,8 @@ namespace CATHODE
                                 case VBFE_InputType.VECTOR2_INT16_DIV2048:
                                     {
 #if UNITY_EDITOR || UNITY_STANDALONE
-                                    Vector2 v = new Vector2(reader.ReadInt16(), reader.ReadInt16());
-                                    v /= 2048.0f;
+                                        Vector2 v = new Vector2(reader.ReadInt16(), reader.ReadInt16());
+                                        v /= 2048.0f;
 #else
                                         System.Windows.Point v = new System.Windows.Point(reader.ReadInt16() / 2048.0f, reader.ReadInt16() / 2048.0f);
 #endif
@@ -585,7 +606,7 @@ namespace CATHODE
                                         {
                                             case VBFE_InputSlot.VERTEX:
 #if UNITY_EDITOR || UNITY_STANDALONE
-                                            vertices.Add(v);
+                                                vertices.Add(v);
 #else
                                                 vertices.Add(new Point3D(v.X, v.Y, v.Z));
 #endif
@@ -602,7 +623,7 @@ namespace CATHODE
                                         {
                                             case VBFE_InputSlot.NORMAL:
 #if UNITY_EDITOR || UNITY_STANDALONE
-                                            normals.Add(v);
+                                                normals.Add(v);
 #else
                                                 normals.Add(new Vector3D(v.X, v.Y, v.Z));
 #endif
@@ -656,47 +677,32 @@ namespace CATHODE
 
         #region HELPERS
         /* Find a model that contains a given submesh */
-        public CS2 FindModelForSubmesh(CS2_submesh submesh)
+        public CS2 FindModelForSubmesh(CS2.Submesh submesh)
         {
-            for (int i = 0; i < Entries.Count; i++)
-            {
-                if (Entries[i].Submeshes.Contains(submesh))
-                    return Entries[i];
-            }
-            return null;
+            return Entries.FirstOrDefault(o => o.Submeshes.Contains(submesh));
         }
 
         /* Get the current BIN index for a submesh (useful for cross-ref'ing with compiled binaries)
          * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
-        public int GetWriteIndexForSubmesh(CS2_submesh submesh)
+        public int GetWriteIndexForSubmesh(CS2.Submesh submesh)
         {
-            int y = 0;
-            for (int i = 0; i < Entries.Count; i++)
-            {
-                for (int x = 0; x < Entries[i].Submeshes.Count; x++)
-                {
-                    if (Entries[i].Submeshes[x] == submesh)
-                        return y;
-                    y++;
-                }
-            }
-            return -1;
+            return GetAllSubmeshes().IndexOf(submesh);
         }
 
         /* Get a submesh by its current BIN index (useful for cross-ref'ing with compiled binaries)
          * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
-        public CS2_submesh GetSubmeshAtWriteIndex(int index)
+        public CS2.Submesh GetSubmeshForWriteIndex(int index)
         {
-            int y = 0;
+            return GetAllSubmeshes()[index];
+        }
+
+        /* Get all submeshes within this models archive */
+        private List<CS2.Submesh> GetAllSubmeshes()
+        {
+            List<CS2.Submesh> submeshes = new List<Submesh>();
             for (int i = 0; i < Entries.Count; i++)
-            {
-                for (int x = 0; x < Entries[i].Submeshes.Count; x++)
-                {
-                    if (y == index) return Entries[i].Submeshes[x];
-                    y++;
-                }
-            }
-            return null;
+                submeshes.AddRange(Entries[i].Submeshes);
+            return submeshes;
         }
         #endregion
 
@@ -704,19 +710,19 @@ namespace CATHODE
         public class AlienVBF
         {
             public int ElementCount;
-            public List<AlienVBFE> Elements;
-        }
+            public List<Element> Elements;
 
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct AlienVBFE
-        {
-            public int ArrayIndex;
-            public int Offset; // NOTE: Offset within data structure, generally not important.
-            public VBFE_InputType VariableType; //(int)
-            public VBFE_InputSlot ShaderSlot; //(int)
-            public int VariantIndex; // NOTE: Variant index such as UVs: (UV0, UV1, UV2...)
-            public int Unknown_; // NOTE: Seems to be always 2?
-        };
+            [StructLayout(LayoutKind.Sequential, Pack = 1)]
+            public struct Element
+            {
+                public int ArrayIndex;
+                public int Offset; // NOTE: Offset within data structure, generally not important.
+                public VBFE_InputType VariableType; //(int)
+                public VBFE_InputSlot ShaderSlot; //(int)
+                public int VariantIndex; // NOTE: Variant index such as UVs: (UV0, UV1, UV2...)
+                public int Unknown_; // NOTE: Seems to be always 2?
+            };
+        }
 
         public enum VBFE_InputType
         {
@@ -747,49 +753,55 @@ namespace CATHODE
         public class CS2
         {
             public string Name;
-            public List<CS2_submesh> Submeshes = new List<CS2_submesh>();
+            public List<Submesh> Submeshes = new List<Submesh>();
 
             public override string ToString()
             {
                 return Name;
             }
-        }
 
-        public class CS2_submesh
-        {
-            public string Name;
-
-            public Vector3 AABBMin;
-            public Vector3 AABBMax;
-
-            public float LODMinDistance_;
-            public float LODMaxDistance_;
-            public int NextInLODGroup_;
-            public int FirstModelInGroupForNextLOD_;
-
-            public int MaterialLibraryIndex;
-
-            public uint Unknown2_; // NOTE: Flags?
-            public int UnknownIndex; // NOTE: -1 means no index. Seems to be related to Next/Parent.
-            public uint BlockSize;
-            public int CollisionIndex_; // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
-
-            public AlienVBF VertexFormat;
-            public AlienVBF VertexFormatLowDetail;
-
-            public UInt16 ScaleFactor;
-            public Int16 HeadRelated_; // NOTE: Seems to be valid on some 'HEAD' models, otherwise -1. Maybe morphing related???
-
-            public UInt16 VertexCount;
-            public UInt16 IndexCount;
-
-            public List<int> boneIndices = new List<int>();
-
-            public byte[] content = new byte[0];
-
-            public override string ToString()
+            public class Submesh
             {
-                return Name;
+                public string Name;
+
+                public Vector3 AABBMin;
+                public Vector3 AABBMax;
+
+                public float LODMinDistance_;
+                public float LODMaxDistance_;
+                public int NextInLODGroup_;
+                public int FirstModelInGroupForNextLOD_;
+
+                public int MaterialLibraryIndex;
+
+                public uint Unknown2_; // NOTE: Flags?
+                // - 134239524 = not in pak??
+                // - 134239233 = dynamic_mesh
+                // - 134282240 = first entry for regular
+                // - 134239232 = subsequent entry for regular (aisde from "Global\\" stuff which is first entry)
+                // - 134239236 = first entry for LOD
+                // - 134239248 = subsequent entries for LOD
+
+                public int UnknownIndex; // NOTE: -1 means no index. Seems to be related to Next/Parent.
+                public int CollisionIndex_; // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
+
+                public AlienVBF VertexFormat;
+                public AlienVBF VertexFormatLowDetail;
+
+                public UInt16 ScaleFactor;
+                public Int16 HeadRelated_; // NOTE: Seems to be valid on some 'HEAD' models, otherwise -1. Maybe morphing related???
+
+                public UInt16 VertexCount;
+                public UInt16 IndexCount;
+
+                public List<int> boneIndices = new List<int>();
+
+                public byte[] content = /*new byte[0]*/null;
+
+                public override string ToString()
+                {
+                    return Name;
+                }
             }
         }
         #endregion
