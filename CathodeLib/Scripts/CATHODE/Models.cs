@@ -154,7 +154,6 @@ namespace CATHODE
                 }
             }
 
-            List<List<string>> pakGroups = new List<List<string>>();
             using (BinaryReader pak = new BinaryReader(File.OpenRead(_filepath)))
             {
                 //Read & check the header info from the PAK
@@ -168,7 +167,6 @@ namespace CATHODE
                 int endOfHeaders = 32 + (entryCountActual * 48);
                 for (int i = 0; i < entryCount; i++)
                 {
-                    List<string> group = new List<string>();
                     //Read model info
                     pak.BaseStream.Position += 8;
                     int length = BigEndianUtils.ReadInt32(pak);
@@ -200,35 +198,17 @@ namespace CATHODE
                         }
                         reader.BaseStream.Position += 8;
 
-                        int c = 0;
                         foreach (KeyValuePair<int, int[]> offsetData in entryOffsets)
                         {
                             CS2.Submesh submesh = GetSubmeshForWriteIndex(offsetData.Key);
-                            group.Add(FindModelForSubmesh(submesh).Name + " -> " + submesh.Name + " [" + BitConverter.ToString(BitConverter.GetBytes(submesh.Unknown2_)) + "]");
                             reader.BaseStream.Position = offsetData.Value[0];
                             submesh.content = reader.ReadBytes(offsetData.Value[1]);
-
-                            if (c == 0 && submeshCount != 1)
-                            {
-                                byte b = BitConverter.GetBytes(submesh.Unknown2_)[1];
-                                if (b != 0x3C &&
-                                    b != 0xFC)
-                                {
-                                    string bleh = "";
-                                }
-                            }
-                            c++;
                         }
 
                     }
-                    pakGroups.Add(group);
                     pak.BaseStream.Position = offsetToReturnTo;
                 }
             }
-
-            File.WriteAllText("bruh_moment2.json", JsonConvert.SerializeObject(GetAllSubmeshes().FindAll(o => o.content == null), Formatting.Indented));
-
-            File.WriteAllText("bruh_moment.json", JsonConvert.SerializeObject(pakGroups, Formatting.Indented));
 
              return true;
         }
@@ -796,7 +776,7 @@ namespace CATHODE
 
                 public List<int> boneIndices = new List<int>();
 
-                public byte[] content = /*new byte[0]*/null;
+                public byte[] content = new byte[0];
 
                 public override string ToString()
                 {
