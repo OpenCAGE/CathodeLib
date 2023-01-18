@@ -356,7 +356,7 @@ namespace CATHODE
                         pak.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndexForSubmesh(Entries[i].Submeshes[x])));
                         pak.Write(BigEndianUtils.FlipEndian((Int32)48));
                         pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].Submeshes[x].content.Length));
-                        pak.Write(new byte[8]);
+                        pak.Write(new byte[12]);
                         pak.Write(Entries[i].Submeshes[x].content);
                     }
                 }
@@ -370,8 +370,8 @@ namespace CATHODE
                     {
                         if (Entries[i].Submeshes[x].content.Length == 0) continue;
                         pak.Write(new byte[8]);
-                        pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].Submeshes[x].content.Length));
-                        pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].Submeshes[x].content.Length));
+                        pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].Submeshes[x].content.Length + 48));
+                        pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].Submeshes[x].content.Length + 48));
                         pak.Write(BigEndianUtils.FlipEndian((Int32)offsets[y]));
 
                         pak.Write(new byte[5]);
