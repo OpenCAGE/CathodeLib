@@ -1,24 +1,16 @@
 using CATHODE.LEGACY.Assets;
-using CATHODE.Scripting;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Linq.Expressions;
-using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
-using System.Xml.Linq;
-using static CATHODE.Models.CS2;
-using Newtonsoft.Json;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #else
 using System.Numerics;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
-using System.Windows.Media.TextFormatting;
 #endif
 
 namespace CATHODE
@@ -343,6 +335,7 @@ namespace CATHODE
                 pak.BaseStream.SetLength(contentOffset);
                 pak.BaseStream.Position = contentOffset;
                 List<int> offsets = new List<int>();
+                List<int> lengths = new List<int>();
                 for (int i = 0; i < Entries.Count; i++)
                 {
                     for (int x = 0; x < Entries[i].Submeshes.Count; x++)
@@ -350,14 +343,21 @@ namespace CATHODE
                         if (Entries[i].Submeshes[x].content.Length == 0) continue;
                         offsets.Add((int)pak.BaseStream.Position - contentOffset);
 
+                        //Content header (TODO: we should group these by parent BIN index - figure out how to deciper that when parsing)
                         pak.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndexForSubmesh(Entries[i].Submeshes[x])));
-                        pak.Write(BigEndianUtils.FlipEndian((Int32)1));
+                        pak.Write(BigEndianUtils.FlipEndian((Int32)1)); //TODO: when grouping, this counts the number of entries
                         pak.Write(new byte[16]);
+                        // -- TODO: this is the per-bin entry header
                         pak.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndexForSubmesh(Entries[i].Submeshes[x])));
                         pak.Write(BigEndianUtils.FlipEndian((Int32)48));
                         pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].Submeshes[x].content.Length));
-                        pak.Write(new byte[12]);
+                        pak.Write(new byte[4]);
+                        // -- END
+                        pak.Write(new byte[8]);
+
                         pak.Write(Entries[i].Submeshes[x].content);
+
+                        lengths.Add((int)pak.BaseStream.Position - contentOffset - offsets[offsets.Count - 1]);
                     }
                 }
 
@@ -370,8 +370,8 @@ namespace CATHODE
                     {
                         if (Entries[i].Submeshes[x].content.Length == 0) continue;
                         pak.Write(new byte[8]);
-                        pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].Submeshes[x].content.Length + 48));
-                        pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].Submeshes[x].content.Length + 48));
+                        pak.Write(BigEndianUtils.FlipEndian((Int32)lengths[y]));
+                        pak.Write(BigEndianUtils.FlipEndian((Int32)lengths[y]));
                         pak.Write(BigEndianUtils.FlipEndian((Int32)offsets[y]));
 
                         pak.Write(new byte[5]);
@@ -679,7 +679,7 @@ namespace CATHODE
         /* Get all submeshes within this models archive */
         private List<CS2.Submesh> GetAllSubmeshes()
         {
-            List<CS2.Submesh> submeshes = new List<Submesh>();
+            List<CS2.Submesh> submeshes = new List<CS2.Submesh>();
             for (int i = 0; i < Entries.Count; i++)
                 submeshes.AddRange(Entries[i].Submeshes);
             return submeshes;
