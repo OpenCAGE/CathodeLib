@@ -142,17 +142,17 @@ namespace CATHODE
                     int length = BigEndianUtils.ReadInt32(pak);
                     pak.BaseStream.Position += 4; //length again 
                     int offset = BigEndianUtils.ReadInt32(pak);
-                    pak.BaseStream.Position += 10;
-                    int unk1 = BigEndianUtils.ReadInt16(pak);  //used to store some info on BSP_LV426_PT01
-                    pak.BaseStream.Position += 2;
-                    int binIndex = BigEndianUtils.ReadInt16(pak);
                     pak.BaseStream.Position += 8;
-                    int unk2 = BigEndianUtils.ReadInt16(pak); //used to store info on BSP_LV426_PT02
-                    int unk3 = BigEndianUtils.ReadInt16(pak); //used to store info on BSP_LV426_PT02
+                    int unk1 = BigEndianUtils.ReadInt32(pak);  //used to store some info on BSP_LV426_PT01
+                    int binIndex = BigEndianUtils.ReadInt32(pak);
+                    pak.BaseStream.Position += 8;
+                    int unk2 = BigEndianUtils.ReadInt32(pak); //used to store info on BSP_LV426_PT02
 
                     //Create a new model instance to add these submeshes to
                     CS2 cs2 = new CS2();
                     cs2.Name = filenameList[binIndex];
+                    //cs2.UnkLv426Pt1 = unk1;        <------ TODO: Not writing this out as it seems it works fine without it?
+                    //cs2.UnkLv426Pt2 = unk2;        <-|
                     Entries.Add(cs2);
 
                     //Read submesh content and add to appropriate model
@@ -272,8 +272,8 @@ namespace CATHODE
                         bin.Write((float)Entries[i].Submeshes[x].LODMinDistance_);
                         Utilities.Write<Vector3>(bin, Entries[i].Submeshes[x].AABBMax);
                         bin.Write((float)Entries[i].Submeshes[x].LODMaxDistance_);
-                        bin.Write((Int32)(-1)); //TODO: work out and actually write NextInLODGroup_
-                        bin.Write((Int32)(-1)); //TODO: work out and actually write FirstModelInGroupForNextLOD_
+                        bin.Write((Int32)(-1)); //TODO: work out and actually write NextInLODGroup_                          <--- Are these two actually occlusion related?
+                        bin.Write((Int32)(-1)); //TODO: work out and actually write FirstModelInGroupForNextLOD_             <-|
                         bin.Write((Int32)Entries[i].Submeshes[x].MaterialLibraryIndex);
                         bin.Write((Int32)Entries[i].Submeshes[x].Unknown2_);
                         bin.Write((Int32)Entries[i].Submeshes[x].UnknownIndex);
@@ -348,14 +348,12 @@ namespace CATHODE
 
                     pak.Write(new byte[5]);
                     pak.Write(new byte[2] { 0x01, 0x01 });
-                    pak.Write(new byte[3]);
+                    pak.Write(new byte[1]);
 
-                    pak.Write(new byte[2]); //used to store some info on BSP_LV426_PT01
-                    pak.Write(new byte[2]);
-                    pak.Write(BigEndianUtils.FlipEndian((Int16)GetWriteIndexForSubmesh(Entries[i].Submeshes[0])));
+                    pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].UnkLv426Pt1));
+                    pak.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndexForSubmesh(Entries[i].Submeshes[0])));
                     pak.Write(new byte[8]);
-                    pak.Write(new byte[2]); //used to store info on BSP_LV426_PT02
-                    pak.Write(new byte[2]); //used to store info on BSP_LV426_PT02
+                    pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].UnkLv426Pt2));
                 }
 
                 //Write header
@@ -695,6 +693,10 @@ namespace CATHODE
         {
             public string Name;
             public List<Submesh> Submeshes = new List<Submesh>();
+
+            //Storing some unknown info about LV426 stuff (Pt1 and Pt2 respectively)
+            public int UnkLv426Pt1 = 0;
+            public int UnkLv426Pt2 = 0;
 
             public override string ToString()
             {

@@ -5,43 +5,68 @@ using System.Text;
 
 namespace CathodeLib
 {
+    /* A helper class that holds all parse-able formats for a level, and saves them safely to update indexes across all */
     public class Level
     {
-        private Models models;
-        private RenderableElementsDatabase reds;
+        public Models AllModels;
+        public Textures AllTextures;
+        public MaterialDatabase AllMaterials;
 
+        public MoverDatabase AllMovers;
+        public Commands AllCommands;
+        public RenderableElementsDatabase AllRenderableElements;
+        public ResourcesDatabase AllResources;
+        public PhysicsMapDatabase AllPhysicsMaps;
+        public EnvironmentMapDatabase AllEnvironmentMaps;
+        public CollisionMapDatabase AllCollisionMaps;
+        public EnvironmentAnimationDatabase AllEnvironmentAnimations;
+        public MaterialMappings AllMaterialMappings;
+
+        public NavigationMesh NavMesh;
+
+        /* Load a level in the game's "ENV/PRODUCTION" folder */
         public Level(string path)
         {
-            models = new Models(path + "/RENDERABLE/LEVEL_MODELS.PAK");
-            reds = new RenderableElementsDatabase(path + "/WORLD/REDS.BIN");
+            AllModels = new Models(path + "/RENDERABLE/LEVEL_MODELS.PAK"); 
+            //AllTextures = new Textures(path + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK");
+            //AllMaterials = new MaterialDatabase(path + "/RENDERABLE/LEVEL_MODELS.MTL");
 
-            List<RemappedRenderableElementData> remappedReds = new List<RemappedRenderableElementData>();
-            for (int i = 0; i < reds.Entries.Count; i++)
-            {
-                RemappedRenderableElementData red = new RemappedRenderableElementData();
-                if (reds.Entries[i].ModelIndex != -1)
-                    red.Model = models.GetSubmeshForWriteIndex(reds.Entries[i].ModelIndex);
-                //COMMENTING THIS OUT AS IT GOES OUTSIDE THE BOUNDS OF THE ARRAY!
-                //if (reds.Entries[i].ModelLODIndex != -1)
-                //    red.ModelLOD = models.GetSubmeshForWriteIndex(reds.Entries[i].ModelLODIndex);
-                remappedReds.Add(red);
-            }
+            //AllMovers = new MoverDatabase(path + "/WORLD/MODELS.MVR");
+            //AllCommands = new Commands(path + "/WORLD/COMMANDS.PAK");
+            AllRenderableElements = new RenderableElementsDatabase(path + "/WORLD/REDS.BIN");
+            //AllResources = new ResourcesDatabase(path + "/WORLD/RESOURCES.BIN");
+            //AllPhysicsMaps = new PhysicsMapDatabase(path + "/WORLD/PHYSICS.MAP");
+            //AllEnvironmentMaps = new EnvironmentMapDatabase(path + "/WORLD/ENVIRONMENTMAP.BIN");
+            //AllCollisionMaps = new CollisionMapDatabase(path + "/WORLD/COLLISION.MAP");
+            //AllEnvironmentAnimations = new EnvironmentAnimationDatabase(path + "/WORLD/ENVIRONMENT_ANIMATION.DAT");
+            //AllMaterialMappings = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK");
 
-            models.Save();
-            for (int i = 0; i < reds.Entries.Count; i++)
-            {
-                if (reds.Entries[i].ModelIndex != -1)
-                    reds.Entries[i].ModelIndex = models.GetWriteIndexForSubmesh(remappedReds[i].Model);
-                //if (reds.Entries[i].ModelLODIndex != -1)
-                //    reds.Entries[i].ModelLODIndex = models.GetWriteIndexForSubmesh(remappedReds[i].ModelLOD);
-            }
-            reds.Save();
+            //TODO: we can have multiple states!
+            //NavMesh = new NavigationMesh(path + "/WORLD/STATE_0/NAV_MESH");
         }
 
-        private class RemappedRenderableElementData
+        /* Save all modifications to the level */
+        public void Save()
         {
-            public Models.CS2.Submesh Model = null;
-            public Models.CS2.Submesh ModelLOD = null;
+            //Get the REDS database as actual objects
+            List<Models.CS2.Submesh> redsModelRefs = new List<Models.CS2.Submesh>();
+            for (int i = 0; i < AllRenderableElements.Entries.Count; i++)
+            {
+                //TODO: we should probs store reds.Entries[i].ModelLODIndex here too, but it goes outside the bounds of our BIN array!?!
+                redsModelRefs.Add(AllModels.GetSubmeshForWriteIndex(AllRenderableElements.Entries[i].ModelIndex));
+            }
+
+            //Save the files back out 
+            AllModels.Save();
+
+            //Update the REDS database with our newly written indexes
+            for (int i = 0; i < AllRenderableElements.Entries.Count; i++)
+            {
+                if (AllRenderableElements.Entries[i].ModelIndex != -1)
+                    AllRenderableElements.Entries[i].ModelIndex = AllModels.GetWriteIndexForSubmesh(redsModelRefs[i]);
+                //AllRenderableElements.Entries[i].ModelLODIndex = -1;    <- TODO: Can't do this else the game crashes :D
+            }
+            AllRenderableElements.Save();
         }
     }
 }
