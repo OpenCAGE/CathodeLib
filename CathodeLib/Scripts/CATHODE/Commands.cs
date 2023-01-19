@@ -19,9 +19,6 @@ namespace CATHODE
 {
     public class Commands : CathodeFile
     {
-        public Action<string> OnLoaded;
-        public Action<string> OnSaved;
-
         // This is always:
         //  - Root Instance (the map's entry composite, usually containing entities that call mission/environment composites)
         //  - Global Instance (the main data handler for keeping track of mission number, etc - kinda like a big singleton)
@@ -469,7 +466,6 @@ namespace CATHODE
                 }
                 _composites = composites.ToList<Composite>();
             }
-            OnLoaded?.Invoke(_filepath);
             return true;
         }
 
@@ -1128,7 +1124,6 @@ namespace CATHODE
                 writer.Write(compositeOffsetPos / 4);
                 writer.Write(_composites.Count);
             }
-            OnSaved?.Invoke(_filepath);
             return true;
         }
         #endregion

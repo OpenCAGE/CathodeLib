@@ -8,7 +8,7 @@ namespace CATHODE
     public class RenderableElementsDatabase : CathodeFile
     {
         private List<RenderableElement> entries = new List<RenderableElement>();
-        public List<RenderableElement> RenderableElements { get { return entries; } }
+        public List<RenderableElement> Entries { get { return entries; } }
 
         /* Load the file */
         public RenderableElementsDatabase(string path) : base(path) { }

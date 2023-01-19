@@ -37,11 +37,11 @@ namespace CATHODE.Scripting
         public static void LinkCommands(Commands commands)
         {
             if (_commands != null)
-                _commands.OnSaved -= SaveCustomNames;
+                _commands.OnSaveSuccess -= SaveCustomNames;
 
             _commands = commands;
             if (_commands != null)
-                _commands.OnSaved += SaveCustomNames;
+                _commands.OnSaveSuccess += SaveCustomNames;
 
             LoadCustomNames(commands.Filepath);
         }

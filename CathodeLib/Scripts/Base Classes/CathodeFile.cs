@@ -7,6 +7,12 @@ namespace CathodeLib
 {
     public class CathodeFile
     {
+        public Action<string> OnLoadBegin;
+        public Action<string> OnLoadSuccess;
+
+        public Action<string> OnSaveBegin;
+        public Action<string> OnSaveSuccess;
+
         public string Filepath { get { return _filepath; } }
         protected string _filepath = "";
 
@@ -23,16 +29,19 @@ namespace CathodeLib
         /* Try and load the file, if it exists */
         private bool Load()
         {
-            if (!File.Exists(_filepath))
-            {
-                return false;
-            }
+            OnLoadBegin?.Invoke(_filepath);
+            if (!File.Exists(_filepath)) return false;
 
 #if !CATHODE_FAIL_HARD
             try
             {
 #endif
-            return LoadInternal();
+                if (LoadInternal())
+                {
+                    OnLoadSuccess?.Invoke(_filepath);
+                    return true;
+                }
+                else return false;
 #if !CATHODE_FAIL_HARD
             }
             catch
@@ -45,11 +54,18 @@ namespace CathodeLib
         /* Save the file back to its original filepath */
         public bool Save()
         {
+            OnSaveBegin?.Invoke(_filepath);
+
 #if !CATHODE_FAIL_HARD
             try
             {
 #endif
-            return SaveInternal();
+                if (SaveInternal())
+                {
+                    OnSaveSuccess?.Invoke(_filepath);
+                    return true;
+                }
+                else return false;
 #if !CATHODE_FAIL_HARD
             }
             catch
@@ -62,10 +78,11 @@ namespace CathodeLib
         /* Save the file to a new path, and optionally remember it for future saves */
         public bool Save(string path = "", bool updatePath = true)
         {
-            if (path != "" && updatePath)
-                _filepath = path;
-
-            return Save();
+            string origFilepath = updatePath && path != "" ? path : _filepath;
+            if (path != "") _filepath = path;
+            bool saved = Save();
+            if (!updatePath) _filepath = origFilepath;
+            return saved;
         }
         #endregion
 
