@@ -50,14 +50,24 @@ namespace CATHODE
                     int count = 1;
                     while (bin.ReadByte() != 0xFF)
                     {
-                        bin.BaseStream.Position += Marshal.SizeOf(typeof(AlienVBF.Element)) - 1;
+                        bin.BaseStream.Position += 23;
                         count++;
                     }
                     bin.BaseStream.Position = startPos;
 
                     AlienVBF VertexInput = new AlienVBF();
-                    VertexInput.ElementCount = count;
-                    VertexInput.Elements = Utilities.ConsumeArray<AlienVBF.Element>(bin, VertexInput.ElementCount).ToList();
+                    //TODO: pull this in better
+                    /*for (int i = 0; i < count; i++)
+                    {
+                        
+                public int ArrayIndex;
+                public int Offset; // NOTE: Offset within data structure, generally not important.
+                public VBFE_InputType VariableType; //(int)
+                public VBFE_InputSlot ShaderSlot; //(int)
+                public int VariantIndex; // NOTE: Variant index such as UVs: (UV0, UV1, UV2...)
+                public int Unknown_; // NOTE: Seems to be always 2?
+                    }*/
+                    VertexInput.Elements = Utilities.ConsumeArray<AlienVBF.Element>(bin, count).ToList();
                     vertexFormats.Add(VertexInput);
                 }
 
@@ -435,6 +445,8 @@ namespace CATHODE
                 {
                     if (formats[i][0].ArrayIndex == 0xFF)
                     {
+                        //TODO: i feel like this is not the correct way to interpret it, but it works
+                        //Check to see if the 0xFF index is always AlienVertexInputType_u16, then we can just use that!!
                         for (int x = 0; x < submesh.IndexCount; x++)
                             indices.Add(reader.ReadUInt16());
 
@@ -648,8 +660,7 @@ namespace CATHODE
         #region STRUCTURES
         public class AlienVBF
         {
-            public int ElementCount;
-            public List<Element> Elements;
+            public List<Element> Elements = new List<Element>();
 
             [StructLayout(LayoutKind.Sequential, Pack = 1)]
             public struct Element
@@ -707,8 +718,8 @@ namespace CATHODE
             {
                 public string Name;
 
-                public Vector3 AABBMin;
-                public Vector3 AABBMax;
+                public Vector3 AABBMin;        // <---- When importing a new model, setting these all to zero seem to make it invisible??
+                public Vector3 AABBMax;        // <-|
 
                 public float LODMinDistance_;
                 public float LODMaxDistance_;
