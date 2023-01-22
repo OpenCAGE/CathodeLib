@@ -6,7 +6,19 @@
 
 Available as a [NuGet package](https://www.nuget.org/packages/CathodeLib/), or alternatively just include this repo as a submodule in your project!
 
+Supports projects using the .NET Framework, and is compatible with Unity Engine.
+
 ---
+
+All parsers inherit from a base `CathodeFile` class which provides:
+ - A static `Implementation` flag, defining if the parser supports `CREATE`, `LOAD`, and/or `SAVE` functionality for the file. Parsers which support all three have the ability to generate files from scratch.
+ - A `Loaded` bool, which is true if the parser has populated its values from a pre-existing file that it has loaded. If false, the parser is creating a new file on save.
+ - A `Filepath` string, which is the filepath that the parser is using to either load or save the file.
+ - A `Save` function, which will save the file out if the parser has the `SAVE` flag. This function can optionally be given a new filepath to save the file to. Returns false if saving fails.
+ - Events for `OnLoadBegin`, `OnLoadSuccess`, `OnSaveBegin`, `OnSaveSuccess` which fire at load/save start and successful completion respectively, with the appropriate filepath as an arg.
+In debug mode the parsers will all fail hard, however in release mode all load/save calls are wrapped in try/catch statements.
+
+Available parsers currently in CathodeLib include...
 
 ## For scripting:
 - `CATHODE.Commands` handles `COMMANDS.PAK` files (for scripting)
@@ -33,7 +45,7 @@ Available as a [NuGet package](https://www.nuget.org/packages/CathodeLib/), or a
 - `CATHODE.PhysicsMapDatabase` handles `PHYSICS.MAP` files
 - `CATHODE.CollisionMapDatabase` handles `COLLISION.MAP` files
 - `CATHODE.AnimationStringDatabase` handles `ANIM_STRING_DB.BIN` and `ANIM_STRING_DB_DEBUG.BIN` files
-- `CATHODE.NavigationMesh` handles `NAV_MESH` files
+- `CATHODE.EXPERIMENTAL.NavigationMesh` handles `NAV_MESH` files (experimental)
 
 ## For configurations:
 - `CATHODE.BML` handles any `.BML` files
@@ -41,4 +53,8 @@ Available as a [NuGet package](https://www.nuget.org/packages/CathodeLib/), or a
 
 ## For saves:
 - `CATHODE.ProgressionSave` handles `PROGRESSION.AIS` files
-- `CATHODE.MissionSave` handles `PROGRESSION.AIS` files
+- `CATHODE.EXPERIMENTAL.MissionSave` handles `PROGRESSION.AIS` files (experimental)
+ 
+---
+
+<p align="center">CathodeLib is in no way related to (or endorsed by) Creative Assembly or SEGA.</p>

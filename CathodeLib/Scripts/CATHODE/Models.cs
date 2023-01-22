@@ -19,11 +19,11 @@ namespace CATHODE
     public class Models : CathodeFile
     {
         public List<CS2> Entries = new List<CS2>();
-        private List<CS2.Submesh> _writeList = new List<CS2.Submesh>();
-
-        private string _filepathBIN;
-
+        public static new Impl Implementation = Impl.LOAD | Impl.SAVE;
         public Models(string path) : base(path) { }
+
+        private List<CS2.Submesh> _writeList = new List<CS2.Submesh>();
+        private string _filepathBIN;
 
         #region FILE_IO
         /* Load the file */

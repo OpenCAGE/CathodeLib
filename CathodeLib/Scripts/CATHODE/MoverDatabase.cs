@@ -15,18 +15,16 @@ namespace CATHODE
     /* Handles Cathode MODELS.MVR files */
     public class MoverDatabase : CathodeFile
     {
+        public List<MOVER_DESCRIPTOR> Movers = new List<MOVER_DESCRIPTOR>();
+        public static new Impl Implementation = Impl.LOAD | Impl.SAVE;
+        public MoverDatabase(string path) : base(path) { }
+
         private int _fileSize = 32;
         private int _entryCount = 0;
         private int _entrySize = 320;
         private int _entryCountUnk = 0;
 
-        private List<MOVER_DESCRIPTOR> _movers = new List<MOVER_DESCRIPTOR>();
-        public List<MOVER_DESCRIPTOR> Movers { get { return _movers; } }
-        
-        public MoverDatabase(string path) : base(path) { }
-
         #region FILE_IO
-        /* Load the file */
         override protected bool LoadInternal()
         {
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
@@ -37,16 +35,15 @@ namespace CATHODE
                 reader.BaseStream.Position += 4;
                 _entrySize = reader.ReadInt32();
                 reader.BaseStream.Position += 12;
-                _movers = new List<MOVER_DESCRIPTOR>(Utilities.ConsumeArray<MOVER_DESCRIPTOR>(reader, _entryCount));
+                Movers = new List<MOVER_DESCRIPTOR>(Utilities.ConsumeArray<MOVER_DESCRIPTOR>(reader, _entryCount));
             }
             return true;
         }
 
-        /* Save the file */
         override protected bool SaveInternal()
         {
-            _fileSize = (_movers.Count * _entrySize) + 32;
-            _entryCount = _movers.Count;
+            _fileSize = (Movers.Count * _entrySize) + 32;
+            _entryCount = Movers.Count;
             _entryCountUnk = 0;
 
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
@@ -58,7 +55,7 @@ namespace CATHODE
                 writer.Write(0);
                 writer.Write(_entrySize);
                 writer.Write(0); writer.Write(0); writer.Write(0);
-                Utilities.Write<MOVER_DESCRIPTOR>(writer, _movers);
+                Utilities.Write<MOVER_DESCRIPTOR>(writer, Movers);
             }
             return true;
         }

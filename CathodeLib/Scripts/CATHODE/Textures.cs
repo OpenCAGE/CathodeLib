@@ -12,7 +12,7 @@ namespace CATHODE
     public class Textures : CathodeFile
     {
         public List<TEX4> Entries = new List<TEX4>();
-        public static new Impl Implementation = Impl.LOAD | Impl.SAVE;
+        public static new Impl Implementation = Impl.CREATE | Impl.LOAD | Impl.SAVE;
         public Textures(string path) : base(path) { }
 
         private string _filepathBIN;
