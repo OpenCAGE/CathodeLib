@@ -19,6 +19,16 @@ namespace CathodeLib
         public bool Loaded { get { return _loaded; } }
         protected bool _loaded = false;
 
+        [Flags]
+        public enum Impl
+        {
+            NONE = 1,
+            CREATE = 2,
+            LOAD = 4,
+            SAVE = 8,
+        }
+        public static Impl Implementation = Impl.NONE;
+
         public CathodeFile(string filepath)
         {
             _filepath = filepath;

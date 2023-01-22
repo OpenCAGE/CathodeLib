@@ -11,10 +11,10 @@ namespace CathodeLib
         public Models AllModels;
         public Textures AllTextures;
         public MaterialDatabase AllMaterials;
+        public RenderableElementsDatabase AllRenderableElements;
 
         public MoverDatabase AllMovers;
         public Commands AllCommands;
-        public RenderableElementsDatabase AllRenderableElements;
         public ResourcesDatabase AllResources;
         public PhysicsMapDatabase AllPhysicsMaps;
         public EnvironmentMapDatabase AllEnvironmentMaps;
@@ -27,13 +27,13 @@ namespace CathodeLib
         /* Load a level in the game's "ENV/PRODUCTION" folder */
         public Level(string path)
         {
-            AllModels = new Models(path + "/RENDERABLE/LEVEL_MODELS.PAK"); 
+            AllModels = new Models(path + "/RENDERABLE/LEVEL_MODELS.PAK");
             //AllTextures = new Textures(path + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK");
             //AllMaterials = new MaterialDatabase(path + "/RENDERABLE/LEVEL_MODELS.MTL");
+            AllRenderableElements = new RenderableElementsDatabase(path + "/RENDERABLE/REDS.BIN");
 
             //AllMovers = new MoverDatabase(path + "/WORLD/MODELS.MVR");
             //AllCommands = new Commands(path + "/WORLD/COMMANDS.PAK");
-            AllRenderableElements = new RenderableElementsDatabase(path + "/WORLD/REDS.BIN");
             //AllResources = new ResourcesDatabase(path + "/WORLD/RESOURCES.BIN");
             //AllPhysicsMaps = new PhysicsMapDatabase(path + "/WORLD/PHYSICS.MAP");
             //AllEnvironmentMaps = new EnvironmentMapDatabase(path + "/WORLD/ENVIRONMENTMAP.BIN");

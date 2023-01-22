@@ -7,28 +7,25 @@ namespace CATHODE
     /* Handles Cathode PROGRESSION.AIS files */
     public class ProgressionSave : CathodeFile
     {
-        private Progression _content;
-        public Progression Content { get { return _content; } }
-
+        public Progression Content;
+        public static new Impl Implementation = Impl.LOAD | Impl.SAVE;
         public ProgressionSave(string path) : base(path) { }
 
         #region FILE_IO
-        /* Load the file */
         override protected bool LoadInternal()
         {
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
-                _content = Utilities.Consume<Progression>(reader);
+                Content = Utilities.Consume<Progression>(reader);
             }
             return true;
         }
 
-        /* Save the file */
         override protected bool SaveInternal()
         {
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
-                Utilities.Write<Progression>(writer, _content);
+                Utilities.Write<Progression>(writer, Content);
             }
             return true;
         }

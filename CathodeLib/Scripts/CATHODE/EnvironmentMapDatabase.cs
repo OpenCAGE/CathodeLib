@@ -10,8 +10,7 @@ namespace CATHODE
     {
         private int _unknownValue = 12;
 
-        private List<EnvironmentMapEntry> _entries = new List<EnvironmentMapEntry>();
-        public List<EnvironmentMapEntry> EnvironmentMaps { get { return _entries; } }
+        private List<EnvironmentMapEntry> Entries = new List<EnvironmentMapEntry>();
 
         public EnvironmentMapDatabase(string path) : base(path) { }
 
@@ -29,7 +28,7 @@ namespace CATHODE
                     EnvironmentMapEntry entry = new EnvironmentMapEntry();
                     entry.envMapIndex = reader.ReadInt32();
                     entry.mvrIndex = reader.ReadInt32();
-                    _entries.Add(entry);
+                    Entries.Add(entry);
                 }
             }
             return true;
@@ -42,12 +41,12 @@ namespace CATHODE
                 writer.BaseStream.SetLength(0);
                 writer.Write(new char[] { 'e', 'n', 'v', 'm' });
                 writer.Write(1);
-                writer.Write(_entries.Count);
+                writer.Write(Entries.Count);
                 writer.Write(_unknownValue); //TODO: what is this value? need to know for making new files.
-                for (int i = 0; i < _entries.Count; i++)
+                for (int i = 0; i < Entries.Count; i++)
                 {
-                    writer.Write(_entries[i].envMapIndex);
-                    writer.Write(_entries[i].mvrIndex);
+                    writer.Write(Entries[i].envMapIndex);
+                    writer.Write(Entries[i].mvrIndex);
                 }
             }
             return true;

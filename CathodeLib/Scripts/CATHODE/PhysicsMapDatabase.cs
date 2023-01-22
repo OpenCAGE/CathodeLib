@@ -1,6 +1,7 @@
 ﻿using System.IO;
 using System.Runtime.InteropServices;
 using CathodeLib;
+using System.Collections.Generic;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -12,73 +13,63 @@ namespace CATHODE
     /* Handles Cathode PHYSICS.MAP files */
     public class PhysicsMapDatabase : CathodeFile
     {
-        //TODO: tidy how we access these
-        public Header _header;
-        public Entry[] _entries;
-
+        public List<Entry> Entries = new List<Entry>();
+        public static new Impl Implementation = Impl.CREATE | Impl.LOAD | Impl.SAVE;
         public PhysicsMapDatabase(string path) : base(path) { }
 
         #region FILE_IO
-        /* Load the file */
         override protected bool LoadInternal()
         {
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
-                _header = Utilities.Consume<Header>(reader);
-                _entries = Utilities.ConsumeArray<Entry>(reader, _header.EntryCount);
+                reader.BaseStream.Position = 4;
+                int entryCount = reader.ReadInt32();
+                for (int i = 0; i < entryCount; i++)
+                {
+                    Entry entry = new Entry();
+                    entry.UnknownNotableValue_ = reader.ReadInt32();
+                    reader.BaseStream.Position += 4;
+                    for (int x = 0; x < 4; x++) entry.IDs[x] = reader.ReadInt32();
+                    entry.Row0 = Utilities.Consume<Vector4>(reader);
+                    entry.Row1 = Utilities.Consume<Vector4>(reader);
+                    entry.Row2 = Utilities.Consume<Vector4>(reader);
+                    reader.BaseStream.Position += 8;
+                    Entries.Add(entry);
+                }
             }
             return true;
         }
 
-        /* Save the file */
         override protected bool SaveInternal()
         {
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
-                Utilities.Write<Header>(writer, _header);
-                Utilities.Write<Entry>(writer, _entries);
+                writer.Write(Entries.Count * 80);
+                writer.Write(Entries.Count);
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    writer.Write(Entries[i].UnknownNotableValue_);
+                    writer.Write(new byte[4]);
+                    for (int x = 0; x < 4; x++) writer.Write(Entries[i].IDs[x]);
+                    Utilities.Write<Vector4>(writer, Entries[i].Row0);
+                    Utilities.Write<Vector4>(writer, Entries[i].Row1);
+                    Utilities.Write<Vector4>(writer, Entries[i].Row2);
+                    writer.Write(new byte[8]);
+                }
             }
             return true;
         }
         #endregion
 
-        #region ACCESSORS
-        /* Data accessors */
-        public int EntryCount { get { return _entries.Length; } }
-        public Entry[] Entries { get { return _entries; } }
-        public Entry GetEntry(int i)
-        {
-            return _entries[i];
-        }
-
-        /* Data setters */
-        public void SetEntry(int i, Entry content)
-        {
-            _entries[i] = content;
-        }
-        #endregion
-
         #region STRUCTURES
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct Header
-        {
-            public int FileSizeExcludingThis;
-            public int EntryCount;
-        };
-
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct Entry
+        public class Entry
         {
             public int UnknownNotableValue_;
-            public int UnknownZero;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-            public int[] IDs; //4
+            public int[] IDs = new int[4];
             public Vector4 Row0; // NOTE: This is a 3x4 matrix, seems to have rotation data on the leftmost 3x3 matrix, and position
             public Vector4 Row1; //   on the rightmost 3x1 matrix.
             public Vector4 Row2;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public int[] UnknownZeros_; //2
         };
         #endregion
     }

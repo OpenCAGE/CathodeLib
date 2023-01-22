@@ -7,14 +7,11 @@ namespace CATHODE
     /* Handles reading/creating/writing Cathode REDS.BIN files */
     public class RenderableElementsDatabase : CathodeFile
     {
-        private List<RenderableElement> entries = new List<RenderableElement>();
-        public List<RenderableElement> Entries { get { return entries; } }
-
-        /* Load the file */
+        public List<RenderableElement> Entries = new List<RenderableElement>();
+        public static new Impl Implementation = Impl.CREATE | Impl.LOAD | Impl.SAVE;
         public RenderableElementsDatabase(string path) : base(path) { }
 
         #region FILE_IO
-        /* Load the file */
         override protected bool LoadInternal()
         {
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
@@ -30,28 +27,27 @@ namespace CATHODE
                     reader.BaseStream.Position += 1;
                     element.ModelLODIndex = reader.ReadInt32();
                     element.ModelLODPrimitiveCount = reader.ReadByte(); //TODO: convert to int for ease of use?
-                    entries.Add(element);
+                    Entries.Add(element);
                 }
             }
             return true;
         }
 
-        /* Save the file */
         override protected bool SaveInternal()
         {
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
-                writer.Write(entries.Count);
-                for (int i = 0; i < entries.Count; i++)
+                writer.Write(Entries.Count);
+                for (int i = 0; i < Entries.Count; i++)
                 {
                     writer.Write(new byte[] { 0x00, 0x00, 0x00, 0x00 });
-                    writer.Write(entries[i].ModelIndex);
+                    writer.Write(Entries[i].ModelIndex);
                     writer.Write(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00 });
-                    writer.Write(entries[i].MaterialLibraryIndex);
+                    writer.Write(Entries[i].MaterialLibraryIndex);
                     writer.Write((byte)0x00);
-                    writer.Write(entries[i].ModelLODIndex);
-                    writer.Write((byte)entries[i].ModelLODPrimitiveCount);
+                    writer.Write(Entries[i].ModelLODIndex);
+                    writer.Write((byte)Entries[i].ModelLODPrimitiveCount);
                 }
             }
             return true;
@@ -59,7 +55,6 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        /* Definition of a Renderable Element in CATHODE */
         public class RenderableElement
         {
             public int ModelIndex;
