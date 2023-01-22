@@ -62,13 +62,15 @@ namespace CATHODE
                         material.TextureReferences.Add(texRef);
                     }
                     reader.BaseStream.Position += 8;
-                    for (int x = 0; x < 5; x++) 
+                    List<int> cstIndexes = new List<int>();
+                    for (int x = 0; x < 5; x++) cstIndexes.Add(reader.ReadInt32());
+                    for (int x = 0; x < 5; x++)
                     {
-                        int cstIndex = reader.ReadInt32();
-                        if (cstIndex != 0) //TODO: perhaps we should keep zeros?
-                            material.ConstantBuffers.Add(new Material.ConstantBuffer() { ShaderIndex = x, CstIndex = cstIndex });
+                        int cstCount = reader.ReadByte();
+                        if (cstCount != 0) //TODO: perhaps we should keep zero counts?
+                            material.ConstantBuffers.Add(new Material.ConstantBuffer() { ShaderIndex = x, CstIndex = cstIndexes[x], CstCount = cstCount });
                     }
-                    reader.BaseStream.Position += 12;
+                    reader.BaseStream.Position += 7;
                     material.UnknownValue0 = reader.ReadInt32();
                     material.UberShaderIndex = reader.ReadInt32();
                     reader.BaseStream.Position += 128;
@@ -116,7 +118,7 @@ namespace CATHODE
 
                 //Write material names
                 for (int i = 0; i < Entries.Count; ++i) Utilities.WriteString(Entries[i].Name, writer, true);
-                Utilities.Align(writer, 8);
+                for (int i = 0; i < 6; i++) writer.Write((byte)0x20);
 
                 //Write material data
                 int materialOffset = (int)writer.BaseStream.Position;
@@ -146,7 +148,13 @@ namespace CATHODE
                         if (cst == null) writer.Write(0);
                         else writer.Write(cst.CstIndex);
                     }
-                    writer.Write(new byte[12]);
+                    for (int x = 0; x < 5; x++)
+                    {
+                        Material.ConstantBuffer cst = Entries[i].ConstantBuffers.FirstOrDefault(o => o.ShaderIndex == x);
+                        if (cst == null) writer.Write((byte)0);
+                        else writer.Write((byte)cst.CstCount);
+                    }
+                    writer.Write(new byte[7]);
                     writer.Write(Entries[i].UnknownValue0);
                     writer.Write(Entries[i].UberShaderIndex);
                     writer.Write(new byte[128]);
@@ -189,6 +197,7 @@ namespace CATHODE
             {
                 public int ShaderIndex; // Entry index in the material texture ref write list for shaders to access.
                 public int CstIndex;    // Entry index in the CST data array, cross ref'd by shader tables.
+                public int CstCount;   // Entry count in the CST data array from index - should match shader data
             }
 
             public class Texture
