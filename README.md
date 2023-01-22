@@ -22,12 +22,14 @@ In debug mode the parsers will all fail hard, however in release mode all load/s
 **Available parsers currently in CathodeLib include...**
 
 ## For scripting:
-- `CATHODE.Commands` handles `COMMANDS.PAK` files (for scripting)
+- `CATHODE.Commands` handles `COMMANDS.PAK` files
     - The file consists of `Composite` scripts which hold various `Entity` types for logic
 	    - `FunctionEntity` = functions which execute functionality, with parameters and links to child `Entity` objects
 		- `VariableEntity` = variables which can be used externally as parameters on an instanced `Composite` via a `FunctionEntity`
 		- `ProxyEntity` = a proxy of a `FunctionEntity` within another `Composite`, useful for acting on events in another composite
 		- `OverrideEntity` = an override of a parameter value on an entity within an instanced `Composite` in this `Composite`
+		
+Check out a full overview of the Commands structure [on the Wiki](https://github.com/OpenCAGE/CathodeLib/wiki/Cathode-scripting-overview), and follow [this handy guide](https://github.com/OpenCAGE/CathodeLib/wiki/Creating-your-first-Cathode-script) to create your first script!
     
 ## For assets:
 - `CATHODE.PAK2` handles `UI.PAK` and `ANIMATIONS.PAK` files
