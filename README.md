@@ -2,7 +2,7 @@
 
 # CathodeLib - Alien: Isolation C# Library
 
-### CathodeLib is an open source library providing functionality to parse and write various formats from the Cathode game engine, for modding Alien: Isolation. Used to power [OpenCAGE](https://github.com/MattFiler/OpenCAGE)!
+### CathodeLib is an open source library providing functionality to handle formats from the Cathode game engine, for modding Alien: Isolation. Used to power [OpenCAGE](https://github.com/MattFiler/OpenCAGE)!
 
 Available as a [NuGet package](https://www.nuget.org/packages/CathodeLib/), or alternatively just include this repo as a submodule in your project!
 
