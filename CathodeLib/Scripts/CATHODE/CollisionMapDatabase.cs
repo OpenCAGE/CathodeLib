@@ -1,75 +1,61 @@
 ﻿using CathodeLib;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
-    /* Handles Cathode COLLISION.MAP files */
+    /* Handles Cathode COLLISION.MAP files - TODO: lots of unknown values here */
     public class CollisionMapDatabase : CathodeFile
     {
-        //TODO: tidy how we access these
-        public Header _header;
-        public Entry[] _entries;
-
+        public List<Entry> Entries = new List<Entry>();
+        public static new Impl Implementation = Impl.CREATE | Impl.LOAD | Impl.SAVE;
         public CollisionMapDatabase(string path) : base(path) { }
 
         #region FILE_IO
-        /* Load the file */
         override protected bool LoadInternal()
         {
-            using (BinaryReader stream = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
-                _header = Utilities.Consume<Header>(stream);
-                _entries = Utilities.ConsumeArray<Entry>(stream, _header.EntryCount);
+                reader.BaseStream.Position = 4;
+                int entryCount = reader.ReadInt32();
+                for (int i = 0; i < entryCount; i++)
+                {
+                    Entry entry = new Entry();
+                    for (int x = 0; x < 4; x++) entry.Unknowns1[x] = reader.ReadInt32();
+                    entry.ID = reader.ReadInt32();
+                    for (int x = 0; x < 7; x++) entry.Unknowns2[x] = reader.ReadInt32();
+                    Entries.Add(entry);
+                }
             }
             return true;
         }
 
-        /* Save the file */
         override protected bool SaveInternal()
         {
-            using (BinaryWriter stream = new BinaryWriter(File.OpenWrite(_filepath)))
+            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
-                stream.BaseStream.SetLength(0);
-                Utilities.Write<Header>(stream, _header);
-                Utilities.Write<Entry>(stream, _entries);
+                writer.BaseStream.SetLength(0);
+                writer.Write(Entries.Count * 80);
+                writer.Write(Entries.Count);
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    for (int x = 0; x < 4; x++) writer.Write(Entries[i].Unknowns1[x]);
+                    writer.Write(Entries[i].ID);
+                    for (int x = 0; x < 7; x++) writer.Write(Entries[i].Unknowns2[x]);
+                }
             }
             return true;
-        }
-        #endregion
-
-        #region ACCESSORS
-        /* Data accessors */
-        public int EntryCount { get { return _entries.Length; } }
-        public Entry[] Entries { get { return _entries; } }
-        public Entry GetEntry(int i)
-        {
-            return _entries[i];
-        }
-
-        /* Data setters */
-        public void SetEntry(int i, Entry content)
-        {
-            _entries[i] = content;
         }
         #endregion
 
         #region STRUCTURES
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct Header
+        public class Entry
         {
-            public int DataSize;
-            public int EntryCount;
-        };
-
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct Entry
-        {
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-            public int[] Unknowns1; //12
             public int ID;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 7)]
-            public int[] Unknowns2; //12
+
+            public int[] Unknowns1 = new int[4];
+            public int[] Unknowns2 = new int[7];
         };
         #endregion
     }

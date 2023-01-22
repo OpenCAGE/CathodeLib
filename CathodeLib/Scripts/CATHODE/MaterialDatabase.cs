@@ -18,7 +18,6 @@ namespace CATHODE
         public MaterialDatabase(string path) : base(path) { }
 
         #region FILE_IO
-        /* Load the file */
         override protected bool LoadInternal()
         {
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))

@@ -19,17 +19,16 @@ namespace CATHODE
 {
     public class Commands : CathodeFile
     {
+        public List<Composite> Entries = new List<Composite>();
+        public static new Impl Implementation = Impl.CREATE | Impl.LOAD | Impl.SAVE;
+        public Commands(string path) : base(path) { }
+
         // This is always:
         //  - Root Instance (the map's entry composite, usually containing entities that call mission/environment composites)
         //  - Global Instance (the main data handler for keeping track of mission number, etc - kinda like a big singleton)
         //  - Pause Menu Instance
         private ShortGuid[] _entryPoints = null;
         private Composite[] _entryPointObjects = null;
-
-        public List<Composite> Composites { get { return _composites; } }
-        private List<Composite> _composites = new List<Composite>();
-
-        public Commands(string path) : base(path) { }
 
         #region FILE_IO
         override protected bool LoadInternal()
@@ -464,7 +463,7 @@ namespace CATHODE
 
                     composites[i] = composite;
                 }
-                _composites = composites.ToList<Composite>();
+                Entries = composites.ToList<Composite>();
             }
             return true;
         }
@@ -472,9 +471,9 @@ namespace CATHODE
         override protected bool SaveInternal()
         {
             //Validate entry points and composite count
-            if (_composites.Count == 0) return false;
+            if (Entries.Count == 0) return false;
             if (_entryPoints == null) _entryPoints = new ShortGuid[3];
-            if (_entryPoints[0].val == null && _entryPoints[1].val == null && _entryPoints[2].val == null && _composites.Count == 0) return false;
+            if (_entryPoints[0].val == null && _entryPoints[1].val == null && _entryPoints[2].val == null && Entries.Count == 0) return false;
 
             #region FIX_POTENTIAL_ERRORS
             //If we have composites but the entry points are broken, correct them first!
@@ -503,49 +502,49 @@ namespace CATHODE
             if (GetComposite(_entryPoints[0]) == null)
             {
                 Console.WriteLine("WARNING: Entry point was not set! Defaulting to composite at index zero.");
-                _entryPoints[0] = _composites[0].shortGUID;
+                _entryPoints[0] = Entries[0].shortGUID;
             }
             RefreshEntryPointObjects();
 
             //Fix (& verify) entity-attached resource info
-            for (int i = 0; i < _composites.Count; i++)
+            for (int i = 0; i < Entries.Count; i++)
             {
-                for (int x = 0; x < _composites[i].functions.Count; x++)
+                for (int x = 0; x < Entries[i].functions.Count; x++)
                 {
-                    if (!CommandsUtils.FunctionTypeExists(_composites[i].functions[x].function)) continue;
-                    FunctionType type = CommandsUtils.GetFunctionType(_composites[i].functions[x].function);
+                    if (!CommandsUtils.FunctionTypeExists(Entries[i].functions[x].function)) continue;
+                    FunctionType type = CommandsUtils.GetFunctionType(Entries[i].functions[x].function);
                     switch (type)
                     {
                         // Types below require resources we can add, and information we should probably correct, so do it automatically!
                         case FunctionType.SoundBarrier:
-                            _composites[i].functions[x].AddResource(ResourceType.COLLISION_MAPPING);
+                            Entries[i].functions[x].AddResource(ResourceType.COLLISION_MAPPING);
                             break;
                         case FunctionType.ExclusiveMaster:
-                            _composites[i].functions[x].AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE);
+                            Entries[i].functions[x].AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE);
                             break;
                         case FunctionType.TRAV_1ShotSpline:
                             //TODO: There are loads of TRAV_ entities which are unused in the vanilla game, so I'm not sure if they should apply to those too...
-                            _composites[i].functions[x].AddResource(ResourceType.TRAVERSAL_SEGMENT);
+                            Entries[i].functions[x].AddResource(ResourceType.TRAVERSAL_SEGMENT);
                             break;
                         case FunctionType.NavMeshBarrier:
-                            _composites[i].functions[x].AddResource(ResourceType.NAV_MESH_BARRIER_RESOURCE);
-                            _composites[i].functions[x].AddResource(ResourceType.COLLISION_MAPPING);
+                            Entries[i].functions[x].AddResource(ResourceType.NAV_MESH_BARRIER_RESOURCE);
+                            Entries[i].functions[x].AddResource(ResourceType.COLLISION_MAPPING);
                             break;
                         case FunctionType.PhysicsSystem:
-                            Parameter dps_index = _composites[i].functions[x].GetParameter("system_index");
+                            Parameter dps_index = Entries[i].functions[x].GetParameter("system_index");
                             if (dps_index == null)
                             {
                                 dps_index = new Parameter("system_index", new cInteger(0));
-                                _composites[i].functions[x].parameters.Add(dps_index);
+                                Entries[i].functions[x].parameters.Add(dps_index);
                             }
-                            _composites[i].functions[x].AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).startIndex = ((cInteger)dps_index.content).value;
+                            Entries[i].functions[x].AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).startIndex = ((cInteger)dps_index.content).value;
                             break;
                         case FunctionType.EnvironmentModelReference:
-                            Parameter rsc = _composites[i].functions[x].GetParameter("resource");
+                            Parameter rsc = Entries[i].functions[x].GetParameter("resource");
                             if (rsc == null)
                             {
-                                rsc = new Parameter("resource", new cResource(_composites[i].functions[x].shortGUID));
-                                _composites[i].functions[x].parameters.Add(rsc);
+                                rsc = new Parameter("resource", new cResource(Entries[i].functions[x].shortGUID));
+                                Entries[i].functions[x].parameters.Add(rsc);
                             }
                             cResource rsc_p = (cResource)rsc.content;
                             rsc_p.AddResource(ResourceType.ANIMATED_MODEL);
@@ -553,11 +552,11 @@ namespace CATHODE
 
                         // Types below require various things, but we don't add them as they work without it, so just log a warning.
                         case FunctionType.ModelReference:
-                            Parameter mdl = _composites[i].functions[x].GetParameter("resource");
+                            Parameter mdl = Entries[i].functions[x].GetParameter("resource");
                             if (mdl == null)
                             {
-                                mdl = new Parameter("resource", new cResource(_composites[i].functions[x].shortGUID));
-                                _composites[i].functions[x].parameters.Add(mdl);
+                                mdl = new Parameter("resource", new cResource(Entries[i].functions[x].shortGUID));
+                                Entries[i].functions[x].parameters.Add(mdl);
                             }
                             cResource mdl_p = (cResource)mdl.content;
                             if (mdl_p.GetResource(ResourceType.RENDERABLE_INSTANCE) == null)
@@ -566,7 +565,7 @@ namespace CATHODE
                                 Console.WriteLine("WARNING: ModelReference resource parameter does not contain a COLLISION_MAPPING resource reference!");
                             break;
                         case FunctionType.CollisionBarrier:
-                            if (_composites[i].functions[x].GetResource(ResourceType.COLLISION_MAPPING) == null)
+                            if (Entries[i].functions[x].GetResource(ResourceType.COLLISION_MAPPING) == null)
                                 Console.WriteLine("WARNING: CollisionBarrier entity does not contain a COLLISION_MAPPING resource reference!");
                             break;
 
@@ -582,9 +581,9 @@ namespace CATHODE
                         case FunctionType.SimpleRefraction:           /// Global/Props/refraction.CS2 -> [Plane01]
                         case FunctionType.SimpleWater:                /// Global/Props/noninteractive_water.CS2 -> [Plane01]
                         case FunctionType.LightReference:             /// Global/Props/deferred_point_light.cs2 -> [Sphere01],  Global/Props/deferred_spot_light.cs2 -> [Sphere02], Global/Props/deferred_strip_light.cs2 -> [Sphere01]
-                            if (_composites[i].functions[x].GetResource(ResourceType.RENDERABLE_INSTANCE) == null)
+                            if (Entries[i].functions[x].GetResource(ResourceType.RENDERABLE_INSTANCE) == null)
                                 Console.WriteLine("ERROR: " + type + " entity does not contain a RENDERABLE_INSTANCE resource reference!");
-                            if (_composites[i].functions[x].GetParameter("resource") != null)
+                            if (Entries[i].functions[x].GetParameter("resource") != null)
                                 throw new Exception("Function entity of type " + type + " had an invalid resource parameter applied!");
                             break;
                     }
@@ -592,7 +591,7 @@ namespace CATHODE
             }
 
             //Make sure our composites are in ID order
-            _composites = _composites.OrderBy(o => o.shortGUID.ToUInt32()).ToList();
+            Entries = Entries.OrderBy(o => o.shortGUID.ToUInt32()).ToList();
             #endregion
 
             #region WORK_OUT_WHAT_TO_WRITE
@@ -603,47 +602,47 @@ namespace CATHODE
 
             //Work out data to write
             List<ParameterData> parameters = new List<ParameterData>();
-            List<Entity>[] linkedEntities = new List<Entity>[_composites.Count];
-            List<Entity>[] parameterisedEntities = new List<Entity>[_composites.Count];
-            List<OverrideEntity>[] reshuffledChecksums = new List<OverrideEntity>[_composites.Count];
-            List<ResourceReference>[] resourceReferences = new List<ResourceReference>[_composites.Count];
-            List<CAGEAnimation>[] cageAnimationEntities = new List<CAGEAnimation>[_composites.Count];
-            List<TriggerSequence>[] triggerSequenceEntities = new List<TriggerSequence>[_composites.Count];
-            for (int i = 0; i < _composites.Count; i++)
+            List<Entity>[] linkedEntities = new List<Entity>[Entries.Count];
+            List<Entity>[] parameterisedEntities = new List<Entity>[Entries.Count];
+            List<OverrideEntity>[] reshuffledChecksums = new List<OverrideEntity>[Entries.Count];
+            List<ResourceReference>[] resourceReferences = new List<ResourceReference>[Entries.Count];
+            List<CAGEAnimation>[] cageAnimationEntities = new List<CAGEAnimation>[Entries.Count];
+            List<TriggerSequence>[] triggerSequenceEntities = new List<TriggerSequence>[Entries.Count];
+            for (int i = 0; i < Entries.Count; i++)
             {
-                List<Entity> ents = _composites[i].GetEntities();
+                List<Entity> ents = Entries[i].GetEntities();
                 for (int x = 0; x < ents.Count; x++)
                     for (int y = 0; y < ents[x].parameters.Count; y++)
                         parameters.Add(ents[x].parameters[y].content);
 
                 linkedEntities[i] = new List<Entity>(ents.FindAll(o => o.childLinks.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
                 parameterisedEntities[i] = new List<Entity>(ents.FindAll(o => o.parameters.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
-                reshuffledChecksums[i] = _composites[i].overrides.OrderBy(o => o.checksum.ToUInt32()).ToList();
+                reshuffledChecksums[i] = Entries[i].overrides.OrderBy(o => o.checksum.ToUInt32()).ToList();
 
                 cageAnimationEntities[i] = new List<CAGEAnimation>();
                 triggerSequenceEntities[i] = new List<TriggerSequence>();
                 resourceReferences[i] = new List<ResourceReference>();
-                for (int x = 0; x < _composites[i].functions.Count; x++)
+                for (int x = 0; x < Entries[i].functions.Count; x++)
                 {
                     //If this function is a valid CAGEAnimation or TriggerSequence, remember it
-                    if (_composites[i].functions[x].function == SHORTGUID_CAGEAnimation)
+                    if (Entries[i].functions[x].function == SHORTGUID_CAGEAnimation)
                     {
-                        CAGEAnimation thisEntity = (CAGEAnimation)_composites[i].functions[x];
+                        CAGEAnimation thisEntity = (CAGEAnimation)Entries[i].functions[x];
                         if (thisEntity.keyframeHeaders.Count == 0 && thisEntity.keyframeData.Count == 0 && thisEntity.keyframeData2.Count == 0) continue;
                         cageAnimationEntities[i].Add(thisEntity);
                     }
-                    else if (_composites[i].functions[x].function == SHORTGUID_TriggerSequence)
+                    else if (Entries[i].functions[x].function == SHORTGUID_TriggerSequence)
                     {
-                        TriggerSequence thisEntity = (TriggerSequence)_composites[i].functions[x];
+                        TriggerSequence thisEntity = (TriggerSequence)Entries[i].functions[x];
                         if (thisEntity.triggers.Count == 0 && thisEntity.events.Count == 0) continue;
                         triggerSequenceEntities[i].Add(thisEntity);
                     }
 
                     //Get resources on this function
-                    resourceReferences[i].AddRange(_composites[i].functions[x].resources);
+                    resourceReferences[i].AddRange(Entries[i].functions[x].resources);
 
                     //If the function contains a resource parameter, grab those too
-                    Parameter param = _composites[i].functions[x].GetParameter(SHORTGUID_resource);
+                    Parameter param = Entries[i].functions[x].GetParameter(SHORTGUID_resource);
                     if (param == null) continue;
                     resourceReferences[i].AddRange(((cResource)param.content).value);
                 }
@@ -757,13 +756,13 @@ namespace CATHODE
 
                 #region WRITE_COMPOSITES
                 //Write out composites in order of their IDs & track offsets
-                int[] compositeOffsets = new int[_composites.Count];
-                for (int i = 0; i < _composites.Count; i++)
+                int[] compositeOffsets = new int[Entries.Count];
+                for (int i = 0; i < Entries.Count; i++)
                 {
                     int scriptStartPos = (int)writer.BaseStream.Position / 4;
 
-                    Utilities.Write<ShortGuid>(writer, ShortGuidUtils.Generate(_composites[i].name));
-                    for (int x = 0; x < _composites[i].name.Length; x++) writer.Write(_composites[i].name[x]);
+                    Utilities.Write<ShortGuid>(writer, ShortGuidUtils.Generate(Entries[i].name));
+                    for (int x = 0; x < Entries[i].name.Length; x++) writer.Write(Entries[i].name[x]);
                     writer.Write((char)0x00);
                     Utilities.Align(writer, 4);
 
@@ -776,7 +775,7 @@ namespace CATHODE
                             case CompositeFileData.COMPOSITE_HEADER:
                                 {
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, 2);
-                                    Utilities.Write<ShortGuid>(writer, _composites[i].shortGUID);
+                                    Utilities.Write<ShortGuid>(writer, Entries[i].shortGUID);
                                     writer.Write(0);
                                     break;
                                 }
@@ -824,17 +823,17 @@ namespace CATHODE
                                 }
                             case CompositeFileData.ENTITY_OVERRIDES:
                                 {
-                                    List<OffsetPair> offsetPairs = new List<OffsetPair>(_composites[i].overrides.Count);
-                                    for (int p = 0; p < _composites[i].overrides.Count; p++)
+                                    List<OffsetPair> offsetPairs = new List<OffsetPair>(Entries[i].overrides.Count);
+                                    for (int p = 0; p < Entries[i].overrides.Count; p++)
                                     {
-                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, _composites[i].overrides[p].hierarchy.Count));
-                                        Utilities.Write<ShortGuid>(writer, _composites[i].overrides[p].hierarchy);
+                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, Entries[i].overrides[p].hierarchy.Count));
+                                        Utilities.Write<ShortGuid>(writer, Entries[i].overrides[p].hierarchy);
                                     }
 
-                                    scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _composites[i].overrides.Count);
-                                    for (int p = 0; p < _composites[i].overrides.Count; p++)
+                                    scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, Entries[i].overrides.Count);
+                                    for (int p = 0; p < Entries[i].overrides.Count; p++)
                                     {
-                                        writer.Write(_composites[i].overrides[p].shortGUID.val);
+                                        writer.Write(Entries[i].overrides[p].shortGUID.val);
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
                                     }
@@ -852,42 +851,42 @@ namespace CATHODE
                                 }
                             case CompositeFileData.COMPOSITE_EXPOSED_PARAMETERS:
                                 {
-                                    scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _composites[i].variables.Count);
-                                    for (int p = 0; p < _composites[i].variables.Count; p++)
+                                    scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, Entries[i].variables.Count);
+                                    for (int p = 0; p < Entries[i].variables.Count; p++)
                                     {
-                                        writer.Write(_composites[i].variables[p].shortGUID.val);
-                                        writer.Write(CommandsUtils.GetDataTypeGUID(_composites[i].variables[p].type).val);
-                                        writer.Write(_composites[i].variables[p].name.val);
+                                        writer.Write(Entries[i].variables[p].shortGUID.val);
+                                        writer.Write(CommandsUtils.GetDataTypeGUID(Entries[i].variables[p].type).val);
+                                        writer.Write(Entries[i].variables[p].name.val);
                                     }
                                     break;
                                 }
                             case CompositeFileData.ENTITY_PROXIES:
                                 {
                                     List<OffsetPair> offsetPairs = new List<OffsetPair>();
-                                    for (int p = 0; p < _composites[i].proxies.Count; p++)
+                                    for (int p = 0; p < Entries[i].proxies.Count; p++)
                                     {
-                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, _composites[i].proxies[p].hierarchy.Count));
-                                        Utilities.Write<ShortGuid>(writer, _composites[i].proxies[p].hierarchy);
+                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, Entries[i].proxies[p].hierarchy.Count));
+                                        Utilities.Write<ShortGuid>(writer, Entries[i].proxies[p].hierarchy);
                                     }
 
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, offsetPairs.Count);
-                                    for (int p = 0; p < _composites[i].proxies.Count; p++)
+                                    for (int p = 0; p < Entries[i].proxies.Count; p++)
                                     {
-                                        writer.Write(_composites[i].proxies[p].shortGUID.val);
+                                        writer.Write(Entries[i].proxies[p].shortGUID.val);
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
-                                        writer.Write(_composites[i].proxies[p].shortGUID.val);
-                                        writer.Write(_composites[i].proxies[p].extraId.val);
+                                        writer.Write(Entries[i].proxies[p].shortGUID.val);
+                                        writer.Write(Entries[i].proxies[p].extraId.val);
                                     }
                                     break;
                                 }
                             case CompositeFileData.ENTITY_FUNCTIONS:
                                 {
-                                    scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, _composites[i].functions.Count);
-                                    for (int p = 0; p < _composites[i].functions.Count; p++)
+                                    scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, Entries[i].functions.Count);
+                                    for (int p = 0; p < Entries[i].functions.Count; p++)
                                     {
-                                        writer.Write(_composites[i].functions[p].shortGUID.val);
-                                        writer.Write(_composites[i].functions[p].function.val);
+                                        writer.Write(Entries[i].functions[p].shortGUID.val);
+                                        writer.Write(Entries[i].functions[p].function.val);
                                     }
                                     break;
                                 }
@@ -1100,12 +1099,12 @@ namespace CATHODE
                         }
                         writer.Write(scriptPointerOffsetInfo[x].GlobalOffset / 4);
                         writer.Write(scriptPointerOffsetInfo[x].EntryCount);
-                        if (x == 0) Utilities.Write<ShortGuid>(writer, _composites[i].shortGUID);
+                        if (x == 0) Utilities.Write<ShortGuid>(writer, Entries[i].shortGUID);
                     }
 
                     //Write function count (TODO: sometimes this count excludes some entities in the vanilla paks - why?)
-                    writer.Write(_composites[i].functions.FindAll(o => CommandsUtils.FunctionTypeExists(o.function)).Count);
-                    writer.Write(_composites[i].functions.Count);
+                    writer.Write(Entries[i].functions.FindAll(o => CommandsUtils.FunctionTypeExists(o.function)).Count);
+                    writer.Write(Entries[i].functions.Count);
                 }
                 #endregion
 
@@ -1122,7 +1121,7 @@ namespace CATHODE
                 writer.Write(parameterOffsetPos / 4);
                 writer.Write(parameters.Count);
                 writer.Write(compositeOffsetPos / 4);
-                writer.Write(_composites.Count);
+                writer.Write(Entries.Count);
             }
             return true;
         }
@@ -1133,7 +1132,7 @@ namespace CATHODE
         public Composite AddComposite(string name, bool isRoot = false)
         {
             Composite comp = new Composite(name);
-            _composites.Add(comp);
+            Entries.Add(comp);
             if (isRoot) SetRootComposite(comp);
             return comp;
         }
@@ -1141,20 +1140,20 @@ namespace CATHODE
         /* Return a list of filenames for composites in the CommandsPAK archive */
         public string[] GetCompositeNames()
         {
-            string[] toReturn = new string[_composites.Count];
-            for (int i = 0; i < _composites.Count; i++) toReturn[i] = _composites[i].name;
+            string[] toReturn = new string[Entries.Count];
+            for (int i = 0; i < Entries.Count; i++) toReturn[i] = Entries[i].name;
             return toReturn;
         }
 
         /* Get an individual composite */
         public Composite GetComposite(string name)
         {
-            return _composites.FirstOrDefault(o => o.name == name || o.name == name.Replace('/', '\\'));
+            return Entries.FirstOrDefault(o => o.name == name || o.name == name.Replace('/', '\\'));
         }
         public Composite GetComposite(ShortGuid id)
         {
             if (id.val == null) return null;
-            return _composites.FirstOrDefault(o => o.shortGUID == id);
+            return Entries.FirstOrDefault(o => o.shortGUID == id);
         }
 
         /* Get entry point composite objects */

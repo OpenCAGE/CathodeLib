@@ -9,11 +9,11 @@ namespace CATHODE
     /* Handles Cathode MATERIAL_MAPPINGS.PAK files */
     public class MaterialMappings : CathodeFile
     {
-        public List<Entry> Entries = new List<Entry>();
+        public List<Mapping> Entries = new List<Mapping>();
+        public static new Impl Implementation = Impl.LOAD | Impl.SAVE;
+        public MaterialMappings(string path) : base(path) { }
         
         private byte[] _headerJunk = new byte[8];
-
-        public MaterialMappings(string path) : base(path) { }
 
         #region FILE_IO
         override protected bool LoadInternal()
@@ -28,7 +28,7 @@ namespace CATHODE
                 for (int x = 0; x < entryCount; x++)
                 {
                     //This entry
-                    Entry entry = new Entry();
+                    Mapping entry = new Mapping();
                     entry.MapHeader = reader.ReadBytes(4); //TODO: Work out the significance of this value, to be able to construct new PAKs from scratch.
                     entry.MapEntryCoupleCount = reader.ReadInt32();
                     entry.MapJunk = reader.ReadBytes(4); //TODO: Work out if this is always null.
@@ -65,7 +65,7 @@ namespace CATHODE
                 writer.BaseStream.SetLength(0);
                 writer.Write(_headerJunk);
                 writer.Write(Entries.Count);
-                foreach (Entry entry in Entries)
+                foreach (Mapping entry in Entries)
                 {
                     writer.Write(entry.MapHeader);
                     writer.Write(entry.MapEntryCoupleCount);
@@ -84,7 +84,7 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class Entry
+        public class Mapping
         {
             public byte[] MapHeader = new byte[4];
             public byte[] MapJunk = new byte[4]; //I think this is always null

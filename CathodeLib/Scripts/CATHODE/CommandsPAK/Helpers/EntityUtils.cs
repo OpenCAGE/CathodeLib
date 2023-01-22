@@ -119,7 +119,7 @@ namespace CATHODE.Scripting
             if (!CommandsUtils.FunctionTypeExists(newEntity.function))
             {
                 if (_commands == null) return;
-                Composite comp = _commands.Composites.FirstOrDefault(o => o.shortGUID == newEntity.function);
+                Composite comp = _commands.Entries.FirstOrDefault(o => o.shortGUID == newEntity.function);
                 if (comp == null) return;
                 for (int i = 0; i < comp.variables.Count; i++)
                 { 

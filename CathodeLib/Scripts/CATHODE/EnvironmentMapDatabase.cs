@@ -8,14 +8,13 @@ namespace CATHODE
     /* Loads and/or creates Cathode ENVIRONMENTMAP.BIN files */
     public class EnvironmentMapDatabase : CathodeFile
     {
-        private int _unknownValue = 12;
-
-        private List<EnvironmentMapEntry> Entries = new List<EnvironmentMapEntry>();
-
+        public List<Mapping> Entries = new List<Mapping>();
+        public static new Impl Implementation = Impl.LOAD | Impl.SAVE;
         public EnvironmentMapDatabase(string path) : base(path) { }
 
+        private int _unknownValue = 12; //TODO: need to figure out what this val is to be able to create file from scratch
+
         #region FILE_IO
-        /* Load the file */
         override protected bool LoadInternal()
         {
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
@@ -25,9 +24,9 @@ namespace CATHODE
                 _unknownValue = reader.ReadInt32();
                 for (int i = 0; i < entryCount; i++)
                 {
-                    EnvironmentMapEntry entry = new EnvironmentMapEntry();
-                    entry.envMapIndex = reader.ReadInt32();
-                    entry.mvrIndex = reader.ReadInt32();
+                    Mapping entry = new Mapping();
+                    entry.EnvMapIndex = reader.ReadInt32();
+                    entry.MoverIndex = reader.ReadInt32();
                     Entries.Add(entry);
                 }
             }
@@ -45,8 +44,8 @@ namespace CATHODE
                 writer.Write(_unknownValue); //TODO: what is this value? need to know for making new files.
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    writer.Write(Entries[i].envMapIndex);
-                    writer.Write(Entries[i].mvrIndex);
+                    writer.Write(Entries[i].EnvMapIndex);
+                    writer.Write(Entries[i].MoverIndex);
                 }
             }
             return true;
@@ -54,19 +53,10 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class EnvironmentMapEntry
+        public class Mapping
         {
-            public int envMapIndex;
-            public int mvrIndex; //huh?
-        };
-
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct EnvironmentMapHeader
-        {
-            public fourcc FourCC;
-            public uint Unknown0_;
-            public int EntryCount;
-            public uint Unknown1_;
+            public int EnvMapIndex; //Index of the environment map
+            public int MoverIndex; //Index of the mover in the MODELS.MVR file to apply the env map to
         };
         #endregion
     }

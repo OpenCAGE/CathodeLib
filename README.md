@@ -17,9 +17,11 @@ All parsers inherit from a base `CathodeFile` class which provides:
  - A `Save` function, which will save the file out if the parser has the `SAVE` flag. This function can optionally be given a new filepath to save the file to. Returns false if saving fails.
  - Events for `OnLoadBegin`, `OnLoadSuccess`, `OnSaveBegin`, `OnSaveSuccess` which fire at load/save start and successful completion respectively, with the appropriate filepath as an arg.
 
-In debug mode the parsers will all fail hard, however in release mode all load/save calls are wrapped in try/catch statements.
+Most parsers provide access to the file's content via an `Entries` parameter, however this can vary per implementation. 
 
-**Available parsers currently in CathodeLib include...**
+Note: in debug mode the parsers will all fail hard, however in release mode all load/save calls are wrapped in try/catch statements.
+
+**Parsers currently available in CathodeLib...**
 
 ## For scripting:
 - `CATHODE.Commands` handles `COMMANDS.PAK` files

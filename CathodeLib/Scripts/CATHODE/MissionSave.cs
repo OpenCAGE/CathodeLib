@@ -9,9 +9,10 @@ namespace CATHODE.EXPERIMENTAL
     /* Handles Cathode PROGRESSION.AIS files - heavily WIP */
     public class MissionSave : CathodeFile
     {
-        private Header _header;
         public static new Impl Implementation = Impl.NONE;
         public MissionSave(string path) : base(path) { }
+
+        private Header _header;
 
         // From the iOS decomp: the saves work with a "leaf and node" system, where you have
         // "node" names saved with their connected "leafs" which acts like a "system" and

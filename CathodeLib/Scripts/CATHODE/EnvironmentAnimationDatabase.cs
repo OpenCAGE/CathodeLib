@@ -14,13 +14,11 @@ namespace CATHODE
     /* Handles Cathode ENVIRONMENT_ANIMATION.DAT files */
     public class EnvironmentAnimationDatabase : CathodeFile
     {
-        private List<EnvironmentAnimation> _animations = new List<EnvironmentAnimation>();
-        public List<EnvironmentAnimation> Animations { get { return _animations; } }
-
+        public List<EnvironmentAnimation> Entries = new List<EnvironmentAnimation>();
+        public static new Impl Implementation = Impl.LOAD;
         public EnvironmentAnimationDatabase(string path) : base(path) { }
 
         #region FILE_IO
-        /* Load the file */
         override protected bool LoadInternal()
         {
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
@@ -64,7 +62,7 @@ namespace CATHODE
                     anim.Data0 = PopulateArray<EnvironmentAnimationInfo>(reader, Entries1);
 
                     reader.BaseStream.Position += 4; //TODO: i think this might be a flag - it's usually zero but has been 1 on hab_airport
-                    _animations.Add(anim);
+                    Entries.Add(anim);
                 }
             }
             return true;

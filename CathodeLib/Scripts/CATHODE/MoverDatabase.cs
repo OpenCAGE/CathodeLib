@@ -15,7 +15,7 @@ namespace CATHODE
     /* Handles Cathode MODELS.MVR files */
     public class MoverDatabase : CathodeFile
     {
-        public List<MOVER_DESCRIPTOR> Movers = new List<MOVER_DESCRIPTOR>();
+        public List<MOVER_DESCRIPTOR> Entries = new List<MOVER_DESCRIPTOR>();
         public static new Impl Implementation = Impl.LOAD | Impl.SAVE;
         public MoverDatabase(string path) : base(path) { }
 
@@ -35,15 +35,15 @@ namespace CATHODE
                 reader.BaseStream.Position += 4;
                 _entrySize = reader.ReadInt32();
                 reader.BaseStream.Position += 12;
-                Movers = new List<MOVER_DESCRIPTOR>(Utilities.ConsumeArray<MOVER_DESCRIPTOR>(reader, _entryCount));
+                Entries = new List<MOVER_DESCRIPTOR>(Utilities.ConsumeArray<MOVER_DESCRIPTOR>(reader, _entryCount));
             }
             return true;
         }
 
         override protected bool SaveInternal()
         {
-            _fileSize = (Movers.Count * _entrySize) + 32;
-            _entryCount = Movers.Count;
+            _fileSize = (Entries.Count * _entrySize) + 32;
+            _entryCount = Entries.Count;
             _entryCountUnk = 0;
 
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
@@ -55,7 +55,7 @@ namespace CATHODE
                 writer.Write(0);
                 writer.Write(_entrySize);
                 writer.Write(0); writer.Write(0); writer.Write(0);
-                Utilities.Write<MOVER_DESCRIPTOR>(writer, Movers);
+                Utilities.Write<MOVER_DESCRIPTOR>(writer, Entries);
             }
             return true;
         }
