@@ -10,6 +10,8 @@ namespace CathodeLib
     /* A helper class that holds all parse-able formats for a level, and saves them safely to update indexes across all */
     public class Level
     {
+        public Textures GlobalTextures;
+
         public Models Models;
         public Textures Textures;
         public Materials Materials;
@@ -25,11 +27,21 @@ namespace CathodeLib
         public MaterialMappings MaterialMappings;
         public PathBarrierResources PathBarrierResources;
 
+        public class State
+        {
+            public int Index;
+            public NavigationMesh NavMesh;
+        }
         public List<State> StateResources = new List<State>();
 
         /* Load a level in the game's "ENV/PRODUCTION" folder */
         public Level(string path)
         {
+            /* GLOBAL */
+            string pathGlobal = path.Split(new string[] { "PRODUCTION" }, StringSplitOptions.None)[0] + "GLOBAL/WORLD";
+            GlobalTextures = new Textures(pathGlobal + "/GLOBAL_TEXTURES.ALL.PAK");
+            //TODO: We don't load GLOBAL_MODELS since it just contains vertex buffers. We should load this to learn about all the vertex formats tho!
+
             /* RENDERABLE */
             Models = new Models(path + "/RENDERABLE/LEVEL_MODELS.PAK"); //TODO: parse CST data here too?
             Textures = new Textures(path + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK");
@@ -40,15 +52,15 @@ namespace CathodeLib
             //  - SHADERS
 
             /* WORLD */
-            Movers = new Movers(path + "/WORLD/MODELS.MVR");
-            Commands = new Commands(path + "/WORLD/COMMANDS.PAK");
-            Resources = new Resources(path + "/WORLD/RESOURCES.BIN");
-            PhysicsMaps = new PhysicsMaps(path + "/WORLD/PHYSICS.MAP");
-            EnvironmentMaps = new EnvironmentMaps(path + "/WORLD/ENVIRONMENTMAP.BIN");
-            CollisionMaps = new CollisionMaps(path + "/WORLD/COLLISION.MAP");
-            EnvironmentAnimations = new EnvironmentAnimations(path + "/WORLD/ENVIRONMENT_ANIMATION.DAT");
-            MaterialMappings = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK");
-            PathBarrierResources = new PathBarrierResources(path + "/WORLD/PATH_BARRIER_RESOURCES");
+            //Movers = new Movers(path + "/WORLD/MODELS.MVR");
+            //Commands = new Commands(path + "/WORLD/COMMANDS.PAK");
+            //Resources = new Resources(path + "/WORLD/RESOURCES.BIN");
+            //PhysicsMaps = new PhysicsMaps(path + "/WORLD/PHYSICS.MAP");
+            //EnvironmentMaps = new EnvironmentMaps(path + "/WORLD/ENVIRONMENTMAP.BIN");
+            //CollisionMaps = new CollisionMaps(path + "/WORLD/COLLISION.MAP");
+            //EnvironmentAnimations = new EnvironmentAnimations(path + "/WORLD/ENVIRONMENT_ANIMATION.DAT");
+            //MaterialMappings = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK");
+            //PathBarrierResources = new PathBarrierResources(path + "/WORLD/PATH_BARRIER_RESOURCES");
 
             // WORLD TODO: 
             //  - COLLISION.BIN
@@ -79,35 +91,93 @@ namespace CathodeLib
             }
         }
 
-        /* Save all modifications to the level */
+        /* Save all modifications to the level - this currently assumes we aren't editing GLOBAL data */
         public void Save()
         {
-            //Get the REDS database as actual objects
-            List<Models.CS2.Submesh> redsModelRefs = new List<Models.CS2.Submesh>();
+            //Get REDS links as actual objects
+            List<Models.CS2.Submesh> redsModels = new List<Models.CS2.Submesh>();
+            List<Materials.Material> redsMaterials = new List<Materials.Material>();
             for (int i = 0; i < RenderableElements.Entries.Count; i++)
             {
-                //TODO: we should probs store reds.Entries[i].ModelLODIndex here too, but it goes outside the bounds of our BIN array!?!
-                redsModelRefs.Add(Models.GetSubmeshForWriteIndex(RenderableElements.Entries[i].ModelIndex));
+                redsModels.Add(Models.GetAtWriteIndex(RenderableElements.Entries[i].ModelIndex));
+                redsMaterials.Add(Materials.GetAtWriteIndex(RenderableElements.Entries[i].MaterialIndex));
             }
 
-            //Save the files back out 
-            Models.Save();
+            //Get model links as actual objects
+            List<Materials.Material> modelMaterials = new List<Materials.Material>();
+            for (int i = 0; i < Models.Entries.Count; i++)
+            {
+                for (int x = 0; x < Models.Entries[i].Submeshes.Count; x++)
+                {
+                    modelMaterials.Add(Materials.GetAtWriteIndex(Models.Entries[i].Submeshes[x].MaterialLibraryIndex));
+                }
+            }
 
-            //Update the REDS database with our newly written indexes
+            //Get material links as actual objects
+            List<Textures.TEX4> materialTextures = new List<Textures.TEX4>();
+            for (int i = 0; i < Materials.Entries.Count; i++)
+            {
+                for (int x = 0; x < Materials.Entries[i].TextureReferences.Count; x++)
+                {
+                    switch (Materials.Entries[i].TextureReferences[x].Source)
+                    {
+                        case Materials.Material.Texture.TextureSource.LEVEL:
+                            materialTextures.Add(Textures.GetAtWriteIndex(Materials.Entries[i].TextureReferences[x].BinIndex));
+                            break;
+                        case Materials.Material.Texture.TextureSource.GLOBAL:
+                            materialTextures.Add(GlobalTextures.GetAtWriteIndex(Materials.Entries[i].TextureReferences[x].BinIndex));
+                            break;
+                    }
+                }
+            }
+
+            //Save the asset files out to link back to
+            Models.Save();
+            Materials.Save();
+
+            //Update the REDS links
             for (int i = 0; i < RenderableElements.Entries.Count; i++)
             {
                 if (RenderableElements.Entries[i].ModelIndex != -1)
-                    RenderableElements.Entries[i].ModelIndex = Models.GetWriteIndexForSubmesh(redsModelRefs[i]);
-                //AllRenderableElements.Entries[i].ModelLODIndex = -1;    <- TODO: Can't do this else the game crashes :D
+                    RenderableElements.Entries[i].ModelIndex = Models.GetWriteIndex(redsModels[i]);
+                RenderableElements.Entries[i].ModelLODIndex = -1;
+                RenderableElements.Entries[i].ModelLODPrimitiveCount = 0;
+                if (RenderableElements.Entries[i].MaterialIndex != -1)
+                    RenderableElements.Entries[i].MaterialIndex = Materials.GetWriteIndex(redsMaterials[i]);
             }
             RenderableElements.Save();
-        }
 
-        public class State
-        {
-            public int Index;
+            //Update the model links
+            int y = 0;
+            for (int i = 0; i < Models.Entries.Count; i++)
+            {
+                for (int x = 0; x < Models.Entries[i].Submeshes.Count; x++)
+                {
+                    Models.Entries[i].Submeshes[x].MaterialLibraryIndex = Materials.GetWriteIndex(modelMaterials[y]);
+                    y++;
+                }
+            }
+            Models.Save();
 
-            public NavigationMesh NavMesh;
+            //Update the material links
+            y = 0;
+            for (int i = 0; i < Materials.Entries.Count; i++)
+            {
+                for (int x = 0; x < Materials.Entries[i].TextureReferences.Count; x++)
+                {
+                    switch (Materials.Entries[i].TextureReferences[x].Source)
+                    {
+                        case Materials.Material.Texture.TextureSource.LEVEL:
+                            Materials.Entries[i].TextureReferences[x].BinIndex = Textures.GetWriteIndex(materialTextures[y]);
+                            break;
+                        case Materials.Material.Texture.TextureSource.GLOBAL:
+                            Materials.Entries[i].TextureReferences[x].BinIndex = GlobalTextures.GetWriteIndex(materialTextures[y]);
+                            break;
+                    }
+                    y++;
+                }
+            }
+            Materials.Save();
         }
     }
 }

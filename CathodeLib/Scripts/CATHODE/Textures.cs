@@ -15,6 +15,7 @@ namespace CATHODE
         public static new Impl Implementation = Impl.CREATE | Impl.LOAD | Impl.SAVE;
         public Textures(string path) : base(path) { }
 
+        public List<TEX4> _writeList = new List<TEX4>();
         private string _filepathBIN;
 
         #region FILE_IO
@@ -68,6 +69,7 @@ namespace CATHODE
                     bin.BaseStream.Position += 2; //Always 2048
                     bin.BaseStream.Position += 4; //Skip filename offset value
                     bin.BaseStream.Position += 4; //Skip unused
+                    _writeList.Add(Entries[i]);
                 }
             }
 
@@ -120,6 +122,7 @@ namespace CATHODE
         override protected bool SaveInternal()
         {
             //Write BIN file
+            _writeList.Clear();
             using (BinaryWriter bin = new BinaryWriter(File.OpenWrite(_filepathBIN)))
             {
                 bin.BaseStream.SetLength(0);
@@ -153,6 +156,7 @@ namespace CATHODE
                     bin.Write((Int32)filenameOffsets[i]);
                     bin.Write(new byte[4]);
                     entryCount++;
+                    _writeList.Add(Entries[i]);
                 }
                 bin.BaseStream.Position = 0;
                 bin.Write((int)FileIdentifiers.TEXTURE_DATA);
@@ -231,6 +235,22 @@ namespace CATHODE
                 pak.Write(BigEndianUtils.FlipEndian(writeCount));
             }
             return true;
+        }
+        #endregion
+
+        #region HELPERS
+        /* Get the current index for a texture (useful for cross-ref'ing with compiled binaries)
+         * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
+        public int GetWriteIndex(TEX4 texture)
+        {
+            return _writeList.IndexOf(texture);
+        }
+
+        /* Get a texture by its current index (useful for cross-ref'ing with compiled binaries)
+         * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
+        public TEX4 GetAtWriteIndex(int index)
+        {
+            return _writeList[index];
         }
         #endregion
 

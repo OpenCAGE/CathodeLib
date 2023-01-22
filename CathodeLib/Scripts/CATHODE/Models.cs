@@ -332,13 +332,13 @@ namespace CATHODE
                 {
                     offsets.Add((int)pak.BaseStream.Position - contentOffset);
 
-                    pak.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndexForSubmesh(Entries[i].Submeshes[0])));
+                    pak.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndex(Entries[i].Submeshes[0])));
                     pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].Submeshes.Count)); 
                     pak.Write(new byte[16]);
                     List<byte> content = new List<byte>();
                     for (int x = 0; x < Entries[i].Submeshes.Count; x++)
                     {
-                        pak.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndexForSubmesh(Entries[i].Submeshes[x])));
+                        pak.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndex(Entries[i].Submeshes[x])));
                         pak.Write(BigEndianUtils.FlipEndian((Int32)(24 + (Entries[i].Submeshes.Count * 16) + content.Count + 8)));
                         pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].Submeshes[x].content.Length));
                         pak.Write(new byte[4]);
@@ -364,7 +364,7 @@ namespace CATHODE
                     pak.Write(new byte[1]);
 
                     pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].UnkLv426Pt1));
-                    pak.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndexForSubmesh(Entries[i].Submeshes[0])));
+                    pak.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndex(Entries[i].Submeshes[0])));
                     pak.Write(new byte[8]);
                     pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].UnkLv426Pt2));
                 }
@@ -647,14 +647,14 @@ namespace CATHODE
 
         /* Get the current BIN index for a submesh (useful for cross-ref'ing with compiled binaries)
          * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
-        public int GetWriteIndexForSubmesh(CS2.Submesh submesh)
+        public int GetWriteIndex(CS2.Submesh submesh)
         {
             return _writeList.IndexOf(submesh);
         }
 
         /* Get a submesh by its current BIN index (useful for cross-ref'ing with compiled binaries)
          * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
-        public CS2.Submesh GetSubmeshForWriteIndex(int index)
+        public CS2.Submesh GetAtWriteIndex(int index)
         {
             return _writeList[index];
         }

@@ -23,7 +23,7 @@ namespace CATHODE
                     reader.BaseStream.Position += 4;
                     element.ModelIndex = reader.ReadInt32();
                     reader.BaseStream.Position += 5;
-                    element.MaterialLibraryIndex = reader.ReadInt32();
+                    element.MaterialIndex = reader.ReadInt32();
                     reader.BaseStream.Position += 1;
                     element.ModelLODIndex = reader.ReadInt32();
                     element.ModelLODPrimitiveCount = reader.ReadByte(); //TODO: convert to int for ease of use?
@@ -44,7 +44,7 @@ namespace CATHODE
                     writer.Write(new byte[] { 0x00, 0x00, 0x00, 0x00 });
                     writer.Write(Entries[i].ModelIndex);
                     writer.Write(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00 });
-                    writer.Write(Entries[i].MaterialLibraryIndex);
+                    writer.Write(Entries[i].MaterialIndex);
                     writer.Write((byte)0x00);
                     writer.Write(Entries[i].ModelLODIndex);
                     writer.Write((byte)Entries[i].ModelLODPrimitiveCount);
@@ -58,7 +58,7 @@ namespace CATHODE
         public class Element
         {
             public int ModelIndex;
-            public int MaterialLibraryIndex;
+            public int MaterialIndex;
 
             public int ModelLODIndex = -1; // NOTE: Not sure, looks like it.
             public byte ModelLODPrimitiveCount = 0; // NOTE: Sure it is primitive count, not sure about the ModelLOD part.

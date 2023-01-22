@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using CathodeLib;
+using static CATHODE.Models;
 
 namespace CATHODE
 {
@@ -15,6 +16,8 @@ namespace CATHODE
 
         private List<byte[]> _cstData = new List<byte[]>(); 
         private int[] _unknownOffsets;
+
+        private List<Material> _writeList = new List<Material>();
 
         private string _filepathCST;
 
@@ -81,6 +84,7 @@ namespace CATHODE
                     material.UnknownValue2 = reader.ReadInt32();
                     reader.BaseStream.Position += 8;
                     Entries.Add(material);
+                    _writeList.Add(material);
                 }
             }
             return true;
@@ -97,6 +101,7 @@ namespace CATHODE
                     writerCST.Write(_cstData[i]);
             }
 
+            _writeList.Clear();
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
@@ -164,6 +169,8 @@ namespace CATHODE
                     writer.Write(Entries[i].Color);
                     writer.Write(Entries[i].UnknownValue2);
                     writer.Write(new byte[8]);
+
+                    _writeList.Add(Entries[i]);
                 }
 
                 //Correct placeholders
@@ -173,6 +180,22 @@ namespace CATHODE
                 writer.Write(materialOffset - 4);
             }
             return true;
+        }
+        #endregion
+
+        #region HELPERS
+        /* Get the current index for a material (useful for cross-ref'ing with compiled binaries)
+         * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
+        public int GetWriteIndex(Material material)
+        {
+            return _writeList.IndexOf(material);
+        }
+
+        /* Get a material by its current index (useful for cross-ref'ing with compiled binaries)
+         * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
+        public Material GetAtWriteIndex(int index)
+        {
+            return _writeList[index];
         }
         #endregion
 
@@ -192,6 +215,11 @@ namespace CATHODE
             public int Unknown4_;
             public int Color; // TODO: This is not really color AFAIK.
             public int UnknownValue2;
+
+            public override string ToString()
+            {
+                return "[" + Color + "] " + Name;
+            }
 
             public class ConstantBuffer
             {
@@ -213,7 +241,7 @@ namespace CATHODE
                     LEVEL,  //Texture comes from the level (in ENV/PRODUCTION)
                 }
             };
-        };
+        }        
         #endregion
     }
 }
