@@ -55,20 +55,19 @@ namespace CATHODE
                     }
                     bin.BaseStream.Position = startPos;
 
-                    AlienVBF VertexInput = new AlienVBF();
-                    //TODO: pull this in better
-                    /*for (int i = 0; i < count; i++)
+                    AlienVBF vertexFormat = new AlienVBF();
+                    for (int i = 0; i < count; i++)
                     {
-                        
-                public int ArrayIndex;
-                public int Offset; // NOTE: Offset within data structure, generally not important.
-                public VBFE_InputType VariableType; //(int)
-                public VBFE_InputSlot ShaderSlot; //(int)
-                public int VariantIndex; // NOTE: Variant index such as UVs: (UV0, UV1, UV2...)
-                public int Unknown_; // NOTE: Seems to be always 2?
-                    }*/
-                    VertexInput.Elements = Utilities.ConsumeArray<AlienVBF.Element>(bin, count).ToList();
-                    vertexFormats.Add(VertexInput);
+                        AlienVBF.Element element = new AlienVBF.Element();
+                        element.ArrayIndex = bin.ReadInt32();
+                        element.Offset = bin.ReadInt32(); // NOTE: Offset within data structure, generally not important.
+                        element.VariableType = (VBFE_InputType)bin.ReadInt32(); //(int)
+                        element.ShaderSlot = (VBFE_InputSlot)bin.ReadInt32(); //(int)
+                        element.VariantIndex = bin.ReadInt32(); // NOTE: Variant index such as UVs: (UV0, UV1, UV2...)
+                        bin.BaseStream.Position += 4;
+                        vertexFormat.Elements.Add(element);
+                    }
+                    vertexFormats.Add(vertexFormat);
                 }
 
                 //Read filenames and submesh names
@@ -77,7 +76,7 @@ namespace CATHODE
                 using (BinaryReader reader = new BinaryReader(new MemoryStream(filenames)))
                 {
                     while (reader.BaseStream.Position < reader.BaseStream.Length)
-                        stringOffsets.Add((int)reader.BaseStream.Position, Utilities.ReadString(reader)/*.Replace('\\', '/')*/);
+                        stringOffsets.Add((int)reader.BaseStream.Position, Utilities.ReadString(reader));
                 }
 
                 //Read model metadata
@@ -234,8 +233,12 @@ namespace CATHODE
                 {
                     for (int x = 0; x < vertexFormats[i].Elements.Count; x++)
                     {
-                        Utilities.Write<AlienVBF.Element>(bin, vertexFormats[i].Elements[x]);
-                        //TODO: last element must always have ArrayIndex = 255
+                        bin.Write((Int32)vertexFormats[i].Elements[x].ArrayIndex);
+                        bin.Write((Int32)vertexFormats[i].Elements[x].Offset);
+                        bin.Write((Int32)vertexFormats[i].Elements[x].VariableType);
+                        bin.Write((Int32)vertexFormats[i].Elements[x].ShaderSlot);
+                        bin.Write((Int32)vertexFormats[i].Elements[x].VariantIndex);
+                        bin.Write((Int32)2);
                     }
                 }
 
@@ -662,23 +665,20 @@ namespace CATHODE
         {
             public List<Element> Elements = new List<Element>();
 
-            [StructLayout(LayoutKind.Sequential, Pack = 1)]
-            public struct Element
+            public class Element
             {
                 public int ArrayIndex;
                 public int Offset; // NOTE: Offset within data structure, generally not important.
                 public VBFE_InputType VariableType; //(int)
                 public VBFE_InputSlot ShaderSlot; //(int)
                 public int VariantIndex; // NOTE: Variant index such as UVs: (UV0, UV1, UV2...)
-                public int Unknown_; // NOTE: Seems to be always 2?
             };
         }
 
         public enum VBFE_InputType
         {
             VECTOR3 = 0x03,
-            // TODO: Present at 'bsp_torrens' but I haven't seen models that contain that being rendered yet.
-            AlienVertexInputType_Unknown0_ = 0x04,
+            AlienVertexInputType_Unknown0_ = 0x04, //TODO: check this
             INT32 = 0x05,
             VECTOR4_BYTE = 0x06,
             VECTOR4_BYTE_DIV255 = 0x09,
@@ -691,13 +691,13 @@ namespace CATHODE
         public enum VBFE_InputSlot
         {
             VERTEX = 0x01,
-            BONE_WEIGHTS = 0x02, // NOTE: Bone Weights
-            BONE_INDICES = 0x03, // NOTE: Bone Indices
+            BONE_WEIGHTS = 0x02,
+            BONE_INDICES = 0x03,
             NORMAL = 0x04,
             UV = 0x06,
-            TANGENT = 0x07, // NOTE: Tangent
-            BITANGENT = 0x08, // NOTE: Bitangent
-            COLOUR = 0x0A, // NOTE: Color? Specular? What is this?
+            TANGENT = 0x07,
+            BITANGENT = 0x08, 
+            COLOUR = 0x0A, // TODO: is this actually vertex colour?
         };
 
         public class CS2

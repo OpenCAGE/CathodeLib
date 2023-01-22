@@ -6,8 +6,6 @@
 
 Available as a [NuGet package](https://www.nuget.org/packages/CathodeLib/), or alternatively just include this repo as a submodule in your project!
 
-Supports projects using the .NET Framework, and is compatible with Unity Engine.
-
 ---
 
 All parsers inherit from a base `CathodeFile` class which provides:
