@@ -123,7 +123,7 @@ namespace CATHODE
 
                 //Write material names
                 for (int i = 0; i < Entries.Count; ++i) Utilities.WriteString(Entries[i].Name, writer, true);
-                for (int i = 0; i < 6; i++) writer.Write((byte)0x20);
+                Utilities.Align(writer, 4, 0x20);
 
                 //Write material data
                 int materialOffset = (int)writer.BaseStream.Position;
@@ -237,8 +237,8 @@ namespace CATHODE
 
                 public enum TextureSource
                 {
-                    GLOBAL, //Texture comes from ENV/GLOBAL
-                    LEVEL,  //Texture comes from the level (in ENV/PRODUCTION)
+                    GLOBAL = 2, //Texture comes from ENV/GLOBAL
+                    LEVEL = 0,  //Texture comes from the level (in ENV/PRODUCTION)
                 }
             };
         }        

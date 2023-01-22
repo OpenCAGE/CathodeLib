@@ -40,17 +40,11 @@ namespace CathodeLib
         //Align the stream
         public static void Align(BinaryReader reader, int val = 4)
         {
-            while (reader.BaseStream.Position % val != 0)
-            {
-                reader.ReadByte();
-            }
+            while (reader.BaseStream.Position % val != 0) reader.ReadByte();
         }
-        public static void Align(BinaryWriter writer, int val = 4)
+        public static void Align(BinaryWriter writer, int val = 4, byte fillWith = 0x00)
         {
-            while (writer.BaseStream.Position % val != 0)
-            {
-                writer.Write((char)0x00);
-            }
+            while (writer.BaseStream.Position % val != 0) writer.Write(fillWith);
         }
 
         //Reads a string up to a trailing 0x00 byte
