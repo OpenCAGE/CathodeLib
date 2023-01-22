@@ -7,7 +7,7 @@ using CathodeLib;
 namespace CATHODE
 {
     /* Handles Cathode MODELS.MTL files */
-    public class MaterialDatabase : CathodeFile
+    public class Materials : CathodeFile
     {
         //TODO: tidy how we access these
         public Header _header;
@@ -15,7 +15,7 @@ namespace CATHODE
         public List<int> _textureReferenceCounts;
         public List<string> _materialNames;
 
-        public MaterialDatabase(string path) : base(path) { }
+        public Materials(string path) : base(path) { }
 
         #region FILE_IO
         override protected bool LoadInternal()

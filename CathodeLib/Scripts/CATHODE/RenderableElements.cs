@@ -5,11 +5,11 @@ using System.IO;
 namespace CATHODE
 {
     /* Handles reading/creating/writing Cathode REDS.BIN files */
-    public class RenderableElementsDatabase : CathodeFile
+    public class RenderableElements : CathodeFile
     {
-        public List<RenderableElement> Entries = new List<RenderableElement>();
+        public List<Element> Entries = new List<Element>();
         public static new Impl Implementation = Impl.CREATE | Impl.LOAD | Impl.SAVE;
-        public RenderableElementsDatabase(string path) : base(path) { }
+        public RenderableElements(string path) : base(path) { }
 
         #region FILE_IO
         override protected bool LoadInternal()
@@ -19,7 +19,7 @@ namespace CATHODE
                 int entryCount = reader.ReadInt32();
                 for (int i = 0; i < entryCount; i++)
                 {
-                    RenderableElement element = new RenderableElement();
+                    Element element = new Element();
                     reader.BaseStream.Position += 4;
                     element.ModelIndex = reader.ReadInt32();
                     reader.BaseStream.Position += 5;
@@ -55,7 +55,7 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class RenderableElement
+        public class Element
         {
             public int ModelIndex;
             public int MaterialLibraryIndex;

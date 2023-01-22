@@ -10,11 +10,11 @@ namespace CATHODE
 {
     /* Handles CATHODE RESOURCES.BIN files */
     //This file seems to govern data being drawn from either MVR or COMMANDS?
-    public class ResourcesDatabase : CathodeFile
+    public class Resources : CathodeFile
     {
         public List<Resource> Entries = new List<Resource>();
         public static new Impl Implementation = Impl.CREATE | Impl.LOAD | Impl.SAVE;
-        public ResourcesDatabase(string path) : base(path) { }
+        public Resources(string path) : base(path) { }
 
         #region FILE_IO
         override protected bool LoadInternal()

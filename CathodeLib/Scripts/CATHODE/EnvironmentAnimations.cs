@@ -12,11 +12,11 @@ using System.Numerics;
 namespace CATHODE
 {
     /* Handles Cathode ENVIRONMENT_ANIMATION.DAT files */
-    public class EnvironmentAnimationDatabase : CathodeFile
+    public class EnvironmentAnimations : CathodeFile
     {
         public List<EnvironmentAnimation> Entries = new List<EnvironmentAnimation>();
         public static new Impl Implementation = Impl.LOAD;
-        public EnvironmentAnimationDatabase(string path) : base(path) { }
+        public EnvironmentAnimations(string path) : base(path) { }
 
         #region FILE_IO
         override protected bool LoadInternal()

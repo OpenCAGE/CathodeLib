@@ -1,7 +1,8 @@
 ﻿using CATHODE;
-using CATHODE.EXPERIMENTAL;
+using CATHODE.EXPERIMENTAL; 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 
 namespace CathodeLib
@@ -9,41 +10,73 @@ namespace CathodeLib
     /* A helper class that holds all parse-able formats for a level, and saves them safely to update indexes across all */
     public class Level
     {
-        public Models AllModels;
-        public Textures AllTextures;
-        public MaterialDatabase AllMaterials;
-        public RenderableElementsDatabase AllRenderableElements;
+        public Models Models;
+        public Textures Textures;
+        public Materials Materials;
+        public RenderableElements RenderableElements;
 
-        public MoverDatabase AllMovers;
-        public Commands AllCommands;
-        public ResourcesDatabase AllResources;
-        public PhysicsMapDatabase AllPhysicsMaps;
-        public EnvironmentMapDatabase AllEnvironmentMaps;
-        public CollisionMapDatabase AllCollisionMaps;
-        public EnvironmentAnimationDatabase AllEnvironmentAnimations;
-        public MaterialMappings AllMaterialMappings;
+        public Movers Movers;
+        public Commands Commands;
+        public Resources Resources;
+        public PhysicsMaps PhysicsMaps;
+        public EnvironmentMaps EnvironmentMaps;
+        public CollisionMaps CollisionMaps;
+        public EnvironmentAnimations EnvironmentAnimations;
+        public MaterialMappings MaterialMappings;
+        public PathBarrierResources PathBarrierResources;
 
-        public NavigationMesh NavMesh;
+        public List<State> StateResources = new List<State>();
 
         /* Load a level in the game's "ENV/PRODUCTION" folder */
         public Level(string path)
         {
-            AllModels = new Models(path + "/RENDERABLE/LEVEL_MODELS.PAK");
-            //AllTextures = new Textures(path + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK");
-            //AllMaterials = new MaterialDatabase(path + "/RENDERABLE/LEVEL_MODELS.MTL");
-            AllRenderableElements = new RenderableElementsDatabase(path + "/RENDERABLE/REDS.BIN");
+            /* RENDERABLE */
+            Models = new Models(path + "/RENDERABLE/LEVEL_MODELS.PAK"); //TODO: parse CST data here too?
+            Textures = new Textures(path + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK");
+            Materials = new Materials(path + "/RENDERABLE/LEVEL_MODELS.MTL");
+            RenderableElements = new RenderableElements(path + "/RENDERABLE/REDS.BIN");
+            
+            // RENDERABLE TODO:
+            //  - SHADERS
 
-            //AllMovers = new MoverDatabase(path + "/WORLD/MODELS.MVR");
-            //AllCommands = new Commands(path + "/WORLD/COMMANDS.PAK");
-            //AllResources = new ResourcesDatabase(path + "/WORLD/RESOURCES.BIN");
-            //AllPhysicsMaps = new PhysicsMapDatabase(path + "/WORLD/PHYSICS.MAP");
-            //AllEnvironmentMaps = new EnvironmentMapDatabase(path + "/WORLD/ENVIRONMENTMAP.BIN");
-            //AllCollisionMaps = new CollisionMapDatabase(path + "/WORLD/COLLISION.MAP");
-            //AllEnvironmentAnimations = new EnvironmentAnimationDatabase(path + "/WORLD/ENVIRONMENT_ANIMATION.DAT");
-            //AllMaterialMappings = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK");
+            /* WORLD */
+            Movers = new Movers(path + "/WORLD/MODELS.MVR");
+            Commands = new Commands(path + "/WORLD/COMMANDS.PAK");
+            Resources = new Resources(path + "/WORLD/RESOURCES.BIN");
+            PhysicsMaps = new PhysicsMaps(path + "/WORLD/PHYSICS.MAP");
+            EnvironmentMaps = new EnvironmentMaps(path + "/WORLD/ENVIRONMENTMAP.BIN");
+            CollisionMaps = new CollisionMaps(path + "/WORLD/COLLISION.MAP");
+            EnvironmentAnimations = new EnvironmentAnimations(path + "/WORLD/ENVIRONMENT_ANIMATION.DAT");
+            MaterialMappings = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK");
+            PathBarrierResources = new PathBarrierResources(path + "/WORLD/PATH_BARRIER_RESOURCES");
 
-            //TODO: we can have multiple states!
-            //NavMesh = new NavigationMesh(path + "/WORLD/STATE_0/NAV_MESH");
+            // WORLD TODO: 
+            //  - COLLISION.BIN
+            //  - ALPHALIGHT_LEVEL.BIN
+            //  - LIGHTS.BIN
+            //  - OCCLUDER_TRIANGLE_BVH.BIN
+            //  - SND NETWORK FILES
+
+            /* WORLD STATE RESOURCES */
+            int stateCount = 1;
+            using (BinaryReader reader = new BinaryReader(File.OpenRead(path + "/WORLD/EXCLUSIVE_MASTER_RESOURCE_INDICES")))
+            {
+                reader.BaseStream.Position = 4;
+                stateCount += reader.ReadInt32();
+                //TODO: this file also contains indices for each state which seem to be of some relevence, although EXCLUSIVE_MASTER_RESOURCE doesn't point to indices?
+            }
+            for (int i = 0; i < stateCount; i++)
+            {
+                State state = new State() { Index = i };
+                state.NavMesh = new NavigationMesh(path + "/WORLD/STATE_" + i + "/NAV_MESH");
+
+                // WORLD STATE RESOURCES TODO:
+                //  - ASSAULT_POSITIONS
+                //  - COVER
+                //  - CRAWL_SPACE_SPOTTING_POSITIONS
+                //  - SPOTTING_POSITIONS
+                //  - TRAVERSAL
+            }
         }
 
         /* Save all modifications to the level */
@@ -51,23 +84,30 @@ namespace CathodeLib
         {
             //Get the REDS database as actual objects
             List<Models.CS2.Submesh> redsModelRefs = new List<Models.CS2.Submesh>();
-            for (int i = 0; i < AllRenderableElements.Entries.Count; i++)
+            for (int i = 0; i < RenderableElements.Entries.Count; i++)
             {
                 //TODO: we should probs store reds.Entries[i].ModelLODIndex here too, but it goes outside the bounds of our BIN array!?!
-                redsModelRefs.Add(AllModels.GetSubmeshForWriteIndex(AllRenderableElements.Entries[i].ModelIndex));
+                redsModelRefs.Add(Models.GetSubmeshForWriteIndex(RenderableElements.Entries[i].ModelIndex));
             }
 
             //Save the files back out 
-            AllModels.Save();
+            Models.Save();
 
             //Update the REDS database with our newly written indexes
-            for (int i = 0; i < AllRenderableElements.Entries.Count; i++)
+            for (int i = 0; i < RenderableElements.Entries.Count; i++)
             {
-                if (AllRenderableElements.Entries[i].ModelIndex != -1)
-                    AllRenderableElements.Entries[i].ModelIndex = AllModels.GetWriteIndexForSubmesh(redsModelRefs[i]);
+                if (RenderableElements.Entries[i].ModelIndex != -1)
+                    RenderableElements.Entries[i].ModelIndex = Models.GetWriteIndexForSubmesh(redsModelRefs[i]);
                 //AllRenderableElements.Entries[i].ModelLODIndex = -1;    <- TODO: Can't do this else the game crashes :D
             }
-            AllRenderableElements.Save();
+            RenderableElements.Save();
+        }
+
+        public class State
+        {
+            public int Index;
+
+            public NavigationMesh NavMesh;
         }
     }
 }

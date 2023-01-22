@@ -6,11 +6,11 @@ using System.Runtime.InteropServices;
 namespace CATHODE
 {
     /* Loads and/or creates Cathode ENVIRONMENTMAP.BIN files */
-    public class EnvironmentMapDatabase : CathodeFile
+    public class EnvironmentMaps : CathodeFile
     {
         public List<Mapping> Entries = new List<Mapping>();
         public static new Impl Implementation = Impl.LOAD | Impl.SAVE;
-        public EnvironmentMapDatabase(string path) : base(path) { }
+        public EnvironmentMaps(string path) : base(path) { }
 
         private int _unknownValue = 12; //TODO: need to figure out what this val is to be able to create file from scratch
 

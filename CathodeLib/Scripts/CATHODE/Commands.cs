@@ -252,19 +252,22 @@ namespace CATHODE
                                         switch (resource.entryType)
                                         {
                                             case ResourceType.RENDERABLE_INSTANCE:
-                                                resource.startIndex = reader.ReadInt32(); //REDS.BIN entry index
-                                                resource.count = reader.ReadInt32(); //REDS.BIN entry count
+                                                resource.startIndex = reader.ReadInt32(); 
+                                                resource.count = reader.ReadInt32(); 
                                                 break;
                                             case ResourceType.COLLISION_MAPPING:
-                                                resource.startIndex = reader.ReadInt32(); //COLLISION.MAP entry index?
-                                                resource.collisionID = new ShortGuid(reader); //ID which maps to *something*
+                                                resource.startIndex = reader.ReadInt32();
+                                                resource.collisionID = new ShortGuid(reader);
                                                 break;
                                             case ResourceType.ANIMATED_MODEL:
                                             case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                resource.startIndex = reader.ReadInt32(); //PHYSICS.MAP entry index?
+                                                resource.startIndex = reader.ReadInt32();
                                                 reader.BaseStream.Position += 4;
                                                 break;
                                             case ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
+                                                int val1 = reader.ReadInt32();
+                                                int val2 = reader.ReadInt32();
+                                                break;
                                             case ResourceType.NAV_MESH_BARRIER_RESOURCE:
                                             case ResourceType.TRAVERSAL_SEGMENT:
                                                 reader.BaseStream.Position += 8;

@@ -11,11 +11,11 @@ using System.Numerics;
 namespace CATHODE
 {
     /* Handles Cathode PHYSICS.MAP files */
-    public class PhysicsMapDatabase : CathodeFile
+    public class PhysicsMaps : CathodeFile
     {
         public List<Entry> Entries = new List<Entry>();
         public static new Impl Implementation = Impl.CREATE | Impl.LOAD | Impl.SAVE;
-        public PhysicsMapDatabase(string path) : base(path) { }
+        public PhysicsMaps(string path) : base(path) { }
 
         #region FILE_IO
         override protected bool LoadInternal()
