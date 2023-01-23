@@ -58,14 +58,24 @@ namespace CATHODE
                     AlienVBF vertexFormat = new AlienVBF();
                     for (int i = 0; i < count; i++)
                     {
+                        int ArrayIndex = bin.ReadInt32();
+
                         AlienVBF.Element element = new AlienVBF.Element();
-                        element.ArrayIndex = bin.ReadInt32();
                         element.Offset = bin.ReadInt32(); // NOTE: Offset within data structure, generally not important.
                         element.VariableType = (VBFE_InputType)bin.ReadInt32(); //(int)
                         element.ShaderSlot = (VBFE_InputSlot)bin.ReadInt32(); //(int)
                         element.VariantIndex = bin.ReadInt32(); // NOTE: Variant index such as UVs: (UV0, UV1, UV2...)
                         bin.BaseStream.Position += 4;
-                        vertexFormat.Elements.Add(element);
+
+                        if (ArrayIndex == 0xFF)
+                        {
+                            vertexFormat.Elements.Add(new List<AlienVBF.Element>() { element });
+                            continue;
+                        }
+
+                        while (vertexFormat.Elements.Count - 1 < ArrayIndex) 
+                            vertexFormat.Elements.Add(new List<AlienVBF.Element>());
+                        vertexFormat.Elements[ArrayIndex].Add(element);
                     }
                     vertexFormats.Add(vertexFormat);
                 }
@@ -233,12 +243,15 @@ namespace CATHODE
                 {
                     for (int x = 0; x < vertexFormats[i].Elements.Count; x++)
                     {
-                        bin.Write((Int32)vertexFormats[i].Elements[x].ArrayIndex);
-                        bin.Write((Int32)vertexFormats[i].Elements[x].Offset);
-                        bin.Write((Int32)vertexFormats[i].Elements[x].VariableType);
-                        bin.Write((Int32)vertexFormats[i].Elements[x].ShaderSlot);
-                        bin.Write((Int32)vertexFormats[i].Elements[x].VariantIndex);
-                        bin.Write((Int32)2);
+                        for (int y = 0; y < vertexFormats[i].Elements[x].Count; y++)
+                        {
+                            bin.Write((y == vertexFormats[i].Elements[x].Count - 1) ? 255 : x);
+                            bin.Write((Int32)vertexFormats[i].Elements[x][y].Offset);
+                            bin.Write((Int32)vertexFormats[i].Elements[x][y].VariableType);
+                            bin.Write((Int32)vertexFormats[i].Elements[x][y].ShaderSlot);
+                            bin.Write((Int32)vertexFormats[i].Elements[x][y].VariantIndex);
+                            bin.Write((Int32)2);
+                        }
                     }
                 }
 
@@ -398,21 +411,6 @@ namespace CATHODE
             Model3DGroup mesh = new Model3DGroup();
 #endif
 
-            List<List<AlienVBF.Element>> formats = new List<List<AlienVBF.Element>>();
-            foreach (AlienVBF.Element formatElement in submesh.VertexFormat.Elements)
-            {
-                if (formatElement.ArrayIndex == 0xFF)
-                {
-                    formats.Add(new List<AlienVBF.Element>() { formatElement });
-                    continue;
-                }
-
-                while (formats.Count - 1 < formatElement.ArrayIndex)
-                    formats.Add(new List<AlienVBF.Element>());
-
-                formats[formatElement.ArrayIndex].Add(formatElement);
-            }
-
 #if UNITY_EDITOR || UNITY_STANDALONE
             List<UInt16> indices = new List<UInt16>();
             List<Vector3> vertices = new List<Vector3>();
@@ -444,12 +442,11 @@ namespace CATHODE
 
             using (BinaryReader reader = new BinaryReader(new MemoryStream(submesh.content)))
             {
-                for (int i = 0; i < formats.Count; ++i)
+                for (int i = 0; i < submesh.VertexFormat.Elements.Count; ++i)
                 {
-                    if (formats[i][0].ArrayIndex == 0xFF)
+                    if (i == submesh.VertexFormat.Elements.Count - 1)
                     {
-                        //TODO: i feel like this is not the correct way to interpret it, but it works
-                        //Check to see if the 0xFF index is always AlienVertexInputType_u16, then we can just use that!!
+                        //TODO: should probably verify VariableType here -----> maybe use the new case i've put in below?
                         for (int x = 0; x < submesh.IndexCount; x++)
                             indices.Add(reader.ReadUInt16());
 
@@ -458,11 +455,18 @@ namespace CATHODE
 
                     for (int x = 0; x < submesh.VertexCount; ++x)
                     {
-                        for (int y = 0; y < formats[i].Count; ++y)
+                        for (int y = 0; y < submesh.VertexFormat.Elements[i].Count; ++y)
                         {
-                            AlienVBF.Element format = formats[i][y];
+                            AlienVBF.Element format = submesh.VertexFormat.Elements[i][y];
                             switch (format.VariableType)
                             {
+                                //case VBFE_InputType.AlienVertexInputType_u16:
+                                //    {
+                                //        for (int z = 0; z < submesh.IndexCount; z++)
+                                //            indices.Add(reader.ReadUInt16());
+                                //    }
+                                //    break;
+
                                 case VBFE_InputType.VECTOR3:
                                     {
 #if UNITY_EDITOR || UNITY_STANDALONE
@@ -663,11 +667,10 @@ namespace CATHODE
         #region STRUCTURES
         public class AlienVBF
         {
-            public List<Element> Elements = new List<Element>();
+            public List<List<Element>> Elements = new List<List<Element>>();
 
             public class Element
             {
-                public int ArrayIndex;
                 public int Offset; // NOTE: Offset within data structure, generally not important.
                 public VBFE_InputType VariableType; //(int)
                 public VBFE_InputSlot ShaderSlot; //(int)
