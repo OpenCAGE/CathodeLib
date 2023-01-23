@@ -6,10 +6,10 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE.EXPERIMENTAL
 {
-    /* Handles Cathode PROGRESSION.AIS files - heavily WIP */
+    /* PROGRESSION.AIS */
     public class MissionSave : CathodeFile
     {
-        public static new Impl Implementation = Impl.NONE;
+        public static new Implementation Implementation = Implementation.NONE;
         public MissionSave(string path) : base(path) { }
 
         private Header _header;

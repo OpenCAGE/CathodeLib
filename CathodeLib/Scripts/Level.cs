@@ -1,5 +1,7 @@
 ﻿using CATHODE;
-using CATHODE.EXPERIMENTAL; 
+using CATHODE.EXPERIMENTAL;
+using CATHODE.LEGACY;
+using CATHODE.LEGACY.Assets;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -15,6 +17,8 @@ namespace CathodeLib
         public Models Models;
         public Textures Textures;
         public Materials Materials;
+        public ShadersPAK Shaders;  //TODO: this needs bringing to the new system
+        public IDXRemap ShadersIDX; //TODO: this needs bringing to the new system
 
         public RenderableElements RenderableElements;
         public Movers Movers;
@@ -26,6 +30,7 @@ namespace CathodeLib
         public EnvironmentAnimations EnvironmentAnimations;
         public MaterialMappings MaterialMappings;
         public PathBarrierResources PathBarrierResources;
+        public Lights Lights;
 
         public class State
         {
@@ -43,9 +48,11 @@ namespace CathodeLib
             //TODO: We don't load GLOBAL_MODELS since it just contains vertex buffers. We should load this to learn about all the vertex formats tho!
 
             /* RENDERABLE */
-            Models = new Models(path + "/RENDERABLE/LEVEL_MODELS.PAK"); //TODO: parse CST data here too?
+            Models = new Models(path + "/RENDERABLE/LEVEL_MODELS.PAK");
             Textures = new Textures(path + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK");
             Materials = new Materials(path + "/RENDERABLE/LEVEL_MODELS.MTL");
+            //Shaders = new ShadersPAK(path + "/RENDERABLE/LEVEL_SHADERS_DX11.PAK");
+            //ShadersIDX = new IDXRemap(path + "/RENDERABLE/LEVEL_SHADERS_DX11_REMAP.PAK");
 
             // RENDERABLE TODO:
             //  - SHADERS
@@ -61,11 +68,11 @@ namespace CathodeLib
             //EnvironmentAnimations = new EnvironmentAnimations(path + "/WORLD/ENVIRONMENT_ANIMATION.DAT");
             //MaterialMappings = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK");
             //PathBarrierResources = new PathBarrierResources(path + "/WORLD/PATH_BARRIER_RESOURCES");
+            //Lights = new Lights(path + "/WORLD/LIGHTS.BIN");
 
             // WORLD TODO: 
             //  - COLLISION.BIN
             //  - ALPHALIGHT_LEVEL.BIN
-            //  - LIGHTS.BIN
             //  - OCCLUDER_TRIANGLE_BVH.BIN
             //  - SND NETWORK FILES
 

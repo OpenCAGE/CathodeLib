@@ -8,13 +8,14 @@ using CathodeLib;
 
 namespace CATHODE
 {
-    /* Handles CATHODE RESOURCES.BIN files */
-    //This file seems to govern data being drawn from either MVR or COMMANDS?
+    /* DATA/ENV/PRODUCTION/x/WORLD/RESOURCES.BIN */
     public class Resources : CathodeFile
     {
         public List<Resource> Entries = new List<Resource>();
-        public static new Impl Implementation = Impl.CREATE | Impl.LOAD | Impl.SAVE;
+        public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public Resources(string path) : base(path) { }
+
+        //This file seems to govern data being drawn from either MVR or COMMANDS?
 
         #region FILE_IO
         override protected bool LoadInternal()

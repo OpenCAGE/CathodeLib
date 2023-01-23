@@ -4,11 +4,11 @@ using CathodeLib;
 
 namespace CATHODE
 {
-    /* Handles Cathode PROGRESSION.AIS files */
+    /* PROGRESSION.AIS */
     public class ProgressionSave : CathodeFile
     {
         public Progression Content;
-        public static new Impl Implementation = Impl.LOAD | Impl.SAVE;
+        public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
         public ProgressionSave(string path) : base(path) { }
 
         #region FILE_IO

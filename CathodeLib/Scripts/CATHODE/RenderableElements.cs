@@ -4,11 +4,11 @@ using System.IO;
 
 namespace CATHODE
 {
-    /* Handles reading/creating/writing Cathode REDS.BIN files */
+    /* DATA/ENV/PRODUCTION/x/WORLD/REDS.BIN */
     public class RenderableElements : CathodeFile
     {
         public List<Element> Entries = new List<Element>();
-        public static new Impl Implementation = Impl.CREATE | Impl.LOAD | Impl.SAVE;
+        public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public RenderableElements(string path) : base(path) { }
 
         #region FILE_IO

@@ -12,11 +12,11 @@ using System.Numerics;
 
 namespace CATHODE
 {
-    /* Handles Cathode MODELS.MVR files */
+    /* DATA/ENV/PRODUCTION/x/WORLD/MODELS.MVR */
     public class Movers : CathodeFile
     {
         public List<MOVER_DESCRIPTOR> Entries = new List<MOVER_DESCRIPTOR>();
-        public static new Impl Implementation = Impl.LOAD | Impl.SAVE;
+        public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
         public Movers(string path) : base(path) { }
 
         private int _fileSize = 32;

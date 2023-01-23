@@ -5,11 +5,11 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
-    /* Loads and/or creates Cathode ENVIRONMENTMAP.BIN files */
+    /* DATA/ENV/PRODUCTION/x/WORLD/ENVIRONMENTMAP.BIN */
     public class EnvironmentMaps : CathodeFile
     {
         public List<Mapping> Entries = new List<Mapping>();
-        public static new Impl Implementation = Impl.LOAD | Impl.SAVE;
+        public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
         public EnvironmentMaps(string path) : base(path) { }
 
         private int _unknownValue = 12; //TODO: need to figure out what this val is to be able to create file from scratch
@@ -38,7 +38,7 @@ namespace CATHODE
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
-                writer.Write(new char[] { 'e', 'n', 'v', 'm' });
+                Utilities.WriteString("envm", writer);
                 writer.Write(1);
                 writer.Write(Entries.Count);
                 writer.Write(_unknownValue); //TODO: what is this value? need to know for making new files.

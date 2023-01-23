@@ -17,10 +17,11 @@ using System.Numerics;
 
 namespace CATHODE
 {
+    /* DATA/ENV/PRODUCTION/x/WORLD/COMMANDS.PAK */
     public class Commands : CathodeFile
     {
         public List<Composite> Entries = new List<Composite>();
-        public static new Impl Implementation = Impl.CREATE | Impl.LOAD | Impl.SAVE;
+        public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public Commands(string path) : base(path) { }
 
         // This is always:

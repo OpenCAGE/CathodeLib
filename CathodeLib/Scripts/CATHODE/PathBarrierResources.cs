@@ -6,11 +6,11 @@ using System.Text;
 
 namespace CATHODE
 {
-    /* Handles Cathode PATH_BARRIER_RESOURCES files */
+    /* DATA/ENV/PRODUCTION/x/WORLD/PATH_BARRIER_RESOURCES */
     public class PathBarrierResources : CathodeFile
     {
         public List<Entry> Entries = new List<Entry>();
-        public static new Impl Implementation = Impl.CREATE | Impl.LOAD | Impl.SAVE;
+        public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public PathBarrierResources(string path) : base(path) { }
 
         #region FILE_IO

@@ -6,11 +6,11 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
-    /* Handles Cathode COLLISION.MAP files - TODO: lots of unknown values here */
+    /* DATA/ENV/PRODUCTION/x/WORLD/COLLISION.MAP */
     public class CollisionMaps : CathodeFile
     {
         public List<Entry> Entries = new List<Entry>();
-        public static new Impl Implementation = Impl.CREATE | Impl.LOAD | Impl.SAVE;
+        public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public CollisionMaps(string path) : base(path) { }
 
         #region FILE_IO

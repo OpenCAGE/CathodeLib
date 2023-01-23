@@ -6,11 +6,11 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
-    /* Handles Cathode MATERIAL_MAPPINGS.PAK files */
+    /* DATA/ENV/PRODUCTION/x/WORLD/MATERIAL_MAPPINGS.PAK */
     public class MaterialMappings : CathodeFile
     {
         public List<Mapping> Entries = new List<Mapping>();
-        public static new Impl Implementation = Impl.LOAD | Impl.SAVE;
+        public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
         public MaterialMappings(string path) : base(path) { }
         
         private byte[] _headerJunk = new byte[8];

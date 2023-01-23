@@ -15,11 +15,11 @@ using System.Windows.Media.Media3D;
 
 namespace CATHODE
 {
-    /* Handles Cathode LEVEL_MODELS.PAK/MODELS_LEVEL.BIN files */
+    /* DATA/ENV/PRODUCTION/x/RENDERABLE/LEVEL_MODELS.PAK & MODELS_LEVEL.BIN */
     public class Models : CathodeFile
     {
         public List<CS2> Entries = new List<CS2>();
-        public static new Impl Implementation = Impl.CREATE | Impl.LOAD | Impl.SAVE;
+        public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public Models(string path) : base(path) { }
 
         private List<CS2.Submesh> _writeList = new List<CS2.Submesh>();

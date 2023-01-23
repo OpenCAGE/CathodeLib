@@ -6,11 +6,11 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
-    /* Loads and/or creates Cathode PAK2 files: ANIMATION and UI */
+    /* DATA/UI.PAK & DATA/CHR_INFO.PAK & DATA/GLOBAL/ANIMATION.PAK & DATA/GLOBAL/UI.PAK */
     public class PAK2 : CathodeFile
     {
         public List<File> Entries = new List<File>();
-        public static new Impl Implementation = Impl.CREATE | Impl.LOAD | Impl.SAVE;
+        public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public PAK2(string path) : base(path) { }
 
         #region FILE_IO

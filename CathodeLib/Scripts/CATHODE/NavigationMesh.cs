@@ -10,7 +10,7 @@ using System.Numerics;
 
 namespace CATHODE.EXPERIMENTAL
 {
-    /* CATHODE uses a slightly modified version of Detour - this handler is heavily WIP! */
+    /* DATA/ENV/PRODUCTION/x/WORLD/STATE_x/NAV_MESH */
     public class NavigationMesh : CathodeFile
     {
         dtMeshHeader Header;
@@ -24,7 +24,7 @@ namespace CATHODE.EXPERIMENTAL
         public dtBVNode[] BoundingVolumeTree;
         public dtOffMeshConnection[] OffMeshConnections;
 
-        public static new Impl Implementation = Impl.LOAD;
+        public static new Implementation Implementation = Implementation.LOAD;
         public NavigationMesh(string path) : base(path) { }
 
         #region FILE_IO

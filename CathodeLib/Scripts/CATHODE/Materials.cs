@@ -7,11 +7,11 @@ using static CATHODE.Models;
 
 namespace CATHODE
 {
-    /* Handles Cathode MODELS.MTL files */
+    /* DATA/ENV/PRODUCTION/x/RENDERABLE/LEVEL_MODELS.MTL & LEVEL_MODELS.CST */
     public class Materials : CathodeFile
     {
         public List<Material> Entries = new List<Material>();
-        public static new Impl Implementation = Impl.LOAD | Impl.SAVE;
+        public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
         public Materials(string path) : base(path) { }
 
         private List<byte[]> _cstData = new List<byte[]>(); 

@@ -8,11 +8,11 @@ using System.IO;
 
 namespace CATHODE
 {
-    /* Handles Cathode LEVEL_TEXTURES.*.PAK files, when in the same folder as a corresponding LEVEL_TEXTURE_HEADERS.*.BIN */
+    /* DATA/ENV/PRODUCTION/x/RENDERABLE/LEVEL_TEXTURES.*.PAK & LEVEL_TEXTURE_HEADERS.*.BIN */
     public class Textures : CathodeFile
     {
         public List<TEX4> Entries = new List<TEX4>();
-        public static new Impl Implementation = Impl.CREATE | Impl.LOAD | Impl.SAVE;
+        public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public Textures(string path) : base(path) { }
 
         public List<TEX4> _writeList = new List<TEX4>();
