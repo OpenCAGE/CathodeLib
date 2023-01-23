@@ -15,8 +15,8 @@ namespace CathodeLib
         public Models Models;
         public Textures Textures;
         public Materials Materials;
-        public RenderableElements RenderableElements;
 
+        public RenderableElements RenderableElements;
         public Movers Movers;
         public Commands Commands;
         public Resources Resources;
@@ -46,12 +46,12 @@ namespace CathodeLib
             Models = new Models(path + "/RENDERABLE/LEVEL_MODELS.PAK"); //TODO: parse CST data here too?
             Textures = new Textures(path + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK");
             Materials = new Materials(path + "/RENDERABLE/LEVEL_MODELS.MTL");
-            RenderableElements = new RenderableElements(path + "/RENDERABLE/REDS.BIN");
-            
+
             // RENDERABLE TODO:
             //  - SHADERS
 
             /* WORLD */
+            RenderableElements = new RenderableElements(path + "/WORLD/REDS.BIN");
             //Movers = new Movers(path + "/WORLD/MODELS.MVR");
             //Commands = new Commands(path + "/WORLD/COMMANDS.PAK");
             //Resources = new Resources(path + "/WORLD/RESOURCES.BIN");
