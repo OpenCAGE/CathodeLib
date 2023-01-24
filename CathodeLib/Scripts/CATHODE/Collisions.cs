@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Linq;
+using System.Windows.Media.Imaging;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -41,8 +42,61 @@ namespace CATHODE.EXPERIMENTAL
                 for (int i = 0; i < entryCount; i++)
                 {
                     alien_collision_bin_entry entry = new alien_collision_bin_entry();
-
+                    entry.VertexCount = reader.ReadInt32();
+                    entry.ObjectCount = reader.ReadInt32();
+                    entry.UnknownFloat = reader.ReadSingle();
+                    entry.UnknownBoolean = reader.ReadInt32();
+                    Entries.Add(entry);
                 }
+
+                List<alien_collision_bin_object> objects = new List<alien_collision_bin_object>();
+                for (int i = 0; i < objectCount; i++)
+                {
+                    alien_collision_bin_object obj = new alien_collision_bin_object();
+                    obj.Transform = Utilities.Consume<Matrix4x4>(reader);
+                    obj.UnknownFloat = reader.ReadSingle();
+                    obj.UnknownIndex0 = reader.ReadInt32();
+                    obj.IndexCount = reader.ReadInt32();
+                    obj.VertexCount = reader.ReadInt32();
+                    objects.Add(obj);
+                }
+
+                List<alien_collision_bin_vertex> vertexes = new List<alien_collision_bin_vertex>();
+                for (int i = 0; i < vertexCount; i++)
+                {
+                    alien_collision_bin_vertex vertex = new alien_collision_bin_vertex();
+                    byte[] bytes = reader.ReadBytes(6); //vec3 s16
+                    vertex.UnknownBytes = reader.ReadBytes(10);
+                    vertexes.Add(vertex);
+                }
+
+                List<int> indicies = new List<int>();
+                for (int i = 0; i < indexCount; i++)
+                {
+                    indicies.Add(reader.ReadInt16());
+                }
+
+                int verIndex = 0;
+                int objIndex = 0;
+                int indIndex = 0;
+                for (int i = 0; i < entryCount; ++i)
+                {
+                    alien_collision_bin_entry Entry = Entries[i];
+
+                    Entry.Vertices = vertexes.GetRange(verIndex, verIndex + Entry.VertexCount);
+                    Entry.Objects = objects.GetRange(objIndex, objIndex + Entry.ObjectCount);
+
+                    for (int x = 0; x < Entry.ObjectCount; ++x)
+                    {
+                        alien_collision_bin_object Entry1 = Entry.Objects[x];
+                        //Assert(Entry1->UnknownFloat == 4);
+
+                        Entry1.Indices = indicies.GetRange(indIndex, indIndex + Entry1.IndexCount);
+                        Entry1.Vertices = vertexes.GetRange(verIndex, verIndex + Entry1.VertexCount);
+                    }
+                }
+
+                string dsfdsfds = "";
 
             }
             return true;
@@ -53,7 +107,9 @@ namespace CATHODE.EXPERIMENTAL
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
-
+                writer.Write(new byte[4] { 0x0C, 0xA0, 0xFE, 0xEF });
+                writer.Write(2);
+                writer.Write(0);
 
             }
             return true;
@@ -68,8 +124,8 @@ namespace CATHODE.EXPERIMENTAL
             public int UnknownIndex0;
             public int IndexCount;
             public int VertexCount;
-            public List<Int16> Indices = new List<Int16>();
-            public List<Int16> Vertices = new List<Int16>();
+            public List<int> Indices = new List<int>();
+            public List<alien_collision_bin_vertex> Vertices = new List<alien_collision_bin_vertex>();
         };
         public class alien_collision_bin_vertex
         {
