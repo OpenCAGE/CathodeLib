@@ -1,4 +1,3 @@
-using CATHODE.LEGACY.Assets;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
@@ -654,6 +653,11 @@ namespace CATHODE
         public int GetWriteIndex(CS2.Submesh submesh)
         {
             return _writeList.IndexOf(submesh);
+        }
+        public int GetWriteIndex(CS2 mesh)
+        {
+            if (mesh.Submeshes.Count == 0) return -1;
+            return _writeList.IndexOf(mesh.Submeshes[0]);
         }
 
         /* Get a submesh by its current BIN index (useful for cross-ref'ing with compiled binaries)

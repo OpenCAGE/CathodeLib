@@ -1217,16 +1217,15 @@ namespace CATHODE
         }
         #endregion
 
-        /* -- */
-
+        #region STRUCTURES
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct CathodeParameterReference
+        private struct CathodeParameterReference
         {
             public ShortGuid paramID; //The ID of the param in the entity
             public int offset;    //The offset of the param this reference points to (in memory this is *4)
         }
 
-        public class CommandsEntityLinks
+        private class CommandsEntityLinks
         {
             public ShortGuid parentID;
             public List<EntityLink> childLinks = new List<EntityLink>();
@@ -1237,10 +1236,8 @@ namespace CATHODE
             }
         }
 
-        public class CommandsParamRefSet
+        private class CommandsParamRefSet
         {
-            public int Index = -1; //TEMP TEST
-
             public ShortGuid id;
             public List<CathodeParameterReference> refs = new List<CathodeParameterReference>();
 
@@ -1249,23 +1246,6 @@ namespace CATHODE
                 id = _id;
             }
         }
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct OffsetPair
-    {
-        public int GlobalOffset;
-        public int EntryCount;
-
-        public OffsetPair(int _go, int _ec)
-        {
-            GlobalOffset = _go;
-            EntryCount = _ec;
-        }
-        public OffsetPair(long _go, int _ec)
-        {
-            GlobalOffset = (int)_go;
-            EntryCount = _ec;
-        }
+        #endregion
     }
 }

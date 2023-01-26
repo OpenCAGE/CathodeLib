@@ -1,7 +1,7 @@
 ﻿using System.IO;
 using CATHODE;
 
-namespace CathodeLib
+namespace CATHODE.LEGACY
 {
     /*
      *
@@ -32,7 +32,7 @@ namespace CathodeLib
 
             //Format
             TextureReader.BaseStream.Position = 128;
-            switch(TextureReader.ReadInt32())
+            switch (TextureReader.ReadInt32())
             {
                 case 83:
                     Format = Textures.TextureFormat.DXGI_FORMAT_BC5_UNORM;

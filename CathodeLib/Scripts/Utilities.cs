@@ -251,7 +251,39 @@ namespace CathodeLib
         }
     }
 
-/*
+    public enum FileIdentifiers
+    {
+        HEADER_FILE = 96,
+        ASSET_FILE = 14,
+
+        SHADER_DATA = 3,
+        MODEL_DATA = 19,
+        TEXTURE_DATA = 45,
+
+        //From ABOUT.TXT (unsure where used)
+        STRING_FILE_VERSION = 6,
+        ENTITY_FILE_VERSION = 171,
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct OffsetPair
+    {
+        public int GlobalOffset;
+        public int EntryCount;
+
+        public OffsetPair(int _go, int _ec)
+        {
+            GlobalOffset = _go;
+            EntryCount = _ec;
+        }
+        public OffsetPair(long _go, int _ec)
+        {
+            GlobalOffset = (int)_go;
+            EntryCount = _ec;
+        }
+    }
+    
+    /*
     [Serializable]
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct Vector3 : ICloneable
@@ -331,7 +363,7 @@ namespace CathodeLib
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
         private float[] vals;
     }
-*/
+    */
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct fourcc

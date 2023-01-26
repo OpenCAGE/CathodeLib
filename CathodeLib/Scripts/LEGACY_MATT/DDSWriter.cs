@@ -1,11 +1,12 @@
-﻿using System;
+﻿using CathodeLib;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CathodeLib
+namespace CATHODE.LEGACY
 {
     /*
      *
@@ -19,11 +20,11 @@ namespace CathodeLib
     {
         private DDS DDS_HEADER = new DDS();
         private byte[] DDS_CHUNK;
-        
+
         private bool HasMipMaps;
         private int Pixelres;
         private TextureType File_DDSFORMAT;
-        
+
         private enum SurfaceDescription : uint
         {
             DDSD_CAPS = 0x1, //Required in every .dds file.
@@ -44,7 +45,7 @@ namespace CathodeLib
             RGB = 0x40,
             RGBA = 0x41
         }
-        
+
         /* Populate the DDS with provided info */
         public DDSWriter(byte[] DATACHUNK, int image_width, int image_height, int resolution, int mipmaps_count, TextureType format)
         {
@@ -68,7 +69,7 @@ namespace CathodeLib
                 DDS_HEADER.dwMipMapCount = Convert.ToUInt32(mipmaps_count);
                 HasMipMaps = true;
             }
-            
+
             //Create the DDS header
             CreateHeader();
         }
@@ -81,7 +82,7 @@ namespace CathodeLib
             DDS_HEADER.dwHeight = Convert.ToUInt32(image_height);
             DDS_HEADER.dwWidth = Convert.ToUInt32(image_width);
         }
-        
+
         /* Generate the DDS header */
         private void CreateHeader()
         {
@@ -98,22 +99,22 @@ namespace CathodeLib
             switch (File_DDSFORMAT)
             {
                 case TextureType.Dxt1:
-                    DDS_HEADER.pfFourCC = (UInt32)FourCC.D3DFMT_DXT1;
+                    DDS_HEADER.pfFourCC = (uint)FourCC.D3DFMT_DXT1;
                     break;
                 case TextureType.Dxt3:
-                    DDS_HEADER.pfFourCC = (UInt32)FourCC.D3DFMT_DXT3;
+                    DDS_HEADER.pfFourCC = (uint)FourCC.D3DFMT_DXT3;
                     break;
                 case TextureType.Dxt5:
-                    DDS_HEADER.pfFourCC = (UInt32)FourCC.D3DFMT_DXT5;
+                    DDS_HEADER.pfFourCC = (uint)FourCC.D3DFMT_DXT5;
                     break;
                 case TextureType.ATI2N:
-                    DDS_HEADER.pfFourCC = (UInt32)FourCC.D3DFMT_ATI2N;
+                    DDS_HEADER.pfFourCC = (uint)FourCC.D3DFMT_ATI2N;
                     break;
                 default:
                     DDS_HEADER.pfFourCC = 0x0;
                     break;
             }
-            
+
             //Set info required by uncompressed formats 
             if (!(File_DDSFORMAT == TextureType.Dxt1 || File_DDSFORMAT == TextureType.Dxt3 || File_DDSFORMAT == TextureType.Dxt5 || File_DDSFORMAT == TextureType.ATI2N))
             {
@@ -128,17 +129,17 @@ namespace CathodeLib
             }
 
             //DwCaps1 - TODO: Extend to support other stuff (https://docs.microsoft.com/en-us/windows/win32/direct3ddds/dds-header)
-            DDS_HEADER.dwCaps1 = (UInt32)TextureCapability.TEXTURE;
-            DDS_HEADER.dwCaps2 = (UInt32)TextureCapability.NONE;
-            DDS_HEADER.dwCaps3 = (UInt32)TextureCapability.NONE;
-            DDS_HEADER.dwCaps4 = (UInt32)TextureCapability.NONE;
+            DDS_HEADER.dwCaps1 = (uint)TextureCapability.TEXTURE;
+            DDS_HEADER.dwCaps2 = (uint)TextureCapability.NONE;
+            DDS_HEADER.dwCaps3 = (uint)TextureCapability.NONE;
+            DDS_HEADER.dwCaps4 = (uint)TextureCapability.NONE;
             DDS_HEADER.dwReserved2 = 0x0;
         }
-        
+
         /* Calculate the image's pitch */
         public static int CalculatePitch(int width, int height, int resolution, int compressionFormat)
         {
-            int pitch = ((width + 3) / 4) * ((height + 3) / 4) * ((resolution + 3) / 4);
+            int pitch = (width + 3) / 4 * ((height + 3) / 4) * ((resolution + 3) / 4);
             switch (compressionFormat)
             {
                 case (int)TextureType.Dxt1:
@@ -156,7 +157,7 @@ namespace CathodeLib
             }
             return pitch;
         }
-        
+
         /* Calculate header flag A */
         private void CalculateFlagA(TextureType format)
         {
@@ -169,7 +170,7 @@ namespace CathodeLib
             bool DDSD_MIPMAPCOUNT = false;
             bool DDSD_LINEARSIZE = false;
             bool DDSD_DEPTH = false;
-            
+
             //test_format
             if (format == TextureType.Dxt1 || format == TextureType.Dxt3 || format == TextureType.Dxt5 || format == TextureType.ATI2N)
             {
@@ -182,14 +183,14 @@ namespace CathodeLib
                 // DDSD_PITCH = True '/ disabling this because for some reason if you export a texture from photoshop that has the pitch provided in the file this flag is not set
                 DDSD_LINEARSIZE = true; //// leaving this here because it works
             }
-            
+
             //mipmaps
             if (HasMipMaps == true)
             {
                 //texture uses mipmaps
                 DDSD_MIPMAPCOUNT = true;
             }
-            
+
             //Calculate the 4BYTE WORD FLAG
             uint total_owning = 0;
             if (DDSD_CAPS == true)
@@ -226,14 +227,14 @@ namespace CathodeLib
             }
             DDS_HEADER.dwFlags = total_owning;
         }
-        
+
         /* Calculate header flag B */
         private void CalculateFlagB(TextureType format, int res)
         {
             bool DDPF_FOURCC = false;
             bool DDPF_RGB = false;
             bool DDPF_ALPHAPIXELS = false;
-            
+
             if (format == TextureType.Dxt1 || format == TextureType.Dxt3 || format == TextureType.Dxt5 || format == TextureType.ATI2N)
             {
                 //compressed
@@ -247,7 +248,7 @@ namespace CathodeLib
                 //uncompressed
                 //SET uncompressed flag
                 DDPF_RGB = true;
-                
+
                 if (res == 24)
                 {
                     //no alpha channel
@@ -276,7 +277,7 @@ namespace CathodeLib
             }
             DDS_HEADER.pfFlags = total_owning;
         }
-        
+
         /* Save the final file */
         public void Save(string path_File2write)
         {
@@ -294,7 +295,7 @@ namespace CathodeLib
             bw.Write(DDS_HEADER.dwDepth);
             bw.Write(DDS_HEADER.dwMipMapCount);
 
-            foreach (UInt32 value in DDS_HEADER.dwReserved1)
+            foreach (uint value in DDS_HEADER.dwReserved1)
             {
                 bw.Write(value);
             }
@@ -330,18 +331,18 @@ namespace CathodeLib
             //Save out the DDS file
             FileStream outputStream = new FileStream(path_File2write, FileMode.Create);
             BinaryWriter bw = new BinaryWriter(outputStream);
-            
+
             //Failed to come up with a suitable header, try a best guess...
             bw.Write(542327876);
             bw.Write(124);
             bw.Write(659463);
             bw.Write(DDS_HEADER.dwHeight);
             bw.Write(DDS_HEADER.dwWidth);
-            bw.Write(CalculatePitch((int)this.DDS_HEADER.dwWidth, (int)this.DDS_HEADER.dwHeight, 32, 3));
+            bw.Write(CalculatePitch((int)DDS_HEADER.dwWidth, (int)DDS_HEADER.dwHeight, 32, 3));
             bw.Write(1);
             bw.Write(8);
-            
-            foreach (UInt32 value in DDS_HEADER.dwReserved1)
+
+            foreach (uint value in DDS_HEADER.dwReserved1)
             {
                 bw.Write(value);
             }
@@ -349,30 +350,30 @@ namespace CathodeLib
             bw.Write(32);
             bw.Write(4);
             bw.Write(808540228);
-            
+
             bw.Write(DDS_HEADER.pfRGBBitCount);
             bw.Write((uint)0xFF0000);
             bw.Write((uint)0xFF00);
             bw.Write((uint)0xFF);
-            bw.Write((uint)0xFF000000);
-            
+            bw.Write(0xFF000000);
+
             bw.Write(4198408);
             bw.Write(DDS_HEADER.dwCaps2);
             bw.Write(DDS_HEADER.dwCaps3);
             bw.Write(DDS_HEADER.dwCaps4);
-            
+
             bw.Write(DDS_HEADER.dwReserved2);
-            
+
             bw.Write(98);
             bw.Write(3);
             bw.Write(0);
             bw.Write(1);
 
             bw.Write(0);
-            
+
             //Write chunk
             bw.Write(DDS_CHUNK);
-            
+
             //Once we have written to the file close the stream and writter
             outputStream.Close();
             bw.Close();

@@ -1,6 +1,5 @@
 //#define APPEND_DDS
 
-using CATHODE.LEGACY.Assets;
 using CathodeLib;
 using System;
 using System.Collections.Generic;

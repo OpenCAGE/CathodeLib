@@ -1,5 +1,4 @@
-﻿using CATHODE.LEGACY.Assets;
-using CathodeLib;
+﻿using CathodeLib;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;

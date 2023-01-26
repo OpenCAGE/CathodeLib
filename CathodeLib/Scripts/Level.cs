@@ -1,7 +1,6 @@
 ﻿using CATHODE;
 using CATHODE.EXPERIMENTAL;
 using CATHODE.LEGACY;
-using CATHODE.LEGACY.Assets;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -17,8 +16,7 @@ namespace CathodeLib
         public Models Models;
         public Textures Textures;
         public Materials Materials;
-        public ShadersPAK Shaders;  //TODO: this needs bringing to the new system
-        public IDXRemap ShadersIDX; //TODO: this needs bringing to the new system
+        public Shaders Shaders;
 
         public RenderableElements RenderableElements;
         public Movers Movers;
@@ -31,6 +29,7 @@ namespace CathodeLib
         public MaterialMappings MaterialMappings;
         public PathBarrierResources PathBarrierResources;
         public Lights Lights;
+        public Collisions Collisions;
 
         public class State
         {
@@ -51,6 +50,7 @@ namespace CathodeLib
             Models = new Models(path + "/RENDERABLE/LEVEL_MODELS.PAK");
             Textures = new Textures(path + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK");
             Materials = new Materials(path + "/RENDERABLE/LEVEL_MODELS.MTL");
+            Shaders = new Shaders(path + "/RENDERABLE/LEVEL_SHADERS_DX11.PAK");
             //Shaders = new ShadersPAK(path + "/RENDERABLE/LEVEL_SHADERS_DX11.PAK");
             //ShadersIDX = new IDXRemap(path + "/RENDERABLE/LEVEL_SHADERS_DX11_REMAP.PAK");
 
@@ -69,9 +69,9 @@ namespace CathodeLib
             //MaterialMappings = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK");
             //PathBarrierResources = new PathBarrierResources(path + "/WORLD/PATH_BARRIER_RESOURCES");
             //Lights = new Lights(path + "/WORLD/LIGHTS.BIN");
+            Collisions = new Collisions(path + "/WORLD/COLLISION.BIN");
 
             // WORLD TODO: 
-            //  - COLLISION.BIN
             //  - ALPHALIGHT_LEVEL.BIN
             //  - OCCLUDER_TRIANGLE_BVH.BIN
             //  - SND NETWORK FILES
