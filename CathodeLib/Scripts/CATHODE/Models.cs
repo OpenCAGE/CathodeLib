@@ -633,8 +633,10 @@ namespace CATHODE
                     Positions = vertices,
                     TriangleIndices = indices,
                     Normals = normals,
-                    TextureCoordinates = uv0
-                }
+                    TextureCoordinates = uv0,
+                },
+                Material = new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(255, 255, 0))),
+                BackMaterial = new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(255, 255, 0)))
             });
 #endif
             return mesh;
@@ -664,6 +666,7 @@ namespace CATHODE
          * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
         public CS2.Submesh GetAtWriteIndex(int index)
         {
+            if (_writeList.Count <= index) return null;
             return _writeList[index];
         }
         #endregion
