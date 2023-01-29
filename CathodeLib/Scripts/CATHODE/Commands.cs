@@ -202,7 +202,7 @@ namespace CATHODE
                                         reader.BaseStream.Position = resetPos;
                                         ShortGuid idCheck = new ShortGuid(reader);
                                         if (idCheck != thisProxy.shortGUID) throw new Exception("Proxy ID mismatch!");
-                                        thisProxy.extraId = new ShortGuid(reader);
+                                        thisProxy.targetType = new ShortGuid(reader);
                                         composite.proxies.Add(thisProxy);
                                         break;
                                     }
@@ -266,9 +266,6 @@ namespace CATHODE
                                                 reader.BaseStream.Position += 4;
                                                 break;
                                             case ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
-                                                int val1 = reader.ReadInt32();
-                                                int val2 = reader.ReadInt32();
-                                                break;
                                             case ResourceType.NAV_MESH_BARRIER_RESOURCE:
                                             case ResourceType.TRAVERSAL_SEGMENT:
                                                 reader.BaseStream.Position += 8;
@@ -282,12 +279,7 @@ namespace CATHODE
                                         reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
                                         reader.BaseStream.Position = (reader.ReadInt32() * 4);
 
-                                        Entity thisEntity = composite.GetEntityByID(new ShortGuid(reader));
-                                        if (thisEntity.variant == EntityVariant.PROXY)
-                                        {
-                                            break; // We don't handle this just yet... need to resolve the proxy.
-                                        }
-                                        CAGEAnimation animEntity = (CAGEAnimation)thisEntity;
+                                        CAGEAnimation animEntity = (CAGEAnimation)composite.GetEntityByID(new ShortGuid(reader));
 
                                         int keyframeHeaderOffset = reader.ReadInt32() * 4;
                                         int numberOfKeyframeHeaders = reader.ReadInt32();
@@ -880,7 +872,7 @@ namespace CATHODE
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
                                         writer.Write(Entries[i].proxies[p].shortGUID.val);
-                                        writer.Write(Entries[i].proxies[p].extraId.val);
+                                        writer.Write(Entries[i].proxies[p].targetType.val);
                                     }
                                     break;
                                 }

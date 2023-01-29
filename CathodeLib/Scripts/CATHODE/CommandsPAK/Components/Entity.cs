@@ -282,19 +282,19 @@ namespace CATHODE.Scripting
     {
         public ProxyEntity(List<ShortGuid> hierarchy = null, bool autoGenerateParameters = false) : base(EntityVariant.PROXY)
         {
-            extraId = ShortGuidUtils.GenerateRandom();
+            targetType = ShortGuidUtils.GenerateRandom(); //TODO: this should be pointed function 
             if (hierarchy != null) this.hierarchy = hierarchy;
             if (autoGenerateParameters) ApplyDefaults();
         }
         public ProxyEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null, bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.PROXY)
         {
             this.shortGUID = shortGUID;
-            extraId = ShortGuidUtils.GenerateRandom();
+            targetType = ShortGuidUtils.GenerateRandom(); //TODO: this should be pointed function 
             if (hierarchy != null) this.hierarchy = hierarchy;
             if (autoGenerateParameters) ApplyDefaults();
         }
 
-        public ShortGuid extraId; //TODO: I'm unsure if this is actually used by the game - we might not need to store it and just make up something when we write.
+        public ShortGuid targetType; //The "function" value on the entity we're pointing to
         public List<ShortGuid> hierarchy = new List<ShortGuid>();
 
         private void ApplyDefaults()
