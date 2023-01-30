@@ -280,16 +280,16 @@ namespace CATHODE.Scripting
     [Serializable]
     public class ProxyEntity : Entity
     {
-        public ProxyEntity(List<ShortGuid> hierarchy = null, bool autoGenerateParameters = false) : base(EntityVariant.PROXY)
+        public ProxyEntity(List<ShortGuid> hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(EntityVariant.PROXY)
         {
-            targetType = ShortGuidUtils.GenerateRandom(); //TODO: this should be pointed function 
+            this.targetType = targetType;
             if (hierarchy != null) this.hierarchy = hierarchy;
             if (autoGenerateParameters) ApplyDefaults();
         }
-        public ProxyEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null, bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.PROXY)
+        public ProxyEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.PROXY)
         {
             this.shortGUID = shortGUID;
-            targetType = ShortGuidUtils.GenerateRandom(); //TODO: this should be pointed function 
+            this.targetType = targetType; 
             if (hierarchy != null) this.hierarchy = hierarchy;
             if (autoGenerateParameters) ApplyDefaults();
         }

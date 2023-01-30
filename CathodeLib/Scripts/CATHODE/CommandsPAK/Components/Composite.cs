@@ -83,9 +83,13 @@ namespace CATHODE.Scripting
         }
 
         /* Add a new proxy entity */
-        public ProxyEntity AddProxy(List<ShortGuid> hierarchy, bool addDefaultParam = false)
+        public ProxyEntity AddProxy(Commands commands, List<ShortGuid> hierarchy, bool addDefaultParam = false)
         {
-            ProxyEntity proxy = new ProxyEntity(hierarchy, addDefaultParam);
+            CommandsUtils.ResolveHierarchy(commands, this, hierarchy, out Composite targetComposite, out string str);
+            Entity ent = targetComposite.GetEntityByID(hierarchy[hierarchy.Count - 2]);
+            if (ent.variant != EntityVariant.FUNCTION) return null;
+
+            ProxyEntity proxy = new ProxyEntity(hierarchy, ((FunctionEntity)ent).function, addDefaultParam);
             proxies.Add(proxy);
             return proxy;
         }

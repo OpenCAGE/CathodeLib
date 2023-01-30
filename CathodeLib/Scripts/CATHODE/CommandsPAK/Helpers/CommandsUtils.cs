@@ -129,11 +129,11 @@ namespace CATHODE.Scripting
 
         #region HELPER_FUNCS
         /* Resolve an entity hierarchy */
-        public static Entity ResolveHierarchy(Commands commands, Composite composite, List<ShortGuid> hierarchy, out Composite containedFlowgraph, out string asString)
+        public static Entity ResolveHierarchy(Commands commands, Composite composite, List<ShortGuid> hierarchy, out Composite containedComposite, out string asString)
         {
             if (hierarchy.Count == 0)
             {
-                containedFlowgraph = null;
+                containedComposite = null;
                 asString = "";
                 return null;
             }
@@ -151,7 +151,7 @@ namespace CATHODE.Scripting
                     currentFlowgraphToSearch = commands.GetComposite(hierarchyCopy[0]);
                     if (currentFlowgraphToSearch == null || currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[1]) == null)
                     {
-                        containedFlowgraph = null;
+                        containedComposite = null;
                         asString = "";
                         return null;
                     }
@@ -184,7 +184,7 @@ namespace CATHODE.Scripting
                     }
                 }
             }
-            containedFlowgraph = (entity == null) ? null : currentFlowgraphToSearch;
+            containedComposite = (entity == null) ? null : currentFlowgraphToSearch;
             asString = hierarchyString;
             return entity;
         }
