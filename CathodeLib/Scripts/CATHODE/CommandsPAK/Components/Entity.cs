@@ -280,6 +280,9 @@ namespace CATHODE.Scripting
     [Serializable]
     public class ProxyEntity : Entity
     {
+        public ProxyEntity() : base(EntityVariant.PROXY) { }
+        public ProxyEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.PROXY) { }
+
         public ProxyEntity(List<ShortGuid> hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(EntityVariant.PROXY)
         {
             this.targetType = targetType;
@@ -312,6 +315,9 @@ namespace CATHODE.Scripting
     [Serializable]
     public class OverrideEntity : Entity
     {
+        public OverrideEntity() : base(EntityVariant.OVERRIDE) { }
+        public OverrideEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.OVERRIDE) { }
+
         public OverrideEntity(List<ShortGuid> hierarchy = null) : base(EntityVariant.OVERRIDE)
         {
             checksum = ShortGuidUtils.GenerateRandom();

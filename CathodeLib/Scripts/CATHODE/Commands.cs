@@ -35,7 +35,9 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal()
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            byte[] content = File.ReadAllBytes(_filepath);
+
+            using (BinaryReader reader = new BinaryReader(new MemoryStream(content)))
             {
                 //Read entry points
                 _entryPoints = new ShortGuid[3];
@@ -108,358 +110,365 @@ namespace CATHODE
 
                 //Read all composites from the PAK
                 Composite[] composites = new Composite[composite_count];
-                for (int i = 0; i < composite_count; i++)
+                Parallel.For(0, composite_count, i =>
                 {
-                    reader.BaseStream.Position = compositeOffsets[i] * 4;
-                    reader.BaseStream.Position += 4; //Skip 0x00,0x00,0x00,0x00
-                    Composite composite = new Composite();
-
-                    //Read the offsets and counts
-                    OffsetPair[] offsetPairs = new OffsetPair[(int)CompositeFileData.NUMBER_OF_SCRIPT_BLOCKS];
-                    int scriptStartOffset = 0;
-                    for (int x = 0; x < (int)CompositeFileData.NUMBER_OF_SCRIPT_BLOCKS; x++)
+                    using (BinaryReader reader_parallel = new BinaryReader(new MemoryStream(content)))
                     {
-                        if (x == 0)
-                        {
-                            byte[] startOffsetRaw = reader.ReadBytes(4);
-                            startOffsetRaw[3] = 0x00; //For some reason this is 0x80?
-                            scriptStartOffset = BitConverter.ToInt32(startOffsetRaw, 0);
-                        }
-                        offsetPairs[x] = Utilities.Consume<OffsetPair>(reader);
-                        if (x == 0) composite.shortGUID = new ShortGuid(reader);
-                    }
-                    reader.BaseStream.Position += 8;
+                        reader_parallel.BaseStream.Position = compositeOffsets[i] * 4;
+                        reader_parallel.BaseStream.Position += 4; //Skip 0x00,0x00,0x00,0x00
+                        Composite composite = new Composite();
 
-                    //Read script ID and string name
-                    reader.BaseStream.Position = (scriptStartOffset * 4) + 4;
-                    composite.name = Utilities.ReadString(reader);
+                        //Read the offsets and counts
+                        OffsetPair[] offsetPairs = new OffsetPair[(int)CompositeFileData.NUMBER_OF_SCRIPT_BLOCKS];
+                        int scriptStartOffset = 0;
+                        for (int x = 0; x < (int)CompositeFileData.NUMBER_OF_SCRIPT_BLOCKS; x++)
+                        {
+                            if (x == 0)
+                            {
+                                byte[] startOffsetRaw = reader_parallel.ReadBytes(4);
+                                startOffsetRaw[3] = 0x00; //For some reason this is 0x80?
+                                scriptStartOffset = BitConverter.ToInt32(startOffsetRaw, 0);
+                            }
+                            offsetPairs[x] = Utilities.Consume<OffsetPair>(reader_parallel);
+                            if (x == 0) composite.shortGUID = new ShortGuid(reader_parallel);
+                        }
+                        reader_parallel.BaseStream.Position += 8;
+
+                        //Read script ID and string name
+                        reader_parallel.BaseStream.Position = (scriptStartOffset * 4) + 4;
+                        composite.name = Utilities.ReadString(reader_parallel);
 #if DO_PRETTY_COMPOSITES
                     string prettyPath = CompositePathDB.GetPrettyPathForComposite(composite.shortGUID);
                     if (prettyPath != "") composite.name = prettyPath;
 #endif
-                    Utilities.Align(reader, 4);
+                        Utilities.Align(reader_parallel, 4);
 
-                    //Pull data from those offsets
-                    List<CommandsEntityLinks> entityLinks = new List<CommandsEntityLinks>();
-                    List<CommandsParamRefSet> paramRefSets = new List<CommandsParamRefSet>();
-                    List<ResourceReference> resourceRefs = new List<ResourceReference>();
-                    Dictionary<ShortGuid, ShortGuid> overrideChecksums = new Dictionary<ShortGuid, ShortGuid>();
-                    for (int x = 0; x < offsetPairs.Length; x++)
-                    {
-                        reader.BaseStream.Position = offsetPairs[x].GlobalOffset * 4;
-                        for (int y = 0; y < offsetPairs[x].EntryCount; y++)
+                        //Pull data from those offsets
+                        List<CommandsEntityLinks> entityLinks = new List<CommandsEntityLinks>();
+                        List<CommandsParamRefSet> paramRefSets = new List<CommandsParamRefSet>();
+                        List<ResourceReference> resourceRefs = new List<ResourceReference>();
+                        Dictionary<ShortGuid, ShortGuid> overrideChecksums = new Dictionary<ShortGuid, ShortGuid>();
+                        for (int x = 0; x < offsetPairs.Length; x++)
                         {
-                            switch ((CompositeFileData)x)
+                            reader_parallel.BaseStream.Position = offsetPairs[x].GlobalOffset * 4;
+                            for (int y = 0; y < offsetPairs[x].EntryCount; y++)
                             {
-                                case CompositeFileData.ENTITY_CONNECTIONS:
-                                    {
-                                        reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-                                        entityLinks.Add(new CommandsEntityLinks(new ShortGuid(reader)));
-                                        int NumberOfParams = JumpToOffset(reader);
-                                        entityLinks[entityLinks.Count - 1].childLinks.AddRange(Utilities.ConsumeArray<EntityLink>(reader, NumberOfParams));
-                                        break;
-                                    }
-                                case CompositeFileData.ENTITY_PARAMETERS:
-                                    {
-                                        reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-                                        paramRefSets.Add(new CommandsParamRefSet(new ShortGuid(reader)));
-                                        int NumberOfParams = JumpToOffset(reader);
-                                        paramRefSets[paramRefSets.Count - 1].refs.AddRange(Utilities.ConsumeArray<CathodeParameterReference>(reader, NumberOfParams));
-                                        break;
-                                    }
-                                case CompositeFileData.ENTITY_OVERRIDES:
-                                    {
-                                        reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-                                        OverrideEntity overrider = new OverrideEntity(new ShortGuid(reader));
-                                        int NumberOfParams = JumpToOffset(reader);
-                                        overrider.hierarchy.AddRange(Utilities.ConsumeArray<ShortGuid>(reader, NumberOfParams));
-                                        composite.overrides.Add(overrider);
-                                        break;
-                                    }
-                                case CompositeFileData.ENTITY_OVERRIDES_CHECKSUM:
-                                    {
-                                        reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
-                                        overrideChecksums.Add(new ShortGuid(reader), new ShortGuid(reader));
-                                        break;
-                                    }
-                                //TODO: Really, I think these should be treated as parameters on the composite class as they are the pins we use for composite instances.
-                                //      Need to look into this more and see if any of these entities actually contain much data other than links into the composite itself.
-                                case CompositeFileData.COMPOSITE_EXPOSED_PARAMETERS:
-                                    {
-                                        reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-                                        VariableEntity dtEntity = new VariableEntity(new ShortGuid(reader));
-                                        dtEntity.type = CommandsUtils.GetDataType(new ShortGuid(reader));
-                                        dtEntity.name = new ShortGuid(reader);
-                                        composite.variables.Add(dtEntity);
-                                        break;
-                                    }
-                                case CompositeFileData.ENTITY_PROXIES:
-                                    {
-                                        reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 20);
-                                        ProxyEntity thisProxy = new ProxyEntity(new ShortGuid(reader));
-                                        int resetPos = (int)reader.BaseStream.Position + 8; //TODO: This is a HACK - I need to rework JumpToOffset to make a temp stream
-                                        int NumberOfParams = JumpToOffset(reader);
-                                        thisProxy.hierarchy.AddRange(Utilities.ConsumeArray<ShortGuid>(reader, NumberOfParams)); //Last is always 0x00, 0x00, 0x00, 0x00
-                                        reader.BaseStream.Position = resetPos;
-                                        ShortGuid idCheck = new ShortGuid(reader);
-                                        if (idCheck != thisProxy.shortGUID) throw new Exception("Proxy ID mismatch!");
-                                        thisProxy.targetType = new ShortGuid(reader);
-                                        composite.proxies.Add(thisProxy);
-                                        break;
-                                    }
-                                case CompositeFileData.ENTITY_FUNCTIONS:
-                                    {
-                                        reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
-                                        ShortGuid entityID = new ShortGuid(reader);
-                                        ShortGuid functionID = new ShortGuid(reader);
-                                        if (CommandsUtils.FunctionTypeExists(functionID))
+                                switch ((CompositeFileData)x)
+                                {
+                                    case CompositeFileData.ENTITY_CONNECTIONS:
                                         {
-                                            //This entity executes a hard-coded CATHODE function
-                                            FunctionType functionType = CommandsUtils.GetFunctionType(functionID);
-                                            switch (functionType)
+                                            reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
+                                            entityLinks.Add(new CommandsEntityLinks(new ShortGuid(reader_parallel)));
+                                            int NumberOfParams = JumpToOffset(reader_parallel);
+                                            entityLinks[entityLinks.Count - 1].childLinks.AddRange(Utilities.ConsumeArray<EntityLink>(reader_parallel, NumberOfParams));
+                                            break;
+                                        }
+                                    case CompositeFileData.ENTITY_PARAMETERS:
+                                        {
+                                            reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
+                                            paramRefSets.Add(new CommandsParamRefSet(new ShortGuid(reader_parallel)));
+                                            int NumberOfParams = JumpToOffset(reader_parallel);
+                                            paramRefSets[paramRefSets.Count - 1].refs.AddRange(Utilities.ConsumeArray<CathodeParameterReference>(reader_parallel, NumberOfParams));
+                                            break;
+                                        }
+                                    case CompositeFileData.ENTITY_OVERRIDES:
+                                        {
+                                            reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
+                                            OverrideEntity overrider = new OverrideEntity(new ShortGuid(reader_parallel));
+                                            int NumberOfParams = JumpToOffset(reader_parallel);
+                                            overrider.hierarchy.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams));
+                                            composite.overrides.Add(overrider);
+                                            break;
+                                        }
+                                    case CompositeFileData.ENTITY_OVERRIDES_CHECKSUM:
+                                        {
+                                            reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
+                                            overrideChecksums.Add(new ShortGuid(reader_parallel), new ShortGuid(reader_parallel));
+                                            break;
+                                        }
+                                    //TODO: Really, I think these should be treated as parameters on the composite class as they are the pins we use for composite instances.
+                                    //      Need to look into this more and see if any of these entities actually contain much data other than links into the composite itself.
+                                    case CompositeFileData.COMPOSITE_EXPOSED_PARAMETERS:
+                                        {
+                                            reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
+                                            VariableEntity dtEntity = new VariableEntity(new ShortGuid(reader_parallel));
+                                            dtEntity.type = CommandsUtils.GetDataType(new ShortGuid(reader_parallel));
+                                            dtEntity.name = new ShortGuid(reader_parallel);
+                                            composite.variables.Add(dtEntity);
+                                            break;
+                                        }
+                                    case CompositeFileData.ENTITY_PROXIES:
+                                        {
+                                            reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 20);
+                                            ProxyEntity thisProxy = new ProxyEntity(new ShortGuid(reader_parallel));
+                                            int resetPos = (int)reader_parallel.BaseStream.Position + 8; //TODO: This is a HACK - I need to rework JumpToOffset to make a temp stream
+                                            int NumberOfParams = JumpToOffset(reader_parallel);
+                                            thisProxy.hierarchy.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams)); //Last is always 0x00, 0x00, 0x00, 0x00
+                                            reader_parallel.BaseStream.Position = resetPos;
+                                            ShortGuid idCheck = new ShortGuid(reader_parallel);
+                                            if (idCheck != thisProxy.shortGUID) throw new Exception("Proxy ID mismatch!");
+                                            thisProxy.targetType = new ShortGuid(reader_parallel);
+                                            composite.proxies.Add(thisProxy);
+                                            break;
+                                        }
+                                    case CompositeFileData.ENTITY_FUNCTIONS:
+                                        {
+                                            reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
+                                            ShortGuid entityID = new ShortGuid(reader_parallel);
+                                            ShortGuid functionID = new ShortGuid(reader_parallel);
+                                            if (CommandsUtils.FunctionTypeExists(functionID))
                                             {
-                                                case FunctionType.CAGEAnimation:
-                                                    CAGEAnimation cageAnimation = new CAGEAnimation(entityID);
-                                                    composite.functions.Add(cageAnimation);
+                                                //This entity executes a hard-coded CATHODE function
+                                                FunctionType functionType = CommandsUtils.GetFunctionType(functionID);
+                                                switch (functionType)
+                                                {
+                                                    case FunctionType.CAGEAnimation:
+                                                        CAGEAnimation cageAnimation = new CAGEAnimation(entityID);
+                                                        composite.functions.Add(cageAnimation);
+                                                        break;
+                                                    case FunctionType.TriggerSequence:
+                                                        TriggerSequence triggerSequence = new TriggerSequence(entityID);
+                                                        composite.functions.Add(triggerSequence);
+                                                        break;
+                                                    default:
+                                                        FunctionEntity funcEntity = new FunctionEntity(entityID);
+                                                        funcEntity.function = functionID;
+                                                        composite.functions.Add(funcEntity);
+                                                        break;
+                                                }
+                                            }
+                                            else
+                                            {
+                                                //This entity is an instance of a composite entity collection
+                                                FunctionEntity funcEntity = new FunctionEntity(entityID);
+                                                funcEntity.function = functionID;
+                                                composite.functions.Add(funcEntity);
+                                            }
+                                            break;
+                                        }
+                                    case CompositeFileData.RESOURCE_REFERENCES:
+                                        {
+                                            reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 40);
+
+                                            ResourceReference resource = new ResourceReference();
+                                            resource.position = new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle());
+                                            resource.rotation = new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle());
+                                            resource.resourceID = new ShortGuid(reader_parallel);
+                                            resource.entryType = CommandsUtils.GetResourceEntryType(reader_parallel.ReadBytes(4));
+                                            switch (resource.entryType)
+                                            {
+                                                case ResourceType.RENDERABLE_INSTANCE:
+                                                    resource.startIndex = reader_parallel.ReadInt32();
+                                                    resource.count = reader_parallel.ReadInt32();
                                                     break;
-                                                case FunctionType.TriggerSequence:
-                                                    TriggerSequence triggerSequence = new TriggerSequence(entityID);
-                                                    composite.functions.Add(triggerSequence);
+                                                case ResourceType.COLLISION_MAPPING:
+                                                    resource.startIndex = reader_parallel.ReadInt32();
+                                                    resource.collisionID = new ShortGuid(reader_parallel);
                                                     break;
-                                                default:
-                                                    FunctionEntity funcEntity = new FunctionEntity(entityID);
-                                                    funcEntity.function = functionID;
-                                                    composite.functions.Add(funcEntity);
+                                                case ResourceType.ANIMATED_MODEL:
+                                                case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
+                                                    resource.startIndex = reader_parallel.ReadInt32();
+                                                    reader_parallel.BaseStream.Position += 4;
+                                                    break;
+                                                case ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
+                                                case ResourceType.NAV_MESH_BARRIER_RESOURCE:
+                                                case ResourceType.TRAVERSAL_SEGMENT:
+                                                    reader_parallel.BaseStream.Position += 8;
                                                     break;
                                             }
+                                            resourceRefs.Add(resource);
+                                            break;
                                         }
-                                        else
+                                    case CompositeFileData.CAGEANIMATION_DATA:
                                         {
-                                            //This entity is an instance of a composite entity collection
-                                            FunctionEntity funcEntity = new FunctionEntity(entityID);
-                                            funcEntity.function = functionID;
-                                            composite.functions.Add(funcEntity);
-                                        }
-                                        break;
-                                    }
-                                case CompositeFileData.RESOURCE_REFERENCES:
-                                    {
-                                        reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 40);
+                                            reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
+                                            reader_parallel.BaseStream.Position = (reader_parallel.ReadInt32() * 4);
 
-                                        ResourceReference resource = new ResourceReference();
-                                        resource.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                                        resource.rotation = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                                        resource.resourceID = new ShortGuid(reader);
-                                        resource.entryType = CommandsUtils.GetResourceEntryType(reader.ReadBytes(4));
-                                        switch (resource.entryType)
-                                        {
-                                            case ResourceType.RENDERABLE_INSTANCE:
-                                                resource.startIndex = reader.ReadInt32(); 
-                                                resource.count = reader.ReadInt32(); 
-                                                break;
-                                            case ResourceType.COLLISION_MAPPING:
-                                                resource.startIndex = reader.ReadInt32();
-                                                resource.collisionID = new ShortGuid(reader);
-                                                break;
-                                            case ResourceType.ANIMATED_MODEL:
-                                            case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                resource.startIndex = reader.ReadInt32();
-                                                reader.BaseStream.Position += 4;
-                                                break;
-                                            case ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
-                                            case ResourceType.NAV_MESH_BARRIER_RESOURCE:
-                                            case ResourceType.TRAVERSAL_SEGMENT:
-                                                reader.BaseStream.Position += 8;
-                                                break;
-                                        }
-                                        resourceRefs.Add(resource);
-                                        break;
-                                    }
-                                case CompositeFileData.CAGEANIMATION_DATA:
-                                    {
-                                        reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
-                                        reader.BaseStream.Position = (reader.ReadInt32() * 4);
+                                            CAGEAnimation animEntity = (CAGEAnimation)composite.GetEntityByID(new ShortGuid(reader_parallel));
 
-                                        CAGEAnimation animEntity = (CAGEAnimation)composite.GetEntityByID(new ShortGuid(reader));
+                                            int keyframeHeaderOffset = reader_parallel.ReadInt32() * 4;
+                                            int numberOfKeyframeHeaders = reader_parallel.ReadInt32();
+                                            int keyframeDataOffset = reader_parallel.ReadInt32() * 4;
+                                            int numberOfKeyframeDataEntries = reader_parallel.ReadInt32();
+                                            int OffsetToFindParams3 = reader_parallel.ReadInt32() * 4;
+                                            int NumberOfParams3 = reader_parallel.ReadInt32();
 
-                                        int keyframeHeaderOffset = reader.ReadInt32() * 4;
-                                        int numberOfKeyframeHeaders = reader.ReadInt32();
-                                        int keyframeDataOffset = reader.ReadInt32() * 4;
-                                        int numberOfKeyframeDataEntries = reader.ReadInt32();
-                                        int OffsetToFindParams3 = reader.ReadInt32() * 4;
-                                        int NumberOfParams3 = reader.ReadInt32();
-
-                                        for (int z = 0; z < numberOfKeyframeHeaders; z++)
-                                        {
-                                            reader.BaseStream.Position = keyframeHeaderOffset + (z * 32);
-
-                                            CAGEAnimation.Header thisHeader = new CAGEAnimation.Header();
-                                            thisHeader.ID = new ShortGuid(reader);//ID
-                                            thisHeader.unk2 = CommandsUtils.GetDataType(new ShortGuid(reader)); //Datatype, seems to usually be NO_TYPE
-                                            thisHeader.keyframeDataID = new ShortGuid(reader);
-                                            thisHeader.parameterID = new ShortGuid(reader);
-                                            thisHeader.parameterDataType = CommandsUtils.GetDataType(new ShortGuid(reader));
-                                            thisHeader.parameterSubID = new ShortGuid(reader);
-
-                                            int hierarchyCount = JumpToOffset(reader);
-                                            thisHeader.connectedEntity = Utilities.ConsumeArray<ShortGuid>(reader, hierarchyCount).ToList<ShortGuid>();
-                                            animEntity.keyframeHeaders.Add(thisHeader);
-                                        }
-
-                                        reader.BaseStream.Position = keyframeDataOffset;
-                                        int[] newOffset = Utilities.ConsumeArray<int>(reader, numberOfKeyframeDataEntries);
-                                        for (int z = 0; z < numberOfKeyframeDataEntries; z++)
-                                        {
-                                            reader.BaseStream.Position = newOffset[z] * 4;
-
-                                            CAGEAnimation.Keyframe thisParamKey = new CAGEAnimation.Keyframe();
-                                            thisParamKey.minSeconds = reader.ReadSingle();
-                                            thisParamKey.maxSeconds = reader.ReadSingle(); //max seconds for keyframe list
-                                            thisParamKey.ID = new ShortGuid(reader); //this is perhaps an entity id
-
-                                            int numberOfKeyframes = JumpToOffset(reader);
-                                            for (int m = 0; m < numberOfKeyframes; m++)
+                                            for (int z = 0; z < numberOfKeyframeHeaders; z++)
                                             {
-                                                CAGEAnimation.Keyframe.Data thisKeyframe = new CAGEAnimation.Keyframe.Data();
-                                                thisKeyframe.unk1 = reader.ReadSingle(); //
-                                                thisKeyframe.secondsSinceStart = reader.ReadSingle(); //Seconds since start of animation
-                                                thisKeyframe.secondsSinceStartValidation = reader.ReadSingle(); //Seconds since start of animation
-                                                thisKeyframe.paramValue = reader.ReadSingle(); //Parameter value
-                                                thisKeyframe.unk2 = reader.ReadSingle(); //
-                                                thisKeyframe.unk3 = reader.ReadSingle(); // 
-                                                thisKeyframe.unk4 = reader.ReadSingle(); //
-                                                thisKeyframe.unk5 = reader.ReadSingle(); //
-                                                thisParamKey.keyframes.Add(thisKeyframe);
+                                                reader_parallel.BaseStream.Position = keyframeHeaderOffset + (z * 32);
+
+                                                CAGEAnimation.Header thisHeader = new CAGEAnimation.Header();
+                                                thisHeader.ID = new ShortGuid(reader_parallel);//ID
+                                                thisHeader.unk2 = CommandsUtils.GetDataType(new ShortGuid(reader_parallel)); //Datatype, seems to usually be NO_TYPE
+                                                thisHeader.keyframeDataID = new ShortGuid(reader_parallel);
+                                                thisHeader.parameterID = new ShortGuid(reader_parallel);
+                                                thisHeader.parameterDataType = CommandsUtils.GetDataType(new ShortGuid(reader_parallel));
+                                                thisHeader.parameterSubID = new ShortGuid(reader_parallel);
+
+                                                int hierarchyCount = JumpToOffset(reader_parallel);
+                                                thisHeader.connectedEntity = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
+                                                animEntity.keyframeHeaders.Add(thisHeader);
                                             }
-                                            animEntity.keyframeData.Add(thisParamKey);
-                                        }
 
-                                        //UNKNOWN - is this maybe event triggers?
-                                        reader.BaseStream.Position = OffsetToFindParams3;
-                                        int[] newOffset1 = Utilities.ConsumeArray<int>(reader, NumberOfParams3);
-                                        for (int z = 0; z < NumberOfParams3; z++)
-                                        {
-                                            reader.BaseStream.Position = newOffset1[z] * 4;
-
-                                            CAGEAnimation.Keyframe2 thisParamSet = new CAGEAnimation.Keyframe2();
-                                            thisParamSet.minSeconds = reader.ReadSingle();
-                                            thisParamSet.maxSeconds = reader.ReadSingle();
-                                            thisParamSet.ID = new ShortGuid(reader); //this is perhaps an entity id
-
-                                            int NumberOfParams3_ = JumpToOffset(reader);
-                                            for (int m = 0; m < NumberOfParams3_; m++)
+                                            reader_parallel.BaseStream.Position = keyframeDataOffset;
+                                            int[] newOffset = Utilities.ConsumeArray<int>(reader_parallel, numberOfKeyframeDataEntries);
+                                            for (int z = 0; z < numberOfKeyframeDataEntries; z++)
                                             {
-                                                CAGEAnimation.Keyframe2.Data thisInnerSet = new CAGEAnimation.Keyframe2.Data();
-                                                thisInnerSet.unk1 = reader.ReadSingle(); //type?
-                                                thisInnerSet.secondsSinceStart = reader.ReadSingle(); //seconds since start of animation
-                                                thisInnerSet.unk2 = reader.ReadSingle(); //id ?
-                                                thisInnerSet.unk3 = reader.ReadSingle(); // id ?
-                                                thisInnerSet.unk4 = reader.ReadSingle(); //
-                                                thisInnerSet.unk5 = reader.ReadSingle(); //
-                                                thisParamSet.keyframes.Add(thisInnerSet);
+                                                reader_parallel.BaseStream.Position = newOffset[z] * 4;
+
+                                                CAGEAnimation.Keyframe thisParamKey = new CAGEAnimation.Keyframe();
+                                                thisParamKey.minSeconds = reader_parallel.ReadSingle();
+                                                thisParamKey.maxSeconds = reader_parallel.ReadSingle(); //max seconds for keyframe list
+                                                thisParamKey.ID = new ShortGuid(reader_parallel); //this is perhaps an entity id
+
+                                                int numberOfKeyframes = JumpToOffset(reader_parallel);
+                                                for (int m = 0; m < numberOfKeyframes; m++)
+                                                {
+                                                    CAGEAnimation.Keyframe.Data thisKeyframe = new CAGEAnimation.Keyframe.Data();
+                                                    thisKeyframe.unk1 = reader_parallel.ReadSingle(); //
+                                                    thisKeyframe.secondsSinceStart = reader_parallel.ReadSingle(); //Seconds since start of animation
+                                                    thisKeyframe.secondsSinceStartValidation = reader_parallel.ReadSingle(); //Seconds since start of animation
+                                                    thisKeyframe.paramValue = reader_parallel.ReadSingle(); //Parameter value
+                                                    thisKeyframe.unk2 = reader_parallel.ReadSingle(); //
+                                                    thisKeyframe.unk3 = reader_parallel.ReadSingle(); // 
+                                                    thisKeyframe.unk4 = reader_parallel.ReadSingle(); //
+                                                    thisKeyframe.unk5 = reader_parallel.ReadSingle(); //
+                                                    thisParamKey.keyframes.Add(thisKeyframe);
+                                                }
+                                                animEntity.keyframeData.Add(thisParamKey);
                                             }
-                                            animEntity.keyframeData2.Add(thisParamSet);
-                                        }
-                                        break;
-                                    }
-                                case CompositeFileData.TRIGGERSEQUENCE_DATA:
-                                    {
-                                        reader.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
-                                        reader.BaseStream.Position = (reader.ReadInt32() * 4);
 
-                                        Entity thisEntity = composite.GetEntityByID(new ShortGuid(reader));
-                                        if (thisEntity.variant == EntityVariant.PROXY)
+                                            //UNKNOWN - is this maybe event triggers?
+                                            reader_parallel.BaseStream.Position = OffsetToFindParams3;
+                                            int[] newOffset1 = Utilities.ConsumeArray<int>(reader_parallel, NumberOfParams3);
+                                            for (int z = 0; z < NumberOfParams3; z++)
+                                            {
+                                                reader_parallel.BaseStream.Position = newOffset1[z] * 4;
+
+                                                CAGEAnimation.Keyframe2 thisParamSet = new CAGEAnimation.Keyframe2();
+                                                thisParamSet.minSeconds = reader_parallel.ReadSingle();
+                                                thisParamSet.maxSeconds = reader_parallel.ReadSingle();
+                                                thisParamSet.ID = new ShortGuid(reader_parallel); //this is perhaps an entity id
+
+                                                int NumberOfParams3_ = JumpToOffset(reader_parallel);
+                                                for (int m = 0; m < NumberOfParams3_; m++)
+                                                {
+                                                    CAGEAnimation.Keyframe2.Data thisInnerSet = new CAGEAnimation.Keyframe2.Data();
+                                                    thisInnerSet.unk1 = reader_parallel.ReadSingle(); //type?
+                                                    thisInnerSet.secondsSinceStart = reader_parallel.ReadSingle(); //seconds since start of animation
+                                                    thisInnerSet.unk2 = reader_parallel.ReadSingle(); //id ?
+                                                    thisInnerSet.unk3 = reader_parallel.ReadSingle(); // id ?
+                                                    thisInnerSet.unk4 = reader_parallel.ReadSingle(); //
+                                                    thisInnerSet.unk5 = reader_parallel.ReadSingle(); //
+                                                    thisParamSet.keyframes.Add(thisInnerSet);
+                                                }
+                                                animEntity.keyframeData2.Add(thisParamSet);
+                                            }
+                                            break;
+                                        }
+                                    case CompositeFileData.TRIGGERSEQUENCE_DATA:
                                         {
-                                            break; // We don't handle this just yet... need to resolve the proxy.
+                                            reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 4);
+                                            reader_parallel.BaseStream.Position = (reader_parallel.ReadInt32() * 4);
+
+                                            Entity thisEntity = composite.GetEntityByID(new ShortGuid(reader_parallel));
+                                            if (thisEntity.variant == EntityVariant.PROXY)
+                                            {
+                                                break; // We don't handle this just yet... need to resolve the proxy.
+                                            }
+                                            TriggerSequence trigEntity = (TriggerSequence)thisEntity;
+
+                                            int triggersOffset = reader_parallel.ReadInt32() * 4;
+                                            int triggersCount = reader_parallel.ReadInt32();
+                                            int eventsOffset = reader_parallel.ReadInt32() * 4;
+                                            int eventsCount = reader_parallel.ReadInt32();
+
+                                            for (int z = 0; z < triggersCount; z++)
+                                            {
+                                                reader_parallel.BaseStream.Position = triggersOffset + (z * 12);
+                                                int hierarchyOffset = reader_parallel.ReadInt32() * 4;
+                                                int hierarchyCount = reader_parallel.ReadInt32();
+
+                                                TriggerSequence.Trigger thisTrigger = new TriggerSequence.Trigger();
+                                                thisTrigger.timing = reader_parallel.ReadSingle();
+                                                reader_parallel.BaseStream.Position = hierarchyOffset;
+                                                thisTrigger.hierarchy = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
+                                                trigEntity.triggers.Add(thisTrigger);
+                                            }
+
+                                            for (int z = 0; z < eventsCount; z++)
+                                            {
+                                                reader_parallel.BaseStream.Position = eventsOffset + (z * 12);
+
+                                                TriggerSequence.Event thisEvent = new TriggerSequence.Event();
+                                                thisEvent.EventID = new ShortGuid(reader_parallel);
+                                                thisEvent.StartedID = new ShortGuid(reader_parallel);
+                                                thisEvent.FinishedID = new ShortGuid(reader_parallel);
+                                                trigEntity.events.Add(thisEvent);
+                                            }
+                                            break;
                                         }
-                                        TriggerSequence trigEntity = (TriggerSequence)thisEntity;
-
-                                        int triggersOffset = reader.ReadInt32() * 4;
-                                        int triggersCount = reader.ReadInt32();
-                                        int eventsOffset = reader.ReadInt32() * 4;
-                                        int eventsCount = reader.ReadInt32();
-
-                                        for (int z = 0; z < triggersCount; z++)
-                                        {
-                                            reader.BaseStream.Position = triggersOffset + (z * 12);
-                                            int hierarchyOffset = reader.ReadInt32() * 4;
-                                            int hierarchyCount = reader.ReadInt32();
-
-                                            TriggerSequence.Trigger thisTrigger = new TriggerSequence.Trigger();
-                                            thisTrigger.timing = reader.ReadSingle();
-                                            reader.BaseStream.Position = hierarchyOffset;
-                                            thisTrigger.hierarchy = Utilities.ConsumeArray<ShortGuid>(reader, hierarchyCount).ToList<ShortGuid>();
-                                            trigEntity.triggers.Add(thisTrigger);
-                                        }
-
-                                        for (int z = 0; z < eventsCount; z++)
-                                        {
-                                            reader.BaseStream.Position = eventsOffset + (z * 12);
-
-                                            TriggerSequence.Event thisEvent = new TriggerSequence.Event();
-                                            thisEvent.EventID = new ShortGuid(reader);
-                                            thisEvent.StartedID = new ShortGuid(reader);
-                                            thisEvent.FinishedID = new ShortGuid(reader);
-                                            trigEntity.events.Add(thisEvent);
-                                        }
-                                        break;
-                                    }
+                                }
                             }
                         }
-                    }
 
-                    //Apply checksums to overrides
-                    for (int x = 0; x < composite.overrides.Count; x++)
-                        composite.overrides[x].checksum = overrideChecksums[composite.overrides[x].shortGUID];
+                        //Apply checksums to overrides
+                        for (int x = 0; x < composite.overrides.Count; x++)
+                            composite.overrides[x].checksum = overrideChecksums[composite.overrides[x].shortGUID];
 
-                    //Apply connections between entities
-                    for (int x = 0; x < entityLinks.Count; x++)
-                        composite.GetEntityByID(entityLinks[x].parentID)?.childLinks.AddRange(entityLinks[x].childLinks);
+                        //Apply connections between entities
+                        for (int x = 0; x < entityLinks.Count; x++)
+                            composite.GetEntityByID(entityLinks[x].parentID)?.childLinks.AddRange(entityLinks[x].childLinks);
 
-                    //Clone parameter data to entities
-                    for (int x = 0; x < paramRefSets.Count; x++)
-                    {
-                        Entity entToApply = composite.GetEntityByID(paramRefSets[x].id);
-                        if (entToApply == null) continue;
-                        for (int y = 0; y < paramRefSets[x].refs.Count; y++)
-                            entToApply.parameters.Add(new Parameter(paramRefSets[x].refs[y].paramID, (ParameterData)parameters[paramRefSets[x].refs[y].offset].Clone()));
-                    }
-
-                    //Remap resource references
-                    ShortGuid resParamID = ShortGuidUtils.Generate("resource");
-                    ShortGuid physEntID = ShortGuidUtils.Generate("PhysicsSystem");
-                    //Check to see if this resource applies to a PARAMETER on an entity
-                    for (int x = 0; x < composite.functions.Count; x++)
-                    {
-                        for (int y = 0; y < composite.functions[x].parameters.Count; y++)
+                        //Clone parameter data to entities
+                        for (int x = 0; x < paramRefSets.Count; x++)
                         {
-                            if (composite.functions[x].parameters[y].name != resParamID) continue;
-
-                            cResource resourceParam = (cResource)composite.functions[x].parameters[y].content;
-                            resourceParam.value.AddRange(resourceRefs.Where(o => o.resourceID == resourceParam.shortGUID));
-                            resourceRefs.RemoveAll(o => o.resourceID == resourceParam.shortGUID);
+                            Entity entToApply = composite.GetEntityByID(paramRefSets[x].id);
+                            if (entToApply == null) continue;
+                            for (int y = 0; y < paramRefSets[x].refs.Count; y++)
+                            {
+                                ParameterData data = parameters[paramRefSets[x].refs[y].offset];
+                                Parameter param = new Parameter(paramRefSets[x].refs[y].paramID, (ParameterData)data.Clone());
+                                entToApply.parameters.Add(param);
+                            }
                         }
-                    }
-                    //Check to see if this resource applies directly to an ENTITY
-                    for (int x = 0; x < composite.functions.Count; x++)
-                    {
-                        composite.functions[x].resources.AddRange(resourceRefs.Where(o => o.resourceID == composite.functions[x].shortGUID));
-                        resourceRefs.RemoveAll(o => o.resourceID == composite.functions[x].shortGUID);
-                    }
-                    //Any that are left over will be applied to PhysicsSystem entities
-                    if (resourceRefs.Count == 1 && resourceRefs[0].entryType == ResourceType.DYNAMIC_PHYSICS_SYSTEM)
-                    {
-                        FunctionEntity physEnt = composite.functions.FirstOrDefault(o => o.function == physEntID);
-                        if (physEnt != null) physEnt.resources.Add(resourceRefs[0]);
-                    }
-                    else if (resourceRefs.Count != 0)
-                    {
-                        Console.WriteLine("WARNING: This composite contains unexpected trailing resources!");
-                    }
-                    resourceRefs.Clear();
 
-                    composites[i] = composite;
-                }
+                        //Remap resource references
+                        ShortGuid resParamID = ShortGuidUtils.Generate("resource");
+                        ShortGuid physEntID = ShortGuidUtils.Generate("PhysicsSystem");
+                        //Check to see if this resource applies to a PARAMETER on an entity
+                        for (int x = 0; x < composite.functions.Count; x++)
+                        {
+                            for (int y = 0; y < composite.functions[x].parameters.Count; y++)
+                            {
+                                if (composite.functions[x].parameters[y].name != resParamID) continue;
+
+                                cResource resourceParam = (cResource)composite.functions[x].parameters[y].content;
+                                resourceParam.value.AddRange(resourceRefs.Where(o => o.resourceID == resourceParam.shortGUID));
+                                resourceRefs.RemoveAll(o => o.resourceID == resourceParam.shortGUID);
+                            }
+                        }
+                        //Check to see if this resource applies directly to an ENTITY
+                        for (int x = 0; x < composite.functions.Count; x++)
+                        {
+                            composite.functions[x].resources.AddRange(resourceRefs.Where(o => o.resourceID == composite.functions[x].shortGUID));
+                            resourceRefs.RemoveAll(o => o.resourceID == composite.functions[x].shortGUID);
+                        }
+                        //Any that are left over will be applied to PhysicsSystem entities
+                        if (resourceRefs.Count == 1 && resourceRefs[0].entryType == ResourceType.DYNAMIC_PHYSICS_SYSTEM)
+                        {
+                            FunctionEntity physEnt = composite.functions.FirstOrDefault(o => o.function == physEntID);
+                            if (physEnt != null) physEnt.resources.Add(resourceRefs[0]);
+                        }
+                        else if (resourceRefs.Count != 0)
+                        {
+                            Console.WriteLine("WARNING: This composite contains unexpected trailing resources!");
+                        }
+                        resourceRefs.Clear();
+
+                        composites[i] = composite;
+                    }
+                });
                 Entries = composites.ToList<Composite>();
             }
             return true;
