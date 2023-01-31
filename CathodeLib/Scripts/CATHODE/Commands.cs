@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
+using System.Threading.Tasks;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -503,88 +504,90 @@ namespace CATHODE
             RefreshEntryPointObjects();
 
             //Fix (& verify) entity-attached resource info
-            for (int i = 0; i < Entries.Count; i++)
+            Parallel.For(0, Entries.Count, i =>
             {
-                for (int x = 0; x < Entries[i].functions.Count; x++)
+                Parallel.For(0, Entries[i].functions.Count, x =>
                 {
-                    if (!CommandsUtils.FunctionTypeExists(Entries[i].functions[x].function)) continue;
-                    FunctionType type = CommandsUtils.GetFunctionType(Entries[i].functions[x].function);
-                    switch (type)
+                    if (CommandsUtils.FunctionTypeExists(Entries[i].functions[x].function))
                     {
-                        // Types below require resources we can add, and information we should probably correct, so do it automatically!
-                        case FunctionType.SoundBarrier:
-                            Entries[i].functions[x].AddResource(ResourceType.COLLISION_MAPPING);
-                            break;
-                        case FunctionType.ExclusiveMaster:
-                            Entries[i].functions[x].AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE);
-                            break;
-                        case FunctionType.TRAV_1ShotSpline:
-                            //TODO: There are loads of TRAV_ entities which are unused in the vanilla game, so I'm not sure if they should apply to those too...
-                            Entries[i].functions[x].AddResource(ResourceType.TRAVERSAL_SEGMENT);
-                            break;
-                        case FunctionType.NavMeshBarrier:
-                            Entries[i].functions[x].AddResource(ResourceType.NAV_MESH_BARRIER_RESOURCE);
-                            Entries[i].functions[x].AddResource(ResourceType.COLLISION_MAPPING);
-                            break;
-                        case FunctionType.PhysicsSystem:
-                            Parameter dps_index = Entries[i].functions[x].GetParameter("system_index");
-                            if (dps_index == null)
-                            {
-                                dps_index = new Parameter("system_index", new cInteger(0));
-                                Entries[i].functions[x].parameters.Add(dps_index);
-                            }
-                            Entries[i].functions[x].AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).startIndex = ((cInteger)dps_index.content).value;
-                            break;
-                        case FunctionType.EnvironmentModelReference:
-                            Parameter rsc = Entries[i].functions[x].GetParameter("resource");
-                            if (rsc == null)
-                            {
-                                rsc = new Parameter("resource", new cResource(Entries[i].functions[x].shortGUID));
-                                Entries[i].functions[x].parameters.Add(rsc);
-                            }
-                            cResource rsc_p = (cResource)rsc.content;
-                            rsc_p.AddResource(ResourceType.ANIMATED_MODEL);
-                            break;
+                        FunctionType type = CommandsUtils.GetFunctionType(Entries[i].functions[x].function);
+                        switch (type)
+                        {
+                            // Types below require resources we can add, and information we should probably correct, so do it automatically!
+                            case FunctionType.SoundBarrier:
+                                Entries[i].functions[x].AddResource(ResourceType.COLLISION_MAPPING);
+                                break;
+                            case FunctionType.ExclusiveMaster:
+                                Entries[i].functions[x].AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE);
+                                break;
+                            case FunctionType.TRAV_1ShotSpline:
+                                //TODO: There are loads of TRAV_ entities which are unused in the vanilla game, so I'm not sure if they should apply to those too...
+                                Entries[i].functions[x].AddResource(ResourceType.TRAVERSAL_SEGMENT);
+                                break;
+                            case FunctionType.NavMeshBarrier:
+                                Entries[i].functions[x].AddResource(ResourceType.NAV_MESH_BARRIER_RESOURCE);
+                                Entries[i].functions[x].AddResource(ResourceType.COLLISION_MAPPING);
+                                break;
+                            case FunctionType.PhysicsSystem:
+                                Parameter dps_index = Entries[i].functions[x].GetParameter("system_index");
+                                if (dps_index == null)
+                                {
+                                    dps_index = new Parameter("system_index", new cInteger(0));
+                                    Entries[i].functions[x].parameters.Add(dps_index);
+                                }
+                                Entries[i].functions[x].AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).startIndex = ((cInteger)dps_index.content).value;
+                                break;
+                            case FunctionType.EnvironmentModelReference:
+                                Parameter rsc = Entries[i].functions[x].GetParameter("resource");
+                                if (rsc == null)
+                                {
+                                    rsc = new Parameter("resource", new cResource(Entries[i].functions[x].shortGUID));
+                                    Entries[i].functions[x].parameters.Add(rsc);
+                                }
+                                cResource rsc_p = (cResource)rsc.content;
+                                rsc_p.AddResource(ResourceType.ANIMATED_MODEL);
+                                break;
 
-                        // Types below require various things, but we don't add them as they work without it, so just log a warning.
-                        case FunctionType.ModelReference:
-                            Parameter mdl = Entries[i].functions[x].GetParameter("resource");
-                            if (mdl == null)
-                            {
-                                mdl = new Parameter("resource", new cResource(Entries[i].functions[x].shortGUID));
-                                Entries[i].functions[x].parameters.Add(mdl);
-                            }
-                            cResource mdl_p = (cResource)mdl.content;
-                            if (mdl_p.GetResource(ResourceType.RENDERABLE_INSTANCE) == null)
-                                Console.WriteLine("WARNING: ModelReference resource parameter does not contain a RENDERABLE_INSTANCE resource reference!");
-                            if (mdl_p.GetResource(ResourceType.COLLISION_MAPPING) == null)
-                                Console.WriteLine("WARNING: ModelReference resource parameter does not contain a COLLISION_MAPPING resource reference!");
-                            break;
-                        case FunctionType.CollisionBarrier:
-                            if (Entries[i].functions[x].GetResource(ResourceType.COLLISION_MAPPING) == null)
-                                Console.WriteLine("WARNING: CollisionBarrier entity does not contain a COLLISION_MAPPING resource reference!");
-                            break;
+                            // Types below require various things, but we don't add them as they work without it, so just log a warning.
+                            case FunctionType.ModelReference:
+                                Parameter mdl = Entries[i].functions[x].GetParameter("resource");
+                                if (mdl == null)
+                                {
+                                    mdl = new Parameter("resource", new cResource(Entries[i].functions[x].shortGUID));
+                                    Entries[i].functions[x].parameters.Add(mdl);
+                                }
+                                cResource mdl_p = (cResource)mdl.content;
+                                if (mdl_p.GetResource(ResourceType.RENDERABLE_INSTANCE) == null)
+                                    Console.WriteLine("WARNING: ModelReference resource parameter does not contain a RENDERABLE_INSTANCE resource reference!");
+                                if (mdl_p.GetResource(ResourceType.COLLISION_MAPPING) == null)
+                                    Console.WriteLine("WARNING: ModelReference resource parameter does not contain a COLLISION_MAPPING resource reference!");
+                                break;
+                            case FunctionType.CollisionBarrier:
+                                if (Entries[i].functions[x].GetResource(ResourceType.COLLISION_MAPPING) == null)
+                                    Console.WriteLine("WARNING: CollisionBarrier entity does not contain a COLLISION_MAPPING resource reference!");
+                                break;
 
-                        // Types below require only RENDERABLE_INSTANCE resource references on the entity, pointing to the commented model.
-                        // We can't add them automatically as we need to know REDS indexes!
-                        // UPDATE: I think the game can handle any resource being set here!
-                        case FunctionType.ParticleEmitterReference:   /// [dynamic_mesh]       /// - I think i've also seen 1000 particle system too
-                        case FunctionType.RibbonEmitterReference:     /// [dynamic_mesh]
-                        case FunctionType.SurfaceEffectBox:           /// Global/Props/fogbox.CS2 -> [VolumeFog]
-                        case FunctionType.FogBox:                     /// Global/Props/fogplane.CS2 -> [Plane01] 
-                        case FunctionType.SurfaceEffectSphere:        /// Global/Props/fogsphere.CS2 -> [Sphere01]
-                        case FunctionType.FogSphere:                  /// Global/Props/fogsphere.CS2 -> [Sphere01]
-                        case FunctionType.SimpleRefraction:           /// Global/Props/refraction.CS2 -> [Plane01]
-                        case FunctionType.SimpleWater:                /// Global/Props/noninteractive_water.CS2 -> [Plane01]
-                        case FunctionType.LightReference:             /// Global/Props/deferred_point_light.cs2 -> [Sphere01],  Global/Props/deferred_spot_light.cs2 -> [Sphere02], Global/Props/deferred_strip_light.cs2 -> [Sphere01]
-                            if (Entries[i].functions[x].GetResource(ResourceType.RENDERABLE_INSTANCE) == null)
-                                Console.WriteLine("ERROR: " + type + " entity does not contain a RENDERABLE_INSTANCE resource reference!");
-                            if (Entries[i].functions[x].GetParameter("resource") != null)
-                                throw new Exception("Function entity of type " + type + " had an invalid resource parameter applied!");
-                            break;
+                            // Types below require only RENDERABLE_INSTANCE resource references on the entity, pointing to the commented model.
+                            // We can't add them automatically as we need to know REDS indexes!
+                            // UPDATE: I think the game can handle any resource being set here!
+                            case FunctionType.ParticleEmitterReference:   /// [dynamic_mesh]       /// - I think i've also seen 1000 particle system too
+                            case FunctionType.RibbonEmitterReference:     /// [dynamic_mesh]
+                            case FunctionType.SurfaceEffectBox:           /// Global/Props/fogbox.CS2 -> [VolumeFog]
+                            case FunctionType.FogBox:                     /// Global/Props/fogplane.CS2 -> [Plane01] 
+                            case FunctionType.SurfaceEffectSphere:        /// Global/Props/fogsphere.CS2 -> [Sphere01]
+                            case FunctionType.FogSphere:                  /// Global/Props/fogsphere.CS2 -> [Sphere01]
+                            case FunctionType.SimpleRefraction:           /// Global/Props/refraction.CS2 -> [Plane01]
+                            case FunctionType.SimpleWater:                /// Global/Props/noninteractive_water.CS2 -> [Plane01]
+                            case FunctionType.LightReference:             /// Global/Props/deferred_point_light.cs2 -> [Sphere01],  Global/Props/deferred_spot_light.cs2 -> [Sphere02], Global/Props/deferred_strip_light.cs2 -> [Sphere01]
+                                if (Entries[i].functions[x].GetResource(ResourceType.RENDERABLE_INSTANCE) == null)
+                                    Console.WriteLine("ERROR: " + type + " entity does not contain a RENDERABLE_INSTANCE resource reference!");
+                                if (Entries[i].functions[x].GetParameter("resource") != null)
+                                    throw new Exception("Function entity of type " + type + " had an invalid resource parameter applied!");
+                                break;
+                        }
                     }
-                }
-            }
+                });
+            });
 
             //Make sure our composites are in ID order
             Entries = Entries.OrderBy(o => o.shortGUID.ToUInt32()).ToList();
@@ -604,13 +607,10 @@ namespace CATHODE
             List<ResourceReference>[] resourceReferences = new List<ResourceReference>[Entries.Count];
             List<CAGEAnimation>[] cageAnimationEntities = new List<CAGEAnimation>[Entries.Count];
             List<TriggerSequence>[] triggerSequenceEntities = new List<TriggerSequence>[Entries.Count];
-            for (int i = 0; i < Entries.Count; i++)
+
+            Parallel.For(0, Entries.Count, i => 
             {
                 List<Entity> ents = Entries[i].GetEntities();
-                for (int x = 0; x < ents.Count; x++)
-                    for (int y = 0; y < ents[x].parameters.Count; y++)
-                        parameters.Add(ents[x].parameters[y].content);
-
                 linkedEntities[i] = new List<Entity>(ents.FindAll(o => o.childLinks.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
                 parameterisedEntities[i] = new List<Entity>(ents.FindAll(o => o.parameters.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
                 reshuffledChecksums[i] = Entries[i].overrides.OrderBy(o => o.checksum.ToUInt32()).ToList();
@@ -643,6 +643,14 @@ namespace CATHODE
                     resourceReferences[i].AddRange(((cResource)param.content).value);
                 }
                 resourceReferences[i] = resourceReferences[i].Distinct().ToList();
+            });
+
+            for (int i = 0; i < Entries.Count; i++)
+            {
+                List<Entity> ents = Entries[i].GetEntities();
+                for (int x = 0; x < ents.Count; x++)
+                    for (int y = 0; y < ents[x].parameters.Count; y++)
+                        parameters.Add(ents[x].parameters[y].content);
             }
             parameters = parameters.Distinct().ToList();
             #endregion
