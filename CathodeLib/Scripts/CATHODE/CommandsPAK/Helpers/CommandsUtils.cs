@@ -129,7 +129,7 @@ namespace CATHODE.Scripting
 
         #region HELPER_FUNCS
         /* Resolve an entity hierarchy */
-        public static Entity ResolveHierarchy(Commands commands, Composite composite, List<ShortGuid> hierarchy, out Composite containedComposite, out string asString)
+        public static Entity ResolveHierarchy(Commands commands, Composite composite, List<ShortGuid> hierarchy, out Composite containedComposite, out string asString, bool includeShortGuids = true)
         {
             if (hierarchy.Count == 0)
             {
@@ -166,7 +166,8 @@ namespace CATHODE.Scripting
                 entity = currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[i]);
 
                 if (entity == null) break;
-                hierarchyString += "[" + entity.shortGUID + "] " + EntityUtils.GetName(currentFlowgraphToSearch.shortGUID, entity.shortGUID);
+                if (includeShortGuids) hierarchyString += "[" + entity.shortGUID + "] ";
+                hierarchyString += EntityUtils.GetName(currentFlowgraphToSearch.shortGUID, entity.shortGUID);
                 if (i >= hierarchyCopy.Count - 2) break; //Last is always 00-00-00-00
                 hierarchyString += " -> ";
 
