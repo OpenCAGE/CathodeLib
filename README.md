@@ -38,16 +38,19 @@ Check out a full overview of the Commands structure [on the Wiki](https://github
 - `CATHODE.LEGACY.Assets.Shaders` handles various `SHADERS` `PAK` files
 
 ## For level data and mappings:
-- `CATHODE.MoverDatabase` handles `MODELS.MVR` files
-- `CATHODE.RenderableElementsDatabase` handles `REDS.BIN` files
-- `CATHODE.ResourcesDatabase` handles `RESOURCES.BIN` files
-- `CATHODE.MaterialDatabase` handles `MODELS.MTL` files
-- `CATHODE.MaterialMapping` handles `MATERIAL_MAPPINGS.PAK` files
-- `CATHODE.EnvironmentMapDatabase` handles `ENVIRONMENTMAP.BIN` files
-- `CATHODE.EnvironmentAnimationDatabase` handles `ENVIRONMENT_ANIMATION.DAT` files
-- `CATHODE.PhysicsMapDatabase` handles `PHYSICS.MAP` files
-- `CATHODE.CollisionMapDatabase` handles `COLLISION.MAP` files
-- `CATHODE.AnimationStringDatabase` handles `ANIM_STRING_DB.BIN` and `ANIM_STRING_DB_DEBUG.BIN` files
+- `CATHODE.Movers` handles `MODELS.MVR` files
+- `CATHODE.RenderableElements` handles `REDS.BIN` files
+- `CATHODE.Resources` handles `RESOURCES.BIN` files
+- `CATHODE.Materials` handles `MODELS.MTL` files
+- `CATHODE.MaterialMappings` handles `MATERIAL_MAPPINGS.PAK` files
+- `CATHODE.EnvironmentMaps` handles `ENVIRONMENTMAP.BIN` files
+- `CATHODE.EnvironmentAnimations` handles `ENVIRONMENT_ANIMATION.DAT` files
+- `CATHODE.PathBarrierResources` handles `PATH_BARRIER_RESOURCES` files
+- `CATHODE.PhysicsMaps` handles `PHYSICS.MAP` files
+- `CATHODE.Lights` handles `LIGHTS.BIN` files
+- `CATHODE.Collisions` handles `COLLISION.BIN` files
+- `CATHODE.CollisionMaps` handles `COLLISION.MAP` files
+- `CATHODE.AnimationStrings` handles `ANIM_STRING_DB.BIN` and `ANIM_STRING_DB_DEBUG.BIN` files
 - `CATHODE.EXPERIMENTAL.NavigationMesh` handles `NAV_MESH` files (experimental)
 
 ## For configurations:
