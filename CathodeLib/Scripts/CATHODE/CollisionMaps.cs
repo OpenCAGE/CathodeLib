@@ -1,4 +1,5 @@
-﻿using CathodeLib;
+﻿using CATHODE.Scripting;
+using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -24,8 +25,8 @@ namespace CATHODE
                 {
                     Entry entry = new Entry();
                     entry.Unknown1_ = reader.ReadInt32();
-                    entry.NodeResourceID = reader.ReadInt32();
-                    entry.NodeID = reader.ReadInt32();
+                    entry.NodeResourceID = Utilities.Consume<ShortGuid>(reader);
+                    entry.NodeID = Utilities.Consume<ShortGuid>(reader);
                     entry.ResourcesBINID = reader.ReadInt32();
                     entry.Unknown2_ = reader.ReadInt32();
                     entry.CollisionHKXEntryIndex = reader.ReadInt16();
@@ -51,8 +52,8 @@ namespace CATHODE
                 for (int i = 0; i < Entries.Count; i++)
                 {
                     writer.Write(Entries[i].Unknown1_);
-                    writer.Write(Entries[i].NodeResourceID);
-                    writer.Write(Entries[i].NodeID);
+                    Utilities.Write<ShortGuid>(writer, Entries[i].NodeResourceID);
+                    Utilities.Write<ShortGuid>(writer, Entries[i].NodeID);
                     writer.Write(Entries[i].ResourcesBINID);
                     writer.Write(Entries[i].CollisionHKXEntryIndex);
                     writer.Write(Entries[i].Unknown3_);
@@ -71,8 +72,8 @@ namespace CATHODE
         public class Entry
         {
             public int Unknown1_;      // Is this tree node id?
-            public int NodeResourceID; // NOTE: This might not be the correct name. It seems to correspond to the similarly named variable at alien_resources_bin_entry.
-            public int NodeID;         // NOTE: This is a wild guess based on the matching items from Commands PAK.
+            public ShortGuid NodeResourceID; // NOTE: This might not be the correct name. It seems to correspond to the similarly named variable at alien_resources_bin_entry.
+            public ShortGuid NodeID;         // NOTE: This is a wild guess based on the matching items from Commands PAK.
             public int ResourcesBINID; // NOTE: This might not be the correct name. It seems to correspond to the similarly named variable at alien_resources_bin_entry.
             public int Unknown2_;      // NOTE: Is sometimes -1 and other times a small positive integer. Is this tree node parent?
 
