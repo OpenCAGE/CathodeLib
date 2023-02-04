@@ -186,8 +186,6 @@ namespace CATHODE
                                             overrideChecksums.Add(new ShortGuid(reader_parallel), new ShortGuid(reader_parallel));
                                             break;
                                         }
-                                    //TODO: Really, I think these should be treated as parameters on the composite class as they are the pins we use for composite instances.
-                                    //      Need to look into this more and see if any of these entities actually contain much data other than links into the composite itself.
                                     case CompositeFileData.COMPOSITE_EXPOSED_PARAMETERS:
                                         {
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
@@ -270,9 +268,7 @@ namespace CATHODE
                                                     resource.startIndex = reader_parallel.ReadInt32();
                                                     reader_parallel.BaseStream.Position += 4;
                                                     break;
-                                                case ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
-                                                case ResourceType.NAV_MESH_BARRIER_RESOURCE:
-                                                case ResourceType.TRAVERSAL_SEGMENT:
+                                                default:
                                                     reader_parallel.BaseStream.Position += 8;
                                                     break;
                                             }
@@ -471,6 +467,25 @@ namespace CATHODE
                 });
                 Entries = composites.ToList<Composite>();
             }
+
+            //TODO: DOING THIS CAUSES THE NEW-DOOR-CREATION ISSUE WITH EXISTING DOORS
+            //      DOING THE INVERSE CAUSES A CRASH
+            /*
+            foreach (Composite comp in Entries)
+            {
+                foreach (FunctionEntity ent in comp.functions)
+                {
+                    if (ent.resources.Count != 0)
+                    {
+                        cResource res = new cResource();
+                        res.value.AddRange(ent.resources);
+                        foreach (ResourceReference resRef in res.value) resRef.resourceID = res.shortGUID;
+                        Parameter param = ent.AddParameter("resource", res);
+                        ent.resources.Clear();
+                    }
+                }
+            }*/
+
             return true;
         }
 
@@ -522,21 +537,29 @@ namespace CATHODE
                         FunctionType type = CommandsUtils.GetFunctionType(Entries[i].functions[x].function);
                         switch (type)
                         {
-                            // Types below require resources we can add, and information we should probably correct, so do it automatically!
-                            case FunctionType.SoundBarrier:
-                                Entries[i].functions[x].AddResource(ResourceType.COLLISION_MAPPING);
-                                break;
-                            case FunctionType.ExclusiveMaster:
-                                Entries[i].functions[x].AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE);
-                                break;
+                            case FunctionType.TRAV_1ShotClimbUnder:
+                            case FunctionType.TRAV_1ShotFloorVentEntrance:
+                            case FunctionType.TRAV_1ShotFloorVentExit:
+                            case FunctionType.TRAV_1ShotLeap:
                             case FunctionType.TRAV_1ShotSpline:
-                                //TODO: There are loads of TRAV_ entities which are unused in the vanilla game, so I'm not sure if they should apply to those too...
+                            case FunctionType.TRAV_1ShotVentEntrance:
+                            case FunctionType.TRAV_1ShotVentExit:
+                            case FunctionType.TRAV_ContinuousBalanceBeam:
+                            case FunctionType.TRAV_ContinuousCinematicSidle:
+                            case FunctionType.TRAV_ContinuousClimbingWall:
+                            case FunctionType.TRAV_ContinuousLadder:
+                            case FunctionType.TRAV_ContinuousLedge:
+                            case FunctionType.TRAV_ContinuousPipe:
+                            case FunctionType.TRAV_ContinuousTightGap:
                                 Entries[i].functions[x].AddResource(ResourceType.TRAVERSAL_SEGMENT);
                                 break;
                             case FunctionType.NavMeshBarrier:
                                 Entries[i].functions[x].AddResource(ResourceType.NAV_MESH_BARRIER_RESOURCE);
-                                Entries[i].functions[x].AddResource(ResourceType.COLLISION_MAPPING);
                                 break;
+                            case FunctionType.ExclusiveMaster:
+                                Entries[i].functions[x].AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE);
+                                break;
+
                             case FunctionType.PhysicsSystem:
                                 Parameter dps_index = Entries[i].functions[x].GetParameter("system_index");
                                 if (dps_index == null)
@@ -556,8 +579,6 @@ namespace CATHODE
                                 cResource rsc_p = (cResource)rsc.content;
                                 rsc_p.AddResource(ResourceType.ANIMATED_MODEL);
                                 break;
-
-                            // Types below require various things, but we don't add them as they work without it, so just log a warning.
                             case FunctionType.ModelReference:
                                 Parameter mdl = Entries[i].functions[x].GetParameter("resource");
                                 if (mdl == null)
@@ -565,33 +586,6 @@ namespace CATHODE
                                     mdl = new Parameter("resource", new cResource(Entries[i].functions[x].shortGUID));
                                     Entries[i].functions[x].parameters.Add(mdl);
                                 }
-                                cResource mdl_p = (cResource)mdl.content;
-                                if (mdl_p.GetResource(ResourceType.RENDERABLE_INSTANCE) == null)
-                                    Console.WriteLine("WARNING: ModelReference resource parameter does not contain a RENDERABLE_INSTANCE resource reference!");
-                                if (mdl_p.GetResource(ResourceType.COLLISION_MAPPING) == null)
-                                    Console.WriteLine("WARNING: ModelReference resource parameter does not contain a COLLISION_MAPPING resource reference!");
-                                break;
-                            case FunctionType.CollisionBarrier:
-                                if (Entries[i].functions[x].GetResource(ResourceType.COLLISION_MAPPING) == null)
-                                    Console.WriteLine("WARNING: CollisionBarrier entity does not contain a COLLISION_MAPPING resource reference!");
-                                break;
-
-                            // Types below require only RENDERABLE_INSTANCE resource references on the entity, pointing to the commented model.
-                            // We can't add them automatically as we need to know REDS indexes!
-                            // UPDATE: I think the game can handle any resource being set here!
-                            case FunctionType.ParticleEmitterReference:   /// [dynamic_mesh]       /// - I think i've also seen 1000 particle system too
-                            case FunctionType.RibbonEmitterReference:     /// [dynamic_mesh]
-                            case FunctionType.SurfaceEffectBox:           /// Global/Props/fogbox.CS2 -> [VolumeFog]
-                            case FunctionType.FogBox:                     /// Global/Props/fogplane.CS2 -> [Plane01] 
-                            case FunctionType.SurfaceEffectSphere:        /// Global/Props/fogsphere.CS2 -> [Sphere01]
-                            case FunctionType.FogSphere:                  /// Global/Props/fogsphere.CS2 -> [Sphere01]
-                            case FunctionType.SimpleRefraction:           /// Global/Props/refraction.CS2 -> [Plane01]
-                            case FunctionType.SimpleWater:                /// Global/Props/noninteractive_water.CS2 -> [Plane01]
-                            case FunctionType.LightReference:             /// Global/Props/deferred_point_light.cs2 -> [Sphere01],  Global/Props/deferred_spot_light.cs2 -> [Sphere02], Global/Props/deferred_strip_light.cs2 -> [Sphere01]
-                                if (Entries[i].functions[x].GetResource(ResourceType.RENDERABLE_INSTANCE) == null)
-                                    Console.WriteLine("ERROR: " + type + " entity does not contain a RENDERABLE_INSTANCE resource reference!");
-                                if (Entries[i].functions[x].GetParameter("resource") != null)
-                                    throw new Exception("Function entity of type " + type + " had an invalid resource parameter applied!");
                                 break;
                         }
                     }
@@ -1223,6 +1217,22 @@ namespace CATHODE
         {
             _entryPointObjects = new Composite[_entryPoints.Length];
             for (int i = 0; i < _entryPoints.Length; i++) _entryPointObjects[i] = GetComposite(_entryPoints[i]);
+        }
+
+        /* Test Stuff */
+        private void IsParameterReferencedAnywhere(ShortGuid id)
+        {
+            Parallel.ForEach(Entries, comp =>
+            {
+                Parallel.ForEach(comp.functions, func =>
+                {
+                    Parallel.ForEach(func.parameters, param =>
+                    {
+                        if (param.name == id)
+                            Console.WriteLine("[" + id + "] " + comp.name + " -> " + EntityUtils.GetName(comp.shortGUID, func.shortGUID) + " -> " + param.name + " [" + param.content.dataType + "]");
+                    });
+                });
+            });
         }
         #endregion
 
