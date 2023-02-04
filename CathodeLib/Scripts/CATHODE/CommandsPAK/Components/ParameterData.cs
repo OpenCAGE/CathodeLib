@@ -3,6 +3,11 @@ using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+using UnityEngine;
+#else
+using System.Numerics;
+#endif
 
 namespace CATHODE.Scripting.Internal
 {
@@ -100,20 +105,34 @@ namespace CATHODE.Scripting.Internal
         {
             switch (dataType)
             {
-                case DataType.SPLINE:
                 case DataType.RESOURCE:
                     return Utilities.CloneObject(this);
                 //HOTFIX FOR VECTOR 3 CLONE ISSUE - TODO: FIND WHY THIS ISN'T WORKING WITH MEMBERWISE CLONE
                 case DataType.VECTOR:
                     cVector3 v3 = (cVector3)this.MemberwiseClone();
-                    v3.value = (Vector3)((cVector3)this).value.Clone();
+                    Vector3 v3_v = (Vector3)((cVector3)this).value;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                    v3.value = new Vector3(v3_v.x, v3_v.y, v3_v.z);
+#else
+                    v3.value = new Vector3(v3_v.X, v3_v.Y, v3_v.Z);
+#endif
                     return v3;
                 case DataType.TRANSFORM:
                     cTransform tr = (cTransform)this.MemberwiseClone();
-                    tr.position = (Vector3)((cTransform)this).position.Clone();
-                    tr.rotation = (Vector3)((cTransform)this).rotation.Clone();
+                    Vector3 tr_p = (Vector3)((cTransform)this).position;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                    tr.position = new Vector3(tr_p.x, tr_p.y, tr_p.z);
+#else
+                    tr.position = new Vector3(tr_p.X, tr_p.Y, tr_p.Z);
+#endif
+                    Vector3 tr_r = (Vector3)((cTransform)this).rotation;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                    tr.rotation = new Vector3(tr_r.x, tr_r.y, tr_r.z);
+#else
+                    tr.rotation = new Vector3(tr_r.X, tr_r.Y, tr_r.Z);
+#endif
                     return tr;
-                //END OF HOTFIX - SHOULD THIS ALSO APPLY TO OTHERS??
+                //END OF HOTFIX - SHOULD THIS ALSO APPLY TO OTHERS?? SPLINE?
                 default:
                     return this.MemberwiseClone();
             }
@@ -136,6 +155,11 @@ namespace CATHODE.Scripting
 
         public Vector3 position = new Vector3();
         public Vector3 rotation = new Vector3(); //In CATHODE this is named Roll/Pitch/Yaw
+
+        public override string ToString()
+        {
+            return position.ToString() + ", " + rotation.ToString();
+        }
     }
     [Serializable]
     public class cInteger : ParameterData
@@ -148,6 +172,11 @@ namespace CATHODE.Scripting
         }
 
         public int value = 0;
+
+        public override string ToString()
+        {
+            return value.ToString();
+        }
     }
     [Serializable]
     public class cString : ParameterData
@@ -160,6 +189,11 @@ namespace CATHODE.Scripting
         }
 
         public string value = "";
+
+        public override string ToString()
+        {
+            return value;
+        }
     }
     [Serializable]
     public class cBool : ParameterData
@@ -172,6 +206,11 @@ namespace CATHODE.Scripting
         }
 
         public bool value = false;
+
+        public override string ToString()
+        {
+            return value.ToString();
+        }
     }
     [Serializable]
     public class cFloat : ParameterData
@@ -184,6 +223,11 @@ namespace CATHODE.Scripting
         }
 
         public float value = 0.0f;
+
+        public override string ToString()
+        {
+            return value.ToString();
+        }
     }
     [Serializable]
     public class cResource : ParameterData
@@ -247,6 +291,11 @@ namespace CATHODE.Scripting
         }
 
         public Vector3 value = new Vector3();
+
+        public override string ToString()
+        {
+            return value.ToString();
+        }
     }
     [Serializable]
     public class cEnum : ParameterData
@@ -272,6 +321,11 @@ namespace CATHODE.Scripting
 
         public ShortGuid enumID;
         public int enumIndex = 0;
+
+        public override string ToString()
+        {
+            return enumID.ToString() + " -> " + enumIndex;
+        }
     }
     [Serializable]
     public class cSpline : ParameterData

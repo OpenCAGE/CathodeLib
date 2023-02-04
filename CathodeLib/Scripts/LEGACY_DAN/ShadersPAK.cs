@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CathodeLib;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -6,22 +7,21 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-/*
 namespace CATHODE.LEGACY
 {
     public class ShadersPAK : CathodePAK
     {
         public List<ShaderEntry> Shaders;
-        public void Load(string FullFilePath)
+        public ShadersPAK(string FullFilePath)
         {
             LoadPAK(FullFilePath, false);
 
-            Shaders = new List<ShaderEntry>(PAKHeader.EntryCount);
-            for (int EntryIndex = 0; EntryIndex < PAKHeader.EntryCount; EntryIndex++)
+            Shaders = new List<ShaderEntry>(entryContents.Count);
+            for (int EntryIndex = 0; EntryIndex < entryContents.Count; EntryIndex++)
             {
-                GenericPAKEntry Entry = PAKEntries[EntryIndex];
+                GenericPAKEntry Entry = entryHeaders[EntryIndex];
 
-                byte[] Buffer = EntryDatas[EntryIndex];
+                byte[] Buffer = entryContents[EntryIndex];
                 BinaryReader Stream = new BinaryReader(new MemoryStream(Buffer));
 
                 ShaderEntry Shader = new ShaderEntry();
@@ -168,4 +168,3 @@ namespace CATHODE.LEGACY
         };
     }
 }
-*/

@@ -1,28 +1,27 @@
 ﻿using System.Collections.Generic;
 using System.IO;
-using System.Numerics;
 using System.Runtime.InteropServices;
 using CATHODE.Scripting;
 using CathodeLib;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+using UnityEngine;
+#else
+using System.Numerics;
+#endif
 
 namespace CATHODE
 {
-    /* Handles Cathode ENVIRONMENT_ANIMATION.DAT files */
-    public class EnvironmentAnimationDatabase : CathodeFile
+    /* DATA/ENV/PRODUCTION/x/WORLD/ENVIRONMENT_ANIMATION.DAT */
+    public class EnvironmentAnimations : CathodeFile
     {
-        private List<EnvironmentAnimation> _animations = new List<EnvironmentAnimation>();
-        public List<EnvironmentAnimation> Animations { get { return _animations; } }
-
-        public EnvironmentAnimationDatabase(string path) : base(path) { }
+        public List<EnvironmentAnimation> Entries = new List<EnvironmentAnimation>();
+        public static new Implementation Implementation = Implementation.LOAD;
+        public EnvironmentAnimations(string path) : base(path) { }
 
         #region FILE_IO
-        /* Load the file */
-        protected override bool Load()
+        override protected bool LoadInternal()
         {
-            if (!File.Exists(_filepath)) return false;
-
-            BinaryReader reader = new BinaryReader(File.OpenRead(_filepath));
-            try
+            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
                 //Read header
                 reader.BaseStream.Position += 8; //Skip version and filesize
@@ -63,15 +62,9 @@ namespace CATHODE
                     anim.Data0 = PopulateArray<EnvironmentAnimationInfo>(reader, Entries1);
 
                     reader.BaseStream.Position += 4; //TODO: i think this might be a flag - it's usually zero but has been 1 on hab_airport
-                    _animations.Add(anim);
+                    Entries.Add(anim);
                 }
             }
-            catch
-            {
-                reader.Close();
-                return false;
-            }
-            reader.Close();
             return true;
         }
         #endregion
@@ -124,7 +117,7 @@ namespace CATHODE
         public struct EnvironmentAnimationInfo
         {
             public ShortGuid ID;
-            public CathodeLib.Vector3 P;
+            public Vector3 P;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)]
             public float[] V;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]

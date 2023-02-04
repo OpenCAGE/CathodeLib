@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CathodeLib;
+using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
@@ -7,19 +8,18 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-/*
 namespace CATHODE.LEGACY
 {
-    public class ShadersBIN
+    public class ShadersBIN : CathodePAK
     {
-        public static alien_shader_bin_pak Load(string FullFilePath)
+        public alien_shader_bin_pak Load(string FullFilePath)
         {
             alien_shader_bin_pak Result = new alien_shader_bin_pak();
 
-            Result.PAK = Generic.CathodePAK.Load(FullFilePath, false);
-            Result.DSOs = new List<dso_file>(Result.PAK.Header.EntryCount);
+            LoadPAK(FullFilePath, false);
+            Result.DSOs = new List<dso_file>(header.EntryCount);
 
-            BinaryReader HeaderStream = new BinaryReader(new MemoryStream(Result.PAK.DataStart));
+            BinaryReader HeaderStream = new BinaryReader(new MemoryStream(dataStart));
             int TotalVertexShaderCount = HeaderStream.ReadInt32();
             int TotalPixelShaderCount = HeaderStream.ReadInt32();
             int TotalHullShaderCount = HeaderStream.ReadInt32();
@@ -27,9 +27,9 @@ namespace CATHODE.LEGACY
             Result.VertexShaders = new List<dso_file>(TotalVertexShaderCount);
             Result.PixelShaders = new List<dso_file>(TotalPixelShaderCount);
 
-            for (int EntryIndex = 0; EntryIndex < Result.PAK.Header.EntryCount; EntryIndex++)
+            for (int EntryIndex = 0; EntryIndex < header.EntryCount; EntryIndex++)
             {
-                BinaryReader Stream = new BinaryReader(new MemoryStream(Result.PAK.EntryDatas[EntryIndex]));
+                BinaryReader Stream = new BinaryReader(new MemoryStream(entryContents[EntryIndex]));
 
                 dso_file DSO = new dso_file();
                 DSO.Header = Utilities.Consume<dso_header>(Stream);
@@ -278,10 +278,9 @@ public struct dso_file
 
 public struct alien_shader_bin_pak
 {
-    public CATHODE.Generic.CathodePAK PAK;
+    public CATHODE.LEGACY.CathodePAK PAK;
 
     public List<dso_file> DSOs;
     public List<dso_file> VertexShaders;
     public List<dso_file> PixelShaders;
 };
-*/

@@ -4,74 +4,59 @@ using System.Runtime.InteropServices;
 using System;
 using CATHODE.Scripting;
 using CathodeLib;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+using UnityEngine;
+#else
 using System.Numerics;
+#endif
 
 namespace CATHODE
 {
-    /* Handles Cathode MODELS.MVR files */
-    public class MoverDatabase : CathodeFile
+    /* DATA/ENV/PRODUCTION/x/WORLD/MODELS.MVR */
+    public class Movers : CathodeFile
     {
+        public List<MOVER_DESCRIPTOR> Entries = new List<MOVER_DESCRIPTOR>();
+        public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
+        public Movers(string path) : base(path) { }
+
         private int _fileSize = 32;
         private int _entryCount = 0;
         private int _entrySize = 320;
         private int _entryCountUnk = 0;
 
-        private List<MOVER_DESCRIPTOR> _movers = new List<MOVER_DESCRIPTOR>();
-        public List<MOVER_DESCRIPTOR> Movers { get { return _movers; } }
-        
-        public MoverDatabase(string path) : base(path) { }
-
         #region FILE_IO
-        /* Load the file */
-        protected override bool Load()
+        override protected bool LoadInternal()
         {
-            if (!File.Exists(_filepath)) return false;
-
-            BinaryReader stream = new BinaryReader(File.OpenRead(_filepath));
-            try
+            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
-                _fileSize = stream.ReadInt32();
-                _entryCount = stream.ReadInt32();
-                _entryCountUnk = stream.ReadInt32(); //a count of something - not sure what
-                stream.BaseStream.Position += 4;
-                _entrySize = stream.ReadInt32();
-                stream.BaseStream.Position += 12;
-                _movers = new List<MOVER_DESCRIPTOR>(Utilities.ConsumeArray<MOVER_DESCRIPTOR>(stream, _entryCount));
+                _fileSize = reader.ReadInt32();
+                _entryCount = reader.ReadInt32();
+                _entryCountUnk = reader.ReadInt32(); //a count of something - not sure what
+                reader.BaseStream.Position += 4;
+                _entrySize = reader.ReadInt32();
+                reader.BaseStream.Position += 12;
+                Entries = new List<MOVER_DESCRIPTOR>(Utilities.ConsumeArray<MOVER_DESCRIPTOR>(reader, _entryCount));
             }
-            catch
-            {
-                stream.Close();
-                return false;
-            }
-            stream.Close();
             return true;
         }
 
-        /* Save the file */
-        override public bool Save()
+        override protected bool SaveInternal()
         {
-            _fileSize = (_movers.Count * _entrySize) + 32;
-            _entryCount = _movers.Count;
+            _fileSize = (Entries.Count * _entrySize) + 32;
+            _entryCount = Entries.Count;
             _entryCountUnk = 0;
 
-            BinaryWriter stream = new BinaryWriter(File.OpenWrite(_filepath));
-            try
+            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
-                stream.BaseStream.SetLength(0);
-                stream.Write(_fileSize);
-                stream.Write(_entryCount);
-                stream.Write(_entryCountUnk);
-                stream.Write(0);
-                stream.Write(_entrySize);
-                stream.Write(0); stream.Write(0); stream.Write(0);
-                Utilities.Write<MOVER_DESCRIPTOR>(stream, _movers);
+                writer.BaseStream.SetLength(0);
+                writer.Write(_fileSize);
+                writer.Write(_entryCount);
+                writer.Write(_entryCountUnk);
+                writer.Write(0);
+                writer.Write(_entrySize);
+                writer.Write(0); writer.Write(0); writer.Write(0);
+                Utilities.Write<MOVER_DESCRIPTOR>(writer, Entries);
             }
-            catch
-            {
-                stream.Close();
-                return false;
-            }
-            stream.Close();
             return true;
         }
         #endregion
@@ -199,7 +184,7 @@ namespace CATHODE
 
             public UInt32 resourcesIndex;
             //256
-            public CathodeLib.Vector3 Unknowns5_;
+            public Vector3 Unknowns5_;
             public UInt32 visibility; // pulled from iOS dump - should be visibility var?
                                       //272
             public ShortGuid commandsNodeID; // this is the ID of the node inside the composite, not the instanced composite node
@@ -285,7 +270,7 @@ namespace CATHODE
             public UInt32[] Unknowns2_;
             //184
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public CathodeLib.Vector3[] UnknownMinMax_; // NOTE: Sometimes I see 'nan's here too.
+            public Vector3[] UnknownMinMax_; // NOTE: Sometimes I see 'nan's here too.
                                              //208
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 36)]
             public byte[] blankSpace3;

@@ -8,6 +8,9 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
+#if UNITY_EDITOR || UNITY_STANDALONE
+using UnityEngine;
+#endif
 
 namespace CATHODE.Scripting
 {
@@ -22,7 +25,11 @@ namespace CATHODE.Scripting
         /* Load all standard entity/composite names from our offline DB */
         static EntityUtils()
         {
+#if UNITY_EDITOR || UNITY_STANDALONE
+            BinaryReader reader = new BinaryReader(File.OpenRead(Application.streamingAssetsPath + "/NodeDBs/composite_entity_names.bin"));
+#else
             BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.composite_entity_names));
+#endif
             _vanilla = new EntityNameTable(reader);
             _custom = new EntityNameTable();
             reader.Close();
@@ -33,15 +40,15 @@ namespace CATHODE.Scripting
         {
             if (_commands != null)
             {
-                _commands.OnLoaded -= LoadCustomNames;
-                _commands.OnSaved -= SaveCustomNames;
+                _commands.OnLoadSuccess -= LoadCustomNames;
+                _commands.OnSaveSuccess -= SaveCustomNames;
             }
 
             _commands = commands;
             if (_commands != null)
             {
-                _commands.OnLoaded += LoadCustomNames;
-                _commands.OnSaved += SaveCustomNames;
+                _commands.OnLoadSuccess += LoadCustomNames;
+                _commands.OnSaveSuccess += SaveCustomNames;
             }
 
             LoadCustomNames(_commands.Filepath);
@@ -112,7 +119,7 @@ namespace CATHODE.Scripting
             if (!CommandsUtils.FunctionTypeExists(newEntity.function))
             {
                 if (_commands == null) return;
-                Composite comp = _commands.Composites.FirstOrDefault(o => o.shortGUID == newEntity.function);
+                Composite comp = _commands.Entries.FirstOrDefault(o => o.shortGUID == newEntity.function);
                 if (comp == null) return;
                 for (int i = 0; i < comp.variables.Count; i++)
                 { 

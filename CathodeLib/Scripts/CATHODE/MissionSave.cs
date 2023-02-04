@@ -4,28 +4,25 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 
-namespace CATHODE
+namespace CATHODE.EXPERIMENTAL
 {
-    /* Handles Cathode PROGRESSION.AIS files */
+    /* PROGRESSION.AIS */
     public class MissionSave : CathodeFile
     {
+        public static new Implementation Implementation = Implementation.NONE;
+        public MissionSave(string path) : base(path) { }
+
         private Header _header;
 
         // From the iOS decomp: the saves work with a "leaf and node" system, where you have
         // "node" names saved with their connected "leafs" which acts like a "system" and
         // "parameter" to apply to the system
 
-        /* Load the file */
-        public MissionSave(string path) : base(path) { }
-
         #region FILE_IO
         /* Load the file */
-        protected override bool Load()
+        override protected bool LoadInternal()
         {
-            if (!File.Exists(_filepath)) return false;
-
-            BinaryReader reader = new BinaryReader(File.OpenRead(_filepath));
-            try
+            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
                 _header = Utilities.Consume<Header>(reader);
                 string levelname = Utilities.ReadString(reader.ReadBytes(128));
@@ -94,30 +91,17 @@ namespace CATHODE
                 File.WriteAllLines(Path.GetFileNameWithoutExtension(pathToMVR) + "_dump.txt", dump);
                 */
             }
-            catch
-            {
-                reader.Close();
-                return false;
-            }
-            reader.Close();
             return true;
         }
 
         /* Save the file */
-        override public bool Save()
+        override protected bool SaveInternal()
         {
-            BinaryWriter stream = new BinaryWriter(File.OpenWrite(_filepath));
-            try
+            using (BinaryWriter stream = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 stream.BaseStream.SetLength(0);
                 Utilities.Write<Header>(stream, _header);
             }
-            catch
-            {
-                stream.Close();
-                return false;
-            }
-            stream.Close();
             return true;
         }
         #endregion

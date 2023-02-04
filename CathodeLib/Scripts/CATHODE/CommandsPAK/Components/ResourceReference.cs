@@ -1,6 +1,11 @@
 ﻿using CathodeLib;
 using System;
 using System.Collections.Generic;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+using UnityEngine;
+#else
+using System.Numerics;
+#endif
 
 namespace CATHODE.Scripting
 {

@@ -9,21 +9,17 @@ using CathodeLib;
 
 namespace CATHODE
 {
-    /* Handles Cathode animation string DB files (ANIM_STRING_DB.BIN, ANIM_STRING_DB_DEBUG.BIN) */
-    public class AnimationStringDatabase : CathodeFile
+    /* DATA/GLOBAL/ANIMATION.PAK -> ANIM_STRING_DB.BIN, ANIM_STRING_DB_DEBUG.BIN */
+    public class AnimationStrings : CathodeFile
     {
-        private Dictionary<uint, string> _strings = new Dictionary<uint, string>();
-
-        public AnimationStringDatabase(string path) : base(path) { }
+        private Dictionary<uint, string> Entries = new Dictionary<uint, string>();
+        public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+        public AnimationStrings(string path) : base(path) { }
 
         #region FILE_IO
-        /* Load the file */
-        protected override bool Load()
+        override protected bool LoadInternal()
         {
-            if (!File.Exists(_filepath)) return false;
-
-            BinaryReader stream = new BinaryReader(File.OpenRead(_filepath));
-            try
+            using (BinaryReader stream = new BinaryReader(File.OpenRead(_filepath)))
             {
                 //Read all data in
                 int EntryCount = stream.ReadInt32();
@@ -34,54 +30,39 @@ namespace CATHODE
                 for (int i = 0; i < StringCount; i++) strings.Add(Utilities.ReadString(stream));
 
                 //Parse
-                for (int i = 0; i < entries.Length; i++) _strings.Add(entries[i].StringID, strings[entries[i].StringIndex]);
+                for (int i = 0; i < entries.Length; i++) Entries.Add(entries[i].StringID, strings[entries[i].StringIndex]);
                 //TODO: encoding on a couple strings here is wrong
             }
-            catch
-            {
-                stream.Close();
-                return false;
-            }
-            stream.Close();
             return true;
         }
 
-        /* Save the file */
-        override public bool Save()
+        override protected bool SaveInternal()
         {
-            BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath));
-            try
+            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
-                writer.Write(_strings.Count);
-                writer.Write(_strings.Count);
+                writer.Write(Entries.Count);
+                writer.Write(Entries.Count);
                 int count = 0;
-                foreach (KeyValuePair<uint, string> value in _strings)
+                foreach (KeyValuePair<uint, string> value in Entries)
                 {
                     writer.Write(value.Key);
                     writer.Write(count);
                     count++;
                 }
-                int baseline = (_strings.Count * 4 * 2) + 8 + (_strings.Count * 4);
+                int baseline = (Entries.Count * 4 * 2) + 8 + (Entries.Count * 4);
                 writer.BaseStream.Position = baseline;
                 List<int> stringOffsets = new List<int>();
-                foreach (KeyValuePair<uint, string> value in _strings)
+                foreach (KeyValuePair<uint, string> value in Entries)
                 {
                     stringOffsets.Add((int)writer.BaseStream.Position - baseline);
-                    ExtraBinaryUtils.WriteString(value.Value, writer);
-                    writer.Write((char)0x00);
+                    Utilities.WriteString(value.Value, writer, true);
                 }
-                writer.BaseStream.Position = (_strings.Count * 4 * 2) + 8;
+                writer.BaseStream.Position = (Entries.Count * 4 * 2) + 8;
                 for (int i = 0; i < stringOffsets.Count; i++)
                 {
                     writer.Write(stringOffsets[i]);
                 }
             }
-            catch
-            {
-                writer.Close();
-                return false;
-            }
-            writer.Close();
             return true;
         }
         #endregion
@@ -91,15 +72,15 @@ namespace CATHODE
         public void AddString(string str)
         {
             uint id = Utilities.AnimationHashedString(str);
-            if (_strings.ContainsKey(id)) return;
-            _strings.Add(id, str);
+            if (Entries.ContainsKey(id)) return;
+            Entries.Add(id, str);
         }
 
         /* Remove a string from the DB */
         public void RemoveString(string str)
         {
             uint id = Utilities.AnimationHashedString(str);
-            _strings.Remove(id);
+            Entries.Remove(id);
         }
         #endregion
 
