@@ -36,25 +36,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Remove="Resources\NodeDBs\cathode_enum_lut.bin" />
     <None Remove="Resources\NodeDBs\cathode_generic_lut.bin" />
     <None Remove="Resources\NodeDBs\cathode_id_map.bin" />
     <None Remove="Resources\NodeDBs\cathode_id_map_DUMP_ONLY.bin" />
-    <None Remove="Resources\NodeDBs\composite_entity_names.bin" />
-    <None Remove="Resources\NodeDBs\composite_paths.bin" />
-    <None Remove="Resources\NodeDBs\entity_parameter_names.bin" />
     <None Remove="Resources\NodeDBs\node_friendly_names.bin" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Include="..\AlienBML\BML.cs" Link="Scripts\CATHODE\BML.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <EmbeddedResource Include="Resources\NodeDBs\cathode_enum_lut.bin" />
-    <EmbeddedResource Include="Resources\NodeDBs\composite_entity_names.bin" />
-    <EmbeddedResource Include="Resources\NodeDBs\composite_paths.bin" />
-    <EmbeddedResource Include="Resources\NodeDBs\entity_parameter_names.bin" />
   </ItemGroup>
 
   <ItemGroup>
