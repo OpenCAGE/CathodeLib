@@ -103,8 +103,6 @@ namespace CathodeLib
         {
             /* UPDATE MOVER INDEXES */
 
-            Movers.Entries.RemoveRange(Movers.Entries.Count - 100, 100);
-
             //Get links to mover entries as actual objects
             List<Movers.MOVER_DESCRIPTOR> lightMovers = new List<Movers.MOVER_DESCRIPTOR>();
             for (int i = 0; i < Lights.Entries.Count; i++)

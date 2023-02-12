@@ -19,9 +19,6 @@ namespace CATHODE
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
         public Movers(string path) : base(path) { }
 
-        private int _fileSize = 32;
-        private int _entryCount = 0;
-        private int _entrySize = 320;
         private int _entryCountUnk = 0;
 
         private List<MOVER_DESCRIPTOR> _writeList = new List<MOVER_DESCRIPTOR>();
@@ -31,13 +28,11 @@ namespace CATHODE
         {
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
-                _fileSize = reader.ReadInt32();
-                _entryCount = reader.ReadInt32();
-                _entryCountUnk = reader.ReadInt32(); //a count of something - not sure what
                 reader.BaseStream.Position += 4;
-                _entrySize = reader.ReadInt32();
-                reader.BaseStream.Position += 12;
-                Entries = new List<MOVER_DESCRIPTOR>(Utilities.ConsumeArray<MOVER_DESCRIPTOR>(reader, _entryCount));
+                int entryCount = reader.ReadInt32();
+                _entryCountUnk = reader.ReadInt32(); //a count of something - not sure what
+                reader.BaseStream.Position += 20;
+                Entries = new List<MOVER_DESCRIPTOR>(Utilities.ConsumeArray<MOVER_DESCRIPTOR>(reader, entryCount));
             }
             _writeList.AddRange(Entries);
             return true;
@@ -45,19 +40,17 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            _fileSize = (Entries.Count * _entrySize) + 32;
-            _entryCount = Entries.Count;
-            //_entryCountUnk = 0;
-
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
-                writer.Write(_fileSize);
-                writer.Write(_entryCount);
+                writer.Write((Entries.Count * 320) + 32);
+                writer.Write(Entries.Count);
                 writer.Write(_entryCountUnk);
                 writer.Write(0);
-                writer.Write(_entrySize);
-                writer.Write(0); writer.Write(0); writer.Write(0);
+                writer.Write(320);
+                writer.Write(0); 
+                writer.Write(0); 
+                writer.Write(0);
                 Utilities.Write<MOVER_DESCRIPTOR>(writer, Entries);
             }
             _writeList.Clear();
