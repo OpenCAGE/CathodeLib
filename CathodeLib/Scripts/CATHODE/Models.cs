@@ -244,7 +244,7 @@ namespace CATHODE
                     {
                         for (int y = 0; y < vertexFormats[i].Elements[x].Count; y++)
                         {
-                            bin.Write((y == vertexFormats[i].Elements[x].Count - 1) ? 255 : x);
+                            bin.Write((x == vertexFormats[i].Elements.Count - 1) ? 255 : x);
                             bin.Write((Int32)vertexFormats[i].Elements[x][y].Offset);
                             bin.Write((Int32)vertexFormats[i].Elements[x][y].VariableType);
                             bin.Write((Int32)vertexFormats[i].Elements[x][y].ShaderSlot);
