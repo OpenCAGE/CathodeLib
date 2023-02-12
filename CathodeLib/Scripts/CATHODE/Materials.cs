@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -188,6 +188,7 @@ namespace CATHODE
          * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
         public int GetWriteIndex(Material material)
         {
+            if (!_writeList.Contains(material)) return -1;
             return _writeList.IndexOf(material);
         }
 
@@ -195,6 +196,7 @@ namespace CATHODE
          * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
         public Material GetAtWriteIndex(int index)
         {
+            if (_writeList.Count <= index) return null;
             return _writeList[index];
         }
         #endregion

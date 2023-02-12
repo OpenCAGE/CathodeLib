@@ -24,6 +24,8 @@ namespace CATHODE
         private int _entrySize = 320;
         private int _entryCountUnk = 0;
 
+        private List<MOVER_DESCRIPTOR> _writeList = new List<MOVER_DESCRIPTOR>();
+
         #region FILE_IO
         override protected bool LoadInternal()
         {
@@ -37,6 +39,7 @@ namespace CATHODE
                 reader.BaseStream.Position += 12;
                 Entries = new List<MOVER_DESCRIPTOR>(Utilities.ConsumeArray<MOVER_DESCRIPTOR>(reader, _entryCount));
             }
+            _writeList.AddRange(Entries);
             return true;
         }
 
@@ -44,7 +47,7 @@ namespace CATHODE
         {
             _fileSize = (Entries.Count * _entrySize) + 32;
             _entryCount = Entries.Count;
-            _entryCountUnk = 0;
+            //_entryCountUnk = 0;
 
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
@@ -57,7 +60,27 @@ namespace CATHODE
                 writer.Write(0); writer.Write(0); writer.Write(0);
                 Utilities.Write<MOVER_DESCRIPTOR>(writer, Entries);
             }
+            _writeList.Clear();
+            _writeList.AddRange(Entries);
             return true;
+        }
+        #endregion
+
+        #region HELPERS
+        /* Get the current BIN index for a submesh (useful for cross-ref'ing with compiled binaries)
+         * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
+        public int GetWriteIndex(MOVER_DESCRIPTOR mover)
+        {
+            if (!_writeList.Contains(mover)) return -1;
+            return _writeList.IndexOf(mover);
+        }
+
+        /* Get a submesh by its current BIN index (useful for cross-ref'ing with compiled binaries)
+         * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
+        public MOVER_DESCRIPTOR GetAtWriteIndex(int index)
+        {
+            if (_writeList.Count <= index) return null;
+            return _writeList[index];
         }
         #endregion
 
@@ -77,7 +100,7 @@ namespace CATHODE
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct MOVER_DESCRIPTOR
+        public class MOVER_DESCRIPTOR
         {
             /*
 
@@ -210,7 +233,7 @@ namespace CATHODE
         };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct GPU_CONSTANTS //As best I can tell, this is 80 bytes long
+        public class GPU_CONSTANTS //As best I can tell, this is 80 bytes long
         {
             /*
 
@@ -251,7 +274,7 @@ namespace CATHODE
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct RENDER_CONSTANTS //appears to be 84 long
+        public class RENDER_CONSTANTS //appears to be 84 long
         {
             /*
 

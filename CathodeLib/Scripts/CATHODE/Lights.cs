@@ -50,7 +50,7 @@ namespace CATHODE.EXPERIMENTAL
         {
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
-                writer.BaseStream.SetLength(0);
+                //writer.BaseStream.SetLength(0);
                 Utilities.WriteString("ligt", writer);
                 writer.Write(4);
                 writer.Write(Entries.Count);
@@ -73,7 +73,7 @@ namespace CATHODE.EXPERIMENTAL
                     writer.Write((Int16)Entries[i].unk8);
                 }
                 //TODO: another block here i don't know
-                writer.Write(new byte[27]); //it seems like you have a 27-byte buffer at the end?
+                //writer.Write(new byte[27]); //it seems like you have a 27-byte buffer at the end?
             }
             return true;
         }

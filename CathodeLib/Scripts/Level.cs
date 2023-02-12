@@ -59,17 +59,17 @@ namespace CathodeLib
 
             /* WORLD */
             RenderableElements = new RenderableElements(path + "/WORLD/REDS.BIN");
-            //Movers = new Movers(path + "/WORLD/MODELS.MVR");
+            Movers = new Movers(path + "/WORLD/MODELS.MVR");
             //Commands = new Commands(path + "/WORLD/COMMANDS.PAK");
             //Resources = new Resources(path + "/WORLD/RESOURCES.BIN");
             //PhysicsMaps = new PhysicsMaps(path + "/WORLD/PHYSICS.MAP");
-            //EnvironmentMaps = new EnvironmentMaps(path + "/WORLD/ENVIRONMENTMAP.BIN");
+            EnvironmentMaps = new EnvironmentMaps(path + "/WORLD/ENVIRONMENTMAP.BIN");
             //CollisionMaps = new CollisionMaps(path + "/WORLD/COLLISION.MAP");
             //EnvironmentAnimations = new EnvironmentAnimations(path + "/WORLD/ENVIRONMENT_ANIMATION.DAT");
             //MaterialMappings = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK");
             //PathBarrierResources = new PathBarrierResources(path + "/WORLD/PATH_BARRIER_RESOURCES");
-            //Lights = new Lights(path + "/WORLD/LIGHTS.BIN");
-            Collisions = new Collisions(path + "/WORLD/COLLISION.BIN");
+            Lights = new Lights(path + "/WORLD/LIGHTS.BIN");
+            //Collisions = new Collisions(path + "/WORLD/COLLISION.BIN");
 
             // WORLD TODO: 
             //  - ALPHALIGHT_LEVEL.BIN
@@ -101,6 +101,42 @@ namespace CathodeLib
         /* Save all modifications to the level - this currently assumes we aren't editing GLOBAL data */
         public void Save()
         {
+            /* UPDATE MOVER INDEXES */
+
+            Movers.Entries.RemoveRange(Movers.Entries.Count - 100, 100);
+
+            //Get links to mover entries as actual objects
+            List<Movers.MOVER_DESCRIPTOR> lightMovers = new List<Movers.MOVER_DESCRIPTOR>();
+            for (int i = 0; i < Lights.Entries.Count; i++)
+                lightMovers.Add(Movers.GetAtWriteIndex(Lights.Entries[i].MoverIndex));
+            List<Movers.MOVER_DESCRIPTOR> envMapMovers = new List<Movers.MOVER_DESCRIPTOR>();
+            for (int i = 0; i < EnvironmentMaps.Entries.Count; i++)
+                envMapMovers.Add(Movers.GetAtWriteIndex(EnvironmentMaps.Entries[i].MoverIndex));
+            Movers.Save();
+
+            //Update mover indexes for light refs
+            List<Lights.Light> lights = new List<Lights.Light>();
+            for (int i = 0; i < Lights.Entries.Count; i++)
+            {
+                Lights.Entries[i].MoverIndex = Movers.GetWriteIndex(lightMovers[i]);
+                if (Lights.Entries[i].MoverIndex != -1) lights.Add(Lights.Entries[i]);
+            }
+            Lights.Entries = lights;
+            Lights.Save();
+
+            //Update mover indexes for envmap refs
+            List<EnvironmentMaps.Mapping> envMaps = new List<EnvironmentMaps.Mapping>();
+            for (int i = 0; i < EnvironmentMaps.Entries.Count; i++)
+            {
+                EnvironmentMaps.Entries[i].MoverIndex = Movers.GetWriteIndex(envMapMovers[i]);
+                if (EnvironmentMaps.Entries[i].MoverIndex != -1) envMaps.Add(EnvironmentMaps.Entries[i]);
+            }
+            EnvironmentMaps.Entries = envMaps;
+            EnvironmentMaps.Save();
+
+
+            /* UPDATE MATERIAL/MODEL INDEXES */
+
             //Get REDS links as actual objects
             List<Models.CS2.Submesh> redsModels = new List<Models.CS2.Submesh>();
             List<Materials.Material> redsMaterials = new List<Materials.Material>();
@@ -113,12 +149,9 @@ namespace CathodeLib
             //Get model links as actual objects
             List<Materials.Material> modelMaterials = new List<Materials.Material>();
             for (int i = 0; i < Models.Entries.Count; i++)
-            {
                 for (int x = 0; x < Models.Entries[i].Submeshes.Count; x++)
-                {
                     modelMaterials.Add(Materials.GetAtWriteIndex(Models.Entries[i].Submeshes[x].MaterialLibraryIndex));
-                }
-            }
+            Models.Save();
 
             //Get material links as actual objects
             List<Textures.TEX4> materialTextures = new List<Textures.TEX4>();
@@ -137,9 +170,6 @@ namespace CathodeLib
                     }
                 }
             }
-
-            //Save the asset files out to link back to
-            Models.Save();
             Materials.Save();
 
             //Update the REDS links
