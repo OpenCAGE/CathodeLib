@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
+using System.Data;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #else
@@ -146,6 +148,7 @@ namespace CATHODE
                 }
             }
 
+            Dictionary<CS2.LOD.Submesh, byte[]> modelContent = new Dictionary<CS2.LOD.Submesh, byte[]>();
             using (BinaryReader pak = new BinaryReader(File.OpenRead(_filepath)))
             {
                 //Read & check the header info from the PAK
@@ -174,11 +177,9 @@ namespace CATHODE
                     CS2 cs2 = new CS2();
                     cs2.Name = filenameList[binIndex];
                     cs2.LODs.Add(new CS2.LOD(meshNameList[binIndex]));
-                    //cs2.UnkLv426Pt1 = unk1;        <------ TODO: Not writing this out as it seems it works fine without it?
-                    //cs2.UnkLv426Pt2 = unk2;        <-|
                     Entries.Add(cs2);
 
-                    //Read submesh content and add to appropriate model
+                    //Read submesh content
                     int offsetToReturnTo = (int)pak.BaseStream.Position;
                     pak.BaseStream.Position = endOfHeaders + offset;
                     byte[] content = pak.ReadBytes(length);
@@ -201,8 +202,7 @@ namespace CATHODE
                         {
                             CS2.LOD.Submesh submesh = _writeList[offsetData.Key];
                             reader.BaseStream.Position = offsetData.Value[0];
-                            byte[] data = reader.ReadBytes(offsetData.Value[1]);
-                            PopulateMeshData(data, ref submesh);
+                            modelContent.Add(submesh, reader.ReadBytes(offsetData.Value[1]));
                             if (LODs.Contains(offsetData.Key))
                             {
                                 cs2.LODs.Add(new CS2.LOD(meshNameList[offsetData.Key]));
@@ -214,6 +214,12 @@ namespace CATHODE
                     pak.BaseStream.Position = offsetToReturnTo;
                 }
             }
+
+            //Parse the submesh content to usable data
+            Parallel.ForEach(modelContent, content =>
+            {
+                ParseModelContent(content.Value, content.Key);
+            });
 
             return true;
         }
@@ -237,6 +243,18 @@ namespace CATHODE
                             vertexFormats.Add(Entries[i].LODs[x].Submeshes[y].VertexFormat);
                         if (!vertexFormats.Contains(Entries[i].LODs[x].Submeshes[y].VertexFormatLowDetail))
                             vertexFormats.Add(Entries[i].LODs[x].Submeshes[y].VertexFormatLowDetail);
+                    }
+                }
+            }
+
+            Dictionary<CS2.LOD.Submesh, byte[]> modelContent = new Dictionary<CS2.LOD.Submesh, byte[]>();
+            for (int i = 0; i < Entries.Count; i++)
+            {
+                for (int x = 0; x < Entries[i].LODs.Count; x++)
+                {
+                    for (int y = 0; y < Entries[i].LODs[x].Submeshes.Count; y++)
+                    {
+                        modelContent.Add(Entries[i].LODs[x].Submeshes[y], GenerateModelContent(Entries[i].LODs[x].Submeshes[y]));
                     }
                 }
             }
@@ -322,7 +340,7 @@ namespace CATHODE
                             bin.Write((Int32)mesh.MaterialLibraryIndex);
                             bin.Write((Int32)mesh.Unknown2_);
                             bin.Write((Int32)mesh.UnknownIndex);
-                           // bin.Write((Int32)mesh.content.Length);
+                            bin.Write((Int32)modelContent[mesh].Length);
                             bin.Write((Int32)mesh.CollisionIndex_);
                             bin.Write((Int32)boneOffset);
                             bin.Write((Int16)vertexFormats.IndexOf(mesh.VertexFormat));
@@ -382,9 +400,9 @@ namespace CATHODE
                         {
                             pak.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndex(Entries[i].LODs[x].Submeshes[y])));
                             pak.Write(BigEndianUtils.FlipEndian((Int32)(24 + (countOfAllSubmeshes * 16) + content.Count + 8)));
-                            //pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].LODs[x].Submeshes[y].content.Length));
+                            pak.Write(BigEndianUtils.FlipEndian((Int32)modelContent[Entries[i].LODs[x].Submeshes[y]].Length));
                             pak.Write(new byte[4]);
-                            //content.AddRange(Entries[i].LODs[x].Submeshes[y].content);
+                            content.AddRange(modelContent[Entries[i].LODs[x].Submeshes[y]]);
                         }
                     }
                     pak.Write(new byte[8]);
@@ -401,15 +419,11 @@ namespace CATHODE
                     pak.Write(BigEndianUtils.FlipEndian((Int32)lengths[i]));
                     pak.Write(BigEndianUtils.FlipEndian((Int32)lengths[i]));
                     pak.Write(BigEndianUtils.FlipEndian((Int32)offsets[i]));
-
                     pak.Write(new byte[5]);
                     pak.Write(new byte[2] { 0x01, 0x01 });
-                    pak.Write(new byte[1]);
-
-                    pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].UnkLv426Pt1));
+                    pak.Write(new byte[5]);
                     pak.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndex(Entries[i].LODs[0].Submeshes[0])));
-                    pak.Write(new byte[8]);
-                    pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].UnkLv426Pt2));
+                    pak.Write(new byte[12]);
                 }
 
                 //Write header
@@ -429,7 +443,11 @@ namespace CATHODE
 
         #region ACCESSORS
 
-        public void PopulateMeshData(byte[] content, ref CS2.LOD.Submesh submesh)
+        #endregion
+
+        #region HELPERS
+        /* Populate submesh model data from PAK byte block */
+        private void ParseModelContent(byte[] content, CS2.LOD.Submesh submesh)
         {
             if (content.Length == 0) return;
 
@@ -442,15 +460,6 @@ namespace CATHODE
                     {
                         for (int x = 0; x < submesh.IndexCount; x++)
                             submesh.indices.Add(reader.ReadUInt16());
-
-                        //TODO: Why do we get this excess? It's never more than 14.
-                        if (reader.BaseStream.Length != reader.BaseStream.Position)
-                        {
-                            if (reader.BaseStream.Length - reader.BaseStream.Position > 14)
-                            {
-                                throw new Exception();
-                            }
-                        }
                         continue;
                     }
 
@@ -489,8 +498,8 @@ namespace CATHODE
                                                 submesh.boneWeight.Add(v / (v.X + v.Y + v.Z + v.W));
                                                 break;
                                             case VBFE_InputSlot.UV:
-                                                submesh.uvs[2].Add(new Vector2(v.X, v.Y));
-                                                submesh.uvs[3].Add(new Vector2(v.Z, v.W));
+                                                submesh.uvs[format.VariantIndex].Add(new Vector2(v.X, v.Y));
+                                                submesh.uvs[format.VariantIndex + 1].Add(new Vector2(v.Z, v.W));
                                                 break;
                                         }
                                         break;
@@ -506,16 +515,14 @@ namespace CATHODE
                                                 submesh.normals.Add(new Vector3(v.X, v.Y, v.Z));
                                                 break;
                                             case VBFE_InputSlot.TANGENT:
+                                                submesh.tangents.Add(v); //TODO: validate this is correct
+                                                break;
                                             case VBFE_InputSlot.BITANGENT:
-                                                //TODO!
+                                                //TODO - format.VariantIndex is always zero
                                                 break;
                                         }
                                         break;
                                     }
-                                case VBFE_InputType.UINT16:
-                                    for (int z = 0; z < submesh.IndexCount; z++)
-                                        submesh.indices.Add(reader.ReadUInt16());
-                                    break;
                                 case VBFE_InputType.VECTOR4_INT16_DIVMAX:
                                     Vector4 vert = new Vector4(reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16());
                                     vert /= (float)Int16.MaxValue;
@@ -524,7 +531,7 @@ namespace CATHODE
                                 case VBFE_InputType.VECTOR4_BYTE_COLOUR:
                                     Color col = Color.FromRgb(reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
                                     col.A = reader.ReadByte();
-                                    submesh.colours.Add(col);
+                                    submesh.colours.Add(col); //FROM DAN: Seems to be material properties values, not color nor indices. Check VariantIndex.
                                     break;
                                 case VBFE_InputType.VECTOR4_BYTE_BONES:
                                     submesh.boneIndex.Add(new Vector4(reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte()));
@@ -535,13 +542,134 @@ namespace CATHODE
                             }
                         }
                     }
-                    Utilities.Align(reader, 16);
+                    Utilities.Align(reader, 16); //NOTE: this alignment is also true on the final indicies block, but we don't apply it, so it seems like we are not reaching the end of the stream
                 }
             }
         }
-        #endregion
 
-        #region HELPERS
+        /* Create a PAK byte block from submesh model data */
+        private byte[] GenerateModelContent(CS2.LOD.Submesh submesh)
+        {
+            byte[] content;
+            int v3_normal_count = 0;
+            int v3_tangent_count = 0;
+            int v4_b255_bw_count = 0;
+            int v4_b255_uv_count = 0;
+            int v4_i16_v_count = 0;
+            int v4_b_c_count = 0;
+            int v4_b_b_count = 0;
+            int v2_i16_uv_count = 0;
+            using (MemoryStream ms = new MemoryStream())
+            {
+                using (BinaryWriter writer = new BinaryWriter(ms))
+                {
+                    for (int i = 0; i < submesh.VertexFormat.Elements.Count; ++i)
+                    {
+                        //Read indicies
+                        if (i == submesh.VertexFormat.Elements.Count - 1)
+                        {
+                            Utilities.Write<UInt16>(writer, submesh.indices);
+                            Utilities.Align(writer, 16);
+                            continue;
+                        }
+
+                        //Read vertex info
+                        for (int x = 0; x < submesh.VertexCount; ++x)
+                        {
+                            for (int y = 0; y < submesh.VertexFormat.Elements[i].Count; ++y)
+                            {
+                                AlienVBF.Element format = submesh.VertexFormat.Elements[i][y];
+                                switch (format.VariableType)
+                                {
+                                    case VBFE_InputType.VECTOR3:
+                                        switch (format.ShaderSlot)
+                                        {
+                                            case VBFE_InputSlot.NORMAL:
+                                                Utilities.Write<Vector3>(writer, submesh.normals[v3_normal_count]);
+                                                v3_normal_count++;
+                                                break;
+                                            case VBFE_InputSlot.TANGENT:
+                                                writer.Write(submesh.tangents[v3_tangent_count].X);
+                                                writer.Write(submesh.tangents[v3_tangent_count].Y);
+                                                writer.Write(submesh.tangents[v3_tangent_count].Z);
+                                                v3_tangent_count++;
+                                                break;
+                                            case VBFE_InputSlot.UV:
+                                                writer.Write(new byte[12]); //TODO: not parsing yet
+                                                break;
+                                        };
+                                        break;
+                                    case VBFE_InputType.VECTOR4_BYTE_DIV255:
+                                        switch (format.ShaderSlot)
+                                        {
+                                            case VBFE_InputSlot.BONE_WEIGHTS:
+                                                float s = submesh.boneWeight[v4_b255_bw_count].X + submesh.boneWeight[v4_b255_bw_count].Y + submesh.boneWeight[v4_b255_bw_count].Z + submesh.boneWeight[v4_b255_bw_count].W;
+                                                writer.Write((byte)(submesh.boneWeight[v4_b255_bw_count] * s * 255.0f).X);
+                                                writer.Write((byte)(submesh.boneWeight[v4_b255_bw_count] * s * 255.0f).Y);
+                                                writer.Write((byte)(submesh.boneWeight[v4_b255_bw_count] * s * 255.0f).Z);
+                                                writer.Write((byte)(submesh.boneWeight[v4_b255_bw_count] * s * 255.0f).W);
+                                                v4_b255_bw_count++;
+                                                break;
+                                            case VBFE_InputSlot.UV:
+                                                writer.Write((byte)(submesh.uvs[format.VariantIndex][v4_b255_uv_count] * 255).X);
+                                                writer.Write((byte)(submesh.uvs[format.VariantIndex][v4_b255_uv_count] * 255).Y);
+                                                writer.Write((byte)(submesh.uvs[format.VariantIndex + 1][v4_b255_uv_count] * 255).X);
+                                                writer.Write((byte)(submesh.uvs[format.VariantIndex + 1][v4_b255_uv_count] * 255).Y);
+                                                v4_b255_uv_count++;
+                                                break;
+                                        }
+                                        break;
+                                    case VBFE_InputType.VECTOR4_BYTE_NORM:
+                                        switch (format.ShaderSlot)
+                                        {
+                                            case VBFE_InputSlot.NORMAL:
+                                                writer.Write(new byte[4]); //TODO
+                                                break;
+                                            case VBFE_InputSlot.TANGENT:
+                                                writer.Write(new byte[4]); //TODO
+                                                break;
+                                            case VBFE_InputSlot.BITANGENT:
+                                                writer.Write(new byte[4]); //TODO: not parsing yet
+                                                break;
+                                        }
+                                        break;
+                                    case VBFE_InputType.VECTOR4_INT16_DIVMAX:
+                                        writer.Write((Int16)(submesh.vertices[v4_i16_v_count] * (float)Int16.MaxValue).X);
+                                        writer.Write((Int16)(submesh.vertices[v4_i16_v_count] * (float)Int16.MaxValue).Y);
+                                        writer.Write((Int16)(submesh.vertices[v4_i16_v_count] * (float)Int16.MaxValue).Z);
+                                        writer.Write((Int16)0);
+                                        v4_i16_v_count++;
+                                        break;
+                                    case VBFE_InputType.VECTOR4_BYTE_COLOUR:
+                                        writer.Write(submesh.colours[v4_b_c_count].R);
+                                        writer.Write(submesh.colours[v4_b_c_count].G);
+                                        writer.Write(submesh.colours[v4_b_c_count].B);
+                                        writer.Write(submesh.colours[v4_b_c_count].A);
+                                        v4_b_c_count++;
+                                        break;
+                                    case VBFE_InputType.VECTOR4_BYTE_BONES:
+                                        writer.Write((byte)submesh.boneIndex[v4_b_b_count].X);
+                                        writer.Write((byte)submesh.boneIndex[v4_b_b_count].Y);
+                                        writer.Write((byte)submesh.boneIndex[v4_b_b_count].Z);
+                                        writer.Write((byte)submesh.boneIndex[v4_b_b_count].W);
+                                        v4_b_b_count++;
+                                        break;
+                                    case VBFE_InputType.VECTOR2_INT16_DIV2048:
+                                        writer.Write(submesh.uvs[format.VariantIndex][v2_i16_uv_count].X * 2048.0f);
+                                        writer.Write(submesh.uvs[format.VariantIndex][v2_i16_uv_count].Y * 2048.0f);
+                                        v2_i16_uv_count++;
+                                        break;
+                                }
+                            }
+                        }
+                        Utilities.Align(writer, 16);
+                    }
+                }
+                content = ms.ToArray();
+            }
+            return content;
+        }
+
         /* Find a model that contains a given submesh */
         public CS2 FindModelForSubmesh(CS2.LOD.Submesh submesh)
         {
@@ -686,10 +814,6 @@ namespace CATHODE
                     return Name;
                 }
             }
-
-            //Storing some unknown info about LV426 stuff (Pt1 and Pt2 respectively)
-            public int UnkLv426Pt1 = 0;
-            public int UnkLv426Pt2 = 0;
         }
         #endregion
     }
