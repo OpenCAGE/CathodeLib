@@ -589,9 +589,9 @@ namespace CATHODE
                                                 v3_normal_count++;
                                                 break;
                                             case VBFE_InputSlot.TANGENT:
-                                                writer.Write(submesh.tangents[v3_tangent_count].X);
-                                                writer.Write(submesh.tangents[v3_tangent_count].Y);
-                                                writer.Write(submesh.tangents[v3_tangent_count].Z);
+                                                writer.Write((float)submesh.tangents[v3_tangent_count].X);
+                                                writer.Write((float)submesh.tangents[v3_tangent_count].Y);
+                                                writer.Write((float)submesh.tangents[v3_tangent_count].Z);
                                                 v3_tangent_count++;
                                                 break;
                                             case VBFE_InputSlot.UV:
@@ -641,10 +641,10 @@ namespace CATHODE
                                         v4_i16_v_count++;
                                         break;
                                     case VBFE_InputType.VECTOR4_BYTE_COLOUR:
-                                        writer.Write(submesh.colours[v4_b_c_count].R);
-                                        writer.Write(submesh.colours[v4_b_c_count].G);
-                                        writer.Write(submesh.colours[v4_b_c_count].B);
-                                        writer.Write(submesh.colours[v4_b_c_count].A);
+                                        writer.Write((byte)submesh.colours[v4_b_c_count].R);
+                                        writer.Write((byte)submesh.colours[v4_b_c_count].G);
+                                        writer.Write((byte)submesh.colours[v4_b_c_count].B);
+                                        writer.Write((byte)submesh.colours[v4_b_c_count].A);
                                         v4_b_c_count++;
                                         break;
                                     case VBFE_InputType.VECTOR4_BYTE_BONES:
@@ -655,8 +655,9 @@ namespace CATHODE
                                         v4_b_b_count++;
                                         break;
                                     case VBFE_InputType.VECTOR2_INT16_DIV2048:
-                                        writer.Write(submesh.uvs[format.VariantIndex][v2_i16_uv_count].X * 2048.0f);
-                                        writer.Write(submesh.uvs[format.VariantIndex][v2_i16_uv_count].Y * 2048.0f);
+                                        writer.Write(new byte[4]);
+                                        //writer.Write((Int16)(submesh.uvs[format.VariantIndex][v2_i16_uv_count].X * 2048.0f));
+                                        //writer.Write((Int16)(submesh.uvs[format.VariantIndex][v2_i16_uv_count].Y * 2048.0f));
                                         v2_i16_uv_count++;
                                         break;
                                 }
