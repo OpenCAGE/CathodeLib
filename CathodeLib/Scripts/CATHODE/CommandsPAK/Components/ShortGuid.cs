@@ -66,6 +66,7 @@ namespace CATHODE.Scripting
         }
         public override int GetHashCode()
         {
+            if (val == null) return 0;
             return BitConverter.ToInt32(val, 0);
         }
 
