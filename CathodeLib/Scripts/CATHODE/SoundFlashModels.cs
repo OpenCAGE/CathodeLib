@@ -10,12 +10,12 @@ using System.Xml.Linq;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/SNDNODENETWORK.DAT */
-    public class SoundNodeNetwork : CathodeFile
+    /* DATA/ENV/PRODUCTION/x/WORLD/SOUNDFLASHMODELS.DAT */
+    public class SoundFlashModels : CathodeFile
     {
-        private List<Soundbank> Entries = new List<Soundbank>();
+        private List<string> Entries = new List<string>();
         public static new Implementation Implementation = Implementation.NONE;
-        public SoundNodeNetwork(string path) : base(path) { }
+        public SoundFlashModels(string path) : base(path) { }
 
         #region FILE_IO
         override protected bool LoadInternal()
@@ -23,13 +23,17 @@ namespace CATHODE
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
                 reader.BaseStream.Position += 4;
-                int unk = reader.ReadInt32();
-                int strLength = reader.ReadInt16();
-                string str = "";
-                for (int i = 0; i < strLength; i++)
-                    str += reader.ReadChar();
-                reader.BaseStream.Position += 26;
-                Vector3 position = Utilities.Consume<Vector3>(reader);
+                int entryCount = reader.ReadInt32();
+                for (int i = 0; i < entryCount; i++)
+                {
+                    int unk1 = reader.ReadInt16();
+                    int unk2 = reader.ReadInt16();
+                    int count = reader.ReadInt32();
+                    for (int x = 0; x < count; x++)
+                    {
+                        int unk3 = reader.ReadInt32();
+                    }
+                }
             }
             return true;
         }

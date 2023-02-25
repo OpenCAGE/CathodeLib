@@ -11,7 +11,7 @@ namespace CathodeLib
 {
     public static class SoundUtils
     {
-        private static Dictionary<int, string> nameLookup;
+        private static Dictionary<uint, string> nameLookup;
 
         static SoundUtils()
         {
@@ -26,9 +26,17 @@ namespace CathodeLib
                 nameLookup.Add(reader.ReadInt32(), Utilities.ReadString(reader));
         }
 
-        public static string GetSoundName(int id)
+        public static string GetSoundName(uint id)
         {
             return nameLookup.ContainsKey(id) ? nameLookup[id] : "";
+        }
+
+        public static int GetSoundID(string name)
+        {
+            foreach (var entry in nameLookup)
+                if (entry.Value == name)
+                    return entry.Key;
+            return -1;
         }
     }
 }
