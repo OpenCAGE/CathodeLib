@@ -8,21 +8,31 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE.EXPERIMENTAL
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/SNDNODENETWORK.DAT & SOUNDEVENTDATA.DAT */
+    /* DATA/ENV/PRODUCTION/x/WORLD/SNDNODENETWORK.DAT & SOUNDEVENTDATA.DAT & SOUNDENVIRONMENTDATA.DAT & SOUNDFLASHMODELS.DAT & SOUNDLOADZONES.DAT & SOUNDDIALOGUELOOKUPS.DAT */
     public class SoundNodeNetwork : CathodeFile
     {
         public List<Light> Entries = new List<Light>();
         public static new Implementation Implementation = Implementation.NONE;
         public SoundNodeNetwork(string path) : base(path) { }
 
-        private string _filepathSoundEventData;
+        private string _filepathEventData;
+        private string _filepathEnvironmentData;
+        private string _filepathFlashModels;
+        private string _filepathLoadZones;
+        private string _filepathDialogueLookups;
 
         #region FILE_IO
         override protected bool LoadInternal()
         {
-            _filepathSoundEventData = _filepath.Substring(0, _filepath.Length - ("SNDNODENETWORK.DAT").Length) + "SOUNDEVENTDATA.DAT";
+            string basePath = _filepath.Substring(0, _filepath.Length - ("SNDNODENETWORK.DAT").Length);
+            _filepathEventData = basePath + "SOUNDEVENTDATA.DAT";
+            _filepathEnvironmentData = basePath + "SOUNDENVIRONMENTDATA.DAT";
+            _filepathFlashModels = basePath + "SOUNDFLASHMODELS.DAT";
+            _filepathLoadZones = basePath + "SOUNDLOADZONES.DAT";
+            _filepathDialogueLookups = basePath + "SOUNDDIALOGUELOOKUPS.DAT";
 
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepathSoundEventData)))
+            //SoundEventData.dat
+            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepathEventData)))
             {
                 reader.BaseStream.Position += 4;
                 int entryCount = reader.ReadInt32();
@@ -37,13 +47,78 @@ namespace CATHODE.EXPERIMENTAL
                     for (int x = 0; x < length; x++)
                         args += reader.ReadChar();
                     reader.BaseStream.Position += 2;
-                    ShortGuid id = Utilities.Consume<ShortGuid>(reader);
                     int unk = reader.ReadInt16();
-                    Console.WriteLine("[" + unk + "] " + name + " -> " + args);
+                    ShortGuid id = Utilities.Consume<ShortGuid>(reader);
+                    Console.WriteLine("[" + id.ToByteString() + "] " + name + " -> " + args);
                 }
-                string sdfds = "";
             }
 
+            //SoundEnvironmentData.dat
+            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepathEnvironmentData)))
+            {
+                reader.BaseStream.Position += 4;
+                int entryCount = reader.ReadInt32();
+                for (int i = 0; i < entryCount; i++)
+                {
+                    byte[] content = reader.ReadBytes(100);
+                    using (BinaryReader contentReader = new BinaryReader(new MemoryStream(content)))
+                    {
+                        string name = Utilities.ReadString(contentReader);
+                        Console.WriteLine(name);
+                    }
+                }
+            }
+
+            //SoundFlashModels.dat
+            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepathFlashModels)))
+            {
+                reader.BaseStream.Position += 4;
+                int entryCount = reader.ReadInt32();
+                for (int i = 0; i < entryCount; i++)
+                {
+                    int unk1 = reader.ReadInt16();
+                    int unk2 = reader.ReadInt16();
+                    int count = reader.ReadInt32();
+                    for (int x = 0; x < count; x++)
+                    {
+                        int unk3 = reader.ReadInt32();
+                    }
+                }
+            }
+
+            //SoundLoadZones.dat
+            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepathLoadZones)))
+            {
+                reader.BaseStream.Position += 4;
+                int entryCount = reader.ReadInt32();
+                reader.BaseStream.Position += 8;
+                for (int i = 0; i < entryCount; i++)
+                {
+                    byte[] content = reader.ReadBytes(68);
+                    using (BinaryReader contentReader = new BinaryReader(new MemoryStream(content)))
+                    {
+                        string name = Utilities.ReadString(contentReader);
+                        Console.WriteLine(name);
+                    }
+                }
+            }
+
+            //SoundDialogueLookups.dat
+            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepathDialogueLookups)))
+            {
+                reader.BaseStream.Position += 16; //All unknowns
+                int entryCount = ((int)reader.BaseStream.Length / 8) - 2; //We can probably work this out from the previous unknowns
+                for (int i = 0; i < entryCount; i++)
+                {
+                    int soundID = reader.ReadInt32();
+                    string soundName = SoundUtils.GetSoundName(soundID);
+                    ShortGuid unk = Utilities.Consume<ShortGuid>(reader);
+                    Console.WriteLine(soundName);
+                }
+
+            }
+
+            //SndNodeNetwork.dat
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
                 reader.BaseStream.Position += 4;

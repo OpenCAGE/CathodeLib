@@ -99,5 +99,15 @@ namespace CathodeLib.Properties {
                 return ((byte[])(obj));
             }
         }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Byte[].
+        /// </summary>
+        internal static byte[] sound_names {
+            get {
+                object obj = ResourceManager.GetObject("sound_names", resourceCulture);
+                return ((byte[])(obj));
+            }
+        }
     }
 }
