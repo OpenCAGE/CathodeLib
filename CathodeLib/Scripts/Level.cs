@@ -30,6 +30,13 @@ namespace CathodeLib
         public PathBarrierResources PathBarrierResources;
         public Lights Lights;
         public Collisions Collisions;
+        public SoundNodeNetwork SoundNodeNetwork;
+        public SoundBankData SoundBankData;
+        public SoundDialogueLookups SoundDialogueLookups;
+        public SoundEnvironmentData SoundEnvironmentData;
+        public SoundEventData SoundEventData;
+        public SoundFlashModels SoundFlashModels;
+        public SoundLoadZones SoundLoadZones;
 
         public class State
         {
@@ -70,6 +77,13 @@ namespace CathodeLib
             //PathBarrierResources = new PathBarrierResources(path + "/WORLD/PATH_BARRIER_RESOURCES");
             Lights = new Lights(path + "/WORLD/LIGHTS.BIN");
             //Collisions = new Collisions(path + "/WORLD/COLLISION.BIN");
+            //SoundNodeNetwork = new SoundNodeNetwork(path + "/WORLD/SNDNODENETWORK.DAT");
+            //SoundBankData = new SoundBankData(path + "/WORLD/SOUNDBANKDATA.DAT");
+            //SoundDialogueLookups = new SoundDialogueLookups(path + "/WORLD/SOUNDDIALOGUELOOKUPS.DAT");
+            //SoundEnvironmentData = new SoundEnvironmentData(path + "/WORLD/SOUNDENVIRONMENTDATA.DAT");
+            //SoundEventData = new SoundEventData(path + "/WORLD/SOUNDEVENTDATA.DAT");
+            //SoundFlashModels = new SoundFlashModels(path + "/WORLD/SOUNDFLASHMODELS.DAT");
+            //SoundLoadZones = new SoundLoadZones(path + "/WORLD/SOUNDLOADZONES.DAT");
 
             // WORLD TODO: 
             //  - ALPHALIGHT_LEVEL.BIN

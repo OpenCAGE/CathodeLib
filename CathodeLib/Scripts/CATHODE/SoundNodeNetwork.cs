@@ -13,7 +13,7 @@ namespace CATHODE
     /* DATA/ENV/PRODUCTION/x/WORLD/SNDNODENETWORK.DAT */
     public class SoundNodeNetwork : CathodeFile
     {
-        private List<Soundbank> Entries = new List<Soundbank>();
+        private List<string> Entries = new List<string>();
         public static new Implementation Implementation = Implementation.NONE;
         public SoundNodeNetwork(string path) : base(path) { }
 
