@@ -385,11 +385,11 @@ namespace CATHODE
                                                 int hierarchyOffset = reader_parallel.ReadInt32() * 4;
                                                 int hierarchyCount = reader_parallel.ReadInt32();
 
-                                                TriggerSequence.Trigger thisTrigger = new TriggerSequence.Trigger();
+                                                TriggerSequence.Entity thisTrigger = new TriggerSequence.Entity();
                                                 thisTrigger.timing = reader_parallel.ReadSingle();
                                                 reader_parallel.BaseStream.Position = hierarchyOffset;
                                                 thisTrigger.hierarchy = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
-                                                trigEntity.triggers.Add(thisTrigger);
+                                                trigEntity.entities.Add(thisTrigger);
                                             }
 
                                             for (int z = 0; z < eventsCount; z++)
@@ -397,9 +397,9 @@ namespace CATHODE
                                                 reader_parallel.BaseStream.Position = eventsOffset + (z * 12);
 
                                                 TriggerSequence.Event thisEvent = new TriggerSequence.Event();
-                                                thisEvent.EventID = new ShortGuid(reader_parallel);
-                                                thisEvent.StartedID = new ShortGuid(reader_parallel);
-                                                thisEvent.FinishedID = new ShortGuid(reader_parallel);
+                                                thisEvent.start = new ShortGuid(reader_parallel);
+                                                thisEvent.shortGUID = new ShortGuid(reader_parallel);
+                                                thisEvent.end = new ShortGuid(reader_parallel);
                                                 trigEntity.events.Add(thisEvent);
                                             }
                                             break;
@@ -633,7 +633,7 @@ namespace CATHODE
                     else if (Entries[i].functions[x].function == SHORTGUID_TriggerSequence)
                     {
                         TriggerSequence thisEntity = (TriggerSequence)Entries[i].functions[x];
-                        if (thisEntity.triggers.Count == 0 && thisEntity.events.Count == 0) continue;
+                        if (thisEntity.entities.Count == 0 && thisEntity.events.Count == 0) continue;
                         triggerSequenceEntities[i].Add(thisEntity);
                     }
 
@@ -1047,33 +1047,33 @@ namespace CATHODE
                                     List<int> globalOffsets = new List<int>(triggerSequenceEntities[i].Count);
                                     for (int p = 0; p < triggerSequenceEntities[i].Count; p++)
                                     {
-                                        List<int> hierarchyOffsets = new List<int>(triggerSequenceEntities[i][p].triggers.Count);
-                                        for (int pp = 0; pp < triggerSequenceEntities[i][p].triggers.Count; pp++)
+                                        List<int> hierarchyOffsets = new List<int>(triggerSequenceEntities[i][p].entities.Count);
+                                        for (int pp = 0; pp < triggerSequenceEntities[i][p].entities.Count; pp++)
                                         {
                                             hierarchyOffsets.Add((int)writer.BaseStream.Position);
-                                            Utilities.Write<ShortGuid>(writer, triggerSequenceEntities[i][p].triggers[pp].hierarchy);
+                                            Utilities.Write<ShortGuid>(writer, triggerSequenceEntities[i][p].entities[pp].hierarchy);
                                         }
 
                                         int triggerOffset = (int)writer.BaseStream.Position;
-                                        for (int pp = 0; pp < triggerSequenceEntities[i][p].triggers.Count; pp++)
+                                        for (int pp = 0; pp < triggerSequenceEntities[i][p].entities.Count; pp++)
                                         {
                                             writer.Write(hierarchyOffsets[pp] / 4);
-                                            writer.Write(triggerSequenceEntities[i][p].triggers[pp].hierarchy.Count);
-                                            writer.Write(triggerSequenceEntities[i][p].triggers[pp].timing);
+                                            writer.Write(triggerSequenceEntities[i][p].entities[pp].hierarchy.Count);
+                                            writer.Write(triggerSequenceEntities[i][p].entities[pp].timing);
                                         }
 
                                         int eventOffset = (int)writer.BaseStream.Position;
                                         for (int pp = 0; pp < triggerSequenceEntities[i][p].events.Count; pp++)
                                         {
-                                            writer.Write(triggerSequenceEntities[i][p].events[pp].EventID.val);
-                                            writer.Write(triggerSequenceEntities[i][p].events[pp].StartedID.val);
-                                            writer.Write(triggerSequenceEntities[i][p].events[pp].FinishedID.val);
+                                            writer.Write(triggerSequenceEntities[i][p].events[pp].start.val);
+                                            writer.Write(triggerSequenceEntities[i][p].events[pp].shortGUID.val);
+                                            writer.Write(triggerSequenceEntities[i][p].events[pp].end.val);
                                         }
 
                                         globalOffsets.Add((int)writer.BaseStream.Position);
                                         writer.Write(triggerSequenceEntities[i][p].shortGUID.val);
                                         writer.Write(triggerOffset / 4);
-                                        writer.Write(triggerSequenceEntities[i][p].triggers.Count);
+                                        writer.Write(triggerSequenceEntities[i][p].entities.Count);
                                         writer.Write(eventOffset / 4);
                                         writer.Write(triggerSequenceEntities[i][p].events.Count);
                                     }

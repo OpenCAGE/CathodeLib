@@ -1,14 +1,8 @@
-﻿using CATHODE.Scripting;
-using CATHODE.Scripting.Internal;
-using CathodeLib;
-using CathodeLib.Properties;
+﻿using CATHODE.Scripting.Internal;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.SymbolStore;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Xml.Linq;
 
 namespace CATHODE.Scripting.Internal
 {
@@ -168,7 +162,7 @@ namespace CATHODE.Scripting.Internal
     }
 }
 namespace CATHODE.Scripting
-{ 
+{
     [Serializable]
     public class VariableEntity : Entity
     {
@@ -407,21 +401,35 @@ namespace CATHODE.Scripting
         public TriggerSequence(bool autoGenerateParameters = false) : base(FunctionType.TriggerSequence, autoGenerateParameters) { }
         public TriggerSequence(ShortGuid id, bool autoGenerateParameters = false) : base(id, FunctionType.TriggerSequence, autoGenerateParameters) { }
 
-        public List<Trigger> triggers = new List<Trigger>();
-        public List<Event> events = new List<Event>(); //TODO: what is this actually? custom params? how are they timed?
+        public List<Entity> entities = new List<Entity>();
+        public List<Event> events = new List<Event>();
 
         [Serializable]
-        public class Trigger
+        public class Entity
         {
-            public float timing;
+            public Entity()
+            {
+                hierarchy = new List<ShortGuid>();
+                hierarchy.Add(new ShortGuid("00-00-00-00"));
+            }
+
+            public float timing = 0.0f;
             public List<ShortGuid> hierarchy;
         }
         [Serializable]
         public class Event
         {
-            public ShortGuid EventID; //Assumed
-            public ShortGuid StartedID; //Assumed
-            public ShortGuid FinishedID;
+            public Event() { }
+            public Event(ShortGuid start, ShortGuid end) 
+            {
+                this.start = start;
+                this.end = end;
+                shortGUID = ShortGuidUtils.GenerateRandom();
+            }
+
+            public ShortGuid start;
+            public ShortGuid shortGUID; 
+            public ShortGuid end;
         }
     }
     #endregion

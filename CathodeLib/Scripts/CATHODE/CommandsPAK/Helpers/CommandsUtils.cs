@@ -242,13 +242,13 @@ namespace CATHODE.Scripting
                 {
                     case "TriggerSequence":
                         TriggerSequence trig = (TriggerSequence)composite.functions[i];
-                        List<TriggerSequence.Trigger> trigSeq = new List<TriggerSequence.Trigger>();
-                        for (int x = 0; x < trig.triggers.Count; x++)
-                            if (ResolveHierarchy(commands, composite, trig.triggers[x].hierarchy, out Composite flowTemp, out string hierarchy) != null)
-                                trigSeq.Add(trig.triggers[x]);
-                        originalTriggerCount += trig.triggers.Count;
+                        List<TriggerSequence.Entity> trigSeq = new List<TriggerSequence.Entity>();
+                        for (int x = 0; x < trig.entities.Count; x++)
+                            if (ResolveHierarchy(commands, composite, trig.entities[x].hierarchy, out Composite flowTemp, out string hierarchy) != null)
+                                trigSeq.Add(trig.entities[x]);
+                        originalTriggerCount += trig.entities.Count;
                         newTriggerCount += trigSeq.Count;
-                        trig.triggers = trigSeq;
+                        trig.entities = trigSeq;
                         break;
                     case "CAGEAnimation":
                         CAGEAnimation anim = (CAGEAnimation)composite.functions[i];
