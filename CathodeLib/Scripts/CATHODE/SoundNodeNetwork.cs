@@ -26,10 +26,16 @@ namespace CATHODE
                 int unk = reader.ReadInt32();
                 int strLength = reader.ReadInt16();
                 string str = "";
-                for (int i = 0; i < strLength; i++)
-                    str += reader.ReadChar();
+                for (int i = 0; i < strLength; i++) str += reader.ReadChar();
+                int a = reader.ReadInt16();
+                byte[] b = reader.ReadBytes(a);
+
                 reader.BaseStream.Position += 26;
                 Vector3 position = Utilities.Consume<Vector3>(reader);
+
+                UInt16 x_index = reader.ReadUInt16();
+                UInt16 y_index = reader.ReadUInt16();
+                UInt16 z_index = reader.ReadUInt16();
             }
             return true;
         }

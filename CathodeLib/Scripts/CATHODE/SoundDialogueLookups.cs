@@ -41,6 +41,12 @@ namespace CATHODE
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
+                writer.Write(new byte[16]);
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    writer.Write(Entries[i].id);
+                    Utilities.Write<ShortGuid>(writer, Entries[i].unk);
+                }
             }
             return true;
         }

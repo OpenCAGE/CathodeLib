@@ -13,7 +13,7 @@ namespace CATHODE
     /* DATA/ENV/PRODUCTION/x/WORLD/SOUNDFLASHMODELS.DAT */
     public class SoundFlashModels : CathodeFile
     {
-        private List<string> Entries = new List<string>();
+        private List<FlashModel> Entries = new List<FlashModel>();
         public static new Implementation Implementation = Implementation.NONE;
         public SoundFlashModels(string path) : base(path) { }
 
@@ -26,13 +26,13 @@ namespace CATHODE
                 int entryCount = reader.ReadInt32();
                 for (int i = 0; i < entryCount; i++)
                 {
-                    int unk1 = reader.ReadInt16();
-                    int unk2 = reader.ReadInt16();
+                    FlashModel f = new FlashModel();
+                    f.unk1 = reader.ReadInt16();
+                    f.unk2 = reader.ReadInt16();
                     int count = reader.ReadInt32();
                     for (int x = 0; x < count; x++)
-                    {
-                        int unk3 = reader.ReadInt32();
-                    }
+                        f.unk3.Add(reader.ReadInt32());
+                    Entries.Add(f);
                 }
             }
             return true;
@@ -43,8 +43,26 @@ namespace CATHODE
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
+                writer.Write(1);
+                writer.Write(Entries.Count);
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    writer.Write((Int16)Entries[i].unk1);
+                    writer.Write((Int16)Entries[i].unk2);
+                    for (int x = 0; x < Entries[i].unk3.Count; x++)
+                        writer.Write(Entries[i].unk3[x]);
+                }
             }
             return true;
+        }
+        #endregion
+
+        #region STRUCTURES
+        public class FlashModel
+        {
+            public int unk1;
+            public int unk2;
+            public List<int> unk3 = new List<int>();
         }
         #endregion
     }
