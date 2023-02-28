@@ -21,9 +21,9 @@ namespace CathodeLib
             BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.sound_names));
 #endif
             int count = reader.ReadInt32();
-            nameLookup = new Dictionary<int, string>(count);
+            nameLookup = new Dictionary<uint, string>(count);
             for (int i = 0; i < count; i++)
-                nameLookup.Add(reader.ReadInt32(), Utilities.ReadString(reader));
+                nameLookup.Add(reader.ReadUInt32(), Utilities.ReadString(reader));
         }
 
         public static string GetSoundName(uint id)
@@ -31,12 +31,12 @@ namespace CathodeLib
             return nameLookup.ContainsKey(id) ? nameLookup[id] : "";
         }
 
-        public static int GetSoundID(string name)
+        public static uint GetSoundID(string name)
         {
             foreach (var entry in nameLookup)
                 if (entry.Value == name)
                     return entry.Key;
-            return -1;
+            return 0;
         }
     }
 }

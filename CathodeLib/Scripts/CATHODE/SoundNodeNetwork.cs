@@ -23,19 +23,24 @@ namespace CATHODE
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
                 reader.BaseStream.Position += 4;
-                int unk = reader.ReadInt32();
+                int unk1 = reader.ReadInt16();
+                int unk2 = reader.ReadInt16();
                 int strLength = reader.ReadInt16();
                 string str = "";
                 for (int i = 0; i < strLength; i++) str += reader.ReadChar();
                 int a = reader.ReadInt16();
-                byte[] b = reader.ReadBytes(a);
+                int b = reader.ReadInt16();
+                int c = reader.ReadInt16();
+                ShortGuid d = Utilities.Consume<ShortGuid>(reader);
+                int e = reader.ReadInt32();
 
-                reader.BaseStream.Position += 26;
-                Vector3 position = Utilities.Consume<Vector3>(reader);
 
-                UInt16 x_index = reader.ReadUInt16();
-                UInt16 y_index = reader.ReadUInt16();
-                UInt16 z_index = reader.ReadUInt16();
+                for (int i = 0; i < 999; i++)
+                {
+                    UInt16 x_index = reader.ReadUInt16();
+                    UInt16 y_index = reader.ReadUInt16();
+                    UInt16 z_index = reader.ReadUInt16();
+                }
             }
             return true;
         }
