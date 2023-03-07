@@ -35,7 +35,7 @@ Check out a full overview of the Commands structure [on the Wiki](https://github
 - `CATHODE.PAK2` handles `UI.PAK` and `ANIMATIONS.PAK` files
 - `CATHODE.Models` handles `LEVEL_MODELS.PAK` files, paired with a `MODELS_LEVEL.BIN`
 - `CATHODE.Textures` handles `LEVEL_TEXTURES.ALL.PAK` files, paired with a `LEVEL_TEXTURE_HEADERS.ALL.BIN`
-- `CATHODE.LEGACY.Assets.Shaders` handles various `SHADERS` `PAK` files
+- `CATHODE.LEGACY.Assets.Shaders` handles various `SHADERS` `PAK` files (WIP)
 
 ## For level data and mappings:
 - `CATHODE.Movers` handles `MODELS.MVR` files
@@ -52,6 +52,13 @@ Check out a full overview of the Commands structure [on the Wiki](https://github
 - `CATHODE.CollisionMaps` handles `COLLISION.MAP` files
 - `CATHODE.AnimationStrings` handles `ANIM_STRING_DB.BIN` and `ANIM_STRING_DB_DEBUG.BIN` files
 - `CATHODE.EXPERIMENTAL.NavigationMesh` handles `NAV_MESH` files (experimental)
+- `CATHODE.SoundNodeNetwork` handles `SNDNODENETWORK.DAT` files
+- `CATHODE.SoundLoadZones` handles `SOUNDLOADZONES.DAT` files
+- `CATHODE.SoundFlashModels` handles `SOUNDFLASHMODELS.DAT` files
+- `CATHODE.SoundEventData` handles `SOUNDEVENTDATA.DAT` files
+- `CATHODE.SoundEnvironmentData` handles `SOUNDENVIRONMENTDATA.DAT` files
+- `CATHODE.SoundDialogueLookups` handles `SOUNDDIALOGUELOOKUPS.DAT` files
+- `CATHODE.SoundBankData` handles `SOUNDBANKDATA.DAT` files
 
 ## For configurations:
 - `CATHODE.BML` handles any `.BML` files
