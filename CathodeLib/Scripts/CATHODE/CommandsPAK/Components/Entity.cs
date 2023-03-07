@@ -1,15 +1,8 @@
-﻿using CATHODE.Assets.Utilities;
-using CATHODE.Scripting;
-using CATHODE.Scripting.Internal;
-using CathodeLib;
-using CathodeLib.Properties;
+﻿using CATHODE.Scripting.Internal;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.SymbolStore;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Xml.Linq;
 
 namespace CATHODE.Scripting.Internal
 {
@@ -169,7 +162,7 @@ namespace CATHODE.Scripting.Internal
     }
 }
 namespace CATHODE.Scripting
-{ 
+{
     [Serializable]
     public class VariableEntity : Entity
     {
@@ -281,15 +274,55 @@ namespace CATHODE.Scripting
     [Serializable]
     public class ProxyEntity : Entity
     {
+        public ProxyEntity() : base(EntityVariant.PROXY) { }
         public ProxyEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.PROXY) { }
 
-        public ShortGuid extraId; //TODO: I'm unsure if this is actually used by the game - we might not need to store it and just make up something when we write.
+        public ProxyEntity(List<ShortGuid> hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(EntityVariant.PROXY)
+        {
+            this.targetType = targetType;
+            if (hierarchy != null) this.hierarchy = hierarchy;
+            if (autoGenerateParameters) ApplyDefaults();
+        }
+        public ProxyEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.PROXY)
+        {
+            this.shortGUID = shortGUID;
+            this.targetType = targetType; 
+            if (hierarchy != null) this.hierarchy = hierarchy;
+            if (autoGenerateParameters) ApplyDefaults();
+        }
+
+        public ShortGuid targetType; //The "function" value on the entity we're pointing to
         public List<ShortGuid> hierarchy = new List<ShortGuid>();
+
+        private void ApplyDefaults()
+        {
+            AddParameter("proxy_filter_targets", new cBool(false));
+            AddParameter("proxy_enable_on_reset", new cBool(false));
+            AddParameter("proxy_enable", new cFloat(0.0f));
+            AddParameter("proxy_enabled", new cFloat(0.0f));
+            AddParameter("proxy_disable", new cFloat(0.0f));
+            AddParameter("proxy_disabled", new cFloat(0.0f));
+            AddParameter("reference", new cString(""));
+            AddParameter("trigger", new cFloat(0.0f));
+        }
     }
     [Serializable]
     public class OverrideEntity : Entity
     {
+        public OverrideEntity() : base(EntityVariant.OVERRIDE) { }
         public OverrideEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.OVERRIDE) { }
+
+        public OverrideEntity(List<ShortGuid> hierarchy = null) : base(EntityVariant.OVERRIDE)
+        {
+            checksum = ShortGuidUtils.GenerateRandom();
+            if (hierarchy != null) this.hierarchy = hierarchy;
+        }
+        public OverrideEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null) : base(shortGUID, EntityVariant.OVERRIDE)
+        {
+            this.shortGUID = shortGUID;
+            checksum = ShortGuidUtils.GenerateRandom();
+            if (hierarchy != null) this.hierarchy = hierarchy;
+        }
 
         public ShortGuid checksum; //TODO: This value is apparently a hash of the hierarchy GUIDs, but need to verify that, and work out the salt.
         public List<ShortGuid> hierarchy = new List<ShortGuid>();
@@ -302,9 +335,65 @@ namespace CATHODE.Scripting
         public CAGEAnimation(bool autoGenerateParameters = false) : base(FunctionType.CAGEAnimation, autoGenerateParameters) { }
         public CAGEAnimation(ShortGuid id, bool autoGenerateParameters = false) : base(id, FunctionType.CAGEAnimation, autoGenerateParameters) { }
 
-        public List<CathodeParameterKeyframeHeader> keyframeHeaders = new List<CathodeParameterKeyframeHeader>();
-        public List<CathodeParameterKeyframe> keyframeData = new List<CathodeParameterKeyframe>();
-        public List<TEMP_CAGEAnimationExtraDataHolder3> paramsData3 = new List<TEMP_CAGEAnimationExtraDataHolder3>(); //events?
+        public List<Header> keyframeHeaders = new List<Header>();
+        public List<Keyframe> keyframeData = new List<Keyframe>(); //anim keyframes
+        public List<Keyframe2> keyframeData2 = new List<Keyframe2>(); //TODO: events? 
+
+        [Serializable]
+        public class Header
+        {
+            public ShortGuid ID;
+            public DataType unk2;
+            public ShortGuid keyframeDataID;
+            //public float unk3;
+            public ShortGuid parameterID;
+            public DataType parameterDataType;
+            public ShortGuid parameterSubID; //if parameterID is position, this might be x for example
+            public List<ShortGuid> connectedEntity; //path to controlled entity
+        }
+
+        [Serializable]
+        public class Keyframe
+        {
+            public float minSeconds;
+            public float maxSeconds;
+            public ShortGuid ID;
+            public List<Data> keyframes = new List<Data>();
+
+            [Serializable]
+            public class Data
+            {
+                public float unk1;
+                public float secondsSinceStart;
+                public float secondsSinceStartValidation;
+                public float paramValue;
+                public float unk2;
+                public float unk3;
+                public float unk4;
+                public float unk5;
+            }
+        }
+
+        //TODO: what actually is this?
+        [Serializable]
+        public class Keyframe2
+        {
+            public float minSeconds;
+            public float maxSeconds;
+            public ShortGuid ID;
+            public List<Data> keyframes = new List<Data>();
+
+            [Serializable]
+            public class Data
+            {
+                public float unk1;
+                public float secondsSinceStart;
+                public float unk2;
+                public float unk3;
+                public float unk4;
+                public float unk5;
+            }
+        }
     }
     [Serializable]
     public class TriggerSequence : FunctionEntity
@@ -312,8 +401,36 @@ namespace CATHODE.Scripting
         public TriggerSequence(bool autoGenerateParameters = false) : base(FunctionType.TriggerSequence, autoGenerateParameters) { }
         public TriggerSequence(ShortGuid id, bool autoGenerateParameters = false) : base(id, FunctionType.TriggerSequence, autoGenerateParameters) { }
 
-        public List<CathodeTriggerSequenceTrigger> triggers = new List<CathodeTriggerSequenceTrigger>();
-        public List<CathodeTriggerSequenceEvent> events = new List<CathodeTriggerSequenceEvent>();
+        public List<Entity> entities = new List<Entity>();
+        public List<Event> events = new List<Event>();
+
+        [Serializable]
+        public class Entity
+        {
+            public Entity()
+            {
+                hierarchy = new List<ShortGuid>();
+                hierarchy.Add(new ShortGuid("00-00-00-00"));
+            }
+
+            public float timing = 0.0f;
+            public List<ShortGuid> hierarchy;
+        }
+        [Serializable]
+        public class Event
+        {
+            public Event() { }
+            public Event(ShortGuid start, ShortGuid end) 
+            {
+                this.start = start;
+                this.end = end;
+                shortGUID = ShortGuidUtils.GenerateRandom();
+            }
+
+            public ShortGuid start;
+            public ShortGuid shortGUID; 
+            public ShortGuid end;
+        }
     }
     #endregion
 

@@ -9,6 +9,7 @@ namespace CathodeLib
 {
     public class Utilities
     {
+        //Read a single templated object
         public static T Consume<T>(BinaryReader reader)
         {
             byte[] bytes = reader.ReadBytes(Marshal.SizeOf(typeof(T)));
@@ -22,6 +23,7 @@ namespace CathodeLib
             return theStructure;
         }
 
+        //Read a templated array
         public static T[] ConsumeArray<T>(BinaryReader reader, int count)
         {
             T[] toReturn = new T[count];
@@ -35,21 +37,17 @@ namespace CathodeLib
             return toReturn;
         }
 
-        public static void Align(BinaryReader reader, int val)
+        //Align the stream
+        public static void Align(BinaryReader reader, int val = 4)
         {
-            while (reader.BaseStream.Position % val != 0)
-            {
-                reader.ReadByte();
-            }
+            while (reader.BaseStream.Position % val != 0) reader.ReadByte();
         }
-        public static void Align(BinaryWriter writer, int val)
+        public static void Align(BinaryWriter writer, int val = 4, byte fillWith = 0x00)
         {
-            while (writer.BaseStream.Position % val != 0)
-            {
-                writer.Write((char)0x00);
-            }
+            while (writer.BaseStream.Position % val != 0) writer.Write(fillWith);
         }
 
+        //Reads a string up to a trailing 0x00 byte
         public static string ReadString(byte[] bytes, int position)
         {
             string to_return = "";
@@ -84,6 +82,52 @@ namespace CathodeLib
             return to_return;
         }
 
+        //Writes a string without a leading length value
+        public static void WriteString(string string_to_write, BinaryWriter writer, bool trailingByte = false)
+        {
+            foreach (char character in string_to_write)
+                writer.Write(character);
+
+            if (trailingByte) writer.Write((char)0x00);
+        }
+
+
+        //Gets a string from a byte array (at position) by reading chars until a null is hit
+        public static string GetStringFromByteArray(byte[] byte_array, int position)
+        {
+            string to_return = "";
+            for (int i = 0; i < 999999999; i++)
+            {
+                byte this_byte = byte_array[position + i];
+                if (this_byte == 0x00)
+                {
+                    break;
+                }
+                to_return += (char)this_byte;
+            }
+            return to_return;
+        }
+
+        //Removes the leading nulls from a byte array, useful for cleaning byte-aligned file extracts
+        public static byte[] RemoveLeadingNulls(byte[] extracted_file)
+        {
+            //Remove from leading
+            int start_offset = 0;
+            for (int i = 0; i < 4; i++)
+            {
+                if (extracted_file[i] == 0x00)
+                {
+                    start_offset = i + 1;
+                    continue;
+                }
+                break;
+            }
+            byte[] to_return = new byte[extracted_file.Length - start_offset];
+            Array.Copy(extracted_file, start_offset, to_return, 0, to_return.Length);
+            return to_return;
+        }
+
+        //Write a templated type
         public static void Write<T>(BinaryWriter stream, T aux)
         {
             int length = Marshal.SizeOf(aux);
@@ -105,6 +149,7 @@ namespace CathodeLib
             Write<T>(stream, aux.ToArray<T>());
         }
 
+        //Clones an object (slow!)
         public static T CloneObject<T>(T obj)
         {
             //A somewhat hacky an inefficient way of deep cloning an object (TODO: optimise this as we use it a lot!)
@@ -205,54 +250,40 @@ namespace CathodeLib
             return FlipEndian(BitConverter.GetBytes(ThisEndian));
         }
     }
-    public static class ExtraBinaryUtils
+
+    public enum FileIdentifiers
     {
-        //Gets a string from a byte array (at position) by reading chars until a null is hit
-        public static string GetStringFromByteArray(byte[] byte_array, int position)
-        {
-            string to_return = "";
-            for (int i = 0; i < 999999999; i++)
-            {
-                byte this_byte = byte_array[position + i];
-                if (this_byte == 0x00)
-                {
-                    break;
-                }
-                to_return += (char)this_byte;
-            }
-            return to_return;
-        }
+        HEADER_FILE = 96,
+        ASSET_FILE = 14,
 
-        //Removes the leading nulls from a byte array, useful for cleaning byte-aligned file extracts
-        public static byte[] RemoveLeadingNulls(byte[] extracted_file)
-        {
-            //Remove from leading
-            int start_offset = 0;
-            for (int i = 0; i < 4; i++)
-            {
-                if (extracted_file[i] == 0x00)
-                {
-                    start_offset = i + 1;
-                    continue;
-                }
-                break;
-            }
-            byte[] to_return = new byte[extracted_file.Length - start_offset];
-            Array.Copy(extracted_file, start_offset, to_return, 0, to_return.Length);
-            return to_return;
-        }
+        SHADER_DATA = 3,
+        MODEL_DATA = 19,
+        TEXTURE_DATA = 45,
 
-        //Writes a string without a leading length value (C# BinaryWriter default)
-        public static void WriteString(string string_to_write, BinaryWriter writer)
-        {
-            foreach (char character in string_to_write)
-            {
-                writer.Write(character);
-            }
-        }
+        //From ABOUT.TXT (unsure where used)
+        STRING_FILE_VERSION = 6,
+        ENTITY_FILE_VERSION = 171,
     }
 
-#if !(UNITY_EDITOR || UNITY_STANDALONE)
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct OffsetPair
+    {
+        public int GlobalOffset;
+        public int EntryCount;
+
+        public OffsetPair(int _go, int _ec)
+        {
+            GlobalOffset = _go;
+            EntryCount = _ec;
+        }
+        public OffsetPair(long _go, int _ec)
+        {
+            GlobalOffset = (int)_go;
+            EntryCount = _ec;
+        }
+    }
+    
+    /*
     [Serializable]
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct Vector3 : ICloneable
@@ -278,6 +309,10 @@ namespace CathodeLib
             if (x.y != y.y) return false;
             if (x.z != y.z) return false;
             return true;
+        }
+        public static Vector3 operator +(Vector3 x, Vector3 y)
+        {
+            return new Vector3(x.x + y.x, x.y + y.y, x.z + y.z);
         }
         public static bool operator !=(Vector3 x, Vector3 y)
         {
@@ -328,7 +363,7 @@ namespace CathodeLib
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
         private float[] vals;
     }
-#endif
+    */
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct fourcc

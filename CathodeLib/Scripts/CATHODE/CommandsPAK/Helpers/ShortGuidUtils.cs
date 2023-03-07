@@ -5,6 +5,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+#if UNITY_EDITOR || UNITY_STANDALONE
+using UnityEngine;
+#endif
 
 namespace CATHODE.Scripting
 {
@@ -18,7 +21,11 @@ namespace CATHODE.Scripting
         /* Pull in strings we know are cached as ShortGuid in Cathode */
         static ShortGuidUtils()
         {
+#if UNITY_EDITOR || UNITY_STANDALONE
+            BinaryReader reader = new BinaryReader(File.OpenRead(Application.streamingAssetsPath + "/NodeDBs/entity_parameter_names.bin"));
+#else
             BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.entity_parameter_names));
+#endif
             _vanilla = new GuidNameTable();
             _custom = new GuidNameTable();
             while (reader.BaseStream.Position < reader.BaseStream.Length)
@@ -30,11 +37,11 @@ namespace CATHODE.Scripting
         public static void LinkCommands(Commands commands)
         {
             if (_commands != null)
-                _commands.OnSaved -= SaveCustomNames;
+                _commands.OnSaveSuccess -= SaveCustomNames;
 
             _commands = commands;
             if (_commands != null)
-                _commands.OnSaved += SaveCustomNames;
+                _commands.OnSaveSuccess += SaveCustomNames;
 
             LoadCustomNames(commands.Filepath);
         }
