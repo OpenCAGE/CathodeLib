@@ -1,12 +1,7 @@
-﻿using CATHODE.Scripting;
-using CathodeLib;
+﻿using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Numerics;
-using System.Runtime.InteropServices;
-using System.Xml.Linq;
 
 namespace CATHODE
 {
