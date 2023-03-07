@@ -8,8 +8,8 @@ using System.Runtime.InteropServices;
 using UnityEngine;
 #else
 using System.Numerics;
-using System.Windows.Media;
-using System.Windows.Media.Media3D;
+//using System.Windows.Media;
+//using System.Windows.Media.Media3D;
 #endif
 
 namespace CATHODE
@@ -429,6 +429,7 @@ namespace CATHODE
 
         #region ACCESSORS
         /* Get a mesh from the models PAK as a usable mesh format */
+        /*
 #if UNITY_EDITOR || UNITY_STANDALONE
         public Mesh GetMesh(CS2.LOD.Submesh submesh)
 #else
@@ -672,6 +673,7 @@ namespace CATHODE
 #endif
             return mesh;
         }
+        */
         #endregion
 
         #region HELPERS
