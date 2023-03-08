@@ -13,7 +13,7 @@ namespace CATHODE
     /* DATA/ENV/PRODUCTION/x/WORLD/SOUNDDIALOGUELOOKUPS.DAT */
     public class SoundDialogueLookups : CathodeFile
     {
-        private List<Sound> Entries = new List<Sound>();
+        public List<Sound> Entries = new List<Sound>();
         public static new Implementation Implementation = Implementation.LOAD;
         public SoundDialogueLookups(string path) : base(path) { }
 

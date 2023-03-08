@@ -8,7 +8,7 @@ namespace CATHODE
     /* DATA/ENV/PRODUCTION/x/WORLD/SOUNDFLASHMODELS.DAT */
     public class SoundFlashModels : CathodeFile
     {
-        private List<FlashModel> Entries = new List<FlashModel>();
+        public List<FlashModel> Entries = new List<FlashModel>();
         public static new Implementation Implementation = Implementation.NONE;
         public SoundFlashModels(string path) : base(path) { }
 

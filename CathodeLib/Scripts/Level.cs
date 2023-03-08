@@ -4,6 +4,7 @@ using CATHODE.LEGACY;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace CathodeLib
@@ -37,6 +38,8 @@ namespace CathodeLib
         public SoundEventData SoundEventData;
         public SoundFlashModels SoundFlashModels;
         public SoundLoadZones SoundLoadZones;
+
+        public Dictionary<string, Dictionary<string, Strings>> Strings;
 
         public class State
         {
@@ -109,6 +112,16 @@ namespace CathodeLib
                 //  - CRAWL_SPACE_SPOTTING_POSITIONS
                 //  - SPOTTING_POSITIONS
                 //  - TRAVERSAL
+            }
+
+            /* TEXT */
+            List<string> textList = Directory.GetFiles(path + "/TEXT/", "*.TXT", SearchOption.AllDirectories).ToList<string>();
+            Strings = new Dictionary<string, Dictionary<string, Strings>>();
+            foreach (string text in textList)
+            {
+                string lang = Path.GetFileName(Path.GetDirectoryName(text));
+                if (Strings.ContainsKey(lang)) Strings.Add(lang, new Dictionary<string, Strings>());
+                Strings[lang].Add(Path.GetFileNameWithoutExtension(text), new Strings(text));
             }
         }
 

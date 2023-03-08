@@ -13,7 +13,7 @@ namespace CATHODE
     /* DATA/ENV/PRODUCTION/x/WORLD/SOUNDBANKDATA.DAT */
     public class SoundBankData : CathodeFile
     {
-        private List<string> Entries = new List<string>();
+        public List<string> Entries = new List<string>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public SoundBankData(string path) : base(path) { }
 

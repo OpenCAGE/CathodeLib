@@ -13,7 +13,7 @@ namespace CATHODE
     /* DATA/ENV/PRODUCTION/x/WORLD/SOUNDLOADZONES.DAT */
     public class SoundLoadZones : CathodeFile
     {
-        private List<string> Entries = new List<string>();
+        public List<string> Entries = new List<string>();
         public static new Implementation Implementation = Implementation.NONE;
         public SoundLoadZones(string path) : base(path) { }
 
