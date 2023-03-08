@@ -5,6 +5,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Linq;
 using System.Windows.Media.Imaging;
+using System.Windows.Media.Animation;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -16,7 +17,7 @@ namespace CATHODE
     /* DATA/TEXT/**//**.TXT */
     public class Strings : CathodeFile
     {
-        public List<Str> Entries = new List<Str>();
+        public Dictionary<string, string> Entries = new Dictionary<string, string>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public Strings(string path) : base(path) { }
 
@@ -25,17 +26,18 @@ namespace CATHODE
         {
             CurrentReadState state = CurrentReadState.NONE;
             string content = File.ReadAllText(_filepath);
-            Str current = new Str();
+            string id = "";
+            string value = "";
             bool isInInternalBracket = false;
             for (int i = 0; i < content.Length; i++)
             {
                 switch (state)
                 {
                     case CurrentReadState.READING_ID:
-                        current.id += content[i];
+                        id += content[i];
                         break;
                     case CurrentReadState.READING_VALUE:
-                        current.value += content[i];
+                        value += content[i];
                         if (content[i] == '{') isInInternalBracket = true;
                         break;
                 }
@@ -55,10 +57,14 @@ namespace CATHODE
                     case '}':
                         if (isInInternalBracket) break;
                         state = CurrentReadState.NONE;
-                        current.id = current.id.Substring(0, current.id.Length - 1);
-                        current.value = current.value.Substring(0, current.value.Length - 1);
-                        Entries.Add(current);
-                        current = new Str();
+
+                        id = id.Substring(0, id.Length - 1);
+                        value = value.Substring(0, value.Length - 1);
+                        if (!Entries.ContainsKey(id))
+                            Entries.Add(id, value);
+
+                        id = "";
+                        value = "";
                         isInInternalBracket = false;
                         break;
                 }
@@ -76,9 +82,9 @@ namespace CATHODE
         override protected bool SaveInternal()
         {
             string content = "";
-            foreach (Str entry in Entries)
+            foreach (KeyValuePair<string, string> entry in Entries)
             {
-                content += "[" + entry.id + "]\n\n{" + entry.value + "}\n\n";
+                content += "[" + entry.Key + "]\n\n{" + entry.Value + "}\n\n";
             }
             File.WriteAllText(_filepath, content);
             return true;
@@ -86,16 +92,6 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class Str
-        {
-            public string id = "";
-            public string value = "";
-
-            public override string ToString()
-            {
-                return "[" + id + "] => {" + value + "}";
-            }
-        }
         private enum CurrentReadState
         {
             NONE,

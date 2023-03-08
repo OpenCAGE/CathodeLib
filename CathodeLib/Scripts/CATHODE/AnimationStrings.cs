@@ -12,7 +12,7 @@ namespace CATHODE
     /* DATA/GLOBAL/ANIMATION.PAK -> ANIM_STRING_DB.BIN, ANIM_STRING_DB_DEBUG.BIN */
     public class AnimationStrings : CathodeFile
     {
-        private Dictionary<uint, string> Entries = new Dictionary<uint, string>();
+        public Dictionary<uint, string> Entries = new Dictionary<uint, string>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public AnimationStrings(string path) : base(path) { }
 
