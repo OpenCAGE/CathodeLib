@@ -26,6 +26,7 @@ namespace CATHODE
             CurrentReadState state = CurrentReadState.NONE;
             string content = File.ReadAllText(_filepath);
             Str current = new Str();
+            bool isInInternalBracket = false;
             for (int i = 0; i < content.Length; i++)
             {
                 switch (state)
@@ -35,6 +36,7 @@ namespace CATHODE
                         break;
                     case CurrentReadState.READING_VALUE:
                         current.value += content[i];
+                        if (content[i] == '{') isInInternalBracket = true;
                         break;
                 }
 
@@ -47,14 +49,24 @@ namespace CATHODE
                         state = CurrentReadState.NONE;
                         break;
                     case '{':
+                        if (isInInternalBracket) break;
                         state = CurrentReadState.READING_VALUE;
                         break;
                     case '}':
+                        if (isInInternalBracket) break;
                         state = CurrentReadState.NONE;
                         current.id = current.id.Substring(0, current.id.Length - 1);
                         current.value = current.value.Substring(0, current.value.Length - 1);
                         Entries.Add(current);
                         current = new Str();
+                        isInInternalBracket = false;
+                        break;
+                }
+
+                switch (state)
+                {
+                    case CurrentReadState.READING_VALUE:
+                        if (isInInternalBracket && content[i] == '}') isInInternalBracket = false;
                         break;
                 }
             }
@@ -78,6 +90,11 @@ namespace CATHODE
         {
             public string id = "";
             public string value = "";
+
+            public override string ToString()
+            {
+                return "[" + id + "] => {" + value + "}";
+            }
         }
         private enum CurrentReadState
         {
