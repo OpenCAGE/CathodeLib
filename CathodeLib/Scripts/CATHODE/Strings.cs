@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Linq;
 using System.Windows.Media.Imaging;
 using System.Windows.Media.Animation;
+using System.Text;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -35,27 +36,29 @@ namespace CATHODE
                 {
                     case CurrentReadState.READING_ID:
                         id += content[i];
+                        if (content[i] == ']') state = CurrentReadState.NONE;
                         break;
                     case CurrentReadState.READING_VALUE:
                         value += content[i];
                         if (content[i] == '{') isInInternalBracket = true;
                         break;
+                    case CurrentReadState.NONE:
+                        if (content[i] == '[') state = CurrentReadState.READING_ID;
+                        break;
                 }
 
                 switch (content[i])
                 {
-                    case '[':
-                        state = CurrentReadState.READING_ID;
-                        break;
-                    case ']':
-                        state = CurrentReadState.NONE;
-                        break;
                     case '{':
                         if (isInInternalBracket) break;
                         state = CurrentReadState.READING_VALUE;
                         break;
                     case '}':
-                        if (isInInternalBracket) break;
+                        if (isInInternalBracket)
+                        {
+                            isInInternalBracket = false;
+                            break;
+                        }
                         state = CurrentReadState.NONE;
 
                         id = id.Substring(0, id.Length - 1);
@@ -68,13 +71,6 @@ namespace CATHODE
                         isInInternalBracket = false;
                         break;
                 }
-
-                switch (state)
-                {
-                    case CurrentReadState.READING_VALUE:
-                        if (isInInternalBracket && content[i] == '}') isInInternalBracket = false;
-                        break;
-                }
             }
             return true;
         }
@@ -84,9 +80,9 @@ namespace CATHODE
             string content = "";
             foreach (KeyValuePair<string, string> entry in Entries)
             {
-                content += "[" + entry.Key + "]\n\n{" + entry.Value + "}\n\n";
+                content += "[" + entry.Key + "]\n{" + entry.Value + "}\n\n";
             }
-            File.WriteAllText(_filepath, content);
+            File.WriteAllText(_filepath, content, Encoding.Unicode);
             return true;
         }
         #endregion
