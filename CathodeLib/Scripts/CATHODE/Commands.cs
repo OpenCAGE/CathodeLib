@@ -294,9 +294,9 @@ namespace CATHODE
                                                 reader_parallel.BaseStream.Position = keyframeHeaderOffset + (z * 32);
 
                                                 CAGEAnimation.Header thisHeader = new CAGEAnimation.Header();
-                                                thisHeader.ID = new ShortGuid(reader_parallel);//ID
-                                                thisHeader.unk2 = CommandsUtils.GetDataType(new ShortGuid(reader_parallel)); //Datatype, seems to usually be NO_TYPE
-                                                thisHeader.keyframeDataID = new ShortGuid(reader_parallel);
+                                                thisHeader.shortGUID = new ShortGuid(reader_parallel);//ID
+                                                thisHeader.objectType = CommandsUtils.GetObjectType(new ShortGuid(reader_parallel));
+                                                thisHeader.keyframeID = new ShortGuid(reader_parallel);
                                                 thisHeader.parameterID = new ShortGuid(reader_parallel);
                                                 thisHeader.parameterDataType = CommandsUtils.GetDataType(new ShortGuid(reader_parallel));
                                                 thisHeader.parameterSubID = new ShortGuid(reader_parallel);
@@ -315,7 +315,7 @@ namespace CATHODE
                                                 CAGEAnimation.Keyframe thisParamKey = new CAGEAnimation.Keyframe();
                                                 thisParamKey.minSeconds = reader_parallel.ReadSingle();
                                                 thisParamKey.maxSeconds = reader_parallel.ReadSingle(); //max seconds for keyframe list
-                                                thisParamKey.ID = new ShortGuid(reader_parallel); //this is perhaps an entity id
+                                                thisParamKey.shortGUID = new ShortGuid(reader_parallel); //this is perhaps an entity id
 
                                                 int numberOfKeyframes = JumpToOffset(reader_parallel);
                                                 for (int m = 0; m < numberOfKeyframes; m++)
@@ -323,7 +323,7 @@ namespace CATHODE
                                                     CAGEAnimation.Keyframe.Data thisKeyframe = new CAGEAnimation.Keyframe.Data();
                                                     thisKeyframe.unk1 = reader_parallel.ReadSingle(); //
                                                     thisKeyframe.secondsSinceStart = reader_parallel.ReadSingle(); //Seconds since start of animation
-                                                    thisKeyframe.secondsSinceStartValidation = reader_parallel.ReadSingle(); //Seconds since start of animation
+                                                    reader_parallel.BaseStream.Position += 4;
                                                     thisKeyframe.paramValue = reader_parallel.ReadSingle(); //Parameter value
                                                     thisKeyframe.unk2 = reader_parallel.ReadSingle(); //
                                                     thisKeyframe.unk3 = reader_parallel.ReadSingle(); // 
@@ -344,7 +344,7 @@ namespace CATHODE
                                                 CAGEAnimation.Keyframe2 thisParamSet = new CAGEAnimation.Keyframe2();
                                                 thisParamSet.minSeconds = reader_parallel.ReadSingle();
                                                 thisParamSet.maxSeconds = reader_parallel.ReadSingle();
-                                                thisParamSet.ID = new ShortGuid(reader_parallel); //this is perhaps an entity id
+                                                thisParamSet.shortGUID = new ShortGuid(reader_parallel); //this is perhaps an entity id
 
                                                 int NumberOfParams3_ = JumpToOffset(reader_parallel);
                                                 for (int m = 0; m < NumberOfParams3_; m++)
@@ -465,6 +465,33 @@ namespace CATHODE
                         composites[i] = composite;
                     }
                 });
+
+                //Attempt to fixup variable entity types
+                /*
+                for (int i = 0; i < composites.Length; i++)
+                {
+                    for (int x = 0; x < composites[i].variables.Count; x++)
+                    {
+                        if (composites[i].variables[x].type != DataType.NONE) continue;
+                        for (int y = 0; y < composites.Length; y++)
+                        {
+                            List<FunctionEntity> compInstance = composites[y].functions.FindAll(o => o.function == composites[i].shortGUID);
+                            for (int z = 0; z < compInstance.Count; z++)
+                            {
+                                Parameter paramInstance = compInstance[z].parameters.FirstOrDefault(o => o.name == composites[i].variables[x].name);
+                                if (paramInstance == null || paramInstance.content == null) continue;
+                                if (composites[i].variables[x].type != DataType.NONE && composites[i].variables[x].type != paramInstance.content.dataType)
+                                {
+                                    throw new Exception("");
+                                }
+                                composites[i].variables[x].type = paramInstance.content.dataType;
+                                Console.WriteLine("Changing DataType of " + composites[i].variables[x].name.ToString() + " to " + paramInstance.content.dataType);
+                            }
+                        }
+                    }
+                }
+                */
+
                 Entries = composites.ToList<Composite>();
             }
 
@@ -959,9 +986,9 @@ namespace CATHODE
                                         int paramData1Offset = (int)writer.BaseStream.Position;
                                         for (int pp = 0; pp < cageAnimationEntities[i][p].keyframeHeaders.Count; pp++)
                                         {
-                                            Utilities.Write(writer, cageAnimationEntities[i][p].keyframeHeaders[pp].ID);
-                                            Utilities.Write(writer, CommandsUtils.GetDataTypeGUID(cageAnimationEntities[i][p].keyframeHeaders[pp].unk2));
-                                            Utilities.Write(writer, cageAnimationEntities[i][p].keyframeHeaders[pp].keyframeDataID);
+                                            Utilities.Write(writer, cageAnimationEntities[i][p].keyframeHeaders[pp].shortGUID);
+                                            Utilities.Write(writer, CommandsUtils.GetObjectTypeGUID(cageAnimationEntities[i][p].keyframeHeaders[pp].objectType));
+                                            Utilities.Write(writer, cageAnimationEntities[i][p].keyframeHeaders[pp].keyframeID);
                                             Utilities.Write(writer, cageAnimationEntities[i][p].keyframeHeaders[pp].parameterID);
                                             Utilities.Write(writer, CommandsUtils.GetDataTypeGUID(cageAnimationEntities[i][p].keyframeHeaders[pp].parameterDataType));
                                             Utilities.Write(writer, cageAnimationEntities[i][p].keyframeHeaders[pp].parameterSubID);
@@ -977,7 +1004,7 @@ namespace CATHODE
                                             {
                                                 writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk1);
                                                 writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].secondsSinceStart);
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].secondsSinceStartValidation);
+                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].secondsSinceStart);
                                                 writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].paramValue);
                                                 writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk2);
                                                 writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk3);
@@ -989,7 +1016,7 @@ namespace CATHODE
 
                                             writer.Write(cageAnimationEntities[i][p].keyframeData[pp].minSeconds);
                                             writer.Write(cageAnimationEntities[i][p].keyframeData[pp].maxSeconds);
-                                            Utilities.Write(writer, cageAnimationEntities[i][p].keyframeData[pp].ID);
+                                            Utilities.Write(writer, cageAnimationEntities[i][p].keyframeData[pp].shortGUID);
 
                                             writer.Write(toPointTo / 4);
                                             writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes.Count);
@@ -1016,7 +1043,7 @@ namespace CATHODE
 
                                             writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].minSeconds);
                                             writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].maxSeconds);
-                                            Utilities.Write(writer, cageAnimationEntities[i][p].keyframeData2[pp].ID);
+                                            Utilities.Write(writer, cageAnimationEntities[i][p].keyframeData2[pp].shortGUID);
 
                                             writer.Write(toPointTo / 4);
                                             writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].keyframes.Count);

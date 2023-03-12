@@ -1,6 +1,7 @@
 ﻿using CATHODE.Scripting.Internal;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using System.Runtime.InteropServices;
 
@@ -342,14 +343,18 @@ namespace CATHODE.Scripting
         [Serializable]
         public class Header
         {
-            public ShortGuid ID;
-            public DataType unk2;
-            public ShortGuid keyframeDataID;
-            //public float unk3;
+            public ShortGuid shortGUID; //Unique ID - TODO: can we just generate this?
+            public ShortGuid keyframeID; //The keyframe ID we're pointing to
+
+            public ObjectType objectType; //The type of object at the connected entity
+
+            //Specifics for the parameter we're connected to
             public ShortGuid parameterID;
-            public DataType parameterDataType;
+            public DataType parameterDataType; 
             public ShortGuid parameterSubID; //if parameterID is position, this might be x for example
-            public List<ShortGuid> connectedEntity; //path to controlled entity
+
+            //The path to the connected entity which has the above parameter
+            public List<ShortGuid> connectedEntity; 
         }
 
         [Serializable]
@@ -357,7 +362,7 @@ namespace CATHODE.Scripting
         {
             public float minSeconds;
             public float maxSeconds;
-            public ShortGuid ID;
+            public ShortGuid shortGUID;
             public List<Data> keyframes = new List<Data>();
 
             [Serializable]
@@ -365,7 +370,6 @@ namespace CATHODE.Scripting
             {
                 public float unk1;
                 public float secondsSinceStart;
-                public float secondsSinceStartValidation;
                 public float paramValue;
                 public float unk2;
                 public float unk3;
@@ -380,7 +384,7 @@ namespace CATHODE.Scripting
         {
             public float minSeconds;
             public float maxSeconds;
-            public ShortGuid ID;
+            public ShortGuid shortGUID;
             public List<Data> keyframes = new List<Data>();
 
             [Serializable]

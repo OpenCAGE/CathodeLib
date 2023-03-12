@@ -45,12 +45,18 @@ namespace CATHODE.Scripting
         SPLINE,
         RESOURCE,
 
-        NONE, //Translates to a blank string
+        NONE, //Translates to a blank string (Cathode is loosely typed, so this typically just means the datatype has got lost in the hierarchy chain)
 
         FILEPATH,
         OBJECT,
         ZONE_LINK_PTR,
         ZONE_PTR,
+    }
+
+    /* Object types */
+    public enum ObjectType
+    {
+        ENTITY,
         MARKER,
         CHARACTER,
         CAMERA

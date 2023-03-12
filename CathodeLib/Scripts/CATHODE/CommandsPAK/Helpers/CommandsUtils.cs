@@ -77,9 +77,6 @@ namespace CATHODE.Scripting
             _dataTypeLUT.Add(ShortGuidUtils.Generate("ZonePtr"), DataType.ZONE_PTR);
             _dataTypeLUT.Add(ShortGuidUtils.Generate("ZoneLinkPtr"), DataType.ZONE_LINK_PTR);
             _dataTypeLUT.Add(ShortGuidUtils.Generate(""), DataType.NONE);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("Marker"), DataType.MARKER);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("Character"), DataType.CHARACTER);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("Camera"), DataType.CAMERA);
         }
         public static DataType GetDataType(byte[] tag)
         {
@@ -98,6 +95,38 @@ namespace CATHODE.Scripting
         public static bool DataTypeExists(ShortGuid tag)
         {
             return _dataTypeLUT.ContainsKey(tag);
+        }
+        #endregion
+
+        #region OBJECT_TYPE_UTILS
+        /* Object Types */
+        private static Dictionary<ShortGuid, ObjectType> _objectTypeLUT = new Dictionary<ShortGuid, ObjectType>();
+        private static void SetupObjectTypeLUT()
+        {
+            if (_objectTypeLUT.Count != 0) return;
+
+            _objectTypeLUT.Add(ShortGuidUtils.Generate(""), ObjectType.ENTITY);
+            _objectTypeLUT.Add(ShortGuidUtils.Generate("Marker"), ObjectType.MARKER);
+            _objectTypeLUT.Add(ShortGuidUtils.Generate("Character"), ObjectType.CHARACTER);
+            _objectTypeLUT.Add(ShortGuidUtils.Generate("Camera"), ObjectType.CAMERA);
+        }
+        public static ObjectType GetObjectType(byte[] tag)
+        {
+            return GetObjectType(new ShortGuid(tag));
+        }
+        public static ObjectType GetObjectType(ShortGuid tag)
+        {
+            SetupObjectTypeLUT();
+            return _objectTypeLUT[tag];
+        }
+        public static ShortGuid GetObjectTypeGUID(ObjectType type)
+        {
+            SetupObjectTypeLUT();
+            return _objectTypeLUT.FirstOrDefault(x => x.Value == type).Key;
+        }
+        public static bool DataObjectExists(ShortGuid tag)
+        {
+            return _objectTypeLUT.ContainsKey(tag);
         }
         #endregion
 
