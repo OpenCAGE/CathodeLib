@@ -283,12 +283,12 @@ namespace CATHODE.Scripting
                     case "CAGEAnimation":
                         CAGEAnimation anim = (CAGEAnimation)composite.functions[i];
                         List<CAGEAnimation.Header> headers = new List<CAGEAnimation.Header>();
-                        for (int x = 0; x < anim.keyframeHeaders.Count; x++)
-                            if (ResolveHierarchy(commands, composite, anim.keyframeHeaders[x].connectedEntity, out Composite flowTemp, out string hierarchy) != null)
-                                headers.Add(anim.keyframeHeaders[x]);
-                        originalAnimCount += anim.keyframeHeaders.Count;
+                        for (int x = 0; x < anim.headers.Count; x++)
+                            if (ResolveHierarchy(commands, composite, anim.headers[x].connectedEntity, out Composite flowTemp, out string hierarchy) != null)
+                                headers.Add(anim.headers[x]);
+                        originalAnimCount += anim.headers.Count;
                         newAnimCount += headers.Count;
-                        anim.keyframeHeaders = headers;
+                        anim.headers = headers;
                         break;
                 }
             }

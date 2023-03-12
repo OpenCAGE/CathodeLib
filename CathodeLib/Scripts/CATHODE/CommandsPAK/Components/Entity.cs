@@ -1,11 +1,18 @@
 ﻿using CATHODE.Scripting.Internal;
+#if DEBUG
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json;
+#endif
 using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Runtime.InteropServices;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+using UnityEngine;
+#else
+using System.Numerics;
+#endif
 
 namespace CATHODE.Scripting.Internal
 {
@@ -338,9 +345,9 @@ namespace CATHODE.Scripting
         public CAGEAnimation(bool autoGenerateParameters = false) : base(FunctionType.CAGEAnimation, autoGenerateParameters) { }
         public CAGEAnimation(ShortGuid id, bool autoGenerateParameters = false) : base(id, FunctionType.CAGEAnimation, autoGenerateParameters) { }
 
-        public List<Header> keyframeHeaders = new List<Header>();
-        public List<Keyframe> keyframeData = new List<Keyframe>(); //anim keyframes
-        public List<Keyframe2> keyframeData2 = new List<Keyframe2>(); //TODO: events? 
+        public List<Header> headers = new List<Header>();
+        public List<Animation> animations = new List<Animation>();
+        public List<Event> events = new List<Event>();
 
         [Serializable]
         public class Header
@@ -348,11 +355,17 @@ namespace CATHODE.Scripting
             public ShortGuid shortGUID; //Unique ID - TODO: can we just generate this?
             public ShortGuid keyframeID; //The keyframe ID we're pointing to
 
-            [JsonConverter(typeof(StringEnumConverter))] public ObjectType objectType; //The type of object at the connected entity
+#if DEBUG
+            [JsonConverter(typeof(StringEnumConverter))]
+#endif
+            public ObjectType objectType; //The type of object at the connected entity
 
             //Specifics for the parameter we're connected to
             public ShortGuid parameterID;
-            [JsonConverter(typeof(StringEnumConverter))] public DataType parameterDataType; 
+#if DEBUG
+            [JsonConverter(typeof(StringEnumConverter))]
+#endif
+            public DataType parameterDataType; 
             public ShortGuid parameterSubID; //if parameterID is position, this might be x for example
 
             //The path to the connected entity which has the above parameter
@@ -360,41 +373,35 @@ namespace CATHODE.Scripting
         }
 
         [Serializable]
-        public class Keyframe
+        public class Animation
         {
-            public float minSeconds;
-            public float maxSeconds;
             public ShortGuid shortGUID;
-            public List<Data> keyframes = new List<Data>();
+            public List<Keyframe> keyframes = new List<Keyframe>();
 
             [Serializable]
-            public class Data
+            public class Keyframe
             {
                 public float secondsSinceStart;
                 public float paramValue;
 
-                public float unk2; //Frequently equal to unk4
-                public float unk3; //Frequently equal to unk5
-                public float unk4;
-                public float unk5;
+                public Vector2 startVelocity = new Vector2(1,0);
+                public Vector2 endVelocity = new Vector2(1, 0);
             }
         }
 
-        //TODO: what actually is this?
         [Serializable]
-        public class Keyframe2
+        public class Event
         {
-            public float minSeconds;
-            public float maxSeconds;
             public ShortGuid shortGUID;
-            public List<Data> keyframes = new List<Data>();
+            public List<Keyframe> keyframes = new List<Keyframe>();
 
             [Serializable]
-            public class Data
+            public class Keyframe
             {
                 public float secondsSinceStart;
-                public ShortGuid unk2; //sometimes this translates to a string -> is it a param?
-                public ShortGuid unk3; //this never translates to a string, but is a param on the node
+                public ShortGuid start;
+
+                public ShortGuid unk3; //this never translates to a string, but is a param on the node -> do we trigger it?
             }
         }
     }

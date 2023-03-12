@@ -282,82 +282,77 @@ namespace CATHODE
 
                                             CAGEAnimation animEntity = (CAGEAnimation)composite.GetEntityByID(new ShortGuid(reader_parallel));
 
-                                            int keyframeHeaderOffset = reader_parallel.ReadInt32() * 4;
-                                            int numberOfKeyframeHeaders = reader_parallel.ReadInt32();
-                                            int keyframeDataOffset = reader_parallel.ReadInt32() * 4;
-                                            int numberOfKeyframeDataEntries = reader_parallel.ReadInt32();
-                                            int OffsetToFindParams3 = reader_parallel.ReadInt32() * 4;
-                                            int NumberOfParams3 = reader_parallel.ReadInt32();
+                                            int headerOffset = reader_parallel.ReadInt32() * 4;
+                                            int headerCount = reader_parallel.ReadInt32();
+                                            int animationOffset = reader_parallel.ReadInt32() * 4;
+                                            int animationCount = reader_parallel.ReadInt32();
+                                            int eventOffset = reader_parallel.ReadInt32() * 4;
+                                            int eventCount = reader_parallel.ReadInt32();
 
-                                            for (int z = 0; z < numberOfKeyframeHeaders; z++)
+                                            for (int z = 0; z < headerCount; z++)
                                             {
-                                                reader_parallel.BaseStream.Position = keyframeHeaderOffset + (z * 32);
+                                                reader_parallel.BaseStream.Position = headerOffset + (z * 32);
 
-                                                CAGEAnimation.Header thisHeader = new CAGEAnimation.Header();
-                                                thisHeader.shortGUID = new ShortGuid(reader_parallel);//ID
-                                                thisHeader.objectType = CommandsUtils.GetObjectType(new ShortGuid(reader_parallel));
-                                                thisHeader.keyframeID = new ShortGuid(reader_parallel);
-                                                thisHeader.parameterID = new ShortGuid(reader_parallel);
-                                                thisHeader.parameterDataType = CommandsUtils.GetDataType(new ShortGuid(reader_parallel));
-                                                thisHeader.parameterSubID = new ShortGuid(reader_parallel);
+                                                CAGEAnimation.Header header = new CAGEAnimation.Header();
+                                                header.shortGUID = new ShortGuid(reader_parallel);//ID
+                                                header.objectType = CommandsUtils.GetObjectType(new ShortGuid(reader_parallel));
+                                                header.keyframeID = new ShortGuid(reader_parallel);
+                                                header.parameterID = new ShortGuid(reader_parallel);
+                                                header.parameterDataType = CommandsUtils.GetDataType(new ShortGuid(reader_parallel));
+                                                header.parameterSubID = new ShortGuid(reader_parallel);
 
                                                 int hierarchyCount = JumpToOffset(reader_parallel);
-                                                thisHeader.connectedEntity = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
-                                                animEntity.keyframeHeaders.Add(thisHeader);
+                                                header.connectedEntity = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
+                                                animEntity.headers.Add(header);
                                             }
 
-                                            reader_parallel.BaseStream.Position = keyframeDataOffset;
-                                            int[] newOffset = Utilities.ConsumeArray<int>(reader_parallel, numberOfKeyframeDataEntries);
-                                            for (int z = 0; z < numberOfKeyframeDataEntries; z++)
+                                            reader_parallel.BaseStream.Position = animationOffset;
+                                            int[] newOffset = Utilities.ConsumeArray<int>(reader_parallel, animationCount);
+                                            for (int z = 0; z < animationCount; z++)
                                             {
                                                 reader_parallel.BaseStream.Position = newOffset[z] * 4;
 
-                                                CAGEAnimation.Keyframe thisParamKey = new CAGEAnimation.Keyframe();
-                                                thisParamKey.minSeconds = reader_parallel.ReadSingle();
-                                                thisParamKey.maxSeconds = reader_parallel.ReadSingle(); 
-                                                thisParamKey.shortGUID = new ShortGuid(reader_parallel);
+                                                CAGEAnimation.Animation animation = new CAGEAnimation.Animation();
+                                                reader_parallel.BaseStream.Position += 8;
+                                                animation.shortGUID = new ShortGuid(reader_parallel);
 
-                                                int numberOfKeyframes = JumpToOffset(reader_parallel);
-                                                for (int m = 0; m < numberOfKeyframes; m++)
+                                                int keyframeCount = JumpToOffset(reader_parallel);
+                                                for (int m = 0; m < keyframeCount; m++)
                                                 {
-                                                    CAGEAnimation.Keyframe.Data thisKeyframe = new CAGEAnimation.Keyframe.Data();
+                                                    CAGEAnimation.Animation.Keyframe keyframe = new CAGEAnimation.Animation.Keyframe();
                                                     reader_parallel.BaseStream.Position += 4;
-                                                    thisKeyframe.secondsSinceStart = reader_parallel.ReadSingle(); 
+                                                    keyframe.secondsSinceStart = reader_parallel.ReadSingle(); 
                                                     reader_parallel.BaseStream.Position += 4;
-                                                    thisKeyframe.paramValue = reader_parallel.ReadSingle(); 
-                                                    thisKeyframe.unk2 = reader_parallel.ReadSingle();
-                                                    thisKeyframe.unk3 = reader_parallel.ReadSingle();
-                                                    thisKeyframe.unk4 = reader_parallel.ReadSingle();
-                                                    thisKeyframe.unk5 = reader_parallel.ReadSingle();
-                                                    thisParamKey.keyframes.Add(thisKeyframe);
+                                                    keyframe.paramValue = reader_parallel.ReadSingle();
+                                                    keyframe.startVelocity = Utilities.Consume<Vector2>(reader_parallel);
+                                                    keyframe.endVelocity = Utilities.Consume<Vector2>(reader_parallel);
+                                                    animation.keyframes.Add(keyframe);
                                                 }
-                                                animEntity.keyframeData.Add(thisParamKey);
+                                                animEntity.animations.Add(animation);
                                             }
 
-                                            //UNKNOWN - is this maybe event triggers?
-                                            reader_parallel.BaseStream.Position = OffsetToFindParams3;
-                                            int[] newOffset1 = Utilities.ConsumeArray<int>(reader_parallel, NumberOfParams3);
-                                            for (int z = 0; z < NumberOfParams3; z++)
+                                            reader_parallel.BaseStream.Position = eventOffset;
+                                            int[] newOffset1 = Utilities.ConsumeArray<int>(reader_parallel, eventCount);
+                                            for (int z = 0; z < eventCount; z++)
                                             {
                                                 reader_parallel.BaseStream.Position = newOffset1[z] * 4;
 
-                                                CAGEAnimation.Keyframe2 thisParamSet = new CAGEAnimation.Keyframe2();
-                                                thisParamSet.minSeconds = reader_parallel.ReadSingle();
-                                                thisParamSet.maxSeconds = reader_parallel.ReadSingle();
+                                                CAGEAnimation.Event thisParamSet = new CAGEAnimation.Event();
+                                                reader_parallel.BaseStream.Position += 8;
                                                 thisParamSet.shortGUID = new ShortGuid(reader_parallel); 
 
-                                                int NumberOfParams3_ = JumpToOffset(reader_parallel);
-                                                for (int m = 0; m < NumberOfParams3_; m++)
+                                                int keyframeCount = JumpToOffset(reader_parallel);
+                                                for (int m = 0; m < keyframeCount; m++)
                                                 {
-                                                    CAGEAnimation.Keyframe2.Data thisInnerSet = new CAGEAnimation.Keyframe2.Data();
+                                                    CAGEAnimation.Event.Keyframe keyframe = new CAGEAnimation.Event.Keyframe();
                                                     reader_parallel.BaseStream.Position += 4;
-                                                    thisInnerSet.secondsSinceStart = reader_parallel.ReadSingle(); 
-                                                    thisInnerSet.unk2 = Utilities.Consume<ShortGuid>(reader_parallel);
-                                                    thisInnerSet.unk3 = Utilities.Consume<ShortGuid>(reader_parallel);
+                                                    keyframe.secondsSinceStart = reader_parallel.ReadSingle(); 
+                                                    keyframe.start = Utilities.Consume<ShortGuid>(reader_parallel);
+                                                    keyframe.unk3 = Utilities.Consume<ShortGuid>(reader_parallel);
                                                     reader_parallel.BaseStream.Position += 8;
-                                                    thisParamSet.keyframes.Add(thisInnerSet);
+                                                    thisParamSet.keyframes.Add(keyframe);
                                                 }
-                                                animEntity.keyframeData2.Add(thisParamSet);
+                                                animEntity.events.Add(thisParamSet);
                                             }
                                             break;
                                         }
@@ -653,7 +648,7 @@ namespace CATHODE
                     if (Entries[i].functions[x].function == SHORTGUID_CAGEAnimation)
                     {
                         CAGEAnimation thisEntity = (CAGEAnimation)Entries[i].functions[x];
-                        if (thisEntity.keyframeHeaders.Count == 0 && thisEntity.keyframeData.Count == 0 && thisEntity.keyframeData2.Count == 0) continue;
+                        if (thisEntity.headers.Count == 0 && thisEntity.animations.Count == 0 && thisEntity.events.Count == 0) continue;
                         cageAnimationEntities[i].Add(thisEntity);
                     }
                     else if (Entries[i].functions[x].function == SHORTGUID_TriggerSequence)
@@ -975,91 +970,110 @@ namespace CATHODE
                                     List<int> globalOffsets = new List<int>(cageAnimationEntities[i].Count);
                                     for (int p = 0; p < cageAnimationEntities[i].Count; p++)
                                     {
-                                        List<int> hierarchyOffsets = new List<int>(cageAnimationEntities[i][p].keyframeHeaders.Count);
-                                        for (int pp = 0; pp < cageAnimationEntities[i][p].keyframeHeaders.Count; pp++)
+                                        List<int> hierarchyOffsets = new List<int>(cageAnimationEntities[i][p].headers.Count);
+                                        for (int pp = 0; pp < cageAnimationEntities[i][p].headers.Count; pp++)
                                         {
                                             hierarchyOffsets.Add((int)writer.BaseStream.Position);
-                                            Utilities.Write<ShortGuid>(writer, cageAnimationEntities[i][p].keyframeHeaders[pp].connectedEntity);
+                                            Utilities.Write<ShortGuid>(writer, cageAnimationEntities[i][p].headers[pp].connectedEntity);
                                         }
 
-                                        int paramData1Offset = (int)writer.BaseStream.Position;
-                                        for (int pp = 0; pp < cageAnimationEntities[i][p].keyframeHeaders.Count; pp++)
+                                        int headerOffset = (int)writer.BaseStream.Position;
+                                        for (int pp = 0; pp < cageAnimationEntities[i][p].headers.Count; pp++)
                                         {
-                                            Utilities.Write(writer, cageAnimationEntities[i][p].keyframeHeaders[pp].shortGUID);
-                                            Utilities.Write(writer, CommandsUtils.GetObjectTypeGUID(cageAnimationEntities[i][p].keyframeHeaders[pp].objectType));
-                                            Utilities.Write(writer, cageAnimationEntities[i][p].keyframeHeaders[pp].keyframeID);
-                                            Utilities.Write(writer, cageAnimationEntities[i][p].keyframeHeaders[pp].parameterID);
-                                            Utilities.Write(writer, CommandsUtils.GetDataTypeGUID(cageAnimationEntities[i][p].keyframeHeaders[pp].parameterDataType));
-                                            Utilities.Write(writer, cageAnimationEntities[i][p].keyframeHeaders[pp].parameterSubID);
+                                            CAGEAnimation.Header header = cageAnimationEntities[i][p].headers[pp];
+                                            Utilities.Write(writer, header.shortGUID);
+                                            Utilities.Write(writer, CommandsUtils.GetObjectTypeGUID(header.objectType));
+                                            Utilities.Write(writer, header.keyframeID);
+                                            Utilities.Write(writer, header.parameterID);
+                                            Utilities.Write(writer, CommandsUtils.GetDataTypeGUID(header.parameterDataType));
+                                            Utilities.Write(writer, header.parameterSubID);
                                             writer.Write(hierarchyOffsets[pp] / 4);
-                                            writer.Write(cageAnimationEntities[i][p].keyframeHeaders[pp].connectedEntity.Count);
+                                            writer.Write(header.connectedEntity.Count);
                                         }
 
-                                        List<int> internalOffsets = new List<int>(cageAnimationEntities[i][p].keyframeData.Count);
-                                        for (int pp = 0; pp < cageAnimationEntities[i][p].keyframeData.Count; pp++)
+                                        List<int> internalOffsets = new List<int>(cageAnimationEntities[i][p].animations.Count);
+                                        for (int pp = 0; pp < cageAnimationEntities[i][p].animations.Count; pp++)
                                         {
                                             int toPointTo = (int)writer.BaseStream.Position;
-                                            for (int ppp = 0; ppp < cageAnimationEntities[i][p].keyframeData[pp].keyframes.Count; ppp++)
+                                            cageAnimationEntities[i][p].animations[pp].keyframes = cageAnimationEntities[i][p].animations[pp].keyframes.OrderBy(o => o.secondsSinceStart).ToList();
+                                            for (int ppp = 0; ppp < cageAnimationEntities[i][p].animations[pp].keyframes.Count; ppp++)
                                             {
+                                                CAGEAnimation.Animation.Keyframe key = cageAnimationEntities[i][p].animations[pp].keyframes[ppp];
                                                 writer.Write((Int32)2);
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].secondsSinceStart);
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].secondsSinceStart);
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].paramValue);
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk2);
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk3);
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk4);
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk5);
+                                                writer.Write(key.secondsSinceStart);
+                                                writer.Write(key.secondsSinceStart);
+                                                writer.Write(key.paramValue);
+                                                Utilities.Write<Vector2>(writer, key.startVelocity);
+                                                Utilities.Write<Vector2>(writer, key.endVelocity);
                                             }
 
                                             internalOffsets.Add(((int)writer.BaseStream.Position) / 4);
 
-                                            writer.Write(cageAnimationEntities[i][p].keyframeData[pp].minSeconds);
-                                            writer.Write(cageAnimationEntities[i][p].keyframeData[pp].maxSeconds);
-                                            Utilities.Write(writer, cageAnimationEntities[i][p].keyframeData[pp].shortGUID);
+                                            float minSeconds = 0;
+                                            float maxSeconds = 0;
+                                            if (cageAnimationEntities[i][p].animations[pp].keyframes.Count != 0)
+                                            {
+                                                minSeconds = cageAnimationEntities[i][p].animations[pp].keyframes[0].secondsSinceStart;
+                                                maxSeconds = cageAnimationEntities[i][p].animations[pp].keyframes[cageAnimationEntities[i][p].animations[pp].keyframes.Count - 1].secondsSinceStart;
+                                            }
+                                            writer.Write(minSeconds);
+                                            writer.Write(maxSeconds);
+
+                                            Utilities.Write(writer, cageAnimationEntities[i][p].animations[pp].shortGUID);
 
                                             writer.Write(toPointTo / 4);
-                                            writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes.Count);
+                                            writer.Write(cageAnimationEntities[i][p].animations[pp].keyframes.Count);
                                         }
 
-                                        int paramData2Offset = (int)writer.BaseStream.Position;
+                                        int animationOffset = (int)writer.BaseStream.Position;
                                         Utilities.Write<int>(writer, internalOffsets);
 
-                                        internalOffsets = new List<int>(cageAnimationEntities[i][p].keyframeData2.Count);
-                                        for (int pp = 0; pp < cageAnimationEntities[i][p].keyframeData2.Count; pp++)
+                                        internalOffsets = new List<int>(cageAnimationEntities[i][p].events.Count);
+                                        for (int pp = 0; pp < cageAnimationEntities[i][p].events.Count; pp++)
                                         {
-                                            List<CAGEAnimation.Header> keyframeRefs = cageAnimationEntities[i][p].keyframeHeaders.FindAll(o => o.keyframeID == cageAnimationEntities[i][p].keyframeData2[pp].shortGUID);
                                             int toPointTo = (int)writer.BaseStream.Position;
-                                            for (int ppp = 0; ppp < cageAnimationEntities[i][p].keyframeData2[pp].keyframes.Count; ppp++)
+                                            List<CAGEAnimation.Header> keyframeRefs = cageAnimationEntities[i][p].headers.FindAll(o => o.keyframeID == cageAnimationEntities[i][p].events[pp].shortGUID);
+                                            cageAnimationEntities[i][p].events[pp].keyframes = cageAnimationEntities[i][p].events[pp].keyframes.OrderBy(o => o.secondsSinceStart).ToList();
+                                            for (int ppp = 0; ppp < cageAnimationEntities[i][p].events[pp].keyframes.Count; ppp++)
                                             {
+                                                CAGEAnimation.Event.Keyframe key = cageAnimationEntities[i][p].events[pp].keyframes[ppp];
                                                 writer.Write((Int32)1);
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].secondsSinceStart);
-                                                Utilities.Write<ShortGuid>(writer, cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].unk2);
-                                                Utilities.Write<ShortGuid>(writer, cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].unk3);
+                                                writer.Write(key.secondsSinceStart);
+                                                Utilities.Write<ShortGuid>(writer, key.start);
+                                                Utilities.Write<ShortGuid>(writer, key.unk3);
                                                 writer.Write(keyframeRefs.Count == 0 ? 3 : 4);
                                                 writer.Write((Int32)0);
                                             }
 
                                             internalOffsets.Add(((int)writer.BaseStream.Position) / 4);
 
-                                            writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].minSeconds);
-                                            writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].maxSeconds);
-                                            Utilities.Write(writer, cageAnimationEntities[i][p].keyframeData2[pp].shortGUID);
+                                            float minSeconds = 0;
+                                            float maxSeconds = 0;
+                                            if (cageAnimationEntities[i][p].events[pp].keyframes.Count != 0)
+                                            {
+                                                minSeconds = cageAnimationEntities[i][p].events[pp].keyframes[0].secondsSinceStart;
+                                                maxSeconds = cageAnimationEntities[i][p].events[pp].keyframes[cageAnimationEntities[i][p].events[pp].keyframes.Count - 1].secondsSinceStart;
+                                            }
+                                            writer.Write(minSeconds);
+                                            writer.Write(maxSeconds);
+
+                                            Utilities.Write(writer, cageAnimationEntities[i][p].events[pp].shortGUID);
 
                                             writer.Write(toPointTo / 4);
-                                            writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].keyframes.Count);
+                                            writer.Write(cageAnimationEntities[i][p].events[pp].keyframes.Count);
                                         }
 
-                                        int paramData3Offset = (int)writer.BaseStream.Position;
+                                        int eventOffset = (int)writer.BaseStream.Position;
                                         Utilities.Write<int>(writer, internalOffsets);
 
                                         globalOffsets.Add((int)writer.BaseStream.Position);
                                         writer.Write(cageAnimationEntities[i][p].shortGUID.val);
-                                        writer.Write(paramData1Offset / 4);
-                                        writer.Write(cageAnimationEntities[i][p].keyframeHeaders.Count);
-                                        writer.Write(paramData2Offset / 4);
-                                        writer.Write(cageAnimationEntities[i][p].keyframeData.Count);
-                                        writer.Write(paramData3Offset / 4);
-                                        writer.Write(cageAnimationEntities[i][p].keyframeData2.Count);
+                                        writer.Write(headerOffset / 4);
+                                        writer.Write(cageAnimationEntities[i][p].headers.Count);
+                                        writer.Write(animationOffset / 4);
+                                        writer.Write(cageAnimationEntities[i][p].animations.Count);
+                                        writer.Write(eventOffset / 4);
+                                        writer.Write(cageAnimationEntities[i][p].events.Count);
                                     }
 
                                     scriptPointerOffsetInfo[(int)CompositeFileData.CAGEANIMATION_DATA] = new OffsetPair(writer.BaseStream.Position, globalOffsets.Count);
