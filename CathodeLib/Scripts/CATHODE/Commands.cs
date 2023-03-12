@@ -314,21 +314,21 @@ namespace CATHODE
 
                                                 CAGEAnimation.Keyframe thisParamKey = new CAGEAnimation.Keyframe();
                                                 thisParamKey.minSeconds = reader_parallel.ReadSingle();
-                                                thisParamKey.maxSeconds = reader_parallel.ReadSingle(); //max seconds for keyframe list
-                                                thisParamKey.shortGUID = new ShortGuid(reader_parallel); //this is perhaps an entity id
+                                                thisParamKey.maxSeconds = reader_parallel.ReadSingle(); 
+                                                thisParamKey.shortGUID = new ShortGuid(reader_parallel);
 
                                                 int numberOfKeyframes = JumpToOffset(reader_parallel);
                                                 for (int m = 0; m < numberOfKeyframes; m++)
                                                 {
                                                     CAGEAnimation.Keyframe.Data thisKeyframe = new CAGEAnimation.Keyframe.Data();
                                                     reader_parallel.BaseStream.Position += 4;
-                                                    thisKeyframe.secondsSinceStart = reader_parallel.ReadSingle(); //Seconds since start of animation
+                                                    thisKeyframe.secondsSinceStart = reader_parallel.ReadSingle(); 
                                                     reader_parallel.BaseStream.Position += 4;
-                                                    thisKeyframe.paramValue = reader_parallel.ReadSingle(); //Parameter value
-                                                    thisKeyframe.unk2 = Utilities.Consume<ShortGuid>(reader_parallel);
-                                                    thisKeyframe.unk3 = Utilities.Consume<ShortGuid>(reader_parallel);
-                                                    thisKeyframe.unk4 = Utilities.Consume<ShortGuid>(reader_parallel);
-                                                    thisKeyframe.unk5 = Utilities.Consume<ShortGuid>(reader_parallel);
+                                                    thisKeyframe.paramValue = reader_parallel.ReadSingle(); 
+                                                    thisKeyframe.unk2 = reader_parallel.ReadSingle();
+                                                    thisKeyframe.unk3 = reader_parallel.ReadSingle();
+                                                    thisKeyframe.unk4 = reader_parallel.ReadSingle();
+                                                    thisKeyframe.unk5 = reader_parallel.ReadSingle();
                                                     thisParamKey.keyframes.Add(thisKeyframe);
                                                 }
                                                 animEntity.keyframeData.Add(thisParamKey);
@@ -344,14 +344,14 @@ namespace CATHODE
                                                 CAGEAnimation.Keyframe2 thisParamSet = new CAGEAnimation.Keyframe2();
                                                 thisParamSet.minSeconds = reader_parallel.ReadSingle();
                                                 thisParamSet.maxSeconds = reader_parallel.ReadSingle();
-                                                thisParamSet.shortGUID = new ShortGuid(reader_parallel); //this is perhaps an entity id
+                                                thisParamSet.shortGUID = new ShortGuid(reader_parallel); 
 
                                                 int NumberOfParams3_ = JumpToOffset(reader_parallel);
                                                 for (int m = 0; m < NumberOfParams3_; m++)
                                                 {
                                                     CAGEAnimation.Keyframe2.Data thisInnerSet = new CAGEAnimation.Keyframe2.Data();
                                                     reader_parallel.BaseStream.Position += 4;
-                                                    thisInnerSet.secondsSinceStart = reader_parallel.ReadSingle(); //seconds since start of animation
+                                                    thisInnerSet.secondsSinceStart = reader_parallel.ReadSingle(); 
                                                     thisInnerSet.unk2 = Utilities.Consume<ShortGuid>(reader_parallel);
                                                     thisInnerSet.unk3 = Utilities.Consume<ShortGuid>(reader_parallel);
                                                     thisInnerSet.unk4 = reader_parallel.ReadInt32();

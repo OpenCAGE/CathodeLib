@@ -372,10 +372,11 @@ namespace CATHODE.Scripting
             {
                 public float secondsSinceStart;
                 public float paramValue;
-                public ShortGuid unk2;
-                public ShortGuid unk3;
-                public ShortGuid unk4;
-                public ShortGuid unk5;
+
+                public float unk2; //Frequently equal to unk4
+                public float unk3; //Frequently equal to unk5
+                public float unk4;
+                public float unk5;
             }
         }
 
