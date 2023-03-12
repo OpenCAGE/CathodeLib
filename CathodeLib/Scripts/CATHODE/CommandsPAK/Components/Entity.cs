@@ -395,7 +395,6 @@ namespace CATHODE.Scripting
                 public float secondsSinceStart;
                 public ShortGuid unk2; //sometimes this translates to a string -> is it a param?
                 public ShortGuid unk3; //this never translates to a string, but is a param on the node
-                public int unk4; //This is always either 3 or 4
             }
         }
     }

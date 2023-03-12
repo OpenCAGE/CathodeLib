@@ -354,8 +354,7 @@ namespace CATHODE
                                                     thisInnerSet.secondsSinceStart = reader_parallel.ReadSingle(); 
                                                     thisInnerSet.unk2 = Utilities.Consume<ShortGuid>(reader_parallel);
                                                     thisInnerSet.unk3 = Utilities.Consume<ShortGuid>(reader_parallel);
-                                                    thisInnerSet.unk4 = reader_parallel.ReadInt32();
-                                                    reader_parallel.BaseStream.Position += 4;
+                                                    reader_parallel.BaseStream.Position += 8;
                                                     thisParamSet.keyframes.Add(thisInnerSet);
                                                 }
                                                 animEntity.keyframeData2.Add(thisParamSet);
@@ -1006,10 +1005,10 @@ namespace CATHODE
                                                 writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].secondsSinceStart);
                                                 writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].secondsSinceStart);
                                                 writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].paramValue);
-                                                //writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk2);
-                                                //writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk3);
-                                                //writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk4);
-                                                //writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk5);
+                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk2);
+                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk3);
+                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk4);
+                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk5);
                                             }
 
                                             internalOffsets.Add(((int)writer.BaseStream.Position) / 4);
@@ -1028,14 +1027,15 @@ namespace CATHODE
                                         internalOffsets = new List<int>(cageAnimationEntities[i][p].keyframeData2.Count);
                                         for (int pp = 0; pp < cageAnimationEntities[i][p].keyframeData2.Count; pp++)
                                         {
+                                            List<CAGEAnimation.Header> keyframeRefs = cageAnimationEntities[i][p].keyframeHeaders.FindAll(o => o.keyframeID == cageAnimationEntities[i][p].keyframeData2[pp].shortGUID);
                                             int toPointTo = (int)writer.BaseStream.Position;
                                             for (int ppp = 0; ppp < cageAnimationEntities[i][p].keyframeData2[pp].keyframes.Count; ppp++)
                                             {
                                                 writer.Write((Int32)1);
                                                 writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].secondsSinceStart);
-                                                //writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].unk2);
-                                                //writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].unk3);
-                                                //writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].unk4);
+                                                Utilities.Write<ShortGuid>(writer, cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].unk2);
+                                                Utilities.Write<ShortGuid>(writer, cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].unk3);
+                                                writer.Write(keyframeRefs.Count == 0 ? 3 : 4);
                                                 writer.Write((Int32)0);
                                             }
 
