@@ -13,6 +13,7 @@ namespace CATHODE.Scripting
         {
             SetupFunctionTypeLUT();
             SetupDataTypeLUT();
+            SetupObjectTypeLUT();
             SetupResourceEntryTypeLUT();
         }
 

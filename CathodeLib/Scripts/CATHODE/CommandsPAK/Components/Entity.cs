@@ -1,4 +1,6 @@
 ﻿using CATHODE.Scripting.Internal;
+using Newtonsoft.Json.Converters;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -346,11 +348,11 @@ namespace CATHODE.Scripting
             public ShortGuid shortGUID; //Unique ID - TODO: can we just generate this?
             public ShortGuid keyframeID; //The keyframe ID we're pointing to
 
-            public ObjectType objectType; //The type of object at the connected entity
+            [JsonConverter(typeof(StringEnumConverter))] public ObjectType objectType; //The type of object at the connected entity
 
             //Specifics for the parameter we're connected to
             public ShortGuid parameterID;
-            public DataType parameterDataType; 
+            [JsonConverter(typeof(StringEnumConverter))] public DataType parameterDataType; 
             public ShortGuid parameterSubID; //if parameterID is position, this might be x for example
 
             //The path to the connected entity which has the above parameter
@@ -368,13 +370,12 @@ namespace CATHODE.Scripting
             [Serializable]
             public class Data
             {
-                public float unk1;
                 public float secondsSinceStart;
                 public float paramValue;
-                public float unk2;
-                public float unk3;
-                public float unk4;
-                public float unk5;
+                public ShortGuid unk2;
+                public ShortGuid unk3;
+                public ShortGuid unk4;
+                public ShortGuid unk5;
             }
         }
 
@@ -390,12 +391,10 @@ namespace CATHODE.Scripting
             [Serializable]
             public class Data
             {
-                public float unk1;
                 public float secondsSinceStart;
-                public float unk2;
-                public float unk3;
-                public float unk4;
-                public float unk5;
+                public ShortGuid unk2; //sometimes this translates to a string -> is it a param?
+                public ShortGuid unk3; //this never translates to a string, but is a param on the node
+                public int unk4; //This is always either 3 or 4
             }
         }
     }

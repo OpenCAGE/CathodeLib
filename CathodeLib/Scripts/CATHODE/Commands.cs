@@ -321,14 +321,14 @@ namespace CATHODE
                                                 for (int m = 0; m < numberOfKeyframes; m++)
                                                 {
                                                     CAGEAnimation.Keyframe.Data thisKeyframe = new CAGEAnimation.Keyframe.Data();
-                                                    thisKeyframe.unk1 = reader_parallel.ReadSingle(); //
+                                                    reader_parallel.BaseStream.Position += 4;
                                                     thisKeyframe.secondsSinceStart = reader_parallel.ReadSingle(); //Seconds since start of animation
                                                     reader_parallel.BaseStream.Position += 4;
                                                     thisKeyframe.paramValue = reader_parallel.ReadSingle(); //Parameter value
-                                                    thisKeyframe.unk2 = reader_parallel.ReadSingle(); //
-                                                    thisKeyframe.unk3 = reader_parallel.ReadSingle(); // 
-                                                    thisKeyframe.unk4 = reader_parallel.ReadSingle(); //
-                                                    thisKeyframe.unk5 = reader_parallel.ReadSingle(); //
+                                                    thisKeyframe.unk2 = Utilities.Consume<ShortGuid>(reader_parallel);
+                                                    thisKeyframe.unk3 = Utilities.Consume<ShortGuid>(reader_parallel);
+                                                    thisKeyframe.unk4 = Utilities.Consume<ShortGuid>(reader_parallel);
+                                                    thisKeyframe.unk5 = Utilities.Consume<ShortGuid>(reader_parallel);
                                                     thisParamKey.keyframes.Add(thisKeyframe);
                                                 }
                                                 animEntity.keyframeData.Add(thisParamKey);
@@ -350,12 +350,12 @@ namespace CATHODE
                                                 for (int m = 0; m < NumberOfParams3_; m++)
                                                 {
                                                     CAGEAnimation.Keyframe2.Data thisInnerSet = new CAGEAnimation.Keyframe2.Data();
-                                                    thisInnerSet.unk1 = reader_parallel.ReadSingle(); //type?
+                                                    reader_parallel.BaseStream.Position += 4;
                                                     thisInnerSet.secondsSinceStart = reader_parallel.ReadSingle(); //seconds since start of animation
-                                                    thisInnerSet.unk2 = reader_parallel.ReadSingle(); //id ?
-                                                    thisInnerSet.unk3 = reader_parallel.ReadSingle(); // id ?
-                                                    thisInnerSet.unk4 = reader_parallel.ReadSingle(); //
-                                                    thisInnerSet.unk5 = reader_parallel.ReadSingle(); //
+                                                    thisInnerSet.unk2 = Utilities.Consume<ShortGuid>(reader_parallel);
+                                                    thisInnerSet.unk3 = Utilities.Consume<ShortGuid>(reader_parallel);
+                                                    thisInnerSet.unk4 = reader_parallel.ReadInt32();
+                                                    reader_parallel.BaseStream.Position += 4;
                                                     thisParamSet.keyframes.Add(thisInnerSet);
                                                 }
                                                 animEntity.keyframeData2.Add(thisParamSet);
@@ -1002,14 +1002,14 @@ namespace CATHODE
                                             int toPointTo = (int)writer.BaseStream.Position;
                                             for (int ppp = 0; ppp < cageAnimationEntities[i][p].keyframeData[pp].keyframes.Count; ppp++)
                                             {
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk1);
+                                                writer.Write((Int32)2);
                                                 writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].secondsSinceStart);
                                                 writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].secondsSinceStart);
                                                 writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].paramValue);
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk2);
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk3);
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk4);
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk5);
+                                                //writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk2);
+                                                //writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk3);
+                                                //writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk4);
+                                                //writer.Write(cageAnimationEntities[i][p].keyframeData[pp].keyframes[ppp].unk5);
                                             }
 
                                             internalOffsets.Add(((int)writer.BaseStream.Position) / 4);
@@ -1031,12 +1031,12 @@ namespace CATHODE
                                             int toPointTo = (int)writer.BaseStream.Position;
                                             for (int ppp = 0; ppp < cageAnimationEntities[i][p].keyframeData2[pp].keyframes.Count; ppp++)
                                             {
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].unk1);
+                                                writer.Write((Int32)1);
                                                 writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].secondsSinceStart);
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].unk2);
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].unk3);
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].unk4);
-                                                writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].unk5);
+                                                //writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].unk2);
+                                                //writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].unk3);
+                                                //writer.Write(cageAnimationEntities[i][p].keyframeData2[pp].keyframes[ppp].unk4);
+                                                writer.Write((Int32)0);
                                             }
 
                                             internalOffsets.Add(((int)writer.BaseStream.Position) / 4);
