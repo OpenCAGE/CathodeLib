@@ -293,7 +293,7 @@ namespace CATHODE
                                             {
                                                 reader_parallel.BaseStream.Position = headerOffset + (z * 32);
 
-                                                CAGEAnimation.Header header = new CAGEAnimation.Header();
+                                                CAGEAnimation.Connection header = new CAGEAnimation.Connection();
                                                 header.shortGUID = new ShortGuid(reader_parallel);//ID
                                                 header.objectType = CommandsUtils.GetObjectType(new ShortGuid(reader_parallel));
                                                 header.keyframeID = new ShortGuid(reader_parallel);
@@ -303,7 +303,7 @@ namespace CATHODE
 
                                                 int hierarchyCount = JumpToOffset(reader_parallel);
                                                 header.connectedEntity = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
-                                                animEntity.headers.Add(header);
+                                                animEntity.connections.Add(header);
                                             }
 
                                             reader_parallel.BaseStream.Position = animationOffset;
@@ -648,7 +648,7 @@ namespace CATHODE
                     if (Entries[i].functions[x].function == SHORTGUID_CAGEAnimation)
                     {
                         CAGEAnimation thisEntity = (CAGEAnimation)Entries[i].functions[x];
-                        if (thisEntity.headers.Count == 0 && thisEntity.animations.Count == 0 && thisEntity.events.Count == 0) continue;
+                        if (thisEntity.connections.Count == 0 && thisEntity.animations.Count == 0 && thisEntity.events.Count == 0) continue;
                         cageAnimationEntities[i].Add(thisEntity);
                     }
                     else if (Entries[i].functions[x].function == SHORTGUID_TriggerSequence)
@@ -970,17 +970,17 @@ namespace CATHODE
                                     List<int> globalOffsets = new List<int>(cageAnimationEntities[i].Count);
                                     for (int p = 0; p < cageAnimationEntities[i].Count; p++)
                                     {
-                                        List<int> hierarchyOffsets = new List<int>(cageAnimationEntities[i][p].headers.Count);
-                                        for (int pp = 0; pp < cageAnimationEntities[i][p].headers.Count; pp++)
+                                        List<int> hierarchyOffsets = new List<int>(cageAnimationEntities[i][p].connections.Count);
+                                        for (int pp = 0; pp < cageAnimationEntities[i][p].connections.Count; pp++)
                                         {
                                             hierarchyOffsets.Add((int)writer.BaseStream.Position);
-                                            Utilities.Write<ShortGuid>(writer, cageAnimationEntities[i][p].headers[pp].connectedEntity);
+                                            Utilities.Write<ShortGuid>(writer, cageAnimationEntities[i][p].connections[pp].connectedEntity);
                                         }
 
                                         int headerOffset = (int)writer.BaseStream.Position;
-                                        for (int pp = 0; pp < cageAnimationEntities[i][p].headers.Count; pp++)
+                                        for (int pp = 0; pp < cageAnimationEntities[i][p].connections.Count; pp++)
                                         {
-                                            CAGEAnimation.Header header = cageAnimationEntities[i][p].headers[pp];
+                                            CAGEAnimation.Connection header = cageAnimationEntities[i][p].connections[pp];
                                             Utilities.Write(writer, header.shortGUID);
                                             Utilities.Write(writer, CommandsUtils.GetObjectTypeGUID(header.objectType));
                                             Utilities.Write(writer, header.keyframeID);
@@ -1032,7 +1032,7 @@ namespace CATHODE
                                         for (int pp = 0; pp < cageAnimationEntities[i][p].events.Count; pp++)
                                         {
                                             int toPointTo = (int)writer.BaseStream.Position;
-                                            List<CAGEAnimation.Header> keyframeRefs = cageAnimationEntities[i][p].headers.FindAll(o => o.keyframeID == cageAnimationEntities[i][p].events[pp].shortGUID);
+                                            List<CAGEAnimation.Connection> keyframeRefs = cageAnimationEntities[i][p].connections.FindAll(o => o.keyframeID == cageAnimationEntities[i][p].events[pp].shortGUID);
                                             cageAnimationEntities[i][p].events[pp].keyframes = cageAnimationEntities[i][p].events[pp].keyframes.OrderBy(o => o.secondsSinceStart).ToList();
                                             for (int ppp = 0; ppp < cageAnimationEntities[i][p].events[pp].keyframes.Count; ppp++)
                                             {
@@ -1069,7 +1069,7 @@ namespace CATHODE
                                         globalOffsets.Add((int)writer.BaseStream.Position);
                                         writer.Write(cageAnimationEntities[i][p].shortGUID.val);
                                         writer.Write(headerOffset / 4);
-                                        writer.Write(cageAnimationEntities[i][p].headers.Count);
+                                        writer.Write(cageAnimationEntities[i][p].connections.Count);
                                         writer.Write(animationOffset / 4);
                                         writer.Write(cageAnimationEntities[i][p].animations.Count);
                                         writer.Write(eventOffset / 4);

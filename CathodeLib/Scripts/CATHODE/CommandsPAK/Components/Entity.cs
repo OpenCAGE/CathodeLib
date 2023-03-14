@@ -32,6 +32,9 @@ namespace CATHODE.Scripting.Internal
         }
 
         public ShortGuid shortGUID; //Translates to string via EntityNameLookup.GetEntityName
+#if DEBUG
+        [JsonConverter(typeof(StringEnumConverter))]
+#endif
         public EntityVariant variant;
 
         public List<EntityLink> childLinks = new List<EntityLink>();
@@ -200,6 +203,9 @@ namespace CATHODE.Scripting
         }
 
         public ShortGuid name;
+#if DEBUG
+        [JsonConverter(typeof(StringEnumConverter))]
+#endif
         public DataType type = DataType.NONE;
 
         public override string ToString()
@@ -345,12 +351,12 @@ namespace CATHODE.Scripting
         public CAGEAnimation(bool autoGenerateParameters = false) : base(FunctionType.CAGEAnimation, autoGenerateParameters) { }
         public CAGEAnimation(ShortGuid id, bool autoGenerateParameters = false) : base(id, FunctionType.CAGEAnimation, autoGenerateParameters) { }
 
-        public List<Header> headers = new List<Header>();
+        public List<Connection> connections = new List<Connection>();
         public List<Animation> animations = new List<Animation>();
         public List<Event> events = new List<Event>();
 
         [Serializable]
-        public class Header
+        public class Connection
         {
             public ShortGuid shortGUID; //Unique ID - TODO: can we just generate this?
             public ShortGuid keyframeID; //The keyframe ID we're pointing to
