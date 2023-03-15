@@ -249,7 +249,7 @@ namespace CATHODE.Scripting
             //Clear overrides
             List<OverrideEntity> overridePurged = new List<OverrideEntity>();
             for (int i = 0; i < composite.overrides.Count; i++)
-                if (ResolveHierarchy(commands, composite, composite.overrides[i].hierarchy, out Composite flowTemp, out string hierarchy) != null)
+                if (ResolveHierarchy(commands, composite, composite.overrides[i].connectedEntity.hierarchy, out Composite flowTemp, out string hierarchy) != null)
                     overridePurged.Add(composite.overrides[i]);
             originalOverrideCount += composite.overrides.Count;
             newOverrideCount += overridePurged.Count;
@@ -258,7 +258,7 @@ namespace CATHODE.Scripting
             //Clear proxies
             List<ProxyEntity> proxyPurged = new List<ProxyEntity>();
             for (int i = 0; i < composite.proxies.Count; i++)
-                if (ResolveHierarchy(commands, composite, composite.proxies[i].hierarchy, out Composite flowTemp, out string hierarchy) != null)
+                if (ResolveHierarchy(commands, composite, composite.proxies[i].connectedEntity.hierarchy, out Composite flowTemp, out string hierarchy) != null)
                     proxyPurged.Add(composite.proxies[i]);
             originalProxyCount += composite.proxies.Count;
             newProxyCount += proxyPurged.Count;
@@ -274,7 +274,7 @@ namespace CATHODE.Scripting
                         TriggerSequence trig = (TriggerSequence)composite.functions[i];
                         List<TriggerSequence.Entity> trigSeq = new List<TriggerSequence.Entity>();
                         for (int x = 0; x < trig.entities.Count; x++)
-                            if (ResolveHierarchy(commands, composite, trig.entities[x].hierarchy, out Composite flowTemp, out string hierarchy) != null)
+                            if (ResolveHierarchy(commands, composite, trig.entities[x].connectedEntity.hierarchy, out Composite flowTemp, out string hierarchy) != null)
                                 trigSeq.Add(trig.entities[x]);
                         originalTriggerCount += trig.entities.Count;
                         newTriggerCount += trigSeq.Count;
@@ -284,7 +284,7 @@ namespace CATHODE.Scripting
                         CAGEAnimation anim = (CAGEAnimation)composite.functions[i];
                         List<CAGEAnimation.Connection> headers = new List<CAGEAnimation.Connection>();
                         for (int x = 0; x < anim.connections.Count; x++)
-                            if (ResolveHierarchy(commands, composite, anim.connections[x].connectedEntity, out Composite flowTemp, out string hierarchy) != null)
+                            if (ResolveHierarchy(commands, composite, anim.connections[x].connectedEntity.hierarchy, out Composite flowTemp, out string hierarchy) != null)
                                 headers.Add(anim.connections[x]);
                         originalAnimCount += anim.connections.Count;
                         newAnimCount += headers.Count;

@@ -1,4 +1,4 @@
-using CATHODE.Scripting.Internal;
+﻿using CATHODE.Scripting.Internal;
 #if DEBUG
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json;
@@ -296,19 +296,19 @@ namespace CATHODE.Scripting
         public ProxyEntity(List<ShortGuid> hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(EntityVariant.PROXY)
         {
             this.targetType = targetType;
-            if (hierarchy != null) this.hierarchy = hierarchy;
+            if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
             if (autoGenerateParameters) ApplyDefaults();
         }
         public ProxyEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.PROXY)
         {
             this.shortGUID = shortGUID;
             this.targetType = targetType; 
-            if (hierarchy != null) this.hierarchy = hierarchy;
+            if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
             if (autoGenerateParameters) ApplyDefaults();
         }
 
         public ShortGuid targetType; //The "function" value on the entity we're pointing to
-        public List<ShortGuid> hierarchy = new List<ShortGuid>();
+        public EntityHierarchy connectedEntity = new EntityHierarchy();
 
         private void ApplyDefaults()
         {
@@ -331,17 +331,17 @@ namespace CATHODE.Scripting
         public OverrideEntity(List<ShortGuid> hierarchy = null) : base(EntityVariant.OVERRIDE)
         {
             checksum = ShortGuidUtils.GenerateRandom();
-            if (hierarchy != null) this.hierarchy = hierarchy;
+            if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
         }
         public OverrideEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null) : base(shortGUID, EntityVariant.OVERRIDE)
         {
             this.shortGUID = shortGUID;
             checksum = ShortGuidUtils.GenerateRandom();
-            if (hierarchy != null) this.hierarchy = hierarchy;
+            if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
         }
 
         public ShortGuid checksum; //TODO: This value is apparently a hash of the hierarchy GUIDs, but need to verify that, and work out the salt.
-        public List<ShortGuid> hierarchy = new List<ShortGuid>();
+        public EntityHierarchy connectedEntity = new EntityHierarchy();
     }
 
     #region SPECIAL FUNCTION ENTITIES
@@ -375,21 +375,7 @@ namespace CATHODE.Scripting
             public ShortGuid parameterSubID; //if parameterID is position, this might be x for example
 
             //The path to the connected entity which has the above parameter
-            public List<ShortGuid> connectedEntity; 
-
-            //TEMP
-            public bool ConnectedEntityMatches(List<ShortGuid> ent)
-            {
-                if (connectedEntity == null && ent != null) return false;
-                if (connectedEntity != null && ent == null) return false;
-                if (connectedEntity.Count != ent.Count) return false;
-                for (int i = 0; i < connectedEntity.Count; i++)
-                {
-                    if (connectedEntity[i].ToByteString() != ent[i].ToByteString())
-                        return false;
-                }
-                return true;
-            }
+            public EntityHierarchy connectedEntity = new EntityHierarchy(); 
         }
 
         [Serializable]
@@ -437,14 +423,8 @@ namespace CATHODE.Scripting
         [Serializable]
         public class Entity
         {
-            public Entity()
-            {
-                hierarchy = new List<ShortGuid>();
-                hierarchy.Add(new ShortGuid("00-00-00-00"));
-            }
-
             public float timing = 0.0f;
-            public List<ShortGuid> hierarchy;
+            public EntityHierarchy connectedEntity = new EntityHierarchy();
         }
         [Serializable]
         public class Event
@@ -481,4 +461,79 @@ namespace CATHODE.Scripting
         public ShortGuid childParamID;  //The ID of the parameter we're providing into the child
         public ShortGuid childID;       //The ID of the entity we're linking to to provide the value for
     }
+
+    [Serializable]
+#if DEBUG
+    [JsonConverter(typeof(EntityHierarchyConverter))]
+#endif
+    public class EntityHierarchy
+    {
+        public EntityHierarchy() { }
+        public EntityHierarchy(List<ShortGuid> _hierarchy)
+        {
+            hierarchy = _hierarchy;
+
+            if (hierarchy[hierarchy.Count - 1].ToByteString() != "00-00-00-00")
+                hierarchy.Add(new ShortGuid("00-00-00-00"));
+        }
+        public List<ShortGuid> hierarchy = new List<ShortGuid>();
+
+        public static bool operator ==(EntityHierarchy x, EntityHierarchy y)
+        {
+            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+            if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+            if (x.hierarchy.Count != y.hierarchy.Count) return false;
+            for (int i = 0; i < x.hierarchy.Count; i++)
+            {
+                if (x.hierarchy[i].ToByteString() != y.hierarchy[i].ToByteString())
+                    return false;
+            }
+            return true;
+        }
+        public static bool operator !=(EntityHierarchy x, EntityHierarchy y)
+        {
+            return !(x == y);
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is EntityHierarchy hierarchy &&
+                   EqualityComparer<List<ShortGuid>>.Default.Equals(this.hierarchy, hierarchy.hierarchy);
+        }
+
+        public override int GetHashCode()
+        {
+            return 218564712 + EqualityComparer<List<ShortGuid>>.Default.GetHashCode(hierarchy);
+        }
+    }
+
+#if DEBUG
+    public class EntityHierarchyConverter : JsonConverter
+    {
+        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+        {
+            EntityHierarchy e = (EntityHierarchy)value;
+            string val = "";
+            for (int i = 0; i < e.hierarchy.Count; i++)
+            {
+                val += e.hierarchy[i].ToByteString();
+                if (i != e.hierarchy.Count - 1) val += " -> ";
+            }
+            writer.WriteValue(val);
+        }
+
+        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+        {
+            EntityHierarchy e = new EntityHierarchy();
+            List<string> vals = reader.Value.ToString().Split(new[] { " -> " }, StringSplitOptions.None).ToList();
+            for (int i = 0; i < vals.Count; i++) e.hierarchy.Add(new ShortGuid(vals[i]));
+            return e;
+        }
+
+        public override bool CanConvert(Type objectType)
+        {
+            return objectType == typeof(EntityHierarchy);
+        }
+    }
+#endif
 }

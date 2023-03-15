@@ -176,7 +176,7 @@ namespace CATHODE
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                             OverrideEntity overrider = new OverrideEntity(new ShortGuid(reader_parallel));
                                             int NumberOfParams = JumpToOffset(reader_parallel);
-                                            overrider.hierarchy.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams));
+                                            overrider.connectedEntity.hierarchy.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams));
                                             composite.overrides.Add(overrider);
                                             break;
                                         }
@@ -201,7 +201,7 @@ namespace CATHODE
                                             ProxyEntity thisProxy = new ProxyEntity(new ShortGuid(reader_parallel));
                                             int resetPos = (int)reader_parallel.BaseStream.Position + 8; //TODO: This is a HACK - I need to rework JumpToOffset to make a temp stream
                                             int NumberOfParams = JumpToOffset(reader_parallel);
-                                            thisProxy.hierarchy.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams)); //Last is always 0x00, 0x00, 0x00, 0x00
+                                            thisProxy.connectedEntity.hierarchy.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams)); //Last is always 0x00, 0x00, 0x00, 0x00
                                             reader_parallel.BaseStream.Position = resetPos;
                                             ShortGuid idCheck = new ShortGuid(reader_parallel);
                                             if (idCheck != thisProxy.shortGUID) throw new Exception("Proxy ID mismatch!");
@@ -302,7 +302,7 @@ namespace CATHODE
                                                 header.parameterSubID = new ShortGuid(reader_parallel);
 
                                                 int hierarchyCount = JumpToOffset(reader_parallel);
-                                                header.connectedEntity = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
+                                                header.connectedEntity.hierarchy = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
                                                 animEntity.connections.Add(header);
                                             }
 
@@ -382,7 +382,7 @@ namespace CATHODE
                                                 TriggerSequence.Entity thisTrigger = new TriggerSequence.Entity();
                                                 thisTrigger.timing = reader_parallel.ReadSingle();
                                                 reader_parallel.BaseStream.Position = hierarchyOffset;
-                                                thisTrigger.hierarchy = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
+                                                thisTrigger.connectedEntity.hierarchy = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
                                                 trigEntity.entities.Add(thisTrigger);
                                             }
 
@@ -854,8 +854,8 @@ namespace CATHODE
                                     List<OffsetPair> offsetPairs = new List<OffsetPair>(Entries[i].overrides.Count);
                                     for (int p = 0; p < Entries[i].overrides.Count; p++)
                                     {
-                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, Entries[i].overrides[p].hierarchy.Count));
-                                        Utilities.Write<ShortGuid>(writer, Entries[i].overrides[p].hierarchy);
+                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, Entries[i].overrides[p].connectedEntity.hierarchy.Count));
+                                        Utilities.Write<ShortGuid>(writer, Entries[i].overrides[p].connectedEntity.hierarchy);
                                     }
 
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, Entries[i].overrides.Count);
@@ -893,8 +893,8 @@ namespace CATHODE
                                     List<OffsetPair> offsetPairs = new List<OffsetPair>();
                                     for (int p = 0; p < Entries[i].proxies.Count; p++)
                                     {
-                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, Entries[i].proxies[p].hierarchy.Count));
-                                        Utilities.Write<ShortGuid>(writer, Entries[i].proxies[p].hierarchy);
+                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, Entries[i].proxies[p].connectedEntity.hierarchy.Count));
+                                        Utilities.Write<ShortGuid>(writer, Entries[i].proxies[p].connectedEntity.hierarchy);
                                     }
 
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, offsetPairs.Count);
@@ -974,7 +974,7 @@ namespace CATHODE
                                         for (int pp = 0; pp < cageAnimationEntities[i][p].connections.Count; pp++)
                                         {
                                             hierarchyOffsets.Add((int)writer.BaseStream.Position);
-                                            Utilities.Write<ShortGuid>(writer, cageAnimationEntities[i][p].connections[pp].connectedEntity);
+                                            Utilities.Write<ShortGuid>(writer, cageAnimationEntities[i][p].connections[pp].connectedEntity.hierarchy);
                                         }
 
                                         int headerOffset = (int)writer.BaseStream.Position;
@@ -988,7 +988,7 @@ namespace CATHODE
                                             Utilities.Write(writer, CommandsUtils.GetDataTypeGUID(header.parameterDataType));
                                             Utilities.Write(writer, header.parameterSubID);
                                             writer.Write(hierarchyOffsets[pp] / 4);
-                                            writer.Write(header.connectedEntity.Count);
+                                            writer.Write(header.connectedEntity.hierarchy.Count);
                                         }
 
                                         List<int> internalOffsets = new List<int>(cageAnimationEntities[i][p].animations.Count);
@@ -1092,14 +1092,14 @@ namespace CATHODE
                                         for (int pp = 0; pp < triggerSequenceEntities[i][p].entities.Count; pp++)
                                         {
                                             hierarchyOffsets.Add((int)writer.BaseStream.Position);
-                                            Utilities.Write<ShortGuid>(writer, triggerSequenceEntities[i][p].entities[pp].hierarchy);
+                                            Utilities.Write<ShortGuid>(writer, triggerSequenceEntities[i][p].entities[pp].connectedEntity.hierarchy);
                                         }
 
                                         int triggerOffset = (int)writer.BaseStream.Position;
                                         for (int pp = 0; pp < triggerSequenceEntities[i][p].entities.Count; pp++)
                                         {
                                             writer.Write(hierarchyOffsets[pp] / 4);
-                                            writer.Write(triggerSequenceEntities[i][p].entities[pp].hierarchy.Count);
+                                            writer.Write(triggerSequenceEntities[i][p].entities[pp].connectedEntity.hierarchy.Count);
                                             writer.Write(triggerSequenceEntities[i][p].entities[pp].timing);
                                         }
 
