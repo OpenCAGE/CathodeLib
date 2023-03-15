@@ -507,9 +507,9 @@ namespace CATHODE.Scripting
         }
 
         /* Get this hierarchy as a string */
-        public string GetHierarchyAsString(Commands commands, Composite composite)
+        public string GetHierarchyAsString(Commands commands, Composite composite, bool withIDs = true)
         {
-            CommandsUtils.ResolveHierarchy(commands, composite, hierarchy, out Composite comp, out string str);
+            CommandsUtils.ResolveHierarchy(commands, composite, hierarchy, out Composite comp, out string str, withIDs);
             return str;
         }
 
