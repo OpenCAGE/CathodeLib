@@ -1,4 +1,4 @@
-﻿using CATHODE.Scripting.Internal;
+using CATHODE.Scripting.Internal;
 #if DEBUG
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json;
@@ -401,8 +401,8 @@ namespace CATHODE.Scripting
             [Serializable]
             public class Keyframe
             {
-                public float secondsSinceStart;
-                public float paramValue;
+                public float secondsSinceStart = 0.0f;
+                public float paramValue = 0.0f;
 
                 public Vector2 startVelocity = new Vector2(1,0);
                 public Vector2 endVelocity = new Vector2(1, 0);
@@ -418,7 +418,7 @@ namespace CATHODE.Scripting
             [Serializable]
             public class Keyframe
             {
-                public float secondsSinceStart;
+                public float secondsSinceStart = 0.0f;
                 public ShortGuid start;
 
                 public ShortGuid unk3; //this never translates to a string, but is a param on the node -> do we trigger it?
