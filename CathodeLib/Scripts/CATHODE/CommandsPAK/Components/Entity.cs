@@ -376,6 +376,20 @@ namespace CATHODE.Scripting
 
             //The path to the connected entity which has the above parameter
             public List<ShortGuid> connectedEntity; 
+
+            //TEMP
+            public bool ConnectedEntityMatches(List<ShortGuid> ent)
+            {
+                if (connectedEntity == null && ent != null) return false;
+                if (connectedEntity != null && ent == null) return false;
+                if (connectedEntity.Count != ent.Count) return false;
+                for (int i = 0; i < connectedEntity.Count; i++)
+                {
+                    if (connectedEntity[i].ToByteString() != ent[i].ToByteString())
+                        return false;
+                }
+                return true;
+            }
         }
 
         [Serializable]
