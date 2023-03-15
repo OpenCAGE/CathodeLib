@@ -284,8 +284,13 @@ namespace CATHODE.Scripting
                         CAGEAnimation anim = (CAGEAnimation)composite.functions[i];
                         List<CAGEAnimation.Connection> headers = new List<CAGEAnimation.Connection>();
                         for (int x = 0; x < anim.connections.Count; x++)
-                            if (ResolveHierarchy(commands, composite, anim.connections[x].connectedEntity.hierarchy, out Composite flowTemp, out string hierarchy) != null)
+                        {
+                            List<CAGEAnimation.Animation> anim_target = anim.animations.FindAll(o => o.shortGUID == anim.connections[x].keyframeID);
+                            List<CAGEAnimation.Event> event_target = anim.events.FindAll(o => o.shortGUID == anim.connections[x].keyframeID);
+                            if (!(anim_target.Count == 0 && event_target.Count == 0) &&
+                                ResolveHierarchy(commands, composite, anim.connections[x].connectedEntity.hierarchy, out Composite flowTemp, out string hierarchy) != null)
                                 headers.Add(anim.connections[x]);
+                        }
                         originalAnimCount += anim.connections.Count;
                         newAnimCount += headers.Count;
                         anim.connections = headers;
@@ -321,8 +326,8 @@ namespace CATHODE.Scripting
                 "\n - " + (originalProxyCount - newProxyCount) + " proxies (of " + originalProxyCount + ")" +
                 "\n - " + (originalOverrideCount - newOverrideCount) + " overrides (of " + originalOverrideCount + ")" +
                 "\n - " + (originalTriggerCount - newTriggerCount) + " triggers (of " + originalTriggerCount + ")" +
-                "\n - " + (originalAnimCount - newAnimCount) + " anims (of " + originalAnimCount + ")" +
-                "\n - " + (originalLinkCount - newLinkCount) + " links (of " + originalLinkCount + ")");
+                "\n - " + (originalAnimCount - newAnimCount) + " anim connections (of " + originalAnimCount + ")" +
+                "\n - " + (originalLinkCount - newLinkCount) + " entity links (of " + originalLinkCount + ")");
         }
         #endregion
     }

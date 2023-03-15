@@ -505,6 +505,25 @@ namespace CATHODE.Scripting
         {
             return 218564712 + EqualityComparer<List<ShortGuid>>.Default.GetHashCode(hierarchy);
         }
+
+        /* Get this hierarchy as a string */
+        public string GetHierarchyAsString(Commands commands, Composite composite)
+        {
+            CommandsUtils.ResolveHierarchy(commands, composite, hierarchy, out Composite comp, out string str);
+            return str;
+        }
+
+        /* Get the entity this hierarchy points to */
+        public Entity GetPointedEntity(Commands commands, Composite composite)
+        {
+            return CommandsUtils.ResolveHierarchy(commands, composite, hierarchy, out Composite comp, out string str);
+        }
+
+        /* Does this hierarchy point to a valid entity? */
+        public bool IsHierarchyValid(Commands commands, Composite composite)
+        {
+            return GetPointedEntity(commands, composite) != null;
+        }
     }
 
 #if DEBUG
