@@ -66,7 +66,7 @@ namespace CATHODE
                         case DataType.TRANSFORM:
                             this_parameter = new cTransform();
                             ((cTransform)this_parameter).position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                            float _x, _y, _z; _y = reader.ReadSingle(); _x = reader.ReadSingle(); _z = reader.ReadSingle(); //Y,X,Z!
+                            float _x, _y, _z; _y = reader.ReadSingle(); _x = reader.ReadSingle(); _z = reader.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
                             ((cTransform)this_parameter).rotation = new Vector3(_x, _y, _z);
                             break;
                         case DataType.INTEGER:
@@ -97,10 +97,11 @@ namespace CATHODE
                             List<cTransform> points = new List<cTransform>(reader.ReadInt32());
                             for (int x = 0; x < points.Capacity; x++)
                             {
-                                points.Add(new cTransform(
-                                    new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()),
-                                    new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()) //TODO is this YXZ?
-                                ));
+                                cTransform spline_point = new cTransform();
+                                spline_point.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                                float __x, __y, __z; __y = reader.ReadSingle(); __x = reader.ReadSingle(); __z = reader.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
+                                spline_point.rotation = new Vector3(__x, __y, __z);
+                                points.Add(spline_point);
                             }
                             this_parameter = new cSpline(points);
                             break;
@@ -763,17 +764,15 @@ namespace CATHODE
                                 writer.Write(thisSpline.splinePoints[x].position.x);
                                 writer.Write(thisSpline.splinePoints[x].position.y);
                                 writer.Write(thisSpline.splinePoints[x].position.z);
-                                //todo: is this YXZ
-                                writer.Write(thisSpline.splinePoints[x].rotation.x);
                                 writer.Write(thisSpline.splinePoints[x].rotation.y);
+                                writer.Write(thisSpline.splinePoints[x].rotation.x);
                                 writer.Write(thisSpline.splinePoints[x].rotation.z);
 #else
                                 writer.Write(thisSpline.splinePoints[x].position.X);
                                 writer.Write(thisSpline.splinePoints[x].position.Y);
                                 writer.Write(thisSpline.splinePoints[x].position.Z);
-                                //todo: is this YXZ
-                                writer.Write(thisSpline.splinePoints[x].rotation.X);
                                 writer.Write(thisSpline.splinePoints[x].rotation.Y);
+                                writer.Write(thisSpline.splinePoints[x].rotation.X);
                                 writer.Write(thisSpline.splinePoints[x].rotation.Z);
 #endif
                             }
