@@ -297,30 +297,18 @@ namespace CATHODE.Scripting
         {
             this.targetType = targetType;
             if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
-            if (autoGenerateParameters) ApplyDefaults();
+            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
         public ProxyEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.PROXY)
         {
             this.shortGUID = shortGUID;
             this.targetType = targetType; 
             if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
-            if (autoGenerateParameters) ApplyDefaults();
+            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
 
         public ShortGuid targetType; //The "function" value on the entity we're pointing to
         public EntityHierarchy connectedEntity = new EntityHierarchy();
-
-        private void ApplyDefaults()
-        {
-            AddParameter("proxy_filter_targets", new cBool(false));
-            AddParameter("proxy_enable_on_reset", new cBool(false));
-            AddParameter("proxy_enable", new cFloat(0.0f));
-            AddParameter("proxy_enabled", new cFloat(0.0f));
-            AddParameter("proxy_disable", new cFloat(0.0f));
-            AddParameter("proxy_disabled", new cFloat(0.0f));
-            AddParameter("reference", new cString(""));
-            AddParameter("trigger", new cFloat(0.0f));
-        }
     }
     [Serializable]
     public class OverrideEntity : Entity

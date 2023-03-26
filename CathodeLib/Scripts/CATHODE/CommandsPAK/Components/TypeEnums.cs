@@ -67,6 +67,7 @@ namespace CATHODE.Scripting
     {
         //TODO: move these interface types outside of FunctionType
         EntityMethodInterface,
+        EntityInterface,
         AttachmentInterface,
         BooleanLogicInterface,
         CameraBehaviorInterface,
