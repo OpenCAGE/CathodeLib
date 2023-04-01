@@ -628,6 +628,7 @@ namespace CATHODE
             List<ParameterData> parameters = new List<ParameterData>();
             List<Entity>[] linkedEntities = new List<Entity>[Entries.Count];
             List<Entity>[] parameterisedEntities = new List<Entity>[Entries.Count];
+            List<OverrideEntity>[] reshuffledOverrides = new List<OverrideEntity>[Entries.Count];
             List<OverrideEntity>[] reshuffledChecksums = new List<OverrideEntity>[Entries.Count];
             List<ResourceReference>[] resourceReferences = new List<ResourceReference>[Entries.Count];
             List<CAGEAnimation>[] cageAnimationEntities = new List<CAGEAnimation>[Entries.Count];
@@ -638,6 +639,7 @@ namespace CATHODE
                 List<Entity> ents = Entries[i].GetEntities();
                 linkedEntities[i] = new List<Entity>(ents.FindAll(o => o.childLinks.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
                 parameterisedEntities[i] = new List<Entity>(ents.FindAll(o => o.parameters.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
+                reshuffledOverrides[i] = Entries[i].overrides.OrderBy(o => o.shortGUID.ToUInt32()).ToList();
                 reshuffledChecksums[i] = Entries[i].overrides.OrderBy(o => o.checksum.ToUInt32()).ToList();
 
                 cageAnimationEntities[i] = new List<CAGEAnimation>();
@@ -850,17 +852,17 @@ namespace CATHODE
                                 }
                             case CompositeFileData.ENTITY_OVERRIDES:
                                 {
-                                    List<OffsetPair> offsetPairs = new List<OffsetPair>(Entries[i].overrides.Count);
-                                    for (int p = 0; p < Entries[i].overrides.Count; p++)
+                                    List<OffsetPair> offsetPairs = new List<OffsetPair>(reshuffledOverrides[i].Count);
+                                    for (int p = 0; p < reshuffledOverrides[i].Count; p++)
                                     {
-                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, Entries[i].overrides[p].connectedEntity.hierarchy.Count));
-                                        Utilities.Write<ShortGuid>(writer, Entries[i].overrides[p].connectedEntity.hierarchy);
+                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, reshuffledOverrides[i][p].connectedEntity.hierarchy.Count));
+                                        Utilities.Write<ShortGuid>(writer, reshuffledOverrides[i][p].connectedEntity.hierarchy);
                                     }
 
-                                    scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, Entries[i].overrides.Count);
-                                    for (int p = 0; p < Entries[i].overrides.Count; p++)
+                                    scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledOverrides[i].Count);
+                                    for (int p = 0; p < reshuffledOverrides[i].Count; p++)
                                     {
-                                        writer.Write(Entries[i].overrides[p].shortGUID.val);
+                                        writer.Write(reshuffledOverrides[i][p].shortGUID.val);
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
                                     }
