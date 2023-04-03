@@ -39,14 +39,16 @@ namespace CATHODE.Scripting
         {
             List<EnumDescriptor> toReturn = new List<EnumDescriptor>();
             BinaryReader reader = new BinaryReader(new MemoryStream(db_content));
-            while (reader.BaseStream.Position < reader.BaseStream.Length)
+            int count = reader.ReadInt32();
+            for (int i = 0; i < count; i++)
             {
                 EnumDescriptor thisDesc = new EnumDescriptor();
                 thisDesc.ID = new ShortGuid(reader.ReadBytes(4));
                 thisDesc.Name = reader.ReadString();
                 int entryCount = reader.ReadInt32();
-                for (int i = 0; i < entryCount; i++) 
+                for (int x = 0; x < entryCount; x++) 
                     thisDesc.Entries.Add(new EnumDescriptor.Entry() { Name = reader.ReadString(), Index = reader.ReadInt32() });
+                Console.WriteLine(thisDesc.Name);
                 toReturn.Add(thisDesc);
             }
             reader.Close();
