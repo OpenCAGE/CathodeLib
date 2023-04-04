@@ -495,10 +495,27 @@ namespace CATHODE.Scripting
         }
 
         /* Get this hierarchy as a string */
+        public string GetHierarchyAsString()
+        {
+            string val = "";
+            for (int i = 0; i < hierarchy.Count; i++)
+            {
+                val += hierarchy[i].ToByteString();
+                if (i != hierarchy.Count - 1) val += " -> ";
+            }
+            return val;
+        }
         public string GetHierarchyAsString(Commands commands, Composite composite, bool withIDs = true)
         {
             CommandsUtils.ResolveHierarchy(commands, composite, hierarchy, out Composite comp, out string str, withIDs);
             return str;
+        }
+
+        public UInt32 ToUInt32()
+        {
+            UInt32 val = 0;
+            for (int i = 0; i < hierarchy.Count; i++) val += hierarchy[i].ToUInt32();
+            return val;
         }
 
         /* Get the entity this hierarchy points to */
@@ -519,14 +536,7 @@ namespace CATHODE.Scripting
     {
         public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
         {
-            EntityHierarchy e = (EntityHierarchy)value;
-            string val = "";
-            for (int i = 0; i < e.hierarchy.Count; i++)
-            {
-                val += e.hierarchy[i].ToByteString();
-                if (i != e.hierarchy.Count - 1) val += " -> ";
-            }
-            writer.WriteValue(val);
+            writer.WriteValue(((EntityHierarchy)value).GetHierarchyAsString());
         }
 
         public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
