@@ -4,8 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Linq;
-using System.Windows.Media.Imaging;
-using System.Windows.Media.Animation;
 using System.Text;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;

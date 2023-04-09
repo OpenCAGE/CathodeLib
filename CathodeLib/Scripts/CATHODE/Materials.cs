@@ -14,7 +14,10 @@ namespace CATHODE
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
         public Materials(string path) : base(path) { }
 
-        private List<byte[]> _cstData = new List<byte[]>(); 
+        public List<byte[]> CSTData { get { return _cstData; } } //WIP
+        private List<byte[]> _cstData = new List<byte[]>();
+
+        public int[] CSTOffsets { get { return _unknownOffsets; } } //WIP
         private int[] _unknownOffsets;
 
         private List<Material> _writeList = new List<Material>();
@@ -37,7 +40,7 @@ namespace CATHODE
                 using (BinaryReader readerCST = new BinaryReader(File.OpenRead(_filepathCST)))
                 {
                     cstOffsets.Add((int)readerCST.BaseStream.Length - 4);
-                    readerCST.BaseStream.Position = 4;
+                    //readerCST.BaseStream.Position = 4;
                     for (int x = 0; x < cstOffsets.Count - 1; x++)
                         _cstData.Add(readerCST.ReadBytes(cstOffsets[x+1] - cstOffsets[x]));
                 }
@@ -70,8 +73,7 @@ namespace CATHODE
                     for (int x = 0; x < 5; x++)
                     {
                         int cstCount = reader.ReadByte();
-                        if (cstCount != 0) //TODO: perhaps we should keep zero counts?
-                            material.ConstantBuffers.Add(new Material.ConstantBuffer() { ShaderIndex = x, CstIndex = cstIndexes[x], CstCount = cstCount });
+                        material.ConstantBuffers.Add(new Material.ConstantBuffer() { ShaderIndex = x, CstIndex = cstIndexes[x], CstCount = cstCount });
                     }
                     reader.BaseStream.Position += 7;
                     material.UnknownValue0 = reader.ReadInt32();

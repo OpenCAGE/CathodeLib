@@ -642,7 +642,6 @@ namespace CATHODE
             if (vertices.Count == 0) return mesh;
 
 #if UNITY_EDITOR || UNITY_STANDALONE
-            mesh.name = submesh.Name;
             mesh.SetVertices(vertices);
             mesh.SetNormals(normals);
             mesh.SetIndices(indices, MeshTopology.Triangles, 0); //0??
