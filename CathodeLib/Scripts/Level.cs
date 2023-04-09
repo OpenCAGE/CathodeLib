@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Xml;
 
 namespace CathodeLib
 {
@@ -51,8 +52,11 @@ namespace CathodeLib
         /* Load a level in the game's "ENV/PRODUCTION" folder */
         public Level(string path)
         {
+            string pathDATA = path.Replace('\\', '/').Split(new string[] { "/DATA/ENV/PRODUCTION" }, StringSplitOptions.None)[0] + "/DATA";
+            string levelName = Directory.GetParent(path).Name;
+            string pathGlobal = pathDATA + "/ENV/GLOBAL/WORLD";
+
             /* GLOBAL */
-            string pathGlobal = path.Split(new string[] { "PRODUCTION" }, StringSplitOptions.None)[0] + "GLOBAL/WORLD";
             GlobalTextures = new Textures(pathGlobal + "/GLOBAL_TEXTURES.ALL.PAK");
             //TODO: We don't load GLOBAL_MODELS since it just contains vertex buffers. We should load this to learn about all the vertex formats tho!
 
@@ -115,13 +119,31 @@ namespace CathodeLib
             }
 
             /* TEXT */
-            List<string> textList = Directory.GetFiles(path + "/TEXT/", "*.TXT", SearchOption.AllDirectories).ToList<string>();
-            Strings = new Dictionary<string, Dictionary<string, Strings>>();
-            foreach (string text in textList)
+            XmlNodeList textDBsGlobal = new BML(pathDATA + "/LEVEL_TEXT_DATABASES.BML").Content.SelectNodes("//level_text_databases/level");
+            List<string> globalDBs = new List<string>();
+            for (int i = 0; i < textDBsGlobal.Count; i++)
+                if (textDBsGlobal[i].Attributes["name"].Value.ToUpper() == levelName.ToUpper() || textDBsGlobal[i].Attributes["name"].Value == "globals")
+                    for (int x = 0; x < textDBsGlobal[i].ChildNodes.Count; x++)
+                        globalDBs.Add(textDBsGlobal[i].ChildNodes[x].Attributes["name"].Value);
+            List<string> textList = Directory.GetFiles(pathDATA + "/TEXT/", "*.TXT", SearchOption.AllDirectories).ToList<string>();
+            List<string> levelDBs = new List<string>();
+            if (File.Exists(path + "/TEXT/TEXT_DB_LIST.TXT"))
             {
-                string lang = Path.GetFileName(Path.GetDirectoryName(text));
-                if (Strings.ContainsKey(lang)) Strings.Add(lang, new Dictionary<string, Strings>());
-                Strings[lang].Add(Path.GetFileNameWithoutExtension(text), new Strings(text));
+                string[] textDBsLevel = File.ReadAllLines(path + "/TEXT/TEXT_DB_LIST.TXT");
+                for (int i = 0; i < textDBsLevel.Length; i++)
+                    levelDBs.Add(textDBsLevel[i]);
+                textList.AddRange(Directory.GetFiles(path + "/TEXT/", "*.TXT", SearchOption.AllDirectories));
+            }
+            textList.Reverse();
+            Strings = new Dictionary<string, Dictionary<string, Strings>>();
+            foreach (string textDB in textList)
+            {
+                string lang = Path.GetFileName(Path.GetDirectoryName(textDB));
+                string db = Path.GetFileNameWithoutExtension(textDB);
+                if (!globalDBs.Contains(db) && !levelDBs.Contains(db)) continue;
+                if (!Strings.ContainsKey(lang)) Strings.Add(lang, new Dictionary<string, Strings>());
+                if (Strings[lang].ContainsKey(db)) continue;
+                Strings[lang].Add(db, new Strings(textDB));
             }
         }
 
