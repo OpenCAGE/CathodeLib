@@ -171,12 +171,16 @@ namespace CATHODE
                     int unk2 = BigEndianUtils.ReadInt32(pak); //used to store info on BSP_LV426_PT02
 
                     //Create a new model instance to add these submeshes to
-                    CS2 cs2 = new CS2();
-                    cs2.Name = filenameList[binIndex];
+                    CS2 cs2 = Entries.FirstOrDefault(o => o.Name == filenameList[binIndex]);
+                    if (cs2 == null)
+                    {
+                        cs2 = new CS2();
+                        cs2.Name = filenameList[binIndex];
+                        Entries.Add(cs2);
+                    }
                     cs2.LODs.Add(new CS2.LOD(meshNameList[binIndex]));
                     //cs2.UnkLv426Pt1 = unk1;        <------ TODO: Not writing this out as it seems it works fine without it?
                     //cs2.UnkLv426Pt2 = unk2;        <-|
-                    Entries.Add(cs2);
 
                     //Read submesh content and add to appropriate model
                     int offsetToReturnTo = (int)pak.BaseStream.Position;
@@ -813,6 +817,11 @@ namespace CATHODE
             //Storing some unknown info about LV426 stuff (Pt1 and Pt2 respectively)
             public int UnkLv426Pt1 = 0;
             public int UnkLv426Pt2 = 0;
+
+            public override string ToString()
+            {
+                return Name;
+            }
         }
         #endregion
     }
