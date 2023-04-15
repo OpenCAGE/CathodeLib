@@ -455,6 +455,9 @@ namespace CATHODE
 
         #region ACCESSORS
         /* Get a mesh from the models PAK as a usable mesh format */
+
+        // TODO: Move these to extension classes that can be included separate to the library to remove external library dependencies in cathodelib
+
 #if UNITY_EDITOR || UNITY_STANDALONE
         public Mesh GetMesh(CS2.Component.LOD.Submesh submesh)
 #else
