@@ -759,11 +759,20 @@ namespace CATHODE
         #region STRUCTURES
         public class AlienVBF
         {
-            public List<List<Element>> Elements = new List<List<Element>>();
+            public List<List<Element>> Elements = new List<List<Element>>(); 
 
             public class Element
             {
-                public int Offset; // NOTE: Offset within data structure, generally not important.
+                public Element() {}
+                public Element(VBFE_InputType type, VBFE_InputSlot slot = VBFE_InputSlot.VERTEX, int index = 0)
+                {
+                    VariableType = type;
+                    ShaderSlot = slot;
+                    VariantIndex = index;
+                }
+
+                public int Offset; // TODO: we should REALLY just calculate this at write-time as it's pointless data after read actions
+
                 public VBFE_InputType VariableType; //(int)
                 public VBFE_InputSlot ShaderSlot; //(int)
                 public int VariantIndex; // NOTE: Variant index such as UVs: (UV0, UV1, UV2...)
@@ -780,7 +789,7 @@ namespace CATHODE
             VECTOR2_INT16_DIV2048 = 0x0A,
             VECTOR4_INT16_DIVMAX = 0x0B,
             VECTOR4_BYTE_NORM = 0x0F,
-            AlienVertexInputType_u16 = 0x13,
+            INDICIES_U16 = 0x13,
         };
 
         public enum VBFE_InputSlot
@@ -820,15 +829,15 @@ namespace CATHODE
 
                     public class Submesh
                     {
-                        public Vector3 AABBMin;        // <---- When importing a new model, setting these all to zero seem to make it invisible??
-                        public Vector3 AABBMax;        // <-|
+                        public Vector3 AABBMin = new Vector3(-1,-1,-1);        // <---- When importing a new model, setting these all to zero seem to make it invisible??
+                        public Vector3 AABBMax = new Vector3(1,1,1);           // <-|
 
-                        public float LODMinDistance_;
-                        public float LODMaxDistance_;
+                        public float LODMinDistance_ = 0;
+                        public float LODMaxDistance_ = 10000;
 
                         public int MaterialLibraryIndex;
 
-                        public uint Unknown2_; // NOTE: Flags?
+                        public uint Unknown2_; // NOTE: Flags? - maybe we can calculate this when writing rather than storing it here
                                                // - 134239524 = not in pak??
                                                // - 134239233 = dynamic_mesh
                                                // - 134282240 = first entry for regular
@@ -836,14 +845,14 @@ namespace CATHODE
                                                // - 134239236 = first entry for LOD
                                                // - 134239248 = subsequent entries for LOD
 
-                        public int UnknownIndex; // NOTE: -1 means no index. Seems to be related to Next/Parent.
-                        public int CollisionIndex_; // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
+                        public int UnknownIndex = -1;    // NOTE: -1 means no index. Seems to be related to Next/Parent.
+                        public int CollisionIndex_ = -1; // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
 
                         public AlienVBF VertexFormat;
                         public AlienVBF VertexFormatLowDetail;
 
-                        public UInt16 ScaleFactor; //it seems like this is always 4, and all model vert positions are a div of 4??
-                        public Int16 HeadRelated_; // NOTE: Seems to be valid on some 'HEAD' models, otherwise -1. Maybe morphing related???
+                        public UInt16 ScaleFactor = 4; //it seems like this is always 4, and all model vert positions are a div of 4??
+                        public Int16 HeadRelated_ = -1; // NOTE: Seems to be valid on some 'HEAD' models, otherwise -1. Maybe morphing related???
 
                         public UInt16 VertexCount;
                         public UInt16 IndexCount;
