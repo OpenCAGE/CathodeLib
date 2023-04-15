@@ -179,7 +179,6 @@ namespace CATHODE
                         Entries.Add(cs2);
                     }
                     CS2.Component component = new CS2.Component() { UnkLv426Pt1 = unk1, UnkLv426Pt2 = unk2 };
-                    component.LODs.Add(new CS2.Component.LOD(meshNameList[binIndex]));
                     cs2.Components.Add(component);
 
                     //Read submesh content and add to appropriate model
@@ -207,7 +206,7 @@ namespace CATHODE
                             reader.BaseStream.Position = offsetData.Value[0];
                             submesh.content = reader.ReadBytes(offsetData.Value[1]);
 
-                            if (LODs.Contains(offsetData.Key))
+                            if (LODs.Contains(offsetData.Key) || lodIndex == -1)
                             {
                                 component.LODs.Add(new CS2.Component.LOD(meshNameList[offsetData.Key]));
                                 lodIndex++;
