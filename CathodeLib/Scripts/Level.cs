@@ -185,7 +185,7 @@ namespace CathodeLib
             /* UPDATE MATERIAL/MODEL INDEXES */
 
             //Get REDS links as actual objects
-            List<Models.CS2.LOD.Submesh> redsModels = new List<Models.CS2.LOD.Submesh>();
+            List<Models.CS2.Component.LOD.Submesh> redsModels = new List<Models.CS2.Component.LOD.Submesh>();
             List<Materials.Material> redsMaterials = new List<Materials.Material>();
             for (int i = 0; i < RenderableElements.Entries.Count; i++)
             {
@@ -196,9 +196,10 @@ namespace CathodeLib
             //Get model links as actual objects
             List<Materials.Material> modelMaterials = new List<Materials.Material>();
             for (int i = 0; i < Models.Entries.Count; i++)
-                for (int x = 0; x < Models.Entries[i].LODs.Count; x++)
-                    for (int z = 0; z < Models.Entries[i].LODs[x].Submeshes.Count; z++)
-                        modelMaterials.Add(Materials.GetAtWriteIndex(Models.Entries[i].LODs[x].Submeshes[z].MaterialLibraryIndex));
+                for (int p = 0; p < Models.Entries[i].Components.Count; p++)
+                    for (int x = 0; x < Models.Entries[i].Components[p].LODs.Count; x++)
+                        for (int z = 0; z < Models.Entries[i].Components[p].LODs[x].Submeshes.Count; z++)
+                            modelMaterials.Add(Materials.GetAtWriteIndex(Models.Entries[i].Components[p].LODs[x].Submeshes[z].MaterialLibraryIndex));
             Models.Save();
 
             //Get material links as actual objects
@@ -236,12 +237,15 @@ namespace CathodeLib
             int y = 0;
             for (int i = 0; i < Models.Entries.Count; i++)
             {
-                for (int x = 0; x < Models.Entries[i].LODs.Count; x++)
+                for (int p = 0; p < Models.Entries[i].Components.Count; p++)
                 {
-                    for (int z = 0; z < Models.Entries[i].LODs[x].Submeshes.Count; z++)
+                    for (int x = 0; x < Models.Entries[i].Components[p].LODs.Count; x++)
                     {
-                        Models.Entries[i].LODs[x].Submeshes[z].MaterialLibraryIndex = Materials.GetWriteIndex(modelMaterials[y]);
-                        y++;
+                        for (int z = 0; z < Models.Entries[i].Components[p].LODs[x].Submeshes.Count; z++)
+                        {
+                            Models.Entries[i].Components[p].LODs[x].Submeshes[z].MaterialLibraryIndex = Materials.GetWriteIndex(modelMaterials[y]);
+                            y++;
+                        }
                     }
                 }
             }
