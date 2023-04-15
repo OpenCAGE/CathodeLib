@@ -200,7 +200,7 @@ namespace CATHODE
                         }
                         reader.BaseStream.Position += 8;
 
-                        int lodIndex = 0;
+                        int lodIndex = component.LODs.Count - 1;
                         foreach (KeyValuePair<int, int[]> offsetData in entryOffsets)
                         {
                             CS2.Component.LOD.Submesh submesh = _writeList[offsetData.Key];
@@ -404,7 +404,7 @@ namespace CATHODE
                             for (int z = 0; z < Entries[i].Components[p].LODs[y].Submeshes.Count; z++)
                             {
                                 pak.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndex(Entries[i].Components[p].LODs[y].Submeshes[z])));
-                                pak.Write(BigEndianUtils.FlipEndian((Int32)(24 + (Entries[i].Components[p].LODs[y].Submeshes.Count * 16) + content.Count + 8)));
+                                pak.Write(BigEndianUtils.FlipEndian((Int32)(24 + (countOfAllSubmeshes * 16) + content.Count + 8)));
                                 pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].Components[p].LODs[y].Submeshes[z].content.Length));
                                 pak.Write(new byte[4]);
                                 content.AddRange(Entries[i].Components[p].LODs[y].Submeshes[z].content);
