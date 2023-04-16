@@ -418,14 +418,16 @@ namespace CATHODE
 
                 //Write model headers
                 pak.BaseStream.Position = 32;
+                int c = 0;
                 for (int i = 0; i < Entries.Count; i++)
                 {
                     for (int x = 0; x < Entries[i].Components.Count; x++)
                     {
                         pak.Write(new byte[8]);
-                        pak.Write(BigEndianUtils.FlipEndian((Int32)lengths[i]));
-                        pak.Write(BigEndianUtils.FlipEndian((Int32)lengths[i]));
-                        pak.Write(BigEndianUtils.FlipEndian((Int32)offsets[i]));
+                        pak.Write(BigEndianUtils.FlipEndian((Int32)lengths[c]));
+                        pak.Write(BigEndianUtils.FlipEndian((Int32)lengths[c]));
+                        pak.Write(BigEndianUtils.FlipEndian((Int32)offsets[c]));
+                        c++;
 
                         pak.Write(new byte[5]);
                         pak.Write(new byte[2] { 0x01, 0x01 });
