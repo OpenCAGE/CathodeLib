@@ -239,9 +239,9 @@ namespace CATHODE
                     {
                         for (int y = 0; y < Entries[i].Components[z].LODs[x].Submeshes.Count; y++)
                         {
-                            if (!vertexFormats.Contains(Entries[i].Components[z].LODs[x].Submeshes[y].VertexFormat))
+                            if (Entries[i].Components[z].LODs[x].Submeshes[y].VertexFormat != null && !vertexFormats.Contains(Entries[i].Components[z].LODs[x].Submeshes[y].VertexFormat))
                                 vertexFormats.Add(Entries[i].Components[z].LODs[x].Submeshes[y].VertexFormat);
-                            if (!vertexFormats.Contains(Entries[i].Components[z].LODs[x].Submeshes[y].VertexFormatLowDetail))
+                            if (Entries[i].Components[z].LODs[x].Submeshes[y].VertexFormatLowDetail != null && !vertexFormats.Contains(Entries[i].Components[z].LODs[x].Submeshes[y].VertexFormatLowDetail))
                                 vertexFormats.Add(Entries[i].Components[z].LODs[x].Submeshes[y].VertexFormatLowDetail);
                         }
                     }
@@ -753,17 +753,17 @@ namespace CATHODE
          * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
         public CS2.Component.LOD.Submesh GetAtWriteIndex(int index)
         {
-            if (_writeList.Count <= index) return null;
+            if (_writeList.Count <= index || index < 0) return null;
             return _writeList[index];
         }
         #endregion
 
         #region STRUCTURES
-        public class AlienVBF
+        public class AlienVBF : IComparable<AlienVBF>
         {
             public List<List<Element>> Elements = new List<List<Element>>(); 
 
-            public class Element
+            public class Element : IComparable<Element>
             {
                 public Element() {}
                 public Element(VBFE_InputType type, VBFE_InputSlot slot = VBFE_InputSlot.VERTEX, int index = 0)
@@ -778,7 +778,69 @@ namespace CATHODE
                 public VBFE_InputType VariableType; //(int)
                 public VBFE_InputSlot ShaderSlot; //(int)
                 public int VariantIndex; // NOTE: Variant index such as UVs: (UV0, UV1, UV2...)
-            };
+
+                public int CompareTo(Element other)
+                {
+                    if (other == null) return 1;
+
+                    int result = VariableType.CompareTo(other.VariableType);
+                    if (result != 0) return result;
+
+                    result = ShaderSlot.CompareTo(other.ShaderSlot);
+                    if (result != 0) return result;
+
+                    return VariantIndex.CompareTo(other.VariantIndex);
+                }
+            }; 
+            
+            public override bool Equals(object obj)
+            {
+                if (!(obj is AlienVBF)) return false;
+                if ((AlienVBF)obj == null) return this == null;
+                if (this == null) return (AlienVBF)obj == null;
+                return ((AlienVBF)obj).CompareTo(this) == 0;
+            }
+            public static bool operator ==(AlienVBF x, AlienVBF y)
+            {
+                return x.Equals(y);
+            }
+            public static bool operator !=(AlienVBF x, AlienVBF y)
+            {
+                return !x.Equals(y);
+            }
+
+            public override int GetHashCode()
+            {
+                return 1573927372 + EqualityComparer<List<List<Element>>>.Default.GetHashCode(Elements);
+            }
+
+            public int CompareTo(AlienVBF other)
+            {
+                if (other == null) return 1;
+
+                int result = Elements.Count.CompareTo(other.Elements.Count);
+                if (result != 0) return result;
+
+                for (int i = 0; i < Elements.Count; i++)
+                {
+                    result = CompareElementLists(Elements[i], other.Elements[i]);
+                    if (result != 0) return result;
+                }
+                return 0;
+            }
+
+            private static int CompareElementLists(List<Element> list1, List<Element> list2)
+            {
+                int result = list1.Count.CompareTo(list2.Count);
+                if (result != 0) return result;
+
+                for (int i = 0; i < list1.Count; i++)
+                {
+                    result = list1[i].CompareTo(list2[i]);
+                    if (result != 0) return result;
+                }
+                return 0;
+            }
         }
 
         public enum VBFE_InputType
