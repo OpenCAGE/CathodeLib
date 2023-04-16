@@ -851,11 +851,11 @@ namespace CATHODE
                         public AlienVBF VertexFormat;
                         public AlienVBF VertexFormatLowDetail;
 
-                        public UInt16 ScaleFactor = 4; //it seems like this is always 4, and all model vert positions are a div of 4??
+                        public UInt16 ScaleFactor = 4; 
                         public Int16 HeadRelated_ = -1; // NOTE: Seems to be valid on some 'HEAD' models, otherwise -1. Maybe morphing related???
 
-                        public UInt16 VertexCount;
-                        public UInt16 IndexCount;
+                        public int VertexCount;
+                        public int IndexCount;
 
                         public List<int> boneIndices = new List<int>();
 

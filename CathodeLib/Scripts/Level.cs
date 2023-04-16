@@ -207,8 +207,8 @@ namespace CathodeLib
                     for (int x = 0; x < Models.Entries[i].Components[p].LODs.Count; x++)
                         for (int z = 0; z < Models.Entries[i].Components[p].LODs[x].Submeshes.Count; z++)
                             modelMaterials.Add(Materials.GetAtWriteIndex(Models.Entries[i].Components[p].LODs[x].Submeshes[z].MaterialLibraryIndex));
-            Models.Save();
             */
+            Models.Save();
 
             //Get material links as actual objects
             /*
