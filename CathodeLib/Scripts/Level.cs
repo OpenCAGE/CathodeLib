@@ -57,14 +57,14 @@ namespace CathodeLib
             string pathGlobal = pathDATA + "/ENV/GLOBAL/WORLD";
 
             /* GLOBAL */
-            ///GlobalTextures = new Textures(pathGlobal + "/GLOBAL_TEXTURES.ALL.PAK");
+            GlobalTextures = new Textures(pathGlobal + "/GLOBAL_TEXTURES.ALL.PAK");
             //TODO: We don't load GLOBAL_MODELS since it just contains vertex buffers. We should load this to learn about all the vertex formats tho!
 
             /* RENDERABLE */
             Models = new Models(path + "/RENDERABLE/LEVEL_MODELS.PAK");
-            ///Textures = new Textures(path + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK");
-            ///Materials = new Materials(path + "/RENDERABLE/LEVEL_MODELS.MTL");
-            ///Shaders = new Shaders(path + "/RENDERABLE/LEVEL_SHADERS_DX11.PAK");
+            Textures = new Textures(path + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK");
+            Materials = new Materials(path + "/RENDERABLE/LEVEL_MODELS.MTL");
+            Shaders = new Shaders(path + "/RENDERABLE/LEVEL_SHADERS_DX11.PAK");
             //Shaders = new ShadersPAK(path + "/RENDERABLE/LEVEL_SHADERS_DX11.PAK");
             //ShadersIDX = new IDXRemap(path + "/RENDERABLE/LEVEL_SHADERS_DX11_REMAP.PAK");
 
@@ -77,12 +77,12 @@ namespace CathodeLib
             //Commands = new Commands(path + "/WORLD/COMMANDS.PAK");
             //Resources = new Resources(path + "/WORLD/RESOURCES.BIN");
             //PhysicsMaps = new PhysicsMaps(path + "/WORLD/PHYSICS.MAP");
-            ///EnvironmentMaps = new EnvironmentMaps(path + "/WORLD/ENVIRONMENTMAP.BIN");
+            EnvironmentMaps = new EnvironmentMaps(path + "/WORLD/ENVIRONMENTMAP.BIN");
             //CollisionMaps = new CollisionMaps(path + "/WORLD/COLLISION.MAP");
             //EnvironmentAnimations = new EnvironmentAnimations(path + "/WORLD/ENVIRONMENT_ANIMATION.DAT");
             //MaterialMappings = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK");
             //PathBarrierResources = new PathBarrierResources(path + "/WORLD/PATH_BARRIER_RESOURCES");
-            ///Lights = new Lights(path + "/WORLD/LIGHTS.BIN");
+            Lights = new Lights(path + "/WORLD/LIGHTS.BIN");
             //Collisions = new Collisions(path + "/WORLD/COLLISION.BIN");
             //SoundNodeNetwork = new SoundNodeNetwork(path + "/WORLD/SNDNODENETWORK.DAT");
             //SoundBankData = new SoundBankData(path + "/WORLD/SOUNDBANKDATA.DAT");
@@ -153,7 +153,6 @@ namespace CathodeLib
             /* UPDATE MOVER INDEXES */
 
             //Get links to mover entries as actual objects
-            /*
             List<Movers.MOVER_DESCRIPTOR> lightMovers = new List<Movers.MOVER_DESCRIPTOR>();
             for (int i = 0; i < Lights.Entries.Count; i++)
                 lightMovers.Add(Movers.GetAtWriteIndex(Lights.Entries[i].MoverIndex));
@@ -161,10 +160,8 @@ namespace CathodeLib
             for (int i = 0; i < EnvironmentMaps.Entries.Count; i++)
                 envMapMovers.Add(Movers.GetAtWriteIndex(EnvironmentMaps.Entries[i].MoverIndex));
             Movers.Save();
-            */
 
             //Update mover indexes for light refs
-            /*
             List<Lights.Light> lights = new List<Lights.Light>();
             for (int i = 0; i < Lights.Entries.Count; i++)
             {
@@ -173,10 +170,8 @@ namespace CathodeLib
             }
             Lights.Entries = lights;
             Lights.Save();
-            */
 
             //Update mover indexes for envmap refs
-            /*
             List<EnvironmentMaps.Mapping> envMaps = new List<EnvironmentMaps.Mapping>();
             for (int i = 0; i < EnvironmentMaps.Entries.Count; i++)
             {
@@ -185,33 +180,29 @@ namespace CathodeLib
             }
             EnvironmentMaps.Entries = envMaps;
             EnvironmentMaps.Save();
-            */
 
 
             /* UPDATE MATERIAL/MODEL INDEXES */
 
             //Get REDS links as actual objects
             List<Models.CS2.Component.LOD.Submesh> redsModels = new List<Models.CS2.Component.LOD.Submesh>();
-            //List<Materials.Material> redsMaterials = new List<Materials.Material>();
+            List<Materials.Material> redsMaterials = new List<Materials.Material>();
             for (int i = 0; i < RenderableElements.Entries.Count; i++)
             {
                 redsModels.Add(Models.GetAtWriteIndex(RenderableElements.Entries[i].ModelIndex));
-                //redsMaterials.Add(Materials.GetAtWriteIndex(RenderableElements.Entries[i].MaterialIndex));
+                redsMaterials.Add(Materials.GetAtWriteIndex(RenderableElements.Entries[i].MaterialIndex));
             }
 
             //Get model links as actual objects
-            /*
             List<Materials.Material> modelMaterials = new List<Materials.Material>();
             for (int i = 0; i < Models.Entries.Count; i++)
                 for (int p = 0; p < Models.Entries[i].Components.Count; p++)
                     for (int x = 0; x < Models.Entries[i].Components[p].LODs.Count; x++)
                         for (int z = 0; z < Models.Entries[i].Components[p].LODs[x].Submeshes.Count; z++)
                             modelMaterials.Add(Materials.GetAtWriteIndex(Models.Entries[i].Components[p].LODs[x].Submeshes[z].MaterialLibraryIndex));
-            */
             Models.Save();
 
             //Get material links as actual objects
-            /*
             List<Textures.TEX4> materialTextures = new List<Textures.TEX4>();
             for (int i = 0; i < Materials.Entries.Count; i++)
             {
@@ -228,8 +219,7 @@ namespace CathodeLib
                     }
                 }
             }
-            Materials.Save();
-            */
+            //Materials.Save();
 
             //Update the REDS links
             for (int i = 0; i < RenderableElements.Entries.Count; i++)
@@ -238,13 +228,12 @@ namespace CathodeLib
                     RenderableElements.Entries[i].ModelIndex = Models.GetWriteIndex(redsModels[i]);
                 RenderableElements.Entries[i].ModelLODIndex = -1;
                 RenderableElements.Entries[i].ModelLODPrimitiveCount = 0;
-                //if (RenderableElements.Entries[i].MaterialIndex != -1)
-                 //   RenderableElements.Entries[i].MaterialIndex = Materials.GetWriteIndex(redsMaterials[i]);
+                if (RenderableElements.Entries[i].MaterialIndex != -1)
+                    RenderableElements.Entries[i].MaterialIndex = Materials.GetWriteIndex(redsMaterials[i]);
             }
             RenderableElements.Save();
 
             //Update the model links
-            /*
             int y = 0;
             for (int i = 0; i < Models.Entries.Count; i++)
             {
@@ -261,10 +250,8 @@ namespace CathodeLib
                 }
             }
             Models.Save();
-            */
 
             //Update the material links
-            /*
             y = 0;
             for (int i = 0; i < Materials.Entries.Count; i++)
             {
@@ -282,8 +269,7 @@ namespace CathodeLib
                     y++;
                 }
             }
-            Materials.Save();
-            */
+            //Materials.Save();
         }
     }
 }
