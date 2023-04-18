@@ -740,11 +740,13 @@ namespace CATHODE
          * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
         public int GetWriteIndex(CS2.Component.LOD.Submesh submesh)
         {
+            if (submesh == null) return -1;
             if (!_writeList.Contains(submesh)) return -1;
             return _writeList.IndexOf(submesh);
         }
         public int GetWriteIndex(CS2.Component mesh)
         {
+            if (mesh == null) return -1;
             if (!_writeList.Contains(mesh.LODs[0].Submeshes[0])) return -1;
             return _writeList.IndexOf(mesh.LODs[0].Submeshes[0]);
         }
