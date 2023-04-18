@@ -917,7 +917,7 @@ namespace CATHODE
                         public AlienVBF VertexFormat;
                         public AlienVBF VertexFormatLowDetail;
 
-                        public UInt16 ScaleFactor = 4; 
+                        public UInt16 ScaleFactor = 1; 
                         public Int16 HeadRelated_ = -1; // NOTE: Seems to be valid on some 'HEAD' models, otherwise -1. Maybe morphing related???
 
                         public int VertexCount;
