@@ -226,8 +226,6 @@ namespace CathodeLib
             {
                 if (RenderableElements.Entries[i].ModelIndex != -1)
                     RenderableElements.Entries[i].ModelIndex = Models.GetWriteIndex(redsModels[i]);
-                RenderableElements.Entries[i].ModelLODIndex = -1;
-                RenderableElements.Entries[i].ModelLODPrimitiveCount = 0;
                 if (RenderableElements.Entries[i].MaterialIndex != -1)
                     RenderableElements.Entries[i].MaterialIndex = Materials.GetWriteIndex(redsMaterials[i]);
             }

@@ -25,8 +25,8 @@ namespace CATHODE
                     reader.BaseStream.Position += 5;
                     element.MaterialIndex = reader.ReadInt32();
                     reader.BaseStream.Position += 1;
-                    element.ModelLODIndex = reader.ReadInt32();
-                    element.ModelLODPrimitiveCount = reader.ReadByte(); //TODO: convert to int for ease of use?
+                    element.LODIndex = reader.ReadInt32();
+                    element.LODCount = reader.ReadByte(); //TODO: convert to int for ease of use?
                     Entries.Add(element);
                 }
             }
@@ -46,8 +46,8 @@ namespace CATHODE
                     writer.Write(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00 });
                     writer.Write(Entries[i].MaterialIndex);
                     writer.Write((byte)0x00);
-                    writer.Write(Entries[i].ModelLODIndex);
-                    writer.Write((byte)Entries[i].ModelLODPrimitiveCount);
+                    writer.Write(Entries[i].LODIndex);
+                    writer.Write((byte)Entries[i].LODCount);
                 }
             }
             return true;
@@ -60,8 +60,8 @@ namespace CATHODE
             public int ModelIndex;
             public int MaterialIndex;
 
-            public int ModelLODIndex = -1; // NOTE: Not sure, looks like it.
-            public byte ModelLODPrimitiveCount = 0; // NOTE: Sure it is primitive count, not sure about the ModelLOD part.
+            public int LODIndex = -1; //This is the index of the REDS entry that we use for our LOD model/material
+            public byte LODCount = 0; //This is the number of entries sequentially from the LODIndex to use for the LOD from REDS
         }
         #endregion
     }
