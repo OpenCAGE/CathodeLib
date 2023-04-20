@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -50,6 +51,469 @@ namespace CATHODE.LEGACY
 
                 Utilities.Align(Stream, 16);
             }
+        }
+
+        private MaterialPropertyIndex GetMaterialPropertyIndexes(Materials.Material InMaterial)
+        {
+            ShaderEntry Shader = Shaders[InMaterial.UberShaderIndex];
+
+            MaterialPropertyIndex toReturn = new MaterialPropertyIndex();
+
+            switch ((ShaderCategory)Shader.Header2.ShaderCategory)
+            {
+                case ShaderCategory.CA_ENVIRONMENT:
+                    toReturn.Unknown3_Index = 3;
+                    toReturn.OpacityUVMultiplierIndex = 5;
+                    toReturn.DiffuseUVMultiplierIndex = 6;
+                    toReturn.DiffuseIndex = 7;
+                    toReturn.SecondaryDiffuseUVMultiplierIndex = 8;
+                    toReturn.SecondaryDiffuseIndex = 9;
+                    toReturn.NormalUVMultiplierIndex = 10;
+                    toReturn.NormalMapStrength0Index = 11;
+                    toReturn.SecondaryNormalUVMultiplierIndex = 12;
+                    toReturn.NormalMapStrength1Index = 13;
+                    toReturn.SpecularFactorIndex = 14;
+                    toReturn.SpecularUVMultiplierIndex = 15;
+                    toReturn.MetallicFactorIndex = 16;
+                    toReturn.SecondarySpecularFactorIndex = 17;
+                    toReturn.SecondarySpecularUVMultiplierIndex = 18;
+                    toReturn.SecondaryMetallicFactorIndex = 19;
+                    toReturn.EnvironmentMapStrength2Index = 24;
+                    toReturn.EnvironmentMapStrengthIndex = 25;
+                    toReturn.DirtDiffuseIndex = -1; // TODO: ...
+                    toReturn.OcclusionUVMultiplierIndex = 27;
+                    toReturn.OcclusionTintIndex = 28;
+                    toReturn.EmissiveFactorIndex = 29;
+                    toReturn.EmissiveIndex = 30;
+                    toReturn.ParallaxUVMultiplierIndex = 35;
+                    toReturn.ParallaxFactorIndex = 36;
+                    toReturn.ParallaxOffsetIndex = 37;
+                    toReturn.IsTransparentIndex = 38;
+                    toReturn.OpacityNoiseUVMultiplierIndex1 = 39;
+                    toReturn.OpacityNoiseAmplitudeIndex = 40;
+                    toReturn.DirtMapUVMultiplier0Index = 47;
+                    toReturn.DirtMapUVMultiplier1Index = 48;
+                    toReturn.DirtStrengthIndex = 49;
+                    break;
+
+                case ShaderCategory.CA_CHARACTER:
+                    toReturn.OpacityNoiseUVMultiplierIndex1 = 12;
+                    toReturn.DiffuseUVMultiplierIndex = 15;
+                    toReturn.DiffuseIndex = 16;
+                    toReturn.SecondaryDiffuseUVMultiplierIndex = 17;
+                    toReturn.SecondaryDiffuseIndex = 18;
+                    toReturn.NormalUVMultiplierIndex = 19;
+                    toReturn.SecondaryNormalUVMultiplierIndex = 21;
+                    toReturn.SpecularUVMultiplierIndex = 24;
+                    toReturn.SpecularFactorIndex = 25;
+                    break;
+
+                case ShaderCategory.CA_SKIN:
+                    toReturn.DiffuseUVMultiplierIndex = 4;
+                    toReturn.DiffuseIndex = 5;
+                    toReturn.NormalUVMultiplierIndex = 8;
+                    toReturn.NormalUVMultiplierOfMultiplierIndex = 10;
+                    toReturn.SecondaryNormalUVMultiplierIndex = 11;
+                    break;
+
+                case ShaderCategory.CA_HAIR:
+                    toReturn.DiffuseIndex = 2;
+                    break;
+
+                case ShaderCategory.CA_EYE:
+                    toReturn.DiffuseUVAdderIndex = 3;
+                    // TODO: These three determine the iris color. They map to rgb channels of the iris map.
+                    //  I am using the middle color for now for everything but we should not do that.
+                    //toReturn.ColorIndex = 7;
+                    toReturn.DiffuseIndex = 8;
+                    //toReturn.ColorIndex = 9;
+                    toReturn.DiffuseUVMultiplierIndex = 10;
+
+                    // TODO: This info is available in 'Shader->TextureEntries[CorrectIndex].TextureAddressMode'.
+                    toReturn.DiffuseSamplerIndex = 0;
+                    break;
+
+                case ShaderCategory.CA_DECAL:
+                    //toReturn.ColorIndex = 3;
+                    //Material->BaseColor = {};
+                    break;
+
+                case ShaderCategory.CA_FOGPLANE:
+                    //toReturn.DiffuseIndex = 8;
+                    //Material.BaseColor = { };
+                    break;
+
+                case ShaderCategory.CA_REFRACTION:
+                    toReturn.DiffuseUVMultiplierIndex = 3;
+                    break;
+
+                case ShaderCategory.CA_TERRAIN:
+                    toReturn.DiffuseIndex = 4;
+                    break;
+
+                case ShaderCategory.CA_LIGHTMAP_ENVIRONMENT:
+                    toReturn.DiffuseIndex = 12;
+                    break;
+
+                case ShaderCategory.CA_CAMERA_MAP:
+                    //DiffuseFallback = V4(1);
+                    break;
+
+                case ShaderCategory.CA_PLANET:
+                    //DiffuseFallback = V4(1);
+                    break;
+            }
+
+            return toReturn;
+        }
+
+        public ShaderMaterialMetadata GetMaterialMetadataFromShader(Materials.Material InMaterial, IDXRemap idx)
+        {
+            int RemappedIndex = idx.Datas[InMaterial.UberShaderIndex].Index;
+            ShaderEntry Shader = Shaders[RemappedIndex];
+            ShaderMaterialMetadata metadata = new ShaderMaterialMetadata();
+            metadata.shaderCategory = (ShaderCategory)Shader.Header2.ShaderCategory;
+            switch (metadata.shaderCategory)
+            {
+                case ShaderCategory.CA_PARTICLE:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIFFUSE_MAP });      //TODO: is it really?
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.COLOR_RAMP_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.FLOW_MAP });         //TODO: unsure
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.FLOW_TEXTURE_MAP }); //TODO: unsure
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    break;
+
+                case ShaderCategory.CA_RIBBON:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.COLOR_RAMP_MAP });
+                    break;
+
+                case ShaderCategory.CA_ENVIRONMENT:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.OPACITY });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SPECULAR_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_SPECULAR_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.ENVIRONMENT_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.OCCLUSION });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.FRESNEL_LUT });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.PARALLAX_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.OPACITY_NOISE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIRT_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.WETNESS_NOISE });
+                    break;
+
+                case ShaderCategory.CA_DECAL_ENVIRONMENT:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.PARALLAX_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.ALPHA_THRESHOLD });
+                    break;
+
+                case ShaderCategory.CA_CHARACTER:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIRT_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.OPACITY_NOISE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.OPACITY });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SPECULAR_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_SPECULAR_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.ENVIRONMENT_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.OCCLUSION });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.IRRADIANCE_MAP });
+                    break;
+
+                case ShaderCategory.CA_SKIN:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.CONVOLVED_DIFFUSE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.WRINKLE_MASK });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.WRINKLE_NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SPECULAR_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_SPECULAR_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.ENVIRONMENT_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.IRRADIANCE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIRT_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.OPACITY_NOISE_MAP });
+                    break;
+
+                case ShaderCategory.CA_HAIR:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.FLOW_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.IRRADIANCE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SPECULAR_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NORMAL_MAP });
+                    break;
+
+                case ShaderCategory.CA_EYE:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.CONVOLVED_DIFFUSE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIFFUSE_MAP });//IrisMap
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_DIFFUSE_MAP });//VeinsMap
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SCATTER_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.ENVIRONMENT_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.IRRADIANCE_MAP });
+                    break;
+
+                case ShaderCategory.CA_SKIN_OCCLUSION:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIFFUSE_MAP });
+                    break;
+
+                case ShaderCategory.CA_DECAL:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.EMISSIVE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SPECULAR_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.PARALLAX_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.BURN_THROUGH });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.LIQUIFY });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.ALPHA_THRESHOLD });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.LIQUIFY2 });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.ENVIRONMENT_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.COLOR_RAMP });
+                    break;
+
+                case ShaderCategory.CA_FOGPLANE:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_DIFFUSE_MAP });
+                    // TODO: Should be 'DiffuseMapStatic' - but I am not using that yet.  In order to keep the light cones
+                    //  visually appealing and not slabs of solid white, I am using normal diffuse for now.
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIFFUSE_MAP_STATIC });
+                    break;
+
+                case ShaderCategory.CA_REFRACTION:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.ALPHA_MASK });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.FLOW_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.ALPHA_THRESHOLD });
+                    break;
+
+                case ShaderCategory.CA_NONINTERACTIVE_WATER:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.ALPHA_MASK });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.FLOW_MAP });
+                    break;
+
+                case ShaderCategory.CA_LOW_LOD_CHARACTER:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SPECULAR_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.LOW_LOD_CHARACTER_MASK });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.IRRADIANCE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.ENVIRONMENT_MAP });
+                    break;
+
+                case ShaderCategory.CA_LIGHT_DECAL:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.EMISSIVE });
+                    break;
+
+                case ShaderCategory.CA_SPACESUIT_VISOR:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.ENVIRONMENT_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.MASKING_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.FACE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.UNSCALED_DIRT_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIRT_MAP });
+                    break;
+
+                case ShaderCategory.CA_PLANET:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIFFUSE_MAP });          // TODO: This is the AtmosphereMap.
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DETAIL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NORMAL_MAP });           // TODO: This is the AtmosphereNormalMap.
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_DIFFUSE_MAP });// TODO: This is the TerrainMap.
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_NORMAL_MAP }); // TODO: This is the TerrainNormalMap.
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.FLOW_MAP });
+                    break;
+
+                case ShaderCategory.CA_LIGHTMAP_ENVIRONMENT:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.LIGHT_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIRT_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.OPACITY_NOISE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.OPACITY });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SPECULAR_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_SPECULAR_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.ENVIRONMENT_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.OCCLUSION });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.PARALLAX_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    break;
+
+                case ShaderCategory.CA_TERRAIN:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_DIFFUSE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_NORMAL_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SPECULAR_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.SECONDARY_SPECULAR_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.NONE });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.OPACITY_NOISE_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.ENVIRONMENT_MAP });
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.LIGHT_MAP });
+                    break;
+
+                case ShaderCategory.CA_CAMERA_MAP:
+                    metadata.textures.Add(new MaterialTextureContext() { Type = ShaderSlot.DIFFUSE_MAP });
+                    break;
+
+                case ShaderCategory.CA_SHADOWCASTER:
+                    break;
+
+                case ShaderCategory.CA_DEFERRED:
+                    break;
+
+                case ShaderCategory.CA_DEBUG:
+                    break;
+
+                case ShaderCategory.CA_OCCLUSION_CULLING:
+                    break;
+
+                default:
+                    throw new Exception("Unhandled type!");
+            }
+
+            //if (Shader.Header.TextureLinkCount != metadata.textures.Count) throw new Exception("bruh");
+
+            for (int i = 0; i < Shader.Header.TextureLinkCount; ++i) 
+            {
+                int PairIndex = Shader.TextureLinks[i];
+                // NOTE: PairIndex == 255 means no index.
+                if (PairIndex < InMaterial.TextureReferences.Count)
+                {
+                    metadata.textures[i].TextureInfo = InMaterial.TextureReferences[PairIndex];
+                }
+            }
+
+            metadata.cstIndexes = GetMaterialPropertyIndexes(InMaterial);
+            return metadata;
+        }
+
+        public class ShaderMaterialMetadata
+        {
+            public ShaderCategory shaderCategory;
+            public MaterialPropertyIndex cstIndexes = new MaterialPropertyIndex();
+            public List<MaterialTextureContext> textures = new List<MaterialTextureContext>();
+        }
+
+        public class MaterialTextureContext
+        {
+            public ShaderSlot Type = ShaderSlot.NONE;
+            public Materials.Material.Texture TextureInfo = null;
+        }
+
+        public class MaterialPropertyIndex
+        {
+            public UInt16 DiffuseSamplerIndex = 1;
+            public int OpacityUVMultiplierIndex = -1;
+            public int DiffuseUVMultiplierIndex = -1;
+            public int DiffuseUVAdderIndex = -1;
+            public int SpecularFactorIndex = -1;
+            public int MetallicFactorIndex = -1;
+            public int SecondaryDiffuseUVMultiplierIndex = -1;
+            public int NormalUVMultiplierIndex = -1;
+            public int NormalUVMultiplierOfMultiplierIndex = -1;
+            public int NormalMapStrength0Index = -1;
+            public int NormalMapStrength1Index = -1;
+            public int SecondaryNormalUVMultiplierIndex = -1;
+            public int SpecularUVMultiplierIndex = -1;
+            public int SecondarySpecularUVMultiplierIndex = -1;
+            public int SecondarySpecularFactorIndex = -1;
+            public int SecondaryMetallicFactorIndex = -1;
+            public int DirtMapUVMultiplier0Index = -1;
+            public int DirtMapUVMultiplier1Index = -1;
+            public int DirtDiffuseIndex = -1;
+            public int DirtStrengthIndex = -1;
+            public int EmissiveFactorIndex = -1;
+            public int EmissiveIndex = -1;
+            public int EnvironmentMapStrengthIndex = -1;
+            public int OpacityNoiseUVMultiplierIndex1 = -1;
+            public int OpacityNoiseAmplitudeIndex = -1;
+            public int DiffuseIndex = -1;
+            public int SecondaryDiffuseIndex = -1;
+            public int OcclusionUVMultiplierIndex = -1;
+            public int OcclusionTintIndex = -1;
+            public int IsTransparentIndex = -1;
+            public int EnvironmentMapStrength2Index = -1;
+            public int Unknown3_Index = -1;
+            public int ParallaxUVMultiplierIndex = -1;
+            public int ParallaxFactorIndex = -1;
+            public int ParallaxOffsetIndex = -1;
+        }
+
+        public enum ShaderSlot
+        {
+            NONE = -1,
+            DIFFUSE_MAP,
+            COLOR_RAMP_MAP,
+            SECONDARY_DIFFUSE_MAP,
+            DIFFUSE_MAP_STATIC,
+            OPACITY,
+            NORMAL_MAP,
+            SECONDARY_NORMAL_MAP,
+            SPECULAR_MAP,
+            SECONDARY_SPECULAR_MAP,
+            ENVIRONMENT_MAP,
+            OCCLUSION,
+            FRESNEL_LUT,
+            PARALLAX_MAP,
+            OPACITY_NOISE_MAP,
+            DIRT_MAP,
+            WETNESS_NOISE,
+            ALPHA_THRESHOLD,
+            IRRADIANCE_MAP,
+            CONVOLVED_DIFFUSE,
+            WRINKLE_MASK,
+            WRINKLE_NORMAL_MAP,
+            SCATTER_MAP,
+            EMISSIVE,
+            BURN_THROUGH,
+            LIQUIFY,
+            LIQUIFY2,
+            COLOR_RAMP,
+            FLOW_MAP,
+            FLOW_TEXTURE_MAP,
+            ALPHA_MASK,
+            LOW_LOD_CHARACTER_MASK,
+            UNSCALED_DIRT_MAP,
+            FACE_MAP,
+            MASKING_MAP,
+            ATMOSPHERE_MAP,
+            DETAIL_MAP,
+            LIGHT_MAP
         }
 
         public enum ShaderCategory
