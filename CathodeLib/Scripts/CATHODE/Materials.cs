@@ -39,7 +39,7 @@ namespace CATHODE
                 for (int x = 0; x < 5; x++) cstOffsets.Add(reader.ReadInt32());
                 using (BinaryReader readerCST = new BinaryReader(File.OpenRead(_filepathCST)))
                 {
-                    cstOffsets.Add((int)readerCST.BaseStream.Length - 4);
+                    cstOffsets.Add((int)readerCST.BaseStream.Length/* - 4*/);
                     //readerCST.BaseStream.Position = 4;
                     for (int x = 0; x < cstOffsets.Count - 1; x++)
                         _cstData.Add(readerCST.ReadBytes(cstOffsets[x+1] - cstOffsets[x]));
@@ -98,7 +98,7 @@ namespace CATHODE
             using (BinaryWriter writerCST = new BinaryWriter(File.OpenWrite(_filepathCST)))
             {
                 writerCST.BaseStream.SetLength(0);
-                writerCST.Write(new byte[4] { 0x0B, 0xD7, 0x23, 0x3C });
+                //writerCST.Write(new byte[4] { 0x0B, 0xD7, 0x23, 0x3C });
                 for (int i = 0; i < _cstData.Count; i++)
                     writerCST.Write(_cstData[i]);
             }

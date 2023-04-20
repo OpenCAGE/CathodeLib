@@ -219,7 +219,9 @@ namespace CathodeLib
                     }
                 }
             }
-            //Materials.Save();
+            Materials.Save();
+            Textures.Save();
+            GlobalTextures.Save();
 
             //Update the REDS links
             for (int i = 0; i < RenderableElements.Entries.Count; i++)
@@ -267,7 +269,7 @@ namespace CathodeLib
                     y++;
                 }
             }
-            //Materials.Save();
+            Materials.Save();
         }
     }
 }
