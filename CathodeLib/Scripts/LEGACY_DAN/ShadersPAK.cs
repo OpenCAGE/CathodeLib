@@ -615,7 +615,7 @@ namespace CATHODE.LEGACY
             public int GeometryShader;
         };
 
-        public struct ShaderEntry
+        public class ShaderEntry
         {
             public int Index;
             public alien_shader_pak_shader_header Header;
