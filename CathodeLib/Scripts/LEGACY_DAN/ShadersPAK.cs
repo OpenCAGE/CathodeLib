@@ -403,7 +403,8 @@ namespace CATHODE.LEGACY
                     break;
 
                 default:
-                    throw new Exception("Unhandled type!");
+                    Console.WriteLine("Unhandled shader category: " + metadata.shaderCategory);
+                    break;
             }
 
             //if (Shader.Header.TextureLinkCount != metadata.textures.Count) throw new Exception("bruh");
