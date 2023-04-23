@@ -73,7 +73,8 @@ namespace CATHODE
                     for (int x = 0; x < 5; x++)
                     {
                         int cstCount = reader.ReadByte();
-                        material.ConstantBuffers.Add(new Material.ConstantBuffer() { ShaderIndex = x, CstIndex = cstIndexes[x], CstCount = cstCount });
+                        //TODO: just read the CST data into the material
+                        material.ConstantBuffers.Add(new Material.ConstantBuffer() { Offset = cstIndexes[x], Length = cstCount });
                     }
                     reader.BaseStream.Position += 7;
                     material.UnknownValue0 = reader.ReadInt32();
@@ -151,15 +152,13 @@ namespace CATHODE
                     if (Entries[i].ConstantBuffers.Count > 5) throw new Exception("Too many constant buffer definitions!");
                     for (int x = 0; x < 5; x++)
                     {
-                        Material.ConstantBuffer cst = Entries[i].ConstantBuffers.FirstOrDefault(o => o.ShaderIndex == x);
-                        if (cst == null) writer.Write(0);
-                        else writer.Write(cst.CstIndex);
+                        if (Entries[i].ConstantBuffers.Count <= x) writer.Write(0);
+                        else writer.Write(Entries[i].ConstantBuffers[x].Offset);
                     }
                     for (int x = 0; x < 5; x++)
                     {
-                        Material.ConstantBuffer cst = Entries[i].ConstantBuffers.FirstOrDefault(o => o.ShaderIndex == x);
-                        if (cst == null) writer.Write((byte)0);
-                        else writer.Write((byte)cst.CstCount);
+                        if (Entries[i].ConstantBuffers.Count <= x) writer.Write(0);
+                        else writer.Write((byte)Entries[i].ConstantBuffers[x].Length);
                     }
                     writer.Write(new byte[7]);
                     writer.Write(Entries[i].UnknownValue0);
@@ -209,7 +208,7 @@ namespace CATHODE
             public string Name;
 
             public List<Texture> TextureReferences = new List<Texture>(); //Max of 12
-            public List<ConstantBuffer> ConstantBuffers = new List<ConstantBuffer>(); //Max of 5
+            public List<ConstantBuffer> ConstantBuffers = new List<ConstantBuffer>(); //Should always be 5 (1 per CST block) - TODO: maybe just change this to 5 variables?
 
             public int UnknownValue0;
             public int UberShaderIndex;
@@ -225,11 +224,11 @@ namespace CATHODE
                 return "[" + Color + "] " + Name;
             }
 
+            //Offset and length within the CST file
             public class ConstantBuffer
             {
-                public int ShaderIndex; // Entry index in the material texture ref write list for shaders to access.
-                public int CstIndex;    // Entry index in the CST data array, cross ref'd by shader tables.
-                public int CstCount;   // Entry count in the CST data array from index - should match shader data
+                public int Offset = 0;
+                public int Length = 0;
             }
 
             public class Texture
