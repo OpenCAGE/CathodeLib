@@ -413,7 +413,7 @@ namespace CATHODE.LEGACY
             {
                 int PairIndex = Shader.TextureLinks[i];
                 // NOTE: PairIndex == 255 means no index.
-                if (PairIndex < InMaterial.TextureReferences.Count)
+                if (PairIndex < InMaterial.TextureReferences.Length)
                 {
                     metadata.textures[i].TextureInfo = InMaterial.TextureReferences[PairIndex];
                 }

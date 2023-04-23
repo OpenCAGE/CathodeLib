@@ -206,8 +206,9 @@ namespace CathodeLib
             List<Textures.TEX4> materialTextures = new List<Textures.TEX4>();
             for (int i = 0; i < Materials.Entries.Count; i++)
             {
-                for (int x = 0; x < Materials.Entries[i].TextureReferences.Count; x++)
+                for (int x = 0; x < Materials.Entries[i].TextureReferences.Length; x++)
                 {
+                    if (Materials.Entries[i].TextureReferences[x] == null) continue;
                     switch (Materials.Entries[i].TextureReferences[x].Source)
                     {
                         case Materials.Material.Texture.TextureSource.LEVEL:
@@ -255,8 +256,9 @@ namespace CathodeLib
             y = 0;
             for (int i = 0; i < Materials.Entries.Count; i++)
             {
-                for (int x = 0; x < Materials.Entries[i].TextureReferences.Count; x++)
+                for (int x = 0; x < Materials.Entries[i].TextureReferences.Length; x++)
                 {
+                    if (Materials.Entries[i].TextureReferences[x] == null) continue;
                     switch (Materials.Entries[i].TextureReferences[x].Source)
                     {
                         case Materials.Material.Texture.TextureSource.LEVEL:
