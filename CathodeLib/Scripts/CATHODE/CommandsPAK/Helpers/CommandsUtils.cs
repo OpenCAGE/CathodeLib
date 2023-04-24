@@ -13,6 +13,7 @@ namespace CATHODE.Scripting
         {
             SetupFunctionTypeLUT();
             SetupDataTypeLUT();
+            SetupObjectTypeLUT();
             SetupResourceEntryTypeLUT();
         }
 
@@ -77,9 +78,6 @@ namespace CATHODE.Scripting
             _dataTypeLUT.Add(ShortGuidUtils.Generate("ZonePtr"), DataType.ZONE_PTR);
             _dataTypeLUT.Add(ShortGuidUtils.Generate("ZoneLinkPtr"), DataType.ZONE_LINK_PTR);
             _dataTypeLUT.Add(ShortGuidUtils.Generate(""), DataType.NONE);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("Marker"), DataType.MARKER);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("Character"), DataType.CHARACTER);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("Camera"), DataType.CAMERA);
         }
         public static DataType GetDataType(byte[] tag)
         {
@@ -98,6 +96,38 @@ namespace CATHODE.Scripting
         public static bool DataTypeExists(ShortGuid tag)
         {
             return _dataTypeLUT.ContainsKey(tag);
+        }
+        #endregion
+
+        #region OBJECT_TYPE_UTILS
+        /* Object Types */
+        private static Dictionary<ShortGuid, ObjectType> _objectTypeLUT = new Dictionary<ShortGuid, ObjectType>();
+        private static void SetupObjectTypeLUT()
+        {
+            if (_objectTypeLUT.Count != 0) return;
+
+            _objectTypeLUT.Add(ShortGuidUtils.Generate(""), ObjectType.ENTITY);
+            _objectTypeLUT.Add(ShortGuidUtils.Generate("Marker"), ObjectType.MARKER);
+            _objectTypeLUT.Add(ShortGuidUtils.Generate("Character"), ObjectType.CHARACTER);
+            _objectTypeLUT.Add(ShortGuidUtils.Generate("Camera"), ObjectType.CAMERA);
+        }
+        public static ObjectType GetObjectType(byte[] tag)
+        {
+            return GetObjectType(new ShortGuid(tag));
+        }
+        public static ObjectType GetObjectType(ShortGuid tag)
+        {
+            SetupObjectTypeLUT();
+            return _objectTypeLUT[tag];
+        }
+        public static ShortGuid GetObjectTypeGUID(ObjectType type)
+        {
+            SetupObjectTypeLUT();
+            return _objectTypeLUT.FirstOrDefault(x => x.Value == type).Key;
+        }
+        public static bool DataObjectExists(ShortGuid tag)
+        {
+            return _objectTypeLUT.ContainsKey(tag);
         }
         #endregion
 
@@ -219,7 +249,7 @@ namespace CATHODE.Scripting
             //Clear overrides
             List<OverrideEntity> overridePurged = new List<OverrideEntity>();
             for (int i = 0; i < composite.overrides.Count; i++)
-                if (ResolveHierarchy(commands, composite, composite.overrides[i].hierarchy, out Composite flowTemp, out string hierarchy) != null)
+                if (ResolveHierarchy(commands, composite, composite.overrides[i].connectedEntity.hierarchy, out Composite flowTemp, out string hierarchy) != null)
                     overridePurged.Add(composite.overrides[i]);
             originalOverrideCount += composite.overrides.Count;
             newOverrideCount += overridePurged.Count;
@@ -228,7 +258,7 @@ namespace CATHODE.Scripting
             //Clear proxies
             List<ProxyEntity> proxyPurged = new List<ProxyEntity>();
             for (int i = 0; i < composite.proxies.Count; i++)
-                if (ResolveHierarchy(commands, composite, composite.proxies[i].hierarchy, out Composite flowTemp, out string hierarchy) != null)
+                if (ResolveHierarchy(commands, composite, composite.proxies[i].connectedEntity.hierarchy, out Composite flowTemp, out string hierarchy) != null)
                     proxyPurged.Add(composite.proxies[i]);
             originalProxyCount += composite.proxies.Count;
             newProxyCount += proxyPurged.Count;
@@ -244,7 +274,7 @@ namespace CATHODE.Scripting
                         TriggerSequence trig = (TriggerSequence)composite.functions[i];
                         List<TriggerSequence.Entity> trigSeq = new List<TriggerSequence.Entity>();
                         for (int x = 0; x < trig.entities.Count; x++)
-                            if (ResolveHierarchy(commands, composite, trig.entities[x].hierarchy, out Composite flowTemp, out string hierarchy) != null)
+                            if (ResolveHierarchy(commands, composite, trig.entities[x].connectedEntity.hierarchy, out Composite flowTemp, out string hierarchy) != null)
                                 trigSeq.Add(trig.entities[x]);
                         originalTriggerCount += trig.entities.Count;
                         newTriggerCount += trigSeq.Count;
@@ -252,13 +282,18 @@ namespace CATHODE.Scripting
                         break;
                     case "CAGEAnimation":
                         CAGEAnimation anim = (CAGEAnimation)composite.functions[i];
-                        List<CAGEAnimation.Header> headers = new List<CAGEAnimation.Header>();
-                        for (int x = 0; x < anim.keyframeHeaders.Count; x++)
-                            if (ResolveHierarchy(commands, composite, anim.keyframeHeaders[x].connectedEntity, out Composite flowTemp, out string hierarchy) != null)
-                                headers.Add(anim.keyframeHeaders[x]);
-                        originalAnimCount += anim.keyframeHeaders.Count;
+                        List<CAGEAnimation.Connection> headers = new List<CAGEAnimation.Connection>();
+                        for (int x = 0; x < anim.connections.Count; x++)
+                        {
+                            List<CAGEAnimation.Animation> anim_target = anim.animations.FindAll(o => o.shortGUID == anim.connections[x].keyframeID);
+                            List<CAGEAnimation.Event> event_target = anim.events.FindAll(o => o.shortGUID == anim.connections[x].keyframeID);
+                            if (!(anim_target.Count == 0 && event_target.Count == 0) &&
+                                ResolveHierarchy(commands, composite, anim.connections[x].connectedEntity.hierarchy, out Composite flowTemp, out string hierarchy) != null)
+                                headers.Add(anim.connections[x]);
+                        }
+                        originalAnimCount += anim.connections.Count;
                         newAnimCount += headers.Count;
-                        anim.keyframeHeaders = headers;
+                        anim.connections = headers;
                         break;
                 }
             }
@@ -291,8 +326,8 @@ namespace CATHODE.Scripting
                 "\n - " + (originalProxyCount - newProxyCount) + " proxies (of " + originalProxyCount + ")" +
                 "\n - " + (originalOverrideCount - newOverrideCount) + " overrides (of " + originalOverrideCount + ")" +
                 "\n - " + (originalTriggerCount - newTriggerCount) + " triggers (of " + originalTriggerCount + ")" +
-                "\n - " + (originalAnimCount - newAnimCount) + " anims (of " + originalAnimCount + ")" +
-                "\n - " + (originalLinkCount - newLinkCount) + " links (of " + originalLinkCount + ")");
+                "\n - " + (originalAnimCount - newAnimCount) + " anim connections (of " + originalAnimCount + ")" +
+                "\n - " + (originalLinkCount - newLinkCount) + " entity links (of " + originalLinkCount + ")");
         }
         #endregion
     }

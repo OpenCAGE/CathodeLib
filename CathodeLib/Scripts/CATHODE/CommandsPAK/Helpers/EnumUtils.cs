@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using CATHODE;
 using CATHODE.Scripting;
+using CathodeLib;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #endif
@@ -38,13 +39,16 @@ namespace CATHODE.Scripting
         {
             List<EnumDescriptor> toReturn = new List<EnumDescriptor>();
             BinaryReader reader = new BinaryReader(new MemoryStream(db_content));
-            while (reader.BaseStream.Position < reader.BaseStream.Length)
+            int count = reader.ReadInt32();
+            for (int i = 0; i < count; i++)
             {
                 EnumDescriptor thisDesc = new EnumDescriptor();
                 thisDesc.ID = new ShortGuid(reader.ReadBytes(4));
                 thisDesc.Name = reader.ReadString();
                 int entryCount = reader.ReadInt32();
-                for (int i = 0; i < entryCount; i++) thisDesc.Entries.Add(reader.ReadString());
+                for (int x = 0; x < entryCount; x++) 
+                    thisDesc.Entries.Add(new EnumDescriptor.Entry() { Name = reader.ReadString(), Index = reader.ReadInt32() });
+                Console.WriteLine(thisDesc.Name);
                 toReturn.Add(thisDesc);
             }
             reader.Close();
@@ -54,8 +58,14 @@ namespace CATHODE.Scripting
         public class EnumDescriptor
         {
             public string Name;
-            public List<string> Entries = new List<string>();
+            public List<Entry> Entries = new List<Entry>();
             public ShortGuid ID;
+
+            public class Entry
+            {
+                public string Name;
+                public int Index;
+            }
         }
     }
 }

@@ -100,7 +100,7 @@ namespace CATHODE
                     UInt32 unk4 = BigEndianUtils.ReadUInt32(pak);
 
                     //Find the entry
-                    TEX4_Part tex = (isHighRes) ? Entries[textureIndex].tex_HighRes : Entries[textureIndex].tex_LowRes;
+                    TEX4.Part tex = (isHighRes) ? Entries[textureIndex].tex_HighRes : Entries[textureIndex].tex_LowRes;
 
                     //Write out the unknown info
                     tex.unk1 = unk1;
@@ -172,7 +172,7 @@ namespace CATHODE
                 {
                     for (int i = 0; i < Entries.Count; i++)
                     {
-                        TEX4_Part tex = (x == 0) ? Entries[i].tex_LowRes : Entries[i].tex_HighRes;
+                        TEX4.Part tex = (x == 0) ? Entries[i].tex_LowRes : Entries[i].tex_HighRes;
                         if (tex.Content == null) continue;
                         writeCount++;
                     }
@@ -187,7 +187,7 @@ namespace CATHODE
                 {
                     for (int i = 0; i < Entries.Count; i++)
                     {
-                        TEX4_Part tex = (x == 0) ? Entries[i].tex_LowRes : Entries[i].tex_HighRes;
+                        TEX4.Part tex = (x == 0) ? Entries[i].tex_LowRes : Entries[i].tex_HighRes;
                         offsets.Add((int)pak.BaseStream.Position - contentOffset);
                         if (tex.Content != null)
                         {
@@ -203,7 +203,7 @@ namespace CATHODE
                 {
                     for (int i = 0; i < Entries.Count; i++)
                     {
-                        TEX4_Part tex = (x == 0) ? Entries[i].tex_LowRes : Entries[i].tex_HighRes;
+                        TEX4.Part tex = (x == 0) ? Entries[i].tex_LowRes : Entries[i].tex_HighRes;
                         if (tex.Content != null)
                         {
                             pak.Write(new byte[8]);
@@ -264,25 +264,25 @@ namespace CATHODE
             public AlienTextureType Type;
             public AlienUnknownTextureThing UnknownTexThing;
 
-            public TEX4_Part tex_LowRes = new TEX4_Part();
-            public TEX4_Part tex_HighRes = new TEX4_Part();
-        }
+            public Part tex_LowRes = new Part();
+            public Part tex_HighRes = new Part();
 
-        public class TEX4_Part
-        {
-            public Int16 Width = 0;
-            public Int16 Height = 0;
+            public class Part
+            {
+                public Int16 Width = 0;
+                public Int16 Height = 0;
 
-            public Int16 Depth = 0;
-            public Int16 MipLevels = 0;
+                public Int16 Depth = 0;
+                public Int16 MipLevels = 0;
 
-            public byte[] Content = null;
+                public byte[] Content = null;
 
-            //Saving these so we can re-write without issue (TODO: figure them out)
-            public UInt32 unk1 = 0;
-            public UInt16 unk2 = 0;
-            public UInt32 unk3 = 0;
-            public UInt32 unk4 = 0;
+                //Saving these so we can re-write without issue (TODO: figure them out)
+                public UInt32 unk1 = 0;
+                public UInt16 unk2 = 0;
+                public UInt32 unk3 = 0;
+                public UInt32 unk4 = 0;
+            }
         }
 
         public enum TextureFormat : int

@@ -4,7 +4,9 @@ using CATHODE.LEGACY;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
+using System.Xml;
 
 namespace CathodeLib
 {
@@ -38,6 +40,8 @@ namespace CathodeLib
         public SoundFlashModels SoundFlashModels;
         public SoundLoadZones SoundLoadZones;
 
+        public Dictionary<string, Dictionary<string, Strings>> Strings;
+
         public class State
         {
             public int Index;
@@ -48,8 +52,11 @@ namespace CathodeLib
         /* Load a level in the game's "ENV/PRODUCTION" folder */
         public Level(string path)
         {
+            string pathDATA = path.Replace('\\', '/').Split(new string[] { "/DATA/ENV/PRODUCTION" }, StringSplitOptions.None)[0] + "/DATA";
+            string levelName = Directory.GetParent(path).Name;
+            string pathGlobal = pathDATA + "/ENV/GLOBAL/WORLD";
+
             /* GLOBAL */
-            string pathGlobal = path.Split(new string[] { "PRODUCTION" }, StringSplitOptions.None)[0] + "GLOBAL/WORLD";
             GlobalTextures = new Textures(pathGlobal + "/GLOBAL_TEXTURES.ALL.PAK");
             //TODO: We don't load GLOBAL_MODELS since it just contains vertex buffers. We should load this to learn about all the vertex formats tho!
 
@@ -110,6 +117,34 @@ namespace CathodeLib
                 //  - SPOTTING_POSITIONS
                 //  - TRAVERSAL
             }
+
+            /* TEXT */
+            XmlNodeList textDBsGlobal = new BML(pathDATA + "/LEVEL_TEXT_DATABASES.BML").Content.SelectNodes("//level_text_databases/level");
+            List<string> globalDBs = new List<string>();
+            for (int i = 0; i < textDBsGlobal.Count; i++)
+                if (textDBsGlobal[i].Attributes["name"].Value.ToUpper() == levelName.ToUpper() || textDBsGlobal[i].Attributes["name"].Value == "globals")
+                    for (int x = 0; x < textDBsGlobal[i].ChildNodes.Count; x++)
+                        globalDBs.Add(textDBsGlobal[i].ChildNodes[x].Attributes["name"].Value);
+            List<string> textList = Directory.GetFiles(pathDATA + "/TEXT/", "*.TXT", SearchOption.AllDirectories).ToList<string>();
+            List<string> levelDBs = new List<string>();
+            if (File.Exists(path + "/TEXT/TEXT_DB_LIST.TXT"))
+            {
+                string[] textDBsLevel = File.ReadAllLines(path + "/TEXT/TEXT_DB_LIST.TXT");
+                for (int i = 0; i < textDBsLevel.Length; i++)
+                    levelDBs.Add(textDBsLevel[i]);
+                textList.AddRange(Directory.GetFiles(path + "/TEXT/", "*.TXT", SearchOption.AllDirectories));
+            }
+            textList.Reverse();
+            Strings = new Dictionary<string, Dictionary<string, Strings>>();
+            foreach (string textDB in textList)
+            {
+                string lang = Path.GetFileName(Path.GetDirectoryName(textDB));
+                string db = Path.GetFileNameWithoutExtension(textDB);
+                if (!globalDBs.Contains(db) && !levelDBs.Contains(db)) continue;
+                if (!Strings.ContainsKey(lang)) Strings.Add(lang, new Dictionary<string, Strings>());
+                if (Strings[lang].ContainsKey(db)) continue;
+                Strings[lang].Add(db, new Strings(textDB));
+            }
         }
 
         /* Save all modifications to the level - this currently assumes we aren't editing GLOBAL data */
@@ -150,7 +185,7 @@ namespace CathodeLib
             /* UPDATE MATERIAL/MODEL INDEXES */
 
             //Get REDS links as actual objects
-            List<Models.CS2.LOD.Submesh> redsModels = new List<Models.CS2.LOD.Submesh>();
+            List<Models.CS2.Component.LOD.Submesh> redsModels = new List<Models.CS2.Component.LOD.Submesh>();
             List<Materials.Material> redsMaterials = new List<Materials.Material>();
             for (int i = 0; i < RenderableElements.Entries.Count; i++)
             {
@@ -161,17 +196,19 @@ namespace CathodeLib
             //Get model links as actual objects
             List<Materials.Material> modelMaterials = new List<Materials.Material>();
             for (int i = 0; i < Models.Entries.Count; i++)
-                for (int x = 0; x < Models.Entries[i].LODs.Count; x++)
-                    for (int z = 0; z < Models.Entries[i].LODs[x].Submeshes.Count; z++)
-                        modelMaterials.Add(Materials.GetAtWriteIndex(Models.Entries[i].LODs[x].Submeshes[z].MaterialLibraryIndex));
+                for (int p = 0; p < Models.Entries[i].Components.Count; p++)
+                    for (int x = 0; x < Models.Entries[i].Components[p].LODs.Count; x++)
+                        for (int z = 0; z < Models.Entries[i].Components[p].LODs[x].Submeshes.Count; z++)
+                            modelMaterials.Add(Materials.GetAtWriteIndex(Models.Entries[i].Components[p].LODs[x].Submeshes[z].MaterialLibraryIndex));
             Models.Save();
 
             //Get material links as actual objects
             List<Textures.TEX4> materialTextures = new List<Textures.TEX4>();
             for (int i = 0; i < Materials.Entries.Count; i++)
             {
-                for (int x = 0; x < Materials.Entries[i].TextureReferences.Count; x++)
+                for (int x = 0; x < Materials.Entries[i].TextureReferences.Length; x++)
                 {
+                    if (Materials.Entries[i].TextureReferences[x] == null) continue;
                     switch (Materials.Entries[i].TextureReferences[x].Source)
                     {
                         case Materials.Material.Texture.TextureSource.LEVEL:
@@ -184,14 +221,14 @@ namespace CathodeLib
                 }
             }
             Materials.Save();
+            Textures.Save();
+            GlobalTextures.Save();
 
             //Update the REDS links
             for (int i = 0; i < RenderableElements.Entries.Count; i++)
             {
                 if (RenderableElements.Entries[i].ModelIndex != -1)
                     RenderableElements.Entries[i].ModelIndex = Models.GetWriteIndex(redsModels[i]);
-                RenderableElements.Entries[i].ModelLODIndex = -1;
-                RenderableElements.Entries[i].ModelLODPrimitiveCount = 0;
                 if (RenderableElements.Entries[i].MaterialIndex != -1)
                     RenderableElements.Entries[i].MaterialIndex = Materials.GetWriteIndex(redsMaterials[i]);
             }
@@ -201,12 +238,15 @@ namespace CathodeLib
             int y = 0;
             for (int i = 0; i < Models.Entries.Count; i++)
             {
-                for (int x = 0; x < Models.Entries[i].LODs.Count; x++)
+                for (int p = 0; p < Models.Entries[i].Components.Count; p++)
                 {
-                    for (int z = 0; z < Models.Entries[i].LODs[x].Submeshes.Count; z++)
+                    for (int x = 0; x < Models.Entries[i].Components[p].LODs.Count; x++)
                     {
-                        Models.Entries[i].LODs[x].Submeshes[z].MaterialLibraryIndex = Materials.GetWriteIndex(modelMaterials[y]);
-                        y++;
+                        for (int z = 0; z < Models.Entries[i].Components[p].LODs[x].Submeshes.Count; z++)
+                        {
+                            Models.Entries[i].Components[p].LODs[x].Submeshes[z].MaterialLibraryIndex = Materials.GetWriteIndex(modelMaterials[y]);
+                            y++;
+                        }
                     }
                 }
             }
@@ -216,8 +256,9 @@ namespace CathodeLib
             y = 0;
             for (int i = 0; i < Materials.Entries.Count; i++)
             {
-                for (int x = 0; x < Materials.Entries[i].TextureReferences.Count; x++)
+                for (int x = 0; x < Materials.Entries[i].TextureReferences.Length; x++)
                 {
+                    if (Materials.Entries[i].TextureReferences[x] == null) continue;
                     switch (Materials.Entries[i].TextureReferences[x].Source)
                     {
                         case Materials.Material.Texture.TextureSource.LEVEL:

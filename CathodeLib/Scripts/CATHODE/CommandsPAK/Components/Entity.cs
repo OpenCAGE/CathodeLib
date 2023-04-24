@@ -1,8 +1,18 @@
 ﻿using CATHODE.Scripting.Internal;
+#if DEBUG
+using Newtonsoft.Json.Converters;
+using Newtonsoft.Json;
+#endif
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using System.Runtime.InteropServices;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+using UnityEngine;
+#else
+using System.Numerics;
+#endif
 
 namespace CATHODE.Scripting.Internal
 {
@@ -22,6 +32,9 @@ namespace CATHODE.Scripting.Internal
         }
 
         public ShortGuid shortGUID; //Translates to string via EntityNameLookup.GetEntityName
+#if DEBUG
+        [JsonConverter(typeof(StringEnumConverter))]
+#endif
         public EntityVariant variant;
 
         public List<EntityLink> childLinks = new List<EntityLink>();
@@ -190,6 +203,9 @@ namespace CATHODE.Scripting
         }
 
         public ShortGuid name;
+#if DEBUG
+        [JsonConverter(typeof(StringEnumConverter))]
+#endif
         public DataType type = DataType.NONE;
 
         public override string ToString()
@@ -280,31 +296,19 @@ namespace CATHODE.Scripting
         public ProxyEntity(List<ShortGuid> hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(EntityVariant.PROXY)
         {
             this.targetType = targetType;
-            if (hierarchy != null) this.hierarchy = hierarchy;
-            if (autoGenerateParameters) ApplyDefaults();
+            if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
+            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
         public ProxyEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.PROXY)
         {
             this.shortGUID = shortGUID;
             this.targetType = targetType; 
-            if (hierarchy != null) this.hierarchy = hierarchy;
-            if (autoGenerateParameters) ApplyDefaults();
+            if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
+            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
 
         public ShortGuid targetType; //The "function" value on the entity we're pointing to
-        public List<ShortGuid> hierarchy = new List<ShortGuid>();
-
-        private void ApplyDefaults()
-        {
-            AddParameter("proxy_filter_targets", new cBool(false));
-            AddParameter("proxy_enable_on_reset", new cBool(false));
-            AddParameter("proxy_enable", new cFloat(0.0f));
-            AddParameter("proxy_enabled", new cFloat(0.0f));
-            AddParameter("proxy_disable", new cFloat(0.0f));
-            AddParameter("proxy_disabled", new cFloat(0.0f));
-            AddParameter("reference", new cString(""));
-            AddParameter("trigger", new cFloat(0.0f));
-        }
+        public EntityHierarchy connectedEntity = new EntityHierarchy();
     }
     [Serializable]
     public class OverrideEntity : Entity
@@ -315,17 +319,17 @@ namespace CATHODE.Scripting
         public OverrideEntity(List<ShortGuid> hierarchy = null) : base(EntityVariant.OVERRIDE)
         {
             checksum = ShortGuidUtils.GenerateRandom();
-            if (hierarchy != null) this.hierarchy = hierarchy;
+            if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
         }
         public OverrideEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null) : base(shortGUID, EntityVariant.OVERRIDE)
         {
             this.shortGUID = shortGUID;
             checksum = ShortGuidUtils.GenerateRandom();
-            if (hierarchy != null) this.hierarchy = hierarchy;
+            if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
         }
 
         public ShortGuid checksum; //TODO: This value is apparently a hash of the hierarchy GUIDs, but need to verify that, and work out the salt.
-        public List<ShortGuid> hierarchy = new List<ShortGuid>();
+        public EntityHierarchy connectedEntity = new EntityHierarchy();
     }
 
     #region SPECIAL FUNCTION ENTITIES
@@ -335,63 +339,63 @@ namespace CATHODE.Scripting
         public CAGEAnimation(bool autoGenerateParameters = false) : base(FunctionType.CAGEAnimation, autoGenerateParameters) { }
         public CAGEAnimation(ShortGuid id, bool autoGenerateParameters = false) : base(id, FunctionType.CAGEAnimation, autoGenerateParameters) { }
 
-        public List<Header> keyframeHeaders = new List<Header>();
-        public List<Keyframe> keyframeData = new List<Keyframe>(); //anim keyframes
-        public List<Keyframe2> keyframeData2 = new List<Keyframe2>(); //TODO: events? 
+        public List<Connection> connections = new List<Connection>();
+        public List<Animation> animations = new List<Animation>();
+        public List<Event> events = new List<Event>();
 
         [Serializable]
-        public class Header
+        public class Connection
         {
-            public ShortGuid ID;
-            public DataType unk2;
-            public ShortGuid keyframeDataID;
-            //public float unk3;
+            public ShortGuid shortGUID; //Unique ID - TODO: can we just generate this?
+            public ShortGuid keyframeID; //The keyframe ID we're pointing to
+
+#if DEBUG
+            [JsonConverter(typeof(StringEnumConverter))]
+#endif
+            public ObjectType objectType; //The type of object at the connected entity
+
+            //Specifics for the parameter we're connected to
             public ShortGuid parameterID;
-            public DataType parameterDataType;
+#if DEBUG
+            [JsonConverter(typeof(StringEnumConverter))]
+#endif
+            public DataType parameterDataType; 
             public ShortGuid parameterSubID; //if parameterID is position, this might be x for example
-            public List<ShortGuid> connectedEntity; //path to controlled entity
+
+            //The path to the connected entity which has the above parameter
+            public EntityHierarchy connectedEntity = new EntityHierarchy(); 
         }
 
         [Serializable]
-        public class Keyframe
+        public class Animation
         {
-            public float minSeconds;
-            public float maxSeconds;
-            public ShortGuid ID;
-            public List<Data> keyframes = new List<Data>();
+            public ShortGuid shortGUID;
+            public List<Keyframe> keyframes = new List<Keyframe>();
 
             [Serializable]
-            public class Data
+            public class Keyframe
             {
-                public float unk1;
-                public float secondsSinceStart;
-                public float secondsSinceStartValidation;
-                public float paramValue;
-                public float unk2;
-                public float unk3;
-                public float unk4;
-                public float unk5;
+                public float secondsSinceStart = 0.0f;
+                public float paramValue = 0.0f;
+
+                public Vector2 startVelocity = new Vector2(1,0);
+                public Vector2 endVelocity = new Vector2(1, 0);
             }
         }
 
-        //TODO: what actually is this?
         [Serializable]
-        public class Keyframe2
+        public class Event
         {
-            public float minSeconds;
-            public float maxSeconds;
-            public ShortGuid ID;
-            public List<Data> keyframes = new List<Data>();
+            public ShortGuid shortGUID;
+            public List<Keyframe> keyframes = new List<Keyframe>();
 
             [Serializable]
-            public class Data
+            public class Keyframe
             {
-                public float unk1;
-                public float secondsSinceStart;
-                public float unk2;
-                public float unk3;
-                public float unk4;
-                public float unk5;
+                public float secondsSinceStart = 0.0f;
+                public ShortGuid start;
+
+                public ShortGuid unk3; //this never translates to a string, but is a param on the node -> do we trigger it?
             }
         }
     }
@@ -407,14 +411,8 @@ namespace CATHODE.Scripting
         [Serializable]
         public class Entity
         {
-            public Entity()
-            {
-                hierarchy = new List<ShortGuid>();
-                hierarchy.Add(new ShortGuid("00-00-00-00"));
-            }
-
             public float timing = 0.0f;
-            public List<ShortGuid> hierarchy;
+            public EntityHierarchy connectedEntity = new EntityHierarchy();
         }
         [Serializable]
         public class Event
@@ -451,4 +449,108 @@ namespace CATHODE.Scripting
         public ShortGuid childParamID;  //The ID of the parameter we're providing into the child
         public ShortGuid childID;       //The ID of the entity we're linking to to provide the value for
     }
+
+    [Serializable]
+#if DEBUG
+    [JsonConverter(typeof(EntityHierarchyConverter))]
+#endif
+    public class EntityHierarchy
+    {
+        public EntityHierarchy() { }
+        public EntityHierarchy(List<ShortGuid> _hierarchy)
+        {
+            hierarchy = _hierarchy;
+
+            if (hierarchy[hierarchy.Count - 1].ToByteString() != "00-00-00-00")
+                hierarchy.Add(new ShortGuid("00-00-00-00"));
+        }
+        public List<ShortGuid> hierarchy = new List<ShortGuid>();
+
+        public static bool operator ==(EntityHierarchy x, EntityHierarchy y)
+        {
+            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+            if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+            if (x.hierarchy.Count != y.hierarchy.Count) return false;
+            for (int i = 0; i < x.hierarchy.Count; i++)
+            {
+                if (x.hierarchy[i].ToByteString() != y.hierarchy[i].ToByteString())
+                    return false;
+            }
+            return true;
+        }
+        public static bool operator !=(EntityHierarchy x, EntityHierarchy y)
+        {
+            return !(x == y);
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is EntityHierarchy hierarchy &&
+                   EqualityComparer<List<ShortGuid>>.Default.Equals(this.hierarchy, hierarchy.hierarchy);
+        }
+
+        public override int GetHashCode()
+        {
+            return 218564712 + EqualityComparer<List<ShortGuid>>.Default.GetHashCode(hierarchy);
+        }
+
+        /* Get this hierarchy as a string */
+        public string GetHierarchyAsString()
+        {
+            string val = "";
+            for (int i = 0; i < hierarchy.Count; i++)
+            {
+                val += hierarchy[i].ToByteString();
+                if (i != hierarchy.Count - 1) val += " -> ";
+            }
+            return val;
+        }
+        public string GetHierarchyAsString(Commands commands, Composite composite, bool withIDs = true)
+        {
+            CommandsUtils.ResolveHierarchy(commands, composite, hierarchy, out Composite comp, out string str, withIDs);
+            return str;
+        }
+
+        public UInt32 ToUInt32()
+        {
+            UInt32 val = 0;
+            for (int i = 0; i < hierarchy.Count; i++) val += hierarchy[i].ToUInt32();
+            return val;
+        }
+
+        /* Get the entity this hierarchy points to */
+        public Entity GetPointedEntity(Commands commands, Composite composite)
+        {
+            return CommandsUtils.ResolveHierarchy(commands, composite, hierarchy, out Composite comp, out string str);
+        }
+
+        /* Does this hierarchy point to a valid entity? */
+        public bool IsHierarchyValid(Commands commands, Composite composite)
+        {
+            return GetPointedEntity(commands, composite) != null;
+        }
+    }
+
+#if DEBUG
+    public class EntityHierarchyConverter : JsonConverter
+    {
+        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+        {
+            writer.WriteValue(((EntityHierarchy)value).GetHierarchyAsString());
+        }
+
+        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+        {
+            EntityHierarchy e = new EntityHierarchy();
+            List<string> vals = reader.Value.ToString().Split(new[] { " -> " }, StringSplitOptions.None).ToList();
+            for (int i = 0; i < vals.Count; i++) e.hierarchy.Add(new ShortGuid(vals[i]));
+            return e;
+        }
+
+        public override bool CanConvert(Type objectType)
+        {
+            return objectType == typeof(EntityHierarchy);
+        }
+    }
+#endif
 }

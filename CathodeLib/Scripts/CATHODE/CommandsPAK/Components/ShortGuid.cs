@@ -1,4 +1,7 @@
-﻿using System;
+﻿#if DEBUG
+using Newtonsoft.Json;
+#endif
+using System;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -8,6 +11,9 @@ namespace CATHODE.Scripting
     /* A unique id assigned to CATHODE objects */
     [Serializable]
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
+#if DEBUG
+    [JsonConverter(typeof(ShortGuidConverter))]
+#endif
     public struct ShortGuid : IComparable<ShortGuid>
     {
         public ShortGuid(float num)
@@ -100,4 +106,27 @@ namespace CATHODE.Scripting
             return BitConverter.ToUInt32(val, 0);
         }
     }
+
+#if DEBUG
+    public class ShortGuidConverter : JsonConverter
+    {
+        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+        {
+            ShortGuid user = (ShortGuid)value;
+            writer.WriteValue(user.ToString());
+        }
+
+        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+        {
+            ShortGuid user = new ShortGuid();
+            user.val = (byte[])reader.Value;
+            return user;
+        }
+
+        public override bool CanConvert(Type objectType)
+        {
+            return objectType == typeof(ShortGuid);
+        }
+    }
+#endif
 }

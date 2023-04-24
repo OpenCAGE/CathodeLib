@@ -1,4 +1,4 @@
-﻿using CathodeLib;
+using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -93,9 +93,6 @@ namespace CATHODE.EXPERIMENTAL
                         Entry1.Vertices = vertexes.GetRange(verIndex, verIndex + Entry1.VertexCount);
                     }
                 }
-
-                //string dsfdsfds = "";
-
             }
             return true;
         }
