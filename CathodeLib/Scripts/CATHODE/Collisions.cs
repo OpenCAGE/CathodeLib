@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Linq;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
@@ -94,9 +93,6 @@ namespace CATHODE.EXPERIMENTAL
                         Entry1.Vertices = vertexes.GetRange(verIndex, verIndex + Entry1.VertexCount);
                     }
                 }
-
-                string dsfdsfds = "";
-
             }
             return true;
         }
