@@ -18,6 +18,8 @@ namespace CATHODE.EXPERIMENTAL
         // "node" names saved with their connected "leafs" which acts like a "system" and
         // "parameter" to apply to the system
 
+        // Check CATHODE::SaveState::save_leaf!
+
         #region FILE_IO
         /* Load the file */
         override protected bool LoadInternal()
