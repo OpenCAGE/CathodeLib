@@ -1,4 +1,4 @@
-﻿using CATHODE.Scripting.Internal;
+using CATHODE.Scripting.Internal;
 #if DEBUG
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json;
@@ -528,6 +528,23 @@ namespace CATHODE.Scripting
         public bool IsHierarchyValid(Commands commands, Composite composite)
         {
             return GetPointedEntity(commands, composite) != null;
+        }
+
+        /* Generate the checksum used identify the hierarchy */
+        public ShortGuid GenerateChecksum()
+        {
+            //todo: this value doesn't seem to be correct...
+
+            if (hierarchy.Count == 0) return new ShortGuid("00-00-00-00");
+            if (hierarchy[hierarchy.Count - 1] != new ShortGuid("00-00-00-00")) hierarchy.Add(new ShortGuid("00-00-00-00"));
+
+            ShortGuid checksumGenerated = hierarchy[0];
+            for (int i = 0; i < hierarchy.Count; i++)
+            {
+                checksumGenerated = checksumGenerated.Combine(hierarchy[i + 1]);
+                if (i == hierarchy.Count - 2) break;
+            }
+            return checksumGenerated;
         }
     }
 

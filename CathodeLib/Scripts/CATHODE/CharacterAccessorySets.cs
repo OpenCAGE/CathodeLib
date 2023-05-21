@@ -112,7 +112,7 @@ namespace CATHODE
         public class Entry
         {
             public ShortGuid character_entity;
-            public ShortGuid unk;
+            public ShortGuid unk; //This points to the specific character instance - but how?
             public ShortGuid shirt_composite;
             public ShortGuid trousers_composite;
             public ShortGuid shoes_composite;

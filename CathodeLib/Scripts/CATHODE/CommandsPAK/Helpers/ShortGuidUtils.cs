@@ -70,6 +70,24 @@ namespace CATHODE.Scripting
             return guid;
         }
 
+        /* Combines two ShortGuid objects into one */
+        public static ShortGuid Combine(this ShortGuid Value, ShortGuid param_1)
+        {
+            if (param_1.ToUInt32() != 0)
+            {
+                if (Value.ToUInt32() != 0)
+                {
+                    ulong uVar2 = BitConverter.ToUInt64(new byte[8] { Value.val[0], Value.val[1], Value.val[2], Value.val[3], param_1.val[0], param_1.val[1], param_1.val[2], param_1.val[3] }, 0);
+                    uVar2 = ~uVar2 + uVar2 * 0x40000;
+                    uVar2 = (uVar2 ^ (uVar2 >> 0x1f)) * 0x15;
+                    uVar2 = (uVar2 ^ (uVar2 >> 0xb)) * 0x41;
+                    return new ShortGuid(BitConverter.GetBytes((uint)((uVar2 >> 0x16) ^ (uint)uVar2)));
+                }
+                return param_1;
+            }
+            return Value;
+        }
+
         /* Attempts to look up the string for a given ShortGuid */
         public static string FindString(ShortGuid guid)
         {
