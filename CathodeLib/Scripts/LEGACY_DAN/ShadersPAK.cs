@@ -409,8 +409,10 @@ namespace CATHODE.LEGACY
 
             //if (Shader.Header.TextureLinkCount != metadata.textures.Count) throw new Exception("bruh");
 
-            for (int i = 0; i < Shader.Header.TextureLinkCount; ++i) 
+            for (int i = 0; i < Shader.Header.TextureLinkCount; ++i)
             {
+                if (i >= metadata.textures.Count) break; //This should no longer be an issue when the shader categories are completed above.
+
                 int PairIndex = Shader.TextureLinks[i];
                 // NOTE: PairIndex == 255 means no index.
                 if (PairIndex < InMaterial.TextureReferences.Length)
