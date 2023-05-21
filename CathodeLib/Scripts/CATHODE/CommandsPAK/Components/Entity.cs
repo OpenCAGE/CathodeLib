@@ -533,8 +533,6 @@ namespace CATHODE.Scripting
         /* Generate the checksum used identify the hierarchy */
         public ShortGuid GenerateChecksum()
         {
-            //todo: this value doesn't seem to be correct...
-
             if (hierarchy.Count == 0) return new ShortGuid("00-00-00-00");
             if (hierarchy[hierarchy.Count - 1] != new ShortGuid("00-00-00-00")) hierarchy.Add(new ShortGuid("00-00-00-00"));
 
