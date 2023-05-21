@@ -536,7 +536,7 @@ namespace CATHODE.Scripting
             if (hierarchy.Count == 0) return new ShortGuid("00-00-00-00");
             if (hierarchy[hierarchy.Count - 1] != new ShortGuid("00-00-00-00")) hierarchy.Add(new ShortGuid("00-00-00-00"));
 
-            List<ShortGuid> reversed = hierarchy;
+            List<ShortGuid> reversed = hierarchy.ConvertAll(x => x);
             reversed.Reverse();
 
             ShortGuid checksumGenerated = hierarchy[0];
