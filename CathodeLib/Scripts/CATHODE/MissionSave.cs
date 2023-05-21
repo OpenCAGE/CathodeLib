@@ -33,12 +33,12 @@ namespace CATHODE.EXPERIMENTAL
                         string levelName = Utilities.ReadString(reader.ReadBytes(128));
                         Console.WriteLine("Level Name: " + levelName);
                         string saveName = Utilities.ReadStringAlternating(reader.ReadBytes(256));
-                        Console.WriteLine("Save Name: " + levelName);
+                        Console.WriteLine("Save Name: " + saveName);
                         string levelSaveDescriptor = Utilities.ReadString(reader.ReadBytes(160));
-                        Console.WriteLine("Localised Save Descriptor: " + levelName);
+                        Console.WriteLine("Localised Save Descriptor: " + levelSaveDescriptor);
                         reader.BaseStream.Position += 8;
-                        string playlist = Utilities.ReadString(reader.ReadBytes(64));
-                        Console.WriteLine("Playlist: " + levelName);
+                        string playlist = Utilities.ReadString(reader.ReadBytes(64)); //unsure on this
+                        Console.WriteLine("Playlist: " + playlist);
 
                         reader.BaseStream.Position = 1208;
                         while (true)
