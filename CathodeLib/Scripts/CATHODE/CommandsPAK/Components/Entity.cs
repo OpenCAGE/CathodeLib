@@ -538,11 +538,14 @@ namespace CATHODE.Scripting
             if (hierarchy.Count == 0) return new ShortGuid("00-00-00-00");
             if (hierarchy[hierarchy.Count - 1] != new ShortGuid("00-00-00-00")) hierarchy.Add(new ShortGuid("00-00-00-00"));
 
+            List<ShortGuid> reversed = hierarchy;
+            reversed.Reverse();
+
             ShortGuid checksumGenerated = hierarchy[0];
-            for (int i = 0; i < hierarchy.Count; i++)
+            for (int i = 0; i < reversed.Count; i++)
             {
-                checksumGenerated = checksumGenerated.Combine(hierarchy[i + 1]);
-                if (i == hierarchy.Count - 2) break;
+                checksumGenerated = checksumGenerated.Combine(reversed[i + 1]);
+                if (i == reversed.Count - 2) break;
             }
             return checksumGenerated;
         }
