@@ -318,17 +318,14 @@ namespace CATHODE.Scripting
 
         public OverrideEntity(List<ShortGuid> hierarchy = null) : base(EntityVariant.OVERRIDE)
         {
-            checksum = ShortGuidUtils.GenerateRandom();
             if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
         }
         public OverrideEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null) : base(shortGUID, EntityVariant.OVERRIDE)
         {
             this.shortGUID = shortGUID;
-            checksum = ShortGuidUtils.GenerateRandom();
             if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
         }
 
-        public ShortGuid checksum; //TODO: This value is apparently a hash of the hierarchy GUIDs, but need to verify that, and work out the salt.
         public EntityHierarchy connectedEntity = new EntityHierarchy();
     }
 

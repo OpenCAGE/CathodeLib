@@ -148,7 +148,6 @@ namespace CATHODE
                         List<CommandsEntityLinks> entityLinks = new List<CommandsEntityLinks>();
                         List<CommandsParamRefSet> paramRefSets = new List<CommandsParamRefSet>();
                         List<ResourceReference> resourceRefs = new List<ResourceReference>();
-                        Dictionary<ShortGuid, ShortGuid> overrideChecksums = new Dictionary<ShortGuid, ShortGuid>();
                         for (int x = 0; x < offsetPairs.Length; x++)
                         {
                             reader_parallel.BaseStream.Position = offsetPairs[x].GlobalOffset * 4;
@@ -184,7 +183,7 @@ namespace CATHODE
                                     case CompositeFileData.ENTITY_OVERRIDES_CHECKSUM:
                                         {
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
-                                            overrideChecksums.Add(new ShortGuid(reader_parallel), new ShortGuid(reader_parallel));
+                                            reader_parallel.BaseStream.Position += 8;
                                             break;
                                         }
                                     case CompositeFileData.COMPOSITE_EXPOSED_PARAMETERS:
@@ -402,10 +401,6 @@ namespace CATHODE
                                 }
                             }
                         }
-
-                        //Apply checksums to overrides
-                        for (int x = 0; x < composite.overrides.Count; x++)
-                            composite.overrides[x].checksum = overrideChecksums[composite.overrides[x].shortGUID];
 
                         //Apply connections between entities
                         for (int x = 0; x < entityLinks.Count; x++)
@@ -640,7 +635,7 @@ namespace CATHODE
                 linkedEntities[i] = new List<Entity>(ents.FindAll(o => o.childLinks.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
                 parameterisedEntities[i] = new List<Entity>(ents.FindAll(o => o.parameters.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
                 reshuffledOverrides[i] = Entries[i].overrides.OrderBy(o => o.shortGUID.ToUInt32()).ToList();
-                reshuffledChecksums[i] = Entries[i].overrides.OrderBy(o => o.checksum.ToUInt32()).ToList();
+                reshuffledChecksums[i] = Entries[i].overrides.OrderBy(o => o.connectedEntity.GenerateChecksum().ToUInt32()).ToList();
 
                 cageAnimationEntities[i] = new List<CAGEAnimation>();
                 triggerSequenceEntities[i] = new List<TriggerSequence>();
@@ -874,7 +869,7 @@ namespace CATHODE
                                     for (int p = 0; p < reshuffledChecksums[i].Count; p++)
                                     {
                                         writer.Write(reshuffledChecksums[i][p].shortGUID.val);
-                                        writer.Write(reshuffledChecksums[i][p].checksum.val);
+                                        writer.Write(reshuffledChecksums[i][p].connectedEntity.GenerateChecksum().val);
                                     }
                                     break;
                                 }
