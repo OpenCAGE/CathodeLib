@@ -47,6 +47,21 @@ namespace CathodeLib
             while (writer.BaseStream.Position % val != 0) writer.Write(fillWith);
         }
 
+        //Reads a string with alternating nulls up to a trailing 0x00 byte
+        public static string ReadStringAlternating(byte[] bytes)
+        {
+            byte[] trimmed = new byte[bytes.Length / 2];
+            int x = 0;
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                if (i % 2 != 0) continue;
+                trimmed[x] = bytes[i];
+                if (bytes[i] == 0x00) break;
+                x++;
+            }
+            return ReadString(trimmed);
+        }
+
         //Reads a string up to a trailing 0x00 byte
         public static string ReadString(byte[] bytes, int position)
         {

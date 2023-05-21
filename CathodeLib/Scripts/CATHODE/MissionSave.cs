@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE.EXPERIMENTAL
 {
-    /* PROGRESSION.AIS */
+    /* *.AIS */
     public class MissionSave : CathodeFile
     {
         public static new Implementation Implementation = Implementation.NONE;
@@ -27,71 +27,35 @@ namespace CATHODE.EXPERIMENTAL
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
                 _header = Utilities.Consume<Header>(reader);
-                string levelname = Utilities.ReadString(reader.ReadBytes(128));
+                switch (_header.VersionNum)
+                {
+                    case AISType.SAVE:
+                        string levelName = Utilities.ReadString(reader.ReadBytes(128));
+                        Console.WriteLine("Level Name: " + levelName);
+                        string saveName = Utilities.ReadStringAlternating(reader.ReadBytes(256));
+                        Console.WriteLine("Save Name: " + levelName);
+                        string levelSaveDescriptor = Utilities.ReadString(reader.ReadBytes(160));
+                        Console.WriteLine("Localised Save Descriptor: " + levelName);
+                        reader.BaseStream.Position += 8;
+                        string playlist = Utilities.ReadString(reader.ReadBytes(64));
+                        Console.WriteLine("Playlist: " + levelName);
+
+                        reader.BaseStream.Position = 1208;
+                        while (true)
+                        {
+                            if (!ReadEntry(reader)) break;
+                        }
+                        break;
+                }
 
                 reader.BaseStream.Position = _header.save_root_offset;
-
-                ValidateGuid(reader, "save_root");
-                reader.BaseStream.Position += 8;
-
-                ValidateGuid(reader, "trigger");
-                ParseHeaderAndSkip(reader);
-
-                ValidateGuid(reader, "pause_context_trigger");
-                ParseHeaderAndSkip(reader);
-
-                ValidateGuid(reader, "forward_triggers");
-                ParseHeaderAndSkip(reader);
-
-                ValidateGuid(reader, "m_broadcast_messages");
-                ParseHeaderAndSkip(reader);
-
-                ValidateGuid(reader, "player_pos");
-                ParseHeaderAndSkip(reader);
-
-                ValidateGuid(reader, "player_pos_valid");
-                reader.BaseStream.Position += 2;
-
-                ValidateGuid(reader, "filter_object");
-                ParseHeaderAndSkip(reader);
-
-                ValidateGuid(reader, "next_temporary_guid");
-                ParseHeaderAndSkip(reader);
-
-                ValidateGuid(reader, "trigger_object");
-                ParseHeaderAndSkip(reader);
-
-                ValidateGuid(reader, "temp_entities_data");
-                ParseHeaderAndSkip(reader);
-
-                ValidateGuid(reader, "temp_entities");
-                ParseHeaderAndSkip(reader);
-
-                //TODO: What do we reach after this point? Can't find the ShortGuid!
-
-                int pos = (int)reader.BaseStream.Position;
-
-                /*
-                List<string> dump = new List<string>();
-                int prevPos = (int)Stream.BaseStream.Position;
                 while (true)
                 {
-                    if (Stream.BaseStream.Position + 4 >= Stream.BaseStream.Length) break;
-
-                    ShortGuid consumed_guid = Utilities.Consume<ShortGuid>(Stream);
-                    if (consumed_guid.ToString() == "00-00-00-00") continue;
-
-                    string match = ShortGuidUtils.FindString(consumed_guid);
-                    if (match != consumed_guid.ToString())
-                    {
-                        dump.Add((Stream.BaseStream.Position - 4) + " => [ + " + ((Stream.BaseStream.Position - 4) - prevPos) + "] => " + match);
-                        prevPos = (int)Stream.BaseStream.Position;
-                    }
-
-                    Stream.BaseStream.Position -= 3;
+                    string id = ReadNode(reader);
+                    if (_header.VersionNum == AISType.SAVE && id == "temp_entities") break; //This seems to be the last resolvable in SAVE?
+                    if (id == null) break;
                 }
-                File.WriteAllLines(Path.GetFileNameWithoutExtension(pathToMVR) + "_dump.txt", dump);
-                */
+                Console.WriteLine("Finished root nodes at " + reader.BaseStream.Position);
             }
             return true;
         }
@@ -109,33 +73,84 @@ namespace CATHODE.EXPERIMENTAL
         #endregion
 
         #region HELPERS
-        private void ParseHeaderAndSkip(BinaryReader stream)
+        private bool ReadEntry(BinaryReader stream)
         {
+            UInt32 type = stream.ReadUInt32();
+            if (type == 0) return false;
+            switch (type)
+            {
+                case 55762421:
+                    stream.BaseStream.Position += 8;
+                break;
+                default:
+                    UInt32 id = stream.ReadUInt32();
+                    int val = stream.ReadInt32();
+                    Console.WriteLine(type + ": " + id + " -> " + val);
+                    break;
+            }
+            return true;
+        }
+
+        private string ReadNode(BinaryReader stream)
+        {
+            //Read leaf name
+            ShortGuid id = Utilities.Consume<ShortGuid>(stream);
+            if (id.ToUInt32() == 0) return null;
+
+            string id_str = id.ToString();
+            Console.WriteLine("Reading " + id_str);
+
+            //The root nodes are always 8 in length
+            if (id_str == "save_root" || id_str == "progression_root")
+            {
+                stream.BaseStream.Position += 8;
+                return id_str;
+            }
+
+            //Read entry header
             byte type = stream.ReadByte();
+
+            if (type == 0x01)
+            {
+                stream.BaseStream.Position += 1;
+                return id_str;
+            }
+
             int offset = stream.ReadInt16();
             byte unk = stream.ReadByte();
             if (unk == 0x01)
                 throw new Exception("Unhandled");
 
+            //Read entry contents
+            int length = 0;
             switch (type)
             {
-                case 0x40:
-                case 0x0D:
-                    stream.BaseStream.Position += offset;
+                case 0x02:
+                    length = 0;
                     break;
                 case 0x04:
-                    stream.BaseStream.Position += 1;
+                    length = 1;
+                    break;
+                case 0x40:
+                case 0x0D:
+                    length = offset;
+                    break;
+                case 0x4D:
+                    length = offset + 3;
                     break;
                 default:
                     throw new Exception("Unhandled");
             }
-        }
+            byte[] content = stream.ReadBytes(length);
 
-        private void ValidateGuid(BinaryReader Stream, string str)
-        {
-            ShortGuid consumed_guid = Utilities.Consume<ShortGuid>(Stream);
-            if (consumed_guid != ShortGuidUtils.Generate(str)) 
-                throw new Exception(str + " mismatch");
+            switch (id_str)
+            {
+                case "m_last_saved_level":
+                    string lvl = Utilities.ReadString(content);
+                    Console.WriteLine("\t" + lvl);
+                    break;
+            }
+            return id_str;
         }
         #endregion
 
@@ -144,7 +159,7 @@ namespace CATHODE.EXPERIMENTAL
         public struct Header
         {
             public fourcc FourCC;
-            public int VersionNum;
+            public AISType VersionNum;
 
             public ShortGuid unk1;
             public ShortGuid unk2;
@@ -154,6 +169,11 @@ namespace CATHODE.EXPERIMENTAL
             public int save_root_offset;
             public int Offset3;
         };
+        public enum AISType : Int32
+        {
+            SAVE = 18,
+            PROGRESSION = 4
+        }
         #endregion
     }
 }
