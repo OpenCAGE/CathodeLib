@@ -1,3 +1,4 @@
+using CATHODE.Scripting;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -295,6 +296,19 @@ namespace CathodeLib
         {
             GlobalOffset = (int)_go;
             EntryCount = _ec;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct CommandsEntityReference
+    {
+        public ShortGuid entity_id;          //The ID of the entity within its written composite
+        public ShortGuid entity_instance_id; //The unique instance of the entity when created via hierarchy
+
+        public void Calculate(EntityHierarchy hierarchy)
+        {
+            entity_id = hierarchy.GetPointedEntityID();
+            entity_instance_id = hierarchy.GenerateChecksum();
         }
     }
     

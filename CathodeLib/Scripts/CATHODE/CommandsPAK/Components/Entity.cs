@@ -458,8 +458,8 @@ namespace CATHODE.Scripting
         {
             hierarchy = _hierarchy;
 
-            if (hierarchy[hierarchy.Count - 1].ToByteString() != "00-00-00-00")
-                hierarchy.Add(new ShortGuid("00-00-00-00"));
+            if (hierarchy[hierarchy.Count - 1] != ShortGuid.Invalid)
+                hierarchy.Add(ShortGuid.Invalid);
         }
         public List<ShortGuid> hierarchy = new List<ShortGuid>();
 
@@ -520,6 +520,19 @@ namespace CATHODE.Scripting
         {
             return CommandsUtils.ResolveHierarchy(commands, composite, hierarchy, out Composite comp, out string str);
         }
+        public ShortGuid GetPointedEntityID()
+        {
+            hierarchy.Reverse();
+            ShortGuid id = ShortGuid.Invalid;
+            for (int i = 0; i < hierarchy.Count; i++)
+            {
+                if (hierarchy[i] == ShortGuid.Invalid) continue;
+                id = hierarchy[i];
+                break;
+            }
+            hierarchy.Reverse();
+            return id;
+        }
 
         /* Does this hierarchy point to a valid entity? */
         public bool IsHierarchyValid(Commands commands, Composite composite)
@@ -530,8 +543,8 @@ namespace CATHODE.Scripting
         /* Generate the checksum used identify the hierarchy */
         public ShortGuid GenerateChecksum()
         {
-            if (hierarchy.Count == 0) return new ShortGuid("00-00-00-00");
-            if (hierarchy[hierarchy.Count - 1] != new ShortGuid("00-00-00-00")) hierarchy.Add(new ShortGuid("00-00-00-00"));
+            if (hierarchy.Count == 0) return ShortGuid.Invalid;
+            if (hierarchy[hierarchy.Count - 1] != ShortGuid.Invalid) hierarchy.Add(ShortGuid.Invalid);
 
             hierarchy.Reverse();
             ShortGuid checksumGenerated = hierarchy[0];

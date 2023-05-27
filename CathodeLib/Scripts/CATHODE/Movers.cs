@@ -203,9 +203,10 @@ namespace CATHODE
             public Vector3 Unknowns5_;
             public UInt32 visibility; // pulled from iOS dump - should be visibility var?
                                       //272
-            public ShortGuid commandsNodeID; // this is the ID of the node inside the composite, not the instanced composite node
-            public ShortGuid resourcesEntryID; // NOTE: This is 'IDFromMVREntry' field on 'alien_resources_bin_entry'.
-                                               //280
+
+            public CommandsEntityReference entity; //The entity in the Commands file
+
+                                                 //280
             public UInt32 environmentMapIndex; //environment_map.bin index - converted to short in code
                                                //284
             public float emissive_val1; //emissive surface val1

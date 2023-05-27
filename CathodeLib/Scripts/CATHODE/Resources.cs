@@ -29,8 +29,7 @@ namespace CATHODE
                 for (int i = 0; i < entryCount; i++)
                 {
                     Resource resource = new Resource();
-                    resource.NodeID = Utilities.Consume<ShortGuid>(reader);
-                    resource.IDFromMVREntry = reader.ReadInt32();
+                    resource.Entity = Utilities.Consume<CommandsEntityReference>(reader);
                     resource.IndexFromMVREntry = reader.ReadInt32();
                     Entries.Add(resource);
                 }
@@ -50,8 +49,7 @@ namespace CATHODE
 
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    Utilities.Write<ShortGuid>(writer, Entries[i].NodeID);
-                    writer.Write(Entries[i].IDFromMVREntry);
+                    Utilities.Write<CommandsEntityReference>(writer, Entries[i].Entity);
                     writer.Write(Entries[i].IndexFromMVREntry);
                 }
             }
@@ -62,8 +60,7 @@ namespace CATHODE
         #region STRUCTURES
         public class Resource
         {
-            public ShortGuid NodeID;
-            public int IDFromMVREntry; //ResourceID?
+            public CommandsEntityReference Entity;
             public int IndexFromMVREntry; // NOTE: This is an entry index in this file itself.
         };
         #endregion

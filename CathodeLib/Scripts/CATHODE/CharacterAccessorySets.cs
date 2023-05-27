@@ -25,8 +25,8 @@ namespace CATHODE
                 for (int i = 0; i < entryCount; i++)
                 {
                     Entry entry = new Entry(); 
-                    entry.character_entity = Utilities.Consume<ShortGuid>(reader);
-                    entry.unk = Utilities.Consume<ShortGuid>(reader);
+                    entry.character = Utilities.Consume<CommandsEntityReference>(reader);
+
                     entry.shirt_composite = Utilities.Consume<ShortGuid>(reader);
                     entry.trousers_composite = Utilities.Consume<ShortGuid>(reader);
                     entry.shoes_composite = Utilities.Consume<ShortGuid>(reader);
@@ -69,8 +69,8 @@ namespace CATHODE
                 writer.Write(Entries.Count);
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    Utilities.Write(writer, Entries[i].character_entity);
-                    Utilities.Write(writer, Entries[i].unk);
+                    Utilities.Write(writer, Entries[i].character);
+
                     Utilities.Write(writer, Entries[i].shirt_composite);
                     Utilities.Write(writer, Entries[i].trousers_composite);
                     Utilities.Write(writer, Entries[i].shoes_composite);
@@ -111,8 +111,8 @@ namespace CATHODE
         #region STRUCTURES
         public class Entry
         {
-            public ShortGuid character_entity;
-            public ShortGuid unk; //This points to the specific character instance - but how?
+            public CommandsEntityReference character;
+
             public ShortGuid shirt_composite;
             public ShortGuid trousers_composite;
             public ShortGuid shoes_composite;
