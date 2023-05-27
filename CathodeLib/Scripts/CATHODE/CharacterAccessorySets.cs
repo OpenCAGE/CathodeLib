@@ -111,14 +111,14 @@ namespace CATHODE
         #region STRUCTURES
         public class Entry
         {
-            public CommandsEntityReference character;
+            public CommandsEntityReference character = new CommandsEntityReference();
 
-            public ShortGuid shirt_composite;
-            public ShortGuid trousers_composite;
-            public ShortGuid shoes_composite;
-            public ShortGuid head_composite;
-            public ShortGuid arms_composite;
-            public ShortGuid collision_composite;
+            public ShortGuid shirt_composite = ShortGuid.Invalid;
+            public ShortGuid trousers_composite = ShortGuid.Invalid;
+            public ShortGuid shoes_composite = ShortGuid.Invalid;
+            public ShortGuid head_composite = ShortGuid.Invalid;
+            public ShortGuid arms_composite = ShortGuid.Invalid;
+            public ShortGuid collision_composite = ShortGuid.Invalid;
 
             public int unk1;
             public int unk2;

@@ -228,20 +228,20 @@ namespace CATHODE.Scripting
             List<EntityHierarchy> hierarchies = new List<EntityHierarchy>();
             _hierarchies.Clear();
 
-            GenerateHierarchiesRecursive(commands, commands.EntryPoints[0], composite, new List<ShortGuid>());
+            GenerateHierarchiesRecursive(commands, null, commands.EntryPoints[0], composite, new List<ShortGuid>());
             
             for (int i = 0; i < _hierarchies.Count; i++)
             {
-                _hierarchies[i].RemoveAt(0);
                 _hierarchies[i].Add(entity.shortGUID);
                 hierarchies.Add(new EntityHierarchy(_hierarchies[i]));
             }
 
             return hierarchies;
         }
-        private static void GenerateHierarchiesRecursive(Commands commands, Composite comp, Composite target, List<ShortGuid> hierarchy)
+        private static void GenerateHierarchiesRecursive(Commands commands, Entity ent, Composite comp, Composite target, List<ShortGuid> hierarchy)
         {
-            hierarchy.Add(comp.shortGUID);
+            if (ent != null)
+                hierarchy.Add(ent.shortGUID);
 
             if (comp.shortGUID == target.shortGUID)
             {
@@ -249,11 +249,11 @@ namespace CATHODE.Scripting
                 return;
             }
 
-            for (int i = 0; i < comp.functions.Count; i++)
+            Parallel.For(0, comp.functions.Count, i =>
             {
                 Composite next = commands.GetComposite(comp.functions[i].function);
-                if (next != null) GenerateHierarchiesRecursive(commands, next, target, new List<ShortGuid>(hierarchy.ConvertAll(x => x)));
-            }
+                if (next != null) GenerateHierarchiesRecursive(commands, comp.functions[i], next, target, new List<ShortGuid>(hierarchy.ConvertAll(x => x)));
+            });
         }
 
         /* CA's CAGE doesn't properly tidy up hierarchies pointing to deleted entities - so we can do that to save confusion */
