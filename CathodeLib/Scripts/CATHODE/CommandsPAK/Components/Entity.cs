@@ -12,6 +12,8 @@ using System.Runtime.InteropServices;
 using UnityEngine;
 #else
 using System.Numerics;
+using System.IO;
+using CathodeLib;
 #endif
 
 namespace CATHODE.Scripting.Internal
@@ -554,7 +556,27 @@ namespace CATHODE.Scripting
                 if (i == hierarchy.Count - 2) break;
             }
             hierarchy.Reverse();
+
             return checksumGenerated;
+        }
+
+        /* Generate the instance ID used to identify the instanced composite we're executed in */
+        public ShortGuid GenerateInstance()
+        {
+            ShortGuid entityID = GetPointedEntityID();
+            hierarchy.Insert(0, ShortGuid.InitialiserBase);
+            hierarchy.Remove(entityID);
+            hierarchy.Reverse();
+            ShortGuid instanceGenerated = hierarchy[0];
+            for (int i = 0; i < hierarchy.Count; i++)
+            {
+                instanceGenerated = hierarchy[i + 1].Combine(instanceGenerated);
+                if (i == hierarchy.Count - 2) break;
+            }
+            hierarchy.Reverse();
+            hierarchy.RemoveAt(0);
+            hierarchy.Add(entityID);
+            return instanceGenerated;
         }
     }
 

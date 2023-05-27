@@ -23,6 +23,13 @@ namespace CATHODE.Scripting
                 return new ShortGuid(0);
             }
         }
+        public static ShortGuid InitialiserBase
+        {
+            get
+            {
+                return new ShortGuid("FE-5B-F0-4A");
+            }
+        }
 
         public ShortGuid(float num)
         {
