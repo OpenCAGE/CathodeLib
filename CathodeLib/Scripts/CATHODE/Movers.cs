@@ -213,8 +213,8 @@ namespace CATHODE
             public float emissive_val2; //emissive surface val2
             public float emissive_val3; //emissive surface val3
                                         //296
-            public UInt32 zoneID; //zone id? RenderableScene::create_instance, RenderableScene::initialize
-            public UInt32 zoneActivator;  //zone activator? RenderableScene::create_instance, RenderableScene::initialize
+            public ShortGuid zoneID; //zone id? RenderableScene::create_instance, RenderableScene::initialize
+            public ShortGuid zoneActivator;  //zone activator? RenderableScene::create_instance, RenderableScene::initialize
                                           //304
             public UInt32 Unknowns61_; //uVar3 in reserve_light_light_master_sets, val of LightMasterSet, or an incrementer
             public UInt16 Unknown17_;   // TODO: It is -1 most of the time, but some times it isn't.

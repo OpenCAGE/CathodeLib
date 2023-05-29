@@ -449,6 +449,12 @@ namespace CATHODE.Scripting
         public ShortGuid childID;       //The ID of the entity we're linking to to provide the value for
     }
 
+    /// <summary>
+    /// This is a class to handle hierarchies pointing to entities in Commands.
+    /// Provides useful functionality for generating checksums (used for overrides in Commands), as well as composite instance IDs (used for legacy systems).
+    /// Also has methods of capturing the entity pointed to and writing the hierarchies neatly.
+    /// The hierarchy should always be written to Commands with a trailing ShortGuid.Invalid.
+    /// </summary>
     [Serializable]
 #if DEBUG
     [JsonConverter(typeof(EntityHierarchyConverter))]

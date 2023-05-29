@@ -299,6 +299,11 @@ namespace CathodeLib
         }
     }
 
+    /// <summary>
+    /// This acts as a helper class for the link between legacy data and Commands. MVR, resources, and character assets use this link.
+    /// It defines the ID of the entity we're interested in and the instance ID of the composite that contains it.
+    /// The instance ID identifies the hierarchy the composite was created at. This can be generated with GenerateInstance.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public class CommandsEntityReference
     {
