@@ -16,20 +16,8 @@ namespace CATHODE.Scripting
 #endif
     public struct ShortGuid : IComparable<ShortGuid>
     {
-        public static ShortGuid Invalid
-        {
-            get
-            {
-                return new ShortGuid(0);
-            }
-        }
-        public static ShortGuid InitialiserBase
-        {
-            get
-            {
-                return new ShortGuid("FE-5B-F0-4A");
-            }
-        }
+        public static readonly ShortGuid Invalid = new ShortGuid(0);
+        public static readonly ShortGuid InitialiserBase = new ShortGuid("FE-5B-F0-4A");
 
         public ShortGuid(float num)
         {

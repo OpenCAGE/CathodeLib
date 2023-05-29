@@ -569,6 +569,7 @@ namespace CATHODE.Scripting
         /* Generate the instance ID used to identify the instanced composite we're executed in */
         public ShortGuid GenerateInstance()
         {
+            //TODO: This hijacks the usual use for this class, need to tidy it up
             ShortGuid entityID = GetPointedEntityID();
             hierarchy.Insert(0, ShortGuid.InitialiserBase);
             hierarchy.Remove(entityID);
@@ -581,7 +582,9 @@ namespace CATHODE.Scripting
             }
             hierarchy.Reverse();
             hierarchy.RemoveAt(0);
+            hierarchy.RemoveAll(o => o == ShortGuid.Invalid);
             hierarchy.Add(entityID);
+            hierarchy.Add(ShortGuid.Invalid);
             return instanceGenerated;
         }
     }
