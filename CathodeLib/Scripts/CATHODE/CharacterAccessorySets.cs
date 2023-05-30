@@ -1,4 +1,4 @@
-﻿using CATHODE.Scripting;
+using CATHODE.Scripting;
 using CathodeLib;
 using Newtonsoft.Json;
 using System;
@@ -35,12 +35,13 @@ namespace CATHODE
                     entry.collision_composite = Utilities.Consume<ShortGuid>(reader);
 
                     entry.unk1 = reader.ReadInt32();
+
                     entry.unk2 = reader.ReadInt32();
                     entry.unk3 = reader.ReadInt32();
                     entry.unk4 = reader.ReadInt32();
                     entry.unk5 = reader.ReadInt32();
                     entry.unk6 = reader.ReadInt32();
-                    entry.unk7 = reader.ReadInt32();
+                    entry.decal = (Entry.Decal)reader.ReadInt32();
                     entry.unk8 = reader.ReadInt32();
                     entry.unk9 = reader.ReadInt32();
                     entry.unk10 = reader.ReadInt32();
@@ -55,6 +56,9 @@ namespace CATHODE
                     entry.unk13 = reader.ReadInt32();
                     entry.unk14 = reader.ReadInt32();
                     Entries.Add(entry);
+
+
+                    Console.WriteLine(JsonConvert.SerializeObject(entry).ToString());
                 }
             }
             return true;
@@ -84,7 +88,7 @@ namespace CATHODE
                     writer.Write(Entries[i].unk4);
                     writer.Write(Entries[i].unk5);
                     writer.Write(Entries[i].unk6);
-                    writer.Write(Entries[i].unk7);
+                    writer.Write((Int32)Entries[i].decal);
                     writer.Write(Entries[i].unk8);
                     writer.Write(Entries[i].unk9);
                     writer.Write(Entries[i].unk10);
@@ -120,24 +124,34 @@ namespace CATHODE
             public ShortGuid arms_composite = ShortGuid.Invalid;
             public ShortGuid collision_composite = ShortGuid.Invalid;
 
-            public int unk1;
-            public int unk2;
-            public int unk3;
-            public int unk4;
-            public int unk5;
-            public int unk6;
-            public int unk7;
-            public int unk8;
-            public int unk9;
-            public int unk10;
-            public int unk11;
+            public int unk1 = 0;
+            public int unk2 = 1;
+            public int unk3 = 2;
+            public int unk4 = 3; //This is often odd values
+            public int unk5 = 4;
+            public int unk6 = 5;
+
+            public Decal decal = Decal.MEDICAL; //TODO: Is this decal texture defined by CUSTOMCHARACTERASSETDATA.BIN?
+
+            public int unk8 = 0;
+            public int unk9 = 0;
+            public int unk10 = 1;
+            public int unk11 = 0;
 
             public string face_skeleton = "";
             public string body_skeleton = "";
 
-            public int unk12;
-            public int unk13;
-            public int unk14;
+            public int unk12 = 3;
+            public int unk13 = 6;
+            public int unk14 = 9;
+
+            public enum Decal
+            {
+                MEDICAL,
+                ENGINEERING,
+                GENERIC,
+                TECHNICAL,
+            }
         };
         #endregion
     }
