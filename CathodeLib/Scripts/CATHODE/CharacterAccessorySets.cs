@@ -47,9 +47,9 @@ namespace CATHODE
                     entry.unk11 = reader.ReadInt32();
 
                     byte[] stringBlock = reader.ReadBytes(260);
-                    entry.body_type = Utilities.ReadString(stringBlock);
+                    entry.face_skeleton = Utilities.ReadString(stringBlock);
                     stringBlock = reader.ReadBytes(260);
-                    entry.skeleton = Utilities.ReadString(stringBlock);
+                    entry.body_skeleton = Utilities.ReadString(stringBlock);
 
                     entry.unk12 = reader.ReadInt32();
                     entry.unk13 = reader.ReadInt32();
@@ -92,12 +92,12 @@ namespace CATHODE
 
                     writer.Write(new byte[260]);
                     writer.BaseStream.Position -= 260;
-                    Utilities.WriteString(Entries[i].body_type, writer, false);
-                    writer.BaseStream.Position += 260 - Entries[i].body_type.Length;
+                    Utilities.WriteString(Entries[i].face_skeleton, writer, false);
+                    writer.BaseStream.Position += 260 - Entries[i].face_skeleton.Length;
                     writer.Write(new byte[260]);
                     writer.BaseStream.Position -= 260;
-                    Utilities.WriteString(Entries[i].skeleton, writer, false);
-                    writer.BaseStream.Position += 260 - Entries[i].skeleton.Length;
+                    Utilities.WriteString(Entries[i].body_skeleton, writer, false);
+                    writer.BaseStream.Position += 260 - Entries[i].body_skeleton.Length;
 
                     writer.Write(Entries[i].unk12);
                     writer.Write(Entries[i].unk13);
@@ -132,8 +132,8 @@ namespace CATHODE
             public int unk10;
             public int unk11;
 
-            public string body_type;
-            public string skeleton;
+            public string face_skeleton = "";
+            public string body_skeleton = "";
 
             public int unk12;
             public int unk13;
