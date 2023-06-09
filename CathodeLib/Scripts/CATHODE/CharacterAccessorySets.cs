@@ -56,9 +56,6 @@ namespace CATHODE
                     entry.unk13 = reader.ReadInt32();
                     entry.unk14 = reader.ReadInt32();
                     Entries.Add(entry);
-
-
-                    Console.WriteLine(JsonConvert.SerializeObject(entry).ToString());
                 }
             }
             return true;
@@ -138,8 +135,8 @@ namespace CATHODE
             public int unk10 = 1;
             public int unk11 = 0;
 
-            public string face_skeleton = "";
-            public string body_skeleton = "";
+            public string face_skeleton = "AL";
+            public string body_skeleton = "MALE";
 
             public int unk12 = 3;
             public int unk13 = 6;
