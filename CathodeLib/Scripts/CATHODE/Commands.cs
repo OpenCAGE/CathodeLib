@@ -698,10 +698,10 @@ namespace CATHODE
 
                 #region WRITE_PARAMETERS
                 //Write out parameters & track offsets
-                int[] parameterOffsets = new int[parameters.Count];
+                Dictionary<ParameterData, int> parameterOffsets = new Dictionary<ParameterData, int>(parameters.Count);
                 for (int i = 0; i < parameters.Count; i++)
                 {
-                    parameterOffsets[i] = (int)writer.BaseStream.Position / 4;
+                    parameterOffsets.Add(parameters[i], (int)writer.BaseStream.Position / 4);
                     Utilities.Write<ShortGuid>(writer, CommandsUtils.GetDataTypeGUID(parameters[i].dataType));
                     switch (parameters[i].dataType)
                     {
@@ -832,7 +832,7 @@ namespace CATHODE
                                         for (int y = 0; y < sortedParams.Count; y++)
                                         {
                                             Utilities.Write<ShortGuid>(writer, sortedParams[y].name);
-                                            writer.Write(GetParameterOffset(ref parameterOffsets, ref parameters, ref sortedParams[y].content));
+                                            writer.Write(parameterOffsets[sortedParams[y].content]);
                                         }
                                     }
 
@@ -1154,7 +1154,8 @@ namespace CATHODE
 
                 //Write out parameter offsets
                 int parameterOffsetPos = (int)writer.BaseStream.Position;
-                Utilities.Write<int>(writer, parameterOffsets);
+                foreach (KeyValuePair<ParameterData, int> offset in parameterOffsets)
+                    writer.Write(offset.Value);
 
                 //Write out composite offsets
                 int compositeOffsetPos = (int)writer.BaseStream.Position;
@@ -1236,17 +1237,6 @@ namespace CATHODE
 
             reader.BaseStream.Position = offset;
             return count;
-        }
-
-        /* Get the offset for the parameter data in the overarching write list */
-        private int GetParameterOffset(ref int[] offsets, ref List<ParameterData> parameters, ref ParameterData parameter)
-        {
-            for (int i = 0; i < parameters.Count; i++)
-            {
-                if (parameters[i] == parameter)
-                    return offsets[i];
-            }
-            throw new Exception("Failed to lookup parameter in parameters list, could not find offset!");
         }
 
         /* Refresh the composite pointers for our entry points */
