@@ -84,6 +84,8 @@ namespace CATHODE
 
                     reader.BaseStream.Position += 10;
 
+                    Console.WriteLine("Header Over");
+
                     //end next bit (48) <- this is all useful above here but just skipping for now, figure out datatypes from ps3 dump
 
                     
@@ -114,6 +116,41 @@ namespace CATHODE
                             {
                                 test = reader.ReadInt16(); //something index
                                 int countFour = reader.ReadInt16(); //count of next ints
+                                Console.WriteLine("Count of block 4: " + countFour);
+
+                                if (countFour == 0)
+                                {
+                                    test = reader.ReadInt16(); //small
+                                    test = reader.ReadInt16(); //bigger
+
+                                    int countFive = reader.ReadInt16(); //count of next block
+                                    Console.WriteLine("Count of block 5: " + countFive);
+
+                                    for (int p1 = 0; p1 < countFive; p1++)
+                                    {
+                                        test = reader.ReadInt16(); //something index
+                                        int countSix = reader.ReadInt16(); //count of next ints
+                                        Console.WriteLine("Count of block 6: " + countSix);
+
+                                        if (countSix == 0)
+                                        {
+                                            test = reader.ReadInt16(); //small
+                                            test = reader.ReadInt16(); //bigger
+
+                                            //TODO: this just keeps recursing down. need to write a parser that can handle it.
+                                            string dasfsdf = "";
+                                        }
+
+                                        for (int i = 0; i < countSix; i++)
+                                        {
+                                            test = reader.ReadInt32(); //probs indexes to the float array at the bottom of the file
+                                        }
+                                    }
+
+                                    //countOne -= countThree;
+                                    //continue;
+                                    break;
+                                }
 
                                 for (int i = 0; i < countFour; i++)
                                 {
@@ -121,6 +158,8 @@ namespace CATHODE
                                 }
                             }
 
+                            //countOne -= countThree;
+                            //continue;
                             break;
                         }
 
