@@ -1193,12 +1193,12 @@ namespace CATHODE
         /* Get an individual composite */
         public Composite GetComposite(string name)
         {
-            return Entries.FirstOrDefault(o => o.name == name || o.name == name.Replace('/', '\\'));
+            return Entries.FirstOrDefault(o => o != null && o.name == name || o.name == name.Replace('/', '\\'));
         }
         public Composite GetComposite(ShortGuid id)
         {
             if (id.val == null) return null;
-            return Entries.FirstOrDefault(o => o.shortGUID == id);
+            return Entries.FirstOrDefault(o => o != null && o.shortGUID == id);
         }
 
         /* Get entry point composite objects */
