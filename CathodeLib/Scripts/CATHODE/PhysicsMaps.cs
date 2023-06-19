@@ -2,6 +2,9 @@
 using System.Runtime.InteropServices;
 using CathodeLib;
 using System.Collections.Generic;
+using CATHODE.Scripting;
+using System;
+using System.Linq;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -27,12 +30,15 @@ namespace CATHODE
                 for (int i = 0; i < entryCount; i++)
                 {
                     Entry entry = new Entry();
-                    entry.UnknownNotableValue_ = reader.ReadInt32();
+                    entry.PhysicsSystemIndex = reader.ReadInt32();
                     reader.BaseStream.Position += 4;
-                    for (int x = 0; x < 4; x++) entry.IDs[x] = reader.ReadInt32();
+                    entry.resource_type = Utilities.Consume<ShortGuid>(reader); 
+                    entry.composite_instance_id = Utilities.Consume<ShortGuid>(reader); 
+                    entry.entity = Utilities.Consume<CommandsEntityReference>(reader);
                     entry.Row0 = Utilities.Consume<Vector4>(reader);
                     entry.Row1 = Utilities.Consume<Vector4>(reader);
                     entry.Row2 = Utilities.Consume<Vector4>(reader);
+
                     reader.BaseStream.Position += 8;
                     Entries.Add(entry);
                 }
@@ -49,9 +55,11 @@ namespace CATHODE
                 writer.Write(Entries.Count);
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    writer.Write(Entries[i].UnknownNotableValue_);
+                    writer.Write(Entries[i].PhysicsSystemIndex);
                     writer.Write(new byte[4]);
-                    for (int x = 0; x < 4; x++) writer.Write(Entries[i].IDs[x]);
+                    Utilities.Write(writer, Entries[i].resource_type);
+                    Utilities.Write(writer, Entries[i].composite_instance_id);
+                    Utilities.Write(writer, Entries[i].entity);
                     Utilities.Write<Vector4>(writer, Entries[i].Row0);
                     Utilities.Write<Vector4>(writer, Entries[i].Row1);
                     Utilities.Write<Vector4>(writer, Entries[i].Row2);
@@ -65,8 +73,19 @@ namespace CATHODE
         #region STRUCTURES
         public class Entry
         {
-            public int UnknownNotableValue_;
-            public int[] IDs = new int[4];
+            //Should match system_index on the PhysicsSystem entity.
+            public int PhysicsSystemIndex;
+
+            //DYNAMIC_PHYSICS_SYSTEM
+            public ShortGuid resource_type;
+
+            //This is the instance ID for the composite containing the PhysicsSystem.
+            //We do not need to worry about the entity ID for the PhysicsSystem as the resources are written to the composite that contains it.
+            public ShortGuid composite_instance_id;
+
+            //This is the entity ID and instance ID for the actual instanced composite entity (basically, a step down from the instance above).
+            public CommandsEntityReference entity;
+
             public Vector4 Row0; // NOTE: This is a 3x4 matrix, seems to have rotation data on the leftmost 3x3 matrix, and position
             public Vector4 Row1; //   on the rightmost 3x1 matrix.
             public Vector4 Row2;
