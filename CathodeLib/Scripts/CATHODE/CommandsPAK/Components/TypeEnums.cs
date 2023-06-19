@@ -905,7 +905,7 @@ namespace CATHODE.Scripting
         ANIMATION_MASK_RESOURCE,
         PLAY_ANIMATION_DATA_RESOURCE,
 
-
+        // A lot of these translate to strings
         CAMERA_INSTANCE,
         VENT_ENTRANCE,
         LOGIC_CHARACTER,
