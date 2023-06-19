@@ -13,6 +13,8 @@ using System.Numerics;
 
 namespace CATHODE
 {
+    //This file defines additional info for entities with DYNAMIC_PHYSICS_SYSTEM resources.
+
     /* DATA/ENV/PRODUCTION/x/WORLD/PHYSICS.MAP */
     public class PhysicsMaps : CathodeFile
     {
@@ -30,7 +32,7 @@ namespace CATHODE
                 for (int i = 0; i < entryCount; i++)
                 {
                     Entry entry = new Entry();
-                    entry.PhysicsSystemIndex = reader.ReadInt32();
+                    entry.physics_system_index = reader.ReadInt32();
                     reader.BaseStream.Position += 4;
                     entry.resource_type = Utilities.Consume<ShortGuid>(reader); 
                     entry.composite_instance_id = Utilities.Consume<ShortGuid>(reader); 
@@ -55,7 +57,7 @@ namespace CATHODE
                 writer.Write(Entries.Count);
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    writer.Write(Entries[i].PhysicsSystemIndex);
+                    writer.Write(Entries[i].physics_system_index);
                     writer.Write(new byte[4]);
                     Utilities.Write(writer, Entries[i].resource_type);
                     Utilities.Write(writer, Entries[i].composite_instance_id);
@@ -74,7 +76,7 @@ namespace CATHODE
         public class Entry
         {
             //Should match system_index on the PhysicsSystem entity.
-            public int PhysicsSystemIndex;
+            public int physics_system_index;
 
             //DYNAMIC_PHYSICS_SYSTEM
             public ShortGuid resource_type;

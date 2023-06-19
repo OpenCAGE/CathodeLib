@@ -7,6 +7,8 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
+    //This file defines additional info for entities with COLLISION_MAPPING resources.
+
     /* DATA/ENV/PRODUCTION/x/WORLD/COLLISION.MAP */
     public class CollisionMaps : CathodeFile
     {
