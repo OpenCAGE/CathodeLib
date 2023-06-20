@@ -270,7 +270,7 @@ namespace CATHODE.Scripting
                     case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
                     case ResourceType.RENDERABLE_INSTANCE:
                     case ResourceType.ANIMATED_MODEL:
-                        rr.startIndex = 0;
+                        rr.index = 0;
                         break;
                 }
                 resources.Add(rr);

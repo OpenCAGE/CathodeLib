@@ -256,16 +256,16 @@ namespace CATHODE
                                             switch (resource.entryType)
                                             {
                                                 case ResourceType.RENDERABLE_INSTANCE:
-                                                    resource.startIndex = reader_parallel.ReadInt32();
+                                                    resource.index = reader_parallel.ReadInt32();
                                                     resource.count = reader_parallel.ReadInt32();
                                                     break;
                                                 case ResourceType.COLLISION_MAPPING:
-                                                    resource.startIndex = reader_parallel.ReadInt32();
+                                                    resource.index = reader_parallel.ReadInt32();
                                                     resource.collisionID = new ShortGuid(reader_parallel);
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                    resource.startIndex = reader_parallel.ReadInt32();
+                                                    resource.index = reader_parallel.ReadInt32();
                                                     reader_parallel.BaseStream.Position += 4;
                                                     break;
                                                 default:
@@ -584,7 +584,7 @@ namespace CATHODE
                                     dps_index = new Parameter("system_index", new cInteger(0));
                                     Entries[i].functions[x].parameters.Add(dps_index);
                                 }
-                                Entries[i].functions[x].AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).startIndex = ((cInteger)dps_index.content).value;
+                                Entries[i].functions[x].AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).index = ((cInteger)dps_index.content).value;
                                 break;
                             case FunctionType.EnvironmentModelReference:
                                 Parameter rsc = Entries[i].functions[x].GetParameter("resource");
@@ -939,16 +939,16 @@ namespace CATHODE
                                         switch (resourceReferences[i][p].entryType)
                                         {
                                             case ResourceType.RENDERABLE_INSTANCE:
-                                                writer.Write(resourceReferences[i][p].startIndex);
+                                                writer.Write(resourceReferences[i][p].index);
                                                 writer.Write(resourceReferences[i][p].count);
                                                 break;
                                             case ResourceType.COLLISION_MAPPING:
-                                                writer.Write(resourceReferences[i][p].startIndex);
+                                                writer.Write(resourceReferences[i][p].index);
                                                 writer.Write(resourceReferences[i][p].collisionID.val);
                                                 break;
                                             case ResourceType.ANIMATED_MODEL:
                                             case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                writer.Write(resourceReferences[i][p].startIndex);
+                                                writer.Write(resourceReferences[i][p].index);
                                                 writer.Write(-1);
                                                 break;
                                             case ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
