@@ -74,7 +74,7 @@ namespace CATHODE
                             break;
                         case DataType.STRING:
                             reader.BaseStream.Position += 8;
-                            this_parameter = new cString(Utilities.ReadString(reader));
+                            this_parameter = new cString(Utilities.ReadString(reader).Replace("\u0092", "'"));
                             Utilities.Align(reader, 4);
                             break;
                         case DataType.BOOL:
@@ -724,7 +724,7 @@ namespace CATHODE
                             byte[] stringStartRaw = BitConverter.GetBytes(stringStart);
                             stringStartRaw[3] = 0x80;
                             writer.Write(stringStartRaw);
-                            string str = ((cString)parameters[i]).value;
+                            string str = ((cString)parameters[i]).value.Replace("\u0092", "'"); 
                             writer.Write(ShortGuidUtils.Generate(str).val);
                             for (int x = 0; x < str.Length; x++) writer.Write(str[x]);
                             writer.Write((char)0x00);
