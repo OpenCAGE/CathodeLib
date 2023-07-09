@@ -273,5 +273,33 @@ namespace CathodeLib
             }
             Materials.Save();
         }
+
+        /* Get all levels available within the ENV folder. Pass the path to the folder that contains AI.exe. */
+        public static List<string> GetLevels(string gameDirectory, bool swapNostromoForPatch = false)
+        {
+            string[] galaxyBins = Directory.GetFiles(gameDirectory + "/DATA/ENV/PRODUCTION/", "GALAXY.DEFINITION_BIN", SearchOption.AllDirectories);
+            List<string> mapList = new List<string>();
+            for (int i = 0; i < galaxyBins.Length; i++)
+            {
+                int extraLength = ("/RENDERABLE/GALAXY/GALAXY.DEFINITION_BIN").Length;
+                string mapPath = galaxyBins[i].Substring(0, galaxyBins[i].Length - extraLength);
+
+                //Try match a few files outside of the GALAXY definition, to ensure we are actually a map.
+                if (!File.Exists(mapPath + "/WORLD/COMMANDS.PAK")) continue;
+                if (!File.Exists(mapPath + "/WORLD/MODELS.MVR")) continue;
+                if (!File.Exists(mapPath + "/RENDERABLE/LEVEL_MODELS.PAK")) continue;
+                if (!File.Exists(mapPath + "/RENDERABLE/MODELS_LEVEL.BIN")) continue;
+
+                string[] split = galaxyBins[i].Replace("\\", "/").Split(new[] { "/DATA/ENV/PRODUCTION/" }, StringSplitOptions.None);
+                string file = split[split.Length - 1];
+                int length = file.Length - extraLength;
+                if (length <= 0) continue;
+
+                string mapName = file.Substring(0, length);
+                if (swapNostromoForPatch && (mapName == "DLC/BSPNOSTROMO_RIPLEY" || mapName == "DLC/BSPNOSTROMO_TWOTEAMS")) mapName += "_PATCH";
+                mapList.Add(mapName);
+            }
+            return mapList;
+        }
     }
 }
