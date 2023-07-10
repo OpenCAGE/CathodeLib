@@ -59,55 +59,5 @@ namespace CathodeLib.Properties {
                 resourceCulture = value;
             }
         }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] cathode_enum_lut {
-            get {
-                object obj = ResourceManager.GetObject("cathode_enum_lut", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] composite_entity_names {
-            get {
-                object obj = ResourceManager.GetObject("composite_entity_names", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] composite_paths {
-            get {
-                object obj = ResourceManager.GetObject("composite_paths", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] entity_parameter_names {
-            get {
-                object obj = ResourceManager.GetObject("entity_parameter_names", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] sound_names {
-            get {
-                object obj = ResourceManager.GetObject("sound_names", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
     }
 }

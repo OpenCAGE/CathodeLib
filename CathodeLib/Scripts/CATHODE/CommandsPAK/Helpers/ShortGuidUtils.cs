@@ -21,16 +21,8 @@ namespace CATHODE.Scripting
         /* Pull in strings we know are cached as ShortGuid in Cathode */
         static ShortGuidUtils()
         {
-#if UNITY_EDITOR || UNITY_STANDALONE
-            BinaryReader reader = new BinaryReader(File.OpenRead(Application.streamingAssetsPath + "/NodeDBs/entity_parameter_names.bin"));
-#else
-            BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.entity_parameter_names));
-#endif
             _vanilla = new GuidNameTable();
             _custom = new GuidNameTable();
-            while (reader.BaseStream.Position < reader.BaseStream.Length)
-                Cache(new ShortGuid(reader), reader.ReadString(), true);
-            reader.Close();
         }
 
         /* Optionally, link a Commands file which can be used to save custom ShortGuids to */

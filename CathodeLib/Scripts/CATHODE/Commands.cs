@@ -1245,22 +1245,6 @@ namespace CATHODE
             _entryPointObjects = new Composite[_entryPoints.Length];
             for (int i = 0; i < _entryPoints.Length; i++) _entryPointObjects[i] = GetComposite(_entryPoints[i]);
         }
-
-        /* Test Stuff */
-        private void IsParameterReferencedAnywhere(ShortGuid id)
-        {
-            Parallel.ForEach(Entries, comp =>
-            {
-                Parallel.ForEach(comp.functions, func =>
-                {
-                    Parallel.ForEach(func.parameters, param =>
-                    {
-                        if (param.name == id)
-                            Console.WriteLine("[" + id + "] " + comp.name + " -> " + EntityUtils.GetName(comp.shortGUID, func.shortGUID) + " -> " + param.name + " [" + param.content.dataType + "]");
-                    });
-                });
-            });
-        }
         #endregion
 
         #region STRUCTURES

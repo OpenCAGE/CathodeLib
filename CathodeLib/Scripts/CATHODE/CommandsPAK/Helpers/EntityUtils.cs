@@ -25,14 +25,7 @@ namespace CATHODE.Scripting
         /* Load all standard entity/composite names from our offline DB */
         static EntityUtils()
         {
-#if UNITY_EDITOR || UNITY_STANDALONE
-            BinaryReader reader = new BinaryReader(File.OpenRead(Application.streamingAssetsPath + "/NodeDBs/composite_entity_names.bin"));
-#else
-            BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.composite_entity_names));
-#endif
-            _vanilla = new EntityNameTable(reader);
-            _custom = new EntityNameTable();
-            reader.Close();
+
         }
 
         /* Optionally, link a Commands file which can be used to save custom entity names to */

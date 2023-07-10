@@ -16,11 +16,7 @@ namespace CATHODE.Scripting
         private static List<EnumDescriptor> lookup_enum;
         static EnumUtils()
         {
-#if UNITY_EDITOR || UNITY_STANDALONE
-            lookup_enum = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/composite_entity_names.bin")).Cast<EnumDescriptor>().ToList();
-#else
-            lookup_enum = ReadDB(CathodeLib.Properties.Resources.cathode_enum_lut).Cast<EnumDescriptor>().ToList();
-#endif
+
         }
 
         //Check the formatted enum dump for content

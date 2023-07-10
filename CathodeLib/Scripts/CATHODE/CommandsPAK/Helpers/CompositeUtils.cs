@@ -16,15 +16,7 @@ namespace CathodeLib
 
         static CompositeUtils()
         {
-#if UNITY_EDITOR || UNITY_STANDALONE
-            BinaryReader reader = new BinaryReader(File.OpenRead(Application.streamingAssetsPath + "/NodeDBs/composite_paths.bin"));
-#else
-            BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.composite_paths));
-#endif
-            int compositeCount = reader.ReadInt32();
-            pathLookup = new Dictionary<ShortGuid, string>(compositeCount);
-            for (int i = 0; i < compositeCount; i++)
-                pathLookup.Add(Utilities.Consume<ShortGuid>(reader), reader.ReadString());
+
         }
 
         public static string GetFullPath(ShortGuid guid)
