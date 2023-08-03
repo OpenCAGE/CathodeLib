@@ -74,7 +74,7 @@ namespace CATHODE
                             break;
                         case DataType.STRING:
                             reader.BaseStream.Position += 8;
-                            this_parameter = new cString(Utilities.ReadString(reader));
+                            this_parameter = new cString(Utilities.ReadString(reader).Replace("\u0092", "'"));
                             Utilities.Align(reader, 4);
                             break;
                         case DataType.BOOL:
@@ -148,7 +148,6 @@ namespace CATHODE
                         List<CommandsEntityLinks> entityLinks = new List<CommandsEntityLinks>();
                         List<CommandsParamRefSet> paramRefSets = new List<CommandsParamRefSet>();
                         List<ResourceReference> resourceRefs = new List<ResourceReference>();
-                        Dictionary<ShortGuid, ShortGuid> overrideChecksums = new Dictionary<ShortGuid, ShortGuid>();
                         for (int x = 0; x < offsetPairs.Length; x++)
                         {
                             reader_parallel.BaseStream.Position = offsetPairs[x].GlobalOffset * 4;
@@ -184,7 +183,7 @@ namespace CATHODE
                                     case CompositeFileData.ENTITY_OVERRIDES_CHECKSUM:
                                         {
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
-                                            overrideChecksums.Add(new ShortGuid(reader_parallel), new ShortGuid(reader_parallel));
+                                            reader_parallel.BaseStream.Position += 8;
                                             break;
                                         }
                                     case CompositeFileData.COMPOSITE_EXPOSED_PARAMETERS:
@@ -257,16 +256,16 @@ namespace CATHODE
                                             switch (resource.entryType)
                                             {
                                                 case ResourceType.RENDERABLE_INSTANCE:
-                                                    resource.startIndex = reader_parallel.ReadInt32();
+                                                    resource.index = reader_parallel.ReadInt32();
                                                     resource.count = reader_parallel.ReadInt32();
                                                     break;
                                                 case ResourceType.COLLISION_MAPPING:
-                                                    resource.startIndex = reader_parallel.ReadInt32();
+                                                    resource.index = reader_parallel.ReadInt32();
                                                     resource.collisionID = new ShortGuid(reader_parallel);
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                    resource.startIndex = reader_parallel.ReadInt32();
+                                                    resource.index = reader_parallel.ReadInt32();
                                                     reader_parallel.BaseStream.Position += 4;
                                                     break;
                                                 default:
@@ -402,10 +401,6 @@ namespace CATHODE
                                 }
                             }
                         }
-
-                        //Apply checksums to overrides
-                        for (int x = 0; x < composite.overrides.Count; x++)
-                            composite.overrides[x].checksum = overrideChecksums[composite.overrides[x].shortGUID];
 
                         //Apply connections between entities
                         for (int x = 0; x < entityLinks.Count; x++)
@@ -589,7 +584,7 @@ namespace CATHODE
                                     dps_index = new Parameter("system_index", new cInteger(0));
                                     Entries[i].functions[x].parameters.Add(dps_index);
                                 }
-                                Entries[i].functions[x].AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).startIndex = ((cInteger)dps_index.content).value;
+                                Entries[i].functions[x].AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).index = ((cInteger)dps_index.content).value;
                                 break;
                             case FunctionType.EnvironmentModelReference:
                                 Parameter rsc = Entries[i].functions[x].GetParameter("resource");
@@ -640,7 +635,7 @@ namespace CATHODE
                 linkedEntities[i] = new List<Entity>(ents.FindAll(o => o.childLinks.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
                 parameterisedEntities[i] = new List<Entity>(ents.FindAll(o => o.parameters.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
                 reshuffledOverrides[i] = Entries[i].overrides.OrderBy(o => o.shortGUID.ToUInt32()).ToList();
-                reshuffledChecksums[i] = Entries[i].overrides.OrderBy(o => o.checksum.ToUInt32()).ToList();
+                reshuffledChecksums[i] = Entries[i].overrides.OrderBy(o => o.connectedEntity.GenerateChecksum().ToUInt32()).ToList();
 
                 cageAnimationEntities[i] = new List<CAGEAnimation>();
                 triggerSequenceEntities[i] = new List<TriggerSequence>();
@@ -703,10 +698,10 @@ namespace CATHODE
 
                 #region WRITE_PARAMETERS
                 //Write out parameters & track offsets
-                int[] parameterOffsets = new int[parameters.Count];
+                Dictionary<ParameterData, int> parameterOffsets = new Dictionary<ParameterData, int>(parameters.Count);
                 for (int i = 0; i < parameters.Count; i++)
                 {
-                    parameterOffsets[i] = (int)writer.BaseStream.Position / 4;
+                    parameterOffsets.Add(parameters[i], (int)writer.BaseStream.Position / 4);
                     Utilities.Write<ShortGuid>(writer, CommandsUtils.GetDataTypeGUID(parameters[i].dataType));
                     switch (parameters[i].dataType)
                     {
@@ -729,7 +724,7 @@ namespace CATHODE
                             byte[] stringStartRaw = BitConverter.GetBytes(stringStart);
                             stringStartRaw[3] = 0x80;
                             writer.Write(stringStartRaw);
-                            string str = ((cString)parameters[i]).value;
+                            string str = ((cString)parameters[i]).value.Replace("\u0092", "'"); 
                             writer.Write(ShortGuidUtils.Generate(str).val);
                             for (int x = 0; x < str.Length; x++) writer.Write(str[x]);
                             writer.Write((char)0x00);
@@ -837,7 +832,7 @@ namespace CATHODE
                                         for (int y = 0; y < sortedParams.Count; y++)
                                         {
                                             Utilities.Write<ShortGuid>(writer, sortedParams[y].name);
-                                            writer.Write(GetParameterOffset(ref parameterOffsets, ref parameters, ref sortedParams[y].content));
+                                            writer.Write(parameterOffsets[sortedParams[y].content]);
                                         }
                                     }
 
@@ -874,7 +869,7 @@ namespace CATHODE
                                     for (int p = 0; p < reshuffledChecksums[i].Count; p++)
                                     {
                                         writer.Write(reshuffledChecksums[i][p].shortGUID.val);
-                                        writer.Write(reshuffledChecksums[i][p].checksum.val);
+                                        writer.Write(reshuffledChecksums[i][p].connectedEntity.GenerateChecksum().val);
                                     }
                                     break;
                                 }
@@ -944,16 +939,16 @@ namespace CATHODE
                                         switch (resourceReferences[i][p].entryType)
                                         {
                                             case ResourceType.RENDERABLE_INSTANCE:
-                                                writer.Write(resourceReferences[i][p].startIndex);
+                                                writer.Write(resourceReferences[i][p].index);
                                                 writer.Write(resourceReferences[i][p].count);
                                                 break;
                                             case ResourceType.COLLISION_MAPPING:
-                                                writer.Write(resourceReferences[i][p].startIndex);
+                                                writer.Write(resourceReferences[i][p].index);
                                                 writer.Write(resourceReferences[i][p].collisionID.val);
                                                 break;
                                             case ResourceType.ANIMATED_MODEL:
                                             case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                writer.Write(resourceReferences[i][p].startIndex);
+                                                writer.Write(resourceReferences[i][p].index);
                                                 writer.Write(-1);
                                                 break;
                                             case ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
@@ -1159,7 +1154,8 @@ namespace CATHODE
 
                 //Write out parameter offsets
                 int parameterOffsetPos = (int)writer.BaseStream.Position;
-                Utilities.Write<int>(writer, parameterOffsets);
+                foreach (KeyValuePair<ParameterData, int> offset in parameterOffsets)
+                    writer.Write(offset.Value);
 
                 //Write out composite offsets
                 int compositeOffsetPos = (int)writer.BaseStream.Position;
@@ -1197,12 +1193,12 @@ namespace CATHODE
         /* Get an individual composite */
         public Composite GetComposite(string name)
         {
-            return Entries.FirstOrDefault(o => o.name == name || o.name == name.Replace('/', '\\'));
+            return Entries.FirstOrDefault(o => o != null && o.name == name || o.name == name.Replace('/', '\\'));
         }
         public Composite GetComposite(ShortGuid id)
         {
             if (id.val == null) return null;
-            return Entries.FirstOrDefault(o => o.shortGUID == id);
+            return Entries.FirstOrDefault(o => o != null && o.shortGUID == id);
         }
 
         /* Get entry point composite objects */
@@ -1241,17 +1237,6 @@ namespace CATHODE
 
             reader.BaseStream.Position = offset;
             return count;
-        }
-
-        /* Get the offset for the parameter data in the overarching write list */
-        private int GetParameterOffset(ref int[] offsets, ref List<ParameterData> parameters, ref ParameterData parameter)
-        {
-            for (int i = 0; i < parameters.Count; i++)
-            {
-                if (parameters[i] == parameter)
-                    return offsets[i];
-            }
-            throw new Exception("Failed to lookup parameter in parameters list, could not find offset!");
         }
 
         /* Refresh the composite pointers for our entry points */

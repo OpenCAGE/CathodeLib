@@ -1,3 +1,4 @@
+using CATHODE.Scripting;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -45,6 +46,21 @@ namespace CathodeLib
         public static void Align(BinaryWriter writer, int val = 4, byte fillWith = 0x00)
         {
             while (writer.BaseStream.Position % val != 0) writer.Write(fillWith);
+        }
+
+        //Reads a string with alternating nulls up to a trailing 0x00 byte
+        public static string ReadStringAlternating(byte[] bytes)
+        {
+            byte[] trimmed = new byte[bytes.Length / 2];
+            int x = 0;
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                if (i % 2 != 0) continue;
+                trimmed[x] = bytes[i];
+                if (bytes[i] == 0x00) break;
+                x++;
+            }
+            return ReadString(trimmed);
         }
 
         //Reads a string up to a trailing 0x00 byte
@@ -280,6 +296,25 @@ namespace CathodeLib
         {
             GlobalOffset = (int)_go;
             EntryCount = _ec;
+        }
+    }
+
+    /// <summary>
+    /// This acts as a helper class for the link between legacy data and Commands. MVR, resources, and character assets use this link.
+    /// It defines the ID of the entity we're interested in and the instance ID of the composite that contains it.
+    /// The instance ID identifies the hierarchy the composite was created at. This can be generated with GenerateInstance.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public class CommandsEntityReference
+    {
+        public ShortGuid entity_id;             //The ID of the entity within its written composite
+        public ShortGuid composite_instance_id; //The instance of the composite this entity is in when created via hierarchy
+
+        public CommandsEntityReference() { }
+        public CommandsEntityReference(EntityHierarchy hierarchy)
+        {
+            entity_id = hierarchy.GetPointedEntityID();
+            composite_instance_id = hierarchy.GenerateInstance();
         }
     }
     

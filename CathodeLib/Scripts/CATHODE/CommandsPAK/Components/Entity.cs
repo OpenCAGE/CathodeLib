@@ -1,4 +1,4 @@
-﻿using CATHODE.Scripting.Internal;
+using CATHODE.Scripting.Internal;
 #if DEBUG
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json;
@@ -12,6 +12,8 @@ using System.Runtime.InteropServices;
 using UnityEngine;
 #else
 using System.Numerics;
+using System.IO;
+using CathodeLib;
 #endif
 
 namespace CATHODE.Scripting.Internal
@@ -268,7 +270,7 @@ namespace CATHODE.Scripting
                     case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
                     case ResourceType.RENDERABLE_INSTANCE:
                     case ResourceType.ANIMATED_MODEL:
-                        rr.startIndex = 0;
+                        rr.index = 0;
                         break;
                 }
                 resources.Add(rr);
@@ -318,17 +320,14 @@ namespace CATHODE.Scripting
 
         public OverrideEntity(List<ShortGuid> hierarchy = null) : base(EntityVariant.OVERRIDE)
         {
-            checksum = ShortGuidUtils.GenerateRandom();
             if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
         }
         public OverrideEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null) : base(shortGUID, EntityVariant.OVERRIDE)
         {
             this.shortGUID = shortGUID;
-            checksum = ShortGuidUtils.GenerateRandom();
             if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
         }
 
-        public ShortGuid checksum; //TODO: This value is apparently a hash of the hierarchy GUIDs, but need to verify that, and work out the salt.
         public EntityHierarchy connectedEntity = new EntityHierarchy();
     }
 
@@ -450,6 +449,12 @@ namespace CATHODE.Scripting
         public ShortGuid childID;       //The ID of the entity we're linking to to provide the value for
     }
 
+    /// <summary>
+    /// This is a class to handle hierarchies pointing to entities in Commands.
+    /// Provides useful functionality for generating checksums (used for overrides in Commands), as well as composite instance IDs (used for legacy systems).
+    /// Also has methods of capturing the entity pointed to and writing the hierarchies neatly.
+    /// The hierarchy should always be written to Commands with a trailing ShortGuid.Invalid.
+    /// </summary>
     [Serializable]
 #if DEBUG
     [JsonConverter(typeof(EntityHierarchyConverter))]
@@ -461,8 +466,8 @@ namespace CATHODE.Scripting
         {
             hierarchy = _hierarchy;
 
-            if (hierarchy[hierarchy.Count - 1].ToByteString() != "00-00-00-00")
-                hierarchy.Add(new ShortGuid("00-00-00-00"));
+            if (hierarchy[hierarchy.Count - 1] != ShortGuid.Invalid)
+                hierarchy.Add(ShortGuid.Invalid);
         }
         public List<ShortGuid> hierarchy = new List<ShortGuid>();
 
@@ -523,11 +528,64 @@ namespace CATHODE.Scripting
         {
             return CommandsUtils.ResolveHierarchy(commands, composite, hierarchy, out Composite comp, out string str);
         }
+        public ShortGuid GetPointedEntityID()
+        {
+            hierarchy.Reverse();
+            ShortGuid id = ShortGuid.Invalid;
+            for (int i = 0; i < hierarchy.Count; i++)
+            {
+                if (hierarchy[i] == ShortGuid.Invalid) continue;
+                id = hierarchy[i];
+                break;
+            }
+            hierarchy.Reverse();
+            return id;
+        }
 
         /* Does this hierarchy point to a valid entity? */
         public bool IsHierarchyValid(Commands commands, Composite composite)
         {
             return GetPointedEntity(commands, composite) != null;
+        }
+
+        /* Generate the checksum used identify the hierarchy */
+        public ShortGuid GenerateChecksum()
+        {
+            if (hierarchy.Count == 0) return ShortGuid.Invalid;
+            if (hierarchy[hierarchy.Count - 1] != ShortGuid.Invalid) hierarchy.Add(ShortGuid.Invalid);
+
+            hierarchy.Reverse();
+            ShortGuid checksumGenerated = hierarchy[0];
+            for (int i = 0; i < hierarchy.Count; i++)
+            {
+                checksumGenerated = checksumGenerated.Combine(hierarchy[i + 1]);
+                if (i == hierarchy.Count - 2) break;
+            }
+            hierarchy.Reverse();
+
+            return checksumGenerated;
+        }
+
+        /* Generate the instance ID used to identify the instanced composite we're executed in */
+        public ShortGuid GenerateInstance()
+        {
+            //TODO: This hijacks the usual use for this class, need to tidy it up
+            ShortGuid entityID = GetPointedEntityID();
+            hierarchy.Insert(0, ShortGuid.InitialiserBase);
+            hierarchy.Remove(entityID);
+            hierarchy.Reverse();
+            ShortGuid instanceGenerated = hierarchy[0];
+            for (int i = 0; i < hierarchy.Count; i++)
+            {
+                instanceGenerated = hierarchy[i + 1].Combine(instanceGenerated);
+                if (i == hierarchy.Count - 2) break;
+            }
+            hierarchy.Reverse();
+            hierarchy.RemoveAt(0);
+            hierarchy.RemoveAll(o => o == ShortGuid.Invalid);
+            hierarchy.Add(entityID);
+            hierarchy.Add(ShortGuid.Invalid);
+            return instanceGenerated;
         }
     }
 

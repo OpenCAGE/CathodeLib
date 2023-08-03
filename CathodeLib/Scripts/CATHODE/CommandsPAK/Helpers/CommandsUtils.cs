@@ -1,8 +1,9 @@
-﻿using CATHODE.Scripting.Internal;
+using CATHODE.Scripting.Internal;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace CATHODE.Scripting
 {
@@ -218,6 +219,41 @@ namespace CATHODE.Scripting
             containedComposite = (entity == null) ? null : currentFlowgraphToSearch;
             asString = hierarchyString;
             return entity;
+        }
+
+        /* Generate all possible hierarchies for an entity */
+        private static List<List<ShortGuid>> _hierarchies = new List<List<ShortGuid>>();
+        public static List<EntityHierarchy> GenerateHierarchies(Commands commands, Composite composite, Entity entity)
+        {
+            List<EntityHierarchy> hierarchies = new List<EntityHierarchy>();
+            _hierarchies.Clear();
+
+            GenerateHierarchiesRecursive(commands, null, commands.EntryPoints[0], composite, new List<ShortGuid>());
+            
+            for (int i = 0; i < _hierarchies.Count; i++)
+            {
+                _hierarchies[i].Add(entity.shortGUID);
+                hierarchies.Add(new EntityHierarchy(_hierarchies[i]));
+            }
+
+            return hierarchies;
+        }
+        private static void GenerateHierarchiesRecursive(Commands commands, Entity ent, Composite comp, Composite target, List<ShortGuid> hierarchy)
+        {
+            if (ent != null)
+                hierarchy.Add(ent.shortGUID);
+
+            if (comp.shortGUID == target.shortGUID)
+            {
+                _hierarchies.Add(hierarchy);
+                return;
+            }
+
+            Parallel.For(0, comp.functions.Count, i =>
+            {
+                Composite next = commands.GetComposite(comp.functions[i].function);
+                if (next != null) GenerateHierarchiesRecursive(commands, comp.functions[i], next, target, new List<ShortGuid>(hierarchy.ConvertAll(x => x)));
+            });
         }
 
         /* CA's CAGE doesn't properly tidy up hierarchies pointing to deleted entities - so we can do that to save confusion */

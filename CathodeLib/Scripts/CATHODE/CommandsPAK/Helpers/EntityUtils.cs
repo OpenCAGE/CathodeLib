@@ -8066,7 +8066,7 @@ namespace CATHODE.Scripting
                     break;
                 case FunctionType.PhysicsSystem:
                     entity.AddParameter("system_index", new cInteger(), ParameterVariant.INTERNAL); //int
-                    if (entity.variant == EntityVariant.FUNCTION) ((FunctionEntity)entity).AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).startIndex = 0;
+                    if (entity.variant == EntityVariant.FUNCTION) ((FunctionEntity)entity).AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).index = 0;
                     break;
                 case FunctionType.BulletChamber:
                     entity.AddParameter("Slot1", new cFloat(), ParameterVariant.INPUT); //Object

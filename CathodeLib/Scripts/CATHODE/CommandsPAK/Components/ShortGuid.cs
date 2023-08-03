@@ -16,6 +16,9 @@ namespace CATHODE.Scripting
 #endif
     public struct ShortGuid : IComparable<ShortGuid>
     {
+        public static readonly ShortGuid Invalid = new ShortGuid(0);
+        public static readonly ShortGuid InitialiserBase = new ShortGuid("FE-5B-F0-4A");
+
         public ShortGuid(float num)
         {
             val = BitConverter.GetBytes(num);
@@ -69,6 +72,14 @@ namespace CATHODE.Scripting
         public static bool operator !=(ShortGuid x, string y)
         {
             return x.ToByteString() != y;
+        }
+        public static bool operator ==(ShortGuid x, uint y)
+        {
+            return x.ToUInt32() == y;
+        }
+        public static bool operator !=(ShortGuid x, uint y)
+        {
+            return x.ToUInt32() != y;
         }
         public override int GetHashCode()
         {

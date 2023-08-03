@@ -891,13 +891,13 @@ namespace CATHODE.Scripting
     /* Resource reference types */
     public enum ResourceType
     {
-        COLLISION_MAPPING,
-        DYNAMIC_PHYSICS_SYSTEM,
-        EXCLUSIVE_MASTER_STATE_RESOURCE,
+        COLLISION_MAPPING,                //Links to data in COLLISION.MAP
+        DYNAMIC_PHYSICS_SYSTEM,           //Links to data in PHYSICS.MAP
+        EXCLUSIVE_MASTER_STATE_RESOURCE,  // ?? -> this seems to define some sort of change of NAV_MESH state using EXCLUSIVE_MASTER_RESOURCE_INDICES
         NAV_MESH_BARRIER_RESOURCE,
-        RENDERABLE_INSTANCE,
+        RENDERABLE_INSTANCE,              //Links to data in REDS.BIN
         TRAVERSAL_SEGMENT,
-        ANIMATED_MODEL,                   //Links to ResourceIndex in ENVIRONMENT_ANIMATION.DAT
+        ANIMATED_MODEL,                   //Links to data in ENVIRONMENT_ANIMATION.DAT
 
         // Any below this point are referenced in code, but not used in the vanilla game's CommandsPAKs
         CATHODE_COVER_SEGMENT,
@@ -905,7 +905,7 @@ namespace CATHODE.Scripting
         ANIMATION_MASK_RESOURCE,
         PLAY_ANIMATION_DATA_RESOURCE,
 
-
+        // A lot of these below are types that translate to strings in various text databases
         CAMERA_INSTANCE,
         VENT_ENTRANCE,
         LOGIC_CHARACTER,

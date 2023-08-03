@@ -24,7 +24,7 @@ namespace CATHODE.Scripting
                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
                 case ResourceType.RENDERABLE_INSTANCE:
                 case ResourceType.ANIMATED_MODEL:
-                    startIndex = 0;
+                    index = 0;
                     break;
             }
             entryType = type;
@@ -39,7 +39,7 @@ namespace CATHODE.Scripting
             if (x.rotation != y.rotation) return false;
             if (x.resourceID != y.resourceID) return false;
             if (x.entryType != y.entryType) return false;
-            if (x.startIndex != y.startIndex) return false;
+            if (x.index != y.index) return false;
             if (x.count != y.count) return false;
             if (x.collisionID != y.collisionID) return false;
 
@@ -62,7 +62,7 @@ namespace CATHODE.Scripting
                    EqualityComparer<Vector3>.Default.Equals(rotation, reference.rotation) &&
                    EqualityComparer<ShortGuid>.Default.Equals(resourceID, reference.resourceID) &&
                    entryType == reference.entryType &&
-                   startIndex == reference.startIndex &&
+                   index == reference.index &&
                    count == reference.count &&
                    EqualityComparer<ShortGuid>.Default.Equals(collisionID, reference.collisionID);
         }
@@ -74,7 +74,7 @@ namespace CATHODE.Scripting
             hashCode = hashCode * -1521134295 + rotation.GetHashCode();
             hashCode = hashCode * -1521134295 + resourceID.GetHashCode();
             hashCode = hashCode * -1521134295 + entryType.GetHashCode();
-            hashCode = hashCode * -1521134295 + startIndex.GetHashCode();
+            hashCode = hashCode * -1521134295 + index.GetHashCode();
             hashCode = hashCode * -1521134295 + count.GetHashCode();
             hashCode = hashCode * -1521134295 + collisionID.GetHashCode();
             return hashCode;
@@ -86,7 +86,7 @@ namespace CATHODE.Scripting
         public ShortGuid resourceID; //TODO: we could deprecate this, and just write it knowing what we know with our object structure
         public ResourceType entryType;
 
-        public int startIndex = -1;
+        public int index = -1;
         public int count = 1;
 
         public ShortGuid collisionID = new ShortGuid("FF-FF-FF-FF");
