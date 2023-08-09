@@ -21,17 +21,20 @@ namespace CATHODE
         {
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
+                //It seems typically in this file at the start there are a bunch of empty entries, and then there are a bunch of unresolvable ones, and then a bunch that can be resolved.
+
                 reader.BaseStream.Position = 4;
                 int entryCount = reader.ReadInt32();
                 for (int i = 0; i < entryCount; i++)
                 {
                     Entry entry = new Entry();
-                    entry.Unknown1_ = reader.ReadInt32();
+                    entry.unk0 = reader.ReadInt32(); //flag?
+                    entry.Unknown1_ = reader.ReadInt32(); //some sort of index ?
+                    entry.ID = Utilities.Consume<ShortGuid>(reader);
                     entry.entity = Utilities.Consume<CommandsEntityReference>(reader);
-                    entry.ResourcesBINID = reader.ReadInt32();
-                    entry.Unknown2_ = reader.ReadInt32();
+                    entry.Unknown2_ = reader.ReadInt32(); //Is sometimes -1 and other times a small positive integer. Is this tree node parent?
                     entry.CollisionHKXEntryIndex = reader.ReadInt16();
-                    entry.Unknown3_ = reader.ReadInt16();
+                    entry.Unknown3_ = reader.ReadInt16(); //Most of the time it is -1.
                     entry.MVRZoneIDThing = reader.ReadInt32();
                     entry.Unknown4_ = reader.ReadInt32();
                     entry.Unknown5_ = reader.ReadInt32();
@@ -53,8 +56,8 @@ namespace CATHODE
                 for (int i = 0; i < Entries.Count; i++)
                 {
                     writer.Write(Entries[i].Unknown1_);
+                    Utilities.Write<ShortGuid>(writer, Entries[i].ID);
                     Utilities.Write<CommandsEntityReference>(writer, Entries[i].entity);
-                    writer.Write(Entries[i].ResourcesBINID);
                     writer.Write(Entries[i].CollisionHKXEntryIndex);
                     writer.Write(Entries[i].Unknown3_);
                     writer.Write(Entries[i].MVRZoneIDThing);
@@ -71,22 +74,25 @@ namespace CATHODE
         #region STRUCTURES
         public class Entry
         {
-            public int Unknown1_;      // Is this tree node id?
+            public int unk0 = 0;    //flags? 
+            public int Unknown1_ = -1;      // Is this tree node id?
 
-            public CommandsEntityReference entity;
+            public ShortGuid ID = ShortGuid.Invalid; //This is the name of the entity hashed via ShortGuid, as a result, we can't resolve a lot of them. Does the game care about the value? I doubt it. We definitely don't.
 
-            public int ResourcesBINID; // NOTE: This might not be the correct name. It seems to correspond to the similarly named variable at alien_resources_bin_entry.
-            public int Unknown2_;      // NOTE: Is sometimes -1 and other times a small positive integer. Is this tree node parent?
+            public CommandsEntityReference entity = new CommandsEntityReference();
 
-            public Int16 CollisionHKXEntryIndex;      // NOTE: Most of the time is a positive integer, sometimes -1.
+            public int Unknown2_= -1;      // NOTE: Is sometimes -1 and other times a small positive integer. Is this tree node parent?
 
-            public Int16 Unknown3_;    // NOTE: Most of the time it is -1.
-            public int MVRZoneIDThing; // NOTE: This is CollisionMapThingIDs[0] from alien_mvr_entry
+            public Int16 CollisionHKXEntryIndex = -1;      // NOTE: Most of the time is a positive integer, sometimes -1.
 
-            public int Unknown4_;
-            public int Unknown5_;
-            public int Unknown6_;
-            public int Unknown7_;
+            public Int16 Unknown3_ = -1;    // NOTE: Most of the time it is -1.
+            public int MVRZoneIDThing = 0; // NOTE: This is CollisionMapThingIDs[0] from alien_mvr_entry
+
+            //TODO: are these values ever not zero? need to assert.
+            public int Unknown4_ = 0;
+            public int Unknown5_ = 0;
+            public int Unknown6_ = 0;
+            public int Unknown7_ = 0;
         };
         #endregion
     }

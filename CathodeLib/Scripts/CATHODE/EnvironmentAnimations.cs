@@ -21,6 +21,10 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal()
         {
+
+            //TODO: this is a mapping of ModelReference entities within the composite with EnvironmentModelReference in
+            //      the IDs should line up.
+
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
                 //Read header

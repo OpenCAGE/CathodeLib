@@ -307,8 +307,8 @@ namespace CathodeLib
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public class CommandsEntityReference
     {
-        public ShortGuid entity_id;             //The ID of the entity within its written composite
-        public ShortGuid composite_instance_id; //The instance of the composite this entity is in when created via hierarchy
+        public ShortGuid entity_id = ShortGuid.Invalid;             //The ID of the entity within its written composite
+        public ShortGuid composite_instance_id = ShortGuid.Invalid; //The instance of the composite this entity is in when created via hierarchy
 
         public CommandsEntityReference() { }
         public CommandsEntityReference(EntityHierarchy hierarchy)
