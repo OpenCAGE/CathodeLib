@@ -36,10 +36,7 @@ namespace CATHODE
                     entry.CollisionHKXEntryIndex = reader.ReadInt16();
                     entry.Unknown3_ = reader.ReadInt16(); //Most of the time it is -1.
                     entry.MVRZoneIDThing = reader.ReadInt32();
-                    entry.Unknown4_ = reader.ReadInt32();
-                    entry.Unknown5_ = reader.ReadInt32();
-                    entry.Unknown6_ = reader.ReadInt32();
-                    entry.Unknown7_ = reader.ReadInt32();
+                    reader.BaseStream.Position += 16;
                     Entries.Add(entry);
                 }
             }
@@ -61,10 +58,7 @@ namespace CATHODE
                     writer.Write(Entries[i].CollisionHKXEntryIndex);
                     writer.Write(Entries[i].Unknown3_);
                     writer.Write(Entries[i].MVRZoneIDThing);
-                    writer.Write(Entries[i].Unknown4_);
-                    writer.Write(Entries[i].Unknown5_);
-                    writer.Write(Entries[i].Unknown6_);
-                    writer.Write(Entries[i].Unknown7_);
+                    writer.Write(new byte[16]);
                 }
             }
             return true;
@@ -87,12 +81,6 @@ namespace CATHODE
 
             public Int16 Unknown3_ = -1;    // NOTE: Most of the time it is -1.
             public int MVRZoneIDThing = 0; // NOTE: This is CollisionMapThingIDs[0] from alien_mvr_entry
-
-            //TODO: are these values ever not zero? need to assert.
-            public int Unknown4_ = 0;
-            public int Unknown5_ = 0;
-            public int Unknown6_ = 0;
-            public int Unknown7_ = 0;
         };
         #endregion
     }
