@@ -601,8 +601,8 @@ namespace CATHODE.Scripting
             ShortGuid instanceGenerated = hierarchy[0];
             for (int i = 0; i < hierarchy.Count; i++)
             {
+                if (i == hierarchy.Count - 1) break;
                 instanceGenerated = hierarchy[i + 1].Combine(instanceGenerated);
-                if (i == hierarchy.Count - 2) break;
             }
             hierarchy.Reverse();
             hierarchy.RemoveAt(0);
