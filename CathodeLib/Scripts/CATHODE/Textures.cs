@@ -250,7 +250,7 @@ namespace CATHODE
          * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
         public TEX4 GetAtWriteIndex(int index)
         {
-            if (_writeList.Count <= index) return null;
+            if (index < 0 || _writeList.Count <= index) return null;
             return _writeList[index];
         }
         #endregion
