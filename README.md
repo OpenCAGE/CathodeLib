@@ -59,6 +59,10 @@ Check out a full overview of the Commands structure [on the Wiki](https://github
 - `CATHODE.SoundEnvironmentData` handles `SOUNDENVIRONMENTDATA.DAT` files
 - `CATHODE.SoundDialogueLookups` handles `SOUNDDIALOGUELOOKUPS.DAT` files
 - `CATHODE.SoundBankData` handles `SOUNDBANKDATA.DAT` files
+- `CATHODE.CharacterAccessorySets` handles `CHARACTERACCESSORYSETS.BIN` files
+- `CATHODE.CustomCharacterInfo` handles `CUSTOMCHARACTERINFO.BIN` files
+- `CATHODE.CustomCharacterConstrainedComponents` handles `CUSTOMCHARACTERCONSTRAINEDCOMPONENTS.BIN` files
+- `CATHODE.Strings` handles `*.TXT` files
 
 ## For configurations:
 - `CATHODE.BML` handles any `.BML` files
@@ -66,7 +70,7 @@ Check out a full overview of the Commands structure [on the Wiki](https://github
 
 ## For saves:
 - `CATHODE.ProgressionSave` handles `PROGRESSION.AIS` files
-- `CATHODE.EXPERIMENTAL.MissionSave` handles `PROGRESSION.AIS` files (experimental)
+- `CATHODE.EXPERIMENTAL.MissionSave` handles `*.AIS` files (experimental)
  
 ---
 

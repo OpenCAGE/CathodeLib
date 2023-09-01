@@ -523,11 +523,35 @@ namespace CATHODE.Scripting
             return val;
         }
 
-        /* Get the entity this hierarchy points to */
-        public Entity GetPointedEntity(Commands commands, Composite composite)
+        /* Get the entity this hierarchy points to: FROM THE ENTRY POINT OF THE COMMANDS */
+        public Entity GetPointedEntity(Commands commands)
         {
-            return CommandsUtils.ResolveHierarchy(commands, composite, hierarchy, out Composite comp, out string str);
+            return CommandsUtils.ResolveHierarchy(commands, commands.EntryPoints[0], hierarchy, out Composite comp, out string str);
         }
+
+        /* Get the entity this hierarchy points to: FROM THE ENTRY POINT OF THE COMMANDS, RETURNING THE CONTAINED COMPOSITE */
+        public Entity GetPointedEntity(Commands commands, out Composite containedComposite)
+        {
+            Entity ent = CommandsUtils.ResolveHierarchy(commands, commands.EntryPoints[0], hierarchy, out Composite comp, out string str);
+            containedComposite = comp;
+            return ent;
+        }
+
+        /* Get the entity this hierarchy points to: FROM A SPECIFIED COMPOSITE */
+        public Entity GetPointedEntity(Commands commands, Composite startComposite)
+        {
+            return CommandsUtils.ResolveHierarchy(commands, startComposite, hierarchy, out Composite comp, out string str);
+        }
+
+        /* Get the entity this hierarchy points to: FROM A SPECIFIED COMPOSITE, RETURNING THE CONTAINED COMPOSITE */
+        public Entity GetPointedEntity(Commands commands, Composite startComposite, out Composite containedComposite)
+        {
+            Entity ent = CommandsUtils.ResolveHierarchy(commands, startComposite, hierarchy, out Composite comp, out string str);
+            containedComposite = comp;
+            return ent;
+        }
+
+        /* Get the ID of the entity that this hierarchy points to */
         public ShortGuid GetPointedEntityID()
         {
             hierarchy.Reverse();
@@ -577,8 +601,8 @@ namespace CATHODE.Scripting
             ShortGuid instanceGenerated = hierarchy[0];
             for (int i = 0; i < hierarchy.Count; i++)
             {
+                if (i == hierarchy.Count - 1) break;
                 instanceGenerated = hierarchy[i + 1].Combine(instanceGenerated);
-                if (i == hierarchy.Count - 2) break;
             }
             hierarchy.Reverse();
             hierarchy.RemoveAt(0);
