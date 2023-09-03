@@ -57,56 +57,64 @@ namespace CATHODE
 
                 //Read all parameters from the PAK
                 Dictionary<int, ParameterData> parameters = new Dictionary<int, ParameterData>(parameter_count);
-                for (int i = 0; i < parameter_count; i++)
                 {
-                    reader.BaseStream.Position = parameterOffsets[i] * 4;
-                    ParameterData this_parameter = new ParameterData(CommandsUtils.GetDataType(new ShortGuid(reader)));
-                    switch (this_parameter.dataType)
+                    ParameterData[] parametersArr = new ParameterData[parameter_count];
+                    Parallel.For(0, parameter_count, i =>
                     {
-                        case DataType.TRANSFORM:
-                            this_parameter = new cTransform();
-                            ((cTransform)this_parameter).position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                            float _x, _y, _z; _y = reader.ReadSingle(); _x = reader.ReadSingle(); _z = reader.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
-                            ((cTransform)this_parameter).rotation = new Vector3(_x, _y, _z);
-                            break;
-                        case DataType.INTEGER:
-                            this_parameter = new cInteger(reader.ReadInt32());
-                            break;
-                        case DataType.STRING:
-                            reader.BaseStream.Position += 8;
-                            this_parameter = new cString(Utilities.ReadString(reader).Replace("\u0092", "'"));
-                            Utilities.Align(reader, 4);
-                            break;
-                        case DataType.BOOL:
-                            this_parameter = new cBool((reader.ReadInt32() == 1));
-                            break;
-                        case DataType.FLOAT:
-                            this_parameter = new cFloat(reader.ReadSingle());
-                            break;
-                        case DataType.RESOURCE:
-                            this_parameter = new cResource(new ShortGuid(reader));
-                            break;
-                        case DataType.VECTOR:
-                            this_parameter = new cVector3(new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()));
-                            break;
-                        case DataType.ENUM:
-                            this_parameter = new cEnum(new ShortGuid(reader), reader.ReadInt32());
-                            break;
-                        case DataType.SPLINE:
-                            reader.BaseStream.Position += 4;
-                            List<cTransform> points = new List<cTransform>(reader.ReadInt32());
-                            for (int x = 0; x < points.Capacity; x++)
+                        using (BinaryReader reader_parallel = new BinaryReader(new MemoryStream(content)))
+                        {
+                            reader_parallel.BaseStream.Position = parameterOffsets[i] * 4;
+                            parametersArr[i] = new ParameterData(CommandsUtils.GetDataType(new ShortGuid(reader_parallel)));
+                            switch (parametersArr[i].dataType)
                             {
-                                cTransform spline_point = new cTransform();
-                                spline_point.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                                float __x, __y, __z; __y = reader.ReadSingle(); __x = reader.ReadSingle(); __z = reader.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
-                                spline_point.rotation = new Vector3(__x, __y, __z);
-                                points.Add(spline_point);
+                                case DataType.TRANSFORM:
+                                    parametersArr[i] = new cTransform();
+                                    ((cTransform)parametersArr[i]).position = new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle());
+                                    float _x, _y, _z; _y = reader_parallel.ReadSingle(); _x = reader_parallel.ReadSingle(); _z = reader_parallel.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
+                                    ((cTransform)parametersArr[i]).rotation = new Vector3(_x, _y, _z);
+                                    break;
+                                case DataType.INTEGER:
+                                    parametersArr[i] = new cInteger(reader_parallel.ReadInt32());
+                                    break;
+                                case DataType.STRING:
+                                    reader_parallel.BaseStream.Position += 8;
+                                    parametersArr[i] = new cString(Utilities.ReadString(reader_parallel).Replace("\u0092", "'"));
+                                    Utilities.Align(reader_parallel, 4);
+                                    break;
+                                case DataType.BOOL:
+                                    parametersArr[i] = new cBool((reader_parallel.ReadInt32() == 1));
+                                    break;
+                                case DataType.FLOAT:
+                                    parametersArr[i] = new cFloat(reader_parallel.ReadSingle());
+                                    break;
+                                case DataType.RESOURCE:
+                                    parametersArr[i] = new cResource(new ShortGuid(reader_parallel));
+                                    break;
+                                case DataType.VECTOR:
+                                    parametersArr[i] = new cVector3(new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle()));
+                                    break;
+                                case DataType.ENUM:
+                                    parametersArr[i] = new cEnum(new ShortGuid(reader_parallel), reader_parallel.ReadInt32());
+                                    break;
+                                case DataType.SPLINE:
+                                    reader_parallel.BaseStream.Position += 4;
+                                    List<cTransform> points = new List<cTransform>(reader_parallel.ReadInt32());
+                                    for (int x = 0; x < points.Capacity; x++)
+                                    {
+                                        cTransform spline_point = new cTransform();
+                                        spline_point.position = new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle());
+                                        float __x, __y, __z; __y = reader_parallel.ReadSingle(); __x = reader_parallel.ReadSingle(); __z = reader_parallel.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
+                                        spline_point.rotation = new Vector3(__x, __y, __z);
+                                        points.Add(spline_point);
+                                    }
+                                    parametersArr[i] = new cSpline(points);
+                                    break;
                             }
-                            this_parameter = new cSpline(points);
-                            break;
-                    }
-                    parameters.Add(parameterOffsets[i], this_parameter);
+                        }
+                    });
+
+                    for (int i = 0; i < parameter_count; i++)
+                        parameters.Add(parameterOffsets[i], parametersArr[i]);
                 }
 
                 //Read all composites from the PAK
