@@ -168,7 +168,7 @@ namespace CATHODE
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                             entityLinks.Add(new CommandsEntityLinks(new ShortGuid(reader_parallel)));
                                             int NumberOfParams = JumpToOffset(reader_parallel);
-                                            entityLinks[entityLinks.Count - 1].childLinks.AddRange(Utilities.ConsumeArray<EntityLink>(reader_parallel, NumberOfParams));
+                                            entityLinks[entityLinks.Count - 1].childLinks.AddRange(Utilities.ConsumeArray<EntityConnector>(reader_parallel, NumberOfParams));
                                             break;
                                         }
                                     case CompositeFileData.ENTITY_PARAMETERS:
@@ -179,22 +179,22 @@ namespace CATHODE
                                             paramRefSets[paramRefSets.Count - 1].refs.AddRange(Utilities.ConsumeArray<CathodeParameterReference>(reader_parallel, NumberOfParams));
                                             break;
                                         }
-                                    case CompositeFileData.ENTITY_OVERRIDES:
+                                    case CompositeFileData.ALIASES:
                                         {
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-                                            OverrideEntity overrider = new OverrideEntity(new ShortGuid(reader_parallel));
+                                            AliasEntity overrider = new AliasEntity(new ShortGuid(reader_parallel));
                                             int NumberOfParams = JumpToOffset(reader_parallel);
-                                            overrider.connectedEntity.hierarchy.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams));
-                                            composite.overrides.Add(overrider);
+                                            overrider.connectedEntity.path.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams));
+                                            composite.aliases.Add(overrider);
                                             break;
                                         }
-                                    case CompositeFileData.ENTITY_OVERRIDES_CHECKSUM:
+                                    case CompositeFileData.ALIAS_PATH_HASHES:
                                         {
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
                                             reader_parallel.BaseStream.Position += 8;
                                             break;
                                         }
-                                    case CompositeFileData.COMPOSITE_EXPOSED_PARAMETERS:
+                                    case CompositeFileData.VARIABLES:
                                         {
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                             VariableEntity dtEntity = new VariableEntity(new ShortGuid(reader_parallel));
@@ -203,13 +203,13 @@ namespace CATHODE
                                             composite.variables.Add(dtEntity);
                                             break;
                                         }
-                                    case CompositeFileData.ENTITY_PROXIES:
+                                    case CompositeFileData.PROXIES:
                                         {
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 20);
                                             ProxyEntity thisProxy = new ProxyEntity(new ShortGuid(reader_parallel));
                                             int resetPos = (int)reader_parallel.BaseStream.Position + 8; //TODO: This is a HACK - I need to rework JumpToOffset to make a temp stream
                                             int NumberOfParams = JumpToOffset(reader_parallel);
-                                            thisProxy.connectedEntity.hierarchy.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams)); //Last is always 0x00, 0x00, 0x00, 0x00
+                                            thisProxy.connectedEntity.path.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams)); //Last is always 0x00, 0x00, 0x00, 0x00
                                             reader_parallel.BaseStream.Position = resetPos;
                                             ShortGuid idCheck = new ShortGuid(reader_parallel);
                                             if (idCheck != thisProxy.shortGUID) throw new Exception("Proxy ID mismatch!");
@@ -217,7 +217,7 @@ namespace CATHODE
                                             composite.proxies.Add(thisProxy);
                                             break;
                                         }
-                                    case CompositeFileData.ENTITY_FUNCTIONS:
+                                    case CompositeFileData.FUNCTION_ENTITIES:
                                         {
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
                                             ShortGuid entityID = new ShortGuid(reader_parallel);
@@ -310,7 +310,7 @@ namespace CATHODE
                                                 header.parameterSubID = new ShortGuid(reader_parallel);
 
                                                 int hierarchyCount = JumpToOffset(reader_parallel);
-                                                header.connectedEntity.hierarchy = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
+                                                header.connectedEntity.path = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
                                                 animEntity.connections.Add(header);
                                             }
 
@@ -392,7 +392,7 @@ namespace CATHODE
                                                 TriggerSequence.Entity thisTrigger = new TriggerSequence.Entity();
                                                 thisTrigger.timing = reader_parallel.ReadSingle();
                                                 reader_parallel.BaseStream.Position = hierarchyOffset;
-                                                thisTrigger.connectedEntity.hierarchy = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
+                                                thisTrigger.connectedEntity.path = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
                                                 trigEntity.entities.Add(thisTrigger);
                                             }
 
@@ -615,8 +615,8 @@ namespace CATHODE
             List<ParameterData> parameters = new List<ParameterData>();
             List<Entity>[] linkedEntities = new List<Entity>[Entries.Count];
             List<Entity>[] parameterisedEntities = new List<Entity>[Entries.Count];
-            List<OverrideEntity>[] reshuffledOverrides = new List<OverrideEntity>[Entries.Count];
-            List<OverrideEntity>[] reshuffledChecksums = new List<OverrideEntity>[Entries.Count];
+            List<AliasEntity>[] reshuffledAliases = new List<AliasEntity>[Entries.Count];
+            List<AliasEntity>[] reshuffledAliasPathHashes = new List<AliasEntity>[Entries.Count];
             List<ResourceReference>[] resourceReferences = new List<ResourceReference>[Entries.Count];
             List<CAGEAnimation>[] cageAnimationEntities = new List<CAGEAnimation>[Entries.Count];
             List<TriggerSequence>[] triggerSequenceEntities = new List<TriggerSequence>[Entries.Count];
@@ -626,8 +626,8 @@ namespace CATHODE
                 List<Entity> ents = Entries[i].GetEntities();
                 linkedEntities[i] = new List<Entity>(ents.FindAll(o => o.childLinks.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
                 parameterisedEntities[i] = new List<Entity>(ents.FindAll(o => o.parameters.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
-                reshuffledOverrides[i] = Entries[i].overrides.OrderBy(o => o.shortGUID.ToUInt32()).ToList();
-                reshuffledChecksums[i] = Entries[i].overrides.OrderBy(o => o.connectedEntity.GenerateChecksum().ToUInt32()).ToList();
+                reshuffledAliases[i] = Entries[i].aliases.OrderBy(o => o.shortGUID.ToUInt32()).ToList();
+                reshuffledAliasPathHashes[i] = Entries[i].aliases.OrderBy(o => o.connectedEntity.GeneratePathHash().ToUInt32()).ToList();
 
                 cageAnimationEntities[i] = new List<CAGEAnimation>();
                 triggerSequenceEntities[i] = new List<TriggerSequence>();
@@ -788,7 +788,7 @@ namespace CATHODE
                     {
                         switch ((CompositeFileData)x)
                         {
-                            case CompositeFileData.COMPOSITE_HEADER:
+                            case CompositeFileData.HEADER:
                                 {
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, 2);
                                     Utilities.Write<ShortGuid>(writer, Entries[i].shortGUID);
@@ -801,7 +801,7 @@ namespace CATHODE
                                     foreach (Entity entityWithLink in linkedEntities[i])
                                     {
                                         offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, entityWithLink.childLinks.Count));
-                                        Utilities.Write<EntityLink>(writer, entityWithLink.childLinks);
+                                        Utilities.Write<EntityConnector>(writer, entityWithLink.childLinks);
                                     }
 
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, linkedEntities[i].Count);
@@ -837,35 +837,35 @@ namespace CATHODE
                                     }
                                     break;
                                 }
-                            case CompositeFileData.ENTITY_OVERRIDES:
+                            case CompositeFileData.ALIASES:
                                 {
-                                    List<OffsetPair> offsetPairs = new List<OffsetPair>(reshuffledOverrides[i].Count);
-                                    for (int p = 0; p < reshuffledOverrides[i].Count; p++)
+                                    List<OffsetPair> offsetPairs = new List<OffsetPair>(reshuffledAliases[i].Count);
+                                    for (int p = 0; p < reshuffledAliases[i].Count; p++)
                                     {
-                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, reshuffledOverrides[i][p].connectedEntity.hierarchy.Count));
-                                        Utilities.Write<ShortGuid>(writer, reshuffledOverrides[i][p].connectedEntity.hierarchy);
+                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, reshuffledAliases[i][p].connectedEntity.path.Count));
+                                        Utilities.Write<ShortGuid>(writer, reshuffledAliases[i][p].connectedEntity.path);
                                     }
 
-                                    scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledOverrides[i].Count);
-                                    for (int p = 0; p < reshuffledOverrides[i].Count; p++)
+                                    scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledAliases[i].Count);
+                                    for (int p = 0; p < reshuffledAliases[i].Count; p++)
                                     {
-                                        writer.Write(reshuffledOverrides[i][p].shortGUID.val);
+                                        writer.Write(reshuffledAliases[i][p].shortGUID.val);
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
                                     }
                                     break;
                                 }
-                            case CompositeFileData.ENTITY_OVERRIDES_CHECKSUM:
+                            case CompositeFileData.ALIAS_PATH_HASHES:
                                 {
-                                    scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledChecksums[i].Count);
-                                    for (int p = 0; p < reshuffledChecksums[i].Count; p++)
+                                    scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledAliasPathHashes[i].Count);
+                                    for (int p = 0; p < reshuffledAliasPathHashes[i].Count; p++)
                                     {
-                                        writer.Write(reshuffledChecksums[i][p].shortGUID.val);
-                                        writer.Write(reshuffledChecksums[i][p].connectedEntity.GenerateChecksum().val);
+                                        writer.Write(reshuffledAliasPathHashes[i][p].shortGUID.val);
+                                        writer.Write(reshuffledAliasPathHashes[i][p].connectedEntity.GeneratePathHash().val);
                                     }
                                     break;
                                 }
-                            case CompositeFileData.COMPOSITE_EXPOSED_PARAMETERS:
+                            case CompositeFileData.VARIABLES:
                                 {
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, Entries[i].variables.Count);
                                     for (int p = 0; p < Entries[i].variables.Count; p++)
@@ -876,13 +876,13 @@ namespace CATHODE
                                     }
                                     break;
                                 }
-                            case CompositeFileData.ENTITY_PROXIES:
+                            case CompositeFileData.PROXIES:
                                 {
                                     List<OffsetPair> offsetPairs = new List<OffsetPair>();
                                     for (int p = 0; p < Entries[i].proxies.Count; p++)
                                     {
-                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, Entries[i].proxies[p].connectedEntity.hierarchy.Count));
-                                        Utilities.Write<ShortGuid>(writer, Entries[i].proxies[p].connectedEntity.hierarchy);
+                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, Entries[i].proxies[p].connectedEntity.path.Count));
+                                        Utilities.Write<ShortGuid>(writer, Entries[i].proxies[p].connectedEntity.path);
                                     }
 
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, offsetPairs.Count);
@@ -896,7 +896,7 @@ namespace CATHODE
                                     }
                                     break;
                                 }
-                            case CompositeFileData.ENTITY_FUNCTIONS:
+                            case CompositeFileData.FUNCTION_ENTITIES:
                                 {
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, Entries[i].functions.Count);
                                     for (int p = 0; p < Entries[i].functions.Count; p++)
@@ -962,7 +962,7 @@ namespace CATHODE
                                         for (int pp = 0; pp < cageAnimationEntities[i][p].connections.Count; pp++)
                                         {
                                             hierarchyOffsets.Add((int)writer.BaseStream.Position);
-                                            Utilities.Write<ShortGuid>(writer, cageAnimationEntities[i][p].connections[pp].connectedEntity.hierarchy);
+                                            Utilities.Write<ShortGuid>(writer, cageAnimationEntities[i][p].connections[pp].connectedEntity.path);
                                         }
 
                                         int headerOffset = (int)writer.BaseStream.Position;
@@ -976,7 +976,7 @@ namespace CATHODE
                                             Utilities.Write(writer, CommandsUtils.GetDataTypeGUID(header.parameterDataType));
                                             Utilities.Write(writer, header.parameterSubID);
                                             writer.Write(hierarchyOffsets[pp] / 4);
-                                            writer.Write(header.connectedEntity.hierarchy.Count);
+                                            writer.Write(header.connectedEntity.path.Count);
                                         }
 
                                         List<int> internalOffsets = new List<int>(cageAnimationEntities[i][p].animations.Count);
@@ -1080,14 +1080,14 @@ namespace CATHODE
                                         for (int pp = 0; pp < triggerSequenceEntities[i][p].entities.Count; pp++)
                                         {
                                             hierarchyOffsets.Add((int)writer.BaseStream.Position);
-                                            Utilities.Write<ShortGuid>(writer, triggerSequenceEntities[i][p].entities[pp].connectedEntity.hierarchy);
+                                            Utilities.Write<ShortGuid>(writer, triggerSequenceEntities[i][p].entities[pp].connectedEntity.path);
                                         }
 
                                         int triggerOffset = (int)writer.BaseStream.Position;
                                         for (int pp = 0; pp < triggerSequenceEntities[i][p].entities.Count; pp++)
                                         {
                                             writer.Write(hierarchyOffsets[pp] / 4);
-                                            writer.Write(triggerSequenceEntities[i][p].entities[pp].connectedEntity.hierarchy.Count);
+                                            writer.Write(triggerSequenceEntities[i][p].entities[pp].connectedEntity.path.Count);
                                             writer.Write(triggerSequenceEntities[i][p].entities[pp].timing);
                                         }
 
@@ -1266,7 +1266,7 @@ namespace CATHODE
         private class CommandsEntityLinks
         {
             public ShortGuid parentID;
-            public List<EntityLink> childLinks = new List<EntityLink>();
+            public List<EntityConnector> childLinks = new List<EntityConnector>();
 
             public CommandsEntityLinks(ShortGuid _id)
             {

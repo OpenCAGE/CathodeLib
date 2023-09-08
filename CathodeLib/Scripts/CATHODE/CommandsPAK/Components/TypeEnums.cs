@@ -11,7 +11,7 @@ namespace CATHODE.Scripting
         FUNCTION,
 
         PROXY,
-        OVERRIDE,
+        ALIAS,
     }
 
     /* Parameter variants */
@@ -1082,20 +1082,20 @@ namespace CATHODE.Scripting.Internal
     /* Blocks of data in each compiled composite */
     public enum CompositeFileData
     {
-        COMPOSITE_HEADER,             //Defines the header of the composite, with global ID and string name
-        ENTITY_CONNECTIONS,           //Defines the links between entities in the composite
-        ENTITY_PARAMETERS,            //Defines parameters to be applied to entities in the composite 
-        ENTITY_OVERRIDES,             //Defines overrides to apply to nested instances of composites in this composite
-        ENTITY_OVERRIDES_CHECKSUM,    //Defines a checksum value for the hierarchy override (TODO)
-        COMPOSITE_EXPOSED_PARAMETERS, //Defines variables which are exposed when instancing this composite which are then connected in to entities (think variable pins in UE4 blueprint)
-        ENTITY_PROXIES,               //Defines "proxies" similar to the overrides hierarchy (TODO)
-        ENTITY_FUNCTIONS,             //Defines entities with an attached script function within Cathode
-        RESOURCE_REFERENCES,          //Defines renderable data which is referenced by entities in this composite
-        CAGEANIMATION_DATA,           //Appears to define additional data for CAGEAnimation type entities (TODO)
-        TRIGGERSEQUENCE_DATA,         //Appears to define additional data for TriggerSequence type entities (TODO)
-        UNUSED,                       //Unused values
+        HEADER,                   //Defines the header of the composite, with global ID and string name
+        ENTITY_CONNECTIONS,       //Defines the links between entities in the composite
+        ENTITY_PARAMETERS,        //Defines parameters to be applied to entities in the composite 
+        ALIASES,                  //Defines aliases to entities within child instances of composites in this composite
+        ALIAS_PATH_HASHES,        //Defines a hash of the instanced path to the aliased entity
+        VARIABLES,                //Defines variables which are exposed when instancing this composite
+        PROXIES,                  //Defines proxies which can act as entities within other composites
+        FUNCTION_ENTITIES,        //Defines entities with an attached script function within Cathode (or composite instance)
+        RESOURCE_REFERENCES,      //Defines references to resources within the level used by entities inside the composite
+        CAGEANIMATION_DATA,       //Defines keyframe data for CAGEAnimation type entities 
+        TRIGGERSEQUENCE_DATA,     //Defines sequenced data for TriggerSequence type entities 
+        UNUSED,                   //Unused values (?)
 
-        NUMBER_OF_SCRIPT_BLOCKS,      //THIS IS NOT A DATA BLOCK: merely used as an easy way of sanity checking the number of blocks in-code!
+        NUMBER_OF_SCRIPT_BLOCKS,  //THIS IS NOT A DATA BLOCK: merely used as an easy way of sanity checking the number of blocks in-code!
     }
 
     /* Custom tables written at the end of the PAK to store extra info */

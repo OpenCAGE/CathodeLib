@@ -39,7 +39,7 @@ namespace CATHODE.Scripting.Internal
 #endif
         public EntityVariant variant;
 
-        public List<EntityLink> childLinks = new List<EntityLink>();
+        public List<EntityConnector> childLinks = new List<EntityConnector>();
         public List<Parameter> parameters = new List<Parameter>();
 
         /* Implements IComparable for searching */
@@ -163,7 +163,7 @@ namespace CATHODE.Scripting.Internal
         /* Add a link from a parameter on us out to a parameter on another entity */
         public void AddParameterLink(string parameter, Entity childEntity, string childParameter)
         {
-            childLinks.Add(new EntityLink(childEntity.shortGUID, ShortGuidUtils.Generate(parameter), ShortGuidUtils.Generate(childParameter)));
+            childLinks.Add(new EntityConnector(childEntity.shortGUID, ShortGuidUtils.Generate(parameter), ShortGuidUtils.Generate(childParameter)));
         }
 
         /* Remove a link to another entity */
@@ -298,37 +298,37 @@ namespace CATHODE.Scripting
         public ProxyEntity(List<ShortGuid> hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(EntityVariant.PROXY)
         {
             this.targetType = targetType;
-            if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
+            if (hierarchy != null) this.connectedEntity.path = hierarchy;
             if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
         public ProxyEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.PROXY)
         {
             this.shortGUID = shortGUID;
             this.targetType = targetType; 
-            if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
+            if (hierarchy != null) this.connectedEntity.path = hierarchy;
             if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
 
         public ShortGuid targetType; //The "function" value on the entity we're pointing to
-        public EntityHierarchy connectedEntity = new EntityHierarchy();
+        public EntityPath connectedEntity = new EntityPath();
     }
     [Serializable]
-    public class OverrideEntity : Entity // Known as "alias" entities in-code
+    public class AliasEntity : Entity
     {
-        public OverrideEntity() : base(EntityVariant.OVERRIDE) { }
-        public OverrideEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.OVERRIDE) { }
+        public AliasEntity() : base(EntityVariant.ALIAS) { }
+        public AliasEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.ALIAS) { }
 
-        public OverrideEntity(List<ShortGuid> hierarchy = null) : base(EntityVariant.OVERRIDE)
+        public AliasEntity(List<ShortGuid> hierarchy = null) : base(EntityVariant.ALIAS)
         {
-            if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
+            if (hierarchy != null) this.connectedEntity.path = hierarchy;
         }
-        public OverrideEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null) : base(shortGUID, EntityVariant.OVERRIDE)
+        public AliasEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null) : base(shortGUID, EntityVariant.ALIAS)
         {
             this.shortGUID = shortGUID;
-            if (hierarchy != null) this.connectedEntity.hierarchy = hierarchy;
+            if (hierarchy != null) this.connectedEntity.path = hierarchy;
         }
 
-        public EntityHierarchy connectedEntity = new EntityHierarchy();
+        public EntityPath connectedEntity = new EntityPath();
     }
 
     #region SPECIAL FUNCTION ENTITIES
@@ -362,7 +362,7 @@ namespace CATHODE.Scripting
             public ShortGuid parameterSubID; //if parameterID is position, this might be x for example
 
             //The path to the connected entity which has the above parameter
-            public EntityHierarchy connectedEntity = new EntityHierarchy(); 
+            public EntityPath connectedEntity = new EntityPath(); 
         }
 
         [Serializable]
@@ -411,7 +411,7 @@ namespace CATHODE.Scripting
         public class Entity
         {
             public float timing = 0.0f;
-            public EntityHierarchy connectedEntity = new EntityHierarchy();
+            public EntityPath connectedEntity = new EntityPath();
         }
         [Serializable]
         public class Event
@@ -433,9 +433,9 @@ namespace CATHODE.Scripting
 
     [Serializable]
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct EntityLink
+    public struct EntityConnector
     {
-        public EntityLink(ShortGuid childEntityID, ShortGuid parentParam, ShortGuid childParam)
+        public EntityConnector(ShortGuid childEntityID, ShortGuid parentParam, ShortGuid childParam)
         {
             connectionID = ShortGuidUtils.GenerateRandom();
             parentParamID = parentParam;
@@ -450,142 +450,140 @@ namespace CATHODE.Scripting
     }
 
     /// <summary>
-    /// This is a class to handle hierarchies pointing to entities in Commands.
-    /// Provides useful functionality for generating checksums (used for overrides in Commands), as well as composite instance IDs (used for legacy systems).
-    /// Also has methods of capturing the entity pointed to and writing the hierarchies neatly.
-    /// The hierarchy should always be written to Commands with a trailing ShortGuid.Invalid.
+    /// This provides a way to handle paths to instances of entities within the root composite instance.
+    /// The path should always be written to Commands with a trailing ShortGuid.Invalid.
     /// </summary>
     [Serializable]
 #if DEBUG
-    [JsonConverter(typeof(EntityHierarchyConverter))]
+    [JsonConverter(typeof(EntityPathConverter))]
 #endif
-    public class EntityHierarchy
+    public class EntityPath
     {
-        public EntityHierarchy() { }
-        public EntityHierarchy(List<ShortGuid> _hierarchy)
+        public EntityPath() { }
+        public EntityPath(List<ShortGuid> _path)
         {
-            hierarchy = _hierarchy;
+            path = _path;
 
-            if (hierarchy[hierarchy.Count - 1] != ShortGuid.Invalid)
-                hierarchy.Add(ShortGuid.Invalid);
+            if (path[path.Count - 1] != ShortGuid.Invalid)
+                path.Add(ShortGuid.Invalid);
         }
-        public List<ShortGuid> hierarchy = new List<ShortGuid>();
+        public List<ShortGuid> path = new List<ShortGuid>();
 
-        public static bool operator ==(EntityHierarchy x, EntityHierarchy y)
+        public static bool operator ==(EntityPath x, EntityPath y)
         {
             if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
             if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
-            if (x.hierarchy.Count != y.hierarchy.Count) return false;
-            for (int i = 0; i < x.hierarchy.Count; i++)
+            if (x.path.Count != y.path.Count) return false;
+            for (int i = 0; i < x.path.Count; i++)
             {
-                if (x.hierarchy[i].ToByteString() != y.hierarchy[i].ToByteString())
+                if (x.path[i].ToByteString() != y.path[i].ToByteString())
                     return false;
             }
             return true;
         }
-        public static bool operator !=(EntityHierarchy x, EntityHierarchy y)
+        public static bool operator !=(EntityPath x, EntityPath y)
         {
             return !(x == y);
         }
 
         public override bool Equals(object obj)
         {
-            return obj is EntityHierarchy hierarchy &&
-                   EqualityComparer<List<ShortGuid>>.Default.Equals(this.hierarchy, hierarchy.hierarchy);
+            return obj is EntityPath hierarchy &&
+                   EqualityComparer<List<ShortGuid>>.Default.Equals(this.path, hierarchy.path);
         }
 
         public override int GetHashCode()
         {
-            return 218564712 + EqualityComparer<List<ShortGuid>>.Default.GetHashCode(hierarchy);
+            return 218564712 + EqualityComparer<List<ShortGuid>>.Default.GetHashCode(path);
         }
 
-        /* Get this hierarchy as a string */
-        public string GetHierarchyAsString()
+        /* Get this path as a string */
+        public string GetAsString()
         {
             string val = "";
-            for (int i = 0; i < hierarchy.Count; i++)
+            for (int i = 0; i < path.Count; i++)
             {
-                val += hierarchy[i].ToByteString();
-                if (i != hierarchy.Count - 1) val += " -> ";
+                val += path[i].ToByteString();
+                if (i != path.Count - 1) val += " -> ";
             }
             return val;
         }
-        public string GetHierarchyAsString(Commands commands, Composite composite, bool withIDs = true)
+        public string GetAsString(Commands commands, Composite composite, bool withIDs = true)
         {
-            CommandsUtils.ResolveHierarchy(commands, composite, hierarchy, out Composite comp, out string str, withIDs);
+            CommandsUtils.ResolveHierarchy(commands, composite, path, out Composite comp, out string str, withIDs);
             return str;
         }
 
         public UInt32 ToUInt32()
         {
             UInt32 val = 0;
-            for (int i = 0; i < hierarchy.Count; i++) val += hierarchy[i].ToUInt32();
+            for (int i = 0; i < path.Count; i++) val += path[i].ToUInt32();
             return val;
         }
 
-        /* Get the entity this hierarchy points to: FROM THE ENTRY POINT OF THE COMMANDS */
+        /* Get the entity this path points to: FROM THE ROOT OF THE COMMANDS */
         public Entity GetPointedEntity(Commands commands)
         {
-            return CommandsUtils.ResolveHierarchy(commands, commands.EntryPoints[0], hierarchy, out Composite comp, out string str);
+            return CommandsUtils.ResolveHierarchy(commands, commands.EntryPoints[0], path, out Composite comp, out string str);
         }
 
-        /* Get the entity this hierarchy points to: FROM THE ENTRY POINT OF THE COMMANDS, RETURNING THE CONTAINED COMPOSITE */
+        /* Get the entity this path points to: FROM THE ROOT OF THE COMMANDS, RETURNING THE CONTAINED COMPOSITE */
         public Entity GetPointedEntity(Commands commands, out Composite containedComposite)
         {
-            Entity ent = CommandsUtils.ResolveHierarchy(commands, commands.EntryPoints[0], hierarchy, out Composite comp, out string str);
+            Entity ent = CommandsUtils.ResolveHierarchy(commands, commands.EntryPoints[0], path, out Composite comp, out string str);
             containedComposite = comp;
             return ent;
         }
 
-        /* Get the entity this hierarchy points to: FROM A SPECIFIED COMPOSITE */
+        /* Get the entity this path points to: FROM A SPECIFIED COMPOSITE */
         public Entity GetPointedEntity(Commands commands, Composite startComposite)
         {
-            return CommandsUtils.ResolveHierarchy(commands, startComposite, hierarchy, out Composite comp, out string str);
+            return CommandsUtils.ResolveHierarchy(commands, startComposite, path, out Composite comp, out string str);
         }
 
-        /* Get the entity this hierarchy points to: FROM A SPECIFIED COMPOSITE, RETURNING THE CONTAINED COMPOSITE */
+        /* Get the entity this path points to: FROM A SPECIFIED COMPOSITE, RETURNING THE CONTAINED COMPOSITE */
         public Entity GetPointedEntity(Commands commands, Composite startComposite, out Composite containedComposite)
         {
-            Entity ent = CommandsUtils.ResolveHierarchy(commands, startComposite, hierarchy, out Composite comp, out string str);
+            Entity ent = CommandsUtils.ResolveHierarchy(commands, startComposite, path, out Composite comp, out string str);
             containedComposite = comp;
             return ent;
         }
 
-        /* Get the ID of the entity that this hierarchy points to */
+        /* Get the ID of the entity that this path points to */
         public ShortGuid GetPointedEntityID()
         {
-            hierarchy.Reverse();
+            path.Reverse();
             ShortGuid id = ShortGuid.Invalid;
-            for (int i = 0; i < hierarchy.Count; i++)
+            for (int i = 0; i < path.Count; i++)
             {
-                if (hierarchy[i] == ShortGuid.Invalid) continue;
-                id = hierarchy[i];
+                if (path[i] == ShortGuid.Invalid) continue;
+                id = path[i];
                 break;
             }
-            hierarchy.Reverse();
+            path.Reverse();
             return id;
         }
 
-        /* Does this hierarchy point to a valid entity? */
-        public bool IsHierarchyValid(Commands commands, Composite composite)
+        /* Does this path point to a valid entity? */
+        public bool IsPathValid(Commands commands, Composite composite)
         {
             return GetPointedEntity(commands, composite) != null;
         }
 
-        /* Generate the checksum used identify the hierarchy */
-        public ShortGuid GenerateChecksum()
+        /* Generate the checksum used identify the path */
+        public ShortGuid GeneratePathHash()
         {
-            if (hierarchy.Count == 0) return ShortGuid.Invalid;
-            if (hierarchy[hierarchy.Count - 1] != ShortGuid.Invalid) hierarchy.Add(ShortGuid.Invalid);
+            if (path.Count == 0) return ShortGuid.Invalid;
+            if (path[path.Count - 1] != ShortGuid.Invalid) path.Add(ShortGuid.Invalid);
 
-            hierarchy.Reverse();
-            ShortGuid checksumGenerated = hierarchy[0];
-            for (int i = 0; i < hierarchy.Count; i++)
+            path.Reverse();
+            ShortGuid checksumGenerated = path[0];
+            for (int i = 0; i < path.Count; i++)
             {
-                checksumGenerated = checksumGenerated.Combine(hierarchy[i + 1]);
-                if (i == hierarchy.Count - 2) break;
+                checksumGenerated = checksumGenerated.Combine(path[i + 1]);
+                if (i == path.Count - 2) break;
             }
-            hierarchy.Reverse();
+            path.Reverse();
 
             return checksumGenerated;
         }
@@ -595,43 +593,43 @@ namespace CATHODE.Scripting
         {
             //TODO: This hijacks the usual use for this class, need to tidy it up
             ShortGuid entityID = GetPointedEntityID();
-            hierarchy.Insert(0, ShortGuid.InitialiserBase);
-            hierarchy.Remove(entityID);
-            hierarchy.Reverse();
-            ShortGuid instanceGenerated = hierarchy[0];
-            for (int i = 0; i < hierarchy.Count; i++)
+            path.Insert(0, ShortGuid.InitialiserBase);
+            path.Remove(entityID);
+            path.Reverse();
+            ShortGuid instanceGenerated = path[0];
+            for (int i = 0; i < path.Count; i++)
             {
-                if (i == hierarchy.Count - 1) break;
-                instanceGenerated = hierarchy[i + 1].Combine(instanceGenerated);
+                if (i == path.Count - 1) break;
+                instanceGenerated = path[i + 1].Combine(instanceGenerated);
             }
-            hierarchy.Reverse();
-            hierarchy.RemoveAt(0);
-            hierarchy.RemoveAll(o => o == ShortGuid.Invalid);
-            hierarchy.Add(entityID);
-            hierarchy.Add(ShortGuid.Invalid);
+            path.Reverse();
+            path.RemoveAt(0);
+            path.RemoveAll(o => o == ShortGuid.Invalid);
+            path.Add(entityID);
+            path.Add(ShortGuid.Invalid);
             return instanceGenerated;
         }
     }
 
 #if DEBUG
-    public class EntityHierarchyConverter : JsonConverter
+    public class EntityPathConverter : JsonConverter
     {
         public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
         {
-            writer.WriteValue(((EntityHierarchy)value).GetHierarchyAsString());
+            writer.WriteValue(((EntityPath)value).GetAsString());
         }
 
         public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
         {
-            EntityHierarchy e = new EntityHierarchy();
+            EntityPath e = new EntityPath();
             List<string> vals = reader.Value.ToString().Split(new[] { " -> " }, StringSplitOptions.None).ToList();
-            for (int i = 0; i < vals.Count; i++) e.hierarchy.Add(new ShortGuid(vals[i]));
+            for (int i = 0; i < vals.Count; i++) e.path.Add(new ShortGuid(vals[i]));
             return e;
         }
 
         public override bool CanConvert(Type objectType)
         {
-            return objectType == typeof(EntityHierarchy);
+            return objectType == typeof(EntityPath);
         }
     }
 #endif
