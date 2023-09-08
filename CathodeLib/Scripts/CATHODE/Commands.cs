@@ -147,8 +147,8 @@ namespace CATHODE
                         reader_parallel.BaseStream.Position = (scriptStartOffset * 4) + 4;
                         composite.name = Utilities.ReadString(reader_parallel);
 #if DO_PRETTY_COMPOSITES
-                    string prettyPath = CompositePathDB.GetPrettyPathForComposite(composite.shortGUID);
-                    if (prettyPath != "") composite.name = prettyPath;
+                        string prettyPath = CompositePathDB.GetPrettyPathForComposite(composite.shortGUID);
+                        if (prettyPath != "") composite.name = prettyPath;
 #endif
                         Utilities.Align(reader_parallel, 4);
 
@@ -302,7 +302,7 @@ namespace CATHODE
                                                 reader_parallel.BaseStream.Position = headerOffset + (z * 32);
 
                                                 CAGEAnimation.Connection header = new CAGEAnimation.Connection();
-                                                header.shortGUID = new ShortGuid(reader_parallel);//ID
+                                                header.shortGUID = new ShortGuid(reader_parallel);
                                                 header.objectType = CommandsUtils.GetObjectType(new ShortGuid(reader_parallel));
                                                 header.keyframeID = new ShortGuid(reader_parallel);
                                                 header.parameterID = new ShortGuid(reader_parallel);
@@ -372,7 +372,9 @@ namespace CATHODE
                                             Entity thisEntity = composite.GetEntityByID(new ShortGuid(reader_parallel));
                                             if (thisEntity.variant == EntityVariant.PROXY)
                                             {
-                                                break; // We don't handle this just yet... need to resolve the proxy.
+                                                //Logs indicate that these vanilla entities contain no parameters or links, so they're not very valuable. We should implement this anyways though so we can add them ourselves.
+                                                Console.WriteLine("WARNING: Skipping load of PROXY TriggerSequence in " + composite.name + "\n\t" + _filepath /*+ "\n\n" + JsonConvert.SerializeObject(thisEntity) + "\n\n"*/);
+                                                break;
                                             }
                                             TriggerSequence trigEntity = (TriggerSequence)thisEntity;
 
@@ -492,24 +494,6 @@ namespace CATHODE
 
                 Entries = composites.ToList<Composite>();
             }
-
-            //TODO: DOING THIS CAUSES THE NEW-DOOR-CREATION ISSUE WITH EXISTING DOORS
-            //      DOING THE INVERSE CAUSES A CRASH
-            /*
-            foreach (Composite comp in Entries)
-            {
-                foreach (FunctionEntity ent in comp.functions)
-                {
-                    if (ent.resources.Count != 0)
-                    {
-                        cResource res = new cResource();
-                        res.value.AddRange(ent.resources);
-                        foreach (ResourceReference resRef in res.value) resRef.resourceID = res.shortGUID;
-                        Parameter param = ent.AddParameter("resource", res);
-                        ent.resources.Clear();
-                    }
-                }
-            }*/
 
             return true;
         }

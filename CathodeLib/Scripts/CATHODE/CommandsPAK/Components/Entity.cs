@@ -313,7 +313,7 @@ namespace CATHODE.Scripting
         public EntityHierarchy connectedEntity = new EntityHierarchy();
     }
     [Serializable]
-    public class OverrideEntity : Entity
+    public class OverrideEntity : Entity // Known as "alias" entities in-code
     {
         public OverrideEntity() : base(EntityVariant.OVERRIDE) { }
         public OverrideEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.OVERRIDE) { }
