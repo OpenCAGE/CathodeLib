@@ -184,7 +184,7 @@ namespace CATHODE
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                             AliasEntity overrider = new AliasEntity(new ShortGuid(reader_parallel));
                                             int NumberOfParams = JumpToOffset(reader_parallel);
-                                            overrider.connectedEntity.path.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams));
+                                            overrider.alias.path.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams));
                                             composite.aliases.Add(overrider);
                                             break;
                                         }
@@ -209,11 +209,11 @@ namespace CATHODE
                                             ProxyEntity thisProxy = new ProxyEntity(new ShortGuid(reader_parallel));
                                             int resetPos = (int)reader_parallel.BaseStream.Position + 8; //TODO: This is a HACK - I need to rework JumpToOffset to make a temp stream
                                             int NumberOfParams = JumpToOffset(reader_parallel);
-                                            thisProxy.connectedEntity.path.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams)); //Last is always 0x00, 0x00, 0x00, 0x00
+                                            thisProxy.proxy.path.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams)); //Last is always 0x00, 0x00, 0x00, 0x00
                                             reader_parallel.BaseStream.Position = resetPos;
                                             ShortGuid idCheck = new ShortGuid(reader_parallel);
                                             if (idCheck != thisProxy.shortGUID) throw new Exception("Proxy ID mismatch!");
-                                            thisProxy.targetType = new ShortGuid(reader_parallel);
+                                            thisProxy.function = new ShortGuid(reader_parallel);
                                             composite.proxies.Add(thisProxy);
                                             break;
                                         }
@@ -627,7 +627,7 @@ namespace CATHODE
                 linkedEntities[i] = new List<Entity>(ents.FindAll(o => o.childLinks.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
                 parameterisedEntities[i] = new List<Entity>(ents.FindAll(o => o.parameters.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
                 reshuffledAliases[i] = Entries[i].aliases.OrderBy(o => o.shortGUID.ToUInt32()).ToList();
-                reshuffledAliasPathHashes[i] = Entries[i].aliases.OrderBy(o => o.connectedEntity.GeneratePathHash().ToUInt32()).ToList();
+                reshuffledAliasPathHashes[i] = Entries[i].aliases.OrderBy(o => o.alias.GeneratePathHash().ToUInt32()).ToList();
 
                 cageAnimationEntities[i] = new List<CAGEAnimation>();
                 triggerSequenceEntities[i] = new List<TriggerSequence>();
@@ -842,8 +842,8 @@ namespace CATHODE
                                     List<OffsetPair> offsetPairs = new List<OffsetPair>(reshuffledAliases[i].Count);
                                     for (int p = 0; p < reshuffledAliases[i].Count; p++)
                                     {
-                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, reshuffledAliases[i][p].connectedEntity.path.Count));
-                                        Utilities.Write<ShortGuid>(writer, reshuffledAliases[i][p].connectedEntity.path);
+                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, reshuffledAliases[i][p].alias.path.Count));
+                                        Utilities.Write<ShortGuid>(writer, reshuffledAliases[i][p].alias.path);
                                     }
 
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledAliases[i].Count);
@@ -861,7 +861,7 @@ namespace CATHODE
                                     for (int p = 0; p < reshuffledAliasPathHashes[i].Count; p++)
                                     {
                                         writer.Write(reshuffledAliasPathHashes[i][p].shortGUID.val);
-                                        writer.Write(reshuffledAliasPathHashes[i][p].connectedEntity.GeneratePathHash().val);
+                                        writer.Write(reshuffledAliasPathHashes[i][p].alias.GeneratePathHash().val);
                                     }
                                     break;
                                 }
@@ -881,8 +881,8 @@ namespace CATHODE
                                     List<OffsetPair> offsetPairs = new List<OffsetPair>();
                                     for (int p = 0; p < Entries[i].proxies.Count; p++)
                                     {
-                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, Entries[i].proxies[p].connectedEntity.path.Count));
-                                        Utilities.Write<ShortGuid>(writer, Entries[i].proxies[p].connectedEntity.path);
+                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, Entries[i].proxies[p].proxy.path.Count));
+                                        Utilities.Write<ShortGuid>(writer, Entries[i].proxies[p].proxy.path);
                                     }
 
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, offsetPairs.Count);
@@ -892,7 +892,7 @@ namespace CATHODE
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
                                         writer.Write(Entries[i].proxies[p].shortGUID.val);
-                                        writer.Write(Entries[i].proxies[p].targetType.val);
+                                        writer.Write(Entries[i].proxies[p].function.val);
                                     }
                                     break;
                                 }

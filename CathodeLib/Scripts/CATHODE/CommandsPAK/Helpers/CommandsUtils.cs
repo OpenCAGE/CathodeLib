@@ -285,7 +285,7 @@ namespace CATHODE.Scripting
             //Clear aliases
             List<AliasEntity> aliasesPurged = new List<AliasEntity>();
             for (int i = 0; i < composite.aliases.Count; i++)
-                if (ResolveHierarchy(commands, composite, composite.aliases[i].connectedEntity.path, out Composite flowTemp, out string hierarchy) != null)
+                if (ResolveHierarchy(commands, composite, composite.aliases[i].alias.path, out Composite flowTemp, out string hierarchy) != null)
                     aliasesPurged.Add(composite.aliases[i]);
             originalAliasCount += composite.aliases.Count;
             newAliasCount += aliasesPurged.Count;
@@ -294,7 +294,7 @@ namespace CATHODE.Scripting
             //Clear proxies
             List<ProxyEntity> proxyPurged = new List<ProxyEntity>();
             for (int i = 0; i < composite.proxies.Count; i++)
-                if (ResolveHierarchy(commands, composite, composite.proxies[i].connectedEntity.path, out Composite flowTemp, out string hierarchy) != null)
+                if (ResolveHierarchy(commands, composite, composite.proxies[i].proxy.path, out Composite flowTemp, out string hierarchy) != null)
                     proxyPurged.Add(composite.proxies[i]);
             originalProxyCount += composite.proxies.Count;
             newProxyCount += proxyPurged.Count;

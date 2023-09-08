@@ -297,20 +297,20 @@ namespace CATHODE.Scripting
 
         public ProxyEntity(List<ShortGuid> hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(EntityVariant.PROXY)
         {
-            this.targetType = targetType;
-            if (hierarchy != null) this.connectedEntity.path = hierarchy;
+            this.function = targetType;
+            if (hierarchy != null) this.proxy.path = hierarchy;
             if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
         public ProxyEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.PROXY)
         {
             this.shortGUID = shortGUID;
-            this.targetType = targetType; 
-            if (hierarchy != null) this.connectedEntity.path = hierarchy;
+            this.function = targetType; 
+            if (hierarchy != null) this.proxy.path = hierarchy;
             if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
 
-        public ShortGuid targetType; //The "function" value on the entity we're pointing to
-        public EntityPath connectedEntity = new EntityPath();
+        public ShortGuid function;                  //The "function" value on the entity we're proxying
+        public EntityPath proxy = new EntityPath(); //A path to the entity we're proxying
     }
     [Serializable]
     public class AliasEntity : Entity
@@ -320,15 +320,15 @@ namespace CATHODE.Scripting
 
         public AliasEntity(List<ShortGuid> hierarchy = null) : base(EntityVariant.ALIAS)
         {
-            if (hierarchy != null) this.connectedEntity.path = hierarchy;
+            if (hierarchy != null) this.alias.path = hierarchy;
         }
         public AliasEntity(ShortGuid shortGUID, List<ShortGuid> hierarchy = null) : base(shortGUID, EntityVariant.ALIAS)
         {
             this.shortGUID = shortGUID;
-            if (hierarchy != null) this.connectedEntity.path = hierarchy;
+            if (hierarchy != null) this.alias.path = hierarchy;
         }
 
-        public EntityPath connectedEntity = new EntityPath();
+        public EntityPath alias = new EntityPath(); //A path to the entity we're an alias of
     }
 
     #region SPECIAL FUNCTION ENTITIES
