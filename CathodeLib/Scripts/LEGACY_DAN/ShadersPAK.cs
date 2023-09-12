@@ -1,4 +1,4 @@
-﻿using CathodeLib;
+using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -62,106 +62,115 @@ namespace CATHODE.LEGACY
             switch ((ShaderCategory)Shader.Header2.ShaderCategory)
             {
                 case ShaderCategory.CA_ENVIRONMENT:
-                    toReturn.Unknown3_Index = 3;
-                    toReturn.OpacityUVMultiplierIndex = 5;
-                    toReturn.DiffuseUVMultiplierIndex = 6;
-                    toReturn.DiffuseIndex = 7;
-                    toReturn.SecondaryDiffuseUVMultiplierIndex = 8;
-                    toReturn.SecondaryDiffuseIndex = 9;
-                    toReturn.NormalUVMultiplierIndex = 10;
-                    toReturn.NormalMapStrength0Index = 11;
-                    toReturn.SecondaryNormalUVMultiplierIndex = 12;
-                    toReturn.NormalMapStrength1Index = 13;
-                    toReturn.SpecularFactorIndex = 14;
-                    toReturn.SpecularUVMultiplierIndex = 15;
-                    toReturn.MetallicFactorIndex = 16;
-                    toReturn.SecondarySpecularFactorIndex = 17;
-                    toReturn.SecondarySpecularUVMultiplierIndex = 18;
-                    toReturn.SecondaryMetallicFactorIndex = 19;
-                    toReturn.EnvironmentMapStrength2Index = 24;
-                    toReturn.EnvironmentMapStrengthIndex = 25;
-                    toReturn.DirtDiffuseIndex = -1; // TODO: ...
-                    toReturn.OcclusionUVMultiplierIndex = 27;
-                    toReturn.OcclusionTintIndex = 28;
-                    toReturn.EmissiveFactorIndex = 29;
-                    toReturn.EmissiveIndex = 30;
-                    toReturn.ParallaxUVMultiplierIndex = 35;
-                    toReturn.ParallaxFactorIndex = 36;
-                    toReturn.ParallaxOffsetIndex = 37;
-                    toReturn.IsTransparentIndex = 38;
-                    toReturn.OpacityNoiseUVMultiplierIndex1 = 39;
-                    toReturn.OpacityNoiseAmplitudeIndex = 40;
-                    toReturn.DirtMapUVMultiplier0Index = 47;
-                    toReturn.DirtMapUVMultiplier1Index = 48;
-                    toReturn.DirtStrengthIndex = 49;
+                    toReturn.Unknown3_ = 3;
+                    toReturn.OpacityMapUVMultiplier = 5;
+                    toReturn.DiffuseMap0UVMultiplier = 6;
+                    toReturn.Diffuse0 = 7;
+                    toReturn.DiffuseMap1UVMultiplier = 8;
+                    toReturn.Diffuse1 = 9;
+                    toReturn.NormalMap0UVMultiplier = 10;
+                    toReturn.NormalMap0Strength = 11;
+                    toReturn.NormalMap1UVMultiplier = 12;
+                    toReturn.NormalMap1Strength = 13;
+
+                    toReturn.SpecularFactor0 = 14;
+                    toReturn.SpecularMap0UVMultiplier = 15;
+                    toReturn.MetallicFactor0 = 16;
+
+                    toReturn.SpecularFactor1 = 17;
+                    toReturn.SpecularMap1UVMultiplier = 18;
+                    toReturn.MetallicFactor1 = 19;
+
+                    toReturn.EnvironmentMapEmission = 24;
+                    toReturn.EnvironmentMapStrength = 25;
+
+                    toReturn.OcclusionMapUVMultiplier = 27;
+                    toReturn.OcclusionTint = 28;
+
+                    // NOTE: We should multiply 'StabilityHack' here instead, but we do it after the probe step
+                    //  to make the lighting more stable. Not sure if this is physically correct, but the result looks similar.
+                    toReturn.EmissiveFactor = 29;
+                    toReturn.Emission = 30;
+
+                    toReturn.ParallaxMapUVMultiplier = 35;
+                    toReturn.ParallaxFactor = 36;
+                    toReturn.ParallaxOffset = 37;
+
+                    toReturn.IsTransparent = 38;
+
+                    toReturn.OpacityNoiseMapUVMultiplier = 39;
+                    toReturn.OpacityNoiseAmplitude = 40;
+
+                    toReturn.DirtPower = 47;
+                    toReturn.DirtUVMultiplier = 48;
+                    toReturn.DirtStrength = 49;
                     break;
 
                 case ShaderCategory.CA_CHARACTER:
-                    toReturn.OpacityNoiseUVMultiplierIndex1 = 12;
-                    toReturn.DiffuseUVMultiplierIndex = 15;
-                    toReturn.DiffuseIndex = 16;
-                    toReturn.SecondaryDiffuseUVMultiplierIndex = 17;
-                    toReturn.SecondaryDiffuseIndex = 18;
-                    toReturn.NormalUVMultiplierIndex = 19;
-                    toReturn.SecondaryNormalUVMultiplierIndex = 21;
-                    toReturn.SpecularUVMultiplierIndex = 24;
-                    toReturn.SpecularFactorIndex = 25;
+                    toReturn.OpacityNoiseMapUVMultiplier = 12;
+                    toReturn.DiffuseMap0UVMultiplier = 15;
+                    toReturn.Diffuse0 = 16;
+
+                    toReturn.DiffuseMap1UVMultiplier = 17;
+                    toReturn.Diffuse1 = 18;
+
+                    toReturn.NormalMap0UVMultiplier = 19;
+                    toReturn.NormalMap0Strength = 20;
+                    toReturn.NormalMap1UVMultiplier = 21;
+                    toReturn.NormalMap1Strength = 22;
+
+                    toReturn.SpecularMap0UVMultiplier = 24;
+                    toReturn.SpecularFactor0 = 25;
+
+                    // TODO: Find out about these?
+                    //toReturn.MetallicFactor0 = 1;
+                    //toReturn.OcclusionTint =
+                    //toReturn.OpacityNoiseMapUVMultiplier = 1;
                     break;
 
                 case ShaderCategory.CA_SKIN:
-                    toReturn.DiffuseUVMultiplierIndex = 4;
-                    toReturn.DiffuseIndex = 5;
-                    toReturn.NormalUVMultiplierIndex = 8;
-                    toReturn.NormalUVMultiplierOfMultiplierIndex = 10;
-                    toReturn.SecondaryNormalUVMultiplierIndex = 11;
+                    toReturn.DiffuseMap0UVMultiplier = 4;
+                    toReturn.Diffuse0 = 5;
+
+                    toReturn.NormalMap0UVMultiplier = 8;
+                    toReturn.NormalMap0Strength = 9;
+                    toReturn.NormalMap0UVMultiplierOfMultiplier = 10;
+                    toReturn.NormalMap1UVMultiplier = 11;
                     break;
 
                 case ShaderCategory.CA_HAIR:
-                    toReturn.DiffuseIndex = 2;
+                    toReturn.DiffuseMap0UVMultiplier = 1;
+                    toReturn.Diffuse0 = 2;
+
+                    toReturn.NormalMap0Strength = 9;
+                    toReturn.NormalMap0UVMultiplier = 8;
+                    toReturn.SpecularMap0UVMultiplier = 7;
                     break;
 
                 case ShaderCategory.CA_EYE:
-                    toReturn.DiffuseUVAdderIndex = 3;
-                    // TODO: These three determine the iris color. They map to rgb channels of the iris map.
-                    //  I am using the middle color for now for everything but we should not do that.
-                    //toReturn.ColorIndex = 7;
-                    toReturn.DiffuseIndex = 8;
-                    //toReturn.ColorIndex = 9;
-                    toReturn.DiffuseUVMultiplierIndex = 10;
+                    toReturn.Unknown0_ = 0;
+                    toReturn.RetinaRadius = 1;
+                    toReturn.IrisParallaxDisplacement = 2;
+                    toReturn.LimbalSmoothRadius = 3;
+                    toReturn.RetinaIndexOfRefraction = 4; // I think this is the index of refraction of a retina.
+                    //Assert(toReturn.RetinaIndexOfRefraction >= 1;
+                    toReturn.PupilDilation = 5;
+                    toReturn.ScatterMapMultiplier = 6;
 
-                    // TODO: This info is available in 'Shader->TextureEntries[CorrectIndex].TextureAddressMode'.
-                    toReturn.DiffuseSamplerIndex = 0;
-                    break;
-
-                case ShaderCategory.CA_DECAL:
-                    //toReturn.ColorIndex = 3;
-                    //Material->BaseColor = {};
-                    break;
-
-                case ShaderCategory.CA_FOGPLANE:
-                    //toReturn.DiffuseIndex = 8;
-                    //Material.BaseColor = { };
-                    break;
-
-                case ShaderCategory.CA_REFRACTION:
-                    toReturn.DiffuseUVMultiplierIndex = 3;
-                    break;
-
-                case ShaderCategory.CA_TERRAIN:
-                    toReturn.DiffuseIndex = 4;
+                    toReturn.Iris0 = 7;
+                    toReturn.Iris1 = 8;
+                    toReturn.Iris2 = 9;
+                    toReturn.NormalMapUVMultiplier = 10;
+                    toReturn.NormalMapStrength = 11;
+                    toReturn.EnvironmentMapStrength = 12;
+                    toReturn.Unknown13_ = 13;
+                    //toReturn.ScatterMap.SamplerIndex = ADDRESS_MODE_CLAMP_TO_BORDER;
                     break;
 
                 case ShaderCategory.CA_LIGHTMAP_ENVIRONMENT:
-                    toReturn.DiffuseIndex = 12;
+                    toReturn.Diffuse0 = 12;
                     break;
 
-                case ShaderCategory.CA_CAMERA_MAP:
-                    //DiffuseFallback = V4(1);
-                    break;
-
-                case ShaderCategory.CA_PLANET:
-                    //DiffuseFallback = V4(1);
-                    break;
             }
 
             return toReturn;
@@ -440,41 +449,67 @@ namespace CATHODE.LEGACY
 
         public class MaterialPropertyIndex
         {
-            public UInt16 DiffuseSamplerIndex = 1;
-            public int OpacityUVMultiplierIndex = -1;
-            public int DiffuseUVMultiplierIndex = -1;
-            public int DiffuseUVAdderIndex = -1;
-            public int SpecularFactorIndex = -1;
-            public int MetallicFactorIndex = -1;
-            public int SecondaryDiffuseUVMultiplierIndex = -1;
-            public int NormalUVMultiplierIndex = -1;
-            public int NormalUVMultiplierOfMultiplierIndex = -1;
-            public int NormalMapStrength0Index = -1;
-            public int NormalMapStrength1Index = -1;
-            public int SecondaryNormalUVMultiplierIndex = -1;
-            public int SpecularUVMultiplierIndex = -1;
-            public int SecondarySpecularUVMultiplierIndex = -1;
-            public int SecondarySpecularFactorIndex = -1;
-            public int SecondaryMetallicFactorIndex = -1;
-            public int DirtMapUVMultiplier0Index = -1;
-            public int DirtMapUVMultiplier1Index = -1;
-            public int DirtDiffuseIndex = -1;
-            public int DirtStrengthIndex = -1;
-            public int EmissiveFactorIndex = -1;
-            public int EmissiveIndex = -1;
-            public int EnvironmentMapStrengthIndex = -1;
-            public int OpacityNoiseUVMultiplierIndex1 = -1;
-            public int OpacityNoiseAmplitudeIndex = -1;
-            public int DiffuseIndex = -1;
-            public int SecondaryDiffuseIndex = -1;
-            public int OcclusionUVMultiplierIndex = -1;
-            public int OcclusionTintIndex = -1;
-            public int IsTransparentIndex = -1;
-            public int EnvironmentMapStrength2Index = -1;
-            public int Unknown3_Index = -1;
-            public int ParallaxUVMultiplierIndex = -1;
-            public int ParallaxFactorIndex = -1;
-            public int ParallaxOffsetIndex = -1;
+            public int Diffuse0;
+            public int Diffuse1;
+            public int DiffuseMap0;
+            public int DiffuseMap0UVMultiplier;
+            public int DiffuseMap1;
+            public int DiffuseMap1UVMultiplier;
+            public int DirtMap;
+            public int DirtPower;
+            public int DirtStrength;
+            public int DirtUVMultiplier;
+            public int Emission;
+            public int EmissiveFactor;
+            public int EnvironmentMap;
+            public int EnvironmentMapEmission;
+            public int EnvironmentMapStrength;
+            public int FresnelLUT;
+            public int Iris0;
+            public int Iris1;
+            public int Iris2;
+            public int IrisParallaxDisplacement;
+            public int IsTransparent;
+            public int LimbalSmoothRadius;
+            public int Metallic;
+            public int MetallicFactor0;
+            public int MetallicFactor1;
+            public int NormalMap0;
+            public int NormalMap0Strength;
+            public int NormalMap0UVMultiplier;
+            public int NormalMap0UVMultiplierOfMultiplier;
+            public int NormalMap1;
+            public int NormalMap1Strength;
+            public int NormalMap1UVMultiplier;
+            public int NormalMapStrength;
+            public int NormalMapUVMultiplier;
+            public int OcclusionMap;
+            public int OcclusionMapUVMultiplier;
+            public int OcclusionTint;
+            public int OpacityMap;
+            public int OpacityMapUVMultiplier;
+            public int OpacityNoiseAmplitude;
+            public int OpacityNoiseMap;
+            public int OpacityNoiseMapUVMultiplier;
+            public int ParallaxFactor;
+            public int ParallaxMap;
+            public int ParallaxMapUVMultiplier;
+            public int ParallaxOffset;
+            public int PupilDilation;
+            public int RetinaIndexOfRefraction;
+            public int RetinaRadius;
+            public int ScatterMapMultiplier;
+            public int SpecularFactor0;
+            public int SpecularFactor1;
+            public int SpecularMap0;
+            public int SpecularMap0UVMultiplier;
+            public int SpecularMap1;
+            public int SpecularMap1UVMultiplier;
+            public int Unknown0_;
+            public int Unknown13_;
+            public int Unknown1_;
+            public int Unknown3_;
+            public int WetnessNoiseMap;
         }
 
         public enum ShaderSlot
