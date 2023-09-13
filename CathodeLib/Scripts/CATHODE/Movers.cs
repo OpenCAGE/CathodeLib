@@ -207,7 +207,7 @@ namespace CATHODE
             public CommandsEntityReference entity; //The entity in the Commands file
 
                                                  //280
-            public UInt32 environmentMapIndex; //environment_map.bin index - converted to short in code
+            public Int32 environmentMapIndex; //environment_map.bin index - converted to short in code
                                                //284
             public float emissive_val1; //emissive surface val1
             public float emissive_val2; //emissive surface val2
