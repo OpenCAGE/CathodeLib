@@ -41,8 +41,8 @@ namespace CATHODE
                 reader.BaseStream.Position = matrix0.GlobalOffset;
                 Matrix4x4[] Matrices0 = Utilities.ConsumeArray<Matrix4x4>(reader, matrix0.EntryCount);
                 Matrix4x4[] Matrices1 = Utilities.ConsumeArray<Matrix4x4>(reader, matrix1.EntryCount);
-                int[] IDs0 = Utilities.ConsumeArray<int>(reader, ids0.EntryCount);
-                int[] IDs1 = Utilities.ConsumeArray<int>(reader, ids1.EntryCount);
+                ShortGuid[] IDs0 = Utilities.ConsumeArray<ShortGuid>(reader, ids0.EntryCount);
+                ShortGuid[] IDs1 = Utilities.ConsumeArray<ShortGuid>(reader, ids1.EntryCount);
                 EnvironmentAnimationInfo[] Entries1 = Utilities.ConsumeArray<EnvironmentAnimationInfo>(reader, entries1.EntryCount);
 
                 //Jump back to our main definition and read all additional content in
@@ -50,18 +50,18 @@ namespace CATHODE
                 for (int i = 0; i < entries0.EntryCount; i++)
                 {
                     EnvironmentAnimation anim = new EnvironmentAnimation();
-                    anim.Matrix = Utilities.Consume<Matrix4x4>(reader);
-                    anim.ID = Utilities.Consume<ShortGuid>(reader);
+                    anim.Matrix = Utilities.Consume<Matrix4x4>(reader); //Root maybe? it seems to be identify
+                    anim.ID = Utilities.Consume<ShortGuid>(reader); //This ID is not unique... Is it defo an ID? It doesn't show up in COMMANDS
                     reader.BaseStream.Position += 4;
-                    anim.ResourceIndex = reader.ReadInt32();
+                    anim.ResourceIndex = reader.ReadInt32(); //the index which links through to the resource reference in COMMANDS
 
-                    anim.Indexes0 = PopulateArray<int>(reader, IDs0);
-                    anim.Indexes1 = PopulateArray<int>(reader, IDs1);
+                    anim.Indexes0 = PopulateArray<ShortGuid>(reader, IDs0); //These values seem to only be found in this file, so don't see that they're IDs.
+                    anim.Indexes1 = PopulateArray<ShortGuid>(reader, IDs1); //ShortGuids for the resource references in COMMANDS
 
                     int matrix_count = reader.ReadInt32();
                     int matrix_index = reader.ReadInt32();
-                    anim.Matrices0 = PopulateArray<Matrix4x4>(matrix_count, matrix_index, Matrices0);
-                    anim.Matrices1 = PopulateArray<Matrix4x4>(matrix_count, matrix_index, Matrices1);
+                    anim.Matrices0 = PopulateArray<Matrix4x4>(matrix_count, matrix_index, Matrices0); //matches length of Indexes0
+                    anim.Matrices1 = PopulateArray<Matrix4x4>(matrix_count, matrix_index, Matrices1); //matches length of Indexes0
 
                     anim.Data0 = PopulateArray<EnvironmentAnimationInfo>(reader, Entries1);
 
@@ -108,8 +108,8 @@ namespace CATHODE
             public ShortGuid ID;
             public int ResourceIndex; //This matches the ANIMATED_MODEL resource reference
 
-            public List<int> Indexes0;
-            public List<int> Indexes1;
+            public List<ShortGuid> Indexes0;
+            public List<ShortGuid> Indexes1;
 
             public List<Matrix4x4> Matrices0;
             public List<Matrix4x4> Matrices1;
@@ -120,7 +120,7 @@ namespace CATHODE
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public struct EnvironmentAnimationInfo
         {
-            public ShortGuid ID;
+            public ShortGuid ID; //id is only found in this file
             public Vector3 P;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)]
             public float[] V;
