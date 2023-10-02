@@ -49,14 +49,16 @@ namespace CATHODE
                 reader.BaseStream.Position = entries0.GlobalOffset;
                 for (int i = 0; i < entries0.EntryCount; i++)
                 {
+                    //Each entry here defines info for a Composite which has a EnvironmentModelReference entity
+
                     EnvironmentAnimation anim = new EnvironmentAnimation();
-                    anim.Matrix = Utilities.Consume<Matrix4x4>(reader); //Root maybe? it seems to be identify
+                    anim.Matrix = Utilities.Consume<Matrix4x4>(reader); //This is always identity
                     anim.ID = Utilities.Consume<ShortGuid>(reader); //This ID is not unique... Is it defo an ID? It doesn't show up in COMMANDS
                     reader.BaseStream.Position += 4;
                     anim.ResourceIndex = reader.ReadInt32(); //the index which links through to the resource reference in COMMANDS
 
-                    anim.Indexes0 = PopulateArray<ShortGuid>(reader, IDs0); //These values seem to only be found in this file, so don't see that they're IDs.
-                    anim.Indexes1 = PopulateArray<ShortGuid>(reader, IDs1); //ShortGuids for the resource references in COMMANDS
+                    anim.Indexes0 = PopulateArray<ShortGuid>(reader, IDs0); 
+                    anim.Indexes1 = PopulateArray<ShortGuid>(reader, IDs1); //ShortGuids for all RENDERABLE_INSTANCE resource references in the composite
 
                     int matrix_count = reader.ReadInt32();
                     int matrix_index = reader.ReadInt32();
@@ -65,7 +67,7 @@ namespace CATHODE
 
                     anim.Data0 = PopulateArray<EnvironmentAnimationInfo>(reader, Entries1);
 
-                    reader.BaseStream.Position += 4; //TODO: i think this might be a flag - it's usually zero but has been 1 on hab_airport
+                    anim.unk1 = reader.ReadInt32(); //This is always zero, but is 1 for some HAB_AIRPORT entries
                     Entries.Add(anim);
                 }
             }
@@ -108,6 +110,18 @@ namespace CATHODE
             public ShortGuid ID;
             public int ResourceIndex; //This matches the ANIMATED_MODEL resource reference
 
+            //There are two types of EnvironmentAnimation:
+            // - Skinned - known as a DisplayModel (a composite defining a skinned mesh, used for a character)
+            // - Non-Skinned (a composite defining a mesh like a weapon, etc)
+
+            //If the composite is skinned:
+            // - Indexes0 is used to define skinning data (unsure what)
+            // - Indexes1 is used to define RENDERABLE_INSTANCE IDs (which it turns out are ShortGuids of the model submesh name most the time). Can also include the node name for EnvironmentModelReference??
+
+            //If the composite is static:
+            // - Indexes0 is used to define RENDERABLE_INSTANCE IDs (see above)
+            // - Indexes1 is unused
+
             public List<ShortGuid> Indexes0;
             public List<ShortGuid> Indexes1;
 
@@ -115,6 +129,8 @@ namespace CATHODE
             public List<Matrix4x4> Matrices1;
 
             public List<EnvironmentAnimationInfo> Data0;
+
+            public int unk1 = 0;
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
