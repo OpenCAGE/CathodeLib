@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using CATHODE.Scripting;
 using CathodeLib;
+using System;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -35,7 +36,7 @@ namespace CATHODE
                 OffsetPair entries0 = Utilities.Consume<OffsetPair>(reader);
                 OffsetPair ids0 = Utilities.Consume<OffsetPair>(reader);
                 OffsetPair ids1 = Utilities.Consume<OffsetPair>(reader);
-                reader.BaseStream.Position += 8; //Skip unknown
+                //Here there's always 112, 1
 
                 //Jump down and read all content we'll consume into our EnvironmentAnimation
                 reader.BaseStream.Position = matrix0.GlobalOffset;
@@ -69,6 +70,89 @@ namespace CATHODE
 
                     anim.unk1 = reader.ReadInt32(); //This is always zero, but is 1 for some HAB_AIRPORT entries
                     Entries.Add(anim);
+                }
+            }
+            return true;
+        }
+
+        override protected bool SaveInternal()
+        {
+            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
+            {
+                writer.BaseStream.SetLength(0);
+                writer.Write((Int32)4);
+                writer.Write((Int32)0);
+                writer.Write(new byte[56]);
+                writer.Write(new byte[112 * Entries.Count]);
+
+                OffsetPair Matrices0 = new OffsetPair() { GlobalOffset = (int)writer.BaseStream.Position };
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    Utilities.Write(writer, Entries[i].Matrices0);
+                    Matrices0.EntryCount += Entries[i].Matrices0.Count;
+                }
+                OffsetPair Matrices1 = new OffsetPair() { GlobalOffset = (int)writer.BaseStream.Position };
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    Utilities.Write(writer, Entries[i].Matrices1);
+                    Matrices1.EntryCount += Entries[i].Matrices1.Count;
+                }
+                OffsetPair IDs0 = new OffsetPair() { GlobalOffset = (int)writer.BaseStream.Position };
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    Utilities.Write(writer, Entries[i].Indexes0);
+                    IDs0.EntryCount += Entries[i].Indexes0.Count;
+                }
+                OffsetPair IDs1 = new OffsetPair() { GlobalOffset = (int)writer.BaseStream.Position };
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    Utilities.Write(writer, Entries[i].Indexes1);
+                    IDs1.EntryCount += Entries[i].Indexes1.Count;
+                }
+                OffsetPair Entries1 = new OffsetPair() { GlobalOffset = (int)writer.BaseStream.Position };
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    Utilities.Write(writer, Entries[i].Data0);
+                    Entries1.EntryCount += Entries[i].Data0.Count;
+                }
+
+                writer.BaseStream.Position = 4;
+                writer.Write((Int32)writer.BaseStream.Length);
+                Utilities.Write(writer, Matrices0);
+                Utilities.Write(writer, Matrices1);
+                Utilities.Write(writer, Entries1);
+                writer.Write((Int32)64);
+                writer.Write((Int32)Entries.Count);
+                Utilities.Write(writer, IDs0);
+                Utilities.Write(writer, IDs1);
+                writer.Write((Int32)112);
+                writer.Write((Int32)1);
+
+                int stacked_Matrices = 0;
+                int stacked_IDs0 = 0;
+                int stacked_IDs1 = 0;
+                int stacked_Entries1 = 0;
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    Utilities.Write(writer, Entries[i].Matrix);
+                    Utilities.Write(writer, Entries[i].ID);
+                    writer.Write((Int32)0);
+                    Utilities.Write(writer, Entries[i].ResourceIndex);
+
+                    writer.Write(Entries[i].Indexes0.Count);
+                    writer.Write((Int32)stacked_IDs0);
+                    stacked_IDs0 += Entries[i].Indexes0.Count;
+                    writer.Write(Entries[i].Indexes1.Count);
+                    writer.Write((Int32)stacked_IDs1);
+                    stacked_IDs1 += Entries[i].Indexes1.Count;
+                    writer.Write(Entries[i].Matrices0.Count);
+                    writer.Write((Int32)stacked_Matrices);
+                    stacked_Matrices += Entries[i].Matrices0.Count;
+                    writer.Write((Int32)stacked_Entries1);
+                    writer.Write(Entries[i].Data0.Count);
+                    stacked_Entries1 += Entries[i].Data0.Count;
+
+                    writer.Write(Entries[i].unk1);
                 }
             }
             return true;
@@ -111,7 +195,7 @@ namespace CATHODE
             public int ResourceIndex; //This matches the ANIMATED_MODEL resource reference
 
             //There are two types of EnvironmentAnimation:
-            // - Skinned - known as a DisplayModel (a composite defining a skinned mesh, used for a character)
+            // - Skinned - usually referenced by DisplayModel (a composite defining a skinned mesh, used for a character, etc)
             // - Non-Skinned (a composite defining a mesh like a weapon, etc)
 
             //If the composite is skinned:
