@@ -19,15 +19,15 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal()
         {
-            using (BinaryReader stream = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
                 //Read all data in
-                int EntryCount = stream.ReadInt32();
-                int StringCount = stream.ReadInt32();
-                Entry[] entries = Utilities.ConsumeArray<Entry>(stream, EntryCount);
-                int[] stringOffsets = Utilities.ConsumeArray<int>(stream, StringCount);
+                int EntryCount = reader.ReadInt32();
+                int StringCount = reader.ReadInt32();
+                Entry[] entries = Utilities.ConsumeArray<Entry>(reader, EntryCount);
+                int[] stringOffsets = Utilities.ConsumeArray<int>(reader, StringCount);
                 List<string> strings = new List<string>();
-                for (int i = 0; i < StringCount; i++) strings.Add(Utilities.ReadString(stream));
+                for (int i = 0; i < StringCount; i++) strings.Add(Utilities.ReadString(reader));
 
                 //Parse
                 for (int i = 0; i < entries.Length; i++) Entries.Add(entries[i].StringID, strings[entries[i].StringIndex]);
@@ -40,6 +40,7 @@ namespace CATHODE
         {
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
+                writer.BaseStream.SetLength(0);
                 writer.Write(Entries.Count);
                 writer.Write(Entries.Count);
                 int count = 0;

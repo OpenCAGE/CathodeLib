@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using CATHODE.Scripting;
@@ -62,13 +62,7 @@ namespace CATHODE
                 Matrix4x4[] Matrices1 = Utilities.ConsumeArray<Matrix4x4>(reader, matrix1.EntryCount);
                 ShortGuid[] IDs0 = Utilities.ConsumeArray<ShortGuid>(reader, ids0.EntryCount);
                 ShortGuid[] IDs1 = Utilities.ConsumeArray<ShortGuid>(reader, ids1.EntryCount);
-                EnvironmentAnimationInfo[] Entries1 = Utilities.ConsumeArray<EnvironmentAnimationInfo>(reader, entries1.EntryCount);
-
-                //Look up the string IDs
-                //string[] Strings0 = new string[IDs0.Length];
-                //for (int i = 0; i < Strings0.Length; i++) Strings0[i] = _strings.Entries[IDs0[i]];
-                //string[] Strings1 = new string[IDs1.Length];
-                //for (int i = 0; i < Strings1.Length; i++) Strings1[i] = _strings.Entries[IDs1[i]];
+                EnvironmentAnimation.Info[] Entries1 = Utilities.ConsumeArray<EnvironmentAnimation.Info>(reader, entries1.EntryCount);
 
                 //Jump back to our main definition and read all additional content in
                 reader.BaseStream.Position = entries0.GlobalOffset;
@@ -77,10 +71,11 @@ namespace CATHODE
                     //Each entry here defines info for a Composite which has a EnvironmentModelReference entity
 
                     EnvironmentAnimation anim = new EnvironmentAnimation();
-                    anim.Matrix = Utilities.Consume<Matrix4x4>(reader); //This is always identity
+
+                    Matrix4x4 Matrix = Utilities.Consume<Matrix4x4>(reader); //This is always identity
 
                     uint id = reader.ReadUInt32();
-                    anim.Name = _strings.Entries[id];
+                    anim.SkeletonName = _strings.Entries[id];
                     reader.BaseStream.Position += 4;
                     anim.ResourceIndex = reader.ReadInt32(); //the index which links through to the resource reference in COMMANDS
 
@@ -92,7 +87,7 @@ namespace CATHODE
                     anim.Matrices0 = PopulateArray<Matrix4x4>(matrix_count, matrix_index, Matrices0); //matches length of Indexes0
                     anim.Matrices1 = PopulateArray<Matrix4x4>(matrix_count, matrix_index, Matrices1); //matches length of Indexes0
 
-                    anim.Data0 = PopulateArray<EnvironmentAnimationInfo>(reader, Entries1);
+                    anim.Data0 = PopulateArray<EnvironmentAnimation.Info>(reader, Entries1);
 
                     anim.unk1 = reader.ReadInt32(); //This is always zero, but is 1 for some HAB_AIRPORT entries
                     Entries.Add(anim);
@@ -160,8 +155,8 @@ namespace CATHODE
                 int stacked_Entries1 = 0;
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    Utilities.Write(writer, Entries[i].Matrix);
-                    Utilities.Write(writer, Utilities.AnimationHashedString(Entries[i].Name));
+                    Utilities.Write(writer, Matrix4x4.Identity);
+                    Utilities.Write(writer, Utilities.AnimationHashedString(Entries[i].SkeletonName));
                     writer.Write((Int32)0);
                     Utilities.Write(writer, Entries[i].ResourceIndex);
 
@@ -191,7 +186,7 @@ namespace CATHODE
             List<T> arr = new List<T>();
             int count = reader.ReadInt32();
             int index = reader.ReadInt32(); 
-            if (typeof(T) == typeof(EnvironmentAnimationInfo)) 
+            if (typeof(T) == typeof(EnvironmentAnimation.Info)) 
             {
                 //Hacky fix for EnvironmentAnimationInfo pointers count/index order being inverted
                 for (int x = 0; x < index; x++)
@@ -216,8 +211,7 @@ namespace CATHODE
         #region STRUCTURES
         public class EnvironmentAnimation
         {
-            public Matrix4x4 Matrix = Matrix4x4.Identity; //not sure this is actually used. changed it to a rotation and nothing seemed diff
-            public string Name; //we write this using AnimationHashedString
+            public string SkeletonName; //we write this using AnimationHashedString
             public int ResourceIndex; //This matches the ANIMATED_MODEL resource reference
 
             //There are two types of EnvironmentAnimation:
@@ -238,26 +232,26 @@ namespace CATHODE
             public List<Matrix4x4> Matrices0;
             public List<Matrix4x4> Matrices1;
 
-            public List<EnvironmentAnimationInfo> Data0;
+            public List<Info> Data0;
 
             public int unk1 = 0;
+
+            [StructLayout(LayoutKind.Sequential, Pack = 1)]
+            public struct Info
+            {
+                public ShortGuid ID; //id is only found in this file
+                public Vector3 P;
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)]
+                public float[] V;
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
+                public byte[] Unknown_;
+            };
         }
 
         public class SkinnedEnvironmentAnimation : EnvironmentAnimation
         {
 
         }
-
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct EnvironmentAnimationInfo
-        {
-            public ShortGuid ID; //id is only found in this file
-            public Vector3 P;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)]
-            public float[] V;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
-            public byte[] Unknown_;
-        };
         #endregion
     }
 }
