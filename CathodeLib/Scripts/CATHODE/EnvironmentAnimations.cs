@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using CATHODE.Scripting;
 using CathodeLib;
 using System;
+using System.Linq;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -16,12 +17,29 @@ namespace CATHODE
     public class EnvironmentAnimations : CathodeFile
     {
         public List<EnvironmentAnimation> Entries = new List<EnvironmentAnimation>();
-        public static new Implementation Implementation = Implementation.LOAD;
-        public EnvironmentAnimations(string path) : base(path) { }
+        public static new Implementation Implementation = Implementation.LOAD | Implementation.CREATE | Implementation.SAVE;
+
+        public EnvironmentAnimations(string path, AnimationStrings strings) : base(path)
+        {
+            _strings = strings;
+
+            //TEMP
+            OnLoadBegin?.Invoke(_filepath);
+            if (LoadInternal())
+            {
+                _loaded = true;
+                OnLoadSuccess?.Invoke(_filepath);
+            }
+        }
+
+        private AnimationStrings _strings;
 
         #region FILE_IO
         override protected bool LoadInternal()
         {
+            if (_strings == null)
+                return false;
+
 
             //TODO: this is a mapping of ModelReference entities within the composite with EnvironmentModelReference in
             //      the IDs should line up.
@@ -46,6 +64,12 @@ namespace CATHODE
                 ShortGuid[] IDs1 = Utilities.ConsumeArray<ShortGuid>(reader, ids1.EntryCount);
                 EnvironmentAnimationInfo[] Entries1 = Utilities.ConsumeArray<EnvironmentAnimationInfo>(reader, entries1.EntryCount);
 
+                //Look up the string IDs
+                //string[] Strings0 = new string[IDs0.Length];
+                //for (int i = 0; i < Strings0.Length; i++) Strings0[i] = _strings.Entries[IDs0[i]];
+                //string[] Strings1 = new string[IDs1.Length];
+                //for (int i = 0; i < Strings1.Length; i++) Strings1[i] = _strings.Entries[IDs1[i]];
+
                 //Jump back to our main definition and read all additional content in
                 reader.BaseStream.Position = entries0.GlobalOffset;
                 for (int i = 0; i < entries0.EntryCount; i++)
@@ -54,7 +78,9 @@ namespace CATHODE
 
                     EnvironmentAnimation anim = new EnvironmentAnimation();
                     anim.Matrix = Utilities.Consume<Matrix4x4>(reader); //This is always identity
-                    anim.ID = Utilities.Consume<ShortGuid>(reader); //This ID is not unique... Is it defo an ID? It doesn't show up in COMMANDS
+
+                    uint id = reader.ReadUInt32();
+                    anim.Name = _strings.Entries[id];
                     reader.BaseStream.Position += 4;
                     anim.ResourceIndex = reader.ReadInt32(); //the index which links through to the resource reference in COMMANDS
 
@@ -135,7 +161,7 @@ namespace CATHODE
                 for (int i = 0; i < Entries.Count; i++)
                 {
                     Utilities.Write(writer, Entries[i].Matrix);
-                    Utilities.Write(writer, Entries[i].ID);
+                    Utilities.Write(writer, Utilities.AnimationHashedString(Entries[i].Name));
                     writer.Write((Int32)0);
                     Utilities.Write(writer, Entries[i].ResourceIndex);
 
@@ -190,8 +216,8 @@ namespace CATHODE
         #region STRUCTURES
         public class EnvironmentAnimation
         {
-            public Matrix4x4 Matrix;
-            public ShortGuid ID;
+            public Matrix4x4 Matrix = Matrix4x4.Identity; //not sure this is actually used. changed it to a rotation and nothing seemed diff
+            public string Name; //we write this using AnimationHashedString
             public int ResourceIndex; //This matches the ANIMATED_MODEL resource reference
 
             //There are two types of EnvironmentAnimation:
@@ -215,6 +241,11 @@ namespace CATHODE
             public List<EnvironmentAnimationInfo> Data0;
 
             public int unk1 = 0;
+        }
+
+        public class SkinnedEnvironmentAnimation : EnvironmentAnimation
+        {
+
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
