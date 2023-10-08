@@ -14,8 +14,8 @@ namespace CATHODE
     /* DATA/GLOBAL/ANIMATION.PAK -> ANIM_SYS/SKELE/DB.BIN */
     public class SkeleDB : CathodeFile
     {
-        public Dictionary<uint, string> Entries = new Dictionary<uint, string>();
-        public static new Implementation Implementation = Implementation.LOAD;
+        public Data Entries = new Data();
+        public static new Implementation Implementation = Implementation.LOAD | Implementation.CREATE | Implementation.SAVE;
 
         public SkeleDB(string path, AnimationStrings strings) : base(path)
         {
@@ -37,6 +37,8 @@ namespace CATHODE
         {
             if (_strings == null)
                 return false;
+
+            Entries = new Data();
 
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
@@ -81,25 +83,58 @@ namespace CATHODE
                     mappings[i].Name = _strings.Entries[reader.ReadUInt32()];
                 }
 
-                string sdfsdf = "";
+                Entries.Skeletons = skeletons.ToList();
+                Entries.Mappings = mappings.ToList();
             }
             return true;
         }
 
         override protected bool SaveInternal()
         {
+            //TODO: we should write these anim strings to the db
+            
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
 
-                writer.Write(Entries.Count);
-                writer.Write(Entries.Count);
+                writer.Write(Entries.Skeletons.Count);
+                writer.Write(Entries.Skeletons.Count);
+
+                for (int i = 0; i < Entries.Skeletons.Count; i++)
+                {
+                    writer.Write(Utilities.AnimationHashedString(Entries.Skeletons[i].SkeletonName));
+                    writer.Write(i);
+                }
+                for (int i = 0; i < Entries.Skeletons.Count; i++)
+                {
+                    writer.Write(Utilities.AnimationHashedString(Entries.Skeletons[i].Filename));
+                }
+
+                writer.Write(Entries.Mappings.Count);
+                writer.Write(Entries.Mappings.Count);
+
+                for (int i = 0; i < Entries.Mappings.Count; i++)
+                {
+                    writer.Write(Utilities.AnimationHashedString(Entries.Mappings[i].Skeleton1));
+                    writer.Write(Utilities.AnimationHashedString(Entries.Mappings[i].Skeleton2));
+                    writer.Write(i);
+                    writer.Write(0);
+                }
+                for (int i = 0; i < Entries.Mappings.Count; i++)
+                {
+                    writer.Write(Utilities.AnimationHashedString(Entries.Mappings[i].Name));
+                }
             }
             return true;
         }
         #endregion
 
         #region STRUCTURES
+        public class Data
+        {
+            public List<Skeletons> Skeletons = new List<Skeletons>();
+            public List<SkeletonMapping> Mappings = new List<SkeletonMapping>();
+        }
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public class Skeletons
         {
