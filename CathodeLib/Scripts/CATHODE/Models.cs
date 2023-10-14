@@ -628,6 +628,7 @@ namespace CATHODE
                 public List<LOD> LODs = new List<LOD>();
 
                 //Storing some unknown info about LV426 stuff (Pt1 and Pt2 respectively)
+                //I think these are just garbage values that got dumped by accident
                 public int UnkLv426Pt1 = 0;
                 public int UnkLv426Pt2 = 0;
 
