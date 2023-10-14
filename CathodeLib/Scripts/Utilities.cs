@@ -250,11 +250,14 @@ namespace CathodeLib
                 writer.BaseStream.Position = contentOffset;
                 List<int> offsets = new List<int>();
                 List<int> lengths = new List<int>();
+                List<int> lengthsAligned = new List<int>();
                 for (int i = 0; i < content.Count; i++)
                 {
                     offsets.Add((int)writer.BaseStream.Position - contentOffset);
                     writer.Write(content[i].Data);
                     lengths.Add((int)writer.BaseStream.Position - contentOffset - offsets[offsets.Count - 1]);
+                    Align(writer, 16);
+                    lengthsAligned.Add((int)writer.BaseStream.Position - contentOffset - offsets[offsets.Count - 1]);
                 }
 
                 //Write model headers
@@ -263,11 +266,11 @@ namespace CathodeLib
                 {
                     writer.Write(new byte[8]);
                     writer.Write(e ? BigEndianUtils.FlipEndian((Int32)lengths[i]) : BitConverter.GetBytes((Int32)lengths[i]));
-                    writer.Write(e ? BigEndianUtils.FlipEndian((Int32)lengths[i]) : BitConverter.GetBytes((Int32)lengths[i]));
+                    writer.Write(e ? BigEndianUtils.FlipEndian((Int32)lengthsAligned[i]) : BitConverter.GetBytes((Int32)lengthsAligned[i]));
                     writer.Write(e ? BigEndianUtils.FlipEndian((Int32)offsets[i]) : BitConverter.GetBytes((Int32)offsets[i]));
 
                     writer.Write(new byte[5]);
-                    writer.Write(type == FileIdentifiers.MODEL_DATA ? new byte[2] { 0x01, 0x01 } : new byte[2]);
+                    writer.Write(type == FileIdentifiers.MODEL_DATA ? new byte[2] { 0x01, 0x01 } : new byte[2] { 0x00, 0x01 });
                     writer.Write(new byte[5]);
 
                     writer.Write(e ? BigEndianUtils.FlipEndian((Int32)content[i].BinIndex) : BitConverter.GetBytes((Int32)content[i].BinIndex));
@@ -278,12 +281,14 @@ namespace CathodeLib
                 writer.BaseStream.Position = 0;
                 writer.Write(new byte[4]);
                 writer.Write(e ? BigEndianUtils.FlipEndian((Int32)FileIdentifiers.ASSET_FILE) : BitConverter.GetBytes((Int32)FileIdentifiers.ASSET_FILE));
-                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)FileIdentifiers.MODEL_DATA) : BitConverter.GetBytes((Int32)FileIdentifiers.MODEL_DATA));
+                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)type) : BitConverter.GetBytes((Int32)type));
                 writer.Write(e ? BigEndianUtils.FlipEndian((Int32)content.Count) : BitConverter.GetBytes((Int32)content.Count));
                 writer.Write(e ? BigEndianUtils.FlipEndian((Int32)content.Count) : BitConverter.GetBytes((Int32)content.Count));
                 writer.Write(e ? BigEndianUtils.FlipEndian((Int32)16) : BitConverter.GetBytes((Int32)16));
                 writer.Write(e ? BigEndianUtils.FlipEndian((Int32)1) : BitConverter.GetBytes((Int32)1));
-                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)1) : BitConverter.GetBytes((Int32)1));
+
+                int unk = type == FileIdentifiers.MODEL_DATA ? 1 : 0;
+                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)unk) : BitConverter.GetBytes((Int32)unk));
             }
         }
 

@@ -56,6 +56,8 @@ namespace CATHODE
             {
                 using (BinaryReader reader = new BinaryReader(new MemoryStream(content[i].Data)))
                 {
+                    Entries.Add(new Shader());
+
                     reader.BaseStream.Position = 8; //0x7725BBA4, 36, 1
 
                     int textureCount = reader.ReadInt16();
@@ -139,19 +141,31 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
+            List<Utilities.PAKContent> content = new List<Utilities.PAKContent>();
+            for (int i = 0; i < Entries.Count; i++)
+            {
+
+            }
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepathBIN)))
             {
 
             }
-            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepathIDX)))
+
+            content = new List<Utilities.PAKContent>();
+            for (int i = 0; i < Entries.Count; i++)
             {
-                writer.BaseStream.SetLength(0);
-                writer.Write(0);
-                writer.Write((int)FileIdentifiers.ASSET_FILE);
-                writer.Write((int)FileIdentifiers.MODEL_DATA);
-                writer.Write(Entries.Count);
-                writer.Write(Entries.Count);
-                writer.Write(new byte[12]);
+                content.Add(new Utilities.PAKContent()
+                {
+                    BinIndex = i,
+                    Data = BitConverter.GetBytes((Int32)i)
+                });
+            }
+            Utilities.WritePAK(_filepathIDX, FileIdentifiers.SHADER_DATA, content);
+
+            content = new List<Utilities.PAKContent>();
+            for (int i = 0; i < Entries.Count; i++)
+            {
+
             }
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
