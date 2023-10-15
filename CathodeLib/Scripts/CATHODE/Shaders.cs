@@ -7,10 +7,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Windows.Media.Animation;
-using static CATHODE.EXPERIMENTAL.MissionSave;
-using static CATHODE.LEGACY.ShadersPAK;
-using static CATHODE.Shaders;
-using static CATHODE.Shaders.Shader;
 
 namespace CATHODE
 {
@@ -149,7 +145,7 @@ namespace CATHODE
 
                     for (int x = 0; x < textureCount; x++)
                     {
-                        UnknownTextureThing unk = new UnknownTextureThing();
+                        Shader.UnknownTextureThing unk = new Shader.UnknownTextureThing();
                         unk.unk1 = reader.ReadByte();
                         unk.unk2 = reader.ReadByte();
                         unk.unk3 = new short[16];
@@ -565,6 +561,48 @@ namespace CATHODE
             HULL,
             DOMAIN,
             COMPUTE,
+        };
+
+        public enum ShaderCategory
+        {
+            NONE = 0,
+
+            CA_PARTICLE = 12,
+            CA_RIBBON = 13,
+            CA_ENVIRONMENT = 17,
+            CA_SHADOWCASTER = 18,
+            CA_DECAL_ENVIRONMENT = 19,
+            CA_CHARACTER = 20,
+            CA_SKIN = 21,
+            CA_HAIR = 22,
+            CA_EYE = 23,
+            CA_SKIN_OCCLUSION = 24,
+            CA_DEFERRED = 27,
+            CA_DECAL = 30,
+            CA_FOGPLANE = 31,
+            CA_FOGSPHERE = 32,
+            CA_DEBUG = 33,
+            CA_POST_PROCESSING = 35,
+            CA_FILTERS = 37,
+            CA_LENS_FLARE = 38,
+            CA_LIQUID_ENVIRONMENT = 39,
+            CA_OCCLUSION_CULLING = 42,
+            CA_REFRACTION = 43,
+            CA_SIMPLE_REFRACTION = 44,
+            CA_DISTORTION_OVERLAY = 45,
+            CA_SURFACE_EFFECTS = 50,
+            CA_EFFECT_OVERLAY = 51,
+            CA_TERRAIN = 52,
+            CA_NONINTERACTIVE_WATER = 53,
+            CA_SIMPLEWATER = 54,
+            CA_PLANET = 55,
+            CA_LIGHTMAP_ENVIRONMENT = 58,
+            CA_LOW_LOD_CHARACTER = 60,
+            CA_LIGHT_DECAL = 61,
+            CA_VOLUME_LIGHT = 62,
+            CA_WATER_CAUSTICS_OVERLAY = 63,
+            CA_SPACESUIT_VISOR = 64,
+            CA_CAMERA_MAP = 65,
         };
 
         /*
