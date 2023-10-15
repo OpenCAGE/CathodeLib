@@ -1,7 +1,9 @@
 ﻿using CathodeLib;
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using static CATHODE.LEGACY.ShadersPAK;
 
@@ -27,6 +29,13 @@ namespace CATHODE
             if (!File.Exists(_filepathBIN)) return false;
             if (!File.Exists(_filepathIDX)) return false;
 
+            int vertexShaderCount = 0;
+            int pixelShaderCount = 0;
+            int hullShaderCount = 0;
+            int domainShaderCount = 0;
+            int geometryShaderCount = 0;
+            int computeShaderCount = 0;
+
             List<Utilities.PAKContent> content = Utilities.ReadPAK(_filepathBIN, FileIdentifiers.SHADER_DATA);
             for (int i = 0; i < content.Count; i++)
             {
@@ -34,11 +43,223 @@ namespace CATHODE
 
                 using (BinaryReader reader = new BinaryReader(new MemoryStream(content[i].Data)))
                 {
+                    //The first entry here acts as an additional header
+                    if (i == 0)
+                    {
+                        vertexShaderCount = reader.ReadInt32();
+                        pixelShaderCount = reader.ReadInt32();
+                        hullShaderCount = reader.ReadInt32();
+                        domainShaderCount = reader.ReadInt32();
+                        geometryShaderCount = reader.ReadInt32();
+                        computeShaderCount = reader.ReadInt32();
+                        continue;
+                    }
 
+                    fourcc fourcc = Utilities.Consume<fourcc>(reader);
+                    if (fourcc.ToString() != "DXBC")
+                    {
+                        throw new Exception("Unexpected");
+                    }
+
+                    int[] checksums = Utilities.ConsumeArray<int>(reader, 4);
+
+                    int one = reader.ReadInt32();
+                    if (one != 1)
+                    {
+                        throw new Exception("Unexpected");
+                    }
+
+                    int size = reader.ReadInt32();
+                    int chunkCount = reader.ReadInt32();
+                    int[] chunkOffsets = Utilities.ConsumeArray<int>(reader, chunkCount);
+
+                    for (int x = 0; x < chunkCount; x++)
+                    {
+                        if (reader.BaseStream.Position != chunkOffsets[x])
+                        {
+                            string sdffsd = "";
+                        }
+                        reader.BaseStream.Position = chunkOffsets[x];
+
+                        fourcc chunkFourcc = Utilities.Consume<fourcc>(reader);
+                        int chunkSize = reader.ReadInt32();
+
+                        //TODO: should actually parse this eventually
+                        byte[] chunkContent = reader.ReadBytes(chunkSize);
+                        using (BinaryReader chunkReader = new BinaryReader(new MemoryStream(chunkContent)))
+                        {
+                            switch (chunkFourcc.ToString())
+                            {
+                                case "RDEF":
+                                    {
+                                        int constantBufferCount = chunkReader.ReadInt32();
+                                        int constantBufferOffset = chunkReader.ReadInt32();
+                                        int resourceBindingCount = chunkReader.ReadInt32();
+                                        int resourceBindingOffset = chunkReader.ReadInt32();
+
+                                        chunkReader.BaseStream.Position += 2; //0, 5
+
+                                        int type = chunkReader.ReadInt16();
+                                        if (type != -2 && type != -1)
+                                        {
+                                            //Console.WriteLine(type);
+                                            string sdffd = "";
+                                        }
+                                        else
+                                        {
+                                            string sfgsdfsf = "";
+                                        }
+                                        //DXBCType programType = (DXBCType)chunkReader.ReadInt32();
+
+                                        int flags = chunkReader.ReadInt32();
+                                        int creatorStringOffset = chunkReader.ReadInt32();
+
+                                        chunkReader.BaseStream.Position += 28; //RD11, 60, 24, 32, 40, 36, 12
+
+                                        int interfaceSlotCount = chunkReader.ReadInt32();
+
+                                        if (resourceBindingCount != 0 && chunkReader.BaseStream.Position != resourceBindingOffset)
+                                            throw new Exception("Unexpected");
+
+                                        int[] resourceNameOffsets = new int[resourceBindingCount];
+                                        for (int z = 0; z < resourceBindingCount; z++)
+                                        {
+                                            resourceNameOffsets[z] = chunkReader.ReadInt32();
+                                            int ShaderInputType = chunkReader.ReadInt32();
+                                            int ResourceReturnType = chunkReader.ReadInt32();
+                                            int ResourceViewDimension = chunkReader.ReadInt32();
+                                            int SampleCount = chunkReader.ReadInt32();
+                                            int BindPoint = chunkReader.ReadInt32();
+                                            int BindCount = chunkReader.ReadInt32();
+                                            int ShaderInputFlags = chunkReader.ReadInt32();
+                                        }
+                                        for (int z = 0; z < resourceBindingCount; z++)
+                                        {
+                                            if (chunkReader.BaseStream.Position != resourceNameOffsets[z])
+                                                throw new Exception("Unexpected");
+
+                                            string name = Utilities.ReadString(chunkReader);
+                                            //Console.WriteLine("Resource Binding Name: " + name);
+                                        }
+
+                                        Utilities.Align(chunkReader);
+
+                                        //chunkReader.BaseStream.Position = constantBufferOffset;
+                                        if (constantBufferCount != 0 && chunkReader.BaseStream.Position != constantBufferOffset)
+                                            throw new Exception("Unexpected");
+
+                                        int[] cbNameOffsets = new int[constantBufferCount];
+                                        int[] cbVariableCounts = new int[constantBufferCount];
+                                        int[] cbVariableOffsets = new int[constantBufferCount];
+                                        int[][] cbVariableNameOffsets = new int[constantBufferCount][];
+                                        for (int z = 0; z < constantBufferCount; z++)
+                                        {
+                                            cbNameOffsets[z] = chunkReader.ReadInt32();
+                                            cbVariableCounts[z] = chunkReader.ReadInt32();
+                                            cbVariableOffsets[z] = chunkReader.ReadInt32();
+                                            int SizeInBytes = chunkReader.ReadInt32();
+                                            int Flags = chunkReader.ReadInt32();
+                                            int Type = chunkReader.ReadInt32();
+
+                                            if (Type != 0 || Flags != 0)
+                                            {
+                                                string sdfsdf = "";
+                                            }
+                                        }
+                                        for (int z = 0; z < constantBufferCount; z++)
+                                        {
+                                            //string name = Utilities.ReadString(chunkReader, cbNameOffsets[z]);
+                                            //Console.WriteLine("Constant Bufffer Name: " + name);
+
+                                            chunkReader.BaseStream.Position = cbVariableOffsets[z];
+                                            //if (chunkReader.BaseStream.Position != cbVariableOffsets[z])
+                                            //    throw new Exception("Unexpected");
+
+                                            cbVariableNameOffsets[z] = new int[cbVariableCounts[z]];
+                                            int[] typeOffsets = new int[cbVariableCounts[z]];
+                                            for (int p = 0; p < cbVariableCounts[z]; p++)
+                                            {
+                                                cbVariableNameOffsets[z][p] = chunkReader.ReadInt32();
+                                                int DataOffset = chunkReader.ReadInt32();
+                                                int DataSize = chunkReader.ReadInt32();
+                                                int Flags = chunkReader.ReadInt32();
+                                                typeOffsets[p] = chunkReader.ReadInt32();
+                                                int DefaultValueOffset = chunkReader.ReadInt32();
+
+                                                if (DefaultValueOffset != 0)
+                                                {
+                                                    string sdfsdf = "";
+                                                }
+
+                                                // TODO: I think the version 5 is different than 4. This is not there on Version 4.
+                                                int[] unk = Utilities.ConsumeArray<int>(chunkReader, 4);
+                                            }
+                                            for (int p = 0; p < cbVariableCounts[z]; p++)
+                                            {
+                                                chunkReader.BaseStream.Position = typeOffsets[p];
+                                                //if (chunkReader.BaseStream.Position != typeOffsets[p])
+                                                //    throw new Exception("Unexpected");
+
+                                                int Class = chunkReader.ReadInt16();
+                                                int Type = chunkReader.ReadInt16();
+                                                int RowCount = chunkReader.ReadInt16();
+                                                int ColumnCount = chunkReader.ReadInt16();
+                                                int ArrayCount = chunkReader.ReadInt16();
+                                                int MemberCount = chunkReader.ReadInt16();
+                                                int MembersOffset = chunkReader.ReadInt16();
+
+                                                if (MembersOffset != 0)
+                                                {
+                                                    string sdfsdf = "";
+                                                }
+
+                                                // TODO: I think the version 5 is different than 4. This is not there on Version 4.
+                                                short[] Unknown_ = Utilities.ConsumeArray<Int16>(chunkReader, 9);
+                                                int NameStringOffset = chunkReader.ReadInt32();
+                                            }
+                                        }
+                                        break;
+                                    }
+
+                                case "PCSG":
+                                case "ISGN":
+                                case "OSGN":
+                                    {
+                                        break;
+                                    }
+
+                                case "SHEX":
+                                    {
+                                        chunkReader.BaseStream.Position += 2; //80
+
+                                        dxbc_chunk_shex_type type = (dxbc_chunk_shex_type)chunkReader.ReadInt16();
+                                        int count = chunkReader.ReadInt32();
+                                        byte[] contentBytes = chunkReader.ReadBytes((count - 2) * 4);
+
+                                        if (chunkReader.BaseStream.Length != chunkReader.BaseStream.Position)
+                                            throw new Exception("");
+                                        break;
+                                    }
+
+
+                                case "STAT":
+                                    {
+                                        dxbc_chunk_stat stat = Utilities.Consume<dxbc_chunk_stat>(chunkReader);
+
+                                        if (chunkReader.BaseStream.Length != chunkReader.BaseStream.Position)
+                                            throw new Exception("");
+                                        break;
+                                    }
+
+                                default:
+                                    throw new Exception("Unexpected");
+                            }
+                        }
+                    }
                 }
             }
 
-            //Read the index remapping pak (this is actually just an incrementing count lol)
+            //I don't think we need to read this really, it's just a count.
             content = Utilities.ReadPAK(_filepathIDX, FileIdentifiers.SHADER_DATA);
             for (int i = 0; i < content.Count; i++)
             {
@@ -54,6 +275,13 @@ namespace CATHODE
             content = Utilities.ReadPAK(_filepath, FileIdentifiers.SHADER_DATA);
             for (int i = 0; i < content.Count; i++)
             {
+                //Console.WriteLine(content[i].BinIndex);
+
+                if (content[i].BinIndex != i)
+                {
+                    string sdfsdf = "";
+                }
+
                 using (BinaryReader reader = new BinaryReader(new MemoryStream(content[i].Data)))
                 {
                     Entries.Add(new Shader());
@@ -176,21 +404,80 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
+
+        public enum DXBCType
+        {
+            VERTEX = -2,
+            PIXEL = -1,
+        }
+
+        enum dxbc_chunk_shex_type
+        {
+            SHEXShader_Pixel,
+            SHEXShader_Vertex,
+            SHEXShader_Geometry,
+            SHEXShader_Hull,
+            SHEXShader_Domain,
+            SHEXShader_Compute,
+        };
+
+        struct dxbc_chunk_stat
+        {
+            public int InstructionCount;
+            public int TempRegisterCount;
+            public int DefineCount;
+            public int DeclarationCount;
+            public int FloatInstructionCount;
+            public int IntInstructionCount;
+            public int UIntInstructionCount;
+            public int StaticFlowControlCount;
+            public int DynamicFlowControlCount;
+            public int MacroInstructionCount; // Not sure.
+            public int TempArrayCount;
+            public int ArrayInstructionCount;
+            public int CutInstructionCount;
+            public int EmitInstructionCount;
+            public int TextureNormalInstructionCount;
+            public int TextureLoadInstructionCount;
+            public int TextureComparisonInstructionCount;
+            public int TextureBiasInstructionCount;
+            public int TextureGradientInstructionCount;
+            public int MovInstructionCount;
+            public int MovCInstructionCount;
+            public int Unknown0_;
+            public int InputPrimitiveForGeometryShaders;
+            public int PrimitiveTopologyForGeometryShaders;
+            public int MaxOutputVertexCountForGeometryShaders;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+            public int[] unk0; //zeros
+
+            public int IsSampleFrequencyShader; // 1 for sample frequency shadeer, otherwise 0.
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 9)]
+            public int[] unk1;
+        };
+
         public class Shader
         {
-            public string FileName = ""; //The name of the file in the shader archive (unsure how to get this right now with the weird _BIN/PAK way of working)
 
-            public int FileLength = 0; //The length of the file in the archive for this header
-            public int FileLengthWithPadding = 0; //The length of the file in the archive for this header, with any padding at the end of the file included
+        }
 
-            public int FileOffset = 0; //Position in archive from end of header list
-            public int FileIndex = 0; //The index of the file
+        public class VertexShader : Shader
+        {
 
-            public byte[] FileContent; //The content for the file
+        }
+        public class PixelShader : Shader
+        {
 
-            //I think this is just garbage that got dumped by accident
-            public byte[] StringPart1; //4 bytes that look like they're part of a filepath
-            public byte[] StringPart2; //4 bytes that look like they're part of a filepath
+        }
+        public class HullShader : Shader
+        {
+
+        }
+        public class DomainShader : Shader
+        {
+
         }
         #endregion
     }

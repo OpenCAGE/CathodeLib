@@ -76,6 +76,22 @@ namespace CathodeLib
             }
             return to_return;
         }
+        public static string ReadString(BinaryReader reader, int position, bool resetPosition = true)
+        {
+            long startPos = reader.BaseStream.Position;
+            reader.BaseStream.Position = position;
+
+            string to_return = "";
+            for (int i = 0; i < int.MaxValue; i++)
+            {
+                byte this_byte = reader.ReadByte();
+                if (this_byte == 0x00) break;
+                to_return += (char)this_byte;
+            }
+
+            if (resetPosition) reader.BaseStream.Position = startPos;
+            return to_return;
+        }
         public static string ReadString(BinaryReader reader)
         {
             string to_return = "";
@@ -509,5 +525,10 @@ namespace CathodeLib
     {
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
         public char[] V;
+
+        public override string ToString()
+        {
+            return new string(V);
+        }
     }
 }
