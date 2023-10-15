@@ -159,6 +159,7 @@ namespace CathodeLib
             //TODO: This puts the assumption on the user that they have updated all the indexes correctly in Commands. Need to just pass direct objects.
             Commands.Save();
             EnvironmentAnimations.Save();
+            Shaders.Save();
 
             /* UPDATE MOVER INDEXES */
 
