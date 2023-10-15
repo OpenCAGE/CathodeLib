@@ -67,8 +67,7 @@ namespace CATHODE
                         material.TextureReferences[x] = texRef;
                     }
                     reader.BaseStream.Position += 8;
-                    List<int> cstIndexes = new List<int>();
-                    for (int x = 0; x < 5; x++) cstIndexes.Add(reader.ReadInt32());
+                    int[] cstIndexes = Utilities.ConsumeArray<int>(reader, 5);
                     for (int x = 0; x < 5; x++)
                     {
                         int cstCount = reader.ReadByte();

@@ -310,7 +310,7 @@ namespace CathodeLib
 
         public class PAKContent
         {
-            public int BinIndex;
+            public int BinIndex = 0;
             public byte[] Data;
         }
     }
