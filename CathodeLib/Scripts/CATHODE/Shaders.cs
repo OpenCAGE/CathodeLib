@@ -353,7 +353,7 @@ namespace CATHODE
                     reader.BaseStream.Position = chunkOffsets[x];
 
                     fourcc chunkFourcc = Utilities.Consume<fourcc>(reader);
-                    Console.WriteLine(chunkFourcc.ToString());
+                    //Console.WriteLine(chunkFourcc.ToString());
                     int chunkSize = reader.ReadInt32();
                     byte[] chunkContent = reader.ReadBytes(chunkSize);
                     using (BinaryReader chunkReader = new BinaryReader(new MemoryStream(chunkContent)))
