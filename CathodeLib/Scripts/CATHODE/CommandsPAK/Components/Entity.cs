@@ -45,11 +45,14 @@ namespace CATHODE.Scripting.Internal
         /* Implements IComparable for searching */
         public int CompareTo(Entity other)
         {
-            int TotalThis = shortGUID.val[0] + shortGUID.val[1] + shortGUID.val[2] + shortGUID.val[3];
-            int TotalOther = other.shortGUID.val[0] + other.shortGUID.val[1] + other.shortGUID.val[2] + other.shortGUID.val[3];
-            if (TotalThis > TotalOther) return 1;
-            else if (TotalThis == TotalOther) return 0;
-            return -1;
+            if (other == null) return 1;
+
+            if (this.shortGUID.ToUInt32() > other.shortGUID.ToUInt32())
+                return 1;
+            else if (this.shortGUID.ToUInt32() < other.shortGUID.ToUInt32())
+                return -1;
+
+            return 0;
         }
 
         /* Get parameter by string name or ShortGuid */

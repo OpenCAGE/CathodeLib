@@ -77,9 +77,12 @@ namespace CATHODE.Scripting
             {
                 if (guid1.ToUInt32() != 0)
                 {
-                    ulong hash = BitConverter.ToUInt64(new byte[8] { guid1.val[0], guid1.val[1], guid1.val[2], guid1.val[3], guid2.val[0], guid2.val[1], guid2.val[2], guid2.val[3] }, 0);
+                    byte[] guid1_b = guid1.ToBytes();
+                    byte[] guid2_b = guid2.ToBytes();
+
+                    ulong hash = BitConverter.ToUInt64(new byte[8] { guid1_b[0], guid1_b[1], guid1_b[2], guid1_b[3], guid2_b[0], guid2_b[1], guid2_b[2], guid2_b[3] }, 0);
                     hash = ~hash + hash * 262144; hash = (hash ^ (hash >> 31)) * 21; hash = (hash ^ (hash >> 11)) * 65;
-                    return new ShortGuid(BitConverter.GetBytes((uint)(hash >> 22) ^ (uint)hash));
+                    return new ShortGuid(((uint)(hash >> 22) ^ (uint)hash));
                 }
                 return guid2;
             }

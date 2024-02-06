@@ -503,7 +503,7 @@ namespace CATHODE
             //Validate entry points and composite count
             if (Entries.Count == 0) return false;
             if (_entryPoints == null) _entryPoints = new ShortGuid[3];
-            if (_entryPoints[0].val == null && _entryPoints[1].val == null && _entryPoints[2].val == null && Entries.Count == 0) return false;
+            if (_entryPoints[0].IsInvalid || _entryPoints[1].IsInvalid || _entryPoints[2].IsInvalid || Entries.Count == 0) return false;
 
             #region FIX_POTENTIAL_ERRORS
             //If we have composites but the entry points are broken, correct them first!
@@ -676,7 +676,7 @@ namespace CATHODE
                 //Write entry points
                 for (int i = 0; i < 3; i++)
                 {
-                    if (_entryPoints[i].val == null || GetComposite(_entryPoints[i]) == null)
+                    if (_entryPoints[i].IsInvalid || GetComposite(_entryPoints[i]) == null)
                         writer.Write(new byte[] { 0x00, 0x00, 0x00, 0x00 });
                     else
                         Utilities.Write<ShortGuid>(writer, _entryPoints[i]);
@@ -717,7 +717,7 @@ namespace CATHODE
                             stringStartRaw[3] = 0x80;
                             writer.Write(stringStartRaw);
                             string str = ((cString)parameters[i]).value.Replace("\u0092", "'"); 
-                            writer.Write(ShortGuidUtils.Generate(str).val);
+                            writer.Write(ShortGuidUtils.Generate(str).ToUInt32());
                             for (int x = 0; x < str.Length; x++) writer.Write(str[x]);
                             writer.Write((char)0x00);
                             Utilities.Align(writer, 4);
@@ -807,7 +807,7 @@ namespace CATHODE
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, linkedEntities[i].Count);
                                     for (int p = 0; p < linkedEntities[i].Count; p++)
                                     {
-                                        writer.Write(linkedEntities[i][p].shortGUID.val);
+                                        writer.Write(linkedEntities[i][p].shortGUID.ToUInt32());
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
                                     }
@@ -831,7 +831,7 @@ namespace CATHODE
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, offsetPairs.Count);
                                     for (int p = 0; p < parameterisedEntities[i].Count; p++)
                                     {
-                                        writer.Write(parameterisedEntities[i][p].shortGUID.val);
+                                        writer.Write(parameterisedEntities[i][p].shortGUID.ToUInt32());
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
                                     }
@@ -849,7 +849,7 @@ namespace CATHODE
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledAliases[i].Count);
                                     for (int p = 0; p < reshuffledAliases[i].Count; p++)
                                     {
-                                        writer.Write(reshuffledAliases[i][p].shortGUID.val);
+                                        writer.Write(reshuffledAliases[i][p].shortGUID.ToUInt32());
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
                                     }
@@ -860,8 +860,8 @@ namespace CATHODE
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledAliasPathHashes[i].Count);
                                     for (int p = 0; p < reshuffledAliasPathHashes[i].Count; p++)
                                     {
-                                        writer.Write(reshuffledAliasPathHashes[i][p].shortGUID.val);
-                                        writer.Write(reshuffledAliasPathHashes[i][p].alias.GeneratePathHash().val);
+                                        writer.Write(reshuffledAliasPathHashes[i][p].shortGUID.ToUInt32());
+                                        writer.Write(reshuffledAliasPathHashes[i][p].alias.GeneratePathHash().ToUInt32());
                                     }
                                     break;
                                 }
@@ -870,9 +870,9 @@ namespace CATHODE
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, Entries[i].variables.Count);
                                     for (int p = 0; p < Entries[i].variables.Count; p++)
                                     {
-                                        writer.Write(Entries[i].variables[p].shortGUID.val);
-                                        writer.Write(CommandsUtils.GetDataTypeGUID(Entries[i].variables[p].type).val);
-                                        writer.Write(Entries[i].variables[p].name.val);
+                                        writer.Write(Entries[i].variables[p].shortGUID.ToUInt32());
+                                        writer.Write(CommandsUtils.GetDataTypeGUID(Entries[i].variables[p].type).ToUInt32());
+                                        writer.Write(Entries[i].variables[p].name.ToUInt32());
                                     }
                                     break;
                                 }
@@ -888,11 +888,11 @@ namespace CATHODE
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, offsetPairs.Count);
                                     for (int p = 0; p < Entries[i].proxies.Count; p++)
                                     {
-                                        writer.Write(Entries[i].proxies[p].shortGUID.val);
+                                        writer.Write(Entries[i].proxies[p].shortGUID.ToUInt32());
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
-                                        writer.Write(Entries[i].proxies[p].shortGUID.val);
-                                        writer.Write(Entries[i].proxies[p].function.val);
+                                        writer.Write(Entries[i].proxies[p].shortGUID.ToUInt32());
+                                        writer.Write(Entries[i].proxies[p].function.ToUInt32());
                                     }
                                     break;
                                 }
@@ -901,8 +901,8 @@ namespace CATHODE
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, Entries[i].functions.Count);
                                     for (int p = 0; p < Entries[i].functions.Count; p++)
                                     {
-                                        writer.Write(Entries[i].functions[p].shortGUID.val);
-                                        writer.Write(Entries[i].functions[p].function.val);
+                                        writer.Write(Entries[i].functions[p].shortGUID.ToUInt32());
+                                        writer.Write(Entries[i].functions[p].function.ToUInt32());
                                     }
                                     break;
                                 }
@@ -926,8 +926,8 @@ namespace CATHODE
                                         writer.Write(resourceReferences[i][p].rotation.Y);
                                         writer.Write(resourceReferences[i][p].rotation.Z);
 #endif
-                                        writer.Write(resourceReferences[i][p].resourceID.val); //Sometimes this is the entity ID that uses the resource, other times it's the "resource" parameter ID link
-                                        writer.Write(CommandsUtils.GetResourceEntryTypeGUID(resourceReferences[i][p].entryType).val);
+                                        writer.Write(resourceReferences[i][p].resourceID.ToUInt32()); //Sometimes this is the entity ID that uses the resource, other times it's the "resource" parameter ID link
+                                        writer.Write(CommandsUtils.GetResourceEntryTypeGUID(resourceReferences[i][p].entryType).ToUInt32());
                                         switch (resourceReferences[i][p].entryType)
                                         {
                                             case ResourceType.RENDERABLE_INSTANCE:
@@ -936,7 +936,7 @@ namespace CATHODE
                                                 break;
                                             case ResourceType.COLLISION_MAPPING:
                                                 writer.Write(resourceReferences[i][p].index);
-                                                writer.Write(resourceReferences[i][p].collisionID.val);
+                                                writer.Write(resourceReferences[i][p].collisionID.ToUInt32());
                                                 break;
                                             case ResourceType.ANIMATED_MODEL:
                                             case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
@@ -1055,7 +1055,7 @@ namespace CATHODE
                                         Utilities.Write<int>(writer, internalOffsets);
 
                                         globalOffsets.Add((int)writer.BaseStream.Position);
-                                        writer.Write(cageAnimationEntities[i][p].shortGUID.val);
+                                        writer.Write(cageAnimationEntities[i][p].shortGUID.ToUInt32());
                                         writer.Write(headerOffset / 4);
                                         writer.Write(cageAnimationEntities[i][p].connections.Count);
                                         writer.Write(animationOffset / 4);
@@ -1094,13 +1094,13 @@ namespace CATHODE
                                         int eventOffset = (int)writer.BaseStream.Position;
                                         for (int pp = 0; pp < triggerSequenceEntities[i][p].events.Count; pp++)
                                         {
-                                            writer.Write(triggerSequenceEntities[i][p].events[pp].start.val);
-                                            writer.Write(triggerSequenceEntities[i][p].events[pp].shortGUID.val);
-                                            writer.Write(triggerSequenceEntities[i][p].events[pp].end.val);
+                                            writer.Write(triggerSequenceEntities[i][p].events[pp].start.ToUInt32());
+                                            writer.Write(triggerSequenceEntities[i][p].events[pp].shortGUID.ToUInt32());
+                                            writer.Write(triggerSequenceEntities[i][p].events[pp].end.ToUInt32());
                                         }
 
                                         globalOffsets.Add((int)writer.BaseStream.Position);
-                                        writer.Write(triggerSequenceEntities[i][p].shortGUID.val);
+                                        writer.Write(triggerSequenceEntities[i][p].shortGUID.ToUInt32());
                                         writer.Write(triggerOffset / 4);
                                         writer.Write(triggerSequenceEntities[i][p].entities.Count);
                                         writer.Write(eventOffset / 4);
@@ -1189,7 +1189,6 @@ namespace CATHODE
         }
         public Composite GetComposite(ShortGuid id)
         {
-            if (id.val == null) return null;
             return Entries.FirstOrDefault(o => o != null && o.shortGUID == id);
         }
 

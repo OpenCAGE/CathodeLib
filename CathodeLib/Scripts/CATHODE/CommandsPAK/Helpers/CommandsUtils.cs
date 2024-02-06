@@ -171,7 +171,7 @@ namespace CATHODE.Scripting
 
             List<ShortGuid> hierarchyCopy = new List<ShortGuid>();
             for (int x = 0; x < hierarchy.Count; x++)
-                hierarchyCopy.Add(new ShortGuid((byte[])hierarchy[x].val.Clone()));
+                hierarchyCopy.Add(new ShortGuid(hierarchy[x].ToUInt32()));
 
             Composite currentFlowgraphToSearch = composite;
             if (currentFlowgraphToSearch == null || currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[0]) == null)
