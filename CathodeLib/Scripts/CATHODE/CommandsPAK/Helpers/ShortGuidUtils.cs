@@ -41,8 +41,9 @@ namespace CATHODE.Scripting
                 _commands.OnSaveSuccess -= SaveCustomNames;
 
             _commands = commands;
-            if (_commands != null)
-                _commands.OnSaveSuccess += SaveCustomNames;
+            if (_commands == null) return;
+
+            _commands.OnSaveSuccess += SaveCustomNames;
 
             LoadCustomNames(commands.Filepath);
         }
