@@ -25,6 +25,11 @@ namespace CATHODE
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public Commands(string path) : base(path) { }
 
+        ~Commands()
+        {
+            Entries.Clear();
+        }
+
         // This is always:
         //  - Root Instance (the map's entry composite, usually containing entities that call mission/environment composites)
         //  - Global Instance (the main data handler for keeping track of mission number, etc - kinda like a big singleton)

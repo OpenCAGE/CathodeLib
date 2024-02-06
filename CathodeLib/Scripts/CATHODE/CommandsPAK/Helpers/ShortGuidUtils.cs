@@ -16,6 +16,7 @@ namespace CATHODE.Scripting
         private static GuidNameTable _vanilla = null;
         private static GuidNameTable _custom = null;
 
+        public static Commands LinkedCommands => _commands;
         private static Commands _commands;
 
         /* Pull in strings we know are cached as ShortGuid in Cathode */

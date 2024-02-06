@@ -14,6 +14,7 @@ using UnityEngine;
 using System.Numerics;
 using System.IO;
 using CathodeLib;
+using CathodeLib.Properties;
 #endif
 
 namespace CATHODE.Scripting.Internal
@@ -41,6 +42,12 @@ namespace CATHODE.Scripting.Internal
 
         public List<EntityConnector> childLinks = new List<EntityConnector>();
         public List<Parameter> parameters = new List<Parameter>();
+
+        ~Entity()
+        {
+            childLinks.Clear();
+            parameters.Clear();
+        }
 
         /* Implements IComparable for searching */
         public int CompareTo(Entity other)
@@ -223,6 +230,11 @@ namespace CATHODE.Scripting
     {
         public FunctionEntity() : base(EntityVariant.FUNCTION) { }
         public FunctionEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.FUNCTION) { }
+
+        ~FunctionEntity()
+        {
+            resources.Clear();
+        }
 
         public FunctionEntity(string function, bool autoGenerateParameters = false) : base(EntityVariant.FUNCTION)
         {

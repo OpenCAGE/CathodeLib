@@ -20,6 +20,7 @@ namespace CATHODE.Scripting
         private static EntityNameTable _vanilla;
         private static EntityNameTable _custom;
 
+        public static Commands LinkedCommands => _commands;
         private static Commands _commands;
 
         /* Load all standard entity/composite names from our offline DB */
@@ -45,11 +46,10 @@ namespace CATHODE.Scripting
             }
 
             _commands = commands;
-            if (_commands != null)
-            {
-                _commands.OnLoadSuccess += LoadCustomNames;
-                _commands.OnSaveSuccess += SaveCustomNames;
-            }
+            if (_commands == null) return;
+
+            _commands.OnLoadSuccess += LoadCustomNames;
+            _commands.OnSaveSuccess += SaveCustomNames;
 
             LoadCustomNames(_commands.Filepath);
         }

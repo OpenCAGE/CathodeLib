@@ -19,6 +19,14 @@ namespace CATHODE.Scripting
             this.name = name;
         }
 
+        ~Composite()
+        {
+            variables.Clear();
+            functions.Clear();
+            aliases.Clear();
+            proxies.Clear();
+        }
+
         public ShortGuid shortGUID;  //The id when this composite is used as an entity in another composite
         public string name = ""; //The string name of the composite
 

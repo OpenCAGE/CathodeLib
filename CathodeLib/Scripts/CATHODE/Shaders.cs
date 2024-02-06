@@ -21,6 +21,11 @@ namespace CATHODE
         private string _filepathBIN;
         private string _filepathIDX;
 
+        ~Shaders()
+        {
+            Entries.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal()
         {
@@ -533,6 +538,19 @@ namespace CATHODE
             public byte[] DomainShader;
             public byte[] GeometryShader;
             public byte[] ComputeShader;
+
+            ~Shader()
+            {
+                Unknown2.Clear();
+                Unknown3.Clear();
+
+                VertexShader = null;
+                PixelShader = null;
+                HullShader = null;
+                DomainShader = null;
+                GeometryShader = null;
+                ComputeShader = null;
+            }
 
             public class UnknownPair
             {
