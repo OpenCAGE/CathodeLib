@@ -67,8 +67,7 @@ namespace CATHODE
                         material.TextureReferences[x] = texRef;
                     }
                     reader.BaseStream.Position += 8;
-                    List<int> cstIndexes = new List<int>();
-                    for (int x = 0; x < 5; x++) cstIndexes.Add(reader.ReadInt32());
+                    int[] cstIndexes = Utilities.ConsumeArray<int>(reader, 5);
                     for (int x = 0; x < 5; x++)
                     {
                         int cstCount = reader.ReadByte();
@@ -77,7 +76,7 @@ namespace CATHODE
                     }
                     reader.BaseStream.Position += 7;
                     material.UnknownValue0 = reader.ReadInt32();
-                    material.UberShaderIndex = reader.ReadInt32();
+                    material.ShaderIndex = reader.ReadInt32();
                     reader.BaseStream.Position += 128;
                     material.UnknownValue1 = reader.ReadInt32();
                     reader.BaseStream.Position += 48;
@@ -159,7 +158,7 @@ namespace CATHODE
                     }
                     writer.Write(new byte[7]);
                     writer.Write(Entries[i].UnknownValue0);
-                    writer.Write(Entries[i].UberShaderIndex);
+                    writer.Write(Entries[i].ShaderIndex);
                     writer.Write(new byte[128]);
                     writer.Write(Entries[i].UnknownValue1);
                     writer.Write(new byte[48]);
@@ -208,7 +207,7 @@ namespace CATHODE
             public ConstantBuffer[] ConstantBuffers = new ConstantBuffer[5]; //Should always be 5 (1 per CST block) - TODO: maybe just change this to 5 variables?
 
             public int UnknownValue0;
-            public int UberShaderIndex;
+            public int ShaderIndex;
 
             public int UnknownValue1;
 

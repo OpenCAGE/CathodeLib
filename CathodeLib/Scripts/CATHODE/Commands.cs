@@ -25,6 +25,11 @@ namespace CATHODE
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public Commands(string path) : base(path) { }
 
+        ~Commands()
+        {
+            Entries.Clear();
+        }
+
         // This is always:
         //  - Root Instance (the map's entry composite, usually containing entities that call mission/environment composites)
         //  - Global Instance (the main data handler for keeping track of mission number, etc - kinda like a big singleton)
@@ -57,56 +62,64 @@ namespace CATHODE
 
                 //Read all parameters from the PAK
                 Dictionary<int, ParameterData> parameters = new Dictionary<int, ParameterData>(parameter_count);
-                for (int i = 0; i < parameter_count; i++)
                 {
-                    reader.BaseStream.Position = parameterOffsets[i] * 4;
-                    ParameterData this_parameter = new ParameterData(CommandsUtils.GetDataType(new ShortGuid(reader)));
-                    switch (this_parameter.dataType)
+                    ParameterData[] parametersArr = new ParameterData[parameter_count];
+                    Parallel.For(0, parameter_count, i =>
                     {
-                        case DataType.TRANSFORM:
-                            this_parameter = new cTransform();
-                            ((cTransform)this_parameter).position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                            float _x, _y, _z; _y = reader.ReadSingle(); _x = reader.ReadSingle(); _z = reader.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
-                            ((cTransform)this_parameter).rotation = new Vector3(_x, _y, _z);
-                            break;
-                        case DataType.INTEGER:
-                            this_parameter = new cInteger(reader.ReadInt32());
-                            break;
-                        case DataType.STRING:
-                            reader.BaseStream.Position += 8;
-                            this_parameter = new cString(Utilities.ReadString(reader).Replace("\u0092", "'"));
-                            Utilities.Align(reader, 4);
-                            break;
-                        case DataType.BOOL:
-                            this_parameter = new cBool((reader.ReadInt32() == 1));
-                            break;
-                        case DataType.FLOAT:
-                            this_parameter = new cFloat(reader.ReadSingle());
-                            break;
-                        case DataType.RESOURCE:
-                            this_parameter = new cResource(new ShortGuid(reader));
-                            break;
-                        case DataType.VECTOR:
-                            this_parameter = new cVector3(new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()));
-                            break;
-                        case DataType.ENUM:
-                            this_parameter = new cEnum(new ShortGuid(reader), reader.ReadInt32());
-                            break;
-                        case DataType.SPLINE:
-                            reader.BaseStream.Position += 4;
-                            List<cTransform> points = new List<cTransform>(reader.ReadInt32());
-                            for (int x = 0; x < points.Capacity; x++)
+                        using (BinaryReader reader_parallel = new BinaryReader(new MemoryStream(content)))
+                        {
+                            reader_parallel.BaseStream.Position = parameterOffsets[i] * 4;
+                            parametersArr[i] = new ParameterData(CommandsUtils.GetDataType(new ShortGuid(reader_parallel)));
+                            switch (parametersArr[i].dataType)
                             {
-                                cTransform spline_point = new cTransform();
-                                spline_point.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                                float __x, __y, __z; __y = reader.ReadSingle(); __x = reader.ReadSingle(); __z = reader.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
-                                spline_point.rotation = new Vector3(__x, __y, __z);
-                                points.Add(spline_point);
+                                case DataType.TRANSFORM:
+                                    parametersArr[i] = new cTransform();
+                                    ((cTransform)parametersArr[i]).position = new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle());
+                                    float _x, _y, _z; _y = reader_parallel.ReadSingle(); _x = reader_parallel.ReadSingle(); _z = reader_parallel.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
+                                    ((cTransform)parametersArr[i]).rotation = new Vector3(_x, _y, _z);
+                                    break;
+                                case DataType.INTEGER:
+                                    parametersArr[i] = new cInteger(reader_parallel.ReadInt32());
+                                    break;
+                                case DataType.STRING:
+                                    reader_parallel.BaseStream.Position += 8;
+                                    parametersArr[i] = new cString(Utilities.ReadString(reader_parallel).Replace("\u0092", "'"));
+                                    Utilities.Align(reader_parallel, 4);
+                                    break;
+                                case DataType.BOOL:
+                                    parametersArr[i] = new cBool((reader_parallel.ReadInt32() == 1));
+                                    break;
+                                case DataType.FLOAT:
+                                    parametersArr[i] = new cFloat(reader_parallel.ReadSingle());
+                                    break;
+                                case DataType.RESOURCE:
+                                    parametersArr[i] = new cResource(new ShortGuid(reader_parallel));
+                                    break;
+                                case DataType.VECTOR:
+                                    parametersArr[i] = new cVector3(new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle()));
+                                    break;
+                                case DataType.ENUM:
+                                    parametersArr[i] = new cEnum(new ShortGuid(reader_parallel), reader_parallel.ReadInt32());
+                                    break;
+                                case DataType.SPLINE:
+                                    reader_parallel.BaseStream.Position += 4;
+                                    List<cTransform> points = new List<cTransform>(reader_parallel.ReadInt32());
+                                    for (int x = 0; x < points.Capacity; x++)
+                                    {
+                                        cTransform spline_point = new cTransform();
+                                        spline_point.position = new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle());
+                                        float __x, __y, __z; __y = reader_parallel.ReadSingle(); __x = reader_parallel.ReadSingle(); __z = reader_parallel.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
+                                        spline_point.rotation = new Vector3(__x, __y, __z);
+                                        points.Add(spline_point);
+                                    }
+                                    parametersArr[i] = new cSpline(points);
+                                    break;
                             }
-                            this_parameter = new cSpline(points);
-                            break;
-                    }
-                    parameters.Add(parameterOffsets[i], this_parameter);
+                        }
+                    });
+
+                    for (int i = 0; i < parameter_count; i++)
+                        parameters.Add(parameterOffsets[i], parametersArr[i]);
                 }
 
                 //Read all composites from the PAK
@@ -139,8 +152,8 @@ namespace CATHODE
                         reader_parallel.BaseStream.Position = (scriptStartOffset * 4) + 4;
                         composite.name = Utilities.ReadString(reader_parallel);
 #if DO_PRETTY_COMPOSITES
-                    string prettyPath = CompositePathDB.GetPrettyPathForComposite(composite.shortGUID);
-                    if (prettyPath != "") composite.name = prettyPath;
+                        string prettyPath = CompositePathDB.GetPrettyPathForComposite(composite.shortGUID);
+                        if (prettyPath != "") composite.name = prettyPath;
 #endif
                         Utilities.Align(reader_parallel, 4);
 
@@ -160,7 +173,7 @@ namespace CATHODE
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                             entityLinks.Add(new CommandsEntityLinks(new ShortGuid(reader_parallel)));
                                             int NumberOfParams = JumpToOffset(reader_parallel);
-                                            entityLinks[entityLinks.Count - 1].childLinks.AddRange(Utilities.ConsumeArray<EntityLink>(reader_parallel, NumberOfParams));
+                                            entityLinks[entityLinks.Count - 1].childLinks.AddRange(Utilities.ConsumeArray<EntityConnector>(reader_parallel, NumberOfParams));
                                             break;
                                         }
                                     case CompositeFileData.ENTITY_PARAMETERS:
@@ -171,22 +184,22 @@ namespace CATHODE
                                             paramRefSets[paramRefSets.Count - 1].refs.AddRange(Utilities.ConsumeArray<CathodeParameterReference>(reader_parallel, NumberOfParams));
                                             break;
                                         }
-                                    case CompositeFileData.ENTITY_OVERRIDES:
+                                    case CompositeFileData.ALIASES:
                                         {
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
-                                            OverrideEntity overrider = new OverrideEntity(new ShortGuid(reader_parallel));
+                                            AliasEntity overrider = new AliasEntity(new ShortGuid(reader_parallel));
                                             int NumberOfParams = JumpToOffset(reader_parallel);
-                                            overrider.connectedEntity.hierarchy.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams));
-                                            composite.overrides.Add(overrider);
+                                            overrider.alias.path.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams));
+                                            composite.aliases.Add(overrider);
                                             break;
                                         }
-                                    case CompositeFileData.ENTITY_OVERRIDES_CHECKSUM:
+                                    case CompositeFileData.ALIAS_PATH_HASHES:
                                         {
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
                                             reader_parallel.BaseStream.Position += 8;
                                             break;
                                         }
-                                    case CompositeFileData.COMPOSITE_EXPOSED_PARAMETERS:
+                                    case CompositeFileData.VARIABLES:
                                         {
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                             VariableEntity dtEntity = new VariableEntity(new ShortGuid(reader_parallel));
@@ -195,21 +208,21 @@ namespace CATHODE
                                             composite.variables.Add(dtEntity);
                                             break;
                                         }
-                                    case CompositeFileData.ENTITY_PROXIES:
+                                    case CompositeFileData.PROXIES:
                                         {
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 20);
                                             ProxyEntity thisProxy = new ProxyEntity(new ShortGuid(reader_parallel));
                                             int resetPos = (int)reader_parallel.BaseStream.Position + 8; //TODO: This is a HACK - I need to rework JumpToOffset to make a temp stream
                                             int NumberOfParams = JumpToOffset(reader_parallel);
-                                            thisProxy.connectedEntity.hierarchy.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams)); //Last is always 0x00, 0x00, 0x00, 0x00
+                                            thisProxy.proxy.path.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams)); //Last is always 0x00, 0x00, 0x00, 0x00
                                             reader_parallel.BaseStream.Position = resetPos;
                                             ShortGuid idCheck = new ShortGuid(reader_parallel);
                                             if (idCheck != thisProxy.shortGUID) throw new Exception("Proxy ID mismatch!");
-                                            thisProxy.targetType = new ShortGuid(reader_parallel);
+                                            thisProxy.function = new ShortGuid(reader_parallel);
                                             composite.proxies.Add(thisProxy);
                                             break;
                                         }
-                                    case CompositeFileData.ENTITY_FUNCTIONS:
+                                    case CompositeFileData.FUNCTION_ENTITIES:
                                         {
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
                                             ShortGuid entityID = new ShortGuid(reader_parallel);
@@ -294,7 +307,7 @@ namespace CATHODE
                                                 reader_parallel.BaseStream.Position = headerOffset + (z * 32);
 
                                                 CAGEAnimation.Connection header = new CAGEAnimation.Connection();
-                                                header.shortGUID = new ShortGuid(reader_parallel);//ID
+                                                header.shortGUID = new ShortGuid(reader_parallel);
                                                 header.objectType = CommandsUtils.GetObjectType(new ShortGuid(reader_parallel));
                                                 header.keyframeID = new ShortGuid(reader_parallel);
                                                 header.parameterID = new ShortGuid(reader_parallel);
@@ -302,7 +315,7 @@ namespace CATHODE
                                                 header.parameterSubID = new ShortGuid(reader_parallel);
 
                                                 int hierarchyCount = JumpToOffset(reader_parallel);
-                                                header.connectedEntity.hierarchy = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
+                                                header.connectedEntity.path = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
                                                 animEntity.connections.Add(header);
                                             }
 
@@ -364,7 +377,9 @@ namespace CATHODE
                                             Entity thisEntity = composite.GetEntityByID(new ShortGuid(reader_parallel));
                                             if (thisEntity.variant == EntityVariant.PROXY)
                                             {
-                                                break; // We don't handle this just yet... need to resolve the proxy.
+                                                //Logs indicate that these vanilla entities contain no parameters or links, so they're not very valuable. We should implement this anyways though so we can add them ourselves.
+                                                Console.WriteLine("WARNING: Skipping load of PROXY TriggerSequence in " + composite.name + "\n\t" + _filepath /*+ "\n\n" + JsonConvert.SerializeObject(thisEntity) + "\n\n"*/);
+                                                break;
                                             }
                                             TriggerSequence trigEntity = (TriggerSequence)thisEntity;
 
@@ -382,7 +397,7 @@ namespace CATHODE
                                                 TriggerSequence.Entity thisTrigger = new TriggerSequence.Entity();
                                                 thisTrigger.timing = reader_parallel.ReadSingle();
                                                 reader_parallel.BaseStream.Position = hierarchyOffset;
-                                                thisTrigger.connectedEntity.hierarchy = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
+                                                thisTrigger.connectedEntity.path = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
                                                 trigEntity.entities.Add(thisTrigger);
                                             }
 
@@ -485,24 +500,6 @@ namespace CATHODE
                 Entries = composites.ToList<Composite>();
             }
 
-            //TODO: DOING THIS CAUSES THE NEW-DOOR-CREATION ISSUE WITH EXISTING DOORS
-            //      DOING THE INVERSE CAUSES A CRASH
-            /*
-            foreach (Composite comp in Entries)
-            {
-                foreach (FunctionEntity ent in comp.functions)
-                {
-                    if (ent.resources.Count != 0)
-                    {
-                        cResource res = new cResource();
-                        res.value.AddRange(ent.resources);
-                        foreach (ResourceReference resRef in res.value) resRef.resourceID = res.shortGUID;
-                        Parameter param = ent.AddParameter("resource", res);
-                        ent.resources.Clear();
-                    }
-                }
-            }*/
-
             return true;
         }
 
@@ -511,7 +508,7 @@ namespace CATHODE
             //Validate entry points and composite count
             if (Entries.Count == 0) return false;
             if (_entryPoints == null) _entryPoints = new ShortGuid[3];
-            if (_entryPoints[0].val == null && _entryPoints[1].val == null && _entryPoints[2].val == null && Entries.Count == 0) return false;
+            if (_entryPoints[0].IsInvalid || _entryPoints[1].IsInvalid || _entryPoints[2].IsInvalid || Entries.Count == 0) return false;
 
             #region FIX_POTENTIAL_ERRORS
             //If we have composites but the entry points are broken, correct them first!
@@ -623,8 +620,8 @@ namespace CATHODE
             List<ParameterData> parameters = new List<ParameterData>();
             List<Entity>[] linkedEntities = new List<Entity>[Entries.Count];
             List<Entity>[] parameterisedEntities = new List<Entity>[Entries.Count];
-            List<OverrideEntity>[] reshuffledOverrides = new List<OverrideEntity>[Entries.Count];
-            List<OverrideEntity>[] reshuffledChecksums = new List<OverrideEntity>[Entries.Count];
+            List<AliasEntity>[] reshuffledAliases = new List<AliasEntity>[Entries.Count];
+            List<AliasEntity>[] reshuffledAliasPathHashes = new List<AliasEntity>[Entries.Count];
             List<ResourceReference>[] resourceReferences = new List<ResourceReference>[Entries.Count];
             List<CAGEAnimation>[] cageAnimationEntities = new List<CAGEAnimation>[Entries.Count];
             List<TriggerSequence>[] triggerSequenceEntities = new List<TriggerSequence>[Entries.Count];
@@ -634,8 +631,8 @@ namespace CATHODE
                 List<Entity> ents = Entries[i].GetEntities();
                 linkedEntities[i] = new List<Entity>(ents.FindAll(o => o.childLinks.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
                 parameterisedEntities[i] = new List<Entity>(ents.FindAll(o => o.parameters.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
-                reshuffledOverrides[i] = Entries[i].overrides.OrderBy(o => o.shortGUID.ToUInt32()).ToList();
-                reshuffledChecksums[i] = Entries[i].overrides.OrderBy(o => o.connectedEntity.GenerateChecksum().ToUInt32()).ToList();
+                reshuffledAliases[i] = Entries[i].aliases.OrderBy(o => o.shortGUID.ToUInt32()).ToList();
+                reshuffledAliasPathHashes[i] = Entries[i].aliases.OrderBy(o => o.alias.GeneratePathHash().ToUInt32()).ToList();
 
                 cageAnimationEntities[i] = new List<CAGEAnimation>();
                 triggerSequenceEntities[i] = new List<TriggerSequence>();
@@ -684,7 +681,7 @@ namespace CATHODE
                 //Write entry points
                 for (int i = 0; i < 3; i++)
                 {
-                    if (_entryPoints[i].val == null || GetComposite(_entryPoints[i]) == null)
+                    if (_entryPoints[i].IsInvalid || GetComposite(_entryPoints[i]) == null)
                         writer.Write(new byte[] { 0x00, 0x00, 0x00, 0x00 });
                     else
                         Utilities.Write<ShortGuid>(writer, _entryPoints[i]);
@@ -725,7 +722,7 @@ namespace CATHODE
                             stringStartRaw[3] = 0x80;
                             writer.Write(stringStartRaw);
                             string str = ((cString)parameters[i]).value.Replace("\u0092", "'"); 
-                            writer.Write(ShortGuidUtils.Generate(str).val);
+                            writer.Write(ShortGuidUtils.Generate(str).ToUInt32());
                             for (int x = 0; x < str.Length; x++) writer.Write(str[x]);
                             writer.Write((char)0x00);
                             Utilities.Align(writer, 4);
@@ -796,7 +793,7 @@ namespace CATHODE
                     {
                         switch ((CompositeFileData)x)
                         {
-                            case CompositeFileData.COMPOSITE_HEADER:
+                            case CompositeFileData.HEADER:
                                 {
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, 2);
                                     Utilities.Write<ShortGuid>(writer, Entries[i].shortGUID);
@@ -809,13 +806,13 @@ namespace CATHODE
                                     foreach (Entity entityWithLink in linkedEntities[i])
                                     {
                                         offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, entityWithLink.childLinks.Count));
-                                        Utilities.Write<EntityLink>(writer, entityWithLink.childLinks);
+                                        Utilities.Write<EntityConnector>(writer, entityWithLink.childLinks);
                                     }
 
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, linkedEntities[i].Count);
                                     for (int p = 0; p < linkedEntities[i].Count; p++)
                                     {
-                                        writer.Write(linkedEntities[i][p].shortGUID.val);
+                                        writer.Write(linkedEntities[i][p].shortGUID.ToUInt32());
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
                                     }
@@ -839,78 +836,78 @@ namespace CATHODE
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, offsetPairs.Count);
                                     for (int p = 0; p < parameterisedEntities[i].Count; p++)
                                     {
-                                        writer.Write(parameterisedEntities[i][p].shortGUID.val);
+                                        writer.Write(parameterisedEntities[i][p].shortGUID.ToUInt32());
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
                                     }
                                     break;
                                 }
-                            case CompositeFileData.ENTITY_OVERRIDES:
+                            case CompositeFileData.ALIASES:
                                 {
-                                    List<OffsetPair> offsetPairs = new List<OffsetPair>(reshuffledOverrides[i].Count);
-                                    for (int p = 0; p < reshuffledOverrides[i].Count; p++)
+                                    List<OffsetPair> offsetPairs = new List<OffsetPair>(reshuffledAliases[i].Count);
+                                    for (int p = 0; p < reshuffledAliases[i].Count; p++)
                                     {
-                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, reshuffledOverrides[i][p].connectedEntity.hierarchy.Count));
-                                        Utilities.Write<ShortGuid>(writer, reshuffledOverrides[i][p].connectedEntity.hierarchy);
+                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, reshuffledAliases[i][p].alias.path.Count));
+                                        Utilities.Write<ShortGuid>(writer, reshuffledAliases[i][p].alias.path);
                                     }
 
-                                    scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledOverrides[i].Count);
-                                    for (int p = 0; p < reshuffledOverrides[i].Count; p++)
+                                    scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledAliases[i].Count);
+                                    for (int p = 0; p < reshuffledAliases[i].Count; p++)
                                     {
-                                        writer.Write(reshuffledOverrides[i][p].shortGUID.val);
+                                        writer.Write(reshuffledAliases[i][p].shortGUID.ToUInt32());
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
                                     }
                                     break;
                                 }
-                            case CompositeFileData.ENTITY_OVERRIDES_CHECKSUM:
+                            case CompositeFileData.ALIAS_PATH_HASHES:
                                 {
-                                    scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledChecksums[i].Count);
-                                    for (int p = 0; p < reshuffledChecksums[i].Count; p++)
+                                    scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledAliasPathHashes[i].Count);
+                                    for (int p = 0; p < reshuffledAliasPathHashes[i].Count; p++)
                                     {
-                                        writer.Write(reshuffledChecksums[i][p].shortGUID.val);
-                                        writer.Write(reshuffledChecksums[i][p].connectedEntity.GenerateChecksum().val);
+                                        writer.Write(reshuffledAliasPathHashes[i][p].shortGUID.ToUInt32());
+                                        writer.Write(reshuffledAliasPathHashes[i][p].alias.GeneratePathHash().ToUInt32());
                                     }
                                     break;
                                 }
-                            case CompositeFileData.COMPOSITE_EXPOSED_PARAMETERS:
+                            case CompositeFileData.VARIABLES:
                                 {
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, Entries[i].variables.Count);
                                     for (int p = 0; p < Entries[i].variables.Count; p++)
                                     {
-                                        writer.Write(Entries[i].variables[p].shortGUID.val);
-                                        writer.Write(CommandsUtils.GetDataTypeGUID(Entries[i].variables[p].type).val);
-                                        writer.Write(Entries[i].variables[p].name.val);
+                                        writer.Write(Entries[i].variables[p].shortGUID.ToUInt32());
+                                        writer.Write(CommandsUtils.GetDataTypeGUID(Entries[i].variables[p].type).ToUInt32());
+                                        writer.Write(Entries[i].variables[p].name.ToUInt32());
                                     }
                                     break;
                                 }
-                            case CompositeFileData.ENTITY_PROXIES:
+                            case CompositeFileData.PROXIES:
                                 {
                                     List<OffsetPair> offsetPairs = new List<OffsetPair>();
                                     for (int p = 0; p < Entries[i].proxies.Count; p++)
                                     {
-                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, Entries[i].proxies[p].connectedEntity.hierarchy.Count));
-                                        Utilities.Write<ShortGuid>(writer, Entries[i].proxies[p].connectedEntity.hierarchy);
+                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, Entries[i].proxies[p].proxy.path.Count));
+                                        Utilities.Write<ShortGuid>(writer, Entries[i].proxies[p].proxy.path);
                                     }
 
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, offsetPairs.Count);
                                     for (int p = 0; p < Entries[i].proxies.Count; p++)
                                     {
-                                        writer.Write(Entries[i].proxies[p].shortGUID.val);
+                                        writer.Write(Entries[i].proxies[p].shortGUID.ToUInt32());
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
-                                        writer.Write(Entries[i].proxies[p].shortGUID.val);
-                                        writer.Write(Entries[i].proxies[p].targetType.val);
+                                        writer.Write(Entries[i].proxies[p].shortGUID.ToUInt32());
+                                        writer.Write(Entries[i].proxies[p].function.ToUInt32());
                                     }
                                     break;
                                 }
-                            case CompositeFileData.ENTITY_FUNCTIONS:
+                            case CompositeFileData.FUNCTION_ENTITIES:
                                 {
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, Entries[i].functions.Count);
                                     for (int p = 0; p < Entries[i].functions.Count; p++)
                                     {
-                                        writer.Write(Entries[i].functions[p].shortGUID.val);
-                                        writer.Write(Entries[i].functions[p].function.val);
+                                        writer.Write(Entries[i].functions[p].shortGUID.ToUInt32());
+                                        writer.Write(Entries[i].functions[p].function.ToUInt32());
                                     }
                                     break;
                                 }
@@ -934,8 +931,8 @@ namespace CATHODE
                                         writer.Write(resourceReferences[i][p].rotation.Y);
                                         writer.Write(resourceReferences[i][p].rotation.Z);
 #endif
-                                        writer.Write(resourceReferences[i][p].resourceID.val); //Sometimes this is the entity ID that uses the resource, other times it's the "resource" parameter ID link
-                                        writer.Write(CommandsUtils.GetResourceEntryTypeGUID(resourceReferences[i][p].entryType).val);
+                                        writer.Write(resourceReferences[i][p].resourceID.ToUInt32()); //Sometimes this is the entity ID that uses the resource, other times it's the "resource" parameter ID link
+                                        writer.Write(CommandsUtils.GetResourceEntryTypeGUID(resourceReferences[i][p].entryType).ToUInt32());
                                         switch (resourceReferences[i][p].entryType)
                                         {
                                             case ResourceType.RENDERABLE_INSTANCE:
@@ -944,7 +941,7 @@ namespace CATHODE
                                                 break;
                                             case ResourceType.COLLISION_MAPPING:
                                                 writer.Write(resourceReferences[i][p].index);
-                                                writer.Write(resourceReferences[i][p].collisionID.val);
+                                                writer.Write(resourceReferences[i][p].collisionID.ToUInt32());
                                                 break;
                                             case ResourceType.ANIMATED_MODEL:
                                             case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
@@ -970,7 +967,7 @@ namespace CATHODE
                                         for (int pp = 0; pp < cageAnimationEntities[i][p].connections.Count; pp++)
                                         {
                                             hierarchyOffsets.Add((int)writer.BaseStream.Position);
-                                            Utilities.Write<ShortGuid>(writer, cageAnimationEntities[i][p].connections[pp].connectedEntity.hierarchy);
+                                            Utilities.Write<ShortGuid>(writer, cageAnimationEntities[i][p].connections[pp].connectedEntity.path);
                                         }
 
                                         int headerOffset = (int)writer.BaseStream.Position;
@@ -984,7 +981,7 @@ namespace CATHODE
                                             Utilities.Write(writer, CommandsUtils.GetDataTypeGUID(header.parameterDataType));
                                             Utilities.Write(writer, header.parameterSubID);
                                             writer.Write(hierarchyOffsets[pp] / 4);
-                                            writer.Write(header.connectedEntity.hierarchy.Count);
+                                            writer.Write(header.connectedEntity.path.Count);
                                         }
 
                                         List<int> internalOffsets = new List<int>(cageAnimationEntities[i][p].animations.Count);
@@ -1063,7 +1060,7 @@ namespace CATHODE
                                         Utilities.Write<int>(writer, internalOffsets);
 
                                         globalOffsets.Add((int)writer.BaseStream.Position);
-                                        writer.Write(cageAnimationEntities[i][p].shortGUID.val);
+                                        writer.Write(cageAnimationEntities[i][p].shortGUID.ToUInt32());
                                         writer.Write(headerOffset / 4);
                                         writer.Write(cageAnimationEntities[i][p].connections.Count);
                                         writer.Write(animationOffset / 4);
@@ -1088,27 +1085,27 @@ namespace CATHODE
                                         for (int pp = 0; pp < triggerSequenceEntities[i][p].entities.Count; pp++)
                                         {
                                             hierarchyOffsets.Add((int)writer.BaseStream.Position);
-                                            Utilities.Write<ShortGuid>(writer, triggerSequenceEntities[i][p].entities[pp].connectedEntity.hierarchy);
+                                            Utilities.Write<ShortGuid>(writer, triggerSequenceEntities[i][p].entities[pp].connectedEntity.path);
                                         }
 
                                         int triggerOffset = (int)writer.BaseStream.Position;
                                         for (int pp = 0; pp < triggerSequenceEntities[i][p].entities.Count; pp++)
                                         {
                                             writer.Write(hierarchyOffsets[pp] / 4);
-                                            writer.Write(triggerSequenceEntities[i][p].entities[pp].connectedEntity.hierarchy.Count);
+                                            writer.Write(triggerSequenceEntities[i][p].entities[pp].connectedEntity.path.Count);
                                             writer.Write(triggerSequenceEntities[i][p].entities[pp].timing);
                                         }
 
                                         int eventOffset = (int)writer.BaseStream.Position;
                                         for (int pp = 0; pp < triggerSequenceEntities[i][p].events.Count; pp++)
                                         {
-                                            writer.Write(triggerSequenceEntities[i][p].events[pp].start.val);
-                                            writer.Write(triggerSequenceEntities[i][p].events[pp].shortGUID.val);
-                                            writer.Write(triggerSequenceEntities[i][p].events[pp].end.val);
+                                            writer.Write(triggerSequenceEntities[i][p].events[pp].start.ToUInt32());
+                                            writer.Write(triggerSequenceEntities[i][p].events[pp].shortGUID.ToUInt32());
+                                            writer.Write(triggerSequenceEntities[i][p].events[pp].end.ToUInt32());
                                         }
 
                                         globalOffsets.Add((int)writer.BaseStream.Position);
-                                        writer.Write(triggerSequenceEntities[i][p].shortGUID.val);
+                                        writer.Write(triggerSequenceEntities[i][p].shortGUID.ToUInt32());
                                         writer.Write(triggerOffset / 4);
                                         writer.Write(triggerSequenceEntities[i][p].entities.Count);
                                         writer.Write(eventOffset / 4);
@@ -1197,7 +1194,6 @@ namespace CATHODE
         }
         public Composite GetComposite(ShortGuid id)
         {
-            if (id.val == null) return null;
             return Entries.FirstOrDefault(o => o != null && o.shortGUID == id);
         }
 
@@ -1274,7 +1270,7 @@ namespace CATHODE
         private class CommandsEntityLinks
         {
             public ShortGuid parentID;
-            public List<EntityLink> childLinks = new List<EntityLink>();
+            public List<EntityConnector> childLinks = new List<EntityConnector>();
 
             public CommandsEntityLinks(ShortGuid _id)
             {

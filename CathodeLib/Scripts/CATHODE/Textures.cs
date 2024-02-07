@@ -17,6 +17,12 @@ namespace CATHODE
         public List<TEX4> _writeList = new List<TEX4>();
         private string _filepathBIN;
 
+        ~Textures()
+        {
+            Entries.Clear();
+            _writeList.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal()
         {
@@ -250,7 +256,7 @@ namespace CATHODE
          * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
         public TEX4 GetAtWriteIndex(int index)
         {
-            if (_writeList.Count <= index) return null;
+            if (index < 0 || _writeList.Count <= index) return null;
             return _writeList[index];
         }
         #endregion
@@ -267,6 +273,12 @@ namespace CATHODE
             public Part tex_LowRes = new Part();
             public Part tex_HighRes = new Part();
 
+            ~TEX4()
+            {
+                tex_LowRes = null;
+                tex_HighRes = null;
+            }
+
             public class Part
             {
                 public Int16 Width = 0;
@@ -282,6 +294,11 @@ namespace CATHODE
                 public UInt16 unk2 = 0;
                 public UInt32 unk3 = 0;
                 public UInt32 unk4 = 0;
+
+                ~Part()
+                {
+                    Content = null;
+                }
             }
         }
 

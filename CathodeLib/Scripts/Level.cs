@@ -10,6 +10,12 @@ using System.Xml;
 
 namespace CathodeLib
 {
+    public class Global
+    {
+        public AnimationStrings AnimationStrings;
+        public AnimationStrings AnimationStrings_Debug;
+    }
+
     /* A helper class that holds all parse-able formats for a level, and saves them safely to update indexes across all */
     public class Level
     {
@@ -50,7 +56,7 @@ namespace CathodeLib
         public List<State> StateResources = new List<State>();
 
         /* Load a level in the game's "ENV/PRODUCTION" folder */
-        public Level(string path)
+        public Level(string path, Global global)
         {
             string pathDATA = path.Replace('\\', '/').Split(new string[] { "/DATA/ENV/PRODUCTION" }, StringSplitOptions.None)[0] + "/DATA";
             string levelName = Directory.GetParent(path).Name;
@@ -74,12 +80,12 @@ namespace CathodeLib
             /* WORLD */
             RenderableElements = new RenderableElements(path + "/WORLD/REDS.BIN");
             Movers = new Movers(path + "/WORLD/MODELS.MVR");
-            //Commands = new Commands(path + "/WORLD/COMMANDS.PAK");
+            Commands = new Commands(path + "/WORLD/COMMANDS.PAK");
             //Resources = new Resources(path + "/WORLD/RESOURCES.BIN");
             //PhysicsMaps = new PhysicsMaps(path + "/WORLD/PHYSICS.MAP");
             EnvironmentMaps = new EnvironmentMaps(path + "/WORLD/ENVIRONMENTMAP.BIN");
             //CollisionMaps = new CollisionMaps(path + "/WORLD/COLLISION.MAP");
-            //EnvironmentAnimations = new EnvironmentAnimations(path + "/WORLD/ENVIRONMENT_ANIMATION.DAT");
+            EnvironmentAnimations = new EnvironmentAnimations(path + "/WORLD/ENVIRONMENT_ANIMATION.DAT", global.AnimationStrings_Debug);
             //MaterialMappings = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK");
             //PathBarrierResources = new PathBarrierResources(path + "/WORLD/PATH_BARRIER_RESOURCES");
             Lights = new Lights(path + "/WORLD/LIGHTS.BIN");
@@ -150,6 +156,11 @@ namespace CathodeLib
         /* Save all modifications to the level - this currently assumes we aren't editing GLOBAL data */
         public void Save()
         {
+            //TODO: This puts the assumption on the user that they have updated all the indexes correctly in Commands. Need to just pass direct objects.
+            Commands.Save();
+            EnvironmentAnimations.Save();
+            Shaders.Save();
+
             /* UPDATE MOVER INDEXES */
 
             //Get links to mover entries as actual objects

@@ -171,7 +171,7 @@ namespace CATHODE.Scripting
 
             List<ShortGuid> hierarchyCopy = new List<ShortGuid>();
             for (int x = 0; x < hierarchy.Count; x++)
-                hierarchyCopy.Add(new ShortGuid((byte[])hierarchy[x].val.Clone()));
+                hierarchyCopy.Add(new ShortGuid(hierarchy[x].ToUInt32()));
 
             Composite currentFlowgraphToSearch = composite;
             if (currentFlowgraphToSearch == null || currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[0]) == null)
@@ -223,9 +223,9 @@ namespace CATHODE.Scripting
 
         /* Generate all possible hierarchies for an entity */
         private static List<List<ShortGuid>> _hierarchies = new List<List<ShortGuid>>();
-        public static List<EntityHierarchy> GenerateHierarchies(Commands commands, Composite composite, Entity entity)
+        public static List<EntityPath> GenerateHierarchies(Commands commands, Composite composite, Entity entity)
         {
-            List<EntityHierarchy> hierarchies = new List<EntityHierarchy>();
+            List<EntityPath> hierarchies = new List<EntityPath>();
             _hierarchies.Clear();
 
             GenerateHierarchiesRecursive(commands, null, commands.EntryPoints[0], composite, new List<ShortGuid>());
@@ -233,7 +233,7 @@ namespace CATHODE.Scripting
             for (int i = 0; i < _hierarchies.Count; i++)
             {
                 _hierarchies[i].Add(entity.shortGUID);
-                hierarchies.Add(new EntityHierarchy(_hierarchies[i]));
+                hierarchies.Add(new EntityPath(_hierarchies[i]));
             }
 
             return hierarchies;
@@ -262,8 +262,8 @@ namespace CATHODE.Scripting
             int originalUnknownCount = 0;
             int originalProxyCount = 0;
             int newProxyCount = 0;
-            int originalOverrideCount = 0;
-            int newOverrideCount = 0;
+            int originalAliasCount = 0;
+            int newAliasCount = 0;
             int originalTriggerCount = 0;
             int newTriggerCount = 0;
             int originalAnimCount = 0;
@@ -282,19 +282,19 @@ namespace CATHODE.Scripting
             newFuncCount += functionsPurged.Count;
             composite.functions = functionsPurged;
 
-            //Clear overrides
-            List<OverrideEntity> overridePurged = new List<OverrideEntity>();
-            for (int i = 0; i < composite.overrides.Count; i++)
-                if (ResolveHierarchy(commands, composite, composite.overrides[i].connectedEntity.hierarchy, out Composite flowTemp, out string hierarchy) != null)
-                    overridePurged.Add(composite.overrides[i]);
-            originalOverrideCount += composite.overrides.Count;
-            newOverrideCount += overridePurged.Count;
-            composite.overrides = overridePurged;
+            //Clear aliases
+            List<AliasEntity> aliasesPurged = new List<AliasEntity>();
+            for (int i = 0; i < composite.aliases.Count; i++)
+                if (ResolveHierarchy(commands, composite, composite.aliases[i].alias.path, out Composite flowTemp, out string hierarchy) != null)
+                    aliasesPurged.Add(composite.aliases[i]);
+            originalAliasCount += composite.aliases.Count;
+            newAliasCount += aliasesPurged.Count;
+            composite.aliases = aliasesPurged;
 
             //Clear proxies
             List<ProxyEntity> proxyPurged = new List<ProxyEntity>();
             for (int i = 0; i < composite.proxies.Count; i++)
-                if (ResolveHierarchy(commands, composite, composite.proxies[i].connectedEntity.hierarchy, out Composite flowTemp, out string hierarchy) != null)
+                if (ResolveHierarchy(commands, composite, composite.proxies[i].proxy.path, out Composite flowTemp, out string hierarchy) != null)
                     proxyPurged.Add(composite.proxies[i]);
             originalProxyCount += composite.proxies.Count;
             newProxyCount += proxyPurged.Count;
@@ -310,7 +310,7 @@ namespace CATHODE.Scripting
                         TriggerSequence trig = (TriggerSequence)composite.functions[i];
                         List<TriggerSequence.Entity> trigSeq = new List<TriggerSequence.Entity>();
                         for (int x = 0; x < trig.entities.Count; x++)
-                            if (ResolveHierarchy(commands, composite, trig.entities[x].connectedEntity.hierarchy, out Composite flowTemp, out string hierarchy) != null)
+                            if (ResolveHierarchy(commands, composite, trig.entities[x].connectedEntity.path, out Composite flowTemp, out string hierarchy) != null)
                                 trigSeq.Add(trig.entities[x]);
                         originalTriggerCount += trig.entities.Count;
                         newTriggerCount += trigSeq.Count;
@@ -324,7 +324,7 @@ namespace CATHODE.Scripting
                             List<CAGEAnimation.Animation> anim_target = anim.animations.FindAll(o => o.shortGUID == anim.connections[x].keyframeID);
                             List<CAGEAnimation.Event> event_target = anim.events.FindAll(o => o.shortGUID == anim.connections[x].keyframeID);
                             if (!(anim_target.Count == 0 && event_target.Count == 0) &&
-                                ResolveHierarchy(commands, composite, anim.connections[x].connectedEntity.hierarchy, out Composite flowTemp, out string hierarchy) != null)
+                                ResolveHierarchy(commands, composite, anim.connections[x].connectedEntity.path, out Composite flowTemp, out string hierarchy) != null)
                                 headers.Add(anim.connections[x]);
                         }
                         originalAnimCount += anim.connections.Count;
@@ -338,7 +338,7 @@ namespace CATHODE.Scripting
             List<Entity> entities = composite.GetEntities();
             for (int i = 0; i < entities.Count; i++)
             {
-                List<EntityLink> childLinksPurged = new List<EntityLink>();
+                List<EntityConnector> childLinksPurged = new List<EntityConnector>();
                 for (int x = 0; x < entities[i].childLinks.Count; x++)
                     if (composite.GetEntityByID(entities[i].childLinks[x].childID) != null)
                         childLinksPurged.Add(entities[i].childLinks[x]);
@@ -350,7 +350,7 @@ namespace CATHODE.Scripting
             if (originalUnknownCount +
                 (originalFuncCount - newFuncCount) +
                 (originalProxyCount - newProxyCount) +
-                (originalOverrideCount - newOverrideCount) +
+                (originalAliasCount - newAliasCount) +
                 (originalTriggerCount - newTriggerCount) +
                 (originalAnimCount - newAnimCount) +
                 (originalLinkCount - newLinkCount) == 0)
@@ -360,7 +360,7 @@ namespace CATHODE.Scripting
                 "\n - " + originalUnknownCount + " unknown entities" +
                 "\n - " + (originalFuncCount - newFuncCount) + " functions (of " + originalFuncCount + ")" +
                 "\n - " + (originalProxyCount - newProxyCount) + " proxies (of " + originalProxyCount + ")" +
-                "\n - " + (originalOverrideCount - newOverrideCount) + " overrides (of " + originalOverrideCount + ")" +
+                "\n - " + (originalAliasCount - newAliasCount) + " aliases (of " + originalAliasCount + ")" +
                 "\n - " + (originalTriggerCount - newTriggerCount) + " triggers (of " + originalTriggerCount + ")" +
                 "\n - " + (originalAnimCount - newAnimCount) + " anim connections (of " + originalAnimCount + ")" +
                 "\n - " + (originalLinkCount - newLinkCount) + " entity links (of " + originalLinkCount + ")");

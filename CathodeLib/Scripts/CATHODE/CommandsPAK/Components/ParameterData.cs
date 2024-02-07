@@ -154,7 +154,15 @@ namespace CATHODE.Scripting
         }
 
         public Vector3 position = new Vector3();
-        public Vector3 rotation = new Vector3(); //In CATHODE this is named Roll/Pitch/Yaw
+        public Vector3 rotation = new Vector3(); //In CATHODE this is named Roll/Pitch/Yaw - but we handle it as euler X,Y,Z
+
+        public static cTransform operator +(cTransform x, cTransform y)
+        {
+            if (x == null) return y;
+            if (y == null) return x;
+
+            return new cTransform(x.position + y.position, x.rotation + y.rotation);
+        }
 
         public override string ToString()
         {

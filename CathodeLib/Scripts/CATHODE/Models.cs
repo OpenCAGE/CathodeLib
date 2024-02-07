@@ -21,6 +21,12 @@ namespace CATHODE
         private List<CS2.Component.LOD.Submesh> _writeList = new List<CS2.Component.LOD.Submesh>();
         private string _filepathBIN;
 
+        ~Models()
+        {
+            Entries.Clear();
+            _writeList.Clear();
+        }
+
         #region FILE_IO
         /* Load the file */
         override protected bool LoadInternal()
@@ -623,13 +629,24 @@ namespace CATHODE
             public string Name;
             public List<Component> Components = new List<Component>();
 
+            ~CS2()
+            {
+                Components.Clear();
+            }
+
             public class Component
             {
                 public List<LOD> LODs = new List<LOD>();
 
                 //Storing some unknown info about LV426 stuff (Pt1 and Pt2 respectively)
+                //I think these are just garbage values that got dumped by accident
                 public int UnkLv426Pt1 = 0;
                 public int UnkLv426Pt2 = 0;
+
+                ~Component()
+                {
+                    LODs.Clear();
+                }
 
                 public class LOD
                 {
@@ -640,6 +657,11 @@ namespace CATHODE
 
                     public string Name;
                     public List<Submesh> Submeshes = new List<Submesh>();
+
+                    ~LOD()
+                    {
+                        Submeshes.Clear();
+                    }
 
                     public class Submesh
                     {
@@ -674,6 +696,12 @@ namespace CATHODE
                         public List<int> boneIndices = new List<int>();
 
                         public byte[] content = new byte[0];
+
+                        ~Submesh()
+                        {
+                            boneIndices.Clear();
+                            content = null;
+                        }
                     }
 
                     public override string ToString()

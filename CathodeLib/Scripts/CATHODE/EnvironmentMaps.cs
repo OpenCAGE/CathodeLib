@@ -55,7 +55,7 @@ namespace CATHODE
         #region STRUCTURES
         public class Mapping
         {
-            public int EnvMapIndex; //Index of the environment map
+            public int EnvMapIndex; //Sequential index of the env map in texture BIN, when only parsing entries of type CUBEMAP - NOT WRITE INDEX
             public int MoverIndex; //Index of the mover in the MODELS.MVR file to apply the env map to
         };
         #endregion

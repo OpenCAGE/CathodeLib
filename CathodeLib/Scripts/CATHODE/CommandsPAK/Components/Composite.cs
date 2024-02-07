@@ -19,21 +19,29 @@ namespace CATHODE.Scripting
             this.name = name;
         }
 
+        ~Composite()
+        {
+            variables.Clear();
+            functions.Clear();
+            aliases.Clear();
+            proxies.Clear();
+        }
+
         public ShortGuid shortGUID;  //The id when this composite is used as an entity in another composite
         public string name = ""; //The string name of the composite
 
-        public List<VariableEntity> variables = new List<VariableEntity>(); //Variables which can be accessed outside of this flowgraph as parameters, and connected to nodes as parameters internally
+        public List<VariableEntity> variables = new List<VariableEntity>(); //Variables which can be accessed outside of this composite as parameters, and connected to entities internally
         public List<FunctionEntity> functions = new List<FunctionEntity>(); //Functional nodes, including hard-coded functions and references to other composites
 
-        public List<OverrideEntity> overrides = new List<OverrideEntity>(); //Overrides of parameters in child composites
-        public List<ProxyEntity> proxies = new List<ProxyEntity>();         //Instances of entities from other composites
+        public List<AliasEntity> aliases = new List<AliasEntity>(); //Aliases of entities in child composites
+        public List<ProxyEntity> proxies = new List<ProxyEntity>(); //Entites acting as entities from other composites
 
         /* If an entity exists in the composite, return it */
         public Entity GetEntityByID(ShortGuid id)
         {
             foreach (Entity entity in variables) if (entity.shortGUID == id) return entity;
             foreach (Entity entity in functions) if (entity.shortGUID == id) return entity;
-            foreach (Entity entity in overrides) if (entity.shortGUID == id) return entity;
+            foreach (Entity entity in aliases) if (entity.shortGUID == id) return entity;
             foreach (Entity entity in proxies) if (entity.shortGUID == id) return entity;
             return null;
         }
@@ -41,10 +49,10 @@ namespace CATHODE.Scripting
         /* Returns a collection of all entities in the composite */
         public List<Entity> GetEntities()
         {
-            List<Entity> toReturn = new List<Entity>(variables.Count + functions.Count + overrides.Count + proxies.Count);
+            List<Entity> toReturn = new List<Entity>(variables.Count + functions.Count + aliases.Count + proxies.Count);
             toReturn.AddRange(variables);
             toReturn.AddRange(functions);
-            toReturn.AddRange(overrides);
+            toReturn.AddRange(aliases);
             toReturn.AddRange(proxies);
             return toReturn;
         }
@@ -94,12 +102,12 @@ namespace CATHODE.Scripting
             return proxy;
         }
 
-        /* Add a new override entity */
-        public OverrideEntity AddOverride(List<ShortGuid> hierarchy)
+        /* Add a new alias entity */
+        public AliasEntity AddAlias(List<ShortGuid> hierarchy)
         {
-            OverrideEntity ovrride = new OverrideEntity(hierarchy);
-            overrides.Add(ovrride);
-            return ovrride;
+            AliasEntity alias = new AliasEntity(hierarchy);
+            aliases.Add(alias);
+            return alias;
         }
 
         public override string ToString()
