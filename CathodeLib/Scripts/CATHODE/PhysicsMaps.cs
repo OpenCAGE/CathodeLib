@@ -22,6 +22,9 @@ namespace CATHODE
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public PhysicsMaps(string path) : base(path) { }
 
+        //NOTE: clearing out this file does not cause a crash, and it does not break physics objects like boxes
+        //     ... it does however break doors...
+
         #region FILE_IO
         override protected bool LoadInternal()
         {
@@ -88,9 +91,10 @@ namespace CATHODE
             //This is the entity ID and instance ID for the actual instanced composite entity (basically, a step down from the instance above).
             public CommandsEntityReference entity;
 
-            public Vector4 Row0; // NOTE: This is a 3x4 matrix, seems to have rotation data on the leftmost 3x3 matrix, and position
-            public Vector4 Row1; //   on the rightmost 3x1 matrix.
-            public Vector4 Row2;
+            public Vector4 Row0;  //mattf: setting to zero breaks stuff           // NOTE: This is a 3x4 matrix, seems to have rotation data on the leftmost 3x3 matrix, and position
+            public Vector4 Row1;  //mattf: setting to zero breaks stuff           //   on the rightmost 3x1 matrix.
+
+            public Vector4 Row2;  //mattf: setting to zero doesn't seem to do nothing: unused?
         };
         #endregion
     }

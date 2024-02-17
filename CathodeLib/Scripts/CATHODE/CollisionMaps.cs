@@ -26,6 +26,8 @@ namespace CATHODE
                 //first 18 are always null?
                 //always first 247 are the same? 18 null and the rest in required assets?
 
+                //note: some of the things we skip here actually contain useful info, but the game doesn't read it so there's no point us bothering with it 
+
                 reader.BaseStream.Position = 4;
                 int entryCount = reader.ReadInt32();
                 for (int i = 0; i < entryCount; i++)
