@@ -23,19 +23,19 @@ namespace CATHODE
             {
                 //It seems typically in this file at the start there are a bunch of empty entries, and then there are a bunch of unresolvable ones, and then a bunch that can be resolved.
 
+                //first 18 are always null?
+                //always first 247 are the same? 18 null and the rest in required assets?
+
                 reader.BaseStream.Position = 4;
                 int entryCount = reader.ReadInt32();
                 for (int i = 0; i < entryCount; i++)
                 {
                     Entry entry = new Entry();
-                    entry.unk0 = reader.ReadInt32(); //flag?
-                    entry.Unknown1_ = reader.ReadInt32(); //some sort of index ?
+                    reader.BaseStream.Position += 8;
                     entry.ID = Utilities.Consume<ShortGuid>(reader);
                     entry.entity = Utilities.Consume<CommandsEntityReference>(reader);
-                    entry.Unknown2_ = reader.ReadInt32(); //Is sometimes -1 and other times a small positive integer. Is this tree node parent?
-                    entry.CollisionHKXEntryIndex = reader.ReadInt16();
-                    entry.Unknown3_ = reader.ReadInt16(); //Most of the time it is -1.
-                    entry.MVRZoneIDThing = reader.ReadInt32();
+                    reader.BaseStream.Position += 8;
+                    entry.zoneID = reader.ReadInt32();
                     reader.BaseStream.Position += 16;
                     Entries.Add(entry);
                 }
@@ -52,12 +52,11 @@ namespace CATHODE
                 writer.Write(Entries.Count);
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    writer.Write(Entries[i].Unknown1_);
+                    writer.Write(new byte[8]);
                     Utilities.Write<ShortGuid>(writer, Entries[i].ID);
                     Utilities.Write<CommandsEntityReference>(writer, Entries[i].entity);
-                    writer.Write(Entries[i].CollisionHKXEntryIndex);
-                    writer.Write(Entries[i].Unknown3_);
-                    writer.Write(Entries[i].MVRZoneIDThing);
+                    writer.Write(new byte[8]);
+                    writer.Write(Entries[i].zoneID);
                     writer.Write(new byte[16]);
                 }
             }
@@ -68,19 +67,9 @@ namespace CATHODE
         #region STRUCTURES
         public class Entry
         {
-            public int unk0 = 0;    //flags? 
-            public int Unknown1_ = -1;      // Is this tree node id?
-
-            public ShortGuid ID = ShortGuid.Invalid; //This is the name of the entity hashed via ShortGuid, as a result, we can't resolve a lot of them. Does the game care about the value? I doubt it. We definitely don't.
-
+            public ShortGuid ID = ShortGuid.Invalid; //This is the name of the entity hashed via ShortGuid
             public CommandsEntityReference entity = new CommandsEntityReference();
-
-            public int Unknown2_= -1;      // NOTE: Is sometimes -1 and other times a small positive integer. Is this tree node parent?
-
-            public Int16 CollisionHKXEntryIndex = -1;      // NOTE: Most of the time is a positive integer, sometimes -1.
-
-            public Int16 Unknown3_ = -1;    // NOTE: Most of the time it is -1.
-            public int MVRZoneIDThing = 0; // NOTE: This is CollisionMapThingIDs[0] from alien_mvr_entry
+            public int zoneID = 0; //this maps the entity to a zone ID. interestingly, this seems to be the point of truth for the zone rendering
         };
         #endregion
     }
