@@ -23,6 +23,12 @@ namespace CATHODE
 
         private List<MOVER_DESCRIPTOR> _writeList = new List<MOVER_DESCRIPTOR>();
 
+        ~Movers()
+        {
+            Entries.Clear();
+            _writeList.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal()
         {
@@ -224,6 +230,13 @@ namespace CATHODE
             public UInt32 Unknowns70_;
             public UInt32 Unknowns71_;
             //320
+
+            ~MOVER_DESCRIPTOR()
+            {
+                gpuConstants = null;
+                renderConstants = null;
+                entity = null;
+            }
         };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -265,6 +278,11 @@ namespace CATHODE
             public float UnknownValue3_;
             public float UnknownValue4_;
             //144
+
+            ~GPU_CONSTANTS()
+            {
+                blankSpace1 = null;
+            }
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -292,6 +310,13 @@ namespace CATHODE
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 36)]
             public byte[] blankSpace3;
             //244
+
+            ~RENDER_CONSTANTS()
+            {
+                Unknowns2_ = null;
+                UnknownMinMax_ = null;
+                blankSpace3 = null;
+            }
         }
         #endregion
     }
