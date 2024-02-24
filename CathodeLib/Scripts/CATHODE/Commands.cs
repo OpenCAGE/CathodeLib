@@ -264,9 +264,9 @@ namespace CATHODE
                                             ResourceReference resource = new ResourceReference();
                                             resource.position = new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle());
                                             resource.rotation = new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle());
-                                            resource.resourceID = new ShortGuid(reader_parallel);
-                                            resource.entryType = CommandsUtils.GetResourceEntryType(reader_parallel.ReadBytes(4));
-                                            switch (resource.entryType)
+                                            resource.resource_id = new ShortGuid(reader_parallel);
+                                            resource.resource_type = CommandsUtils.GetResourceEntryType(reader_parallel.ReadBytes(4));
+                                            switch (resource.resource_type)
                                             {
                                                 case ResourceType.RENDERABLE_INSTANCE:
                                                     resource.index = reader_parallel.ReadInt32();
@@ -445,18 +445,18 @@ namespace CATHODE
                                 if (composite.functions[x].parameters[y].name != resParamID) continue;
 
                                 cResource resourceParam = (cResource)composite.functions[x].parameters[y].content;
-                                resourceParam.value.AddRange(resourceRefs.Where(o => o.resourceID == resourceParam.shortGUID));
-                                resourceRefs.RemoveAll(o => o.resourceID == resourceParam.shortGUID);
+                                resourceParam.value.AddRange(resourceRefs.Where(o => o.resource_id == resourceParam.shortGUID));
+                                resourceRefs.RemoveAll(o => o.resource_id == resourceParam.shortGUID);
                             }
                         }
                         //Check to see if this resource applies directly to an ENTITY
                         for (int x = 0; x < composite.functions.Count; x++)
                         {
-                            composite.functions[x].resources.AddRange(resourceRefs.Where(o => o.resourceID == composite.functions[x].shortGUID));
-                            resourceRefs.RemoveAll(o => o.resourceID == composite.functions[x].shortGUID);
+                            composite.functions[x].resources.AddRange(resourceRefs.Where(o => o.resource_id == composite.functions[x].shortGUID));
+                            resourceRefs.RemoveAll(o => o.resource_id == composite.functions[x].shortGUID);
                         }
                         //Any that are left over will be applied to PhysicsSystem entities
-                        if (resourceRefs.Count == 1 && resourceRefs[0].entryType == ResourceType.DYNAMIC_PHYSICS_SYSTEM)
+                        if (resourceRefs.Count == 1 && resourceRefs[0].resource_type == ResourceType.DYNAMIC_PHYSICS_SYSTEM)
                         {
                             FunctionEntity physEnt = composite.functions.FirstOrDefault(o => o.function == physEntID);
                             if (physEnt != null) physEnt.resources.Add(resourceRefs[0]);
@@ -931,9 +931,9 @@ namespace CATHODE
                                         writer.Write(resourceReferences[i][p].rotation.Y);
                                         writer.Write(resourceReferences[i][p].rotation.Z);
 #endif
-                                        writer.Write(resourceReferences[i][p].resourceID.ToUInt32()); //Sometimes this is the entity ID that uses the resource, other times it's the "resource" parameter ID link
-                                        writer.Write(CommandsUtils.GetResourceEntryTypeGUID(resourceReferences[i][p].entryType).ToUInt32());
-                                        switch (resourceReferences[i][p].entryType)
+                                        writer.Write(resourceReferences[i][p].resource_id.ToUInt32()); //Sometimes this is the entity ID that uses the resource, other times it's the "resource" parameter ID link
+                                        writer.Write(CommandsUtils.GetResourceEntryTypeGUID(resourceReferences[i][p].resource_type).ToUInt32());
+                                        switch (resourceReferences[i][p].resource_type)
                                         {
                                             case ResourceType.RENDERABLE_INSTANCE:
                                                 writer.Write(resourceReferences[i][p].index);

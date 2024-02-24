@@ -34,10 +34,10 @@ namespace CATHODE
                 {
                     Entry entry = new Entry();
                     reader.BaseStream.Position += 8;
-                    entry.ID = Utilities.Consume<ShortGuid>(reader);
+                    entry.id = Utilities.Consume<ShortGuid>(reader);
                     entry.entity = Utilities.Consume<CommandsEntityReference>(reader);
                     reader.BaseStream.Position += 8;
-                    entry.zoneID = reader.ReadInt32();
+                    entry.zone_id = Utilities.Consume<ShortGuid>(reader);
                     reader.BaseStream.Position += 16;
                     Entries.Add(entry);
                 }
@@ -55,10 +55,10 @@ namespace CATHODE
                 for (int i = 0; i < Entries.Count; i++)
                 {
                     writer.Write(new byte[8]);
-                    Utilities.Write<ShortGuid>(writer, Entries[i].ID);
+                    Utilities.Write<ShortGuid>(writer, Entries[i].id);
                     Utilities.Write<CommandsEntityReference>(writer, Entries[i].entity);
                     writer.Write(new byte[8]);
-                    writer.Write(Entries[i].zoneID);
+                    Utilities.Write<ShortGuid>(writer, Entries[i].zone_id);
                     writer.Write(new byte[16]);
                 }
             }
@@ -69,9 +69,9 @@ namespace CATHODE
         #region STRUCTURES
         public class Entry
         {
-            public ShortGuid ID = ShortGuid.Invalid; //This is the name of the entity hashed via ShortGuid
+            public ShortGuid id = ShortGuid.Invalid; //This is the name of the entity hashed via ShortGuid
             public CommandsEntityReference entity = new CommandsEntityReference();
-            public int zoneID = 0; //this maps the entity to a zone ID. interestingly, this seems to be the point of truth for the zone rendering
+            public ShortGuid zone_id = ShortGuid.Invalid; //this maps the entity to a zone ID. interestingly, this seems to be the point of truth for the zone rendering
         };
         #endregion
     }

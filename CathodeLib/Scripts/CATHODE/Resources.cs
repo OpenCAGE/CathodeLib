@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using CATHODE.Scripting;
 using CathodeLib;
+using static CATHODE.Resources;
 
 namespace CATHODE
 {
@@ -28,11 +30,10 @@ namespace CATHODE
                 {
                     Resource resource = new Resource();
 
-                    //TODO: I don't think this is as it seems... the composite_instance_id value often translates to a ShortGuid string, frequently Door/AnimatedModel/Light/DYNAMIC_PHYSICS_SYSTEM...
-                    //      ... and notably the number of entries that translate to DYNAMIC_PHYSICS_SYSTEM match the number of entries in PHYSICS.MAP (which defines the systems)
+                    resource.unk = Utilities.Consume<ShortGuid>(reader); //this seems to be some kind of incrementing thing?
+                    resource.resource_id = Utilities.Consume<ShortGuid>(reader); //this is the id that's used in commands.pak, frequently translates to Door/AnimatedModel/Light/DYNAMIC_PHYSICS_SYSTEM
+                    resource.index = reader.ReadInt32();
 
-                    resource.Entity = Utilities.Consume<CommandsEntityReference>(reader);
-                    resource.IndexFromMVREntry = reader.ReadInt32();
                     Entries.Add(resource);
                 }
             }
@@ -51,8 +52,9 @@ namespace CATHODE
 
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    Utilities.Write<CommandsEntityReference>(writer, Entries[i].Entity);
-                    writer.Write(Entries[i].IndexFromMVREntry);
+                    Utilities.Write(writer, Entries[i].unk);
+                    Utilities.Write(writer, Entries[i].resource_id);
+                    writer.Write(Entries[i].index);
                 }
             }
             return true;
@@ -62,8 +64,11 @@ namespace CATHODE
         #region STRUCTURES
         public class Resource
         {
-            public CommandsEntityReference Entity;
-            public int IndexFromMVREntry; // NOTE: This is an entry index in this file itself.
+            public ShortGuid unk;
+
+            public ShortGuid resource_id;
+
+            public int index;
         };
         #endregion
     }

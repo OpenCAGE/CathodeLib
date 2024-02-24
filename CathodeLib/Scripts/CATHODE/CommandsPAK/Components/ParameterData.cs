@@ -268,8 +268,8 @@ namespace CATHODE.Scripting
             if (rr == null)
             {
                 rr = new ResourceReference(type);
-                rr.resourceID = shortGUID;
-                switch (rr.entryType)
+                rr.resource_id = shortGUID;
+                switch (rr.resource_type)
                 {
                     case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
                     case ResourceType.RENDERABLE_INSTANCE:
@@ -285,7 +285,7 @@ namespace CATHODE.Scripting
         /* Find a resource reference of type */
         public ResourceReference GetResource(ResourceType type)
         {
-            return value.FirstOrDefault(o => o.entryType == type);
+            return value.FirstOrDefault(o => o.resource_type == type);
         }
     }
     [Serializable]
