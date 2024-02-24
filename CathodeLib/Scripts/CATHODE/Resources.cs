@@ -29,11 +29,9 @@ namespace CATHODE
                 for (int i = 0; i < entryCount; i++)
                 {
                     Resource resource = new Resource();
-
-                    resource.unk = Utilities.Consume<ShortGuid>(reader); //this seems to be some kind of incrementing thing?
+                    resource.composite_instance_id = Utilities.Consume<ShortGuid>(reader);
                     resource.resource_id = Utilities.Consume<ShortGuid>(reader); //this is the id that's used in commands.pak, frequently translates to Door/AnimatedModel/Light/DYNAMIC_PHYSICS_SYSTEM
                     resource.index = reader.ReadInt32();
-
                     Entries.Add(resource);
                 }
             }
@@ -52,7 +50,7 @@ namespace CATHODE
 
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    Utilities.Write(writer, Entries[i].unk);
+                    Utilities.Write(writer, Entries[i].composite_instance_id);
                     Utilities.Write(writer, Entries[i].resource_id);
                     writer.Write(Entries[i].index);
                 }
@@ -64,8 +62,7 @@ namespace CATHODE
         #region STRUCTURES
         public class Resource
         {
-            public ShortGuid unk;
-
+            public ShortGuid composite_instance_id;
             public ShortGuid resource_id;
 
             public int index;
