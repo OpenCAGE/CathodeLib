@@ -31,7 +31,7 @@ namespace CATHODE
                     Resource resource = new Resource();
                     resource.composite_instance_id = Utilities.Consume<ShortGuid>(reader);
                     resource.resource_id = Utilities.Consume<ShortGuid>(reader); //this is the id that's used in commands.pak, frequently translates to Door/AnimatedModel/Light/DYNAMIC_PHYSICS_SYSTEM
-                    resource.index = reader.ReadInt32();
+                    resource.index = reader.ReadInt32(); //these entries are sorted by composite_instance_id, so the index doesn't go up as you would expect - the index is relative to mvr
                     Entries.Add(resource);
                 }
             }

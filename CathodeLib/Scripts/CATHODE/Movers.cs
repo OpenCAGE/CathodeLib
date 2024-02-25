@@ -194,15 +194,15 @@ namespace CATHODE
 
             public Matrix4x4 transform;
             //64
-            public GPU_CONSTANTS gpuConstants;
+            public GPU_CONSTANTS gpu_constants;
             //144
             public UInt64 fogsphere_val1; // 0xa0 in RenderableFogSphereInstance
             public UInt64 fogsphere_val2; // 0xa8 in RenderableFogSphereInstance
                                           //160
-            public RENDER_CONSTANTS renderConstants;
+            public RENDER_CONSTANTS render_constants;
             //244
-            public UInt32 renderableElementIndex; //reds.bin index
-            public UInt32 renderableElementCount; //reds.bin count
+            public UInt32 renderable_element_index; //reds.bin index
+            public UInt32 renderable_element_count; //reds.bin count
 
             public UInt32 resource_index; //This is the index value from Resources.bin
             //256
@@ -213,7 +213,7 @@ namespace CATHODE
             public CommandsEntityReference entity; //The entity in the Commands file
 
                                                  //280
-            public Int32 environmentMapIndex; //environment_map.bin index - converted to short in code
+            public Int32 environment_map_index; //environment_map.bin index - converted to short in code
                                                //284
             public float emissive_val1; //emissive surface val1
             public float emissive_val2; //emissive surface val2
@@ -233,8 +233,8 @@ namespace CATHODE
 
             ~MOVER_DESCRIPTOR()
             {
-                gpuConstants = null;
-                renderConstants = null;
+                gpu_constants = null;
+                render_constants = null;
                 entity = null;
             }
         };
