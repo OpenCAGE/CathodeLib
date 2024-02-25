@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Runtime.InteropServices;
 using CathodeLib;
 using System.Collections.Generic;
@@ -38,6 +38,12 @@ namespace CATHODE
                     entry.physics_system_index = reader.ReadInt32();
                     reader.BaseStream.Position += 4;
                     entry.resource_type = Utilities.Consume<ShortGuid>(reader); 
+
+                    if (entry.resource_type != ShortGuidUtils.Generate("DYNAMIC_PHYSICS_SYSTEM"))
+                    {
+                        string sdffds = "";
+                    }
+
                     entry.composite_instance_id = Utilities.Consume<ShortGuid>(reader); 
                     entry.entity = Utilities.Consume<CommandsEntityReference>(reader);
                     entry.Row0 = Utilities.Consume<Vector4>(reader);

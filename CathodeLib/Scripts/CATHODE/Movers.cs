@@ -219,8 +219,12 @@ namespace CATHODE
             public float emissive_val2; //emissive surface val2
             public float emissive_val3; //emissive surface val3
                                         //296
+
+            //If primary zone ID or secondary zone ID are zero, they are not applied to a zone. it seems like the game hacks this by setting the primary id to 1 to add it to a sort of "global zone", for entities that are spawned but not in a zone.
+
             public ShortGuid primary_zone_id; //zone id? RenderableScene::create_instance, RenderableScene::initialize - note in Collision.MAP we have this val too and it is defo zones
             public ShortGuid secondary_zone_id;  //zone activator? RenderableScene::create_instance, RenderableScene::initialize - this is another zone id, perhaps the one that is linked for preloading?
+
                                           //304
             public UInt32 Unknowns61_; //uVar3 in reserve_light_light_master_sets, val of LightMasterSet, or an incrementer
             public UInt16 Unknown17_;   // TODO: It is -1 most of the time, but some times it isn't.
