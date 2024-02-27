@@ -1,4 +1,5 @@
 using CATHODE.Scripting.Internal;
+using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,12 +11,53 @@ namespace CATHODE.Scripting
     //Helpful lookup tables for various Cathode Commands types
     public static class CommandsUtils
     {
+        public static CompositePurgeTable PurgedComposites => _purged;
+        private static CompositePurgeTable _purged;
+
+        public static Commands LinkedCommands => _commands;
+        private static Commands _commands;
+
         static CommandsUtils()
         {
+            _purged = new CompositePurgeTable();
+
             SetupFunctionTypeLUT();
             SetupDataTypeLUT();
             SetupObjectTypeLUT();
             SetupResourceEntryTypeLUT();
+        }
+
+        /* Optionally, link a Commands file which can be used to save purge states to */
+        public static void LinkCommands(Commands commands)
+        {
+            if (_commands != null)
+            {
+                _commands.OnLoadSuccess -= LoadPurgeStates;
+                _commands.OnSaveSuccess -= SavePurgeStates;
+            }
+
+            _commands = commands;
+            if (_commands == null) return;
+
+            _commands.OnLoadSuccess += LoadPurgeStates;
+            _commands.OnSaveSuccess += SavePurgeStates;
+
+            LoadPurgeStates(_commands.Filepath);
+        }
+
+        /* Pull non-vanilla entity names from the CommandsPAK */
+        private static void LoadPurgeStates(string filepath)
+        {
+            _purged = (CompositePurgeTable)CustomTable.ReadTable(filepath, CustomEndTables.COMPOSITE_PURGE_STATES);
+            if (_purged == null) _purged = new CompositePurgeTable();
+            Console.WriteLine("Registered " + _purged.purged.Count + " pre-purged composites!");
+        }
+
+        /* Write non-vanilla entity names to the CommandsPAK */
+        private static void SavePurgeStates(string filepath)
+        {
+            CustomTable.WriteTable(filepath, CustomEndTables.COMPOSITE_PURGE_STATES, _purged);
+            Console.WriteLine("Stored " + _purged.purged.Count + " pre-purged composites!");
         }
 
         #region FUNCTION_TYPE_UTILS
@@ -257,8 +299,12 @@ namespace CATHODE.Scripting
         }
 
         /* CA's CAGE doesn't properly tidy up hierarchies pointing to deleted entities - so we can do that to save confusion */
-        public static void PurgeDeadLinks(Commands commands, Composite composite)
+        public static void PurgeDeadLinks(Commands commands, Composite composite, bool force = false)
         {
+            if (!force && LinkedCommands == commands && _purged.purged.Contains(composite.shortGUID))
+                return;
+            _purged.purged.Add(composite.shortGUID);
+
             int originalUnknownCount = 0;
             int originalProxyCount = 0;
             int newProxyCount = 0;

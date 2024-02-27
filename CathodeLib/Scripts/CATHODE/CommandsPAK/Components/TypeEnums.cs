@@ -1105,6 +1105,7 @@ namespace CATHODE.Scripting.Internal
         //      Doing this will cause issues with backwards compatibility.
         ENTITY_NAMES,
         SHORT_GUIDS,
+        COMPOSITE_PURGE_STATES,
 
         //Add new entries here
 

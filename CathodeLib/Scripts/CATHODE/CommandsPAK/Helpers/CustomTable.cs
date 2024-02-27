@@ -60,6 +60,9 @@ namespace CathodeLib
                             case CustomEndTables.SHORT_GUIDS:
                                 ((GuidNameTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomEndTables.COMPOSITE_PURGE_STATES:
+                                ((CompositePurgeTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
                     }
                 }
@@ -102,6 +105,9 @@ namespace CathodeLib
                         break;
                     case CustomEndTables.SHORT_GUIDS:
                         data = new GuidNameTable(reader);
+                        break;
+                    case CustomEndTables.COMPOSITE_PURGE_STATES:
+                        data = new CompositePurgeTable(reader);
                         break;
                 }
             }
@@ -225,6 +231,41 @@ namespace CathodeLib
             {
                 Utilities.Write<ShortGuid>(writer, composite.Value);
                 writer.Write(composite.Key);
+            }
+        }
+    }
+    public class CompositePurgeTable : CustomTable.Table
+    {
+        public CompositePurgeTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomEndTables.COMPOSITE_PURGE_STATES;
+        }
+
+        public List<ShortGuid> purged;
+
+        protected override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+            {
+                purged = new List<ShortGuid>();
+                return;
+            }
+
+            int count = reader.ReadInt32();
+            purged = new List<ShortGuid>(count);
+            for (int i = 0; i < count; i++)
+            {
+                ShortGuid compositeID = Utilities.Consume<ShortGuid>(reader);
+                purged.Add(compositeID);
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(purged.Count);
+            for (int i = 0; i < purged.Count; i++)
+            {
+                Utilities.Write<ShortGuid>(writer, purged[i]);
             }
         }
     }
