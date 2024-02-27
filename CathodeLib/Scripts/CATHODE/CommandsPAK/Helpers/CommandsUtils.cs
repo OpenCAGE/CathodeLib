@@ -11,6 +11,7 @@ namespace CATHODE.Scripting
     //Helpful lookup tables for various Cathode Commands types
     public static class CommandsUtils
     {
+        //NOTE: This list is exposed publicly, because it is up to your app to manage it.
         public static CompositePurgeTable PurgedComposites => _purged;
         private static CompositePurgeTable _purged;
 
@@ -302,7 +303,10 @@ namespace CATHODE.Scripting
         public static void PurgeDeadLinks(Commands commands, Composite composite, bool force = false)
         {
             if (!force && LinkedCommands == commands && _purged.purged.Contains(composite.shortGUID))
+            {
+                Console.WriteLine("Skipping purge, as this composite is listed within the purged table.");
                 return;
+            }
             _purged.purged.Add(composite.shortGUID);
 
             int originalUnknownCount = 0;
@@ -400,7 +404,11 @@ namespace CATHODE.Scripting
                 (originalTriggerCount - newTriggerCount) +
                 (originalAnimCount - newAnimCount) +
                 (originalLinkCount - newLinkCount) == 0)
+            {
+                Console.WriteLine("Purge found nothing to clear up.");
                 return;
+            }
+
             Console.WriteLine(
                 "Purged all dead hierarchies and entities in " + composite.name + "!" +
                 "\n - " + originalUnknownCount + " unknown entities" +
