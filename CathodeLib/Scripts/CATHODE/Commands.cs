@@ -722,7 +722,7 @@ namespace CATHODE
                             stringStartRaw[3] = 0x80;
                             writer.Write(stringStartRaw);
                             string str = ((cString)parameters[i]).value.Replace("\u0092", "'"); 
-                            writer.Write(ShortGuidUtils.Generate(str).ToUInt32());
+                            writer.Write(ShortGuidUtils.Generate(str, false).ToUInt32());
                             for (int x = 0; x < str.Length; x++) writer.Write(str[x]);
                             writer.Write((char)0x00);
                             Utilities.Align(writer, 4);
@@ -782,7 +782,7 @@ namespace CATHODE
                 {
                     int scriptStartPos = (int)writer.BaseStream.Position / 4;
 
-                    Utilities.Write<ShortGuid>(writer, ShortGuidUtils.Generate(Entries[i].name));
+                    Utilities.Write<ShortGuid>(writer, ShortGuidUtils.Generate(Entries[i].name, false));
                     for (int x = 0; x < Entries[i].name.Length; x++) writer.Write(Entries[i].name[x]);
                     writer.Write((char)0x00);
                     Utilities.Align(writer, 4);

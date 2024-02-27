@@ -49,13 +49,10 @@ namespace CATHODE.Scripting
         }
 
         /* Generate a ShortGuid to interface with the Cathode scripting system */
-        public static ShortGuid Generate(string value)
+        public static ShortGuid Generate(string value, bool cache = true)
         {
-            return Generate(value, true);
-        }
-        private static ShortGuid Generate(string value, bool cache = true)
-        {
-            if (_vanilla.cache.ContainsKey(value)) return _vanilla.cache[value];
+            if (_vanilla.cache.ContainsKey(value)) 
+                return _vanilla.cache[value];
 
             SHA1Managed sha1 = new SHA1Managed();
             byte[] hash1 = sha1.ComputeHash(Encoding.UTF8.GetBytes(value));
