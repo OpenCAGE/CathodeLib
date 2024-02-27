@@ -307,7 +307,6 @@ namespace CATHODE.Scripting
                 Console.WriteLine("Skipping purge, as this composite is listed within the purged table.");
                 return;
             }
-            _purged.purged.Add(composite.shortGUID);
 
             int originalUnknownCount = 0;
             int originalProxyCount = 0;
