@@ -40,6 +40,8 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
+            Entries = Entries.OrderBy(o => o.composite_instance_id).ToList();
+
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
