@@ -109,9 +109,7 @@ namespace CATHODE.Scripting
             {
                 inheritance.Add(currentType);
                 if (!includeInheritedMembers) break;
-                FunctionType? bf = GetBaseFunction(currentType);
-                if (bf == null) break;
-                currentType = bf.Value;
+                currentType = GetBaseFunction(currentType);
             }
             inheritance.Reverse();
 
@@ -131,11 +129,11 @@ namespace CATHODE.Scripting
         }
 
         /* Gets the function this function inherits from - you can keep calling this down to EntityMethodInterface */
-        public static FunctionType? GetBaseFunction(FunctionEntity entity)
+        public static FunctionType GetBaseFunction(FunctionEntity entity)
         {
             return GetBaseFunction(CommandsUtils.GetFunctionType(entity));
         }
-        public static FunctionType? GetBaseFunction(FunctionType type)
+        public static FunctionType GetBaseFunction(FunctionType type)
         {
             return GetBaseFunctionInternal(type);
         }
@@ -156,19 +154,15 @@ namespace CATHODE.Scripting
         }
 
         /* Gets the base function for this function type */
-        private static FunctionType? GetBaseFunctionInternal(FunctionType type)
+        private static FunctionType GetBaseFunctionInternal(FunctionType type)
         {
             switch (type)
             {
-                //These types have no inheritance - perhaps they are unused?
-                case FunctionType.CharacterMonitor:
-                case FunctionType.WEAPON_DidHitSomethingFilter: //this is used
-                case FunctionType.VariableEnumString:
-                case FunctionType.SetEnumString:
-                case FunctionType.NetworkProxy:
-                case FunctionType.DebugPositionMarker: //this is used
-                default:
-                    return null;
+                //These are best guesses
+                case FunctionType.WEAPON_DidHitSomethingFilter:
+                    return FunctionType.ScriptInterface;
+                case FunctionType.DebugPositionMarker:
+                    return FunctionType.SensorInterface;
 
                 //This is as far as we go, but it actually inherits from EntityResourceInterface
                 case FunctionType.EntityMethodInterface:
@@ -1799,6 +1793,7 @@ namespace CATHODE.Scripting
                 case FunctionType.ZoneLoaded:
                     return FunctionType.ScriptInterface;
             }
+            throw new Exception("Unhandled function type");
         }
 
         /* Applies all default parameter data to a Function entity (DESTRUCTIVE!) */
@@ -7671,9 +7666,9 @@ namespace CATHODE.Scripting
                 case FunctionType.BlendLowResFrame:
                     entity.AddParameter("blend_value", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
                     break;
-                case FunctionType.CharacterMonitor:
-                    entity.AddParameter("character", new cFloat(), ParameterVariant.INPUT); //ResourceID
-                    break;
+                //case FunctionType.CharacterMonitor:
+                //    entity.AddParameter("character", new cFloat(), ParameterVariant.INPUT); //ResourceID
+                //    break;
                 case FunctionType.AreaHitMonitor:
                     entity.AddParameter("on_flamer_hit", new cFloat(), ParameterVariant.TARGET); //
                     entity.AddParameter("on_shotgun_hit", new cFloat(), ParameterVariant.TARGET); //
