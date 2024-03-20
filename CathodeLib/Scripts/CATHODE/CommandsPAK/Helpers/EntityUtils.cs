@@ -109,7 +109,9 @@ namespace CATHODE.Scripting
             {
                 inheritance.Add(currentType);
                 if (!includeInheritedMembers) break;
-                currentType = GetBaseFunction(currentType);
+                FunctionType? bf = GetBaseFunction(currentType);
+                if (bf == null) break;
+                currentType = bf.Value;
             }
             inheritance.Reverse();
 
@@ -129,11 +131,11 @@ namespace CATHODE.Scripting
         }
 
         /* Gets the function this function inherits from - you can keep calling this down to EntityMethodInterface */
-        public static FunctionType GetBaseFunction(FunctionEntity entity)
+        public static FunctionType? GetBaseFunction(FunctionEntity entity)
         {
-            return GetBaseFunction(CommandsUtils.GetFunctionType(entity.function));
+            return GetBaseFunction(CommandsUtils.GetFunctionType(entity));
         }
-        public static FunctionType GetBaseFunction(FunctionType type)
+        public static FunctionType? GetBaseFunction(FunctionType type)
         {
             return GetBaseFunctionInternal(type);
         }
@@ -154,19 +156,19 @@ namespace CATHODE.Scripting
         }
 
         /* Gets the base function for this function type */
-        private static FunctionType GetBaseFunctionInternal(FunctionType type)
+        private static FunctionType? GetBaseFunctionInternal(FunctionType type)
         {
             switch (type)
             {
                 //These types have no inheritance - perhaps they are unused?
                 case FunctionType.CharacterMonitor:
-                case FunctionType.WEAPON_DidHitSomethingFilter:
+                case FunctionType.WEAPON_DidHitSomethingFilter: //this is used
                 case FunctionType.VariableEnumString:
                 case FunctionType.SetEnumString:
                 case FunctionType.NetworkProxy:
-                case FunctionType.DebugPositionMarker:
+                case FunctionType.DebugPositionMarker: //this is used
                 default:
-                    throw new Exception();
+                    return null;
 
                 //This is as far as we go, but it actually inherits from EntityResourceInterface
                 case FunctionType.EntityMethodInterface:

@@ -85,6 +85,10 @@ namespace CATHODE.Scripting
         {
             return GetFunctionType(new ShortGuid(tag));
         }
+        public static FunctionType GetFunctionType(FunctionEntity ent)
+        {
+            return GetFunctionType(ent.function);
+        }
         public static FunctionType GetFunctionType(ShortGuid tag)
         {
             SetupFunctionTypeLUT();
