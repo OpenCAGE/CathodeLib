@@ -393,12 +393,14 @@ namespace CATHODE.Scripting
             {
                 List<EntityConnector> childLinksPurged = new List<EntityConnector>();
                 for (int x = 0; x < entities[i].childLinks.Count; x++)
-                    if (composite.GetEntityByID(entities[i].childLinks[x].childID) != null)
+                    if (composite.GetEntityByID(entities[i].childLinks[x].linkedEntityID) != null)
                         childLinksPurged.Add(entities[i].childLinks[x]);
                 originalLinkCount += entities[i].childLinks.Count;
                 newLinkCount += childLinksPurged.Count;
                 entities[i].childLinks = childLinksPurged;
             }
+
+            //TODO: Clear aliases with no parameters/links in or out?
 
             if (originalUnknownCount +
                 (originalFuncCount - newFuncCount) +

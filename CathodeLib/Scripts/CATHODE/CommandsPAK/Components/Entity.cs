@@ -182,7 +182,29 @@ namespace CATHODE.Scripting.Internal
             ShortGuid parameter_id = ShortGuidUtils.Generate(parameter);
             ShortGuid childParameter_id = ShortGuidUtils.Generate(childParameter);
             //TODO: do we want to do RemoveAll? should probably just remove the first
-            childLinks.RemoveAll(o => o.parentParamID == parameter_id && o.childID == childEntity.shortGUID && o.childParamID == childParameter_id);
+            childLinks.RemoveAll(o => o.thisParamID == parameter_id && o.linkedEntityID == childEntity.shortGUID && o.linkedParamID == childParameter_id);
+        }
+
+        /* Find all links in to this entity (pass in the composite this entity is within) */
+        public List<EntityConnector> GetParentLinks(Composite containedComposite)
+        {
+            List<EntityConnector> connections = new List<EntityConnector>();
+            containedComposite.GetEntities().ForEach(ent => {
+                ent.childLinks.ForEach(link =>
+                {
+                    if (link.linkedEntityID == shortGUID)
+                    {
+                        connections.Add(new EntityConnector()
+                        {
+                            ID = link.ID,
+                            thisParamID = link.linkedParamID,
+                            linkedParamID = link.thisParamID,
+                            linkedEntityID = ent.shortGUID
+                        });
+                    }
+                });
+            });
+            return connections;
         }
     }
 }
@@ -450,18 +472,28 @@ namespace CATHODE.Scripting
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct EntityConnector
     {
-        public EntityConnector(ShortGuid childEntityID, ShortGuid parentParam, ShortGuid childParam)
+        public EntityConnector(ShortGuid linkedEntity, ShortGuid param, ShortGuid linkedParam)
         {
-            connectionID = ShortGuidUtils.GenerateRandom();
-            parentParamID = parentParam;
-            childParamID = childParam;
-            childID = childEntityID;
+            ID = ShortGuidUtils.GenerateRandom();
+
+            thisParamID = param;
+            linkedParamID = linkedParam;
+            linkedEntityID = linkedEntity;
+        }
+        public EntityConnector(Entity linkedEntity, string param, string linkedParam)
+        {
+            ID = ShortGuidUtils.GenerateRandom();
+
+            thisParamID = ShortGuidUtils.Generate(param);
+            linkedParamID = ShortGuidUtils.Generate(linkedParam);
+            linkedEntityID = linkedEntity.shortGUID;
         }
 
-        public ShortGuid connectionID;  //The unique ID for this connection
-        public ShortGuid parentParamID; //The ID of the parameter we're providing out 
-        public ShortGuid childParamID;  //The ID of the parameter we're providing into the child
-        public ShortGuid childID;       //The ID of the entity we're linking to to provide the value for
+        public ShortGuid ID;   //The unique ID for this connection
+
+        public ShortGuid thisParamID;    //The ID of the parameter
+        public ShortGuid linkedParamID;  //The ID of the parameter we're connecting to
+        public ShortGuid linkedEntityID; //The ID of the entity we're connecting to that has the linked parameter
     }
 
     /// <summary>
