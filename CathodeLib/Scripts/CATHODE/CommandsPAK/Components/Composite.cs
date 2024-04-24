@@ -57,6 +57,12 @@ namespace CATHODE.Scripting
             return toReturn;
         }
 
+        /* Returns a collection of function entities in the composite matching the given type */
+        public List<FunctionEntity> GetFunctionEntitiesOfType(FunctionType type)
+        {
+            return functions.FindAll(o => o.function == CommandsUtils.GetFunctionTypeGUID(type));
+        }
+
         /* Add a new function entity */
         public FunctionEntity AddFunction(FunctionType function, bool autopopulateParameters = false)
         {

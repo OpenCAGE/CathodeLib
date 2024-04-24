@@ -185,7 +185,7 @@ namespace CATHODE.Scripting.Internal
             childLinks.RemoveAll(o => o.thisParamID == parameter_id && o.linkedEntityID == childEntity.shortGUID && o.linkedParamID == childParameter_id);
         }
 
-        /* Find all links in to this entity (pass in the composite this entity is within) */
+        /* Utility: Find all links in to this entity (pass in the composite this entity is within) */
         public List<EntityConnector> GetParentLinks(Composite containedComposite)
         {
             List<EntityConnector> connections = new List<EntityConnector>();
@@ -205,6 +205,34 @@ namespace CATHODE.Scripting.Internal
                 });
             });
             return connections;
+        }
+
+        /* Utility: Remove all child links out from the given parameter */
+        public void RemoveAllParameterLinksOut(string parameter)
+        {
+            ShortGuid parameter_id = ShortGuidUtils.Generate(parameter);
+            childLinks.RemoveAll(o => o.thisParamID == parameter_id);
+        }
+
+        /* Utility: Remove all child links in to the given parameter */
+        public void RemoveAllParameterLinksIn(string parameter, Composite comp)
+        {
+            ShortGuid parameter_id = ShortGuidUtils.Generate(parameter);
+            List<EntityConnector> links_in = GetParentLinks(comp);
+            foreach (EntityConnector link in links_in)
+            {
+                if (link.linkedParamID != parameter_id) continue;
+                Entity ent = comp.GetEntityByID(link.linkedEntityID);
+                if (ent == null) continue;
+                ent.childLinks.RemoveAll(o => o.ID == link.ID);
+            }
+        }
+
+        /* Utility: Remove all child links in to and out of the given parameter */
+        public void RemoveAllParameterLinks(string parameter, Composite comp)
+        {
+            RemoveAllParameterLinksIn(parameter, comp);
+            RemoveAllParameterLinksOut(parameter);
         }
     }
 }
