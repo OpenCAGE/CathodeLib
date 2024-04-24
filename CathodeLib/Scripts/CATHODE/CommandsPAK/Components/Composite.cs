@@ -63,6 +63,12 @@ namespace CATHODE.Scripting
             return functions.FindAll(o => o.function == CommandsUtils.GetFunctionTypeGUID(type));
         }
 
+        /* Removes all function entities in the composite matching the given type */
+        public void RemoveAllFunctionEntitiesOfType(FunctionType type)
+        {
+            functions.RemoveAll(o => o.function == CommandsUtils.GetFunctionTypeGUID(type));
+        }
+
         /* Add a new function entity */
         public FunctionEntity AddFunction(FunctionType function, bool autopopulateParameters = false)
         {

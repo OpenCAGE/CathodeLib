@@ -213,6 +213,10 @@ namespace CATHODE.Scripting.Internal
             ShortGuid parameter_id = ShortGuidUtils.Generate(parameter);
             childLinks.RemoveAll(o => o.thisParamID == parameter_id);
         }
+        public void RemoveAllParameterLinksOut()
+        {
+            childLinks.Clear();
+        }
 
         /* Utility: Remove all child links in to the given parameter */
         public void RemoveAllParameterLinksIn(string parameter, Composite comp)
@@ -227,12 +231,29 @@ namespace CATHODE.Scripting.Internal
                 ent.childLinks.RemoveAll(o => o.ID == link.ID);
             }
         }
+        public void RemoveAllParameterLinksIn(Composite comp)
+        {
+            List<EntityConnector> links_in = GetParentLinks(comp);
+            foreach (EntityConnector link in links_in)
+            {
+                Entity ent = comp.GetEntityByID(link.linkedEntityID);
+                if (ent == null) continue;
+                ent.childLinks.RemoveAll(o => o.ID == link.ID);
+            }
+        }
 
         /* Utility: Remove all child links in to and out of the given parameter */
         public void RemoveAllParameterLinks(string parameter, Composite comp)
         {
             RemoveAllParameterLinksIn(parameter, comp);
             RemoveAllParameterLinksOut(parameter);
+        }
+
+        /* Utility: Remove all child links in to and out of the given parameter */
+        public void RemoveAllParameterLinks(Composite comp)
+        {
+            RemoveAllParameterLinksIn(comp);
+            RemoveAllParameterLinksOut();
         }
     }
 }
