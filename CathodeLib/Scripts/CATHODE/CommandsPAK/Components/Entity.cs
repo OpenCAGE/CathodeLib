@@ -73,6 +73,29 @@ namespace CATHODE.Scripting.Internal
             return parameters.FirstOrDefault(o => o.name == id);
         }
 
+        /* Get all links out matching the given name */
+        public List<EntityConnector> GetLinksOut(string name)
+        {
+            ShortGuid id = ShortGuidUtils.Generate(name);
+            return GetLinksOut(id);
+        }
+        public List<EntityConnector> GetLinksOut(ShortGuid id)
+        {
+            return childLinks.FindAll(o => o.thisParamID == id);
+        }
+
+        /* Get all links in matching the given name */
+        public List<EntityConnector> GetLinksIn(string name, Composite comp)
+        {
+            ShortGuid id = ShortGuidUtils.Generate(name);
+            return GetLinksIn(id, comp);
+        }
+        public List<EntityConnector> GetLinksIn(ShortGuid id, Composite comp)
+        {
+            List<EntityConnector> parent_links = GetParentLinks(comp);
+            return parent_links.FindAll(o => o.linkedParamID == id && o.linkedEntityID == this.shortGUID);
+        }
+
         /* Add a data-supplying parameter to the entity */
         /*
         public Parameter AddParameter<T>(string name, T data, ParameterVariant variant = ParameterVariant.PARAMETER)
@@ -543,6 +566,11 @@ namespace CATHODE.Scripting
         public ShortGuid thisParamID;    //The ID of the parameter
         public ShortGuid linkedParamID;  //The ID of the parameter we're connecting to
         public ShortGuid linkedEntityID; //The ID of the entity we're connecting to that has the linked parameter
+
+        public Entity GetEntity(Composite comp)
+        {
+            return comp.GetEntityByID(linkedEntityID);
+        }
     }
 
     /// <summary>
