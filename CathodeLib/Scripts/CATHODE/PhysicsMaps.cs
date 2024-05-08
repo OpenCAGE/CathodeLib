@@ -37,12 +37,10 @@ namespace CATHODE
                     Entry entry = new Entry();
                     entry.physics_system_index = reader.ReadInt32();
                     reader.BaseStream.Position += 4;
-                    entry.resource_type = Utilities.Consume<ShortGuid>(reader); 
+                    entry.resource_type = Utilities.Consume<ShortGuid>(reader);
 
                     if (entry.resource_type != ShortGuidUtils.Generate("DYNAMIC_PHYSICS_SYSTEM"))
-                    {
-                        string sdffds = "";
-                    }
+                        throw new Exception("Unexpected resource type! Expected DYNAMIC_PHYSICS_SYSTEM.");
 
                     entry.composite_instance_id = Utilities.Consume<ShortGuid>(reader); 
                     entry.entity = Utilities.Consume<CommandsEntityReference>(reader);
