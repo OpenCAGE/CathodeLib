@@ -373,7 +373,7 @@ namespace CATHODE.Scripting
             if (rr == null)
             {
                 rr = new ResourceReference(type);
-                rr.resource_id = shortGUID;
+                rr.resource_id = type == ResourceType.DYNAMIC_PHYSICS_SYSTEM ? ShortGuidUtils.Generate("DYNAMIC_PHYSICS_SYSTEM") : shortGUID;
                 switch (rr.resource_type)
                 {
                     case ResourceType.DYNAMIC_PHYSICS_SYSTEM:

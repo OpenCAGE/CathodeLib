@@ -161,7 +161,9 @@ namespace CATHODE.Scripting
             if (x == null) return y;
             if (y == null) return x;
 
-            return new cTransform(x.position + y.position, x.rotation + y.rotation);
+
+
+            return new cTransform(x.position + y.position, x.rotation.AddEulerAngles(y.rotation));
         }
 
         public override string ToString()

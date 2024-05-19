@@ -21,9 +21,6 @@ namespace CATHODE
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public PhysicsMaps(string path) : base(path) { }
 
-        //NOTE: clearing out this file does not cause a crash, and it does not break physics objects like boxes
-        //     ... it does however break doors...
-
         #region FILE_IO
         override protected bool LoadInternal()
         {

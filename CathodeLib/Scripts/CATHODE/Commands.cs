@@ -455,7 +455,7 @@ namespace CATHODE
                             composite.functions[x].resources.AddRange(resourceRefs.Where(o => o.resource_id == composite.functions[x].shortGUID));
                             resourceRefs.RemoveAll(o => o.resource_id == composite.functions[x].shortGUID);
                         }
-                        //Any that are left over will be applied to PhysicsSystem entities
+                        //Any that are left over will be applied to PhysicsSystem entities - really these just exist in the composite, but it's easier for us to track this way
                         if (resourceRefs.Count == 1 && resourceRefs[0].resource_type == ResourceType.DYNAMIC_PHYSICS_SYSTEM)
                         {
                             FunctionEntity physEnt = composite.functions.FirstOrDefault(o => o.function == physEntID);
@@ -574,6 +574,7 @@ namespace CATHODE
                                 Entries[i].functions[x].AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE);
                                 break;
 
+                            //NOTE: Really, DYNAMIC_PHYSICS_SYSTEM isn't actually on the entity, it's on the composite
                             case FunctionType.PhysicsSystem:
                                 Parameter dps_index = Entries[i].functions[x].GetParameter("system_index");
                                 if (dps_index == null)
@@ -583,6 +584,7 @@ namespace CATHODE
                                 }
                                 Entries[i].functions[x].AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).index = ((cInteger)dps_index.content).value;
                                 break;
+
                             case FunctionType.EnvironmentModelReference:
                                 Parameter rsc = Entries[i].functions[x].GetParameter("resource");
                                 if (rsc == null)
