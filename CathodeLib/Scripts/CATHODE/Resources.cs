@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -40,7 +40,7 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            Entries = Entries.OrderBy(o => o.composite_instance_id).ToList();
+            Entries = Entries.OrderBy(o => o.composite_instance_id).ThenBy(o => o.resource_id).ToList();
 
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
