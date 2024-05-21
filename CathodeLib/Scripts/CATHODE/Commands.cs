@@ -274,7 +274,7 @@ namespace CATHODE
                                                     break;
                                                 case ResourceType.COLLISION_MAPPING:
                                                     resource.index = reader_parallel.ReadInt32();
-                                                    resource.collisionID = new ShortGuid(reader_parallel);
+                                                    resource.entityID = new ShortGuid(reader_parallel);
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
@@ -943,7 +943,7 @@ namespace CATHODE
                                                 break;
                                             case ResourceType.COLLISION_MAPPING:
                                                 writer.Write(resourceReferences[i][p].index);
-                                                writer.Write(resourceReferences[i][p].collisionID.ToUInt32());
+                                                writer.Write(resourceReferences[i][p].entityID.ToUInt32());
                                                 break;
                                             case ResourceType.ANIMATED_MODEL:
                                             case ResourceType.DYNAMIC_PHYSICS_SYSTEM:

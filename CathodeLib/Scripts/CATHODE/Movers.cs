@@ -204,7 +204,7 @@ namespace CATHODE
             public UInt32 renderable_element_index; //reds.bin index
             public UInt32 renderable_element_count; //reds.bin count
 
-            public UInt32 resource_index; //This is the index value from Resources.bin
+            public int resource_index; //This is the index value from Resources.bin
             //256
             public Vector3 Unknowns5_;
             public UInt32 visibility; // pulled from iOS dump - should be visibility var?
