@@ -200,6 +200,7 @@ namespace CATHODE
             public UInt64 fogsphere_val2; // 0xa8 in RenderableFogSphereInstance
                                           //160
             public RENDER_CONSTANTS render_constants;
+
             //244
             public UInt32 renderable_element_index; //reds.bin index
             public UInt32 renderable_element_count; //reds.bin count
@@ -212,7 +213,7 @@ namespace CATHODE
 
             public CommandsEntityReference entity; //The entity in the Commands file
 
-                                                 //280
+            //280
             public Int32 environment_map_index; //environment_map.bin index - converted to short in code
                                                //284
             public float emissive_val1; //emissive surface val1
@@ -221,9 +222,8 @@ namespace CATHODE
                                         //296
 
             //If primary zone ID or secondary zone ID are zero, they are not applied to a zone. it seems like the game hacks this by setting the primary id to 1 to add it to a sort of "global zone", for entities that are spawned but not in a zone.
-
-            public ShortGuid primary_zone_id; //zone id? RenderableScene::create_instance, RenderableScene::initialize - note in Collision.MAP we have this val too and it is defo zones
-            public ShortGuid secondary_zone_id;  //zone activator? RenderableScene::create_instance, RenderableScene::initialize - this is another zone id, perhaps the one that is linked for preloading?
+            public ShortGuid primary_zone_id;
+            public ShortGuid secondary_zone_id;
 
                                           //304
             public UInt32 Unknowns61_; //uVar3 in reserve_light_light_master_sets, val of LightMasterSet, or an incrementer

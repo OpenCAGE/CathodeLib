@@ -244,7 +244,7 @@ namespace CATHODE.Scripting
                 entity = currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[i]);
 
                 if (entity == null) break;
-                if (includeShortGuids) hierarchyString += "[" + entity.shortGUID + "] ";
+                if (includeShortGuids) hierarchyString += "[" + entity.shortGUID.ToByteString() + "] ";
                 hierarchyString += EntityUtils.GetName(currentFlowgraphToSearch.shortGUID, entity.shortGUID);
                 if (i >= hierarchyCopy.Count - 2) break; //Last is always 00-00-00-00
                 hierarchyString += " -> ";

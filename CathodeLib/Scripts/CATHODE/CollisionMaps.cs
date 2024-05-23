@@ -1,8 +1,9 @@
-﻿using CATHODE.Scripting;
+using CATHODE.Scripting;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace CATHODE
@@ -47,6 +48,8 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
+            Entries = Entries.OrderBy(o => o.entity.entity_id.ToUInt32() + o.id.ToUInt32()).ThenBy(o => o.entity.composite_instance_id.ToUInt32()).ThenBy(o => o.zone_id.ToUInt32()).ToList();
+
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
@@ -72,6 +75,23 @@ namespace CATHODE
             public ShortGuid id = ShortGuid.Invalid; //This is the name of the entity hashed via ShortGuid
             public CommandsEntityReference entity = new CommandsEntityReference();
             public ShortGuid zone_id = ShortGuid.Invalid; //this maps the entity to a zone ID. interestingly, this seems to be the point of truth for the zone rendering
+
+            public override bool Equals(object obj)
+            {
+                return obj is Entry entry &&
+                       EqualityComparer<ShortGuid>.Default.Equals(id, entry.id) &&
+                       EqualityComparer<CommandsEntityReference>.Default.Equals(entity, entry.entity) &&
+                       EqualityComparer<ShortGuid>.Default.Equals(zone_id, entry.zone_id);
+            }
+
+            public override int GetHashCode()
+            {
+                int hashCode = 1001543423;
+                hashCode = hashCode * -1521134295 + id.GetHashCode();
+                hashCode = hashCode * -1521134295 + EqualityComparer<CommandsEntityReference>.Default.GetHashCode(entity);
+                hashCode = hashCode * -1521134295 + zone_id.GetHashCode();
+                return hashCode;
+            }
         };
         #endregion
     }
