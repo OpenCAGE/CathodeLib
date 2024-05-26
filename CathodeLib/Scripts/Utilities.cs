@@ -471,7 +471,7 @@ namespace CathodeLib
         public ShortGuid composite_instance_id = ShortGuid.Invalid; //The instance of the composite this entity is in when created via hierarchy
 
         public CommandsEntityReference() { }
-        public CommandsEntityReference(EntityPath hierarchy)
+        public CommandsEntityReference(EntityHandle hierarchy)
         {
             entity_id = hierarchy.GetPointedEntityID();
             composite_instance_id = hierarchy.GenerateInstance();

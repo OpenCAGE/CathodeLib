@@ -419,7 +419,7 @@ namespace CATHODE.Scripting
         }
 
         public ShortGuid function;                  //The "function" value on the entity we're proxying
-        public EntityPath proxy = new EntityPath(); //A path to the entity we're proxying
+        public EntityHandle proxy = new EntityHandle(); //A path to the entity we're proxying
     }
     [Serializable]
     public class AliasEntity : Entity
@@ -437,7 +437,7 @@ namespace CATHODE.Scripting
             if (hierarchy != null) this.alias.path = hierarchy;
         }
 
-        public EntityPath alias = new EntityPath(); //A path to the entity we're an alias of
+        public EntityHandle alias = new EntityHandle(); //A path to the entity we're an alias of
     }
 
     #region SPECIAL FUNCTION ENTITIES
@@ -471,7 +471,7 @@ namespace CATHODE.Scripting
             public ShortGuid parameterSubID; //if parameterID is position, this might be x for example
 
             //The path to the connected entity which has the above parameter
-            public EntityPath connectedEntity = new EntityPath(); 
+            public EntityHandle connectedEntity = new EntityHandle(); 
         }
 
         [Serializable]
@@ -520,7 +520,7 @@ namespace CATHODE.Scripting
         public class Entity
         {
             public float timing = 0.0f;
-            public EntityPath connectedEntity = new EntityPath();
+            public EntityHandle connectedEntity = new EntityHandle();
         }
         [Serializable]
         public class Event
@@ -579,12 +579,12 @@ namespace CATHODE.Scripting
     /// </summary>
     [Serializable]
 #if DEBUG
-    [JsonConverter(typeof(EntityPathConverter))]
+    [JsonConverter(typeof(EntityHandleConverter))]
 #endif
-    public class EntityPath
+    public class EntityHandle
     {
-        public EntityPath() { }
-        public EntityPath(List<ShortGuid> _path)
+        public EntityHandle() { }
+        public EntityHandle(List<ShortGuid> _path)
         {
             path = _path;
 
@@ -593,7 +593,7 @@ namespace CATHODE.Scripting
         }
         public List<ShortGuid> path = new List<ShortGuid>();
 
-        public static bool operator ==(EntityPath x, EntityPath y)
+        public static bool operator ==(EntityHandle x, EntityHandle y)
         {
             if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
             if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
@@ -605,14 +605,14 @@ namespace CATHODE.Scripting
             }
             return true;
         }
-        public static bool operator !=(EntityPath x, EntityPath y)
+        public static bool operator !=(EntityHandle x, EntityHandle y)
         {
             return !(x == y);
         }
 
         public override bool Equals(object obj)
         {
-            return obj is EntityPath hierarchy &&
+            return obj is EntityHandle hierarchy &&
                    EqualityComparer<List<ShortGuid>>.Default.Equals(this.path, hierarchy.path);
         }
 
@@ -733,19 +733,25 @@ namespace CATHODE.Scripting
             path.Add(ShortGuid.Invalid);
             return instanceGenerated;
         }
+
+        /* Generate a zone ID (use this when the EntityHandle points to a Zone entity) */
+        public ShortGuid GenerateZoneID()
+        {
+            return new ShortGuid(0 + GenerateInstance().ToUInt32() + GetPointedEntityID().ToUInt32() + 1);
+        }
     }
 
 #if DEBUG
-    public class EntityPathConverter : JsonConverter
+    public class EntityHandleConverter : JsonConverter
     {
         public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
         {
-            writer.WriteValue(((EntityPath)value).GetAsString());
+            writer.WriteValue(((EntityHandle)value).GetAsString());
         }
 
         public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
         {
-            EntityPath e = new EntityPath();
+            EntityHandle e = new EntityHandle();
             List<string> vals = reader.Value.ToString().Split(new[] { " -> " }, StringSplitOptions.None).ToList();
             for (int i = 0; i < vals.Count; i++) e.path.Add(new ShortGuid(vals[i]));
             return e;
@@ -753,7 +759,7 @@ namespace CATHODE.Scripting
 
         public override bool CanConvert(Type objectType)
         {
-            return objectType == typeof(EntityPath);
+            return objectType == typeof(EntityHandle);
         }
     }
 #endif

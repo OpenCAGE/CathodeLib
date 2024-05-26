@@ -1,4 +1,4 @@
-using CATHODE.Scripting;
+﻿using CATHODE.Scripting;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
@@ -41,6 +41,10 @@ namespace CATHODE
                     entry.zone_id = Utilities.Consume<ShortGuid>(reader);
                     reader.BaseStream.Position += 16;
                     Entries.Add(entry);
+
+                    //uint test1 = entry.entity.entity_id.ToUInt32() + entry.id.ToUInt32() + entry.entity.composite_instance_id.ToUInt32() + entry.zone_id.ToUInt32();
+
+                    //Console.WriteLine(test1 + " -> " + entry.entity.entity_id.ToUInt32() + " -> " + entry.id.ToUInt32() + " -> " + entry.entity.composite_instance_id.ToUInt32() + " -> " + entry.zone_id.ToUInt32());
                 }
             }
             return true;
@@ -48,7 +52,7 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            Entries = Entries.OrderBy(o => o.entity.entity_id.ToUInt32() + o.id.ToUInt32()).ThenBy(o => o.entity.composite_instance_id.ToUInt32()).ThenBy(o => o.zone_id.ToUInt32()).ToList();
+            //Entries = Entries.OrderBy(o => o.entity.entity_id.ToUInt32() + o.id.ToUInt32()).ThenBy(o => o.entity.composite_instance_id.ToUInt32()).ThenBy(o => o.zone_id.ToUInt32()).ToList();
 
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
