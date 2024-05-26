@@ -387,10 +387,17 @@ namespace CATHODE.Scripting
             return rr;
         }
 
-        /* Find a resource reference of type */
-        public ResourceReference GetResource(ResourceType type)
+        /* Find a resource reference of type on the entity - will also check the "resource" parameter second if alsoCheckParameter is true */
+        public ResourceReference GetResource(ResourceType type, bool alsoCheckParameter = false)
         {
-            return resources.FirstOrDefault(o => o.resource_type == type);
+            ResourceReference resource = resources.FirstOrDefault(o => o.resource_type == type);
+            if (alsoCheckParameter && resource == null)
+            {
+                Parameter resourceParam = GetParameter("resource");
+                if (resourceParam != null && resourceParam.content != null && resourceParam.content.dataType == DataType.RESOURCE)
+                    resource = ((cResource)resourceParam.content).GetResource(ResourceType.COLLISION_MAPPING);
+            }
+            return resource;
         }
 
         public override string ToString()
