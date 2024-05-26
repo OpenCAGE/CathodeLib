@@ -36,7 +36,7 @@ namespace CATHODE
                     Entry entry = new Entry();
                     reader.BaseStream.Position += 8;
                     entry.id = Utilities.Consume<ShortGuid>(reader);
-                    entry.entity = Utilities.Consume<CommandsEntityReference>(reader);
+                    entry.entity = Utilities.Consume<EntityHandle>(reader);
                     reader.BaseStream.Position += 8;
                     entry.zone_id = Utilities.Consume<ShortGuid>(reader);
                     reader.BaseStream.Position += 16;
@@ -63,7 +63,7 @@ namespace CATHODE
                 {
                     writer.Write(new byte[8]);
                     Utilities.Write<ShortGuid>(writer, Entries[i].id);
-                    Utilities.Write<CommandsEntityReference>(writer, Entries[i].entity);
+                    Utilities.Write<EntityHandle>(writer, Entries[i].entity);
                     writer.Write(new byte[8]);
                     Utilities.Write<ShortGuid>(writer, Entries[i].zone_id);
                     writer.Write(new byte[16]);
@@ -77,14 +77,14 @@ namespace CATHODE
         public class Entry
         {
             public ShortGuid id = ShortGuid.Invalid; //This is the name of the entity hashed via ShortGuid
-            public CommandsEntityReference entity = new CommandsEntityReference();
+            public EntityHandle entity = new EntityHandle();
             public ShortGuid zone_id = ShortGuid.Invalid; //this maps the entity to a zone ID. interestingly, this seems to be the point of truth for the zone rendering
 
             public override bool Equals(object obj)
             {
                 return obj is Entry entry &&
                        EqualityComparer<ShortGuid>.Default.Equals(id, entry.id) &&
-                       EqualityComparer<CommandsEntityReference>.Default.Equals(entity, entry.entity) &&
+                       EqualityComparer<EntityHandle>.Default.Equals(entity, entry.entity) &&
                        EqualityComparer<ShortGuid>.Default.Equals(zone_id, entry.zone_id);
             }
 
@@ -92,7 +92,7 @@ namespace CATHODE
             {
                 int hashCode = 1001543423;
                 hashCode = hashCode * -1521134295 + id.GetHashCode();
-                hashCode = hashCode * -1521134295 + EqualityComparer<CommandsEntityReference>.Default.GetHashCode(entity);
+                hashCode = hashCode * -1521134295 + EqualityComparer<EntityHandle>.Default.GetHashCode(entity);
                 hashCode = hashCode * -1521134295 + zone_id.GetHashCode();
                 return hashCode;
             }

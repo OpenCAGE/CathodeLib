@@ -39,7 +39,7 @@ namespace CATHODE
                         throw new Exception("Unexpected resource type! Expected DYNAMIC_PHYSICS_SYSTEM.");
 
                     entry.composite_instance_id = Utilities.Consume<ShortGuid>(reader); 
-                    entry.entity = Utilities.Consume<CommandsEntityReference>(reader);
+                    entry.entity = Utilities.Consume<EntityHandle>(reader);
 
                     Vector4 Row0 = Utilities.Consume<Vector4>(reader);
                     Vector4 Row1 = Utilities.Consume<Vector4>(reader);
@@ -114,7 +114,7 @@ namespace CATHODE
             public ShortGuid composite_instance_id;
 
             //This is the entity ID and instance ID for the actual instanced composite entity (basically, a step down from the instance above).
-            public CommandsEntityReference entity;
+            public EntityHandle entity;
 
             //This is the worldspace position of the composite instance
             public Vector3 Position;

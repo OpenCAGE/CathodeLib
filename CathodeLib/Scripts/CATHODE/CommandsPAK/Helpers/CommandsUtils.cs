@@ -270,9 +270,9 @@ namespace CATHODE.Scripting
 
         /* Generate all possible hierarchies for an entity */
         private static List<List<ShortGuid>> _hierarchies = new List<List<ShortGuid>>();
-        public static List<EntityHandle> GenerateHierarchies(Commands commands, Composite composite, Entity entity)
+        public static List<EntityPath> GenerateHierarchies(Commands commands, Composite composite, Entity entity)
         {
-            List<EntityHandle> hierarchies = new List<EntityHandle>();
+            List<EntityPath> hierarchies = new List<EntityPath>();
             _hierarchies.Clear();
 
             GenerateHierarchiesRecursive(commands, null, commands.EntryPoints[0], composite, new List<ShortGuid>());
@@ -280,7 +280,7 @@ namespace CATHODE.Scripting
             for (int i = 0; i < _hierarchies.Count; i++)
             {
                 _hierarchies[i].Add(entity.shortGUID);
-                hierarchies.Add(new EntityHandle(_hierarchies[i]));
+                hierarchies.Add(new EntityPath(_hierarchies[i]));
             }
 
             return hierarchies;

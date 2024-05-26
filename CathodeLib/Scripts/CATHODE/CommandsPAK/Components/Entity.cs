@@ -419,7 +419,7 @@ namespace CATHODE.Scripting
         }
 
         public ShortGuid function;                  //The "function" value on the entity we're proxying
-        public EntityHandle proxy = new EntityHandle(); //A path to the entity we're proxying
+        public EntityPath proxy = new EntityPath(); //A path to the entity we're proxying
     }
     [Serializable]
     public class AliasEntity : Entity
@@ -437,7 +437,7 @@ namespace CATHODE.Scripting
             if (hierarchy != null) this.alias.path = hierarchy;
         }
 
-        public EntityHandle alias = new EntityHandle(); //A path to the entity we're an alias of
+        public EntityPath alias = new EntityPath(); //A path to the entity we're an alias of
     }
 
     #region SPECIAL FUNCTION ENTITIES
@@ -471,7 +471,7 @@ namespace CATHODE.Scripting
             public ShortGuid parameterSubID; //if parameterID is position, this might be x for example
 
             //The path to the connected entity which has the above parameter
-            public EntityHandle connectedEntity = new EntityHandle(); 
+            public EntityPath connectedEntity = new EntityPath(); 
         }
 
         [Serializable]
@@ -520,7 +520,7 @@ namespace CATHODE.Scripting
         public class Entity
         {
             public float timing = 0.0f;
-            public EntityHandle connectedEntity = new EntityHandle();
+            public EntityPath connectedEntity = new EntityPath();
         }
         [Serializable]
         public class Event
@@ -579,12 +579,12 @@ namespace CATHODE.Scripting
     /// </summary>
     [Serializable]
 #if DEBUG
-    [JsonConverter(typeof(EntityHandleConverter))]
+    [JsonConverter(typeof(EntityPathConverter))]
 #endif
-    public class EntityHandle
+    public class EntityPath
     {
-        public EntityHandle() { }
-        public EntityHandle(List<ShortGuid> _path)
+        public EntityPath() { }
+        public EntityPath(List<ShortGuid> _path)
         {
             path = _path;
 
@@ -593,7 +593,7 @@ namespace CATHODE.Scripting
         }
         public List<ShortGuid> path = new List<ShortGuid>();
 
-        public static bool operator ==(EntityHandle x, EntityHandle y)
+        public static bool operator ==(EntityPath x, EntityPath y)
         {
             if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
             if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
@@ -605,14 +605,14 @@ namespace CATHODE.Scripting
             }
             return true;
         }
-        public static bool operator !=(EntityHandle x, EntityHandle y)
+        public static bool operator !=(EntityPath x, EntityPath y)
         {
             return !(x == y);
         }
 
         public override bool Equals(object obj)
         {
-            return obj is EntityHandle hierarchy &&
+            return obj is EntityPath hierarchy &&
                    EqualityComparer<List<ShortGuid>>.Default.Equals(this.path, hierarchy.path);
         }
 
@@ -742,16 +742,16 @@ namespace CATHODE.Scripting
     }
 
 #if DEBUG
-    public class EntityHandleConverter : JsonConverter
+    public class EntityPathConverter : JsonConverter
     {
         public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
         {
-            writer.WriteValue(((EntityHandle)value).GetAsString());
+            writer.WriteValue(((EntityPath)value).GetAsString());
         }
 
         public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
         {
-            EntityHandle e = new EntityHandle();
+            EntityPath e = new EntityPath();
             List<string> vals = reader.Value.ToString().Split(new[] { " -> " }, StringSplitOptions.None).ToList();
             for (int i = 0; i < vals.Count; i++) e.path.Add(new ShortGuid(vals[i]));
             return e;
@@ -759,7 +759,7 @@ namespace CATHODE.Scripting
 
         public override bool CanConvert(Type objectType)
         {
-            return objectType == typeof(EntityHandle);
+            return objectType == typeof(EntityPath);
         }
     }
 #endif

@@ -465,13 +465,13 @@ namespace CathodeLib
     /// The instance ID identifies the hierarchy the composite was created at. This can be generated with GenerateInstance.
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public class CommandsEntityReference
+    public class EntityHandle
     {
         public ShortGuid entity_id = ShortGuid.Invalid;             //The ID of the entity within its written composite
         public ShortGuid composite_instance_id = ShortGuid.Invalid; //The instance of the composite this entity is in when created via hierarchy
 
-        public CommandsEntityReference() { }
-        public CommandsEntityReference(EntityHandle hierarchy)
+        public EntityHandle() { }
+        public EntityHandle(EntityPath hierarchy)
         {
             entity_id = hierarchy.GetPointedEntityID();
             composite_instance_id = hierarchy.GenerateInstance();
@@ -479,11 +479,11 @@ namespace CathodeLib
 
         public override bool Equals(object obj)
         {
-            if (!(obj is CommandsEntityReference)) return false;
-            return (CommandsEntityReference)obj == this;
+            if (!(obj is EntityHandle)) return false;
+            return (EntityHandle)obj == this;
         }
 
-        public static bool operator ==(CommandsEntityReference x, CommandsEntityReference y)
+        public static bool operator ==(EntityHandle x, EntityHandle y)
         {
             if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
             if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
@@ -491,7 +491,7 @@ namespace CathodeLib
             if (x.composite_instance_id != y.composite_instance_id) return false;
             return true;
         }
-        public static bool operator !=(CommandsEntityReference x, CommandsEntityReference y)
+        public static bool operator !=(EntityHandle x, EntityHandle y)
         {
             return !(x == y);
         }

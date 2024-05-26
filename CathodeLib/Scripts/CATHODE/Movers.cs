@@ -211,7 +211,7 @@ namespace CATHODE
             public UInt32 visibility; // pulled from iOS dump - should be visibility var?
                                       //272
 
-            public CommandsEntityReference entity; //The entity in the Commands file
+            public EntityHandle entity; //The entity in the Commands file
 
             //280
             public Int32 environment_map_index; //environment_map.bin index - converted to short in code

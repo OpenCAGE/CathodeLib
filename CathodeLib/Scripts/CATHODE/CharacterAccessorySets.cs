@@ -25,7 +25,7 @@ namespace CATHODE
                 for (int i = 0; i < entryCount; i++)
                 {
                     Entry entry = new Entry(); 
-                    entry.character = Utilities.Consume<CommandsEntityReference>(reader);
+                    entry.character = Utilities.Consume<EntityHandle>(reader);
 
                     entry.shirt_composite = Utilities.Consume<ShortGuid>(reader);
                     entry.trousers_composite = Utilities.Consume<ShortGuid>(reader);
@@ -112,7 +112,7 @@ namespace CATHODE
         #region STRUCTURES
         public class Entry
         {
-            public CommandsEntityReference character = new CommandsEntityReference();
+            public EntityHandle character = new EntityHandle();
 
             public ShortGuid shirt_composite = ShortGuid.Invalid;
             public ShortGuid trousers_composite = ShortGuid.Invalid;
