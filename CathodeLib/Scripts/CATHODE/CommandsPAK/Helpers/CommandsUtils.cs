@@ -3,6 +3,7 @@ using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -301,6 +302,28 @@ namespace CATHODE.Scripting
                 Composite next = commands.GetComposite(comp.functions[i].function);
                 if (next != null) GenerateHierarchiesRecursive(commands, comp.functions[i], next, target, new List<ShortGuid>(hierarchy.ConvertAll(x => x)));
             });
+        }
+
+        /* Calculate an instanced entity's worldspace position & rotation */
+        public static (Vector3, Quaternion) CalculateInstancedPosition(EntityPath hierarchy)
+        {
+            cTransform globalTransform = new cTransform();
+            Composite comp = _commands.EntryPoints[0];
+            for (int x = 0; x < hierarchy.path.Count; x++)
+            {
+                FunctionEntity compInst = comp.functions.FirstOrDefault(o => o.shortGUID == hierarchy.path[x]);
+                if (compInst == null)
+                    break;
+
+                Parameter positionParam = compInst.GetParameter("position");
+                if (positionParam != null && positionParam.content != null && positionParam.content.dataType == DataType.TRANSFORM)
+                    globalTransform += (cTransform)positionParam.content;
+
+                comp = _commands.GetComposite(compInst.function);
+                if (comp == null)
+                    break;
+            }
+            return (globalTransform.position, Quaternion.CreateFromYawPitchRoll(globalTransform.rotation.Y * (float)Math.PI / 180.0f, globalTransform.rotation.X * (float)Math.PI / 180.0f, globalTransform.rotation.Z * (float)Math.PI / 180.0f));
         }
 
         /* CA's CAGE doesn't properly tidy up hierarchies pointing to deleted entities - so we can do that to save confusion */

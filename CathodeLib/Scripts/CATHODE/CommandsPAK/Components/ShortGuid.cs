@@ -17,7 +17,8 @@ namespace CATHODE.Scripting
     public struct ShortGuid : IComparable<ShortGuid>
     {
         public static readonly ShortGuid Invalid = new ShortGuid(0);
-        public static readonly ShortGuid InitialiserBase = new ShortGuid("FE-5B-F0-4A");
+        public static readonly ShortGuid InitialiserBase = new ShortGuid(1257266174); //"FE-5B-F0-4A"
+        public static readonly ShortGuid Max = new ShortGuid(4294967295); //"FF-FF-FF-FF"
 
         public bool IsInvalid => val == Invalid.val;
 
