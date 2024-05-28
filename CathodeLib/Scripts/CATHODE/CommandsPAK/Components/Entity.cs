@@ -746,6 +746,14 @@ namespace CATHODE.Scripting
         {
             return new ShortGuid(0 + GenerateInstance().ToUInt32() + GetPointedEntityID().ToUInt32() + 1);
         }
+        
+        /* Updates this path to have the path to another entity prepended to it */
+        public void PrependPath(EntityPath otherPath)
+        {
+            int length = otherPath.path[otherPath.path.Count - 1] == ShortGuid.Invalid ? otherPath.path.Count - 2 : otherPath.path.Count - 1;
+            for (int i = 0; i < length; i++)
+                path.Insert(i, otherPath.path[i]);
+        }
     }
 
 #if DEBUG
