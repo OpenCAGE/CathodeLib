@@ -595,7 +595,7 @@ namespace CATHODE.Scripting
         {
             path = _path;
 
-            if (path[path.Count - 1] != ShortGuid.Invalid)
+            if (path.Count == 0 || path[path.Count - 1] != ShortGuid.Invalid)
                 path.Add(ShortGuid.Invalid);
         }
         public List<ShortGuid> path = new List<ShortGuid>();
