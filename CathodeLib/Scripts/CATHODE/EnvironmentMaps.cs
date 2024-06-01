@@ -9,10 +9,11 @@ namespace CATHODE
     public class EnvironmentMaps : CathodeFile
     {
         public List<Mapping> Entries = new List<Mapping>();
-        public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
+        public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE | Implementation.CREATE;
         public EnvironmentMaps(string path) : base(path) { }
 
-        private int _unknownValue = 12; //TODO: need to figure out what this val is to be able to create file from scratch
+        //This is the number of environment maps in the level. We should never reference an index higher than this.
+        public int EnvironmentMapCount = 0;
 
         #region FILE_IO
         override protected bool LoadInternal()
@@ -21,14 +22,14 @@ namespace CATHODE
             {
                 reader.BaseStream.Position += 8;
                 int entryCount = reader.ReadInt32();
-                _unknownValue = reader.ReadInt32();
                 for (int i = 0; i < entryCount; i++)
                 {
                     Mapping entry = new Mapping();
-                    entry.EnvMapIndex = reader.ReadInt32();
                     entry.MoverIndex = reader.ReadInt32();
+                    entry.EnvMapIndex = reader.ReadInt32();
                     Entries.Add(entry);
                 }
+                EnvironmentMapCount = reader.ReadInt32();
             }
             return true;
         }
@@ -41,12 +42,12 @@ namespace CATHODE
                 Utilities.WriteString("envm", writer);
                 writer.Write(1);
                 writer.Write(Entries.Count);
-                writer.Write(_unknownValue); //TODO: what is this value? need to know for making new files.
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    writer.Write(Entries[i].EnvMapIndex);
                     writer.Write(Entries[i].MoverIndex);
+                    writer.Write(Entries[i].EnvMapIndex);
                 }
+                writer.Write(EnvironmentMapCount);
             }
             return true;
         }

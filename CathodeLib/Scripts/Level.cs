@@ -164,14 +164,17 @@ namespace CathodeLib
             /* UPDATE MOVER INDEXES */
 
             //Get links to mover entries as actual objects
+            /*
             List<Movers.MOVER_DESCRIPTOR> lightMovers = new List<Movers.MOVER_DESCRIPTOR>();
             for (int i = 0; i < Lights.Entries.Count; i++)
                 lightMovers.Add(Movers.GetAtWriteIndex(Lights.Entries[i].MoverIndex));
+            */
             List<Movers.MOVER_DESCRIPTOR> envMapMovers = new List<Movers.MOVER_DESCRIPTOR>();
             for (int i = 0; i < EnvironmentMaps.Entries.Count; i++)
                 envMapMovers.Add(Movers.GetAtWriteIndex(EnvironmentMaps.Entries[i].MoverIndex));
             Movers.Save();
 
+            /*
             //Update mover indexes for light refs
             List<Lights.Light> lights = new List<Lights.Light>();
             for (int i = 0; i < Lights.Entries.Count; i++)
@@ -181,6 +184,7 @@ namespace CathodeLib
             }
             Lights.Entries = lights;
             Lights.Save();
+            */
 
             //Update mover indexes for envmap refs
             List<EnvironmentMaps.Mapping> envMaps = new List<EnvironmentMaps.Mapping>();
