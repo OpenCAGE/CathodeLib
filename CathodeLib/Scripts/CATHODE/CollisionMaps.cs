@@ -24,14 +24,20 @@ namespace CATHODE
             {
                 //It seems typically in this file at the start there are a bunch of empty entries, and then there are a bunch of unresolvable ones, and then a bunch that can be resolved.
 
-                //first 18 are always null?
+                //first 18 are always null
+
                 //always first 247 are the same? 18 null and the rest in required assets?
 
                 //note: some of the things we skip here actually contain useful info, but the game doesn't read it so there's no point us bothering with it 
 
+
+
+
+                //NOTE: skipping first 18 as they're always empty, at least, for what we parse
                 reader.BaseStream.Position = 4;
                 int entryCount = reader.ReadInt32();
-                for (int i = 0; i < entryCount; i++)
+                reader.BaseStream.Position += (48 * 18);
+                for (int i = 0; i < entryCount - 18; i++)
                 {
                     Entry entry = new Entry();
                     reader.BaseStream.Position += 8;
@@ -41,10 +47,6 @@ namespace CATHODE
                     entry.zone_id = Utilities.Consume<ShortGuid>(reader);
                     reader.BaseStream.Position += 16;
                     Entries.Add(entry);
-
-                    //uint test1 = entry.entity.entity_id.ToUInt32() + entry.id.ToUInt32() + entry.entity.composite_instance_id.ToUInt32() + entry.zone_id.ToUInt32();
-
-                    //Console.WriteLine(test1 + " -> " + entry.entity.entity_id.ToUInt32() + " -> " + entry.id.ToUInt32() + " -> " + entry.entity.composite_instance_id.ToUInt32() + " -> " + entry.zone_id.ToUInt32());
                 }
             }
             return true;
@@ -57,8 +59,11 @@ namespace CATHODE
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
-                writer.Write(Entries.Count * 80);
-                writer.Write(Entries.Count);
+                writer.Write((Entries.Count + 18) * 48);
+                writer.Write(Entries.Count + 18);
+
+                writer.Write(new byte[18 * 48]);
+
                 for (int i = 0; i < Entries.Count; i++)
                 {
                     writer.Write(new byte[8]);
@@ -79,6 +84,22 @@ namespace CATHODE
             public ShortGuid id = ShortGuid.Invalid; //This is the name of the entity hashed via ShortGuid
             public EntityHandle entity = new EntityHandle();
             public ShortGuid zone_id = ShortGuid.Invalid; //this maps the entity to a zone ID. interestingly, this seems to be the point of truth for the zone rendering
+
+            //todo: there's also hull mappings here which the game seemingly SHOULD use, but we can rewrite without them... very weird. ignoring them for now...
+
+            public static bool operator ==(Entry x, Entry y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+                if (x.id != y.id) return false;
+                if (x.zone_id != y.zone_id) return false;
+                if (x.entity != y.entity) return false;
+                return true;
+            }
+            public static bool operator !=(Entry x, Entry y)
+            {
+                return !(x == y);
+            }
 
             public override bool Equals(object obj)
             {

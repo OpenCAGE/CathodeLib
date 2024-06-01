@@ -227,7 +227,11 @@ namespace CATHODE
 
                                           //304
             public UInt32 Unknowns61_; //uVar3 in reserve_light_light_master_sets, val of LightMasterSet, or an incrementer
-            public UInt16 Unknown17_;   // TODO: It is -1 most of the time, but some times it isn't.
+
+
+            public UInt16 Unknown17_;   // TODO: flags? always "65535" on BSP_LV426 1 and 2
+
+
                                         //310
             public UInt16 instanceTypeFlags; //ushort - used for bitwise flags depending on mover RENDERABLE_INSTANCE::Type. Environment types seem to use first bit to decide if its position comes from MVR.
                                              //312
