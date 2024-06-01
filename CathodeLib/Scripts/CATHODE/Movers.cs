@@ -38,7 +38,7 @@ namespace CATHODE
             {
                 reader.BaseStream.Position += 4;
                 int entryCount = reader.ReadInt32();
-                _entryCountUnk = reader.ReadInt32(); //a count of something - not sure what
+                _entryCountUnk = reader.ReadInt32(); //a count of something - not sure what. not sure if it's actually used by the game
                 reader.BaseStream.Position += 20;
                 Entries = new List<MOVER_DESCRIPTOR>(Utilities.ConsumeArray<MOVER_DESCRIPTOR>(reader, entryCount));
             }
@@ -216,7 +216,7 @@ namespace CATHODE
             public EntityHandle entity; //The entity in the Commands file
 
             //280
-            public Int32 environment_map_index; //environment_map.bin index - converted to short in code
+            public Int32 environment_map_index = -1; //environment_map.bin index - converted to short in code
                                                //284
             public float emissive_val1; //emissive surface val1
             public float emissive_val2; //emissive surface val2
