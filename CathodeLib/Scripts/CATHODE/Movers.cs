@@ -32,6 +32,8 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal()
         {
+            //todo: first 12 always renderable but not linked to commands -> they are always the same models
+
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
                 reader.BaseStream.Position += 4;
