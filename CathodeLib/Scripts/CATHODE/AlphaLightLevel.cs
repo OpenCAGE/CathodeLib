@@ -20,7 +20,19 @@ namespace CATHODE.EXPERIMENTAL
         {
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
-                //todo
+                reader.BaseStream.Position += 8;
+
+                //NOTE: these values are always 64/128/256 i think
+                int count = reader.ReadInt32();
+                int length = reader.ReadInt32() * 8;
+
+                for (int i = 0; i < count; i++)
+                {
+                    Entries.Add(new Entry()
+                    {
+                        content = reader.ReadBytes(length)
+                    });
+                }
             }
             return true;
         }
@@ -31,8 +43,13 @@ namespace CATHODE.EXPERIMENTAL
             {
                 writer.BaseStream.SetLength(0);
                 Utilities.WriteString("alph", writer);
-                
-                //todo
+                writer.Write(0);
+                writer.Write(Entries.Count);
+                writer.Write(Entries.Count);
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    writer.Write(Entries[i].content);
+                }
             }
             return true;
         }
@@ -41,7 +58,7 @@ namespace CATHODE.EXPERIMENTAL
         #region STRUCTURES
         public class Entry
         {
-            //todo
+            public byte[] content;
         };
         #endregion
     }
