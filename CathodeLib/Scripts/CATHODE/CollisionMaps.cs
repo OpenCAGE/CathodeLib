@@ -20,6 +20,13 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal()
         {
+            int minUnk1 = 0;
+            int minUnk2 = 0;
+            int minColIn = 0;
+
+            List<int> flags = new List<int>();
+            Dictionary<string, List<string>> dictest = new Dictionary<string, List<string>>();
+
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
                 //It seems typically in this file at the start there are a bunch of empty entries, and then there are a bunch of unresolvable ones, and then a bunch that can be resolved.
@@ -32,7 +39,6 @@ namespace CATHODE
 
 
 
-
                 //NOTE: skipping first 18 as they're always empty, at least, for what we parse
                 reader.BaseStream.Position = 4;
                 int entryCount = reader.ReadInt32();
@@ -40,15 +46,61 @@ namespace CATHODE
                 for (int i = 0; i < entryCount - 18; i++)
                 {
                     Entry entry = new Entry();
-                    reader.BaseStream.Position += 8;
+
+                    entry.UnknownFlag = reader.ReadInt32(); //NOTE: if you filter by this value, all the UnknownIndex1s increment, UnknownIndex2s/collision_index don't increment but are grouped by -1s and non -1s, 
+
+                    //todo: compare flag value across levels
+
+                    entry.UnknownIndex1= reader.ReadInt32();
                     entry.id = Utilities.Consume<ShortGuid>(reader);
                     entry.entity = Utilities.Consume<EntityHandle>(reader);
-                    reader.BaseStream.Position += 8;
+                    entry.UnknownIndex2 = reader.ReadInt32();
+                    entry.collision_index = reader.ReadInt16();
+                    entry.UnknownValue = reader.ReadInt16();
                     entry.zone_id = Utilities.Consume<ShortGuid>(reader);
                     reader.BaseStream.Position += 16;
                     Entries.Add(entry);
+
+                    if (minUnk1 < entry.UnknownIndex1)
+                        minUnk1 = entry.UnknownIndex1;
+                    if (minUnk2 < entry.UnknownIndex2)
+                        minUnk2 = entry.UnknownIndex2;
+                    if (minColIn < entry.collision_index)
+                        minColIn = entry.collision_index;
+
+                    if (!flags.Contains(entry.UnknownFlag))
+                        flags.Add(entry.UnknownFlag);
+
+                    if (entry.collision_index != -1 && entry.UnknownIndex1 == -1 && entry.UnknownIndex2 == -1 && entry.UnknownValue == -1)
+                    {
+                        string sdfsdf = "";
+                    }
+
+                    if (entry.UnknownIndex1 == -1 && entry.UnknownIndex2 == -1 && entry.UnknownValue == -1)
+                    {
+                        string sdfsdf = "";
+                    }
+
+                    string flagBin = BitConverter.ToString(BitConverter.GetBytes(entry.UnknownFlag));
+                    if (!dictest.ContainsKey(flagBin))
+                        dictest.Add(flagBin, new List<string>());
+
+                    dictest[flagBin].Add(entry.UnknownIndex1 + " -> " + entry.UnknownIndex2 + " -> " + entry.collision_index);
+
+                   //if (entry.UnknownFlag == -1073737335)
+                   //    Console.WriteLine(entry.UnknownIndex1);
+
+                    if (entry.UnknownFlag == 4429)
+                        Console.WriteLine(entry.UnknownIndex1);
+
+                    //if (entry.UnknownFlag == -1073737405)
+                    //    Console.WriteLine(entry.UnknownIndex1);
+
+                    //Console.WriteLine(entry.UnknownFlag + " -> " + entry.UnknownIndex1 + " -> " + entry.UnknownIndex2 + " -> " + entry.collision_index + " -> " + entry.UnknownValue);
                 }
             }
+
+
             return true;
         }
 
@@ -66,10 +118,23 @@ namespace CATHODE
 
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    writer.Write(new byte[8]);
+                    //writer.Write(-268427008);
+                    //writer.Write(-1);
+
+                    writer.Write(Entries[i].UnknownFlag);
+                    writer.Write(Entries[i].UnknownIndex1);
+
                     Utilities.Write<ShortGuid>(writer, Entries[i].id);
                     Utilities.Write<EntityHandle>(writer, Entries[i].entity);
-                    writer.Write(new byte[8]);
+
+                    writer.Write(-1);
+                    //writer.Write(Entries[i].UnknownIndex2);
+
+                    writer.Write((Int16)Entries[i].collision_index);
+
+                    writer.Write((short)-1);
+                    //writer.Write((Int16)Entries[i].UnknownValue);
+
                     Utilities.Write<ShortGuid>(writer, Entries[i].zone_id);
                     writer.Write(new byte[16]);
                 }
@@ -85,7 +150,12 @@ namespace CATHODE
             public EntityHandle entity = new EntityHandle();
             public ShortGuid zone_id = ShortGuid.Invalid; //this maps the entity to a zone ID. interestingly, this seems to be the point of truth for the zone rendering
 
-            //todo: there's also hull mappings here which the game seemingly SHOULD use, but we can rewrite without them... very weird. ignoring them for now...
+            public int collision_index = -1; //maps to havok hkx entry
+
+            public int UnknownFlag = 0;
+            public int UnknownIndex1 = -1;
+            public int UnknownIndex2 = -1;
+            public int UnknownValue = -1;
 
             public static bool operator ==(Entry x, Entry y)
             {
