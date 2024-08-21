@@ -1,4 +1,4 @@
-﻿using CATHODE.Scripting;
+using CATHODE.Scripting;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
@@ -90,8 +90,8 @@ namespace CATHODE
                    //if (entry.UnknownFlag == -1073737335)
                    //    Console.WriteLine(entry.UnknownIndex1);
 
-                    if (entry.UnknownFlag == 4429)
-                        Console.WriteLine(entry.UnknownIndex1);
+                    //if (entry.UnknownFlag == 4429)
+                    //    Console.WriteLine(entry.UnknownIndex1);
 
                     //if (entry.UnknownFlag == -1073737405)
                     //    Console.WriteLine(entry.UnknownIndex1);

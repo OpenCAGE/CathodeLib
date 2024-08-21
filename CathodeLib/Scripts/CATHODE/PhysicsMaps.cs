@@ -72,6 +72,8 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
+            //Entries = Entries.OrderBy(o => o.physics_system_index).ToList();
+
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
@@ -104,7 +106,7 @@ namespace CATHODE
         public class Entry
         {
             //Should match system_index on the PhysicsSystem entity.
-            public int physics_system_index;
+            public int physics_system_index; //TODO: is this the havok index? collision.map points to havok indexes, so would make sense
 
             //DYNAMIC_PHYSICS_SYSTEM
             public ShortGuid resource_type;
