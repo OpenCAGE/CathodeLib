@@ -893,10 +893,10 @@ namespace CATHODE.Scripting
     {
         COLLISION_MAPPING,                //Links to data in COLLISION.MAP
         DYNAMIC_PHYSICS_SYSTEM,           //Links to data in PHYSICS.MAP
-        EXCLUSIVE_MASTER_STATE_RESOURCE,  // ?? -> this seems to define some sort of change of NAV_MESH state using EXCLUSIVE_MASTER_RESOURCE_INDICES
-        NAV_MESH_BARRIER_RESOURCE,
+        EXCLUSIVE_MASTER_STATE_RESOURCE,  // ?? -> this seems to define a change of STATE index somehow, linking to EXCLUSIVE_MASTER_RESOURCE_INDICES
+        NAV_MESH_BARRIER_RESOURCE,        // ??
         RENDERABLE_INSTANCE,              //Links to data in REDS.BIN
-        TRAVERSAL_SEGMENT,
+        TRAVERSAL_SEGMENT,                //Links to STATE_x/TRAVERSAL (according to Dan - not actually looked into it)
         ANIMATED_MODEL,                   //Links to data in ENVIRONMENT_ANIMATION.DAT
 
         // Any below this point are referenced in code, but not used in the vanilla game's CommandsPAKs
