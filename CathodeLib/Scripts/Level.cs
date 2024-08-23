@@ -52,6 +52,7 @@ namespace CathodeLib
         {
             public int Index;
             public NavigationMesh NavMesh;
+            public Traversals Traversals;
         }
         public List<State> StateResources = new List<State>();
 
@@ -81,7 +82,7 @@ namespace CathodeLib
             RenderableElements = new RenderableElements(path + "/WORLD/REDS.BIN");
             Movers = new Movers(path + "/WORLD/MODELS.MVR");
             Commands = new Commands(path + "/WORLD/COMMANDS.PAK");
-            //Resources = new Resources(path + "/WORLD/RESOURCES.BIN");
+            Resources = new Resources(path + "/WORLD/RESOURCES.BIN");
             //PhysicsMaps = new PhysicsMaps(path + "/WORLD/PHYSICS.MAP");
             EnvironmentMaps = new EnvironmentMaps(path + "/WORLD/ENVIRONMENTMAP.BIN");
             //CollisionMaps = new CollisionMaps(path + "/WORLD/COLLISION.MAP");
@@ -104,24 +105,31 @@ namespace CathodeLib
             //  - SND NETWORK FILES
 
             /* WORLD STATE RESOURCES */
-            int stateCount = 1;
+            int stateCount = 1; // we always implicitly have one state (the default state: state zero)
             using (BinaryReader reader = new BinaryReader(File.OpenRead(path + "/WORLD/EXCLUSIVE_MASTER_RESOURCE_INDICES")))
             {
-                reader.BaseStream.Position = 4;
-                stateCount += reader.ReadInt32();
-                //TODO: this file also contains indices for each state which seem to be of some relevence, although EXCLUSIVE_MASTER_RESOURCE doesn't point to indices?
+                reader.BaseStream.Position = 4;  // version: 1
+                int states = reader.ReadInt32(); // number of changeable states
+                stateCount += states;
+                for (int x = 0; x < states; x++)
+                {
+                    int resourceIndex = reader.ReadInt32();
+                    Resources.Resource resource = Resources.Entries[resourceIndex]; //TODO: this gives you the instance of the ExclusiveMaster entity - use it
+                }
             }
             for (int i = 0; i < stateCount; i++)
             {
+                string statePath = path + "/WORLD/STATE_" + i + "/";
+
                 State state = new State() { Index = i };
-                state.NavMesh = new NavigationMesh(path + "/WORLD/STATE_" + i + "/NAV_MESH");
+                state.NavMesh = new NavigationMesh(statePath + "NAV_MESH");
+                state.Traversals = new Traversals(statePath + "TRAVERSAL");
 
                 // WORLD STATE RESOURCES TODO:
                 //  - ASSAULT_POSITIONS
                 //  - COVER
                 //  - CRAWL_SPACE_SPOTTING_POSITIONS
                 //  - SPOTTING_POSITIONS
-                //  - TRAVERSAL
             }
 
             /* TEXT */
@@ -312,7 +320,7 @@ namespace CathodeLib
 
                 string mapName = file.Substring(0, length);
                 if (swapNostromoForPatch && (mapName == "DLC/BSPNOSTROMO_RIPLEY" || mapName == "DLC/BSPNOSTROMO_TWOTEAMS")) mapName += "_PATCH";
-                mapList.Add(mapName);
+                mapList.Add(mapName.ToUpper());
             }
             return mapList;
         }

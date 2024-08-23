@@ -45,7 +45,7 @@ namespace CATHODE
                 {
                     reader.Write((Int32)Entries[i].resourcesBinIndex);
                     reader.Write((Int32)(i + 1));
-                    reader.Write((Int16)Entries[i].unk1);
+                    reader.Write((Int16)Entries[i].unk1); 
                     reader.Write((Int16)Entries[i].unk2);
                 }
             }
@@ -57,7 +57,7 @@ namespace CATHODE
         public class Entry
         {
             public int resourcesBinIndex;
-            public int unk1;
+            public int unk1; //todo: perhaps this is a ShortGuid instance thing?
             public int unk2;
         }
         #endregion

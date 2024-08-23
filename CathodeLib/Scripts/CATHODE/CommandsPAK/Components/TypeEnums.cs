@@ -891,13 +891,13 @@ namespace CATHODE.Scripting
     /* Resource reference types */
     public enum ResourceType
     {
-        COLLISION_MAPPING,                //Links to data in COLLISION.MAP
-        DYNAMIC_PHYSICS_SYSTEM,           //Links to data in PHYSICS.MAP
-        EXCLUSIVE_MASTER_STATE_RESOURCE,  // ?? -> this seems to define a change of STATE index somehow, linking to EXCLUSIVE_MASTER_RESOURCE_INDICES
-        NAV_MESH_BARRIER_RESOURCE,        // ??
-        RENDERABLE_INSTANCE,              //Links to data in REDS.BIN
-        TRAVERSAL_SEGMENT,                //Links to STATE_x/TRAVERSAL (according to Dan - not actually looked into it)
-        ANIMATED_MODEL,                   //Links to data in ENVIRONMENT_ANIMATION.DAT
+        COLLISION_MAPPING,                // Links to data in COLLISION.MAP
+        DYNAMIC_PHYSICS_SYSTEM,           // Links to data in PHYSICS.MAP
+        EXCLUSIVE_MASTER_STATE_RESOURCE,  // Written to RESOURCES.BIN and then index referenced in EXCLUSIVE_MASTER_RESOURCE_INDICES
+        NAV_MESH_BARRIER_RESOURCE,        // ?? -> perhaps linking to PATH_BARRIER_RESOURCES?
+        RENDERABLE_INSTANCE,              // Links to data in REDS.BIN
+        TRAVERSAL_SEGMENT,                // Perhaps links to STATE_x/TRAVERSAL, but we don't bother writing any entries here as it's only populated in the unused AUTOGENERATION by CAGE
+        ANIMATED_MODEL,                   // Links to data in ENVIRONMENT_ANIMATION.DAT
 
         // Any below this point are referenced in code, but not used in the vanilla game's CommandsPAKs
         CATHODE_COVER_SEGMENT,

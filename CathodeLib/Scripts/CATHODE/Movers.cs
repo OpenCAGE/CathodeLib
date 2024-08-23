@@ -32,7 +32,7 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal()
         {
-            //todo: first 12 always renderable but not linked to commands -> they are always the same models
+            //note: first 12 always renderable but not linked to commands -> they are always the same models across every level
 
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
@@ -42,6 +42,7 @@ namespace CATHODE
                 reader.BaseStream.Position += 20;
                 Entries = new List<MOVER_DESCRIPTOR>(Utilities.ConsumeArray<MOVER_DESCRIPTOR>(reader, entryCount));
             }
+
             _writeList.AddRange(Entries);
             return true;
         }
