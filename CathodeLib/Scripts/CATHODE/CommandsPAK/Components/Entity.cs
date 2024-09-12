@@ -230,6 +230,24 @@ namespace CATHODE.Scripting.Internal
             return connections;
         }
 
+        /* Utility: Returns true if this entity has any links IN or OUT (pass in the composite this entity is within) */
+        public bool HasLinks(Composite containedComposite)
+        {
+            if (childLinks.Count != 0)
+                return true;
+
+            List<Entity> entities = containedComposite.GetEntities();
+            for (int i = 0; i < entities.Count; i++)
+            {
+                for (int x = 0; x < entities[i].childLinks.Count; x++)
+                {
+                    if (entities[i].childLinks[x].linkedEntityID == shortGUID)
+                        return true;
+                }
+            }
+            return false;
+        }
+
         /* Utility: Remove all child links out from the given parameter */
         public void RemoveAllParameterLinksOut(string parameter)
         {
