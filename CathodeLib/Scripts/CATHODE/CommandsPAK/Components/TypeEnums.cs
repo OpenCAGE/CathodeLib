@@ -1106,6 +1106,8 @@ namespace CATHODE.Scripting.Internal
         ENTITY_NAMES,
         SHORT_GUIDS,
         COMPOSITE_PURGE_STATES,
+        COMPOSITE_MODIFICATION_INFO,
+        COMPOSITE_FLOWGRAPHS,
 
         //Add new entries here
 

@@ -2,8 +2,8 @@
 using CATHODE.Scripting.Internal;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
-using System.Text;
 
 namespace CathodeLib
 {
@@ -63,6 +63,12 @@ namespace CathodeLib
                             case CustomEndTables.COMPOSITE_PURGE_STATES:
                                 ((CompositePurgeTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomEndTables.COMPOSITE_MODIFICATION_INFO:
+                                ((CompositeModificationInfoTable)toWrite[tableType]).Write(writer);
+                                break;
+                            case CustomEndTables.COMPOSITE_FLOWGRAPHS:
+                                ((CompositeFlowgraphsTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
                     }
                 }
@@ -108,6 +114,12 @@ namespace CathodeLib
                         break;
                     case CustomEndTables.COMPOSITE_PURGE_STATES:
                         data = new CompositePurgeTable(reader);
+                        break;
+                    case CustomEndTables.COMPOSITE_MODIFICATION_INFO:
+                        data = new CompositeModificationInfoTable(reader);
+                        break;
+                    case CustomEndTables.COMPOSITE_FLOWGRAPHS:
+                        data = new CompositeFlowgraphsTable(reader);
                         break;
                 }
             }
@@ -266,6 +278,184 @@ namespace CathodeLib
             for (int i = 0; i < purged.Count; i++)
             {
                 Utilities.Write<ShortGuid>(writer, purged[i]);
+            }
+        }
+    }
+    public class CompositeModificationInfoTable : CustomTable.Table
+    {
+        public CompositeModificationInfoTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomEndTables.COMPOSITE_MODIFICATION_INFO;
+        }
+
+        public List<ModificationInfo> modification_info;
+
+        protected override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+            {
+                modification_info = new List<ModificationInfo>();
+                return;
+            }
+
+            int count = reader.ReadInt32();
+            modification_info = new List<ModificationInfo>(count);
+            for (int i = 0; i < count; i++)
+            {
+                ModificationInfo info = new ModificationInfo();
+                info.composite_id = Utilities.Consume<ShortGuid>(reader);
+                info.script_editor_version = reader.ReadInt32();
+                info.modification_date = reader.ReadInt32();
+                modification_info.Add(info);
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(modification_info.Count);
+            for (int i = 0; i < modification_info.Count; i++)
+            {
+                Utilities.Write<ShortGuid>(writer, modification_info[i].composite_id);
+                writer.Write(modification_info[i].script_editor_version);
+                writer.Write(modification_info[i].modification_date);
+            }
+        }
+
+        public class ModificationInfo
+        {
+            public ShortGuid composite_id;
+            public int script_editor_version;
+            public int modification_date; //unix timecode
+        }
+    }
+    public class CompositeFlowgraphsTable : CustomTable.Table //NOTE TO SELF: use this same class for reading/writing the default data stored in the script editor
+    {
+        public CompositeFlowgraphsTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomEndTables.COMPOSITE_FLOWGRAPHS;
+        }
+
+        public List<FlowgraphMeta> flowgraphs;
+
+        protected override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+            {
+                flowgraphs = new List<FlowgraphMeta>();
+                return;
+            }
+
+            int count = reader.ReadInt32();
+            for (int i = 0; i < count; i++)
+            {
+                FlowgraphMeta flowgraph = new FlowgraphMeta();
+
+                flowgraph.CompositeGUID = Utilities.Consume<ShortGuid>(reader);
+                flowgraph.Name = reader.ReadString();
+
+                flowgraph.CanvasPosition = new PointF(reader.ReadSingle(), reader.ReadSingle());
+                flowgraph.CanvasScale = reader.ReadSingle();
+
+                reader.BaseStream.Position += 10; //reserved
+
+                int nodeMetaCount = reader.ReadInt32();
+                for (int x = 0; x < nodeMetaCount; x++)
+                {
+                    FlowgraphMeta.NodeMeta node = new FlowgraphMeta.NodeMeta();
+                    node.EntityGUID = Utilities.Consume<ShortGuid>(reader);
+
+                    node.Position = new Point(reader.ReadInt32(), reader.ReadInt32());
+
+                    int inCount = reader.ReadInt32();
+                    for (int z = 0; z < inCount; z++)
+                    {
+                        FlowgraphMeta.NodeMeta.ConnectionMeta connection = new FlowgraphMeta.NodeMeta.ConnectionMeta();
+                        connection.ParameterGUID = Utilities.Consume<ShortGuid>(reader);
+                        connection.ConnectedEntityGUID = Utilities.Consume<ShortGuid>(reader);
+                        connection.ConnectedParameterGUID = Utilities.Consume<ShortGuid>(reader);
+                        node.ConnectionsIn.Add(connection);
+                    }
+                    int outCount = reader.ReadInt32();
+                    for (int z = 0; z < outCount; z++)
+                    {
+                        FlowgraphMeta.NodeMeta.ConnectionMeta connection = new FlowgraphMeta.NodeMeta.ConnectionMeta();
+                        connection.ParameterGUID = Utilities.Consume<ShortGuid>(reader);
+                        connection.ConnectedEntityGUID = Utilities.Consume<ShortGuid>(reader);
+                        connection.ConnectedParameterGUID = Utilities.Consume<ShortGuid>(reader);
+                        node.ConnectionsOut.Add(connection);
+                    }
+
+                    flowgraph.Nodes.Add(node);
+                }
+                flowgraphs.Add(flowgraph);
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(flowgraphs.Count);
+            for (int i = 0; i < flowgraphs.Count; i++)
+            {
+                Utilities.Write<ShortGuid>(writer, flowgraphs[i].CompositeGUID);
+                writer.Write(flowgraphs[i].Name);
+
+                writer.Write(flowgraphs[i].CanvasPosition.X);
+                writer.Write(flowgraphs[i].CanvasPosition.Y);
+                writer.Write(flowgraphs[i].CanvasScale);
+
+                writer.Write(new byte[10]); //reserved
+
+                writer.Write(flowgraphs[i].Nodes.Count);
+                for (int x = 0; x < flowgraphs[i].Nodes.Count; x++)
+                {
+                    Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].EntityGUID);
+
+                    writer.Write(flowgraphs[i].Nodes[x].Position.X);
+                    writer.Write(flowgraphs[i].Nodes[x].Position.Y);
+
+                    writer.Write(flowgraphs[i].Nodes[x].ConnectionsIn.Count);
+                    for (int z = 0; z < flowgraphs[i].Nodes[x].ConnectionsIn.Count; z++)
+                    {
+                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsIn[z].ParameterGUID);
+                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsIn[z].ConnectedEntityGUID);
+                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsIn[z].ConnectedParameterGUID);
+                    }
+                    writer.Write(flowgraphs[i].Nodes[x].ConnectionsOut.Count);
+                    for (int z = 0; z < flowgraphs[i].Nodes[x].ConnectionsOut.Count; z++)
+                    {
+                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsOut[z].ParameterGUID);
+                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsOut[z].ConnectedEntityGUID);
+                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsOut[z].ConnectedParameterGUID);
+                    }
+                }
+            }
+        }
+
+        public class FlowgraphMeta
+        {
+            public ShortGuid CompositeGUID;
+            public string Name;
+
+            public List<NodeMeta> Nodes = new List<NodeMeta>();
+
+            public PointF CanvasPosition;
+            public float CanvasScale;
+
+            public class NodeMeta
+            {
+                public ShortGuid EntityGUID;
+
+                public Point Position;
+
+                public List<ConnectionMeta> ConnectionsIn = new List<ConnectionMeta>();
+                public List<ConnectionMeta> ConnectionsOut = new List<ConnectionMeta>();
+
+                public class ConnectionMeta
+                {
+                    public ShortGuid ParameterGUID; 
+                    public ShortGuid ConnectedEntityGUID;
+                    public ShortGuid ConnectedParameterGUID;
+                }
             }
         }
     }
