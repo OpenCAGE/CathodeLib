@@ -143,7 +143,7 @@ namespace CathodeLib
 
             public CustomEndTables type = CustomEndTables.NUMBER_OF_END_TABLES;
 
-            protected virtual void Read(BinaryReader reader)
+            public virtual void Read(BinaryReader reader)
             {
 
             }
@@ -164,7 +164,7 @@ namespace CathodeLib
 
         public Dictionary<ShortGuid, Dictionary<ShortGuid, string>> names;
 
-        protected override void Read(BinaryReader reader)
+        public override void Read(BinaryReader reader)
         {
             if (reader == null)
             {
@@ -212,7 +212,7 @@ namespace CathodeLib
         public Dictionary<string, ShortGuid> cache;
         public Dictionary<ShortGuid, string> cacheReversed;
 
-        protected override void Read(BinaryReader reader)
+        public override void Read(BinaryReader reader)
         {
             if (reader == null)
             {
@@ -255,7 +255,7 @@ namespace CathodeLib
 
         public List<ShortGuid> purged;
 
-        protected override void Read(BinaryReader reader)
+        public override void Read(BinaryReader reader)
         {
             if (reader == null)
             {
@@ -290,7 +290,7 @@ namespace CathodeLib
 
         public List<ModificationInfo> modification_info;
 
-        protected override void Read(BinaryReader reader)
+        public override void Read(BinaryReader reader)
         {
             if (reader == null)
             {
@@ -337,7 +337,7 @@ namespace CathodeLib
 
         public List<FlowgraphMeta> flowgraphs;
 
-        protected override void Read(BinaryReader reader)
+        public override void Read(BinaryReader reader)
         {
             if (reader == null)
             {
@@ -436,10 +436,10 @@ namespace CathodeLib
             public ShortGuid CompositeGUID;
             public string Name;
 
-            public List<NodeMeta> Nodes = new List<NodeMeta>();
-
             public PointF CanvasPosition;
             public float CanvasScale;
+
+            public List<NodeMeta> Nodes = new List<NodeMeta>();
 
             public class NodeMeta
             {
