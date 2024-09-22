@@ -304,7 +304,7 @@ namespace CathodeLib
             {
                 ModificationInfo info = new ModificationInfo();
                 info.composite_id = Utilities.Consume<ShortGuid>(reader);
-                info.script_editor_version = reader.ReadInt32();
+                info.editor_version = reader.ReadInt32();
                 info.modification_date = reader.ReadInt32();
                 modification_info.Add(info);
             }
@@ -316,7 +316,7 @@ namespace CathodeLib
             for (int i = 0; i < modification_info.Count; i++)
             {
                 Utilities.Write<ShortGuid>(writer, modification_info[i].composite_id);
-                writer.Write(modification_info[i].script_editor_version);
+                writer.Write(modification_info[i].editor_version);
                 writer.Write(modification_info[i].modification_date);
             }
         }
@@ -324,7 +324,7 @@ namespace CathodeLib
         public class ModificationInfo
         {
             public ShortGuid composite_id;
-            public int script_editor_version;
+            public int editor_version; //use this to store a unique identifier for whatever tool version modified the composite
             public int modification_date; //unix timecode
         }
     }
