@@ -185,6 +185,11 @@ namespace CATHODE.Scripting.Internal
             }
             return param;
         }
+        public Parameter AddParameter(Parameter param)
+        {
+            parameters.Add(param);
+            return param;
+        }
 
         /* Remove a parameter from the entity */
         public void RemoveParameter(string name)
@@ -192,11 +197,19 @@ namespace CATHODE.Scripting.Internal
             ShortGuid name_id = ShortGuidUtils.Generate(name);
             parameters.RemoveAll(o => o.name == name_id);
         }
+        public void RemoveParameter(Parameter param)
+        {
+            parameters.RemoveAll(o => o == param);
+        }
 
         /* Add a link from a parameter on us out to a parameter on another entity */
         public void AddParameterLink(string parameter, Entity childEntity, string childParameter)
         {
             childLinks.Add(new EntityConnector(childEntity.shortGUID, ShortGuidUtils.Generate(parameter), ShortGuidUtils.Generate(childParameter)));
+        }
+        public void AddParameterLink(Parameter parameter, Entity childEntity, Parameter childParameter)
+        {
+            childLinks.Add(new EntityConnector(childEntity.shortGUID, parameter.name, childParameter.name));
         }
 
         /* Remove a link to another entity */
@@ -206,6 +219,10 @@ namespace CATHODE.Scripting.Internal
             ShortGuid childParameter_id = ShortGuidUtils.Generate(childParameter);
             //TODO: do we want to do RemoveAll? should probably just remove the first
             childLinks.RemoveAll(o => o.thisParamID == parameter_id && o.linkedEntityID == childEntity.shortGUID && o.linkedParamID == childParameter_id);
+        }
+        public void RemoveParameterLink(Parameter parameter, Entity childEntity, Parameter childParameter)
+        {
+            childLinks.RemoveAll(o => o.thisParamID == parameter.name && o.linkedEntityID == childEntity.shortGUID && o.linkedParamID == childParameter.name);
         }
 
         /* Utility: Find all links in to this entity (pass in the composite this entity is within) */

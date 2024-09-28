@@ -62,6 +62,61 @@ namespace CATHODE.Scripting
             Console.WriteLine("Stored " + _purged.purged.Count + " pre-purged composites!");
         }
 
+        /* Gets the composite that contains the entity */
+        public static Composite GetContainedComposite(this Entity entity)
+        {
+            if (_commands == null)
+                throw (new Exception("Please link your Commands object to CommandsUtils using CommandsUtils.LinkCommands before calling this function"));
+
+            for (int i = 0; i < _commands.Entries.Count; i++)
+            {
+                switch (entity.variant)
+                {
+                    case EntityVariant.FUNCTION:
+                        for (int x = 0; x < _commands.Entries[i].functions.Count; x++)
+                        {
+                            if (_commands.Entries[i].functions[x].shortGUID == entity.shortGUID)
+                            {
+                                if (_commands.Entries[i].functions[x] == entity)
+                                    return _commands.Entries[i];
+                            }
+                        }
+                        break;
+                    case EntityVariant.VARIABLE:
+                        for (int x = 0; x < _commands.Entries[i].variables.Count; x++)
+                        {
+                            if (_commands.Entries[i].variables[x].shortGUID == entity.shortGUID)
+                            {
+                                if (_commands.Entries[i].variables[x] == entity)
+                                    return _commands.Entries[i];
+                            }    
+                        }
+                        break;
+                    case EntityVariant.PROXY:
+                        for (int x = 0; x < _commands.Entries[i].proxies.Count; x++)
+                        {
+                            if (_commands.Entries[i].proxies[x].shortGUID == entity.shortGUID)
+                            {
+                                if (_commands.Entries[i].proxies[x] == entity)
+                                    return _commands.Entries[i];
+                            }
+                        }
+                        break;
+                    case EntityVariant.ALIAS:
+                        for (int x = 0; x < _commands.Entries[i].aliases.Count; x++)
+                        {
+                            if (_commands.Entries[i].aliases[x].shortGUID == entity.shortGUID)
+                            {
+                                if (_commands.Entries[i].aliases[x] == entity)
+                                    return _commands.Entries[i];
+                            }
+                        }
+                        break;
+                }
+            }
+            return null;
+        }
+
         #region FUNCTION_TYPE_UTILS
         /* Function Types */
         private static Dictionary<ShortGuid, FunctionType> _functionTypeLUT = new Dictionary<ShortGuid, FunctionType>();
