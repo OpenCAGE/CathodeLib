@@ -211,6 +211,14 @@ namespace CATHODE.Scripting.Internal
         {
             childLinks.Add(new EntityConnector(childEntity.shortGUID, parameter.name, childParameter.name));
         }
+        public void AddParameterLink(ShortGuid parameterGUID, Entity childEntity, ShortGuid childParameterGUID)
+        {
+            childLinks.Add(new EntityConnector(childEntity.shortGUID, parameterGUID, childParameterGUID));
+        }
+        public void AddParameterLink(ShortGuid parameterGUID, ShortGuid childEntityGUID, ShortGuid childParameterGUID)
+        {
+            childLinks.Add(new EntityConnector(childEntityGUID, parameterGUID, childParameterGUID));
+        }
 
         /* Remove a link to another entity */
         public void RemoveParameterLink(string parameter, Entity childEntity, string childParameter)
@@ -223,6 +231,14 @@ namespace CATHODE.Scripting.Internal
         public void RemoveParameterLink(Parameter parameter, Entity childEntity, Parameter childParameter)
         {
             childLinks.RemoveAll(o => o.thisParamID == parameter.name && o.linkedEntityID == childEntity.shortGUID && o.linkedParamID == childParameter.name);
+        }
+        public void RemoveParameterLink(ShortGuid parameterGUID, Entity childEntity, ShortGuid childParameterGUID)
+        {
+            childLinks.RemoveAll(o => o.thisParamID == parameterGUID && o.linkedEntityID == childEntity.shortGUID && o.linkedParamID == childParameterGUID);
+        }
+        public void RemoveParameterLink(ShortGuid parameterGUID, ShortGuid childEntityGUID, ShortGuid childParameterGUID)
+        {
+            childLinks.RemoveAll(o => o.thisParamID == parameterGUID && o.linkedEntityID == childEntityGUID && o.linkedParamID == childParameterGUID);
         }
 
         /* Utility: Find all links in to this entity (pass in the composite this entity is within) */

@@ -340,19 +340,19 @@ namespace CathodeLib
 
         public override void Read(BinaryReader reader)
         {
+            flowgraphs = new List<FlowgraphMeta>();
             if (reader == null)
-            {
-                flowgraphs = new List<FlowgraphMeta>();
                 return;
-            }
+
+            int count = reader.ReadInt32();
+            if (count == 0)
+                return;
 
             byte version = reader.ReadByte();
             if (version != FlowgraphMeta.VERSION)
             {
                 //Add compatibility here when required
             }
-
-            int count = reader.ReadInt32();
             for (int i = 0; i < count; i++)
             {
                 FlowgraphMeta flowgraph = new FlowgraphMeta();
@@ -396,8 +396,8 @@ namespace CathodeLib
 
         public override void Write(BinaryWriter writer)
         {
-            writer.Write(FlowgraphMeta.VERSION);
             writer.Write(flowgraphs.Count);
+            writer.Write(FlowgraphMeta.VERSION);
             for (int i = 0; i < flowgraphs.Count; i++)
             {
                 Utilities.Write<ShortGuid>(writer, flowgraphs[i].CompositeGUID);
