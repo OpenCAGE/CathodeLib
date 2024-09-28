@@ -613,6 +613,38 @@ namespace CATHODE.Scripting
         {
             return comp.GetEntityByID(linkedEntityID);
         }
+
+        public override bool Equals(object obj)
+        {
+            return obj is EntityConnector connector &&
+                   EqualityComparer<ShortGuid>.Default.Equals(ID, connector.ID) &&
+                   EqualityComparer<ShortGuid>.Default.Equals(thisParamID, connector.thisParamID) &&
+                   EqualityComparer<ShortGuid>.Default.Equals(linkedParamID, connector.linkedParamID) &&
+                   EqualityComparer<ShortGuid>.Default.Equals(linkedEntityID, connector.linkedEntityID);
+        }
+
+        public override int GetHashCode()
+        {
+            int hashCode = -1516234163;
+            hashCode = hashCode * -1521134295 + ID.GetHashCode();
+            hashCode = hashCode * -1521134295 + thisParamID.GetHashCode();
+            hashCode = hashCode * -1521134295 + linkedParamID.GetHashCode();
+            hashCode = hashCode * -1521134295 + linkedEntityID.GetHashCode();
+            return hashCode;
+        }
+
+        public static bool operator ==(EntityConnector x, EntityConnector y)
+        {
+            if (x.ID != y.ID) return false;
+            if (x.thisParamID != y.thisParamID) return false;
+            if (x.linkedParamID != y.linkedParamID) return false;
+            if (x.linkedEntityID != y.linkedEntityID) return false;
+            return true;
+        }
+        public static bool operator !=(EntityConnector x, EntityConnector y)
+        {
+            return !(x == y);
+        }
     }
 
     /// <summary>
