@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 
 namespace CathodeLib
 {
@@ -345,6 +346,12 @@ namespace CathodeLib
                 return;
             }
 
+            byte version = reader.ReadByte();
+            if (version != FlowgraphMeta.VERSION)
+            {
+                //Add compatibility here when required
+            }
+
             int count = reader.ReadInt32();
             for (int i = 0; i < count; i++)
             {
@@ -367,22 +374,18 @@ namespace CathodeLib
                     node.Position = new Point(reader.ReadInt32(), reader.ReadInt32());
 
                     int inCount = reader.ReadInt32();
-                    for (int z = 0; z < inCount; z++)
-                    {
-                        FlowgraphMeta.NodeMeta.ConnectionMeta connection = new FlowgraphMeta.NodeMeta.ConnectionMeta();
-                        connection.ParameterGUID = Utilities.Consume<ShortGuid>(reader);
-                        connection.ConnectedEntityGUID = Utilities.Consume<ShortGuid>(reader);
-                        connection.ConnectedParameterGUID = Utilities.Consume<ShortGuid>(reader);
-                        node.ConnectionsIn.Add(connection);
-                    }
+                    node.PinsIn = Utilities.ConsumeArray<ShortGuid>(reader, inCount).ToList();
                     int outCount = reader.ReadInt32();
-                    for (int z = 0; z < outCount; z++)
+                    node.PinsOut = Utilities.ConsumeArray<ShortGuid>(reader, outCount).ToList();
+
+                    int connectionCount = reader.ReadInt32();
+                    for (int z = 0; z < connectionCount; z++)
                     {
                         FlowgraphMeta.NodeMeta.ConnectionMeta connection = new FlowgraphMeta.NodeMeta.ConnectionMeta();
                         connection.ParameterGUID = Utilities.Consume<ShortGuid>(reader);
                         connection.ConnectedEntityGUID = Utilities.Consume<ShortGuid>(reader);
                         connection.ConnectedParameterGUID = Utilities.Consume<ShortGuid>(reader);
-                        node.ConnectionsOut.Add(connection);
+                        node.Connections.Add(connection);
                     }
 
                     flowgraph.Nodes.Add(node);
@@ -393,6 +396,7 @@ namespace CathodeLib
 
         public override void Write(BinaryWriter writer)
         {
+            writer.Write(FlowgraphMeta.VERSION);
             writer.Write(flowgraphs.Count);
             for (int i = 0; i < flowgraphs.Count; i++)
             {
@@ -413,19 +417,17 @@ namespace CathodeLib
                     writer.Write(flowgraphs[i].Nodes[x].Position.X);
                     writer.Write(flowgraphs[i].Nodes[x].Position.Y);
 
-                    writer.Write(flowgraphs[i].Nodes[x].ConnectionsIn.Count);
-                    for (int z = 0; z < flowgraphs[i].Nodes[x].ConnectionsIn.Count; z++)
+                    writer.Write(flowgraphs[i].Nodes[x].PinsIn.Count);
+                    Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].PinsIn);
+                    writer.Write(flowgraphs[i].Nodes[x].PinsOut.Count);
+                    Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].PinsOut);
+
+                    writer.Write(flowgraphs[i].Nodes[x].Connections.Count);
+                    for (int z = 0; z < flowgraphs[i].Nodes[x].Connections.Count; z++)
                     {
-                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsIn[z].ParameterGUID);
-                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsIn[z].ConnectedEntityGUID);
-                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsIn[z].ConnectedParameterGUID);
-                    }
-                    writer.Write(flowgraphs[i].Nodes[x].ConnectionsOut.Count);
-                    for (int z = 0; z < flowgraphs[i].Nodes[x].ConnectionsOut.Count; z++)
-                    {
-                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsOut[z].ParameterGUID);
-                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsOut[z].ConnectedEntityGUID);
-                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsOut[z].ConnectedParameterGUID);
+                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].Connections[z].ParameterGUID);
+                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].Connections[z].ConnectedEntityGUID);
+                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].Connections[z].ConnectedParameterGUID);
                     }
                 }
             }
@@ -433,6 +435,8 @@ namespace CathodeLib
 
         public class FlowgraphMeta
         {
+            public const byte VERSION = 1;
+
             public ShortGuid CompositeGUID;
             public string Name;
 
@@ -444,17 +448,21 @@ namespace CathodeLib
             public class NodeMeta
             {
                 public ShortGuid EntityGUID;
+                public int NodeID;
 
                 public Point Position;
 
-                public List<ConnectionMeta> ConnectionsIn = new List<ConnectionMeta>();
-                public List<ConnectionMeta> ConnectionsOut = new List<ConnectionMeta>();
+                public List<ShortGuid> PinsIn = new List<ShortGuid>();
+                public List<ShortGuid> PinsOut = new List<ShortGuid>();
+
+                public List<ConnectionMeta> Connections = new List<ConnectionMeta>(); //NOTE: This is connections OUT of this node
 
                 public class ConnectionMeta
                 {
                     public ShortGuid ParameterGUID; 
                     public ShortGuid ConnectedEntityGUID;
                     public ShortGuid ConnectedParameterGUID;
+                    public int ConnectedNodeID;
                 }
             }
         }
