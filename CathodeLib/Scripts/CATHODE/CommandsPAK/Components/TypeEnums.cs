@@ -1108,6 +1108,7 @@ namespace CATHODE.Scripting.Internal
         COMPOSITE_PURGE_STATES,
         COMPOSITE_MODIFICATION_INFO,
         COMPOSITE_FLOWGRAPHS,
+        COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO,
 
         //Add new entries here
 

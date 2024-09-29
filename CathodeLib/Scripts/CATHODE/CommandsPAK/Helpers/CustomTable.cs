@@ -70,6 +70,9 @@ namespace CathodeLib
                             case CustomEndTables.COMPOSITE_FLOWGRAPHS:
                                 ((CompositeFlowgraphsTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomEndTables.COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO:
+                                ((CompositeFlowgraphCompatibilityTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
                     }
                 }
@@ -121,6 +124,9 @@ namespace CathodeLib
                         break;
                     case CustomEndTables.COMPOSITE_FLOWGRAPHS:
                         data = new CompositeFlowgraphsTable(reader);
+                        break;
+                    case CustomEndTables.COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO:
+                        data = new CompositeFlowgraphCompatibilityTable(reader);
                         break;
                 }
             }
@@ -465,6 +471,50 @@ namespace CathodeLib
                     public int ConnectedNodeID;
                 }
             }
+        }
+    }
+    public class CompositeFlowgraphCompatibilityTable : CustomTable.Table
+    {
+        public CompositeFlowgraphCompatibilityTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomEndTables.COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO;
+        }
+
+        public List<CompatibilityInfo> compatibility_info;
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+            {
+                compatibility_info = new List<CompatibilityInfo>();
+                return;
+            }
+
+            int count = reader.ReadInt32();
+            compatibility_info = new List<CompatibilityInfo>(count);
+            for (int i = 0; i < count; i++)
+            {
+                CompatibilityInfo info = new CompatibilityInfo();
+                info.composite_id = Utilities.Consume<ShortGuid>(reader);
+                info.flowgraphs_supported = reader.ReadBoolean();
+                compatibility_info.Add(info);
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(compatibility_info.Count);
+            for (int i = 0; i < compatibility_info.Count; i++)
+            {
+                Utilities.Write<ShortGuid>(writer, compatibility_info[i].composite_id);
+                writer.Write(compatibility_info[i].flowgraphs_supported);
+            }
+        }
+
+        public class CompatibilityInfo
+        {
+            public ShortGuid composite_id;
+            public bool flowgraphs_supported;
         }
     }
 }
