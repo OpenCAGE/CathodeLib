@@ -382,12 +382,12 @@ namespace CATHODE.Scripting
         }
 
         /* CA's CAGE doesn't properly tidy up hierarchies pointing to deleted entities - so we can do that to save confusion */
-        public static void PurgeDeadLinks(Commands commands, Composite composite, bool force = false)
+        public static bool PurgeDeadLinks(Commands commands, Composite composite, bool force = false)
         {
             if (!force && LinkedCommands == commands && _purged.purged.Contains(composite.shortGUID))
             {
                 Console.WriteLine("Skipping purge, as this composite is listed within the purged table.");
-                return;
+                return false;
             }
 
             int originalUnknownCount = 0;
@@ -489,7 +489,7 @@ namespace CATHODE.Scripting
                 (originalLinkCount - newLinkCount) == 0)
             {
                 Console.WriteLine("Purge found nothing to clear up.");
-                return;
+                return true;
             }
 
             Console.WriteLine(
@@ -501,6 +501,7 @@ namespace CATHODE.Scripting
                 "\n - " + (originalTriggerCount - newTriggerCount) + " triggers (of " + originalTriggerCount + ")" +
                 "\n - " + (originalAnimCount - newAnimCount) + " anim connections (of " + originalAnimCount + ")" +
                 "\n - " + (originalLinkCount - newLinkCount) + " entity links (of " + originalLinkCount + ")");
+            return true;
         }
         #endregion
     }

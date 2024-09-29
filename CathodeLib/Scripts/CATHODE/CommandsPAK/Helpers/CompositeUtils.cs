@@ -128,5 +128,11 @@ namespace CathodeLib
                 return hash;
             }
         }
+
+        /* Remove all links between Entities within the Composite */
+        public static void ClearAllLinks(Composite composite)
+        {
+            composite.GetEntities().ForEach(o => o.childLinks.Clear());
+        }
     }
 }
