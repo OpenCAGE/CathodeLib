@@ -376,6 +376,7 @@ namespace CathodeLib
                 {
                     FlowgraphMeta.NodeMeta node = new FlowgraphMeta.NodeMeta();
                     node.EntityGUID = Utilities.Consume<ShortGuid>(reader);
+                    node.NodeID = reader.ReadInt32();
 
                     node.Position = new Point(reader.ReadInt32(), reader.ReadInt32());
 
@@ -391,6 +392,7 @@ namespace CathodeLib
                         connection.ParameterGUID = Utilities.Consume<ShortGuid>(reader);
                         connection.ConnectedEntityGUID = Utilities.Consume<ShortGuid>(reader);
                         connection.ConnectedParameterGUID = Utilities.Consume<ShortGuid>(reader);
+                        connection.ConnectedNodeID = reader.ReadInt32();
                         node.Connections.Add(connection);
                     }
 
@@ -419,6 +421,7 @@ namespace CathodeLib
                 for (int x = 0; x < flowgraphs[i].Nodes.Count; x++)
                 {
                     Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].EntityGUID);
+                    writer.Write(flowgraphs[i].Nodes[x].NodeID);
 
                     writer.Write(flowgraphs[i].Nodes[x].Position.X);
                     writer.Write(flowgraphs[i].Nodes[x].Position.Y);
@@ -434,6 +437,7 @@ namespace CathodeLib
                         Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].Connections[z].ParameterGUID);
                         Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].Connections[z].ConnectedEntityGUID);
                         Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].Connections[z].ConnectedParameterGUID);
+                        writer.Write(flowgraphs[i].Nodes[x].Connections[z].ConnectedNodeID);
                     }
                 }
             }
