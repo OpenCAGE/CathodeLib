@@ -369,7 +369,8 @@ namespace CathodeLib
                 flowgraph.CanvasPosition = new PointF(reader.ReadSingle(), reader.ReadSingle());
                 flowgraph.CanvasScale = reader.ReadSingle();
 
-                reader.BaseStream.Position += 10; //reserved
+                flowgraph.UsesShortenedNames = reader.ReadBoolean();
+                reader.BaseStream.Position += 9; //reserved
 
                 int nodeMetaCount = reader.ReadInt32();
                 for (int x = 0; x < nodeMetaCount; x++)
@@ -415,7 +416,8 @@ namespace CathodeLib
                 writer.Write(flowgraphs[i].CanvasPosition.Y);
                 writer.Write(flowgraphs[i].CanvasScale);
 
-                writer.Write(new byte[10]); //reserved
+                writer.Write(flowgraphs[i].UsesShortenedNames);
+                writer.Write(new byte[9]); //reserved
 
                 writer.Write(flowgraphs[i].Nodes.Count);
                 for (int x = 0; x < flowgraphs[i].Nodes.Count; x++)
@@ -446,6 +448,7 @@ namespace CathodeLib
         public class FlowgraphMeta
         {
             public const byte VERSION = 1;
+            public bool UsesShortenedNames = false;
 
             public ShortGuid CompositeGUID;
             public string Name;
