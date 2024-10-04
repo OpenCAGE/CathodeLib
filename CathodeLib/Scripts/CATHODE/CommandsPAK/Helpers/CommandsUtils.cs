@@ -392,25 +392,21 @@ namespace CATHODE.Scripting
 
             int originalUnknownCount = 0;
             int originalProxyCount = 0;
-            int newProxyCount = 0;
             int originalAliasCount = 0;
-            int newAliasCount = 0;
-            int originalTriggerCount = 0;
             int newTriggerCount = 0;
-            int originalAnimCount = 0;
+            int originalTriggerCount = 0;
             int newAnimCount = 0;
-            int originalLinkCount = 0;
+            int originalAnimCount = 0;
             int newLinkCount = 0;
+            int originalLinkCount = 0;
             int originalFuncCount = 0;
-            int newFuncCount = 0;
 
             //Clear functions
             List<FunctionEntity> functionsPurged = new List<FunctionEntity>();
             for (int i = 0; i < composite.functions.Count; i++)
                 if (CommandsUtils.FunctionTypeExists(composite.functions[i].function) || commands.GetComposite(composite.functions[i].function) != null)
                     functionsPurged.Add(composite.functions[i]);
-            originalFuncCount += composite.functions.Count;
-            newFuncCount += functionsPurged.Count;
+            originalFuncCount = composite.functions.Count;
             composite.functions = functionsPurged;
 
             //Clear aliases
@@ -418,8 +414,7 @@ namespace CATHODE.Scripting
             for (int i = 0; i < composite.aliases.Count; i++)
                 if (ResolveHierarchy(commands, composite, composite.aliases[i].alias.path, out Composite flowTemp, out string hierarchy) != null)
                     aliasesPurged.Add(composite.aliases[i]);
-            originalAliasCount += composite.aliases.Count;
-            newAliasCount += aliasesPurged.Count;
+            originalAliasCount = composite.aliases.Count;
             composite.aliases = aliasesPurged;
 
             //Clear proxies
@@ -427,8 +422,7 @@ namespace CATHODE.Scripting
             for (int i = 0; i < composite.proxies.Count; i++)
                 if (ResolveHierarchy(commands, composite, composite.proxies[i].proxy.path, out Composite flowTemp, out string hierarchy) != null)
                     proxyPurged.Add(composite.proxies[i]);
-            originalProxyCount += composite.proxies.Count;
-            newProxyCount += proxyPurged.Count;
+            originalProxyCount = composite.proxies.Count;
             composite.proxies = proxyPurged;
 
             //Clear TriggerSequence and CAGEAnimation entities
@@ -478,12 +472,22 @@ namespace CATHODE.Scripting
                 entities[i].childLinks = childLinksPurged;
             }
 
-            //TODO: Clear aliases with no parameters/links in or out?
+            //Clear aliases with no parameters/links
+            List<AliasEntity> aliasPurged = new List<AliasEntity>();
+            for (int i = 0; i < composite.aliases.Count; i++)
+            {
+                if (composite.aliases[i].childLinks.Count == 0 &&
+                    composite.aliases[i].parameters.Count == 0 &&
+                    composite.aliases[i].GetParentLinks(composite).Count == 0)
+                    continue;
+                aliasPurged.Add(composite.aliases[i]);
+            }
+            composite.aliases = aliasPurged;
 
             if (originalUnknownCount +
-                (originalFuncCount - newFuncCount) +
-                (originalProxyCount - newProxyCount) +
-                (originalAliasCount - newAliasCount) +
+                (originalFuncCount - composite.functions.Count) +
+                (originalProxyCount - composite.proxies.Count) +
+                (originalAliasCount - composite.aliases.Count) +
                 (originalTriggerCount - newTriggerCount) +
                 (originalAnimCount - newAnimCount) +
                 (originalLinkCount - newLinkCount) == 0)
@@ -495,9 +499,9 @@ namespace CATHODE.Scripting
             Console.WriteLine(
                 "Purged all dead hierarchies and entities in " + composite.name + "!" +
                 "\n - " + originalUnknownCount + " unknown entities" +
-                "\n - " + (originalFuncCount - newFuncCount) + " functions (of " + originalFuncCount + ")" +
-                "\n - " + (originalProxyCount - newProxyCount) + " proxies (of " + originalProxyCount + ")" +
-                "\n - " + (originalAliasCount - newAliasCount) + " aliases (of " + originalAliasCount + ")" +
+                "\n - " + (originalFuncCount - composite.functions.Count) + " functions (of " + originalFuncCount + ")" +
+                "\n - " + (originalProxyCount - composite.proxies.Count) + " proxies (of " + originalProxyCount + ")" +
+                "\n - " + (originalAliasCount - composite.aliases.Count) + " aliases (of " + originalAliasCount + ")" +
                 "\n - " + (originalTriggerCount - newTriggerCount) + " triggers (of " + originalTriggerCount + ")" +
                 "\n - " + (originalAnimCount - newAnimCount) + " anim connections (of " + originalAnimCount + ")" +
                 "\n - " + (originalLinkCount - newLinkCount) + " entity links (of " + originalLinkCount + ")");
