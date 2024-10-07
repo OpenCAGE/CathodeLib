@@ -134,5 +134,15 @@ namespace CathodeLib
         {
             composite.GetEntities().ForEach(o => o.childLinks.Clear());
         }
+
+        /* Count the number of links in the Composite */
+        public static int CountLinks(Composite composite)
+        {
+            int count = 0;
+            List<Entity> entities = composite.GetEntities();
+            foreach (Entity ent in entities) 
+                count += ent.childLinks.Count;
+            return count;
+        }
     }
 }
