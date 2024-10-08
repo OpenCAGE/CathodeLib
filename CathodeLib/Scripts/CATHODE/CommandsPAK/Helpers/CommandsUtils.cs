@@ -472,18 +472,6 @@ namespace CATHODE.Scripting
                 entities[i].childLinks = childLinksPurged;
             }
 
-            //Clear aliases with no parameters/links
-            List<AliasEntity> aliasPurged = new List<AliasEntity>();
-            for (int i = 0; i < composite.aliases.Count; i++)
-            {
-                if (composite.aliases[i].childLinks.Count == 0 &&
-                    composite.aliases[i].parameters.Count == 0 &&
-                    composite.aliases[i].GetParentLinks(composite).Count == 0)
-                    continue;
-                aliasPurged.Add(composite.aliases[i]);
-            }
-            composite.aliases = aliasPurged;
-
             if (originalUnknownCount +
                 (originalFuncCount - composite.functions.Count) +
                 (originalProxyCount - composite.proxies.Count) +
