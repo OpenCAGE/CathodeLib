@@ -195,11 +195,15 @@ namespace CATHODE.Scripting.Internal
         public void RemoveParameter(string name)
         {
             ShortGuid name_id = ShortGuidUtils.Generate(name);
-            parameters.RemoveAll(o => o.name == name_id);
+            RemoveParameter(name_id);
         }
         public void RemoveParameter(Parameter param)
         {
-            parameters.RemoveAll(o => o == param);
+            RemoveParameter(param.name);
+        }
+        public void RemoveParameter(ShortGuid guid)
+        {
+            parameters.RemoveAll(o => o.name == guid);
         }
 
         /* Add a link from a parameter on us out to a parameter on another entity */
