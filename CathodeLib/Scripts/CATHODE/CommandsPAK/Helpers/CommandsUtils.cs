@@ -480,7 +480,7 @@ namespace CATHODE.Scripting
                 (originalAnimCount - newAnimCount) +
                 (originalLinkCount - newLinkCount) == 0)
             {
-                Console.WriteLine("Purge found nothing to clear up.");
+                //Console.WriteLine("Purge found nothing to clear up.");
                 return true;
             }
 
