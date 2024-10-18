@@ -318,7 +318,7 @@ namespace CathodeLib
                 int length = file.Length - extraLength;
                 if (length <= 0) continue;
 
-                string mapName = file.Substring(0, length);
+                string mapName = file.Substring(0, length).ToUpper();
                 if (swapNostromoForPatch && (mapName == "DLC/BSPNOSTROMO_RIPLEY" || mapName == "DLC/BSPNOSTROMO_TWOTEAMS")) mapName += "_PATCH";
                 mapList.Add(mapName.ToUpper());
             }
