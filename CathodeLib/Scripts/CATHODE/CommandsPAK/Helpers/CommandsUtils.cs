@@ -386,7 +386,7 @@ namespace CATHODE.Scripting
         {
             if (!force && LinkedCommands == commands && _purged.purged.Contains(composite.shortGUID))
             {
-                Console.WriteLine("Skipping purge, as this composite is listed within the purged table.");
+                //Console.WriteLine("Skipping purge, as this composite is listed within the purged table.");
                 return false;
             }
 
