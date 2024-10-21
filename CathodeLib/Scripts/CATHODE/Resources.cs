@@ -26,16 +26,15 @@ namespace CATHODE
                 int entryCount = reader.ReadInt32();
                 reader.BaseStream.Position += 4;
 
-                Resource[] entries = new Resource[entryCount];
+                //Resource[] entries = new Resource[entryCount];
                 for (int i = 0; i < entryCount; i++)
                 {
                     Resource resource = new Resource();
                     resource.composite_instance_id = Utilities.Consume<ShortGuid>(reader);
                     resource.resource_id = Utilities.Consume<ShortGuid>(reader); //this is the id that's used in commands.pak, frequently translates to Door/AnimatedModel/Light/DYNAMIC_PHYSICS_SYSTEM
-                    int index = reader.ReadInt32();
-                    entries[index] = resource;
+                    resource.index = reader.ReadInt32();
+                    Entries.Add(resource);
                 }
-                Entries = entries.ToList();
             }
             return true;
         }
@@ -49,14 +48,14 @@ namespace CATHODE
                 writer.BaseStream.SetLength(0);
                 writer.Write(new byte[4] { 0xCC, 0xBA, 0xED, 0xFE });
                 writer.Write((Int32)1);
-                writer.Write(orderedEntries.Count);
+                writer.Write(Entries.Count);
                 writer.Write((Int32)0);
 
-                for (int i = 0; i < orderedEntries.Count; i++)
+                for (int i = 0; i < Entries.Count; i++)
                 {
-                    Utilities.Write(writer, orderedEntries[i].composite_instance_id);
-                    Utilities.Write(writer, orderedEntries[i].resource_id);
-                    writer.Write(Entries.IndexOf(orderedEntries[i]));
+                    Utilities.Write(writer, Entries[i].composite_instance_id);
+                    Utilities.Write(writer, Entries[i].resource_id);
+                    Utilities.Write(writer, Entries[i].index);
                 }
             }
             return true;
@@ -68,6 +67,7 @@ namespace CATHODE
         {
             public ShortGuid composite_instance_id;
             public ShortGuid resource_id;
+            public int index;
         };
         #endregion
     }

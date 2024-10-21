@@ -36,6 +36,20 @@ namespace CATHODE.Scripting
             reader.Close();
         }
 
+        //For testing
+        public static List<string> GetAllVanillaNames()
+        {
+            List<string> names = new List<string>();
+            foreach (var entry in _vanilla.names)
+            {
+                foreach (var entry2 in entry.Value)
+                {
+                    names.Add(entry2.Value);
+                }
+            }
+            return names;
+        }
+
         /* Optionally, link a Commands file which can be used to save custom entity names to */
         public static void LinkCommands(Commands commands)
         {
