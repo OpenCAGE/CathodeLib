@@ -32,7 +32,7 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal()
         {
-            //note: first 12 always renderable but not linked to commands -> they are always the same models across every level
+            //note: first 12 always renderable but not linked to commands -> they are always the same models across every level. is it the content of GLOBAL?
 
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
@@ -271,23 +271,23 @@ namespace CATHODE
 
 
             //64
-            public Vector4 LightColour;
-            public Vector4 MaterialTint;
+            public Vector4 LightColour = new Vector4(1,1,1,1);
+            public Vector4 MaterialTint = new Vector4(1,1,1,1);
             //96
-            public float lightVolumeIntensity; //todo: idk if this is right, but editing this value seems to increase/decrease the brightness of the light volume meshes
-            public float particleIntensity; //0 = black particle
-            public float particleSystemOffset; //todo: not sure entirely, but increasing this value seems to apply an offset to particle systems
+            public float lightVolumeIntensity = 1; //todo: idk if this is right, but editing this value seems to increase/decrease the brightness of the light volume meshes
+            public float particleIntensity = 1; //0 = black particle
+            public float particleSystemOffset = 0; //todo: not sure entirely, but increasing this value seems to apply an offset to particle systems
                                                //108
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
             public byte[] blankSpace1;
             //116
-            public float lightRadius;
-            public Vector2 textureTile; //x = horizontal tile, y = vertical tile
+            public float lightRadius = 0;
+            public Vector2 textureTile = new Vector2(1,1); //x = horizontal tile, y = vertical tile
                                         //128
-            public float UnknownValue1_;
-            public float UnknownValue2_;
-            public float UnknownValue3_;
-            public float UnknownValue4_;
+            public float UnknownValue1_ = 1;
+            public float UnknownValue2_ = 1;
+            public float UnknownValue3_ = 0;
+            public float UnknownValue4_ = 0;
             //144
 
             ~GPU_CONSTANTS()
@@ -310,10 +310,10 @@ namespace CATHODE
             */
 
             //160
-            public Vector4 Unknown3_;
+            public Vector4 Unknown3_ = new Vector4(0,0,0,0);
             //176
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public UInt32[] Unknowns2_;
+            public UInt32[] Unknowns2_; 
             //184
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
             public Vector3[] UnknownMinMax_; // NOTE: Sometimes I see 'nan's here too.
