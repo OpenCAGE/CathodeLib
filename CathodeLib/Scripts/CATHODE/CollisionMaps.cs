@@ -29,21 +29,15 @@ namespace CATHODE
 
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
-                //It seems typically in this file at the start there are a bunch of empty entries, and then there are a bunch of unresolvable ones, and then a bunch that can be resolved.
+                //The way this works:
+                // - First 18 entries are empty
+                // - Next set of entries are all the COLLISION_MAPPING resources referenced by COMMANDS.PAK (hence they have no composite_instance_id, as the composites aren't instanced - but they do have entity_ids)
+                // - There are then a few entries that have composite_instance_ids set but I can't resolve them - perhaps these are things from GLOBAL?
+                // - Then there's all the instanced entities with resolvable composite_instance_ids
 
-                //first 18 are always null
-
-                //always first 247 are the same? 18 null and the rest in required assets?
-
-                //note: some of the things we skip here actually contain useful info, but the game doesn't read it so there's no point us bothering with it 
-
-
-
-                //NOTE: skipping first 18 as they're always empty, at least, for what we parse
                 reader.BaseStream.Position = 4;
                 int entryCount = reader.ReadInt32();
-                reader.BaseStream.Position += (48 * 18);
-                for (int i = 0; i < entryCount - 18; i++)
+                for (int i = 0; i < entryCount; i++)
                 {
                     Entry entry = new Entry();
 
@@ -106,15 +100,16 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
+            //composite_instance_id defo has something to do with the ordering as all the zeros are first
+
+
             //Entries = Entries.OrderBy(o => o.entity.entity_id.ToUInt32() + o.id.ToUInt32()).ThenBy(o => o.entity.composite_instance_id.ToUInt32()).ThenBy(o => o.zone_id.ToUInt32()).ToList();
 
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
-                writer.Write((Entries.Count + 18) * 48);
-                writer.Write(Entries.Count + 18);
-
-                writer.Write(new byte[18 * 48]);
+                writer.Write((Entries.Count) * 48);
+                writer.Write(Entries.Count);
 
                 for (int i = 0; i < Entries.Count; i++)
                 {

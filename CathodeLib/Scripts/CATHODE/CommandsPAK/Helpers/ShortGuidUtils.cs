@@ -53,6 +53,8 @@ namespace CATHODE.Scripting
         {
             if (_vanilla.cache.ContainsKey(value)) 
                 return _vanilla.cache[value];
+            if (_custom.cache.ContainsKey(value))
+                return _custom.cache[value];
 
             SHA1Managed sha1 = new SHA1Managed();
             byte[] hash1 = sha1.ComputeHash(Encoding.UTF8.GetBytes(value));
@@ -133,9 +135,14 @@ namespace CATHODE.Scripting
             }
             else
             {
+                //TODO: need to fix this for BSPNOSTROMO_RIPLEY_PATCH
                 if (_custom.cache.ContainsKey(value)) return;
                 _custom.cache.Add(value, guid);
-                _custom.cacheReversed.Add(guid, value);
+                try
+                {
+                    _custom.cacheReversed.Add(guid, value);
+                }
+                catch { }
             }
         }
 

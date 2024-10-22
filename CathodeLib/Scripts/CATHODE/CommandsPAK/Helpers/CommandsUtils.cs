@@ -271,11 +271,11 @@ namespace CATHODE.Scripting
                 asString = "";
                 return null;
             }
-
+        
             List<ShortGuid> hierarchyCopy = new List<ShortGuid>();
             for (int x = 0; x < hierarchy.Count; x++)
                 hierarchyCopy.Add(new ShortGuid(hierarchy[x].ToUInt32()));
-
+        
             Composite currentFlowgraphToSearch = composite;
             if (currentFlowgraphToSearch == null || currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[0]) == null)
             {
@@ -292,19 +292,19 @@ namespace CATHODE.Scripting
                     hierarchyCopy.RemoveAt(0);
                 }
             }
-
+        
             Entity entity = null;
             string hierarchyString = "";
             for (int i = 0; i < hierarchyCopy.Count; i++)
             {
                 entity = currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[i]);
-
+        
                 if (entity == null) break;
                 if (includeShortGuids) hierarchyString += "[" + entity.shortGUID.ToByteString() + "] ";
                 hierarchyString += EntityUtils.GetName(currentFlowgraphToSearch.shortGUID, entity.shortGUID);
                 if (i >= hierarchyCopy.Count - 2) break; //Last is always 00-00-00-00
                 hierarchyString += " -> ";
-
+        
                 if (entity.variant == EntityVariant.FUNCTION)
                 {
                     Composite flowRef = commands.GetComposite(((FunctionEntity)entity).function);

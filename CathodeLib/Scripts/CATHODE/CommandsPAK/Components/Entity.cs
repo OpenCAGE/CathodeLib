@@ -682,7 +682,6 @@ namespace CATHODE.Scripting
         {
             path = _path;
 
-            //TODO: this whole system of modifying the path is dumb, should really come up with a better solution
             if (path.Count == 0 || path[path.Count - 1] != ShortGuid.Invalid)
                 path.Add(ShortGuid.Invalid);
         }
