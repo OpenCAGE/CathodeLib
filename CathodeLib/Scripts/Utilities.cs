@@ -474,7 +474,7 @@ namespace CathodeLib
         public EntityHandle(EntityPath hierarchy)
         {
             entity_id = hierarchy.GetPointedEntityID();
-            composite_instance_id = hierarchy.GenerateInstance();
+            composite_instance_id = hierarchy.GenerateCompositeInstanceID();
         }
 
         public override bool Equals(object obj)

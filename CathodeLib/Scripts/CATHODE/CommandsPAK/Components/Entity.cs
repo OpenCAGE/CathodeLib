@@ -682,6 +682,7 @@ namespace CATHODE.Scripting
         {
             path = _path;
 
+            //TODO: this whole system of modifying the path is dumb, should really come up with a better solution
             if (path.Count == 0 || path[path.Count - 1] != ShortGuid.Invalid)
                 path.Add(ShortGuid.Invalid);
         }
@@ -770,15 +771,13 @@ namespace CATHODE.Scripting
         /* Get the ID of the entity that this path points to */
         public ShortGuid GetPointedEntityID()
         {
-            path.Reverse();
             ShortGuid id = ShortGuid.Invalid;
-            for (int i = 0; i < path.Count; i++)
+            for (int i = path.Count - 1; i >= 0; i--)
             {
                 if (path[i] == ShortGuid.Invalid) continue;
                 id = path[i];
                 break;
             }
-            path.Reverse();
             return id;
         }
 
@@ -807,31 +806,15 @@ namespace CATHODE.Scripting
         }
 
         /* Generate the instance ID used to identify the instanced composite we're executed in */
-        public ShortGuid GenerateInstance()
+        public ShortGuid GenerateCompositeInstanceID(bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
         {
-            //TODO: This hijacks the usual use for this class, need to tidy it up
-            ShortGuid entityID = GetPointedEntityID();
-            path.Insert(0, ShortGuid.InitialiserBase);
-            path.Remove(entityID);
-            path.Reverse();
-            ShortGuid instanceGenerated = path[0];
-            for (int i = 0; i < path.Count; i++)
-            {
-                if (i == path.Count - 1) break;
-                instanceGenerated = path[i + 1].Combine(instanceGenerated);
-            }
-            path.Reverse();
-            path.RemoveAt(0);
-            path.RemoveAll(o => o == ShortGuid.Invalid);
-            path.Add(entityID);
-            path.Add(ShortGuid.Invalid);
-            return instanceGenerated;
+            return path.GenerateCompositeInstanceID(hasInternalEntityID);
         }
 
         /* Generate a zone ID (use this when the EntityHandle points to a Zone entity) */
         public ShortGuid GenerateZoneID()
         {
-            return new ShortGuid(0 + GenerateInstance().ToUInt32() + GetPointedEntityID().ToUInt32() + 1);
+            return new ShortGuid(0 + GenerateCompositeInstanceID().ToUInt32() + GetPointedEntityID().ToUInt32() + 1);
         }
         
         /* Updates this path to have the path to another entity prepended to it */
@@ -840,6 +823,30 @@ namespace CATHODE.Scripting
             int length = otherPath.path[otherPath.path.Count - 1] == ShortGuid.Invalid ? otherPath.path.Count - 2 : otherPath.path.Count - 1;
             for (int i = 0; i < length; i++)
                 path.Insert(i, otherPath.path[i]);
+        }
+    }
+
+    public static class PathUtils
+    {
+        /* Generate the instance ID used to identify the instanced composite we're executed in */
+        public static ShortGuid GenerateCompositeInstanceID(this List<ShortGuid> path, bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
+        {
+            bool hasTrailingInvalid = (path.Count > 0 && path[path.Count - 1] == ShortGuid.Invalid);
+            ShortGuid[] values = new ShortGuid[hasInternalEntityID ? (hasTrailingInvalid ? path.Count - 1 : path.Count) : (hasTrailingInvalid ? path.Count : path.Count + 1)];
+            values[values.Length - 1] = ShortGuid.InitialiserBase;
+            int x = 0;
+            for (int i = values.Length - 2; i >= 0; i--)
+            {
+                values[i] = path[x];
+                x++;
+            }
+            ShortGuid instanceGenerated = values[0];
+            for (int i = 0; i < values.Length; i++)
+            {
+                if (i == values.Length - 1) break;
+                instanceGenerated = values[i + 1].Combine(instanceGenerated);
+            }
+            return instanceGenerated;
         }
     }
 
