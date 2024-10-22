@@ -135,7 +135,7 @@ namespace CATHODE.Scripting
             }
             else
             {
-                //TODO: need to fix this for BSPNOSTROMO_RIPLEY_PATCH
+                //TODO: need to fix this for BSPNOSTROMO_RIPLEY_PATCH (?)
                 if (_custom.cache.ContainsKey(value)) return;
                 _custom.cache.Add(value, guid);
                 try

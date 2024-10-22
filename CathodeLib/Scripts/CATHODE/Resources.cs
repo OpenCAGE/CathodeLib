@@ -63,6 +63,18 @@ namespace CATHODE
         }
         #endregion
 
+        public void AddUniqueResource(ShortGuid composite_instance_id, ShortGuid resource_id)
+        {
+            if (Entries.FirstOrDefault(o => o.composite_instance_id == composite_instance_id && o.resource_id == resource_id) != null)
+                return;
+
+            Entries.Add(new Resource()
+            {
+                composite_instance_id = composite_instance_id,
+                resource_id = resource_id
+            });
+        }
+
         #region STRUCTURES
         public class Resource
         {
