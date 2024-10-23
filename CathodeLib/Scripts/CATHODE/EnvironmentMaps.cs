@@ -37,7 +37,7 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            List<Mapping> orderedEntries = Entries.OrderByDescending(o => o.MoverIndex).ToList();
+            List<Mapping> orderedEntries = Entries.OrderBy(o => o.MoverIndex).ToList();
 
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
