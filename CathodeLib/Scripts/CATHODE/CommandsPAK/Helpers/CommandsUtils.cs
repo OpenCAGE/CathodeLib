@@ -263,18 +263,16 @@ namespace CATHODE.Scripting
 
         #region HELPER_FUNCS
         /* Resolve an entity hierarchy */
-        public static Entity ResolveHierarchy(Commands commands, Composite composite, List<ShortGuid> hierarchy, out Composite containedComposite, out string asString, bool includeShortGuids = true)
+        public static Entity ResolveHierarchy(Commands commands, Composite composite, ShortGuid[] hierarchy, out Composite containedComposite, out string asString, bool includeShortGuids = true)
         {
-            if (hierarchy.Count == 0)
+            if (hierarchy.Length == 0)
             {
                 containedComposite = null;
                 asString = "";
                 return null;
             }
-        
-            List<ShortGuid> hierarchyCopy = new List<ShortGuid>();
-            for (int x = 0; x < hierarchy.Count; x++)
-                hierarchyCopy.Add(new ShortGuid(hierarchy[x].ToUInt32()));
+
+            List<ShortGuid> hierarchyCopy = hierarchy.ToList();
         
             Composite currentFlowgraphToSearch = composite;
             if (currentFlowgraphToSearch == null || currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[0]) == null)
@@ -324,47 +322,12 @@ namespace CATHODE.Scripting
             return entity;
         }
 
-        /* Generate all possible hierarchies for an entity */
-        private static List<List<ShortGuid>> _hierarchies = new List<List<ShortGuid>>();
-        public static List<EntityPath> GenerateHierarchies(Commands commands, Composite composite, Entity entity)
-        {
-            List<EntityPath> hierarchies = new List<EntityPath>();
-            _hierarchies.Clear();
-
-            GenerateHierarchiesRecursive(commands, null, commands.EntryPoints[0], composite, new List<ShortGuid>());
-            
-            for (int i = 0; i < _hierarchies.Count; i++)
-            {
-                _hierarchies[i].Add(entity.shortGUID);
-                hierarchies.Add(new EntityPath(_hierarchies[i]));
-            }
-
-            return hierarchies;
-        }
-        private static void GenerateHierarchiesRecursive(Commands commands, Entity ent, Composite comp, Composite target, List<ShortGuid> hierarchy)
-        {
-            if (ent != null)
-                hierarchy.Add(ent.shortGUID);
-
-            if (comp.shortGUID == target.shortGUID)
-            {
-                _hierarchies.Add(hierarchy);
-                return;
-            }
-
-            Parallel.For(0, comp.functions.Count, i =>
-            {
-                Composite next = commands.GetComposite(comp.functions[i].function);
-                if (next != null) GenerateHierarchiesRecursive(commands, comp.functions[i], next, target, new List<ShortGuid>(hierarchy.ConvertAll(x => x)));
-            });
-        }
-
         /* Calculate an instanced entity's worldspace position & rotation */
         public static (Vector3, Quaternion) CalculateInstancedPosition(EntityPath hierarchy)
         {
             cTransform globalTransform = new cTransform();
             Composite comp = _commands.EntryPoints[0];
-            for (int x = 0; x < hierarchy.path.Count; x++)
+            for (int x = 0; x < hierarchy.path.Length; x++)
             {
                 FunctionEntity compInst = comp.functions.FirstOrDefault(o => o.shortGUID == hierarchy.path[x]);
                 if (compInst == null)
