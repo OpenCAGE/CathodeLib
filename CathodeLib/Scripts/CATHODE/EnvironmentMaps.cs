@@ -1,6 +1,7 @@
-﻿using CathodeLib;
+using CathodeLib;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace CATHODE
@@ -36,16 +37,18 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
+            List<Mapping> orderedEntries = Entries.OrderByDescending(o => o.MoverIndex).ToList();
+
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
                 Utilities.WriteString("envm", writer);
                 writer.Write(1);
                 writer.Write(Entries.Count);
-                for (int i = 0; i < Entries.Count; i++)
+                for (int i = 0; i < orderedEntries.Count; i++)
                 {
-                    writer.Write(Entries[i].MoverIndex);
-                    writer.Write(Entries[i].EnvMapIndex);
+                    writer.Write(orderedEntries[i].MoverIndex);
+                    writer.Write(orderedEntries[i].EnvMapIndex);
                 }
                 writer.Write(EnvironmentMapCount);
             }
