@@ -23,17 +23,26 @@ namespace CATHODE
 
         private List<MOVER_DESCRIPTOR> _writeList = new List<MOVER_DESCRIPTOR>();
 
+        ~Movers()
+        {
+            Entries.Clear();
+            _writeList.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal()
         {
+            //note: first 12 always renderable but not linked to commands -> they are always the same models across every level. is it the content of GLOBAL?
+
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
                 reader.BaseStream.Position += 4;
                 int entryCount = reader.ReadInt32();
-                _entryCountUnk = reader.ReadInt32(); //a count of something - not sure what
+                _entryCountUnk = reader.ReadInt32(); //a count of something - not sure what. not sure if it's actually used by the game
                 reader.BaseStream.Position += 20;
                 Entries = new List<MOVER_DESCRIPTOR>(Utilities.ConsumeArray<MOVER_DESCRIPTOR>(reader, entryCount));
             }
+
             _writeList.AddRange(Entries);
             return true;
         }
@@ -188,42 +197,57 @@ namespace CATHODE
 
             public Matrix4x4 transform;
             //64
-            public GPU_CONSTANTS gpuConstants;
+            public GPU_CONSTANTS gpu_constants;
             //144
             public UInt64 fogsphere_val1; // 0xa0 in RenderableFogSphereInstance
             public UInt64 fogsphere_val2; // 0xa8 in RenderableFogSphereInstance
                                           //160
-            public RENDER_CONSTANTS renderConstants;
-            //244
-            public UInt32 renderableElementIndex; //reds.bin index
-            public UInt32 renderableElementCount; //reds.bin count
+            public RENDER_CONSTANTS render_constants;
 
-            public UInt32 resourcesIndex;
+            //244
+            public UInt32 renderable_element_index; //reds.bin index
+            public UInt32 renderable_element_count; //reds.bin count
+
+            public int resource_index; //This is the index value from Resources.bin
             //256
             public Vector3 Unknowns5_;
             public UInt32 visibility; // pulled from iOS dump - should be visibility var?
                                       //272
 
-            public CommandsEntityReference entity; //The entity in the Commands file
+            public EntityHandle entity; //The entity in the Commands file
 
-                                                 //280
-            public Int32 environmentMapIndex; //environment_map.bin index - converted to short in code
+            //280
+            public Int32 environment_map_index = -1; //environment_map.bin index - converted to short in code
                                                //284
             public float emissive_val1; //emissive surface val1
             public float emissive_val2; //emissive surface val2
             public float emissive_val3; //emissive surface val3
                                         //296
-            public ShortGuid zoneID; //zone id? RenderableScene::create_instance, RenderableScene::initialize
-            public ShortGuid zoneActivator;  //zone activator? RenderableScene::create_instance, RenderableScene::initialize
+
+            //If primary zone ID or secondary zone ID are zero, they are not applied to a zone. it seems like the game hacks this by setting the primary id to 1 to add it to a sort of "global zone", for entities that are spawned but not in a zone.
+            public ShortGuid primary_zone_id;
+            public ShortGuid secondary_zone_id;
+
                                           //304
             public UInt32 Unknowns61_; //uVar3 in reserve_light_light_master_sets, val of LightMasterSet, or an incrementer
-            public UInt16 Unknown17_;   // TODO: It is -1 most of the time, but some times it isn't.
+
+
+            public UInt16 Unknown17_;   // TODO: flags? always "65535" on BSP_LV426 1 and 2
+
+
                                         //310
             public UInt16 instanceTypeFlags; //ushort - used for bitwise flags depending on mover RENDERABLE_INSTANCE::Type. Environment types seem to use first bit to decide if its position comes from MVR.
                                              //312
             public UInt32 Unknowns70_;
             public UInt32 Unknowns71_;
             //320
+
+            ~MOVER_DESCRIPTOR()
+            {
+                gpu_constants = null;
+                render_constants = null;
+                entity = null;
+            }
         };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -247,24 +271,29 @@ namespace CATHODE
 
 
             //64
-            public Vector4 LightColour;
-            public Vector4 MaterialTint;
+            public Vector4 LightColour = new Vector4(1,1,1,1);
+            public Vector4 MaterialTint = new Vector4(1,1,1,1);
             //96
-            public float lightVolumeIntensity; //todo: idk if this is right, but editing this value seems to increase/decrease the brightness of the light volume meshes
-            public float particleIntensity; //0 = black particle
-            public float particleSystemOffset; //todo: not sure entirely, but increasing this value seems to apply an offset to particle systems
+            public float lightVolumeIntensity = 1; //todo: idk if this is right, but editing this value seems to increase/decrease the brightness of the light volume meshes
+            public float particleIntensity = 1; //0 = black particle
+            public float particleSystemOffset = 0; //todo: not sure entirely, but increasing this value seems to apply an offset to particle systems
                                                //108
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
             public byte[] blankSpace1;
             //116
-            public float lightRadius;
-            public Vector2 textureTile; //x = horizontal tile, y = vertical tile
+            public float lightRadius = 0;
+            public Vector2 textureTile = new Vector2(1,1); //x = horizontal tile, y = vertical tile
                                         //128
-            public float UnknownValue1_;
-            public float UnknownValue2_;
-            public float UnknownValue3_;
-            public float UnknownValue4_;
+            public float UnknownValue1_ = 1;
+            public float UnknownValue2_ = 1;
+            public float UnknownValue3_ = 0;
+            public float UnknownValue4_ = 0;
             //144
+
+            ~GPU_CONSTANTS()
+            {
+                blankSpace1 = null;
+            }
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -281,10 +310,10 @@ namespace CATHODE
             */
 
             //160
-            public Vector4 Unknown3_;
+            public Vector4 Unknown3_ = new Vector4(0,0,0,0);
             //176
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public UInt32[] Unknowns2_;
+            public UInt32[] Unknowns2_; 
             //184
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
             public Vector3[] UnknownMinMax_; // NOTE: Sometimes I see 'nan's here too.
@@ -292,6 +321,13 @@ namespace CATHODE
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 36)]
             public byte[] blankSpace3;
             //244
+
+            ~RENDER_CONSTANTS()
+            {
+                Unknowns2_ = null;
+                UnknownMinMax_ = null;
+                blankSpace3 = null;
+            }
         }
         #endregion
     }

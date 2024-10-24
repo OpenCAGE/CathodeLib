@@ -27,7 +27,7 @@ namespace CATHODE.Scripting
                     index = 0;
                     break;
             }
-            entryType = type;
+            resource_type = type;
         }
 
         public static bool operator ==(ResourceReference x, ResourceReference y)
@@ -37,11 +37,11 @@ namespace CATHODE.Scripting
 
             if (x.position != y.position) return false;
             if (x.rotation != y.rotation) return false;
-            if (x.resourceID != y.resourceID) return false;
-            if (x.entryType != y.entryType) return false;
+            if (x.resource_id != y.resource_id) return false;
+            if (x.resource_type != y.resource_type) return false;
             if (x.index != y.index) return false;
             if (x.count != y.count) return false;
-            if (x.collisionID != y.collisionID) return false;
+            if (x.entityID != y.entityID) return false;
 
             return true;
         }
@@ -60,11 +60,11 @@ namespace CATHODE.Scripting
             return obj is ResourceReference reference &&
                    EqualityComparer<Vector3>.Default.Equals(position, reference.position) &&
                    EqualityComparer<Vector3>.Default.Equals(rotation, reference.rotation) &&
-                   EqualityComparer<ShortGuid>.Default.Equals(resourceID, reference.resourceID) &&
-                   entryType == reference.entryType &&
+                   EqualityComparer<ShortGuid>.Default.Equals(resource_id, reference.resource_id) &&
+                   resource_type == reference.resource_type &&
                    index == reference.index &&
                    count == reference.count &&
-                   EqualityComparer<ShortGuid>.Default.Equals(collisionID, reference.collisionID);
+                   EqualityComparer<ShortGuid>.Default.Equals(entityID, reference.entityID);
         }
 
         public override int GetHashCode()
@@ -72,23 +72,23 @@ namespace CATHODE.Scripting
             int hashCode = -1286985782;
             hashCode = hashCode * -1521134295 + position.GetHashCode();
             hashCode = hashCode * -1521134295 + rotation.GetHashCode();
-            hashCode = hashCode * -1521134295 + resourceID.GetHashCode();
-            hashCode = hashCode * -1521134295 + entryType.GetHashCode();
+            hashCode = hashCode * -1521134295 + resource_id.GetHashCode();
+            hashCode = hashCode * -1521134295 + resource_type.GetHashCode();
             hashCode = hashCode * -1521134295 + index.GetHashCode();
             hashCode = hashCode * -1521134295 + count.GetHashCode();
-            hashCode = hashCode * -1521134295 + collisionID.GetHashCode();
+            hashCode = hashCode * -1521134295 + entityID.GetHashCode();
             return hashCode;
         }
 
         public Vector3 position = new Vector3(0, 0, 0);
         public Vector3 rotation = new Vector3(0, 0, 0);
 
-        public ShortGuid resourceID; //TODO: we could deprecate this, and just write it knowing what we know with our object structure
-        public ResourceType entryType;
+        public ShortGuid resource_id; //this can be translated to a string sometimes, like DYNAMIC_PHYSICS_SYSTEM
+        public ResourceType resource_type;
 
         public int index = -1;
         public int count = 1;
 
-        public ShortGuid collisionID = new ShortGuid("FF-FF-FF-FF");
+        public ShortGuid entityID = new ShortGuid("FF-FF-FF-FF");
     }
 }

@@ -12,6 +12,11 @@ namespace CATHODE
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public PAK2(string path) : base(path) { }
 
+        ~PAK2()
+        {
+            Entries.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal()
         {
@@ -85,6 +90,11 @@ namespace CATHODE
         #region STRUCTURES
         public class File
         {
+            ~File()
+            {
+                Content = null;
+            }
+
             public string Filename = "";
             public byte[] Content;
         }

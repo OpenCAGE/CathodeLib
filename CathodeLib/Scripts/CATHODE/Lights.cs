@@ -1,4 +1,4 @@
-﻿using CathodeLib;
+using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,7 +9,20 @@ namespace CATHODE.EXPERIMENTAL
     /* DATA/ENV/PRODUCTION/x/WORLD/LIGHTS.BIN */
     public class Lights : CathodeFile
     {
-        public List<Light> Entries = new List<Light>();
+        //NOTE: we can read this file in/out, but we don't really know the data yet.
+
+        public List<int> Indexes = new List<int>();
+        public List<short[]> Values = new List<short[]>();
+
+        public int UnknownValue0;
+        public int UnknownValue1;
+        public int UnknownValue2;
+        public int UnknownValue3;
+        public int UnknownValue4;
+        public int UnknownValue5;
+        public int UnknownValue6;
+        public int UnknownValue7;
+
         public static new Implementation Implementation = Implementation.NONE;
         public Lights(string path) : base(path) { }
 
@@ -22,26 +35,65 @@ namespace CATHODE.EXPERIMENTAL
                 int entryCount = reader.ReadInt32();
                 for (int i = 0; i < entryCount; i++)
                 {
-                    Light entry = new Light();
-                    entry.MoverIndex = reader.ReadInt32();
-                    Entries.Add(entry);
+                    Indexes.Add(reader.ReadInt32()); //I think this is MVR index
                 }
-                for (int i = 0; i < entryCount; i++)
+                int nextCount = reader.ReadInt16();
+
+                //Assertions
+                if (nextCount != (entryCount * 2) - 1)
                 {
-                    //TODO: Really not sure on almost all of this structure yet
-                    Entries[i].unk1 = reader.ReadSingle();
-                    Entries[i].unk2 = reader.ReadSingle();
-                    Entries[i].unk3 = reader.ReadSingle();
-                    Entries[i].unk4 = reader.ReadSingle();
-                    Entries[i].unk5 = reader.ReadSingle();
-                    Entries[i].unk6 = reader.ReadSingle();
-                    Entries[i].OffsetOrIndex = reader.ReadInt32();
-                    Entries[i].LightIndex0 = reader.ReadInt16();
-                    Entries[i].unk7 = reader.ReadInt16();
-                    Entries[i].LightIndex1 = reader.ReadInt16();
-                    Entries[i].unk8 = reader.ReadInt16();
+                    string gdsfdsf = "";
                 }
-                //TODO: we also leave some data behind here
+
+                for (int i = 0; i < nextCount; i++)
+                {
+                    short[] array = new short[18];
+                    for (int x = 0; x < 18; x++)
+                        array[x] = reader.ReadInt16();
+                    Values.Add(array);
+
+                    //Assertions
+                    if (array[17] != 0)
+                    {
+                        string sdsdfd = "";
+                    }
+                    if (array[16] != 0 && array[16] != 1)
+                    {
+                        string sdsdfd = "";
+                    }
+                    if (array[15] < 0)
+                    {
+                        string sdsdfd = "";
+                    }
+                    if (array[14] < 0)
+                    {
+                        //i think this is an index 
+                        string sdsdfd = "";
+                    }
+                }
+
+                //Additional unknowns
+                UnknownValue0 = reader.ReadChar();
+                UnknownValue1 = reader.ReadInt32();
+                UnknownValue2 = reader.ReadInt32();
+                UnknownValue3 = reader.ReadInt32();
+                UnknownValue4 = reader.ReadInt32();
+                UnknownValue5 = reader.ReadInt32();
+                UnknownValue6 = reader.ReadInt32();
+                UnknownValue7 = reader.ReadInt16();
+
+                //Assertions
+                if (UnknownValue0 != 0 || 
+                    UnknownValue1 != 0 || 
+                    UnknownValue2 != 0 || 
+                    UnknownValue3 != 0 || 
+                    UnknownValue4 != 0 || 
+                    UnknownValue5 != 0 || 
+                    UnknownValue6 != 0 ||
+                    UnknownValue7 != 0)
+                {
+                    string dfdf = "";
+                }
             }
             return true;
         }
@@ -50,54 +102,40 @@ namespace CATHODE.EXPERIMENTAL
         {
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
-                //writer.BaseStream.SetLength(0);
+                //TODO: this data is ordered by array entry -4 and then -3 i think
+
+                writer.BaseStream.SetLength(0);
                 Utilities.WriteString("ligt", writer);
                 writer.Write(4);
-                writer.Write(Entries.Count);
-                for (int i = 0; i < Entries.Count; i++)
+                writer.Write(Indexes.Count);
+                for (int i = 0; i < Indexes.Count; i++)
+                    writer.Write(Indexes[i]);
+                writer.Write((Int16)Values.Count);
+                for (int i = 0; i < Values.Count; i++)
                 {
-                    writer.Write((Int32)Entries[i].MoverIndex);
+                    if (Values[i].Length != 18)
+                        throw new Exception("Entry was of unexpected length.");
+
+                    for (int x = 0; x < Values[i].Length; x++)
+                        writer.Write((Int16)Values[i][x]);
                 }
-                for (int i = 0; i < Entries.Count; i++)
-                {
-                    writer.Write(Entries[i].unk1);
-                    writer.Write(Entries[i].unk2);
-                    writer.Write(Entries[i].unk3);
-                    writer.Write(Entries[i].unk4);
-                    writer.Write(Entries[i].unk5);
-                    writer.Write(Entries[i].unk6);
-                    writer.Write((Int32)Entries[i].OffsetOrIndex);
-                    writer.Write((Int16)Entries[i].LightIndex0);
-                    writer.Write((Int16)Entries[i].unk7);
-                    writer.Write((Int16)Entries[i].LightIndex1);
-                    writer.Write((Int16)Entries[i].unk8);
-                }
-                //TODO: another block here i don't know
-                //writer.Write(new byte[27]); //it seems like you have a 27-byte buffer at the end?
+
+                writer.Write((char)UnknownValue0);
+                writer.Write(UnknownValue1);
+                writer.Write(UnknownValue2);
+                writer.Write(UnknownValue3);
+                writer.Write(UnknownValue4);
+                writer.Write(UnknownValue5);
+                writer.Write(UnknownValue6);
+                writer.Write((Int16)UnknownValue7);
+
             }
             return true;
         }
         #endregion
 
         #region STRUCTURES
-        public class Light
-        {
-            public int MoverIndex; //Index of the mover in the MODELS.MVR file
 
-            public float unk1;
-            public float unk2;
-            public float unk3;
-            public float unk4;
-            public float unk5;
-            public float unk6;
-
-            public int OffsetOrIndex;
-
-            public int LightIndex0;
-            public int unk7;
-            public int LightIndex1;
-            public int unk8;
-        };
         #endregion
     }
 }

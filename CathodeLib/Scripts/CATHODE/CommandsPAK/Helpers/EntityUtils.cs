@@ -36,6 +36,20 @@ namespace CATHODE.Scripting
             reader.Close();
         }
 
+        //For testing
+        public static List<string> GetAllVanillaNames()
+        {
+            List<string> names = new List<string>();
+            foreach (var entry in _vanilla.names)
+            {
+                foreach (var entry2 in entry.Value)
+                {
+                    names.Add(entry2.Value);
+                }
+            }
+            return names;
+        }
+
         /* Optionally, link a Commands file which can be used to save custom entity names to */
         public static void LinkCommands(Commands commands)
         {
@@ -131,7 +145,7 @@ namespace CATHODE.Scripting
         /* Gets the function this function inherits from - you can keep calling this down to EntityMethodInterface */
         public static FunctionType GetBaseFunction(FunctionEntity entity)
         {
-            return GetBaseFunction(CommandsUtils.GetFunctionType(entity.function));
+            return GetBaseFunction(CommandsUtils.GetFunctionType(entity));
         }
         public static FunctionType GetBaseFunction(FunctionType type)
         {
@@ -158,15 +172,11 @@ namespace CATHODE.Scripting
         {
             switch (type)
             {
-                //These types have no inheritance - perhaps they are unused?
-                case FunctionType.CharacterMonitor:
+                //These are best guesses
                 case FunctionType.WEAPON_DidHitSomethingFilter:
-                case FunctionType.VariableEnumString:
-                case FunctionType.SetEnumString:
-                case FunctionType.NetworkProxy:
+                    return FunctionType.ScriptInterface;
                 case FunctionType.DebugPositionMarker:
-                default:
-                    throw new Exception();
+                    return FunctionType.SensorInterface;
 
                 //This is as far as we go, but it actually inherits from EntityResourceInterface
                 case FunctionType.EntityMethodInterface:
@@ -1797,6 +1807,7 @@ namespace CATHODE.Scripting
                 case FunctionType.ZoneLoaded:
                     return FunctionType.ScriptInterface;
             }
+            throw new Exception("Unhandled function type");
         }
 
         /* Applies all default parameter data to a Function entity (DESTRUCTIVE!) */
@@ -7669,9 +7680,9 @@ namespace CATHODE.Scripting
                 case FunctionType.BlendLowResFrame:
                     entity.AddParameter("blend_value", new cFloat(0.0f), ParameterVariant.PARAMETER); //float
                     break;
-                case FunctionType.CharacterMonitor:
-                    entity.AddParameter("character", new cFloat(), ParameterVariant.INPUT); //ResourceID
-                    break;
+                //case FunctionType.CharacterMonitor:
+                //    entity.AddParameter("character", new cFloat(), ParameterVariant.INPUT); //ResourceID
+                //    break;
                 case FunctionType.AreaHitMonitor:
                     entity.AddParameter("on_flamer_hit", new cFloat(), ParameterVariant.TARGET); //
                     entity.AddParameter("on_shotgun_hit", new cFloat(), ParameterVariant.TARGET); //

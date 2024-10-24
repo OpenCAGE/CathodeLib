@@ -17,7 +17,8 @@ namespace CATHODE.Scripting
     public struct ShortGuid : IComparable<ShortGuid>
     {
         public static readonly ShortGuid Invalid = new ShortGuid(0);
-        public static readonly ShortGuid InitialiserBase = new ShortGuid("FE-5B-F0-4A");
+        public static readonly ShortGuid InitialiserBase = new ShortGuid(1257266174); //"FE-5B-F0-4A"
+        public static readonly ShortGuid Max = new ShortGuid(4294967295); //"FF-FF-FF-FF"
 
         public bool IsInvalid => val == Invalid.val;
 
@@ -36,13 +37,11 @@ namespace CATHODE.Scripting
             val = num;
         }
 
-        [Obsolete("For performance reasons, it is recommended to initialse ShortGuid as an unsigned integer.")]
         public ShortGuid(byte[] id)
         {
             val = BitConverter.ToUInt32(id, 0);
         }
 
-        [Obsolete("For performance reasons, it is recommended to initialse ShortGuid as an unsigned integer.")]
         public ShortGuid(string id)
         {
             System.String[] arr = id.Split('-');
@@ -67,13 +66,11 @@ namespace CATHODE.Scripting
             return !(x.val == y.val);
         }
 
-        [Obsolete("For performance reasons, it is recommended to compare as ShortGuid or integer.")]
         public static bool operator ==(ShortGuid x, string y)
         {
             return x.ToByteString() == y;
         }
 
-        [Obsolete("For performance reasons, it is recommended to compare as ShortGuid or integer.")]
         public static bool operator !=(ShortGuid x, string y)
         {
             return x.ToByteString() != y;
@@ -114,13 +111,11 @@ namespace CATHODE.Scripting
             return val;
         }
 
-        [Obsolete("For performance reasons, it is recommended to use ToUInt32.")]
         public string ToByteString()
         {
             return BitConverter.ToString(BitConverter.GetBytes(val));
         }
 
-        [Obsolete("For performance reasons, it is recommended to use ToUInt32.")]
         public byte[] ToBytes()
         {
             return BitConverter.GetBytes(val);

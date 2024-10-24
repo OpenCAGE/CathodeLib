@@ -189,7 +189,7 @@ namespace CATHODE
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                             AliasEntity overrider = new AliasEntity(new ShortGuid(reader_parallel));
                                             int NumberOfParams = JumpToOffset(reader_parallel);
-                                            overrider.alias.path.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams));
+                                            overrider.alias.path = Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams);
                                             composite.aliases.Add(overrider);
                                             break;
                                         }
@@ -214,7 +214,7 @@ namespace CATHODE
                                             ProxyEntity thisProxy = new ProxyEntity(new ShortGuid(reader_parallel));
                                             int resetPos = (int)reader_parallel.BaseStream.Position + 8; //TODO: This is a HACK - I need to rework JumpToOffset to make a temp stream
                                             int NumberOfParams = JumpToOffset(reader_parallel);
-                                            thisProxy.proxy.path.AddRange(Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams)); //Last is always 0x00, 0x00, 0x00, 0x00
+                                            thisProxy.proxy.path = Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams); //Last is always 0x00, 0x00, 0x00, 0x00
                                             reader_parallel.BaseStream.Position = resetPos;
                                             ShortGuid idCheck = new ShortGuid(reader_parallel);
                                             if (idCheck != thisProxy.shortGUID) throw new Exception("Proxy ID mismatch!");
@@ -264,9 +264,9 @@ namespace CATHODE
                                             ResourceReference resource = new ResourceReference();
                                             resource.position = new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle());
                                             resource.rotation = new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle());
-                                            resource.resourceID = new ShortGuid(reader_parallel);
-                                            resource.entryType = CommandsUtils.GetResourceEntryType(reader_parallel.ReadBytes(4));
-                                            switch (resource.entryType)
+                                            resource.resource_id = new ShortGuid(reader_parallel);
+                                            resource.resource_type = CommandsUtils.GetResourceEntryType(reader_parallel.ReadBytes(4));
+                                            switch (resource.resource_type)
                                             {
                                                 case ResourceType.RENDERABLE_INSTANCE:
                                                     resource.index = reader_parallel.ReadInt32();
@@ -274,7 +274,7 @@ namespace CATHODE
                                                     break;
                                                 case ResourceType.COLLISION_MAPPING:
                                                     resource.index = reader_parallel.ReadInt32();
-                                                    resource.collisionID = new ShortGuid(reader_parallel);
+                                                    resource.entityID = new ShortGuid(reader_parallel);
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
@@ -315,7 +315,7 @@ namespace CATHODE
                                                 header.parameterSubID = new ShortGuid(reader_parallel);
 
                                                 int hierarchyCount = JumpToOffset(reader_parallel);
-                                                header.connectedEntity.path = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
+                                                header.connectedEntity.path = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount);
                                                 animEntity.connections.Add(header);
                                             }
 
@@ -397,7 +397,7 @@ namespace CATHODE
                                                 TriggerSequence.Entity thisTrigger = new TriggerSequence.Entity();
                                                 thisTrigger.timing = reader_parallel.ReadSingle();
                                                 reader_parallel.BaseStream.Position = hierarchyOffset;
-                                                thisTrigger.connectedEntity.path = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount).ToList<ShortGuid>();
+                                                thisTrigger.connectedEntity.path = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount);
                                                 trigEntity.entities.Add(thisTrigger);
                                             }
 
@@ -445,18 +445,18 @@ namespace CATHODE
                                 if (composite.functions[x].parameters[y].name != resParamID) continue;
 
                                 cResource resourceParam = (cResource)composite.functions[x].parameters[y].content;
-                                resourceParam.value.AddRange(resourceRefs.Where(o => o.resourceID == resourceParam.shortGUID));
-                                resourceRefs.RemoveAll(o => o.resourceID == resourceParam.shortGUID);
+                                resourceParam.value.AddRange(resourceRefs.Where(o => o.resource_id == resourceParam.shortGUID));
+                                resourceRefs.RemoveAll(o => o.resource_id == resourceParam.shortGUID);
                             }
                         }
                         //Check to see if this resource applies directly to an ENTITY
                         for (int x = 0; x < composite.functions.Count; x++)
                         {
-                            composite.functions[x].resources.AddRange(resourceRefs.Where(o => o.resourceID == composite.functions[x].shortGUID));
-                            resourceRefs.RemoveAll(o => o.resourceID == composite.functions[x].shortGUID);
+                            composite.functions[x].resources.AddRange(resourceRefs.Where(o => o.resource_id == composite.functions[x].shortGUID));
+                            resourceRefs.RemoveAll(o => o.resource_id == composite.functions[x].shortGUID);
                         }
-                        //Any that are left over will be applied to PhysicsSystem entities
-                        if (resourceRefs.Count == 1 && resourceRefs[0].entryType == ResourceType.DYNAMIC_PHYSICS_SYSTEM)
+                        //Any that are left over will be applied to PhysicsSystem entities - really these just exist in the composite, but it's easier for us to track this way
+                        if (resourceRefs.Count == 1 && resourceRefs[0].resource_type == ResourceType.DYNAMIC_PHYSICS_SYSTEM)
                         {
                             FunctionEntity physEnt = composite.functions.FirstOrDefault(o => o.function == physEntID);
                             if (physEnt != null) physEnt.resources.Add(resourceRefs[0]);
@@ -574,6 +574,7 @@ namespace CATHODE
                                 Entries[i].functions[x].AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE);
                                 break;
 
+                            //NOTE: Really, DYNAMIC_PHYSICS_SYSTEM isn't actually on the entity, it's on the composite
                             case FunctionType.PhysicsSystem:
                                 Parameter dps_index = Entries[i].functions[x].GetParameter("system_index");
                                 if (dps_index == null)
@@ -583,6 +584,7 @@ namespace CATHODE
                                 }
                                 Entries[i].functions[x].AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).index = ((cInteger)dps_index.content).value;
                                 break;
+
                             case FunctionType.EnvironmentModelReference:
                                 Parameter rsc = Entries[i].functions[x].GetParameter("resource");
                                 if (rsc == null)
@@ -722,7 +724,7 @@ namespace CATHODE
                             stringStartRaw[3] = 0x80;
                             writer.Write(stringStartRaw);
                             string str = ((cString)parameters[i]).value.Replace("\u0092", "'"); 
-                            writer.Write(ShortGuidUtils.Generate(str).ToUInt32());
+                            writer.Write(ShortGuidUtils.Generate(str, false).ToUInt32());
                             for (int x = 0; x < str.Length; x++) writer.Write(str[x]);
                             writer.Write((char)0x00);
                             Utilities.Align(writer, 4);
@@ -782,7 +784,7 @@ namespace CATHODE
                 {
                     int scriptStartPos = (int)writer.BaseStream.Position / 4;
 
-                    Utilities.Write<ShortGuid>(writer, ShortGuidUtils.Generate(Entries[i].name));
+                    Utilities.Write<ShortGuid>(writer, ShortGuidUtils.Generate(Entries[i].name, false));
                     for (int x = 0; x < Entries[i].name.Length; x++) writer.Write(Entries[i].name[x]);
                     writer.Write((char)0x00);
                     Utilities.Align(writer, 4);
@@ -847,7 +849,7 @@ namespace CATHODE
                                     List<OffsetPair> offsetPairs = new List<OffsetPair>(reshuffledAliases[i].Count);
                                     for (int p = 0; p < reshuffledAliases[i].Count; p++)
                                     {
-                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, reshuffledAliases[i][p].alias.path.Count));
+                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, reshuffledAliases[i][p].alias.path.Length));
                                         Utilities.Write<ShortGuid>(writer, reshuffledAliases[i][p].alias.path);
                                     }
 
@@ -886,7 +888,7 @@ namespace CATHODE
                                     List<OffsetPair> offsetPairs = new List<OffsetPair>();
                                     for (int p = 0; p < Entries[i].proxies.Count; p++)
                                     {
-                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, Entries[i].proxies[p].proxy.path.Count));
+                                        offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, Entries[i].proxies[p].proxy.path.Length));
                                         Utilities.Write<ShortGuid>(writer, Entries[i].proxies[p].proxy.path);
                                     }
 
@@ -931,9 +933,9 @@ namespace CATHODE
                                         writer.Write(resourceReferences[i][p].rotation.Y);
                                         writer.Write(resourceReferences[i][p].rotation.Z);
 #endif
-                                        writer.Write(resourceReferences[i][p].resourceID.ToUInt32()); //Sometimes this is the entity ID that uses the resource, other times it's the "resource" parameter ID link
-                                        writer.Write(CommandsUtils.GetResourceEntryTypeGUID(resourceReferences[i][p].entryType).ToUInt32());
-                                        switch (resourceReferences[i][p].entryType)
+                                        writer.Write(resourceReferences[i][p].resource_id.ToUInt32()); //Sometimes this is the entity ID that uses the resource, other times it's the "resource" parameter ID link
+                                        writer.Write(CommandsUtils.GetResourceEntryTypeGUID(resourceReferences[i][p].resource_type).ToUInt32());
+                                        switch (resourceReferences[i][p].resource_type)
                                         {
                                             case ResourceType.RENDERABLE_INSTANCE:
                                                 writer.Write(resourceReferences[i][p].index);
@@ -941,7 +943,7 @@ namespace CATHODE
                                                 break;
                                             case ResourceType.COLLISION_MAPPING:
                                                 writer.Write(resourceReferences[i][p].index);
-                                                writer.Write(resourceReferences[i][p].collisionID.ToUInt32());
+                                                writer.Write(resourceReferences[i][p].entityID.ToUInt32());
                                                 break;
                                             case ResourceType.ANIMATED_MODEL:
                                             case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
@@ -981,7 +983,7 @@ namespace CATHODE
                                             Utilities.Write(writer, CommandsUtils.GetDataTypeGUID(header.parameterDataType));
                                             Utilities.Write(writer, header.parameterSubID);
                                             writer.Write(hierarchyOffsets[pp] / 4);
-                                            writer.Write(header.connectedEntity.path.Count);
+                                            writer.Write(header.connectedEntity.path.Length);
                                         }
 
                                         List<int> internalOffsets = new List<int>(cageAnimationEntities[i][p].animations.Count);
@@ -1092,7 +1094,7 @@ namespace CATHODE
                                         for (int pp = 0; pp < triggerSequenceEntities[i][p].entities.Count; pp++)
                                         {
                                             writer.Write(hierarchyOffsets[pp] / 4);
-                                            writer.Write(triggerSequenceEntities[i][p].entities[pp].connectedEntity.path.Count);
+                                            writer.Write(triggerSequenceEntities[i][p].entities[pp].connectedEntity.path.Length);
                                             writer.Write(triggerSequenceEntities[i][p].entities[pp].timing);
                                         }
 

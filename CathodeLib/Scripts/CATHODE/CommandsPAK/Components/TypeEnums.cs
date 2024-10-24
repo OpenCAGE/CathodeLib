@@ -130,7 +130,7 @@ namespace CATHODE.Scripting
         Character,
         CharacterAttachmentNode,
         CharacterCommand,
-        CharacterMonitor,
+        //CharacterMonitor,
         CharacterShivaArms,
         CharacterTypeMonitor,
         Checkpoint,
@@ -515,7 +515,7 @@ namespace CATHODE.Scripting
         NavMeshWalkablePlatform,
         NetPlayerCounter,
         NetworkedTimer,
-        NetworkProxy,
+        //NetworkProxy,
         NonInteractiveWater,
         NonPersistentBool,
         NonPersistentInt,
@@ -684,7 +684,7 @@ namespace CATHODE.Scripting
         SetBool,
         SetColour,
         SetEnum,
-        SetEnumString,
+        //SetEnumString,
         SetFloat,
         SetGamepadAxes,
         SetGameplayTips,
@@ -830,7 +830,7 @@ namespace CATHODE.Scripting
         VariableBool,
         VariableColour,
         VariableEnum,
-        VariableEnumString,
+        //VariableEnumString,
         VariableFilterObject,
         VariableFlashScreenColour,
         VariableFloat,
@@ -891,13 +891,13 @@ namespace CATHODE.Scripting
     /* Resource reference types */
     public enum ResourceType
     {
-        COLLISION_MAPPING,                //Links to data in COLLISION.MAP
-        DYNAMIC_PHYSICS_SYSTEM,           //Links to data in PHYSICS.MAP
-        EXCLUSIVE_MASTER_STATE_RESOURCE,  // ?? -> this seems to define some sort of change of NAV_MESH state using EXCLUSIVE_MASTER_RESOURCE_INDICES
-        NAV_MESH_BARRIER_RESOURCE,
-        RENDERABLE_INSTANCE,              //Links to data in REDS.BIN
-        TRAVERSAL_SEGMENT,
-        ANIMATED_MODEL,                   //Links to data in ENVIRONMENT_ANIMATION.DAT
+        COLLISION_MAPPING,                // Links to data in COLLISION.MAP
+        DYNAMIC_PHYSICS_SYSTEM,           // Links to data in PHYSICS.MAP
+        EXCLUSIVE_MASTER_STATE_RESOURCE,  // Written to RESOURCES.BIN and then index referenced in EXCLUSIVE_MASTER_RESOURCE_INDICES
+        NAV_MESH_BARRIER_RESOURCE,        // ?? -> perhaps linking to PATH_BARRIER_RESOURCES?
+        RENDERABLE_INSTANCE,              // Links to data in REDS.BIN
+        TRAVERSAL_SEGMENT,                // Perhaps links to STATE_x/TRAVERSAL, but we don't bother writing any entries here as it's only populated in the unused AUTOGENERATION by CAGE
+        ANIMATED_MODEL,                   // Links to data in ENVIRONMENT_ANIMATION.DAT
 
         // Any below this point are referenced in code, but not used in the vanilla game's CommandsPAKs
         CATHODE_COVER_SEGMENT,
@@ -1105,6 +1105,10 @@ namespace CATHODE.Scripting.Internal
         //      Doing this will cause issues with backwards compatibility.
         ENTITY_NAMES,
         SHORT_GUIDS,
+        COMPOSITE_PURGE_STATES,
+        COMPOSITE_MODIFICATION_INFO,
+        COMPOSITE_FLOWGRAPHS,
+        COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO,
 
         //Add new entries here
 
