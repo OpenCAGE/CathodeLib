@@ -799,7 +799,7 @@ namespace CATHODE.Scripting
             if (path.Length == 0) return ShortGuid.Invalid;
             EnsureFinalIsEmpty();
 
-            ShortGuid checksumGenerated = path[path.Length - 1];
+            ShortGuid checksumGenerated = path[path.Length - 2];
             for (int i = path.Length - 2; i >= 1; i--)
             {
                 checksumGenerated = checksumGenerated.Combine(path[i - 1]);
