@@ -799,16 +799,11 @@ namespace CATHODE.Scripting
             if (path.Length == 0) return ShortGuid.Invalid;
             EnsureFinalIsEmpty();
 
-            //TODO: invert loop rather than array
-            path.Reverse();
-            ShortGuid checksumGenerated = path[0];
-            for (int i = 0; i < path.Length; i++)
+            ShortGuid checksumGenerated = path[path.Length - 2];
+            for (int i = path.Length - 2; i >= 1; i--)
             {
-                checksumGenerated = checksumGenerated.Combine(path[i + 1]);
-                if (i == path.Length - 2) break;
+                checksumGenerated = checksumGenerated.Combine(path[i - 1]);
             }
-            path.Reverse();
-
             return checksumGenerated;
         }
 
