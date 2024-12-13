@@ -13,6 +13,8 @@ namespace CATHODE
     /* DATA/ENV/PRODUCTION/x/WORLD/SOUNDBANKDATA.DAT */
     public class SoundBankData : CathodeFile
     {
+        //NOTE: you can use Utilities.SoundHashedString to hash these strings and get the Wwise ID used in other places like SoundEventData
+
         public List<string> Entries = new List<string>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public SoundBankData(string path) : base(path) { }
