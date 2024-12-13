@@ -75,7 +75,7 @@ namespace CATHODE
         #region STRUCTURES
         public class Soundbank
         {
-            public uint id;
+            public uint id; //This is the hashed soundbank string name (hashed via Utilities.SoundHashedString)
             public List<Event> events = new List<Event>();
 
             public class Event

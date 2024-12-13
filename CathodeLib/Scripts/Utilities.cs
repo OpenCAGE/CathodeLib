@@ -7,6 +7,7 @@ using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization.Formatters.Binary;
+using System.Text;
 
 namespace CathodeLib
 {
@@ -209,6 +210,21 @@ namespace CathodeLib
                 hash *= prime;
             }
 
+            return hash;
+        }
+
+        //Generate a hashed string for use in sound system (wwise FNV-1)
+        public static uint SoundHashedString(string str)
+        {
+            byte[] namebytes = Encoding.UTF8.GetBytes(str.ToLower());
+            uint hash = 2166136261; 
+            for (int i = 0; i < namebytes.Length; i++)
+            {
+                byte namebyte = namebytes[i];
+                hash = hash * 16777619; 
+                hash = hash ^ namebyte; 
+                hash = hash & 0xFFFFFFFF; 
+            }
             return hash;
         }
 
