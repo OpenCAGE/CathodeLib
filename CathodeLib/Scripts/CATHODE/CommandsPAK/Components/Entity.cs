@@ -563,9 +563,8 @@ namespace CATHODE.Scripting
             public class Keyframe
             {
                 public float secondsSinceStart = 0.0f;
-                public ShortGuid start;
-
-                public ShortGuid unk3; //this never translates to a string, but is a param on the node -> do we trigger it?
+                public ShortGuid startEvent;
+                public ShortGuid reverseEvent;
             }
         }
     }

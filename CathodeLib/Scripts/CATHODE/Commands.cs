@@ -360,8 +360,8 @@ namespace CATHODE
                                                     CAGEAnimation.Event.Keyframe keyframe = new CAGEAnimation.Event.Keyframe();
                                                     reader_parallel.BaseStream.Position += 4;
                                                     keyframe.secondsSinceStart = reader_parallel.ReadSingle(); 
-                                                    keyframe.start = Utilities.Consume<ShortGuid>(reader_parallel);
-                                                    keyframe.unk3 = Utilities.Consume<ShortGuid>(reader_parallel);
+                                                    keyframe.startEvent = Utilities.Consume<ShortGuid>(reader_parallel);
+                                                    keyframe.reverseEvent = Utilities.Consume<ShortGuid>(reader_parallel);
                                                     reader_parallel.BaseStream.Position += 8;
                                                     thisParamSet.keyframes.Add(keyframe);
                                                 }
@@ -1034,8 +1034,8 @@ namespace CATHODE
                                                 CAGEAnimation.Event.Keyframe key = cageAnimationEntities[i][p].events[pp].keyframes[ppp];
                                                 writer.Write((Int32)1);
                                                 writer.Write(key.secondsSinceStart);
-                                                Utilities.Write<ShortGuid>(writer, key.start);
-                                                Utilities.Write<ShortGuid>(writer, key.unk3);
+                                                Utilities.Write<ShortGuid>(writer, key.startEvent);
+                                                Utilities.Write<ShortGuid>(writer, key.reverseEvent);
                                                 writer.Write(keyframeRefs.Count == 0 ? 3 : 4);
                                                 writer.Write((Int32)0);
                                             }
