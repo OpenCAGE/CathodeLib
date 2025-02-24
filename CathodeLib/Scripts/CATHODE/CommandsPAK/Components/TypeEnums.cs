@@ -51,6 +51,7 @@ namespace CATHODE.Scripting
         OBJECT,
         ZONE_LINK_PTR,
         ZONE_PTR,
+        COLOUR,
     }
 
     /* Object types */

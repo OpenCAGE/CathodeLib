@@ -181,6 +181,7 @@ namespace CATHODE.Scripting
             _dataTypeLUT.Add(ShortGuidUtils.Generate("Object"), DataType.OBJECT);
             _dataTypeLUT.Add(ShortGuidUtils.Generate("ZonePtr"), DataType.ZONE_PTR);
             _dataTypeLUT.Add(ShortGuidUtils.Generate("ZoneLinkPtr"), DataType.ZONE_LINK_PTR);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("Colour"), DataType.COLOUR);
             _dataTypeLUT.Add(ShortGuidUtils.Generate(""), DataType.NONE);
         }
         public static DataType GetDataType(byte[] tag)

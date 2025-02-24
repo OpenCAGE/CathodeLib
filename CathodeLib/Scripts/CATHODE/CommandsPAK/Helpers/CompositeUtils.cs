@@ -29,10 +29,13 @@ namespace CathodeLib
         static CompositeUtils()
         {
 #if UNITY_EDITOR || UNITY_STANDALONE
-            BinaryReader reader = new BinaryReader(File.OpenRead(Application.streamingAssetsPath + "/NodeDBs/composite_paths.bin"));
+            byte[] dbContent = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/composite_paths.bin");
 #else
-            BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.composite_paths));
+            byte[] dbContent = CathodeLib.Properties.Resources.composite_paths;
+            if (File.Exists("LocalDB/composite_paths.bin"))
+                dbContent = File.ReadAllBytes("LocalDB/composite_paths.bin");
 #endif
+            BinaryReader reader = new BinaryReader(new MemoryStream(dbContent));
             int compositeCount = reader.ReadInt32();
             _pathLookup = new Dictionary<ShortGuid, string>(compositeCount);
             for (int i = 0; i < compositeCount; i++)
@@ -82,12 +85,12 @@ namespace CathodeLib
         {
             string fullPath = GetFullPath(guid);
             if (fullPath.Length < 1) return "";
-            string first25 = fullPath.Substring(0, 25);
+            string first25 = fullPath.Substring(0, 25).ToUpper();
             switch (first25)
             {
-                case @"N:\Content\Build\Library\":
+                case @"N:\CONTENT\BUILD\LIBRARY\":
                     return fullPath.Substring(25);
-                case @"N:\Content\Build\Levels\P":
+                case @"N:\CONTENT\BUILD\LEVELS\P":
                     return fullPath.Substring(17);
             }
             return fullPath;

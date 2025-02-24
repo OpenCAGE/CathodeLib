@@ -152,7 +152,7 @@ namespace CATHODE
                         reader_parallel.BaseStream.Position = (scriptStartOffset * 4) + 4;
                         composite.name = Utilities.ReadString(reader_parallel);
 #if DO_PRETTY_COMPOSITES
-                        string prettyPath = CompositePathDB.GetPrettyPathForComposite(composite.shortGUID);
+                        string prettyPath = CompositeUtils.GetPrettyPath(composite.shortGUID);
                         if (prettyPath != "") composite.name = prettyPath;
 #endif
                         Utilities.Align(reader_parallel, 4);

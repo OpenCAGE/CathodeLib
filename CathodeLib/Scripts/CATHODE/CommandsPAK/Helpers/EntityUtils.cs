@@ -27,10 +27,13 @@ namespace CATHODE.Scripting
         static EntityUtils()
         {
 #if UNITY_EDITOR || UNITY_STANDALONE
-            BinaryReader reader = new BinaryReader(File.OpenRead(Application.streamingAssetsPath + "/NodeDBs/composite_entity_names.bin"));
+            byte[] dbContent = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/composite_entity_names.bin");
 #else
-            BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.composite_entity_names));
+            byte[] dbContent = CathodeLib.Properties.Resources.composite_entity_names;
+            if (File.Exists("LocalDB/composite_entity_names.bin"))
+                dbContent = File.ReadAllBytes("LocalDB/composite_entity_names.bin");
 #endif
+            BinaryReader reader = new BinaryReader(new MemoryStream(dbContent));
             _vanilla = new EntityNameTable(reader);
             _custom = new EntityNameTable();
             reader.Close();
