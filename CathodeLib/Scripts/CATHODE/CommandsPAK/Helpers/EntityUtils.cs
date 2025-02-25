@@ -1,4 +1,6 @@
-﻿using CATHODE.Scripting.Internal;
+﻿//#define DO_DEBUG_DUMP
+
+using CATHODE.Scripting.Internal;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
@@ -37,6 +39,20 @@ namespace CATHODE.Scripting
             _vanilla = new EntityNameTable(reader);
             _custom = new EntityNameTable();
             reader.Close();
+
+#if DO_DEBUG_DUMP
+            Directory.CreateDirectory("DebugDump/entities");
+            foreach (KeyValuePair<ShortGuid, Dictionary<ShortGuid, string>> entry in _vanilla.names)
+            {
+                List<string> names = new List<string>();
+                foreach (KeyValuePair<ShortGuid, string> value in entry.Value)
+                {
+                    names.Add(value.Value);
+                }
+                names.Sort();
+                File.WriteAllLines("DebugDump/entities/" + entry.Key.ToByteString() + ".txt", names);
+            }
+#endif
         }
 
         //For testing

@@ -1,6 +1,9 @@
-﻿using CATHODE.Scripting.Internal;
+﻿//#define DO_DEBUG_DUMP
+
+using CATHODE.Scripting.Internal;
 using CathodeLib;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
@@ -36,6 +39,17 @@ namespace CATHODE.Scripting
             while (reader.BaseStream.Position < reader.BaseStream.Length)
                 Cache(new ShortGuid(reader), reader.ReadString(), true);
             reader.Close();
+
+#if DO_DEBUG_DUMP
+            Directory.CreateDirectory("DebugDump");
+            List<string> parameters = new List<string>();
+            foreach (KeyValuePair<string, ShortGuid> value in _vanilla.cache)
+            {
+                parameters.Add(value.Key);
+            }
+            parameters.Sort();
+            File.WriteAllLines("DebugDump/parameters.txt", parameters);
+#endif
         }
 
         /* Optionally, link a Commands file which can be used to save custom ShortGuids to */

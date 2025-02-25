@@ -1,4 +1,6 @@
-﻿using CATHODE;
+﻿//#define DO_DEBUG_DUMP
+
+using CATHODE;
 using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using System;
@@ -40,6 +42,17 @@ namespace CathodeLib
             _pathLookup = new Dictionary<ShortGuid, string>(compositeCount);
             for (int i = 0; i < compositeCount; i++)
                 _pathLookup.Add(Utilities.Consume<ShortGuid>(reader), reader.ReadString());
+
+#if DO_DEBUG_DUMP
+            Directory.CreateDirectory("DebugDump");
+            List<string> paths = new List<string>();
+            foreach (KeyValuePair<ShortGuid, string> value in _pathLookup)
+            {
+                paths.Add(value.Value);
+            }
+            paths.Sort();
+            File.WriteAllLines("DebugDump/paths.txt", paths);
+#endif
 
             _modificationInfo = new CompositeModificationInfoTable();
         }
