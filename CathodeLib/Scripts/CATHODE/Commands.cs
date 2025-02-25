@@ -1,5 +1,3 @@
-//#define DO_PRETTY_COMPOSITES
-
 using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using CathodeLib;
@@ -36,6 +34,10 @@ namespace CATHODE
         //  - Pause Menu Instance
         private ShortGuid[] _entryPoints = null;
         private Composite[] _entryPointObjects = null;
+
+        //Set this value to true before initialising your Commands object to load with non-capitalised composite names.
+        //Changing this value AFTER loading will not make any difference to the loaded Commands object, only future ones.
+        public static bool UsePrettyPaths = false;
 
         #region FILE_IO
         override protected bool LoadInternal()
@@ -151,10 +153,11 @@ namespace CATHODE
                         //Read script ID and string name
                         reader_parallel.BaseStream.Position = (scriptStartOffset * 4) + 4;
                         composite.name = Utilities.ReadString(reader_parallel);
-#if DO_PRETTY_COMPOSITES
-                        string prettyPath = CompositeUtils.GetPrettyPath(composite.shortGUID);
-                        if (prettyPath != "") composite.name = prettyPath;
-#endif
+                        if (UsePrettyPaths)
+                        {
+                            string prettyPath = CompositeUtils.GetPrettyPath(composite.shortGUID);
+                            if (prettyPath != "") composite.name = prettyPath;
+                        }
                         Utilities.Align(reader_parallel, 4);
 
                         //Pull data from those offsets
