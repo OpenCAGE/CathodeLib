@@ -158,6 +158,7 @@ namespace CATHODE
                             string prettyPath = CompositeUtils.GetPrettyPath(composite.shortGUID);
                             if (prettyPath != "") composite.name = prettyPath;
                         }
+                        composite.name = composite.name.Replace("/", "\\");
                         Utilities.Align(reader_parallel, 4);
 
                         //Pull data from those offsets
