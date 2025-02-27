@@ -296,6 +296,8 @@ namespace CATHODE.Scripting
                     return FunctionType.ScriptInterface;
                 case FunctionType.CharacterCommand:
                     return FunctionType.ScriptInterface;
+                case FunctionType.CharacterMonitor:
+                    return FunctionType.SensorInterface;
                 case FunctionType.CharacterShivaArms:
                     return FunctionType.ScriptInterface;
                 case FunctionType.CharacterTypeMonitor:
@@ -1084,6 +1086,8 @@ namespace CATHODE.Scripting
                     return FunctionType.ScriptInterface;
                 case FunctionType.NetworkedTimer:
                     return FunctionType.SensorInterface;
+                case FunctionType.NetworkProxy:
+                    return FunctionType.ScriptInterface;
                 case FunctionType.NonInteractiveWater:
                     return FunctionType.TransformerInterface;
                 case FunctionType.NonPersistentBool:
@@ -1426,6 +1430,8 @@ namespace CATHODE.Scripting
                     return FunctionType.EvaluatorInterface;
                 case FunctionType.SetEnum:
                     return FunctionType.ModifierInterface;
+                case FunctionType.SetEnumString:
+                    return FunctionType.SetString;
                 case FunctionType.SetFloat:
                     return FunctionType.FloatOperation;
                 case FunctionType.SetGamepadAxes:
@@ -1716,6 +1722,8 @@ namespace CATHODE.Scripting
                     return FunctionType.ScriptVariable;
                 case FunctionType.VariableEnum:
                     return FunctionType.ScriptVariable;
+                case FunctionType.VariableEnumString:
+                    return FunctionType.VariableString;
                 case FunctionType.VariableFilterObject:
                     return FunctionType.ScriptVariable;
                 case FunctionType.VariableFlashScreenColour:
@@ -1836,7 +1844,7 @@ namespace CATHODE.Scripting
             switch (type)
             {
                 case FunctionType.ScriptInterface:
-                    entity.AddParameter("name", new cString("NULL"), ParameterVariant.PARAMETER);
+                    //entity.AddParameter("name", new cString("NULL"), ParameterVariant.PARAMETER);
                     break;
                 case FunctionType.NetworkProxy:
                     break;
@@ -3509,6 +3517,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("moment_ID", new cEnum(EnumType.GAME_CLIP, 0), ParameterVariant.PARAMETER);
                     break;
                 case FunctionType.Zone:
+                    entity.AddParameter("name", new cString(""), ParameterVariant.PARAMETER); //added manually
                     entity.AddParameter("suspend_on_unload", new cBool(false), ParameterVariant.PARAMETER);
                     entity.AddParameter("space_visible", new cBool(false), ParameterVariant.PARAMETER);
                     break;

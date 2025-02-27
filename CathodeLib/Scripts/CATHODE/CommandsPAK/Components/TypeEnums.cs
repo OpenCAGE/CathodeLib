@@ -17,18 +17,15 @@ namespace CATHODE.Scripting
     /* Parameter variants */
     public enum ParameterVariant
     {
-        //Only on EntityMethodInterface
-        METHOD,
-        FINISHED,
-        RELAY,
-
-        //On implementations of the interface
-        STATE,
+        REFERENCE_PIN,
+        TARGET_PIN,
+        STATE_PARAMETER,
+        INPUT_PIN,
+        OUTPUT_PIN,
         PARAMETER,
-        TARGET,
-        INPUT,
         INTERNAL,
-        OUTPUT
+        METHOD_FUNCTION, 
+        METHOD_PIN,
     }
 
     /* Data types */
