@@ -2,6 +2,7 @@
 using CATHODE.Scripting.Internal;
 using System;
 using System.Collections.Generic;
+using System.Data.Common;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -73,6 +74,12 @@ namespace CathodeLib
                             case CustomEndTables.COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO:
                                 ((CompositeFlowgraphCompatibilityTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomEndTables.COMPOSITE_PARAMETER_MODIFICATION:
+                                ((CompositeParameterModificationTable)toWrite[tableType]).Write(writer);
+                                break;
+                            case CustomEndTables.ENTITY_APPLIED_DEFAULTS:
+                                ((EntityAppliedDefaultsTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
                     }
                 }
@@ -127,6 +134,12 @@ namespace CathodeLib
                         break;
                     case CustomEndTables.COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO:
                         data = new CompositeFlowgraphCompatibilityTable(reader);
+                        break;
+                    case CustomEndTables.COMPOSITE_PARAMETER_MODIFICATION:
+                        data = new CompositeParameterModificationTable(reader);
+                        break;
+                    case CustomEndTables.ENTITY_APPLIED_DEFAULTS:
+                        data = new EntityAppliedDefaultsTable(reader);
                         break;
                 }
             }
@@ -525,6 +538,107 @@ namespace CathodeLib
         {
             public ShortGuid composite_id;
             public bool flowgraphs_supported;
+        }
+    }
+    public class CompositeParameterModificationTable : CustomTable.Table
+    {
+        public CompositeParameterModificationTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomEndTables.COMPOSITE_PARAMETER_MODIFICATION;
+        }
+
+        public Dictionary<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>> modified_params;
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+            {
+                modified_params = new Dictionary<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>>();
+                return;
+            }
+
+            int count = reader.ReadInt32();
+            modified_params = new Dictionary<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>>(count);
+            for (int i = 0; i < count; i++)
+            {
+                Dictionary<ShortGuid, HashSet<ShortGuid>> entities = new Dictionary<ShortGuid, HashSet<ShortGuid>>();
+                modified_params.Add(Utilities.Consume<ShortGuid>(reader), entities);
+                int entity_count = reader.ReadInt32();
+                for (int x = 0; x < entity_count; x++)
+                {
+                    HashSet<ShortGuid> parameters = new HashSet<ShortGuid>();
+                    entities.Add(Utilities.Consume<ShortGuid>(reader), parameters);
+                    int parameter_count = reader.ReadInt32();
+                    for (int z = 0; z < parameter_count; z++)
+                    {
+                        parameters.Add(Utilities.Consume<ShortGuid>(reader));
+                    }
+                }
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(modified_params.Count);
+            foreach (KeyValuePair<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>> composites in modified_params)
+            {
+                Utilities.Write<ShortGuid>(writer, composites.Key);
+                writer.Write(composites.Value.Count);
+                foreach (KeyValuePair<ShortGuid, HashSet<ShortGuid>> entity in composites.Value)
+                {
+                    Utilities.Write<ShortGuid>(writer, entity.Key);
+                    writer.Write(entity.Value.Count);
+                    foreach (ShortGuid parameter in entity.Value)
+                    {
+                        Utilities.Write<ShortGuid>(writer, parameter);
+                    }
+                }
+            }
+        }
+    }
+    public class EntityAppliedDefaultsTable : CustomTable.Table
+    {
+        public EntityAppliedDefaultsTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomEndTables.ENTITY_APPLIED_DEFAULTS;
+        }
+
+        public Dictionary<ShortGuid, HashSet<ShortGuid>> applied_defaults;
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+            {
+                applied_defaults = new Dictionary<ShortGuid, HashSet<ShortGuid>>();
+                return;
+            }
+
+            int count = reader.ReadInt32();
+            applied_defaults = new Dictionary<ShortGuid, HashSet<ShortGuid>>(count);
+            for (int i = 0; i < count; i++)
+            {
+                HashSet<ShortGuid> entities = new HashSet<ShortGuid>();
+                applied_defaults.Add(Utilities.Consume<ShortGuid>(reader), entities);
+                int entity_count = reader.ReadInt32();
+                for (int x = 0; x < entity_count; x++)
+                {
+                    entities.Add(Utilities.Consume<ShortGuid>(reader));
+                }
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(applied_defaults.Count);
+            foreach (KeyValuePair<ShortGuid, HashSet<ShortGuid>> composites in applied_defaults)
+            {
+                Utilities.Write<ShortGuid>(writer, composites.Key);
+                writer.Write(composites.Value.Count);
+                foreach (ShortGuid entity in composites.Value)
+                {
+                    Utilities.Write<ShortGuid>(writer, entity);
+                }
+            }
         }
     }
 }

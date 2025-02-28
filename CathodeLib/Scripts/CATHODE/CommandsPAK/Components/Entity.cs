@@ -122,11 +122,11 @@ namespace CATHODE.Scripting.Internal
             throw new Exception("Tried to AddParameter using templated function, but type is not supported.");
         }
         */
-        public Parameter AddParameter(string name, DataType type, ParameterVariant variant = ParameterVariant.PARAMETER)
+        public Parameter AddParameter(string name, DataType type, ParameterVariant variant = ParameterVariant.PARAMETER, bool overwriteIfExists = true)
         {
-            return AddParameter(ShortGuidUtils.Generate(name), type, variant);
+            return AddParameter(ShortGuidUtils.Generate(name), type, variant, overwriteIfExists);
         }
-        public Parameter AddParameter(ShortGuid id, DataType type, ParameterVariant variant = ParameterVariant.PARAMETER)
+        public Parameter AddParameter(ShortGuid id, DataType type, ParameterVariant variant = ParameterVariant.PARAMETER, bool overwriteIfExists = true)
         {
             ParameterData data = null;
             switch (type)
@@ -162,32 +162,25 @@ namespace CATHODE.Scripting.Internal
                     Console.WriteLine("WARNING: Tried to add parameter of type which is currently unsupported by CathodeLib (" + type + ")");
                     return null;
             }
-            return AddParameter(id, data, variant);
+            return AddParameter(id, data, variant, overwriteIfExists);
         }
-        public Parameter AddParameter(string name, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER)
+        public Parameter AddParameter(string name, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER, bool overwriteIfExists = true)
         {
-            return AddParameter(ShortGuidUtils.Generate(name), data, variant);
+            return AddParameter(ShortGuidUtils.Generate(name), data, variant, overwriteIfExists);
         }
-        public Parameter AddParameter(ShortGuid id, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER)
+        public Parameter AddParameter(ShortGuid id, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER, bool overwriteIfExists = true)
         {
-            //TODO: we are limiting data-supplying params to ONE per entity here - is this correct? I think links are the only place where you can have multiple of the same.
             Parameter param = GetParameter(id);
             if (param == null)
             {
                 param = new Parameter(id, data, variant);
                 parameters.Add(param);
             }
-            else
+            else if (overwriteIfExists)
             {
-                Console.WriteLine("WARNING: Updating data and variant type in parameter " + id);
                 param.content = data;
                 param.variant = variant;
             }
-            return param;
-        }
-        public Parameter AddParameter(Parameter param)
-        {
-            parameters.Add(param);
             return param;
         }
 

@@ -51,7 +51,6 @@ namespace CATHODE.Scripting
                 int entryCount = reader.ReadInt32();
                 for (int x = 0; x < entryCount; x++) 
                     thisDesc.Entries.Add(new EnumDescriptor.Entry() { Name = reader.ReadString(), Index = reader.ReadInt32() });
-                Console.WriteLine(thisDesc.Name);
                 toReturn.Add(thisDesc);
             }
             reader.Close();
