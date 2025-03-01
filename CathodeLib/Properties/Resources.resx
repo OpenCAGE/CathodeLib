@@ -124,6 +124,9 @@
   <data name="composite_entity_names" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\NodeDBs\composite_entity_names.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
+  <data name="composite_parameter_info" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\NodeDBs\composite_parameter_info.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
   <data name="composite_paths" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\NodeDBs\composite_paths.bin;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>

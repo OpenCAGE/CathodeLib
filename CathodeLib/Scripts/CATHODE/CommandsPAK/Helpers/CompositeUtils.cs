@@ -25,6 +25,10 @@ namespace CathodeLib
         //Has a store of Composite modification info for the currently linked Commands
         private static CompositeModificationInfoTable _modificationInfo;
 
+        //Has metadata for the composite pins, to let you figure if they're in or out (you should update this with any you add, if you're using this info)
+        private static CompositePinInfoTable _pinInfoCustom;
+        private static CompositePinInfoTable _pinInfoVanilla;
+
         public static Commands LinkedCommands => _commands;
         private static Commands _commands;
 
@@ -37,11 +41,13 @@ namespace CathodeLib
             if (File.Exists("LocalDB/composite_paths.bin"))
                 dbContent = File.ReadAllBytes("LocalDB/composite_paths.bin");
 #endif
-            BinaryReader reader = new BinaryReader(new MemoryStream(dbContent));
-            int compositeCount = reader.ReadInt32();
-            _pathLookup = new Dictionary<ShortGuid, string>(compositeCount);
-            for (int i = 0; i < compositeCount; i++)
-                _pathLookup.Add(Utilities.Consume<ShortGuid>(reader), reader.ReadString());
+            using (BinaryReader reader = new BinaryReader(new MemoryStream(dbContent)))
+            {
+                int compositeCount = reader.ReadInt32();
+                _pathLookup = new Dictionary<ShortGuid, string>(compositeCount);
+                for (int i = 0; i < compositeCount; i++)
+                    _pathLookup.Add(Utilities.Consume<ShortGuid>(reader), reader.ReadString());
+            }
 
 #if DO_DEBUG_DUMP
             Directory.CreateDirectory("DebugDump");
@@ -54,37 +60,55 @@ namespace CathodeLib
             File.WriteAllLines("DebugDump/paths.txt", paths);
 #endif
 
-            _modificationInfo = new CompositeModificationInfoTable();
+#if UNITY_EDITOR || UNITY_STANDALONE
+            dbContent = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/composite_paths.bin");
+#else
+            dbContent = CathodeLib.Properties.Resources.composite_parameter_info;
+            if (File.Exists("LocalDB/composite_paths.bin"))
+                dbContent = File.ReadAllBytes("LocalDB/composite_paths.bin");
+#endif
+            _pinInfoVanilla = new CompositePinInfoTable();
+            using (BinaryReader reader = new BinaryReader(new MemoryStream(dbContent)))
+            {
+                _pinInfoVanilla.Read(reader);
+            }
         }
 
         public static void LinkCommands(Commands commands)
         {
             if (_commands != null)
             {
-                _commands.OnLoadSuccess -= LoadModificationInfo;
-                _commands.OnSaveSuccess -= SaveModificationInfo;
+                _commands.OnLoadSuccess -= LoadInfo;
+                _commands.OnSaveSuccess -= SaveInfo;
             }
 
             _commands = commands;
             if (_commands == null) return;
 
-            _commands.OnLoadSuccess += LoadModificationInfo;
-            _commands.OnSaveSuccess += SaveModificationInfo;
+            _commands.OnLoadSuccess += LoadInfo;
+            _commands.OnSaveSuccess += SaveInfo;
 
-            LoadModificationInfo(_commands.Filepath);
+            LoadInfo(_commands.Filepath);
         }
 
-        private static void LoadModificationInfo(string filepath)
+        private static void LoadInfo(string filepath)
         {
             _modificationInfo = (CompositeModificationInfoTable)CustomTable.ReadTable(filepath, CustomEndTables.COMPOSITE_MODIFICATION_INFO);
             if (_modificationInfo == null) _modificationInfo = new CompositeModificationInfoTable();
             Console.WriteLine("Loaded modification info for " + _modificationInfo.modification_info.Count + " composites!");
+
+            _pinInfoCustom = (CompositePinInfoTable)CustomTable.ReadTable(filepath, CustomEndTables.COMPOSITE_PIN_INFO);
+            if (_pinInfoCustom == null) _pinInfoCustom = new CompositePinInfoTable();
+            Console.WriteLine("Loaded custom pin info for " + _pinInfoCustom.composite_pin_infos.Count + " composites!");
         }
 
-        private static void SaveModificationInfo(string filepath)
+        private static void SaveInfo(string filepath)
         {
             CustomTable.WriteTable(filepath, CustomEndTables.COMPOSITE_MODIFICATION_INFO, _modificationInfo);
             Console.WriteLine("Saved modification info for " + _modificationInfo.modification_info.Count + " composites!");
+
+            CustomTable.WriteTable(filepath, CustomEndTables.COMPOSITE_PIN_INFO, _pinInfoCustom);
+            Console.WriteLine("Saved custom pin info for " + _pinInfoCustom.composite_pin_infos.Count + " composites!");
         }
 
         /* Gets a pretty Composite name */
@@ -121,7 +145,37 @@ namespace CathodeLib
         /* Get the modification metadata for a composite (if it exists) */
         public static CompositeModificationInfoTable.ModificationInfo GetModificationInfo(Composite composite)
         {
-            return _modificationInfo.modification_info.FirstOrDefault(o => o.composite_id == composite.shortGUID);
+            return GetModificationInfo(composite.shortGUID);
+        }
+        public static CompositeModificationInfoTable.ModificationInfo GetModificationInfo(ShortGuid composite)
+        {
+            return _modificationInfo.modification_info.FirstOrDefault(o => o.composite_id == composite);
+        }
+
+        /* Set/update the pin info for a composite VariableEntity */
+        public static void SetParameterInfo(ShortGuid composite, CompositePinInfoTable.PinInfo info)
+        {
+            List<CompositePinInfoTable.PinInfo> infos;
+            if (!_pinInfoCustom.composite_pin_infos.TryGetValue(composite, out infos))
+                infos = new List<CompositePinInfoTable.PinInfo>();
+
+            infos.RemoveAll(o => o.VariableGUID == info.VariableGUID);
+            infos.Add(info);
+        }
+
+        /* Get the pin info for a composite VariableEntity */
+        public static CompositePinInfoTable.PinInfo GetParameterInfo(Composite composite, VariableEntity variableEnt)
+        {
+            return GetParameterInfo(composite.shortGUID, variableEnt.shortGUID);
+        }
+        public static CompositePinInfoTable.PinInfo GetParameterInfo(ShortGuid composite, ShortGuid variableEnt)
+        {
+            List<CompositePinInfoTable.PinInfo> infos;
+            if (!_pinInfoVanilla.composite_pin_infos.TryGetValue(composite, out infos))
+                if (!_pinInfoCustom.composite_pin_infos.TryGetValue(composite, out infos))
+                    return null;
+
+            return infos.FirstOrDefault(o => o.VariableGUID == variableEnt);
         }
 
         /* Generate a checksum for a Composite object */
