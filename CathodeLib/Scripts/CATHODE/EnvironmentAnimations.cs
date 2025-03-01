@@ -75,9 +75,9 @@ namespace CATHODE
                     Matrix4x4 Matrix = Utilities.Consume<Matrix4x4>(reader); //This is always identity
 
                     uint id = reader.ReadUInt32();
-                    if (_strings.Entries.ContainsKey(id))
+                    if (_strings.Entries.TryGetValue(id, out string name))
                     {
-                        anim.SkeletonName = _strings.Entries[id];
+                        anim.SkeletonName = name;
                     }
                     else
                     {

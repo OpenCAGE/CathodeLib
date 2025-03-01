@@ -28,7 +28,9 @@ namespace CathodeLib
 
         public static string GetSoundName(uint id)
         {
-            return nameLookup.ContainsKey(id) ? nameLookup[id] : id.ToString();
+            if (nameLookup.TryGetValue(id, out string name))
+                return name;
+            return id.ToString();
         }
 
         public static uint GetSoundID(string name)

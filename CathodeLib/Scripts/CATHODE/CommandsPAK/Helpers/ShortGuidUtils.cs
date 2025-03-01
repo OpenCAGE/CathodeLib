@@ -1,4 +1,4 @@
-﻿//#define DO_DEBUG_DUMP
+//#define DO_DEBUG_DUMP
 
 using CATHODE.Scripting.Internal;
 using CathodeLib;
@@ -69,10 +69,10 @@ namespace CATHODE.Scripting
         /* Generate a ShortGuid to interface with the Cathode scripting system */
         public static ShortGuid Generate(string value, bool cache = true)
         {
-            if (_vanilla.cache.ContainsKey(value)) 
-                return _vanilla.cache[value];
-            if (_custom.cache.ContainsKey(value))
-                return _custom.cache[value];
+            if (_custom.cache.TryGetValue(value, out ShortGuid customVal))
+                return customVal;
+            if (_vanilla.cache.TryGetValue(value, out ShortGuid vanillaVal)) 
+                return vanillaVal;
 
             SHA1Managed sha1 = new SHA1Managed();
             byte[] hash1 = sha1.ComputeHash(Encoding.UTF8.GetBytes(value));
@@ -111,10 +111,10 @@ namespace CATHODE.Scripting
         /* Attempts to look up the string for a given ShortGuid */
         public static string FindString(ShortGuid guid)
         {
-            if (_custom.cacheReversed.ContainsKey(guid))
-                return _custom.cacheReversed[guid];
-            if (_vanilla.cacheReversed.ContainsKey(guid))
-                return _vanilla.cacheReversed[guid];
+            if (_custom.cacheReversed.TryGetValue(guid, out string customVal))
+                return customVal;
+            if (_vanilla.cacheReversed.TryGetValue(guid, out string vanillaVal))
+                return vanillaVal;
 
             return guid.ToByteString();
         }

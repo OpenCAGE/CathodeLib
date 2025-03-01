@@ -90,7 +90,9 @@ namespace CathodeLib
         /* Gets a pretty Composite name */
         public static string GetFullPath(ShortGuid guid)
         {
-            return _pathLookup.ContainsKey(guid) ? _pathLookup[guid] : "";
+            if (_pathLookup.TryGetValue(guid, out string toReturn))
+                return toReturn;
+            return "";
         }
 
         /* Gets a pretty Composite name, including trimming direct paths */

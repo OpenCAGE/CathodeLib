@@ -1,4 +1,4 @@
-﻿//#define DO_DEBUG_DUMP
+//#define DO_DEBUG_DUMP
 
 using CATHODE.Scripting.Internal;
 using CathodeLib;
@@ -95,10 +95,12 @@ namespace CATHODE.Scripting
         }
         public static string GetName(ShortGuid compositeID, ShortGuid entityID)
         {
-            if (_custom.names.ContainsKey(compositeID) && _custom.names[compositeID].ContainsKey(entityID))
-                return _custom.names[compositeID][entityID];
-            if (_vanilla.names.ContainsKey(compositeID) && _vanilla.names[compositeID].ContainsKey(entityID))
-                return _vanilla.names[compositeID][entityID];
+            if (_custom.names.TryGetValue(compositeID, out Dictionary<ShortGuid, string> customComposite))
+                if (customComposite.TryGetValue(entityID, out string customName))
+                    return customName;
+            if (_vanilla.names.TryGetValue(compositeID, out Dictionary<ShortGuid, string> vanillaComposite))
+                if (vanillaComposite.TryGetValue(entityID, out string vanillaName))
+                    return vanillaName;
             return entityID.ToByteString();
         }
 
@@ -158,7 +160,7 @@ namespace CATHODE.Scripting
                 Composite comp = _commands.Entries.FirstOrDefault(o => o.shortGUID == ((FunctionEntity)entity).function);
                 if (comp == null) return;
                 for (int i = 0; i < comp.variables.Count; i++)
-                    entity.AddParameter(comp.variables[i].name, comp.variables[i].type, ParameterVariant.PARAMETER); //TODO: These are not always parameters - how can we distinguish?
+                    entity.AddParameter(comp.variables[i].name, comp.variables[i].type, ParameterVariant.PARAMETER, overwriteExisting); //TODO: These are not always parameters - how can we distinguish?
             }
         }
 
