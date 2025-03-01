@@ -1,4 +1,4 @@
-﻿using CATHODE.Scripting;
+using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using System;
 using System.Collections.Generic;
@@ -80,6 +80,9 @@ namespace CathodeLib
                             case CustomEndTables.ENTITY_APPLIED_DEFAULTS:
                                 ((EntityAppliedDefaultsTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomEndTables.COMPOSITE_PIN_INFO:
+                                ((CompositePinInfoTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
                     }
                 }
@@ -140,6 +143,9 @@ namespace CathodeLib
                         break;
                     case CustomEndTables.ENTITY_APPLIED_DEFAULTS:
                         data = new EntityAppliedDefaultsTable(reader);
+                        break;
+                    case CustomEndTables.COMPOSITE_PIN_INFO:
+                        data = new CompositePinInfoTable(reader);
                         break;
                 }
             }
@@ -639,6 +645,68 @@ namespace CathodeLib
                     Utilities.Write<ShortGuid>(writer, entity);
                 }
             }
+        }
+    }
+    public class CompositePinInfoTable : CustomTable.Table
+    {
+        public CompositePinInfoTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomEndTables.COMPOSITE_PIN_INFO;
+        }
+
+        public Dictionary<ShortGuid, List<PinInfo>> composite_pin_infos;
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+            {
+                composite_pin_infos = new Dictionary<ShortGuid, List<PinInfo>>();
+                return;
+            }
+
+            byte version = reader.ReadByte();
+            if (version != PinInfo.VERSION)
+            {
+                //Add compatibility here when required
+            }
+            int count = reader.ReadInt32();
+            composite_pin_infos = new Dictionary<ShortGuid, List<PinInfo>>(count);
+            for (int i = 0; i < count; i++)
+            {
+                List<PinInfo> pin_infos = new List<PinInfo>();
+                composite_pin_infos.Add(Utilities.Consume<ShortGuid>(reader), pin_infos);
+                int pin_count = reader.ReadInt32();
+                for (int z = 0; z < pin_count; z++)
+                {
+                    PinInfo pin_info = new PinInfo();
+                    pin_info.VariableGUID = Utilities.Consume<ShortGuid>(reader);
+                    pin_info.Direction = (PinDirection)reader.ReadInt32();
+                    pin_infos.Add(pin_info);
+                }
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(PinInfo.VERSION);
+            writer.Write(composite_pin_infos.Count);
+            foreach (KeyValuePair<ShortGuid, List<PinInfo>> composites in composite_pin_infos)
+            {
+                Utilities.Write<ShortGuid>(writer, composites.Key);
+                writer.Write(composites.Value.Count);
+                foreach (PinInfo pin_info in composites.Value)
+                {
+                    Utilities.Write<ShortGuid>(writer, pin_info.VariableGUID);
+                    writer.Write((int)pin_info.Direction);
+                }
+            }
+        }
+
+        public class PinInfo
+        {
+            public const byte VERSION = 1;
+            public ShortGuid VariableGUID;
+            public PinDirection Direction;
         }
     }
 }

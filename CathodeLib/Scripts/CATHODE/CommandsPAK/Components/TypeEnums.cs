@@ -27,6 +27,13 @@ namespace CATHODE.Scripting
         METHOD_FUNCTION, 
         METHOD_PIN,
     }
+    
+    /* Entity node pin direction */
+    public enum PinDirection
+    {
+        IN,
+        OUT,
+    }
 
     /* Data types */
     public enum DataType
@@ -1109,6 +1116,7 @@ namespace CATHODE.Scripting.Internal
         COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO,
         COMPOSITE_PARAMETER_MODIFICATION,
         ENTITY_APPLIED_DEFAULTS,
+        COMPOSITE_PIN_INFO,
 
         //Add new entries here
 
