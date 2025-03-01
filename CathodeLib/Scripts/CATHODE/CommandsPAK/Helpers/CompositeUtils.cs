@@ -1,4 +1,4 @@
-﻿//#define DO_DEBUG_DUMP
+//#define DO_DEBUG_DUMP
 
 using CATHODE;
 using CATHODE.Scripting;
@@ -61,17 +61,32 @@ namespace CathodeLib
 #endif
 
 #if UNITY_EDITOR || UNITY_STANDALONE
-            dbContent = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/composite_paths.bin");
+            dbContent = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/composite_parameter_info.bin");
 #else
             dbContent = CathodeLib.Properties.Resources.composite_parameter_info;
-            if (File.Exists("LocalDB/composite_paths.bin"))
-                dbContent = File.ReadAllBytes("LocalDB/composite_paths.bin");
+            File.WriteAllBytes("composite_parameter_info_test", dbContent);
+            if (File.Exists("LocalDB/composite_parameter_info.bin"))
+                dbContent = File.ReadAllBytes("LocalDB/composite_parameter_info.bin");
 #endif
             _pinInfoVanilla = new CompositePinInfoTable();
             using (BinaryReader reader = new BinaryReader(new MemoryStream(dbContent)))
             {
                 _pinInfoVanilla.Read(reader);
             }
+
+#if DO_DEBUG_DUMP
+            Directory.CreateDirectory("DebugDump/pin_info");
+            foreach (KeyValuePair<ShortGuid, List<CompositePinInfoTable.PinInfo>> entry in _pinInfoVanilla.composite_pin_infos)
+            {
+                List<string> names = new List<string>();
+                foreach (CompositePinInfoTable.PinInfo value in entry.Value)
+                {
+                    names.Add(value.VariableGUID.ToByteString() + " -> " + value.Direction.ToString());
+                } 
+                names.Sort();
+                File.WriteAllLines("DebugDump/pin_info/" + entry.Key.ToByteString() + ".txt", names);
+            }
+#endif
         }
 
         public static void LinkCommands(Commands commands)
@@ -170,12 +185,14 @@ namespace CathodeLib
         }
         public static CompositePinInfoTable.PinInfo GetParameterInfo(ShortGuid composite, ShortGuid variableEnt)
         {
-            List<CompositePinInfoTable.PinInfo> infos;
-            if (!_pinInfoVanilla.composite_pin_infos.TryGetValue(composite, out infos))
-                if (!_pinInfoCustom.composite_pin_infos.TryGetValue(composite, out infos))
-                    return null;
-
-            return infos.FirstOrDefault(o => o.VariableGUID == variableEnt);
+            CompositePinInfoTable.PinInfo info = null;
+            if (_pinInfoCustom.composite_pin_infos.TryGetValue(composite, out List<CompositePinInfoTable.PinInfo> customInfos))
+                info = customInfos.FirstOrDefault(o => o.VariableGUID == variableEnt);
+            if (info != null)
+                return info;
+            if (_pinInfoVanilla.composite_pin_infos.TryGetValue(composite, out List<CompositePinInfoTable.PinInfo> vanillaInfos))
+                info = vanillaInfos.FirstOrDefault(o => o.VariableGUID == variableEnt);
+            return info;
         }
 
         /* Generate a checksum for a Composite object */
