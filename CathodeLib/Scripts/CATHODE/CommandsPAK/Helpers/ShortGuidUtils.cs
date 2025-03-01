@@ -138,7 +138,7 @@ namespace CATHODE.Scripting
                 guid = Generate(str, false);
                 i++;
             }
-            Cache(guid, str);
+            //Cache(guid, str);
             return guid;
         }
 

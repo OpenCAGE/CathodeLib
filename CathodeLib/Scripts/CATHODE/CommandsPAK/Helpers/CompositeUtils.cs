@@ -168,11 +168,18 @@ namespace CathodeLib
         }
 
         /* Set/update the pin info for a composite VariableEntity */
+        public static void SetParameterInfo(Composite composite, CompositePinInfoTable.PinInfo info)
+        {
+            SetParameterInfo(composite.shortGUID, info);
+        }
         public static void SetParameterInfo(ShortGuid composite, CompositePinInfoTable.PinInfo info)
         {
             List<CompositePinInfoTable.PinInfo> infos;
             if (!_pinInfoCustom.composite_pin_infos.TryGetValue(composite, out infos))
+            {
                 infos = new List<CompositePinInfoTable.PinInfo>();
+                _pinInfoCustom.composite_pin_infos.Add(composite, infos);
+            }
 
             infos.RemoveAll(o => o.VariableGUID == info.VariableGUID);
             infos.Add(info);
