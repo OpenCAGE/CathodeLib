@@ -42,7 +42,7 @@ namespace CATHODE.Scripting
         SPLINE,
         RESOURCE,
 
-        NONE, //Translates to a blank string (Cathode is loosely typed, so this typically just means the datatype has got lost in the hierarchy chain)
+        NONE, //Translates to a blank string (this typically means the datatype has got lost in the hierarchy chain)
 
         FILEPATH,
         OBJECT,
