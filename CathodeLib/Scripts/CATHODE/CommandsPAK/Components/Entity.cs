@@ -171,6 +171,7 @@ namespace CATHODE.Scripting.Internal
         public Parameter AddParameter(ShortGuid id, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER, bool overwriteIfExists = true)
         {
             Parameter param = GetParameter(id);
+            //TODO: we should also take inputs and outputs into account here??
             if (param == null)
             {
                 param = new Parameter(id, data, variant);

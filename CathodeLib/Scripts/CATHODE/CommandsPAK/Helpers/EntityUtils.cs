@@ -152,9 +152,11 @@ namespace CATHODE.Scripting
             //Apply parameters
             for (int i = 0; i < inheritance.Count; i++)
                 ApplyDefaultsForFunction(
-                    entity, 
-                    inheritance[i], 
-                    ParameterVariant.STATE_PARAMETER | ParameterVariant.INPUT_PIN | ParameterVariant.OUTPUT_PIN | ParameterVariant.PARAMETER | ParameterVariant.INTERNAL, 
+                    entity,
+                    inheritance[i],
+                    //TODO: need to actually validate if these are the right ones to add. maybe we should allow the flags to be passed in?
+                    //ParameterVariant.STATE_PARAMETER | ParameterVariant.INPUT_PIN | ParameterVariant.OUTPUT_PIN | ParameterVariant.PARAMETER | ParameterVariant.INTERNAL, 
+                    ParameterVariant.PARAMETER,
                     overwriteExisting);
 
             //If we're a composite reference, add the composite's parameters and inputs too
@@ -165,9 +167,43 @@ namespace CATHODE.Scripting
                 if (comp == null) return;
                 for (int i = 0; i < comp.variables.Count; i++)
                 {
+                    //TODO: this adds a dependency from EntityUtils to CompositeUtils. we should ensure they use the same LinkedCommands (or just improve this dump way of doing it).
                     CompositePinInfoTable.PinInfo info = CompositeUtils.GetParameterInfo(comp, comp.variables[i]);
-                    if (info.Direction == PinDirection.IN)
-                        entity.AddParameter(comp.variables[i].name, comp.variables[i].type, ParameterVariant.INPUT_PIN, overwriteExisting);
+                    if (info == null)
+                        continue;
+                    switch (info.PinTypeGUID.ToString())
+                    {
+                        //TODO: need to filter these to the ones that should actually be params. i assume it's inputs and methods?
+                        //case "CompositeReferencePin":
+                        //case "CompositeOutputVariablePin":
+                        //case "CompositeOutputAnimationInfoVariablePin":
+                        //case "CompositeOutputBoolVariablePin":
+                        //case "CompositeOutputDirectionVariablePin":
+                        //case "CompositeOutputEnumVariablePin":
+                        //case "CompositeOutputFloatVariablePin":
+                        //case "CompositeOutputIntVariablePin":
+                        //case "CompositeOutputObjectVariablePin":
+                        //case "CompositeOutputPositionVariablePin":
+                        //case "CompositeOutputStringVariablePin":
+                        //case "CompositeOutputZoneLinkPtrVariablePin":
+                        //case "CompositeOutputZonePtrVariablePin":
+                        //case "CompositeTargetPin":
+                        case "CompositeInputVariablePin":
+                        case "CompositeInputAnimationInfoVariablePin":
+                        case "CompositeInputBoolVariablePin":
+                        case "CompositeInputDirectionVariablePin":
+                        case "CompositeInputEnumVariablePin":
+                        case "CompositeInputFloatVariablePin":
+                        case "CompositeInputIntVariablePin":
+                        case "CompositeInputObjectVariablePin":
+                        case "CompositeInputPositionVariablePin":
+                        case "CompositeInputStringVariablePin":
+                        case "CompositeInputZoneLinkPtrVariablePin":
+                        case "CompositeInputZonePtrVariablePin":
+                        case "CompositeMethodPin":
+                            entity.AddParameter(comp.variables[i].name, comp.variables[i].type, ParameterVariant.INPUT_PIN, overwriteExisting);
+                            break;
+                    }
                 }
             }
         }
@@ -5486,7 +5522,7 @@ namespace CATHODE.Scripting
             switch (type)
             {
                 case FunctionType.ScriptInterface:
-                    entity.AddParameter("name", new cString(""), ParameterVariant.PARAMETER, overwrite);
+                    //entity.AddParameter("name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.ZoneInterface:
                     entity.AddParameter("force_visible_on_load", new cBool(false), ParameterVariant.PARAMETER, overwrite);
@@ -6993,6 +7029,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("moment_ID", new cEnum(EnumType.GAME_CLIP, 0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.Zone:
+                    entity.AddParameter("name", new cString(""), ParameterVariant.PARAMETER, overwrite); // manually added
                     entity.AddParameter("suspend_on_unload", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("space_visible", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
@@ -8687,183 +8724,183 @@ namespace CATHODE.Scripting
             switch (type)
             {
                 case FunctionType.SensorInterface:
-                    entity.AddParameter("update", new cFloat());
+                    entity.AddParameter("update", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.AttachmentInterface:
-                    entity.AddParameter("deactivate", new cFloat());
-                    entity.AddParameter("reposition", new cFloat());
+                    entity.AddParameter("deactivate", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("reposition", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.SensorAttachmentInterface:
-                    entity.AddParameter("update", new cFloat());
+                    entity.AddParameter("update", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.CharacterCommand:
-                    entity.AddParameter("callback", new cFloat());
-                    entity.AddParameter("update", new cFloat());
-                    entity.AddParameter("deactivate", new cFloat());
-                    entity.AddParameter("live_edit", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("update", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("deactivate", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("live_edit", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.CMD_PlayAnimation:
-                    entity.AddParameter("load", new cFloat());
-                    entity.AddParameter("unload", new cFloat());
+                    entity.AddParameter("load", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("unload", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.CMD_HolsterWeapon:
-                    entity.AddParameter("update", new cFloat());
+                    entity.AddParameter("update", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.CHR_PlaySecondaryAnimation:
-                    entity.AddParameter("load", new cFloat());
-                    entity.AddParameter("unload", new cFloat());
+                    entity.AddParameter("load", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("unload", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.Player_Sensor:
-                    entity.AddParameter("update", new cFloat());
+                    entity.AddParameter("update", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.CHR_SetAndroidThrowTarget:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.CHR_DamageMonitor:
-                    entity.AddParameter("callback", new cFloat());
-                    entity.AddParameter("shutdown", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("shutdown", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.CHR_KnockedOutMonitor:
-                    entity.AddParameter("callback", new cFloat());
-                    entity.AddParameter("shutdown", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("shutdown", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.CHR_DeathMonitor:
-                    entity.AddParameter("callback", new cFloat());
-                    entity.AddParameter("shutdown", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("shutdown", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.CHR_RetreatMonitor:
-                    entity.AddParameter("callback", new cFloat());
-                    entity.AddParameter("shutdown", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("shutdown", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.CHR_WeaponFireMonitor:
-                    entity.AddParameter("callback", new cFloat());
-                    entity.AddParameter("shutdown", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("shutdown", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.CHR_TorchMonitor:
-                    entity.AddParameter("callback", new cFloat());
-                    entity.AddParameter("shutdown", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("shutdown", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.CHR_VentMonitor:
-                    entity.AddParameter("callback", new cFloat());
-                    entity.AddParameter("shutdown", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("shutdown", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.NPC_Squad_DialogueMonitor:
-                    entity.AddParameter("callback", new cFloat());
-                    entity.AddParameter("shutdown", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("shutdown", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.NPC_Group_DeathCounter:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.NPC_Group_Death_Monitor:
-                    entity.AddParameter("callback", new cFloat());
-                    entity.AddParameter("shutdown", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("shutdown", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.NPC_Aggression_Monitor:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.NPC_Highest_Awareness_Monitor:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.PlayerCameraMonitor:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.ScreenEffectEventMonitor:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.NPC_behaviour_monitor:
-                    entity.AddParameter("update", new cFloat());
+                    entity.AddParameter("update", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.NPC_multi_behaviour_monitor:
-                    entity.AddParameter("update", new cFloat());
+                    entity.AddParameter("update", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.NPC_ambush_monitor:
-                    entity.AddParameter("update", new cFloat());
+                    entity.AddParameter("update", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.NPC_navmesh_type_monitor:
-                    entity.AddParameter("update", new cFloat());
+                    entity.AddParameter("update", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.Checkpoint:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.DebugEnvironmentMarker:
-                    entity.AddParameter("update", new cFloat());
+                    entity.AddParameter("update", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.DebugPositionMarker:
-                    entity.AddParameter("update", new cFloat());
+                    entity.AddParameter("update", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.SyncOnAllPlayers:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.SyncOnFirstPlayer:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.NetPlayerCounter:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.BroadcastTrigger:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.NetworkedTimer:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.Door:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.Job:
-                    entity.AddParameter("start", new cFloat());
-                    entity.AddParameter("stop", new cFloat());
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("start", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("stop", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.JobWithPosition:
-                    entity.AddParameter("live_edit", new cFloat());
-                    entity.AddParameter("start", new cFloat());
-                    entity.AddParameter("post_restore", new cFloat());
+                    entity.AddParameter("live_edit", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("start", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("post_restore", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.Task:
-                    entity.AddParameter("callback", new cFloat());
-                    entity.AddParameter("update", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("update", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.NPC_ForceNextJob:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.UI_Icon:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.UI_Attached:
-                    entity.AddParameter("callback", new cFloat());
-                    entity.AddParameter("update", new cFloat());
-                    entity.AddParameter("stop_using", new cFloat());
-                    entity.AddParameter("success", new cFloat());
-                    entity.AddParameter("failure", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("update", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("stop_using", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("success", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("failure", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.RewireAccess_Point:
-                    entity.AddParameter("update", new cFloat());
+                    entity.AddParameter("update", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.PathfindingManualNode:
-                    entity.AddParameter("load", new cFloat());
-                    entity.AddParameter("unload", new cFloat());
+                    entity.AddParameter("load", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("unload", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.PathfindingAlienBackstageNode:
-                    entity.AddParameter("load", new cFloat());
-                    entity.AddParameter("unload", new cFloat());
+                    entity.AddParameter("load", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
+                    entity.AddParameter("unload", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.ScreenFadeOutToBlackTimed:
-                    entity.AddParameter("update", new cFloat());
+                    entity.AddParameter("update", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.ScreenFadeOutToWhiteTimed:
-                    entity.AddParameter("update", new cFloat());
+                    entity.AddParameter("update", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.ScreenFadeInTimed:
-                    entity.AddParameter("update", new cFloat());
+                    entity.AddParameter("update", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.SmokeCylinder:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.SmokeCylinderAttachmentInterface:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
                 case FunctionType.PlayerKilledAllyMonitor:
-                    entity.AddParameter("callback", new cFloat());
+                    entity.AddParameter("callback", new cFloat(), ParameterVariant.METHOD_FUNCTION, overwrite);
                     break;
             }
         }
@@ -8872,1797 +8909,1797 @@ namespace CATHODE.Scripting
             switch (type)
             {
                 case FunctionType.ProxyInterface:
-                    entity.AddParameter("proxy_enable", new cFloat());
-                    entity.AddParameter("proxy_disable", new cFloat());
+                    entity.AddParameter("proxy_enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("proxy_disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ScriptVariable:
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.InspectorInterface:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SensorInterface:
-                    entity.AddParameter("start", new cFloat());
-                    entity.AddParameter("stop", new cFloat());
-                    entity.AddParameter("pause", new cFloat());
-                    entity.AddParameter("resume", new cFloat());
+                    entity.AddParameter("start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("pause", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("resume", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CloseableInterface:
-                    entity.AddParameter("open", new cFloat());
-                    entity.AddParameter("close", new cFloat());
+                    entity.AddParameter("open", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("close", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GateInterface:
-                    entity.AddParameter("open", new cFloat());
-                    entity.AddParameter("close", new cFloat());
-                    entity.AddParameter("lock", new cFloat());
-                    entity.AddParameter("unlock", new cFloat());
+                    entity.AddParameter("open", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("close", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("lock", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("unlock", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ZoneInterface:
-                    entity.AddParameter("request_load", new cFloat());
-                    entity.AddParameter("cancel_load", new cFloat());
-                    entity.AddParameter("request_unload", new cFloat());
-                    entity.AddParameter("cancel_unload", new cFloat());
+                    entity.AddParameter("request_load", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cancel_load", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("request_unload", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cancel_unload", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.AttachmentInterface:
-                    entity.AddParameter("attach", new cFloat());
-                    entity.AddParameter("detach", new cFloat());
+                    entity.AddParameter("attach", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("detach", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SensorAttachmentInterface:
-                    entity.AddParameter("start", new cFloat());
-                    entity.AddParameter("stop", new cFloat());
-                    entity.AddParameter("pause", new cFloat());
-                    entity.AddParameter("resume", new cFloat());
+                    entity.AddParameter("start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("pause", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("resume", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CompositeInterface:
-                    entity.AddParameter("show", new cFloat());
-                    entity.AddParameter("hide", new cFloat());
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
-                    entity.AddParameter("simulate", new cFloat());
-                    entity.AddParameter("keyframe", new cFloat());
-                    entity.AddParameter("suspend", new cFloat());
-                    entity.AddParameter("allow", new cFloat());
+                    entity.AddParameter("show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("simulate", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("keyframe", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("suspend", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("allow", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Box:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.UpdateLeaderBoardDisplay:
-                    entity.AddParameter("refresh", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SetNextLoadingMovie:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ButtonMashPrompt:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("cancel", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cancel", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetFlashIntValue:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetFlashFloatValue:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Sphere:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ImpactSphere:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PlayerTriggerBox:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PlayerUseTriggerBox:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ModelReference:
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("show", new cFloat());
-                    entity.AddParameter("hide", new cFloat());
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
-                    entity.AddParameter("simulate", new cFloat());
-                    entity.AddParameter("keyframe", new cFloat());
-                    entity.AddParameter("light_switch_on", new cFloat());
-                    entity.AddParameter("light_switch_off", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("simulate", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("keyframe", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("light_switch_on", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("light_switch_off", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.LightReference:
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("show", new cFloat());
-                    entity.AddParameter("hide", new cFloat());
-                    entity.AddParameter("light_switch_on", new cFloat());
-                    entity.AddParameter("light_switch_off", new cFloat());
-                    entity.AddParameter("purge", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("light_switch_on", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("light_switch_off", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("purge", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ParticleEmitterReference:
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("show", new cFloat());
-                    entity.AddParameter("hide", new cFloat());
-                    entity.AddParameter("terminate", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("terminate", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.RibbonEmitterReference:
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("show", new cFloat());
-                    entity.AddParameter("hide", new cFloat());
-                    entity.AddParameter("terminate", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("terminate", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FogSphere:
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("show", new cFloat());
-                    entity.AddParameter("hide", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FogBox:
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("show", new cFloat());
-                    entity.AddParameter("hide", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SurfaceEffectSphere:
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("show", new cFloat());
-                    entity.AddParameter("hide", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
-                    entity.AddParameter("fade_out", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("fade_out", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SurfaceEffectBox:
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("show", new cFloat());
-                    entity.AddParameter("hide", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
-                    entity.AddParameter("fade_out", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("fade_out", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SimpleWater:
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("show", new cFloat());
-                    entity.AddParameter("hide", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SimpleRefraction:
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("show", new cFloat());
-                    entity.AddParameter("hide", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ProjectiveDecal:
-                    entity.AddParameter("show", new cFloat());
-                    entity.AddParameter("hide", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
-                    entity.AddParameter("fade_out", new cFloat());
-                    entity.AddParameter("set_decal_time", new cFloat());
+                    entity.AddParameter("show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("fade_out", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("set_decal_time", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.LightingMaster:
-                    entity.AddParameter("light_switch_on", new cFloat());
-                    entity.AddParameter("light_switch_off", new cFloat());
+                    entity.AddParameter("light_switch_on", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("light_switch_off", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CameraResource:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
-                    entity.AddParameter("activate_camera", new cFloat());
-                    entity.AddParameter("deactivate_camera", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("activate_camera", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("deactivate_camera", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CameraFinder:
-                    entity.AddParameter("refresh", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PlayerCamera:
-                    entity.AddParameter("refresh", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CameraBehaviorInterface:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
-                    entity.AddParameter("activate_behavior", new cFloat());
-                    entity.AddParameter("deactivate_behavior", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("activate_behavior", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("deactivate_behavior", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CameraShake:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("start", new cFloat());
-                    entity.AddParameter("stop", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CameraPathDriven:
-                    entity.AddParameter("start", new cFloat());
-                    entity.AddParameter("stop", new cFloat());
+                    entity.AddParameter("start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FixedCamera:
-                    entity.AddParameter("start", new cFloat());
-                    entity.AddParameter("stop", new cFloat());
+                    entity.AddParameter("start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.BoneAttachedCamera:
-                    entity.AddParameter("start", new cFloat());
-                    entity.AddParameter("stop", new cFloat());
+                    entity.AddParameter("start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.StealCamera:
-                    entity.AddParameter("start", new cFloat());
-                    entity.AddParameter("stop", new cFloat());
+                    entity.AddParameter("start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FollowCameraModifier:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
-                    entity.AddParameter("refresh", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CameraPath:
-                    entity.AddParameter("refresh", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CameraAimAssistant:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CameraPlayAnimation:
-                    entity.AddParameter("refresh", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetCurrentCameraTarget:
-                    entity.AddParameter("start", new cFloat());
-                    entity.AddParameter("stop", new cFloat());
+                    entity.AddParameter("start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CharacterShivaArms:
-                    entity.AddParameter("apply_hide", new cFloat());
-                    entity.AddParameter("apply_show", new cFloat());
+                    entity.AddParameter("apply_hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Logic_Vent_Entrance:
-                    entity.AddParameter("enter", new cFloat());
-                    entity.AddParameter("exit", new cFloat());
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
-                    entity.AddParameter("set_is_open", new cFloat());
-                    entity.AddParameter("set_is_closed", new cFloat());
+                    entity.AddParameter("enter", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("exit", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("set_is_open", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("set_is_closed", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_Follow:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_FollowUsingJobs:
-                    entity.AddParameter("seed", new cFloat());
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("seed", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_PlayAnimation:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
-                    entity.AddParameter("request_load", new cFloat());
-                    entity.AddParameter("cancel_load", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("request_load", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cancel_load", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_Idle:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_StopScript:
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_GoTo:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_GoToCover:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_MoveTowards:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_Die:
-                    entity.AddParameter("kill", new cFloat());
+                    entity.AddParameter("kill", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_LaunchMeleeAttack:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_ModifyCombatBehaviour:
-                    entity.AddParameter("apply_start", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_HolsterWeapon:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_ForceReloadWeapon:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_ForceMeleeAttack:
-                    entity.AddParameter("apply_start", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_ModifyBreathing:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_HoldBreath:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_DeepCrouch:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_PlaySecondaryAnimation:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
-                    entity.AddParameter("request_load", new cFloat());
-                    entity.AddParameter("cancel_load", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("request_load", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cancel_load", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_LocomotionDuck:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_ShootAt:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_AimAtCurrentTarget:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_AimAt:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CMD_Ragdoll:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_SetTacticalPosition:
-                    entity.AddParameter("set", new cFloat());
-                    entity.AddParameter("clear", new cFloat());
+                    entity.AddParameter("set", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("clear", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_SetTacticalPositionToTarget:
-                    entity.AddParameter("set", new cFloat());
-                    entity.AddParameter("clear", new cFloat());
+                    entity.AddParameter("set", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("clear", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_SetFocalPoint:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_SetAndroidThrowTarget:
-                    entity.AddParameter("set", new cFloat());
-                    entity.AddParameter("clear", new cFloat());
+                    entity.AddParameter("set", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("clear", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_SetAlliance:
-                    entity.AddParameter("set", new cFloat());
+                    entity.AddParameter("set", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_GetAlliance:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ALLIANCE_SetDisposition:
-                    entity.AddParameter("set", new cFloat());
+                    entity.AddParameter("set", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ALLIANCE_ResetAll:
-                    entity.AddParameter("set", new cFloat());
+                    entity.AddParameter("set", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_SetInvincibility:
-                    entity.AddParameter("set", new cFloat());
+                    entity.AddParameter("set", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_SetHealth:
-                    entity.AddParameter("set", new cFloat());
+                    entity.AddParameter("set", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_GetHealth:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_SetDebugDisplayName:
-                    entity.AddParameter("set", new cFloat());
+                    entity.AddParameter("set", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_TakeDamage:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_SetSubModelVisibility:
-                    entity.AddParameter("set", new cFloat());
+                    entity.AddParameter("set", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_SetHeadVisibility:
-                    entity.AddParameter("set", new cFloat());
+                    entity.AddParameter("set", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_SetFacehuggerAggroRadius:
-                    entity.AddParameter("set", new cFloat());
+                    entity.AddParameter("set", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.MonitorBase:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CharacterTypeMonitor:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Convo:
-                    entity.AddParameter("start", new cFloat());
-                    entity.AddParameter("stop", new cFloat());
+                    entity.AddParameter("start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_NotifyDynamicDialogueEvent:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_Squad_DialogueMonitor:
-                    entity.AddParameter("start_monitor", new cFloat());
-                    entity.AddParameter("stop_monitor", new cFloat());
+                    entity.AddParameter("start_monitor", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop_monitor", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_Group_DeathCounter:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_Group_Death_Monitor:
-                    entity.AddParameter("start_monitor", new cFloat());
-                    entity.AddParameter("stop_monitor", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("start_monitor", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop_monitor", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_AllSensesLimiter:
-                    entity.AddParameter("set_true", new cFloat());
-                    entity.AddParameter("set_false", new cFloat());
+                    entity.AddParameter("set_true", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("set_false", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SenseLimiter:
-                    entity.AddParameter("set_true", new cFloat());
-                    entity.AddParameter("set_false", new cFloat());
+                    entity.AddParameter("set_true", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("set_false", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_ResetSensesAndMemory:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetupMenaceManager:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_AlienConfig:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_GetLastSensedPositionOfTarget:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Weapon_AINotifier:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("impact", new cFloat());
-                    entity.AddParameter("reloading", new cFloat());
-                    entity.AddParameter("out_of_ammo", new cFloat());
-                    entity.AddParameter("started_aiming", new cFloat());
-                    entity.AddParameter("stopped_aiming", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("impact", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reloading", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("out_of_ammo", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("started_aiming", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stopped_aiming", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.HeldItem_AINotifier:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("expire", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("expire", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_Gain_Aggression_In_Radius:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Explosion_AINotifier:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_Sleeping_Android_Monitor:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
-                    entity.AddParameter("task_end", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("task_end", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_Highest_Awareness_Monitor:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_Squad_GetAwarenessState:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_Squad_GetAwarenessWatermark:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PlayerCameraMonitor:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ScreenEffectEventMonitor:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_FakeSense:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SuspiciousItem:
-                    entity.AddParameter("enter", new cFloat());
-                    entity.AddParameter("exit", new cFloat());
+                    entity.AddParameter("enter", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("exit", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_TargetAcquire:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
-                    entity.AddParameter("add_character", new cFloat());
-                    entity.AddParameter("remove_character", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("add_character", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("remove_character", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_IsWithinRange:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_ForceCombatTarget:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetAimTarget:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_SetTorch:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_GetTorch:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetAutoTorchMode:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_GetCombatTarget:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetTotallyBlindInDark:
-                    entity.AddParameter("set_true", new cFloat());
-                    entity.AddParameter("set_false", new cFloat());
+                    entity.AddParameter("set_true", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("set_false", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetSafePoint:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Player_ExploitableArea:
-                    entity.AddParameter("enter", new cFloat());
-                    entity.AddParameter("exit", new cFloat());
+                    entity.AddParameter("enter", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("exit", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetDefendArea:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetPursuitArea:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_ClearDefendArea:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_ClearPursuitArea:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_ForceRetreat:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetAlertness:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetStartPos:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetAgressionProgression:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetLocomotionStyleForJobs:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetLocomotionTargetSpeed:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetGunAimMode:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_Coordinator:
-                    entity.AddParameter("add_character", new cFloat());
-                    entity.AddParameter("remove_character", new cFloat());
-                    entity.AddParameter("update_squad_params", new cFloat());
+                    entity.AddParameter("add_character", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("remove_character", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("update_squad_params", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_set_behaviour_tree_flags:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetHidingSearchRadius:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetHidingNearestLocation:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_WithdrawAlien:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("cancel", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cancel", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetInvisible:
-                    entity.AddParameter("apply_hide", new cFloat());
-                    entity.AddParameter("apply_show", new cFloat());
+                    entity.AddParameter("apply_hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_HasWeaponOfType:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_TriggerAimRequest:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_StopAiming:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_TriggerShootRequest:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_StopShooting:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Squad_SetMaxEscalationLevel:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Chr_PlayerCrouch:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_Once:
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Custom_Hiding_Vignette_controller:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Custom_Hiding_Controller:
-                    entity.AddParameter("Get_In", new cFloat());
-                    entity.AddParameter("Add_NPC", new cFloat());
-                    entity.AddParameter("Start_Breathing_Game", new cFloat());
-                    entity.AddParameter("End_Breathing_Game", new cFloat());
+                    entity.AddParameter("Get_In", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Add_NPC", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Start_Breathing_Game", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("End_Breathing_Game", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TorchDynamicMovement:
-                    entity.AddParameter("start", new cFloat());
-                    entity.AddParameter("stop", new cFloat());
+                    entity.AddParameter("start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.EQUIPPABLE_ITEM:
-                    entity.AddParameter("spawn", new cFloat());
-                    entity.AddParameter("despawn", new cFloat());
+                    entity.AddParameter("spawn", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("despawn", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.MELEE_WEAPON:
-                    entity.AddParameter("impact_with_world", new cFloat());
+                    entity.AddParameter("impact_with_world", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PlayerWeaponMonitor:
-                    entity.AddParameter("start", new cFloat());
-                    entity.AddParameter("stop", new cFloat());
+                    entity.AddParameter("start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.RemoveWeaponsFromPlayer:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PlayerDiscardsWeapons:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PlayerDiscardsItems:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PlayerDiscardsTools:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.WEAPON_GiveToCharacter:
-                    entity.AddParameter("set", new cFloat());
+                    entity.AddParameter("set", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.WEAPON_GiveToPlayer:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.WEAPON_ImpactEffect:
-                    entity.AddParameter("impact", new cFloat());
+                    entity.AddParameter("impact", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.WEAPON_ImpactFilter:
-                    entity.AddParameter("impact", new cFloat());
+                    entity.AddParameter("impact", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.WEAPON_AttackerFilter:
-                    entity.AddParameter("impact", new cFloat());
+                    entity.AddParameter("impact", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.WEAPON_TargetObjectFilter:
-                    entity.AddParameter("impact", new cFloat());
+                    entity.AddParameter("impact", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.WEAPON_ImpactInspector:
-                    entity.AddParameter("impact", new cFloat());
+                    entity.AddParameter("impact", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.WEAPON_DamageFilter:
-                    entity.AddParameter("impact", new cFloat());
+                    entity.AddParameter("impact", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.WEAPON_DidHitSomethingFilter:
-                    entity.AddParameter("impact", new cFloat());
+                    entity.AddParameter("impact", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.WEAPON_MultiFilter:
-                    entity.AddParameter("impact", new cFloat());
+                    entity.AddParameter("impact", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.WEAPON_ImpactCharacterFilter:
-                    entity.AddParameter("impact", new cFloat());
+                    entity.AddParameter("impact", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.WEAPON_Effect:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.WEAPON_AmmoTypeFilter:
-                    entity.AddParameter("impact", new cFloat());
+                    entity.AddParameter("impact", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.WEAPON_ImpactAngleFilter:
-                    entity.AddParameter("impact", new cFloat());
+                    entity.AddParameter("impact", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.WEAPON_ImpactOrientationFilter:
-                    entity.AddParameter("impact", new cFloat());
+                    entity.AddParameter("impact", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.EFFECT_ImpactGenerator:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.EFFECT_EntityGenerator:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.VariableBool:
-                    entity.AddParameter("set_true", new cFloat());
-                    entity.AddParameter("set_false", new cFloat());
+                    entity.AddParameter("set_true", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("set_false", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.VariableFlashScreenColour:
-                    entity.AddParameter("start", new cFloat());
-                    entity.AddParameter("stop", new cFloat());
-                    entity.AddParameter("pause", new cFloat());
-                    entity.AddParameter("resume", new cFloat());
+                    entity.AddParameter("start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("pause", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("resume", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NonPersistentBool:
-                    entity.AddParameter("set_true", new cFloat());
-                    entity.AddParameter("set_false", new cFloat());
+                    entity.AddParameter("set_true", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("set_false", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GameDVR:
-                    entity.AddParameter("start", new cFloat());
-                    entity.AddParameter("stop", new cFloat());
+                    entity.AddParameter("start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FlushZoneCache:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.StateQuery:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.BooleanLogicInterface:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.LogicOnce:
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.LogicSwitch:
-                    entity.AddParameter("reset", new cFloat());
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("set_true", new cFloat());
-                    entity.AddParameter("set_false", new cFloat());
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("set_true", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("set_false", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.BooleanLogicOperation:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FloatMath_All:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FloatMath:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FloatOperation:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FloatCompare:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FloatModulateRandom:
-                    entity.AddParameter("refresh", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FloatLinearProportion:
-                    entity.AddParameter("Evaluate", new cFloat());
+                    entity.AddParameter("Evaluate", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FloatGetLinearProportion:
-                    entity.AddParameter("Evaluate", new cFloat());
+                    entity.AddParameter("Evaluate", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FloatLinearInterpolateSpeedAdvanced:
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FloatSmoothStep:
-                    entity.AddParameter("Evaluate", new cFloat());
+                    entity.AddParameter("Evaluate", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FloatClamp:
-                    entity.AddParameter("Evaluate", new cFloat());
+                    entity.AddParameter("Evaluate", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.IntegerMath_All:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.IntegerMath:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.IntegerOperation:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.IntegerCompare:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.VectorMath:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetComponentInterface:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.VectorLinearProportion:
-                    entity.AddParameter("Evaluate", new cFloat());
+                    entity.AddParameter("Evaluate", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PointAt:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SetLocationAndOrientation:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ApplyRelativeTransform:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.RandomFloat:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.RandomInt:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.RandomBool:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.RandomVector:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.RandomSelect:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TriggerRandomSequence:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("reset_all", new cFloat());
-                    entity.AddParameter("reset_Random_1", new cFloat());
-                    entity.AddParameter("reset_Random_2", new cFloat());
-                    entity.AddParameter("reset_Random_3", new cFloat());
-                    entity.AddParameter("reset_Random_4", new cFloat());
-                    entity.AddParameter("reset_Random_5", new cFloat());
-                    entity.AddParameter("reset_Random_6", new cFloat());
-                    entity.AddParameter("reset_Random_7", new cFloat());
-                    entity.AddParameter("reset_Random_8", new cFloat());
-                    entity.AddParameter("reset_Random_9", new cFloat());
-                    entity.AddParameter("reset_Random_10", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_all", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_1", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_2", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_3", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_4", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_5", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_6", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_7", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_8", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_9", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_10", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Persistent_TriggerRandomSequence:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("reset_all", new cFloat());
-                    entity.AddParameter("reset_Random_1", new cFloat());
-                    entity.AddParameter("reset_Random_2", new cFloat());
-                    entity.AddParameter("reset_Random_3", new cFloat());
-                    entity.AddParameter("reset_Random_4", new cFloat());
-                    entity.AddParameter("reset_Random_5", new cFloat());
-                    entity.AddParameter("reset_Random_6", new cFloat());
-                    entity.AddParameter("reset_Random_7", new cFloat());
-                    entity.AddParameter("reset_Random_8", new cFloat());
-                    entity.AddParameter("reset_Random_9", new cFloat());
-                    entity.AddParameter("reset_Random_10", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_all", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_1", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_2", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_3", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_4", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_5", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_6", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_7", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_8", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_9", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_Random_10", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TriggerWeightedRandom:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PlayEnvironmentAnimation:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CAGEAnimation:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
-                    entity.AddParameter("rewind", new cFloat());
-                    entity.AddParameter("load_cutscene", new cFloat());
-                    entity.AddParameter("unload_cutscene", new cFloat());
-                    entity.AddParameter("start_cutscene", new cFloat());
-                    entity.AddParameter("stop_cutscene", new cFloat());
-                    entity.AddParameter("pause_cutscene", new cFloat());
-                    entity.AddParameter("resume_cutscene", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("rewind", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("load_cutscene", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("unload_cutscene", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("start_cutscene", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop_cutscene", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("pause_cutscene", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("resume_cutscene", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.MultitrackLoop:
-                    entity.AddParameter("start", new cFloat());
-                    entity.AddParameter("stop", new cFloat());
+                    entity.AddParameter("start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TriggerSequence:
-                    entity.AddParameter("proxy_enable", new cFloat());
-                    entity.AddParameter("proxy_disable", new cFloat());
+                    entity.AddParameter("proxy_enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("proxy_disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SaveGlobalProgression:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SetAsActiveMissionLevel:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.DisplayMessage:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.DisplayMessageWithCallbacks:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Benchmark:
-                    entity.AddParameter("start_benchmark", new cFloat());
-                    entity.AddParameter("stop_benchmark", new cFloat());
+                    entity.AddParameter("start_benchmark", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop_benchmark", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.EndGame:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.LeaveGame:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.DebugTextStacking:
-                    entity.AddParameter("clear_all", new cFloat());
-                    entity.AddParameter("clear_last", new cFloat());
+                    entity.AddParameter("clear_all", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("clear_last", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.DebugText:
-                    entity.AddParameter("clear_all", new cFloat());
-                    entity.AddParameter("clear_of_alignment", new cFloat());
+                    entity.AddParameter("clear_all", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("clear_of_alignment", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.DebugCaptureScreenShot:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.DebugCaptureCorpse:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.DebugMenuToggle:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TogglePlayerTorch:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PlayerTorch:
-                    entity.AddParameter("torch_turned_on", new cFloat());
-                    entity.AddParameter("torch_turned_off", new cFloat());
-                    entity.AddParameter("torch_new_battery_added", new cFloat());
-                    entity.AddParameter("torch_battery_has_expired", new cFloat());
-                    entity.AddParameter("torch_low_power", new cFloat());
+                    entity.AddParameter("torch_turned_on", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("torch_turned_off", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("torch_new_battery_added", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("torch_battery_has_expired", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("torch_low_power", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Master:
-                    entity.AddParameter("suspend", new cFloat());
-                    entity.AddParameter("allow", new cFloat());
-                    entity.AddParameter("show", new cFloat());
-                    entity.AddParameter("hide", new cFloat());
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
-                    entity.AddParameter("simulate", new cFloat());
-                    entity.AddParameter("keyframe", new cFloat());
+                    entity.AddParameter("suspend", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("allow", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("simulate", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("keyframe", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ExclusiveMaster:
-                    entity.AddParameter("set_active", new cFloat());
-                    entity.AddParameter("set_inactive", new cFloat());
+                    entity.AddParameter("set_active", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("set_inactive", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SyncOnAllPlayers:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SyncOnFirstPlayer:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ParticipatingPlayersList:
-                    entity.AddParameter("refresh", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NetPlayerCounter:
-                    entity.AddParameter("enter", new cFloat());
-                    entity.AddParameter("exit", new cFloat());
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("enter", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("exit", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.BroadcastTrigger:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.HostOnlyTrigger:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SpawnGroup:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.RespawnExcluder:
-                    entity.AddParameter("refresh", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.RespawnConfig:
-                    entity.AddParameter("refresh", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.EggSpawner:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.RandomObjectSelector:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.BindObjectsMultiplexer:
-                    entity.AddParameter("Pin1", new cFloat());
-                    entity.AddParameter("Pin2", new cFloat());
-                    entity.AddParameter("Pin3", new cFloat());
-                    entity.AddParameter("Pin4", new cFloat());
-                    entity.AddParameter("Pin5", new cFloat());
-                    entity.AddParameter("Pin6", new cFloat());
-                    entity.AddParameter("Pin7", new cFloat());
-                    entity.AddParameter("Pin8", new cFloat());
-                    entity.AddParameter("Pin9", new cFloat());
-                    entity.AddParameter("Pin10", new cFloat());
+                    entity.AddParameter("Pin1", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin2", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin3", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin4", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin5", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin6", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin7", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin8", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin9", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin10", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TriggerTouch:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TriggerDamaged:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TriggerBindCharacter:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TriggerBindAllCharactersOfType:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TriggerBindCharactersInSquad:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TriggerUnbindCharacter:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TriggerDelay:
-                    entity.AddParameter("abort", new cFloat());
-                    entity.AddParameter("purge", new cFloat());
-                    entity.AddParameter("pause", new cFloat());
-                    entity.AddParameter("resume", new cFloat());
+                    entity.AddParameter("abort", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("purge", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("pause", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("resume", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TriggerSwitch:
-                    entity.AddParameter("reset", new cFloat());
-                    entity.AddParameter("Up", new cFloat());
-                    entity.AddParameter("Down", new cFloat());
-                    entity.AddParameter("Random", new cFloat());
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Up", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Down", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Random", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TriggerSelect:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TriggerSelect_Direct:
-                    entity.AddParameter("Trigger_0", new cFloat());
-                    entity.AddParameter("Trigger_1", new cFloat());
-                    entity.AddParameter("Trigger_2", new cFloat());
-                    entity.AddParameter("Trigger_3", new cFloat());
-                    entity.AddParameter("Trigger_4", new cFloat());
-                    entity.AddParameter("Trigger_5", new cFloat());
-                    entity.AddParameter("Trigger_6", new cFloat());
-                    entity.AddParameter("Trigger_7", new cFloat());
-                    entity.AddParameter("Trigger_8", new cFloat());
-                    entity.AddParameter("Trigger_9", new cFloat());
-                    entity.AddParameter("Trigger_10", new cFloat());
-                    entity.AddParameter("Trigger_11", new cFloat());
-                    entity.AddParameter("Trigger_12", new cFloat());
-                    entity.AddParameter("Trigger_13", new cFloat());
-                    entity.AddParameter("Trigger_14", new cFloat());
-                    entity.AddParameter("Trigger_15", new cFloat());
-                    entity.AddParameter("Trigger_16", new cFloat());
+                    entity.AddParameter("Trigger_0", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Trigger_1", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Trigger_2", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Trigger_3", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Trigger_4", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Trigger_5", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Trigger_6", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Trigger_7", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Trigger_8", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Trigger_9", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Trigger_10", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Trigger_11", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Trigger_12", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Trigger_13", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Trigger_14", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Trigger_15", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Trigger_16", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TriggerSync:
-                    entity.AddParameter("Pin1", new cFloat());
-                    entity.AddParameter("Pin2", new cFloat());
-                    entity.AddParameter("Pin3", new cFloat());
-                    entity.AddParameter("Pin4", new cFloat());
-                    entity.AddParameter("Pin5", new cFloat());
-                    entity.AddParameter("Pin6", new cFloat());
-                    entity.AddParameter("Pin7", new cFloat());
-                    entity.AddParameter("Pin8", new cFloat());
-                    entity.AddParameter("Pin9", new cFloat());
-                    entity.AddParameter("Pin10", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("Pin1", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin2", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin3", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin4", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin5", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin6", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin7", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin8", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin9", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin10", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.LogicAll:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
-                    entity.AddParameter("Pin1", new cFloat());
-                    entity.AddParameter("Pin2", new cFloat());
-                    entity.AddParameter("Pin3", new cFloat());
-                    entity.AddParameter("Pin4", new cFloat());
-                    entity.AddParameter("Pin5", new cFloat());
-                    entity.AddParameter("Pin6", new cFloat());
-                    entity.AddParameter("Pin7", new cFloat());
-                    entity.AddParameter("Pin8", new cFloat());
-                    entity.AddParameter("Pin9", new cFloat());
-                    entity.AddParameter("Pin10", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin1", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin2", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin3", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin4", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin5", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin6", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin7", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin8", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin9", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Pin10", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Counter:
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.LogicCounter:
-                    entity.AddParameter("Up", new cFloat());
-                    entity.AddParameter("Down", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("Up", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("Down", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.LogicPressurePad:
-                    entity.AddParameter("reset", new cFloat());
-                    entity.AddParameter("enter", new cFloat());
-                    entity.AddParameter("exit", new cFloat());
-                    entity.AddParameter("bind_all", new cFloat());
-                    entity.AddParameter("verify", new cFloat());
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enter", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("exit", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("bind_all", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("verify", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GateResourceInterface:
-                    entity.AddParameter("request_open", new cFloat());
-                    entity.AddParameter("request_close", new cFloat());
-                    entity.AddParameter("request_lock", new cFloat());
-                    entity.AddParameter("request_unlock", new cFloat());
-                    entity.AddParameter("force_open", new cFloat());
-                    entity.AddParameter("force_close", new cFloat());
-                    entity.AddParameter("request_restore", new cFloat());
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("request_open", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("request_close", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("request_lock", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("request_unlock", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("force_open", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("force_close", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("request_restore", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.InhibitActionsUntilRelease:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PadLightBar:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PadRumbleImpulse:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Character:
-                    entity.AddParameter("spawn", new cFloat());
-                    entity.AddParameter("despawn", new cFloat());
-                    entity.AddParameter("show", new cFloat());
-                    entity.AddParameter("hide", new cFloat());
+                    entity.AddParameter("spawn", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("despawn", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.DespawnPlayer:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.DespawnCharacter:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FilterIsInWeaponRange:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TriggerWhenSeeTarget:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Task:
-                    entity.AddParameter("task_end", new cFloat());
+                    entity.AddParameter("task_end", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.IdleTask:
-                    entity.AddParameter("set_as_next_task", new cFloat());
-                    entity.AddParameter("completed_pre_move", new cFloat());
-                    entity.AddParameter("completed_interrupt", new cFloat());
+                    entity.AddParameter("set_as_next_task", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("completed_pre_move", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("completed_interrupt", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FollowTask:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("allow_early_end", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("allow_early_end", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_ForceNextJob:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetRateOfFire:
-                    entity.AddParameter("set", new cFloat());
+                    entity.AddParameter("set", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetFiringRhythm:
-                    entity.AddParameter("set", new cFloat());
+                    entity.AddParameter("set", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetFiringAccuracy:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_ResetFiringStats:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TriggerBindAllNPCs:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Trigger_AudioOccluded:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SwitchLevel:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_DynamicDialogue:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_DynamicDialogueGlobalRange:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_PlayNPCBark:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SoundLoadBank:
-                    entity.AddParameter("load_bank", new cFloat());
-                    entity.AddParameter("unload_bank", new cFloat());
+                    entity.AddParameter("load_bank", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("unload_bank", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SoundLoadSlot:
-                    entity.AddParameter("load_bank", new cFloat());
+                    entity.AddParameter("load_bank", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SoundSetState:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SoundSetSwitch:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SoundImpact:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SoundBarrier:
-                    entity.AddParameter("barrier_open", new cFloat());
-                    entity.AddParameter("barrier_close", new cFloat());
-                    entity.AddParameter("set_override", new cFloat());
+                    entity.AddParameter("barrier_open", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("barrier_close", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("set_override", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.MusicController:
-                    entity.AddParameter("enable_music", new cFloat());
-                    entity.AddParameter("disable_music", new cFloat());
+                    entity.AddParameter("enable_music", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable_music", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.MusicTrigger:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SoundRTPCController:
-                    entity.AddParameter("enable_stealth", new cFloat());
-                    entity.AddParameter("disable_stealth", new cFloat());
-                    entity.AddParameter("enable_threat", new cFloat());
-                    entity.AddParameter("disable_threat", new cFloat());
+                    entity.AddParameter("enable_stealth", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable_stealth", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enable_threat", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable_threat", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SoundTimelineTrigger:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("trigger_now", new cFloat());
-                    entity.AddParameter("abort", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("trigger_now", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("abort", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SoundPlayerFootwearOverride:
-                    entity.AddParameter("enable_override", new cFloat());
-                    entity.AddParameter("disable_override", new cFloat());
+                    entity.AddParameter("enable_override", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable_override", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.AddToInventory:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.RemoveFromInventory:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.LimitItemUse:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PlayerHasItemEntity:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.InventoryItem:
-                    entity.AddParameter("refresh", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PickupSpawner:
-                    entity.AddParameter("spawn", new cFloat());
-                    entity.AddParameter("despawn", new cFloat());
+                    entity.AddParameter("spawn", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("despawn", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.MultiplePickupSpawner:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.AddItemsToGCPool:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SetupGCDistribution:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.AllocateGCItemsFromPool:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.AllocateGCItemFromPoolBySubset:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.QueryGCItemPool:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.RemoveFromGCItemPool:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FlashScript:
-                    entity.AddParameter("show", new cFloat());
-                    entity.AddParameter("hide", new cFloat());
+                    entity.AddParameter("show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.UI_KeyGate:
-                    entity.AddParameter("enter", new cFloat());
-                    entity.AddParameter("exit", new cFloat());
-                    entity.AddParameter("lock", new cFloat());
-                    entity.AddParameter("unlock", new cFloat());
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("light_switch_on", new cFloat());
-                    entity.AddParameter("light_switch_off", new cFloat());
+                    entity.AddParameter("enter", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("exit", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("lock", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("unlock", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("light_switch_on", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("light_switch_off", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.RTT_MoviePlayer:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("cancel", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cancel", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.MoviePlayer:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ToggleFunctionality:
-                    entity.AddParameter("disable_radial", new cFloat());
-                    entity.AddParameter("enable_radial", new cFloat());
-                    entity.AddParameter("disable_radial_hacking_info", new cFloat());
-                    entity.AddParameter("enable_radial_hacking_info", new cFloat());
-                    entity.AddParameter("disable_radial_cutting_info", new cFloat());
-                    entity.AddParameter("enable_radial_cutting_info", new cFloat());
-                    entity.AddParameter("disable_radial_battery_info", new cFloat());
-                    entity.AddParameter("enable_radial_battery_info", new cFloat());
-                    entity.AddParameter("disable_hud_battery_info", new cFloat());
-                    entity.AddParameter("enable_hud_battery_info", new cFloat());
+                    entity.AddParameter("disable_radial", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enable_radial", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable_radial_hacking_info", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enable_radial_hacking_info", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable_radial_cutting_info", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enable_radial_cutting_info", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable_radial_battery_info", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enable_radial_battery_info", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable_hud_battery_info", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enable_hud_battery_info", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FlashInvoke:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.MotionTrackerPing:
-                    entity.AddParameter("start_ping", new cFloat());
-                    entity.AddParameter("stop_ping", new cFloat());
+                    entity.AddParameter("start_ping", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop_ping", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CHR_SetShowInMotionTracker:
-                    entity.AddParameter("set_true", new cFloat());
-                    entity.AddParameter("set_false", new cFloat());
+                    entity.AddParameter("set_true", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("set_false", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.EnableMotionTrackerPassiveAudio:
-                    entity.AddParameter("set_true", new cFloat());
-                    entity.AddParameter("set_false", new cFloat());
+                    entity.AddParameter("set_true", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("set_false", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.UIBreathingGameIcon:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("exit", new cFloat());
-                    entity.AddParameter("refresh_value", new cFloat());
-                    entity.AddParameter("display_tutorial", new cFloat());
-                    entity.AddParameter("display_tutorial_breathing_1", new cFloat());
-                    entity.AddParameter("display_tutorial_breathing_2", new cFloat());
-                    entity.AddParameter("breathing_game_tutorial_fail", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("exit", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("refresh_value", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("display_tutorial", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("display_tutorial_breathing_1", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("display_tutorial_breathing_2", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("breathing_game_tutorial_fail", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GenericHighlightEntity:
-                    entity.AddParameter("light_switch_on", new cFloat());
-                    entity.AddParameter("light_switch_off", new cFloat());
+                    entity.AddParameter("light_switch_on", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("light_switch_off", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.UI_Icon:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
-                    entity.AddParameter("lock", new cFloat());
-                    entity.AddParameter("unlock", new cFloat());
-                    entity.AddParameter("show", new cFloat());
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("hide", new cFloat());
-                    entity.AddParameter("light_switch_on", new cFloat());
-                    entity.AddParameter("light_switch_off", new cFloat());
-                    entity.AddParameter("clear_user", new cFloat());
-                    entity.AddParameter("force_disable_highlight", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("lock", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("unlock", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("show", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("light_switch_on", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("light_switch_off", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("clear_user", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("force_disable_highlight", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.UI_Attached:
-                    entity.AddParameter("start", new cFloat());
-                    entity.AddParameter("stop", new cFloat());
+                    entity.AddParameter("start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.UI_Container:
-                    entity.AddParameter("refresh", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.UI_ReactionGame:
-                    entity.AddParameter("enter", new cFloat());
+                    entity.AddParameter("enter", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.HackingGame:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("cancel", new cFloat());
-                    entity.AddParameter("enter", new cFloat());
-                    entity.AddParameter("exit", new cFloat());
-                    entity.AddParameter("lock", new cFloat());
-                    entity.AddParameter("unlock", new cFloat());
-                    entity.AddParameter("light_switch_on", new cFloat());
-                    entity.AddParameter("light_switch_off", new cFloat());
-                    entity.AddParameter("display_tutorial", new cFloat());
-                    entity.AddParameter("transition_completed", new cFloat());
-                    entity.AddParameter("reset_hacking_success_flag", new cFloat());
-                    entity.AddParameter("display_hacking_upgrade", new cFloat());
-                    entity.AddParameter("hide_hacking_upgrade", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cancel", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enter", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("exit", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("lock", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("unlock", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("light_switch_on", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("light_switch_off", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("display_tutorial", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("transition_completed", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset_hacking_success_flag", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("display_hacking_upgrade", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide_hacking_upgrade", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SetHackingToolLevel:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TerminalFolder:
-                    entity.AddParameter("refresh_value", new cFloat());
-                    entity.AddParameter("refresh_text", new cFloat());
-                    entity.AddParameter("lock", new cFloat());
-                    entity.AddParameter("unlock", new cFloat());
+                    entity.AddParameter("refresh_value", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("refresh_text", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("lock", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("unlock", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.AccessTerminal:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("cancel", new cFloat());
-                    entity.AddParameter("light_switch_on", new cFloat());
-                    entity.AddParameter("light_switch_off", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cancel", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("light_switch_on", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("light_switch_off", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SetGatingToolLevel:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetGatingToolLevel:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetPlayerHasGatingTool:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetPlayerHasKeycard:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SetPlayerHasKeycard:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SetPlayerHasGatingTool:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CollectSevastopolLog:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CollectNostromoLog:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CollectIDTag:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.StartNewChapter:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.UnlockLogEntry:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.MapAnchor:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.MapItem:
-                    entity.AddParameter("refresh_value", new cFloat());
-                    entity.AddParameter("hide_ui", new cFloat());
-                    entity.AddParameter("show_ui", new cFloat());
+                    entity.AddParameter("refresh_value", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide_ui", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("show_ui", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.UnlockMapDetail:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.RewireSystem:
-                    entity.AddParameter("turn_on_system", new cFloat());
-                    entity.AddParameter("turn_off_system", new cFloat());
+                    entity.AddParameter("turn_on_system", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("turn_off_system", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.RewireAccess_Point:
-                    entity.AddParameter("display_tutorial", new cFloat());
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("cancel", new cFloat());
-                    entity.AddParameter("finished_closing_container", new cFloat());
+                    entity.AddParameter("display_tutorial", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cancel", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("finished_closing_container", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Rewire:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("cancel", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cancel", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SetMotionTrackerRange:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SetGamepadAxes:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SetGameplayTips:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GameOver:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SetBlueprintInfo:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetBlueprintLevel:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetBlueprintAvailable:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetSelectedCharacterId:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetNextPlaylistLevelName:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.IsPlaylistTypeSingle:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.IsPlaylistTypeAll:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.IsPlaylistTypeMarathon:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.IsCurrentLevelAChallengeMap:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.IsCurrentLevelAPreorderMap:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetCurrentPlaylistLevelIndex:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SetObjectiveCompleted:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GameOverCredits:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GoToFrontend:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CoverLine:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TRAV_ContinuousLadder:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TRAV_ContinuousPipe:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TRAV_ContinuousLedge:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TRAV_ContinuousClimbingWall:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TRAV_ContinuousCinematicSidle:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TRAV_ContinuousBalanceBeam:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TRAV_ContinuousTightGap:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TRAV_1ShotVentEntrance:
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
-                    entity.AddParameter("enter", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enter", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TRAV_1ShotVentExit:
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
-                    entity.AddParameter("exit", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("exit", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TRAV_1ShotFloorVentEntrance:
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
-                    entity.AddParameter("enter", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enter", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TRAV_1ShotFloorVentExit:
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
-                    entity.AddParameter("exit", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("exit", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TRAV_1ShotClimbUnder:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TRAV_1ShotLeap:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.TRAV_1ShotSpline:
-                    entity.AddParameter("enable", new cFloat());
-                    entity.AddParameter("disable", new cFloat());
+                    entity.AddParameter("enable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NavMeshBarrier:
-                    entity.AddParameter("open", new cFloat());
-                    entity.AddParameter("close", new cFloat());
+                    entity.AddParameter("open", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("close", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PathfindingTeleportNode:
-                    entity.AddParameter("update_cost", new cFloat());
+                    entity.AddParameter("update_cost", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PathfindingWaitNode:
-                    entity.AddParameter("update_cost", new cFloat());
+                    entity.AddParameter("update_cost", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PathfindingManualNode:
-                    entity.AddParameter("update_cost", new cFloat());
+                    entity.AddParameter("update_cost", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PathfindingAlienBackstageNode:
-                    entity.AddParameter("open", new cFloat());
-                    entity.AddParameter("close", new cFloat());
-                    entity.AddParameter("force_killtrap", new cFloat());
-                    entity.AddParameter("cancel_force_killtrap", new cFloat());
-                    entity.AddParameter("disable_killtrap", new cFloat());
-                    entity.AddParameter("cancel_disable_killtrap", new cFloat());
-                    entity.AddParameter("hit_by_flamethrower", new cFloat());
-                    entity.AddParameter("cancel_hit_by_flamethrower", new cFloat());
+                    entity.AddParameter("open", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("close", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("force_killtrap", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cancel_force_killtrap", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable_killtrap", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cancel_disable_killtrap", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hit_by_flamethrower", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cancel_hit_by_flamethrower", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ChokePoint:
-                    entity.AddParameter("enable_chokepoint", new cFloat());
-                    entity.AddParameter("disable_chokepoint", new cFloat());
+                    entity.AddParameter("enable_chokepoint", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disable_chokepoint", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetChokePoint:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SpaceTransform:
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FogPlane:
-                    entity.AddParameter("refresh", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetSplineLength:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetPointOnSpline:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetClosestPercentOnSpline:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetClosestPointOnSpline:
-                    entity.AddParameter("trigger", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetClosestPoint:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetClosestPointFromSet:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetCentrePoint:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ENT_Debug_Exit_Game:
-                    entity.AddParameter("fail_game", new cFloat());
+                    entity.AddParameter("fail_game", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PhysicsModifyGravity:
-                    entity.AddParameter("floating", new cFloat());
-                    entity.AddParameter("sinking", new cFloat());
+                    entity.AddParameter("floating", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("sinking", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PhysicsApplyBuoyancy:
-                    entity.AddParameter("refresh", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.AssetSpawner:
-                    entity.AddParameter("spawn", new cFloat());
-                    entity.AddParameter("despawn", new cFloat());
+                    entity.AddParameter("spawn", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("despawn", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ProximityTrigger:
-                    entity.AddParameter("ignite", new cFloat());
-                    entity.AddParameter("electrify", new cFloat());
-                    entity.AddParameter("drench", new cFloat());
-                    entity.AddParameter("poison", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("ignite", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("electrify", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("drench", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("poison", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.CharacterAttachmentNode:
-                    entity.AddParameter("attach", new cFloat());
-                    entity.AddParameter("detach", new cFloat());
+                    entity.AddParameter("attach", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("detach", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.MultipleCharacterAttachmentNode:
-                    entity.AddParameter("attach", new cFloat());
-                    entity.AddParameter("detach", new cFloat());
+                    entity.AddParameter("attach", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("detach", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.AnimatedModelAttachmentNode:
-                    entity.AddParameter("attach", new cFloat());
-                    entity.AddParameter("detach", new cFloat());
+                    entity.AddParameter("attach", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("detach", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GetCharacterRotationSpeed:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.LevelCompletionTargets:
-                    entity.AddParameter("set_true", new cFloat());
+                    entity.AddParameter("set_true", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.EnvironmentMap:
-                    entity.AddParameter("refresh", new cFloat());
-                    entity.AddParameter("purge", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("purge", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Showlevel_Completed:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Display_Element_On_Map:
-                    entity.AddParameter("set_true", new cFloat());
-                    entity.AddParameter("set_false", new cFloat());
+                    entity.AddParameter("set_true", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("set_false", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Map_Floor_Change:
-                    entity.AddParameter("set_true", new cFloat());
+                    entity.AddParameter("set_true", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Force_UI_Visibility:
-                    entity.AddParameter("clear_pending_ui", new cFloat());
-                    entity.AddParameter("hide_objective_message", new cFloat());
-                    entity.AddParameter("show_objective_message", new cFloat());
-                    entity.AddParameter("cutting_panel_start", new cFloat());
-                    entity.AddParameter("cutting_panel_finish", new cFloat());
-                    entity.AddParameter("keypad_interaction_start", new cFloat());
-                    entity.AddParameter("keypad_interaction_finish", new cFloat());
-                    entity.AddParameter("traversal_interaction_start", new cFloat());
-                    entity.AddParameter("traversal_interaction_start", new cFloat());
-                    entity.AddParameter("suit_change_interaction_finish", new cFloat());
-                    entity.AddParameter("suit_change_interaction_start", new cFloat());
-                    entity.AddParameter("terminal_interaction_finish", new cFloat());
-                    entity.AddParameter("terminal_interaction_start", new cFloat());
-                    entity.AddParameter("rewire_interaction_start", new cFloat());
-                    entity.AddParameter("rewire_interaction_finish", new cFloat());
-                    entity.AddParameter("hacking_interaction_start", new cFloat());
-                    entity.AddParameter("hacking_interaction_finish", new cFloat());
-                    entity.AddParameter("ladder_interaction_start", new cFloat());
-                    entity.AddParameter("ladder_interaction_finish", new cFloat());
-                    entity.AddParameter("button_interaction_start", new cFloat());
-                    entity.AddParameter("button_interaction_finish", new cFloat());
-                    entity.AddParameter("lever_interaction_start", new cFloat());
-                    entity.AddParameter("lever_interaction_finish", new cFloat());
-                    entity.AddParameter("level_fade_start", new cFloat());
-                    entity.AddParameter("level_fade_finish", new cFloat());
-                    entity.AddParameter("cutscene_visibility_start", new cFloat());
-                    entity.AddParameter("cutscene_visibility_finish", new cFloat());
-                    entity.AddParameter("hiding_visibility_start", new cFloat());
-                    entity.AddParameter("hiding_visibility_finish", new cFloat());
+                    entity.AddParameter("clear_pending_ui", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hide_objective_message", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("show_objective_message", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cutting_panel_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cutting_panel_finish", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("keypad_interaction_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("keypad_interaction_finish", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("traversal_interaction_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("traversal_interaction_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("suit_change_interaction_finish", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("suit_change_interaction_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("terminal_interaction_finish", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("terminal_interaction_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("rewire_interaction_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("rewire_interaction_finish", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hacking_interaction_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hacking_interaction_finish", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("ladder_interaction_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("ladder_interaction_finish", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("button_interaction_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("button_interaction_finish", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("lever_interaction_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("lever_interaction_finish", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("level_fade_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("level_fade_finish", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cutscene_visibility_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("cutscene_visibility_finish", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hiding_visibility_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("hiding_visibility_finish", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.AddExitObjective:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SetPrimaryObjective:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SetSubObjective:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ClearPrimaryObjective:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ClearSubObjective:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.UpdatePrimaryObjective:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.UpdateSubObjective:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.UnlockAchievement:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.AchievementMonitor:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.AchievementStat:
-                    entity.AddParameter("Up", new cFloat());
+                    entity.AddParameter("Up", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.AchievementUniqueCounter:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SetRichPresence:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.SmokeCylinderAttachmentInterface:
-                    entity.AddParameter("stop_emitting", new cFloat());
+                    entity.AddParameter("stop_emitting", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.MotionTrackerMonitor:
-                    entity.AddParameter("activate_tracker", new cFloat());
-                    entity.AddParameter("deactivate_tracker", new cFloat());
+                    entity.AddParameter("activate_tracker", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("deactivate_tracker", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GlobalEvent:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GlobalEventMonitor:
-                    entity.AddParameter("start_monitoring", new cFloat());
-                    entity.AddParameter("stop_monitoring", new cFloat());
+                    entity.AddParameter("start_monitoring", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop_monitoring", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PlayerKilledAllyMonitor:
-                    entity.AddParameter("start_monitor", new cFloat());
-                    entity.AddParameter("stop_monitor", new cFloat());
+                    entity.AddParameter("start_monitor", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop_monitor", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.InteractiveMovementControl:
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PlayForMinDuration:
-                    entity.AddParameter("start_timer", new cFloat());
-                    entity.AddParameter("stop_timer", new cFloat());
-                    entity.AddParameter("notify_animation_started", new cFloat());
-                    entity.AddParameter("notify_animation_finished", new cFloat());
+                    entity.AddParameter("start_timer", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop_timer", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("notify_animation_started", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("notify_animation_finished", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.GCIP_WorldPickup:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Torch_Control:
-                    entity.AddParameter("turn_off_torch", new cFloat());
-                    entity.AddParameter("turn_on_torch", new cFloat());
-                    entity.AddParameter("toggle_torch", new cFloat());
-                    entity.AddParameter("resume_torch", new cFloat());
-                    entity.AddParameter("allow_torch", new cFloat());
+                    entity.AddParameter("turn_off_torch", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("turn_on_torch", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("toggle_torch", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("resume_torch", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("allow_torch", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.DoorStatus:
-                    entity.AddParameter("refresh", new cFloat());
+                    entity.AddParameter("refresh", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.Interaction:
-                    entity.AddParameter("start_interaction", new cFloat());
-                    entity.AddParameter("stop_interaction", new cFloat());
-                    entity.AddParameter("allow_interrupt", new cFloat());
-                    entity.AddParameter("disallow_interrupt", new cFloat());
+                    entity.AddParameter("start_interaction", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("stop_interaction", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("allow_interrupt", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("disallow_interrupt", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.BulletChamber:
-                    entity.AddParameter("reload_fill", new cFloat());
-                    entity.AddParameter("reload_open", new cFloat());
-                    entity.AddParameter("reload_empty", new cFloat());
-                    entity.AddParameter("reload_load", new cFloat());
-                    entity.AddParameter("reload_fire", new cFloat());
-                    entity.AddParameter("reload_finish", new cFloat());
+                    entity.AddParameter("reload_fill", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reload_open", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reload_empty", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reload_load", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reload_fire", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reload_finish", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.PlayerDeathCounter:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
-                    entity.AddParameter("reset", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("reset", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ElapsedTimer:
-                    entity.AddParameter("apply_start", new cFloat());
-                    entity.AddParameter("apply_stop", new cFloat());
+                    entity.AddParameter("apply_start", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("apply_stop", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.LeaderboardWriter:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.ProximityDetector:
-                    entity.AddParameter("trigger", new cFloat());
+                    entity.AddParameter("trigger", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
                 case FunctionType.FakeAILightSourceInPlayersHand:
-                    entity.AddParameter("fake_light_on", new cFloat());
-                    entity.AddParameter("fake_light_off", new cFloat());
+                    entity.AddParameter("fake_light_on", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
+                    entity.AddParameter("fake_light_off", new cFloat(), ParameterVariant.METHOD_PIN, overwrite);
                     break;
             }
-        }
+        } 
         #endregion
     }
 }

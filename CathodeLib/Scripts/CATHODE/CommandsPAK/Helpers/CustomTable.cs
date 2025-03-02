@@ -668,6 +668,8 @@ namespace CathodeLib
             if (version != PinInfo.VERSION)
             {
                 //Add compatibility here when required
+                composite_pin_infos = new Dictionary<ShortGuid, List<PinInfo>>();
+                return;
             }
             int count = reader.ReadInt32();
             composite_pin_infos = new Dictionary<ShortGuid, List<PinInfo>>(count);
@@ -680,7 +682,7 @@ namespace CathodeLib
                 {
                     PinInfo pin_info = new PinInfo();
                     pin_info.VariableGUID = Utilities.Consume<ShortGuid>(reader);
-                    pin_info.Direction = (PinDirection)reader.ReadInt32();
+                    pin_info.PinTypeGUID = Utilities.Consume<ShortGuid>(reader);
                     pin_infos.Add(pin_info);
                 }
             }
@@ -697,16 +699,16 @@ namespace CathodeLib
                 foreach (PinInfo pin_info in composites.Value)
                 {
                     Utilities.Write<ShortGuid>(writer, pin_info.VariableGUID);
-                    writer.Write((int)pin_info.Direction);
+                    Utilities.Write<ShortGuid>(writer, pin_info.PinTypeGUID);
                 }
             }
         }
 
         public class PinInfo
         {
-            public const byte VERSION = 1;
+            public const byte VERSION = 2;
             public ShortGuid VariableGUID;
-            public PinDirection Direction;
+            public ShortGuid PinTypeGUID;
         }
     }
 }
