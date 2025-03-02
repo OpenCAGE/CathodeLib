@@ -1868,6 +1868,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("force_visible_on_load", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.AttachmentInterface:
+                    entity.AddParameter("attachment", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("position", new cTransform(), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.SensorAttachmentInterface:
@@ -1977,6 +1978,9 @@ namespace CATHODE.Scripting
                     entity.AddParameter("cast_shadows_in_torch", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.LightReference:
+                    entity.AddParameter("occlusion_geometry", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.RENDERABLE_INSTANCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("mastered_by_visibility", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("exclude_shadow_entities", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("type", new cEnum(EnumType.LIGHT_TYPE, 0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("defocus_attenuation", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("start_attenuation", new cFloat(0.1f), ParameterVariant.PARAMETER, overwrite);
@@ -2019,6 +2023,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("slope_scale_depth_bias", new cInteger(1), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.ParticleEmitterReference:
+                    entity.AddParameter("mastered_by_visibility", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("use_local_rotation", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("include_in_planar_reflections", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("material", new cString(""), ParameterVariant.PARAMETER, overwrite);
@@ -2192,6 +2197,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("NO_CLIP", new cInteger(0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.RibbonEmitterReference:
+                    entity.AddParameter("mastered_by_visibility", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("use_local_rotation", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("include_in_planar_reflections", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("material", new cString(""), ParameterVariant.PARAMETER, overwrite);
@@ -2299,6 +2305,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("NO_CLIP", new cInteger(0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.GPU_PFXEmitterReference:
+                    entity.AddParameter("mastered_by_visibility", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("EFFECT_NAME", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("SPAWN_NUMBER", new cInteger(100), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("SPAWN_RATE", new cFloat(100.0f), ParameterVariant.PARAMETER, overwrite);
@@ -2492,10 +2499,14 @@ namespace CATHODE.Scripting
                     entity.AddParameter("material", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.LODControls:
+                    entity.AddParameter("lod_range_scalar", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("disable_lods", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.LightingMaster:
+                    entity.AddParameter("objects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.DebugCamera:
+                    entity.AddParameter("linked_cameras", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.CameraResource:
                     entity.AddParameter("camera_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
@@ -2527,6 +2538,7 @@ namespace CATHODE.Scripting
                 case FunctionType.PlayerCamera:
                     break;
                 case FunctionType.CameraBehaviorInterface:
+                    entity.AddParameter("linked_cameras", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.CAMERA_INSTANCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("behavior_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("priority", new cInteger(0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("threshold", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
@@ -2545,6 +2557,9 @@ namespace CATHODE.Scripting
                     entity.AddParameter("max_noise", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CameraShake:
+                    entity.AddParameter("relative_transformation", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("impulse_intensity", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("impulse_position", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("shake_type", new cEnum(EnumType.SHAKE_TYPE, 0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("shake_frequency", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("max_rotation_angles", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.PARAMETER, overwrite);
@@ -2561,6 +2576,13 @@ namespace CATHODE.Scripting
                     entity.AddParameter("spring_damping", new cFloat(0.5f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CameraPathDriven:
+                    entity.AddParameter("position_path", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target_path", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("reference_path", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("position_path_transform", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target_path_transform", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("reference_path_transform", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("point_to_project", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("path_driven_type", new cEnum(EnumType.PATH_DRIVEN_TYPE, 2), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("invert_progression", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("position_path_offset", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
@@ -2580,6 +2602,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("use_position_offset", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.BoneAttachedCamera:
+                    entity.AddParameter("character", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("position_offset", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("rotation_offset", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("movement_damping", new cFloat(0.6f), ParameterVariant.PARAMETER, overwrite);
@@ -2602,11 +2625,14 @@ namespace CATHODE.Scripting
                     entity.AddParameter("mouse_speed_y", new cFloat(30.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.StealCamera:
+                    entity.AddParameter("focus_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("steal_type", new cEnum(EnumType.STEAL_CAMERA_TYPE, 0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("check_line_of_sight", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("blend_in_duration", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.FollowCameraModifier:
+                    entity.AddParameter("position_curve", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target_curve", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("modifier_type", new cEnum(EnumType.FOLLOW_CAMERA_MODIFIERS, 0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("position_offset", new cVector3(new Vector3(0.5f, 1.5f, -3.0f)), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("target_offset", new cVector3(new Vector3(0.5f, 1.5f, 0.0f)), ParameterVariant.PARAMETER, overwrite);
@@ -2633,6 +2659,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("transition_ease_out", new cFloat(0.2f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CameraPath:
+                    entity.AddParameter("linked_splines", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("path_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("path_type", new cEnum(EnumType.CAMERA_PATH_TYPE, 0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("path_class", new cEnum(EnumType.CAMERA_PATH_CLASS, 0), ParameterVariant.PARAMETER, overwrite);
@@ -2649,6 +2676,13 @@ namespace CATHODE.Scripting
                     entity.AddParameter("fading_range", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CameraPlayAnimation:
+                    entity.AddParameter("animated_camera", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("position_marker", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("character_to_focus", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("focal_length_mm", new cFloat(75.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("focal_plane_m", new cFloat(2.5f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("fnum", new cFloat(2.8f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("focal_point", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("data_file", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("start_frame", new cInteger(-1), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("end_frame", new cInteger(-1), ParameterVariant.PARAMETER, overwrite);
@@ -2682,10 +2716,19 @@ namespace CATHODE.Scripting
                     entity.AddParameter("disable_collision_test", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CameraDofController:
+                    entity.AddParameter("character_to_focus", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("focal_length_mm", new cFloat(75.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("focal_plane_m", new cFloat(2.5f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("fnum", new cFloat(2.8f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("focal_point", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("focal_point_offset", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("bone_to_focus", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.ClipPlanesController:
+                    entity.AddParameter("near_plane", new cFloat(0.1f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("far_plane", new cFloat(1000.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("update_near", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("update_far", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.GetCurrentCameraPos:
                     break;
@@ -2696,14 +2739,18 @@ namespace CATHODE.Scripting
                 case FunctionType.CharacterShivaArms:
                     break;
                 case FunctionType.Logic_Vent_Entrance:
+                    entity.AddParameter("Hide_Pos", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Emit_Pos", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("force_stand_on_exit", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.Logic_Vent_System:
+                    entity.AddParameter("Vent_Entrances", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.VENT_ENTRANCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.CharacterCommand:
                     entity.AddParameter("override_all_ai", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CMD_Follow:
+                    entity.AddParameter("Waypoint", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("idle_stance", new cEnum(EnumType.IDLE, 0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("move_type", new cEnum(EnumType.MOVE, 1), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("inner_radius", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
@@ -2711,6 +2758,8 @@ namespace CATHODE.Scripting
                     entity.AddParameter("prefer_traversals", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CMD_FollowUsingJobs:
+                    entity.AddParameter("target_to_follow", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("who_Im_leading", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("fastest_allowed_move_type", new cEnum(EnumType.MOVE, 3), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("slowest_allowed_move_type", new cEnum(EnumType.MOVE, 0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("centre_job_restart_radius", new cFloat(2.0f), ParameterVariant.PARAMETER, overwrite);
@@ -2727,6 +2776,8 @@ namespace CATHODE.Scripting
                     entity.AddParameter("clamp_speed", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_FollowOffset:
+                    entity.AddParameter("offset", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target_to_follow", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.AnimationMask:
                     entity.AddParameter("maskHips", new cBool(false), ParameterVariant.PARAMETER, overwrite);
@@ -2754,6 +2805,13 @@ namespace CATHODE.Scripting
                     entity.AddParameter("weight", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CMD_PlayAnimation:
+                    entity.AddParameter("SafePos", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Marker", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("ExitPosition", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("ExternalStartTime", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("ExternalTime", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("OverrideCharacter", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("OptionalMask", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("AnimationSet", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("Animation", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("StartFrame", new cInteger(-1), ParameterVariant.PARAMETER, overwrite);
@@ -2791,6 +2849,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("UseShivaArms", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CMD_Idle:
+                    entity.AddParameter("target_to_face", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("should_face_target", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("should_raise_gun_while_turning", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("desired_stance", new cEnum(EnumType.CHARACTER_STANCE, 0), ParameterVariant.PARAMETER, overwrite);
@@ -2803,6 +2862,8 @@ namespace CATHODE.Scripting
                 case FunctionType.CMD_StopScript:
                     break;
                 case FunctionType.CMD_GoTo:
+                    entity.AddParameter("Waypoint", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("AimTarget", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("move_type", new cEnum(EnumType.MOVE, 1), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("enable_lookaround", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("use_stopping_anim", new cBool(false), ParameterVariant.PARAMETER, overwrite);
@@ -2819,6 +2880,8 @@ namespace CATHODE.Scripting
                     entity.AddParameter("start_instantly", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CMD_GoToCover:
+                    entity.AddParameter("CoverPoint", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("AimTarget", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("move_type", new cEnum(EnumType.MOVE, 1), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("SearchRadius", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("enable_lookaround", new cBool(false), ParameterVariant.PARAMETER, overwrite);
@@ -2829,6 +2892,8 @@ namespace CATHODE.Scripting
                     entity.AddParameter("use_current_target_as_aim", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CMD_MoveTowards:
+                    entity.AddParameter("MoveTarget", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("AimTarget", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("move_type", new cEnum(EnumType.MOVE, 1), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("disallow_traversal", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("should_be_aiming", new cBool(false), ParameterVariant.PARAMETER, overwrite);
@@ -2836,6 +2901,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("never_succeed", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CMD_Die:
+                    entity.AddParameter("Killer", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("death_style", new cEnum(EnumType.DEATH_STYLE, 0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CMD_LaunchMeleeAttack:
@@ -2874,6 +2940,10 @@ namespace CATHODE.Scripting
                     entity.AddParameter("allow_stand_up", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CHR_PlaySecondaryAnimation:
+                    entity.AddParameter("Marker", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("OptionalMask", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("ExternalStartTime", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("ExternalTime", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("AnimationSet", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("Animation", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("StartFrame", new cInteger(-1), ParameterVariant.PARAMETER, overwrite);
@@ -2913,31 +2983,38 @@ namespace CATHODE.Scripting
                     entity.AddParameter("Height", new cEnum(EnumType.DUCK_HEIGHT, 1), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CMD_ShootAt:
+                    entity.AddParameter("Target", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.CMD_AimAtCurrentTarget:
                     entity.AddParameter("Raise_gun", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CMD_AimAt:
+                    entity.AddParameter("AimTarget", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("Raise_gun", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("use_current_target", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.Player_Sensor:
                     break;
                 case FunctionType.CMD_Ragdoll:
+                    entity.AddParameter("actor", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.CHARACTER) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("impact_velocity", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.CHR_SetTacticalPosition:
+                    entity.AddParameter("tactical_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("sweep_type", new cEnum(EnumType.AREA_SWEEP_TYPE, 0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("fixed_sweep_radius", new cFloat(10.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CHR_SetTacticalPositionToTarget:
                     break;
                 case FunctionType.CHR_SetFocalPoint:
+                    entity.AddParameter("focal_point", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("priority", new cEnum(EnumType.PRIORITY, 0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("speed", new cEnum(EnumType.LOOK_SPEED, 1), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("steal_camera", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("line_of_sight_test", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CHR_SetAndroidThrowTarget:
+                    entity.AddParameter("throw_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.CHR_SetAlliance:
                     entity.AddParameter("Alliance", new cEnum(EnumType.ALLIANCE_GROUP, 0), ParameterVariant.PARAMETER, overwrite);
@@ -2981,11 +3058,13 @@ namespace CATHODE.Scripting
                 case FunctionType.MonitorBase:
                     break;
                 case FunctionType.CHR_DamageMonitor:
+                    entity.AddParameter("InstigatorFilter", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("DamageType", new cEnum(EnumType.DAMAGE_EFFECTS, -65536), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CHR_KnockedOutMonitor:
                     break;
                 case FunctionType.CHR_DeathMonitor:
+                    entity.AddParameter("KillerFilter", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("DamageType", new cEnum(EnumType.DAMAGE_EFFECTS, -65536), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CHR_RetreatMonitor:
@@ -3006,25 +3085,26 @@ namespace CATHODE.Scripting
                     entity.AddParameter("trigger_on_checkpoint_restart", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.Convo:
+                    entity.AddParameter("members", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.LOGIC_CHARACTER) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("alwaysTalkToPlayerIfPresent", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("playerCanJoin", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("playerCanLeave", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("positionNPCs", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("circularShape", new cBool(true), ParameterVariant.PARAMETER, overwrite);
-                    entity.AddParameter("convoPosition", new cResource(), ParameterVariant.PARAMETER, overwrite);
+                    entity.AddParameter("convoPosition", new cString(), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("personalSpaceRadius", new cFloat(0.4f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_NotifyDynamicDialogueEvent:
                     entity.AddParameter("DialogueEvent", new cEnum(EnumType.DIALOGUE_NPC_EVENT, -1), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_Squad_DialogueMonitor:
-                    entity.AddParameter("squad_coordinator", new cResource(), ParameterVariant.PARAMETER, overwrite);
+                    entity.AddParameter("squad_coordinator", new cString(), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_Group_DeathCounter:
                     entity.AddParameter("TriggerThreshold", new cInteger(1), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_Group_Death_Monitor:
-                    entity.AddParameter("squad_coordinator", new cResource(), ParameterVariant.PARAMETER, overwrite);
+                    entity.AddParameter("squad_coordinator", new cString(), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("CheckAllNPCs", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_AllSensesLimiter:
@@ -3048,13 +3128,18 @@ namespace CATHODE.Scripting
                     entity.AddParameter("SenseSet", new cEnum(EnumType.SENSE_SET, 0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_GetLastSensedPositionOfTarget:
+                    entity.AddParameter("OptionalTarget", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("MaxTimeSince", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.Weapon_AINotifier:
                     break;
                 case FunctionType.HeldItem_AINotifier:
+                    entity.AddParameter("Item", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Duration", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.NPC_Gain_Aggression_In_Radius:
+                    entity.AddParameter("Position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Radius", new cFloat(5.0f), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("AggressionGain", new cEnum(EnumType.AGGRESSION_GAIN, 1), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_Aggression_Monitor:
@@ -3064,14 +3149,19 @@ namespace CATHODE.Scripting
                     entity.AddParameter("AmmoType", new cEnum(EnumType.AMMO_TYPE, 12), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_Sleeping_Android_Monitor:
+                    entity.AddParameter("Android_NPC", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.NPC_Highest_Awareness_Monitor:
+                    entity.AddParameter("NPC_Coordinator", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Target", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("trigger_on_start", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("CheckAllNPCs", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_Squad_GetAwarenessState:
+                    entity.AddParameter("NPC_Coordinator", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.NPC_Squad_GetAwarenessWatermark:
+                    entity.AddParameter("NPC_Coordinator", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.PlayerCameraMonitor:
                     break;
@@ -3081,10 +3171,13 @@ namespace CATHODE.Scripting
                     entity.AddParameter("Sense", new cEnum(EnumType.SENSORY_TYPE, -1), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_FakeSense:
+                    entity.AddParameter("SensedObject", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("FakePosition", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("Sense", new cEnum(EnumType.SENSORY_TYPE, -1), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("ForceThreshold", new cEnum(EnumType.THRESHOLD_QUALIFIER, 2), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_SuspiciousItem:
+                    entity.AddParameter("ItemPosition", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("Item", new cEnum(EnumType.SUSPICIOUS_ITEM, 0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("InitialReactionValidStartDuration", new cFloat(0.5f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("FurtherReactionValidStartDuration", new cFloat(6.0f), ParameterVariant.PARAMETER, overwrite);
@@ -3120,12 +3213,17 @@ namespace CATHODE.Scripting
                 case FunctionType.NPC_TargetAcquire:
                     break;
                 case FunctionType.CHR_IsWithinRange:
+                    entity.AddParameter("Position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Radius", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Height", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("Range_test_shape", new cEnum(EnumType.RANGE_TEST_SHAPE, 0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_ForceCombatTarget:
+                    entity.AddParameter("Target", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("LockOtherAttackersOut", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_SetAimTarget:
+                    entity.AddParameter("Target", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.CHR_SetTorch:
                     entity.AddParameter("TorchOn", new cBool(true), ParameterVariant.PARAMETER, overwrite);
@@ -3144,28 +3242,37 @@ namespace CATHODE.Scripting
                     entity.AddParameter("position", new cTransform(), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_MeleeContext:
+                    entity.AddParameter("ConvergePos", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Radius", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("Context_Type", new cEnum(EnumType.MELEE_CONTEXT_TYPE, 0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_SetSafePoint:
+                    entity.AddParameter("SafePositions", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.Player_ExploitableArea:
+                    entity.AddParameter("NpcSafePositions", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetDefendArea:
+                    entity.AddParameter("AreaObjects", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.NPC_AREA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetPursuitArea:
+                    entity.AddParameter("AreaObjects", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.NPC_AREA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.NPC_ClearDefendArea:
                     break;
                 case FunctionType.NPC_ClearPursuitArea:
                     break;
                 case FunctionType.NPC_ForceRetreat:
+                    entity.AddParameter("AreaObjects", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.NPC_AREA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.NPC_DefineBackstageAvoidanceArea:
+                    entity.AddParameter("AreaObjects", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.NPC_AREA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetAlertness:
                     entity.AddParameter("AlertState", new cEnum(EnumType.ALERTNESS_STATE, 0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_SetStartPos:
+                    entity.AddParameter("StartPos", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.NPC_SetAgressionProgression:
                     entity.AddParameter("allow_progression", new cBool(true), ParameterVariant.PARAMETER, overwrite);
@@ -3188,6 +3295,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("Radius", new cFloat(15.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_SetHidingNearestLocation:
+                    entity.AddParameter("hiding_pos", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.NPC_WithdrawAlien:
                     entity.AddParameter("allow_any_searches_to_complete", new cBool(false), ParameterVariant.PARAMETER, overwrite);
@@ -3223,6 +3331,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("check_if_weapon_draw", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_TriggerAimRequest:
+                    entity.AddParameter("AimTarget", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("Raise_gun", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("use_current_target", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("duration", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
@@ -3241,7 +3350,7 @@ namespace CATHODE.Scripting
                     break;
                 case FunctionType.Squad_SetMaxEscalationLevel:
                     entity.AddParameter("max_level", new cEnum(EnumType.NPC_AGGRO_LEVEL, 5), ParameterVariant.PARAMETER, overwrite);
-                    entity.AddParameter("squad_coordinator", new cResource(), ParameterVariant.PARAMETER, overwrite);
+                    entity.AddParameter("squad_coordinator", new cString(), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.Chr_PlayerCrouch:
                     entity.AddParameter("crouch", new cBool(true), ParameterVariant.PARAMETER, overwrite);
@@ -3249,10 +3358,31 @@ namespace CATHODE.Scripting
                 case FunctionType.NPC_Once:
                     break;
                 case FunctionType.Custom_Hiding_Vignette_controller:
+                    entity.AddParameter("Breath", new cInteger(0), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Blackout_start_time", new cInteger(15), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("run_out_time", new cInteger(60), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.Custom_Hiding_Controller:
+                    entity.AddParameter("Enter_Anim", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Idle_Anim", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Exit_Anim", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("has_MT", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("is_high", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("AlienBusted_Player_1", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("AlienBusted_Alien_1", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("AlienBusted_Player_2", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("AlienBusted_Alien_2", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("AlienBusted_Player_3", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("AlienBusted_Alien_3", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("AlienBusted_Player_4", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("AlienBusted_Alien_4", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("AndroidBusted_Player_1", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("AndroidBusted_Android_1", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("AndroidBusted_Player_2", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("AndroidBusted_Android_2", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.TorchDynamicMovement:
+                    entity.AddParameter("torch", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("max_spatial_velocity", new cFloat(5.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("max_angular_velocity", new cFloat(30.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("max_position_displacement", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
@@ -3261,6 +3391,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("target_damping", new cFloat(0.6f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.EQUIPPABLE_ITEM:
+                    entity.AddParameter("item_animated_asset", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("character_animation_context", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("character_activate_animation_context", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("left_handed", new cBool(false), ParameterVariant.PARAMETER, overwrite);
@@ -3275,6 +3406,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("fixed_target_distance_for_local_player", new cFloat(6.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.MELEE_WEAPON:
+                    entity.AddParameter("item_animated_model_and_collision", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("normal_attack_damage", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("power_attack_damage", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("position_input", new cTransform(), ParameterVariant.PARAMETER, overwrite);
@@ -3340,6 +3472,8 @@ namespace CATHODE.Scripting
                     entity.AddParameter("discard_keycard", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.WEAPON_GiveToCharacter:
+                    entity.AddParameter("Character", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Weapon", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("is_holstered", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.WEAPON_GiveToPlayer:
@@ -3348,6 +3482,9 @@ namespace CATHODE.Scripting
                     entity.AddParameter("starting_ammo", new cInteger(0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.WEAPON_ImpactEffect:
+                    entity.AddParameter("StaticEffects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("DynamicEffects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("DynamicAttachedEffects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("Type", new cEnum(EnumType.WEAPON_IMPACT_EFFECT_TYPE, 0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("Orientation", new cEnum(EnumType.WEAPON_IMPACT_EFFECT_ORIENTATION, 0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("Priority", new cInteger(16), ParameterVariant.PARAMETER, overwrite);
@@ -3385,6 +3522,9 @@ namespace CATHODE.Scripting
                     entity.AddParameter("character_body_location", new cEnum(EnumType.IMPACT_CHARACTER_BODY_LOCATION_TYPE, 0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.WEAPON_Effect:
+                    entity.AddParameter("WorldPos", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("AttachedEffects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("UnattachedEffects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("LifeTime", new cFloat(0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.WEAPON_AmmoTypeFilter:
@@ -3408,6 +3548,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("use_local_rotation", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.EFFECT_EntityGenerator:
+                    entity.AddParameter("entities", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("trigger_on_reset", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("count", new cInteger(1), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("spread", new cFloat(0f), ParameterVariant.PARAMETER, overwrite);
@@ -3465,10 +3606,13 @@ namespace CATHODE.Scripting
                     entity.AddParameter("initial_z", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.VariableVector2:
+                    entity.AddParameter("initial_value", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VariableColour:
+                    entity.AddParameter("initial_colour", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VariableFlashScreenColour:
+                    entity.AddParameter("initial_colour", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("flash_layer_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.VariableHackingConfig:
@@ -3486,6 +3630,7 @@ namespace CATHODE.Scripting
                 case FunctionType.VariablePosition:
                     break;
                 case FunctionType.VariableObject:
+                    entity.AddParameter("initial", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VariableThePlayer:
                     break;
@@ -3513,14 +3658,19 @@ namespace CATHODE.Scripting
                     entity.AddParameter("moment_ID", new cEnum(EnumType.GAME_CLIP, 0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.Zone:
-                    entity.AddParameter("name", new cString(""), ParameterVariant.PARAMETER, overwrite); //added manually
+                    entity.AddParameter("name", new cString(""), ParameterVariant.PARAMETER, overwrite); //Added this manually as seemingly it's only compiled here.
+                    entity.AddParameter("composites", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("suspend_on_unload", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("space_visible", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.ZoneLink:
+                    entity.AddParameter("ZoneA", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("ZoneB", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("cost", new cInteger(6), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.ZoneExclusionLink:
+                    entity.AddParameter("ZoneA", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("ZoneB", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("exclude_streaming", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.ZoneLoaded:
@@ -3530,6 +3680,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("NextGen", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.StateQuery:
+                    entity.AddParameter("Input", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.IsActive:
                     break;
@@ -3558,10 +3709,14 @@ namespace CATHODE.Scripting
                 case FunctionType.IsSpawned:
                     break;
                 case FunctionType.BooleanLogicInterface:
+                    entity.AddParameter("LHS", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("RHS", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.LogicOnce:
                     break;
                 case FunctionType.LogicDelay:
+                    entity.AddParameter("delay", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("can_suspend", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.TriggerSimple:
                     break;
@@ -3570,6 +3725,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("is_persistent", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.LogicGate:
+                    entity.AddParameter("allow", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.LogicGateAnd:
                     break;
@@ -3580,12 +3736,14 @@ namespace CATHODE.Scripting
                 case FunctionType.LogicGateNotEqual:
                     break;
                 case FunctionType.BooleanLogicOperation:
+                    entity.AddParameter("Input", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.LogicNot:
                     break;
                 case FunctionType.SetBool:
                     break;
                 case FunctionType.FloatMath_All:
+                    entity.AddParameter("Numbers", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FloatAdd_All:
                     break;
@@ -3597,6 +3755,8 @@ namespace CATHODE.Scripting
                 case FunctionType.FloatMin_All:
                     break;
                 case FunctionType.FloatMath:
+                    entity.AddParameter("LHS", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("RHS", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FloatAdd:
                     break;
@@ -3605,8 +3765,12 @@ namespace CATHODE.Scripting
                 case FunctionType.FloatMultiply:
                     break;
                 case FunctionType.FloatMultiplyClamp:
+                    entity.AddParameter("Min", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Max", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FloatClampMultiply:
+                    entity.AddParameter("Min", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Max", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FloatDivide:
                     break;
@@ -3617,6 +3781,7 @@ namespace CATHODE.Scripting
                 case FunctionType.FloatMin:
                     break;
                 case FunctionType.FloatOperation:
+                    entity.AddParameter("Input", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.SetFloat:
                     break;
@@ -3627,6 +3792,9 @@ namespace CATHODE.Scripting
                 case FunctionType.FloatReciprocal:
                     break;
                 case FunctionType.FloatCompare:
+                    entity.AddParameter("LHS", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("RHS", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Threshold", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FloatEquals:
                     break;
@@ -3671,8 +3839,14 @@ namespace CATHODE.Scripting
                     entity.AddParameter("disable_behaviour", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.FloatLinearProportion:
+                    entity.AddParameter("Initial_Value", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Target_Value", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Proportion", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FloatGetLinearProportion:
+                    entity.AddParameter("Min", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Input", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Max", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FloatLinearInterpolateTimed:
                     entity.AddParameter("Initial_Value", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
@@ -3697,8 +3871,14 @@ namespace CATHODE.Scripting
                     entity.AddParameter("Loop", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.FloatSmoothStep:
+                    entity.AddParameter("Low_Edge", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("High_Edge", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Value", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FloatClamp:
+                    entity.AddParameter("Min", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Max", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Value", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FilterAbsorber:
                     entity.AddParameter("factor", new cFloat(0.95f), ParameterVariant.PARAMETER, overwrite);
@@ -3706,6 +3886,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("input", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.IntegerMath_All:
+                    entity.AddParameter("Numbers", new cInteger(0), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.IntegerAdd_All:
                     break;
@@ -3716,6 +3897,8 @@ namespace CATHODE.Scripting
                 case FunctionType.IntegerMin_All:
                     break;
                 case FunctionType.IntegerMath:
+                    entity.AddParameter("LHS", new cInteger(0), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("RHS", new cInteger(0), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.IntegerAdd:
                     break;
@@ -3736,6 +3919,7 @@ namespace CATHODE.Scripting
                 case FunctionType.IntegerOr:
                     break;
                 case FunctionType.IntegerOperation:
+                    entity.AddParameter("Input", new cInteger(0), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.SetInteger:
                     break;
@@ -3744,6 +3928,8 @@ namespace CATHODE.Scripting
                 case FunctionType.IntegerCompliment:
                     break;
                 case FunctionType.IntegerCompare:
+                    entity.AddParameter("LHS", new cInteger(0), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("RHS", new cInteger(0), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.IntegerEquals:
                     break;
@@ -3758,6 +3944,7 @@ namespace CATHODE.Scripting
                 case FunctionType.IntegerLessThanOrEqual:
                     break;
                 case FunctionType.IntegerAnalyse:
+                    entity.AddParameter("Input", new cInteger(0), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("Val0", new cInteger(0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("Val1", new cInteger(1), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("Val2", new cInteger(2), ParameterVariant.PARAMETER, overwrite);
@@ -3778,6 +3965,8 @@ namespace CATHODE.Scripting
                 case FunctionType.SetEnumString:
                     break;
                 case FunctionType.VectorMath:
+                    entity.AddParameter("LHS", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("RHS", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VectorAdd:
                     break;
@@ -3788,42 +3977,73 @@ namespace CATHODE.Scripting
                 case FunctionType.VectorMultiply:
                     break;
                 case FunctionType.VectorScale:
+                    entity.AddParameter("LHS", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("RHS", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VectorNormalise:
+                    entity.AddParameter("Input", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VectorModulus:
+                    entity.AddParameter("Input", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.ScalarProduct:
+                    entity.AddParameter("LHS", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("RHS", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VectorDirection:
+                    entity.AddParameter("From", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("To", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VectorYaw:
+                    entity.AddParameter("Vector", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VectorRotateYaw:
+                    entity.AddParameter("Vector", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Yaw", new cFloat(0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VectorRotateRoll:
+                    entity.AddParameter("Vector", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Roll", new cFloat(0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VectorRotatePitch:
+                    entity.AddParameter("Vector", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Pitch", new cFloat(0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VectorRotateByPos:
+                    entity.AddParameter("Vector", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("WorldPos", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VectorMultiplyByPos:
+                    entity.AddParameter("Vector", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("WorldPos", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VectorDistance:
+                    entity.AddParameter("LHS", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("RHS", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VectorReflect:
+                    entity.AddParameter("Input", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Normal", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.SetVector:
+                    entity.AddParameter("x", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("y", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("z", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.SetVector2:
+                    entity.AddParameter("Input", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.SetColour:
+                    entity.AddParameter("Colour", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.GetTranslation:
+                    entity.AddParameter("Input", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.GetRotation:
+                    entity.AddParameter("Input", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.GetComponentInterface:
+                    entity.AddParameter("Input", new cVector3(new Vector3(0.0f, 0.0f, 0.0f)), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.GetX:
                     break;
@@ -3832,29 +4052,53 @@ namespace CATHODE.Scripting
                 case FunctionType.GetZ:
                     break;
                 case FunctionType.SetPosition:
+                    entity.AddParameter("Translation", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Rotation", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Input", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("set_on_reset", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.PositionDistance:
+                    entity.AddParameter("LHS", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("RHS", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VectorLinearProportion:
+                    entity.AddParameter("Initial_Value", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Target_Value", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Proportion", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VectorLinearInterpolateTimed:
+                    entity.AddParameter("Initial_Value", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Target_Value", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Reverse", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("Time", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("PingPong", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("Loop", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.VectorLinearInterpolateSpeed:
+                    entity.AddParameter("Initial_Value", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Target_Value", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Reverse", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("Speed", new cFloat(0.1f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("PingPong", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("Loop", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.MoveInTime:
+                    entity.AddParameter("start_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("end_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("duration", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.SmoothMove:
+                    entity.AddParameter("timer", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("start_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("end_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("start_velocity", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("end_velocity", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("duration", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.RotateInTime:
+                    entity.AddParameter("start_pos", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("origin", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("timer", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("duration", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("time_X", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("time_Y", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
@@ -3862,6 +4106,9 @@ namespace CATHODE.Scripting
                     entity.AddParameter("loop", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.RotateAtSpeed:
+                    entity.AddParameter("start_pos", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("origin", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("timer", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("duration", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("speed_X", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("speed_Y", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
@@ -3869,11 +4116,19 @@ namespace CATHODE.Scripting
                     entity.AddParameter("loop", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.PointAt:
+                    entity.AddParameter("origin", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.SetLocationAndOrientation:
+                    entity.AddParameter("location", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("axis", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("local_offset", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("axis_is", new cEnum(EnumType.ORIENTATION_AXIS, 2), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.ApplyRelativeTransform:
+                    entity.AddParameter("origin", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("destination", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("input", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("use_trigger_entity", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.RandomFloat:
@@ -3896,6 +4151,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("Normalised", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.RandomSelect:
+                    entity.AddParameter("Input", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("Seed", new cFloat(0.5f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TriggerRandom:
@@ -3921,6 +4177,10 @@ namespace CATHODE.Scripting
                     entity.AddParameter("allow_same_pin_in_succession", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.PlayEnvironmentAnimation:
+                    entity.AddParameter("geometry", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("marker", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("external_start_time", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("external_time", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("animation_info", new cResource(), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("AnimationSet", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("Animation", new cString(""), ParameterVariant.PARAMETER, overwrite);
@@ -3934,6 +4194,7 @@ namespace CATHODE.Scripting
                 case FunctionType.LevelLoaded:
                     break;
                 case FunctionType.CAGEAnimation:
+                    entity.AddParameter("external_time", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("use_external_time", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("rewind_on_stop", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("jump_to_the_end", new cBool(false), ParameterVariant.PARAMETER, overwrite);
@@ -3946,10 +4207,13 @@ namespace CATHODE.Scripting
                     entity.AddParameter("capture_clip_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.MultitrackLoop:
+                    entity.AddParameter("current_time", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("loop_condition", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("start_time", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("end_time", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.ReTransformer:
+                    entity.AddParameter("new_transform", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.TriggerSequence:
                     entity.AddParameter("trigger_mode", new cEnum(EnumType.ANIM_MODE, 0), ParameterVariant.PARAMETER, overwrite);
@@ -3959,6 +4223,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("interval_multiplier", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.Checkpoint:
+                    entity.AddParameter("player_spawn_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("is_first_checkpoint", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("is_first_autorun_checkpoint", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("section", new cString(""), ParameterVariant.PARAMETER, overwrite);
@@ -4016,10 +4281,17 @@ namespace CATHODE.Scripting
                     entity.AddParameter("save_stats", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.EndGame:
+                    entity.AddParameter("success", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.LeaveGame:
+                    entity.AddParameter("disconnect_from_session", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.DebugTextStacking:
+                    entity.AddParameter("float_input", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("int_input", new cInteger(0), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("bool_input", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("vector_input", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("enum_input", new cEnum(0), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("text", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("namespace", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("size", new cInteger(20), ParameterVariant.PARAMETER, overwrite);
@@ -4028,6 +4300,12 @@ namespace CATHODE.Scripting
                     entity.AddParameter("needs_debug_opt_to_render", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.DebugText:
+                    entity.AddParameter("float_input", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("int_input", new cInteger(0), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("bool_input", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("vector_input", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("enum_input", new cEnum(0), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("text_input", new cString(""), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("text", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("namespace", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("size", new cInteger(20), ParameterVariant.PARAMETER, overwrite);
@@ -4045,6 +4323,12 @@ namespace CATHODE.Scripting
                     entity.AddParameter("show_animation", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.DebugEnvironmentMarker:
+                    entity.AddParameter("target", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("float_input", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("int_input", new cInteger(0), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("bool_input", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("vector_input", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("enum_input", new cEnum(0), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("text", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("namespace", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("size", new cFloat(20f), ParameterVariant.PARAMETER, overwrite);
@@ -4067,6 +4351,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("far", new cFloat(200f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.DebugCaptureCorpse:
+                    entity.AddParameter("character", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("corpse_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.DebugMenuToggle:
@@ -4076,13 +4361,17 @@ namespace CATHODE.Scripting
                 case FunctionType.TogglePlayerTorch:
                     break;
                 case FunctionType.PlayerTorch:
+                    entity.AddParameter("power_in_current_battery", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.Master:
+                    entity.AddParameter("objects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("disable_display", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("disable_collision", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("disable_simulation", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.ExclusiveMaster:
+                    entity.AddParameter("active_objects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("inactive_objects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.ThinkOnce:
                     entity.AddParameter("use_random_start", new cBool(true), ParameterVariant.PARAMETER, overwrite);
@@ -4111,8 +4400,11 @@ namespace CATHODE.Scripting
                 case FunctionType.HostOnlyTrigger:
                     break;
                 case FunctionType.SpawnGroup:
+                    entity.AddParameter("default_group", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("trigger_on_reset", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.RespawnExcluder:
+                    entity.AddParameter("excluded_points", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.RespawnConfig:
                     entity.AddParameter("min_dist", new cFloat(2.0f), ParameterVariant.PARAMETER, overwrite);
@@ -4133,7 +4425,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("duration", new cFloat(5.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.DebugObjectMarker:
-                    entity.AddParameter("marked_object", new cResource(), ParameterVariant.PARAMETER, overwrite);
+                    entity.AddParameter("marked_object", new cString(), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("marked_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.EggSpawner:
@@ -4141,33 +4433,45 @@ namespace CATHODE.Scripting
                     entity.AddParameter("hostile_egg", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.RandomObjectSelector:
+                    entity.AddParameter("objects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.IsMultiplayerMode:
                     break;
                 case FunctionType.CompoundVolume:
                     break;
                 case FunctionType.TriggerVolumeFilter:
+                    entity.AddParameter("filter", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.TriggerVolumeFilter_Monitored:
+                    entity.AddParameter("filter", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.TriggerFilter:
+                    entity.AddParameter("filter", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.TriggerObjectsFilter:
+                    entity.AddParameter("filter", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("objects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.BindObjectsMultiplexer:
+                    entity.AddParameter("objects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.TriggerObjectsFilterCounter:
+                    entity.AddParameter("objects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("filter", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TriggerContainerObjectsFilterCounter:
-                    entity.AddParameter("container", new cResource(), ParameterVariant.PARAMETER, overwrite);
+                    entity.AddParameter("filter", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("container", new cString(), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TriggerTouch:
+                    entity.AddParameter("physics_object", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.COLLISION_MAPPING) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.TriggerDamaged:
+                    entity.AddParameter("physics_object", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.COLLISION_MAPPING) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("threshold", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TriggerBindCharacter:
+                    entity.AddParameter("characters", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.TriggerBindAllCharactersOfType:
                     entity.AddParameter("character_class", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 2), ParameterVariant.PARAMETER, overwrite);
@@ -4190,9 +4494,43 @@ namespace CATHODE.Scripting
                     entity.AddParameter("loop", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TriggerSelect:
+                    entity.AddParameter("Object_0", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_1", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_2", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_3", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_4", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_5", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_6", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_7", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_8", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_9", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_10", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_11", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_12", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_13", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_14", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_15", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_16", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("index", new cInteger(0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TriggerSelect_Direct:
+                    entity.AddParameter("Object_0", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_1", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_2", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_3", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_4", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_5", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_6", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_7", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_8", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_9", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_10", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_11", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_12", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_13", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_14", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_15", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Object_16", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("Changes_only", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TriggerCheckDifficulty:
@@ -4218,12 +4556,32 @@ namespace CATHODE.Scripting
                     entity.AddParameter("non_persistent", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.LogicPressurePad:
+                    entity.AddParameter("Limit", new cInteger(1), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.SetObject:
+                    entity.AddParameter("Input", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.GateResourceInterface:
+                    entity.AddParameter("request_open_on_reset", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("request_lock_on_reset", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("force_open_on_reset", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("force_close_on_reset", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("is_auto", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("auto_close_delay", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.Door:
+                    entity.AddParameter("zone_link", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("animation", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.ANIMATED_MODEL) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("trigger_filter", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("icon_pos", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("icon_usable_radius", new cFloat(3.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("show_icon_when_locked", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("nav_mesh", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.NAV_MESH_BARRIER_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("wait_point_1", new cInteger(0), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("wait_point_2", new cInteger(0), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("geometry", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("is_scripted", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("wait_to_open", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("unlocked_text", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("locked_text", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("icon_keyframe", new cEnum(EnumType.UI_ICON_ICON, 0), ParameterVariant.PARAMETER, overwrite);
@@ -4248,6 +4606,13 @@ namespace CATHODE.Scripting
                     entity.AddParameter("shoot_trigger_impulse", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TriggerViewCone:
+                    entity.AddParameter("target", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("fov", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("max_distance", new cFloat(15.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("aspect_ratio", new cFloat(1.777f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("source_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("filter", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("intersect_with_geometry", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("target_offset", new cTransform(), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("visible_area_type", new cEnum(EnumType.VIEWCONE_TYPE, 1), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("visible_area_horizontal", new cFloat(1f), ParameterVariant.PARAMETER, overwrite);
@@ -4255,6 +4620,10 @@ namespace CATHODE.Scripting
                     entity.AddParameter("raycast_grace", new cFloat(0.5f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TriggerCameraViewCone:
+                    entity.AddParameter("target", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("fov", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("aspect_ratio", new cFloat(1.777f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("intersect_with_geometry", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("use_camera_fov", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("target_offset", new cTransform(), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("visible_area_type", new cEnum(EnumType.VIEWCONE_TYPE, 1), ParameterVariant.PARAMETER, overwrite);
@@ -4263,6 +4632,19 @@ namespace CATHODE.Scripting
                     entity.AddParameter("raycast_grace", new cFloat(0.5f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TriggerCameraViewConeMulti:
+                    entity.AddParameter("target", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target1", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target2", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target3", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target4", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target5", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target6", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target7", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target8", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target9", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("fov", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("aspect_ratio", new cFloat(1.777f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("intersect_with_geometry", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("number_of_inputs", new cInteger(0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("use_camera_fov", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("visible_area_type", new cEnum(EnumType.VIEWCONE_TYPE, 1), ParameterVariant.PARAMETER, overwrite);
@@ -4275,8 +4657,10 @@ namespace CATHODE.Scripting
                     entity.AddParameter("radius", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_Debug_Menu_Item:
+                    entity.AddParameter("character", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.Character:
+                    entity.AddParameter("contents_of_dead_container", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.INVENTORY_ITEM_QUANTITY) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("PopToNavMesh", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("is_cinematic", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("disable_dead_container", new cBool(true), ParameterVariant.PARAMETER, overwrite);
@@ -4315,10 +4699,13 @@ namespace CATHODE.Scripting
                 case FunctionType.DespawnCharacter:
                     break;
                 case FunctionType.FilterAnd:
+                    entity.AddParameter("filter", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FilterOr:
+                    entity.AddParameter("filter", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FilterNot:
+                    entity.AddParameter("filter", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FilterIsAPlayer:
                     break;
@@ -4327,6 +4714,7 @@ namespace CATHODE.Scripting
                 case FunctionType.FilterIsEnemyOfPlayer:
                     break;
                 case FunctionType.FilterIsEnemyOfCharacter:
+                    entity.AddParameter("Character", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("use_alliance_at_death", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.FilterIsNotDeadManWalking:
@@ -4337,16 +4725,20 @@ namespace CATHODE.Scripting
                 case FunctionType.FilterIsPhysics:
                     break;
                 case FunctionType.FilterIsPhysicsObject:
+                    entity.AddParameter("object", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FilterIsObject:
+                    entity.AddParameter("objects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FilterIsCharacter:
+                    entity.AddParameter("character", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FilterIsACharacter:
                     break;
                 case FunctionType.FilterIsWithdrawnAlien:
                     break;
                 case FunctionType.FilterIsFacingTarget:
+                    entity.AddParameter("target", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("tolerance", new cFloat(45f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.FilterIsDead:
@@ -4361,6 +4753,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("weapon_type", new cEnum(EnumType.WEAPON_TYPE, 0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.FilterIsinInventory:
+                    entity.AddParameter("ItemName", new cString(""), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FilterIsCharacterClass:
                     entity.AddParameter("character_class", new cEnum(EnumType.CHARACTER_CLASS, 3), ParameterVariant.PARAMETER, overwrite);
@@ -4377,16 +4770,21 @@ namespace CATHODE.Scripting
                     entity.AddParameter("State", new cEnum(EnumType.LOCOMOTION_STATE, 0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.FilterCanSeeTarget:
+                    entity.AddParameter("Target", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FilterIsInAGroup:
                     break;
                 case FunctionType.FilterIsAgressing:
+                    entity.AddParameter("Target", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FilterIsValidInventoryItem:
+                    entity.AddParameter("item", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.INVENTORY_ITEM_QUANTITY) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FilterIsInWeaponRange:
+                    entity.AddParameter("weapon_owner", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.TriggerWhenSeeTarget:
+                    entity.AddParameter("Target", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FilterIsPlatform:
                     entity.AddParameter("Platform", new cEnum(EnumType.PLATFORM_TYPE, 5), ParameterVariant.PARAMETER, overwrite);
@@ -4420,6 +4818,7 @@ namespace CATHODE.Scripting
                 case FunctionType.JOB_SystematicSearchFlare:
                     break;
                 case FunctionType.JOB_SpottingPosition:
+                    entity.AddParameter("SpottingPosition", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.JOB_Follow:
                     break;
@@ -4432,6 +4831,9 @@ namespace CATHODE.Scripting
                 case FunctionType.JOB_Panic:
                     break;
                 case FunctionType.Task:
+                    entity.AddParameter("Job", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("TaskPosition", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("filter", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("should_stop_moving_when_reached", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("should_orientate_when_reached", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("reached_distance_threshold", new cFloat(0.6f), ParameterVariant.PARAMETER, overwrite);
@@ -4440,9 +4842,11 @@ namespace CATHODE.Scripting
                     entity.AddParameter("always_on_tracker", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.FlareTask:
+                    entity.AddParameter("specific_character", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("filter_options", new cEnum(EnumType.TASK_CHARACTER_CLASS_FILTER, 1024), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.IdleTask:
+                    entity.AddParameter("specific_character", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("should_auto_move_to_position", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("ignored_for_auto_selection", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("has_pre_move_script", new cBool(false), ParameterVariant.PARAMETER, overwrite);
@@ -4455,8 +4859,8 @@ namespace CATHODE.Scripting
                     break;
                 case FunctionType.NPC_ForceNextJob:
                     entity.AddParameter("ShouldInterruptCurrentTask", new cBool(true), ParameterVariant.PARAMETER, overwrite);
-                    entity.AddParameter("Job", new cResource(), ParameterVariant.PARAMETER, overwrite);
-                    entity.AddParameter("InitialTask", new cResource(), ParameterVariant.PARAMETER, overwrite);
+                    entity.AddParameter("Job", new cString(), ParameterVariant.PARAMETER, overwrite);
+                    entity.AddParameter("InitialTask", new cString(), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NPC_SetRateOfFire:
                     entity.AddParameter("MinTimeBetweenShots", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
@@ -4476,6 +4880,8 @@ namespace CATHODE.Scripting
                 case FunctionType.NPC_ResetFiringStats:
                     break;
                 case FunctionType.TriggerBindAllNPCs:
+                    entity.AddParameter("filter", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("centre", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("radius", new cFloat(10.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.Trigger_AudioOccluded:
@@ -4486,6 +4892,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("level_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.SoundPlaybackBaseClass:
+                    entity.AddParameter("attached_sound_object", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.SOUND_OBJECT) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("sound_event", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("is_occludable", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("argument_1", new cString(""), ParameterVariant.PARAMETER, overwrite);
@@ -4513,6 +4920,8 @@ namespace CATHODE.Scripting
                     entity.AddParameter("resume_after_suspended", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.Speech:
+                    entity.AddParameter("character", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("alt_character", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("speech_priority", new cEnum(EnumType.SPEECH_PRIORITY, 2), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("queue_time", new cFloat(4f), ParameterVariant.PARAMETER, overwrite);
                     break;
@@ -4529,6 +4938,16 @@ namespace CATHODE.Scripting
                     entity.AddParameter("action", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.SpeechScript:
+                    entity.AddParameter("character_01", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("character_02", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("character_03", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("character_04", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("character_05", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("alt_character_01", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("alt_character_02", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("alt_character_03", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("alt_character_04", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("alt_character_05", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("speech_priority", new cEnum(EnumType.SPEECH_PRIORITY, 2), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("is_occludable", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("line_01_event", new cString(""), ParameterVariant.PARAMETER, overwrite);
@@ -4583,6 +5002,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("half_dimensions", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.SoundLoadBank:
+                    entity.AddParameter("sound_bank", new cString(""), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("trigger_via_pin", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("memory_pool", new cEnum(EnumType.SOUND_POOL, 0), ParameterVariant.PARAMETER, overwrite);
                     break;
@@ -4591,6 +5011,8 @@ namespace CATHODE.Scripting
                     entity.AddParameter("memory_pool", new cEnum(EnumType.SOUND_POOL, 0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.SoundSetRTPC:
+                    entity.AddParameter("rtpc_value", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("sound_object", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.SOUND_OBJECT) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("rtpc_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("smooth_rate", new cFloat(0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("start_on", new cBool(false), ParameterVariant.PARAMETER, overwrite);
@@ -4600,6 +5022,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("state_value", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.SoundSetSwitch:
+                    entity.AddParameter("sound_object", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.SOUND_OBJECT) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("switch_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("switch_value", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     break;
@@ -4627,6 +5050,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("object_max_distance", new cFloat(50f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.MusicTrigger:
+                    entity.AddParameter("connected_object", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("music_event", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("smooth_rate", new cFloat(-1f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("queue_time", new cFloat(0f), ParameterVariant.PARAMETER, overwrite);
@@ -4672,38 +5096,52 @@ namespace CATHODE.Scripting
                     entity.AddParameter("footwear_sound", new cString("Trainers"), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.AddToInventory:
+                    entity.AddParameter("items", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.RemoveFromInventory:
+                    entity.AddParameter("items", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.LimitItemUse:
+                    entity.AddParameter("items", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.PlayerHasItem:
+                    entity.AddParameter("items", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.PlayerHasItemWithName:
+                    entity.AddParameter("item_name", new cString(""), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.PlayerHasItemEntity:
+                    entity.AddParameter("items", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.PlayerHasEnoughItems:
+                    entity.AddParameter("items", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("quantity", new cInteger(1), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.PlayerHasSpaceForItem:
+                    entity.AddParameter("items", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.InventoryItem:
+                    entity.AddParameter("itemName", new cString(""), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("item", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("quantity", new cInteger(0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("clear_on_collect", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("gcip_instances_count", new cInteger(1), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.GetInventoryItemName:
+                    entity.AddParameter("item", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.INVENTORY_ITEM_QUANTITY) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("equippable_item", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.EQUIPPABLE_ITEM_INSTANCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.PickupSpawner:
+                    entity.AddParameter("pos", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("item_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("item_quantity", new cInteger(0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.MultiplePickupSpawner:
+                    entity.AddParameter("pos", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("item_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.AddItemsToGCPool:
+                    entity.AddParameter("items", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.INVENTORY_ITEM_QUANTITY) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.SetupGCDistribution:
                     entity.AddParameter("c00", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
@@ -4723,10 +5161,12 @@ namespace CATHODE.Scripting
                     entity.AddParameter("lookup_point_increase", new cInteger(2), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.AllocateGCItemsFromPool:
+                    entity.AddParameter("items", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.INVENTORY_ITEM_QUANTITY) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("force_usage_count", new cInteger(0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("distribution_bias", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.AllocateGCItemFromPoolBySubset:
+                    entity.AddParameter("selectable_items", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("force_usage", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("distribution_bias", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
@@ -4771,6 +5211,8 @@ namespace CATHODE.Scripting
                 case FunctionType.ToggleFunctionality:
                     break;
                 case FunctionType.FlashInvoke:
+                    entity.AddParameter("layer_name", new cString(""), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("mrtt_texture", new cString(""), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("method", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("invoke_type", new cEnum(EnumType.FLASH_INVOKE_TYPE, 0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("int_argument_0", new cInteger(0), ParameterVariant.PARAMETER, overwrite);
@@ -4783,6 +5225,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("float_argument_3", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.MotionTrackerPing:
+                    entity.AddParameter("FakePosition", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.CHR_SetShowInMotionTracker:
                     break;
@@ -4803,8 +5246,14 @@ namespace CATHODE.Scripting
                     entity.AddParameter("prompt_text", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.GenericHighlightEntity:
+                    entity.AddParameter("highlight_geometry", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.RENDERABLE_INSTANCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.UI_Icon:
+                    entity.AddParameter("geometry", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("highlight_geometry", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target_pickup_item", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("highlight_distance_threshold", new cFloat(3.15f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("interaction_distance_threshold", new cFloat(20f), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("unlocked_text", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("locked_text", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("action_text", new cString(""), ParameterVariant.PARAMETER, overwrite);
@@ -4814,8 +5263,10 @@ namespace CATHODE.Scripting
                     entity.AddParameter("push_hold_time", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.UI_Attached:
+                    entity.AddParameter("ui_icon", new cInteger(0), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.UI_Container:
+                    entity.AddParameter("contents", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.INVENTORY_ITEM_QUANTITY) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("is_persistent", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("is_temporary", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
@@ -4842,11 +5293,17 @@ namespace CATHODE.Scripting
                     entity.AddParameter("is_single_use", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TerminalFolder:
+                    entity.AddParameter("content0", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.TERMINAL_CONTENT_DETAILS) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("content1", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.TERMINAL_CONTENT_DETAILS) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("code", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("folder_title", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("folder_lock_type", new cEnum(EnumType.FOLDER_LOCK_TYPE, 1), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.AccessTerminal:
+                    entity.AddParameter("folder0", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.TERMINAL_FOLDER_DETAILS) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("folder1", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.TERMINAL_FOLDER_DETAILS) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("folder2", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.TERMINAL_FOLDER_DETAILS) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("folder3", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.TERMINAL_FOLDER_DETAILS) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("location", new cEnum(EnumType.TERMINAL_LOCATION, 0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.SetGatingToolLevel:
@@ -4884,6 +5341,9 @@ namespace CATHODE.Scripting
                     entity.AddParameter("entry", new cInteger(0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.MapAnchor:
+                    entity.AddParameter("map_north", new cVector3(new Vector3(0, 0, 1)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("map_pos", new cVector3(new Vector3(0.5f, 0, 0.5f)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("map_scale", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("keyframe", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("keyframe1", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("keyframe2", new cString(""), ParameterVariant.PARAMETER, overwrite);
@@ -4902,6 +5362,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("details", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.RewireSystem:
+                    entity.AddParameter("world_pos", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("display_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("display_name_enum", new cEnum(EnumType.REWIRE_SYSTEM_NAME, 0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("on_by_default", new cBool(false), ParameterVariant.PARAMETER, overwrite);
@@ -4911,10 +5372,13 @@ namespace CATHODE.Scripting
                     entity.AddParameter("element_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.RewireLocation:
+                    entity.AddParameter("systems", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.REWIRE_SYSTEM) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("element_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("display_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.RewireAccess_Point:
+                    entity.AddParameter("interactive_locations", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.REWIRE_LOCATION) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("visible_locations", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.REWIRE_LOCATION) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("additional_power", new cInteger(0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("display_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("map_element_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
@@ -4927,6 +5391,8 @@ namespace CATHODE.Scripting
                     entity.AddParameter("total_power", new cInteger(0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.Rewire:
+                    entity.AddParameter("locations", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.REWIRE_LOCATION) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("access_points", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.REWIRE_ACCESS_POINT) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("map_keyframe", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("total_power", new cInteger(0), ParameterVariant.PARAMETER, overwrite);
                     break;
@@ -5000,53 +5466,75 @@ namespace CATHODE.Scripting
                     entity.AddParameter("delay", new cFloat(0.1f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CoverLine:
+                    entity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("low", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.TRAV_ContinuousLadder:
+                    entity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("RungSpacing", new cFloat(0.33f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TRAV_ContinuousPipe:
+                    entity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TRAV_ContinuousLedge:
+                    entity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("Dangling", new cEnum(EnumType.AUTODETECT, 0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("Sidling", new cEnum(EnumType.AUTODETECT, 0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TRAV_ContinuousClimbingWall:
+                    entity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("Dangling", new cEnum(EnumType.AUTODETECT, 0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TRAV_ContinuousCinematicSidle:
+                    entity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TRAV_ContinuousBalanceBeam:
+                    entity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TRAV_ContinuousTightGap:
+                    entity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TRAV_1ShotVentEntrance:
+                    entity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TRAV_1ShotVentExit:
+                    entity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TRAV_1ShotFloorVentEntrance:
+                    entity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TRAV_1ShotFloorVentExit:
+                    entity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TRAV_1ShotClimbUnder:
+                    entity.AddParameter("LinePath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TRAV_1ShotLeap:
+                    entity.AddParameter("StartEdgeLinePath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("EndEdgeLinePath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("MissDistance", new cFloat(2.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("NearMissDistance", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.TRAV_1ShotSpline:
+                    entity.AddParameter("EntrancePath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("ExitPath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("MinimumPath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("MaximumPath", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("MinimumSupport", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("MaximumSupport", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("template", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("headroom", new cFloat(1.5f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("extra_cost", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
@@ -5095,24 +5583,32 @@ namespace CATHODE.Scripting
                     entity.AddParameter("half_dimensions", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.PathfindingTeleportNode:
+                    entity.AddParameter("destination", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("build_into_navmesh", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("position", new cTransform(), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("extra_cost", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.PathfindingWaitNode:
+                    entity.AddParameter("destination", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("build_into_navmesh", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("position", new cTransform(), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("extra_cost", new cFloat(100.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 733), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.PathfindingManualNode:
+                    entity.AddParameter("PlayAnimData", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("destination", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("build_into_navmesh", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("position", new cTransform(), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("extra_cost", new cFloat(100.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("character_classes", new cEnum(EnumType.CHARACTER_CLASS_COMBINATION, 1023), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.PathfindingAlienBackstageNode:
+                    entity.AddParameter("PlayAnimData_Entry", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("PlayAnimData_Exit", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Killtrap_alien", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Killtrap_victim", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.PLAY_ANIMATION_DATA_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("build_into_navmesh", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("position", new cTransform(), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("top", new cTransform(), ParameterVariant.PARAMETER, overwrite);
@@ -5122,8 +5618,13 @@ namespace CATHODE.Scripting
                 case FunctionType.ChokePoint:
                     break;
                 case FunctionType.NPC_SetChokePoint:
+                    entity.AddParameter("chokepoints", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.CHOKE_POINT_RESOURCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.Planet:
+                    entity.AddParameter("planet_resource", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("parallax_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("sun_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("light_shaft_source_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("parallax_scale", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("planet_sort_key", new cInteger(0), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("overbright_scalar", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
@@ -5156,6 +5657,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("blocks_light_shafts", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.SpaceTransform:
+                    entity.AddParameter("affected_geometry", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("yaw_speed", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("pitch_speed", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("roll_speed", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
@@ -5164,6 +5666,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("breath_level", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.NonInteractiveWater:
+                    entity.AddParameter("water_resource", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("SCALE_X", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("SCALE_Z", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("SHININESS", new cFloat(0.8f), ParameterVariant.PARAMETER, overwrite);
@@ -5197,6 +5700,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("DEPTH_FOG_END_DEPTH", new cFloat(2.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.Refraction:
+                    entity.AddParameter("refraction_resource", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("SCALE_X", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("SCALE_Z", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("DISTANCEFACTOR", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
@@ -5213,6 +5717,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("FLOW_WARP_STRENGTH", new cFloat(0.5f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.FogPlane:
+                    entity.AddParameter("fog_plane_resource", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("start_distance_fade_scalar", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("distance_fade_scalar", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("angle_fade_scalar", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
@@ -5227,24 +5732,75 @@ namespace CATHODE.Scripting
                     entity.AddParameter("diffuse_1_speed_scalar", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.PostprocessingSettings:
+                    entity.AddParameter("intensity", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("priority", new cInteger(100), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("blend_mode", new cEnum(EnumType.BLEND_MODE, 2), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.BloomSettings:
+                    entity.AddParameter("frame_buffer_scale", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("frame_buffer_offset", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("bloom_scale", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("bloom_gather_exponent", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("bloom_gather_scale", new cFloat(0.04f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.ColourSettings:
+                    entity.AddParameter("brightness", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("contrast", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("saturation", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("red_tint", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("green_tint", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("blue_tint", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FlareSettings:
+                    entity.AddParameter("flareOffset0", new cFloat(-1.2f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("flareIntensity0", new cFloat(0.05f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("flareAttenuation0", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("flareOffset1", new cFloat(-1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("flareIntensity1", new cFloat(0.15f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("flareAttenuation1", new cFloat(0.7f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("flareOffset2", new cFloat(-0.8f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("flareIntensity2", new cFloat(0.20f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("flareAttenuation2", new cFloat(7.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("flareOffset3", new cFloat(-0.6f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("flareIntensity3", new cFloat(0.40f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("flareAttenuation3", new cFloat(1.5f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.HighSpecMotionBlurSettings:
+                    entity.AddParameter("contribution", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("camera_velocity_scalar", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("camera_velocity_min", new cFloat(1.5f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("camera_velocity_max", new cFloat(3.5f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("object_velocity_scalar", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("object_velocity_min", new cFloat(1.5f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("object_velocity_max", new cFloat(3.5f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("blur_range", new cFloat(16f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FilmGrainSettings:
+                    entity.AddParameter("low_lum_amplifier", new cFloat(0.2f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("mid_lum_amplifier", new cFloat(0.25f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("high_lum_amplifier", new cFloat(0.4f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("low_lum_range", new cFloat(0.2f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("mid_lum_range", new cFloat(0.3f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("high_lum_range", new cFloat(0.2f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("noise_texture_scale", new cFloat(4.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("adaptive", new cBool(false), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("adaptation_scalar", new cFloat(3.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("adaptation_time_scalar", new cFloat(0.25f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("unadapted_low_lum_amplifier", new cFloat(0.2f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("unadapted_mid_lum_amplifier", new cFloat(0.25f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("unadapted_high_lum_amplifier", new cFloat(0.4f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.VignetteSettings:
+                    entity.AddParameter("vignette_factor", new cFloat(1f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("vignette_chromatic_aberration_scale", new cFloat(0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.DistortionSettings:
+                    entity.AddParameter("radial_distort_factor", new cFloat(0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("radial_distort_constraint", new cFloat(1f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("radial_distort_scalar", new cFloat(1f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.SharpnessSettings:
+                    entity.AddParameter("local_contrast_factor", new cFloat(1f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.LensDustSettings:
                     entity.AddParameter("DUST_MAX_REFLECTED_BLOOM_INTENSITY", new cFloat(0.02f), ParameterVariant.PARAMETER, overwrite);
@@ -5254,51 +5810,119 @@ namespace CATHODE.Scripting
                     entity.AddParameter("DUST_THRESHOLD", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.IrawanToneMappingSettings:
+                    entity.AddParameter("target_device_luminance", new cFloat(6.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target_device_adaptation", new cFloat(20.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("saccadic_time", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("superbright_adaptation", new cFloat(0.5f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.HableToneMappingSettings:
+                    entity.AddParameter("shoulder_strength", new cFloat(0.22f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("linear_strength", new cFloat(0.30f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("linear_angle", new cFloat(0.10f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("toe_strength", new cFloat(0.20f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("toe_numerator", new cFloat(0.01f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("toe_denominator", new cFloat(0.30f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("linear_white_point", new cFloat(11.2f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.DayToneMappingSettings:
+                    entity.AddParameter("black_point", new cFloat(0.00625f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("cross_over_point", new cFloat(0.4f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("white_point", new cFloat(40f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("shoulder_strength", new cFloat(0.95f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("toe_strength", new cFloat(0.15f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("luminance_scale", new cFloat(5f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.LightAdaptationSettings:
+                    entity.AddParameter("fast_neural_t0", new cFloat(5.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("slow_neural_t0", new cFloat(5.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("pigment_bleaching_t0", new cFloat(20.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("fb_luminance_to_candelas_per_m2", new cFloat(105.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("max_adaptation_lum", new cFloat(20000f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("min_adaptation_lum", new cFloat(0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("adaptation_percentile", new cFloat(0.3f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("low_bracket", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("high_bracket", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("adaptation_mechanism", new cEnum(EnumType.LIGHT_ADAPTATION_MECHANISM, 0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.ColourCorrectionTransition:
+                    entity.AddParameter("interpolate", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("colour_lut_a", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("colour_lut_b", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("lut_a_contribution", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("lut_b_contribution", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.ProjectileMotion:
+                    entity.AddParameter("start_pos", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("start_velocity", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("duration", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.ProjectileMotionComplex:
+                    entity.AddParameter("start_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("start_velocity", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("start_angular_velocity", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("flight_time_in_seconds", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.SplineDistanceLerp:
+                    entity.AddParameter("spline", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("lerp_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.MoveAlongSpline:
+                    entity.AddParameter("spline", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("speed", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.GetSplineLength:
+                    entity.AddParameter("spline", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.GetPointOnSpline:
+                    entity.AddParameter("spline", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("percentage_of_spline", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.GetClosestPercentOnSpline:
+                    entity.AddParameter("spline", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("pos_to_be_near", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("bidirectional", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.GetClosestPointOnSpline:
+                    entity.AddParameter("spline", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("pos_to_be_near", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("look_ahead_distance", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("unidirectional", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("directional_damping_threshold", new cFloat(0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.GetClosestPoint:
+                    entity.AddParameter("Positions", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("pos_to_be_near", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.GetClosestPointFromSet:
+                    entity.AddParameter("Position_1", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Position_2", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Position_3", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Position_4", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Position_5", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Position_6", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Position_7", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Position_8", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Position_9", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Position_10", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("pos_to_be_near", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.GetCentrePoint:
+                    entity.AddParameter("Positions", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FogSetting:
+                    entity.AddParameter("linear_distance", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("max_distance", new cFloat(850.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("linear_density", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("exponential_density", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("near_colour", new cVector3(new Vector3(255, 255, 255)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("far_colour", new cVector3(new Vector3(255, 255, 255)), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.FullScreenBlurSettings:
+                    entity.AddParameter("contribution", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.DistortionOverlay:
+                    entity.AddParameter("intensity", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("time", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("distortion_texture", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("alpha_threshold_enabled", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("threshold_texture", new cString(""), ParameterVariant.PARAMETER, overwrite);
@@ -5317,6 +5941,10 @@ namespace CATHODE.Scripting
                     entity.AddParameter("alpha_scalar", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.DepthOfFieldSettings:
+                    entity.AddParameter("focal_length_mm", new cFloat(75.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("focal_plane_m", new cFloat(2.5f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("fnum", new cFloat(2.8f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("focal_point", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("use_camera_target", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.ChromaticAberrations:
@@ -5346,8 +5974,11 @@ namespace CATHODE.Scripting
                     entity.AddParameter("blend_value", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CharacterMonitor:
+                    entity.AddParameter("character", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.AreaHitMonitor:
+                    entity.AddParameter("SpherePos", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("SphereRadius", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.ENT_Debug_Exit_Game:
                     entity.AddParameter("FailureText", new cString(""), ParameterVariant.PARAMETER, overwrite);
@@ -5356,17 +5987,36 @@ namespace CATHODE.Scripting
                 case FunctionType.StreamingMonitor:
                     break;
                 case FunctionType.Raycast:
+                    entity.AddParameter("source_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("max_distance", new cFloat(100.0f), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("priority", new cEnum(EnumType.RAYCAST_PRIORITY, 2), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.PhysicsApplyImpulse:
+                    entity.AddParameter("objects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("offset", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("direction", new cVector3(new Vector3(0, 1, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("force", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("can_damage", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.PhysicsApplyVelocity:
+                    entity.AddParameter("objects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("angular_velocity", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("linear_velocity", new cVector3(new Vector3(0, 1, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("propulsion_velocity", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.PhysicsModifyGravity:
+                    entity.AddParameter("objects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.PhysicsApplyBuoyancy:
+                    entity.AddParameter("objects", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("water_height", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("water_density", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("water_viscosity", new cFloat(1.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("water_choppiness", new cFloat(0.05f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.AssetSpawner:
+                    entity.AddParameter("asset", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("spawn_on_load", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("allow_forced_despawn", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("persist_on_callback", new cBool(false), ParameterVariant.PARAMETER, overwrite);
@@ -5383,6 +6033,8 @@ namespace CATHODE.Scripting
                     entity.AddParameter("gas_dispersion_range", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.CharacterAttachmentNode:
+                    entity.AddParameter("character", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.CHARACTER) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("attachment", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("Node", new cEnum(EnumType.CHARACTER_NODE, 1), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("AdditiveNode", new cEnum(EnumType.CHARACTER_NODE, 1), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("AdditiveNodeIntensity", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
@@ -5391,6 +6043,16 @@ namespace CATHODE.Scripting
                     entity.AddParameter("Rotation", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.MultipleCharacterAttachmentNode:
+                    entity.AddParameter("character_01", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.CHARACTER) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("attachment_01", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("character_02", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.CHARACTER) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("attachment_02", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("character_03", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.CHARACTER) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("attachment_03", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("character_04", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.CHARACTER) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("attachment_04", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("character_05", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.CHARACTER) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("attachment_05", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("node", new cEnum(EnumType.CHARACTER_NODE, 1), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("use_offset", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("translation", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.PARAMETER, overwrite);
@@ -5398,11 +6060,14 @@ namespace CATHODE.Scripting
                     entity.AddParameter("is_cinematic", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.AnimatedModelAttachmentNode:
+                    entity.AddParameter("animated_model", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("attachment", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("bone_name", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("use_offset", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("offset", new cTransform(), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.GetCharacterRotationSpeed:
+                    entity.AddParameter("character", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.CHARACTER) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.LevelCompletionTargets:
                     entity.AddParameter("TargetTime", new cFloat(-1f), ParameterVariant.PARAMETER, overwrite);
@@ -5413,6 +6078,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("GrappleBreakBonus", new cInteger(-1), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.EnvironmentMap:
+                    entity.AddParameter("Entities", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("Priority", new cInteger(100), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("ColourFactor", new cVector3(new Vector3(255, 255, 255)), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("EmissiveFactor", new cFloat(1f), ParameterVariant.PARAMETER, overwrite);
@@ -5430,6 +6096,7 @@ namespace CATHODE.Scripting
                 case FunctionType.Force_UI_Visibility:
                     break;
                 case FunctionType.AddExitObjective:
+                    entity.AddParameter("marker", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("level_name", new cEnum(EnumType.EXIT_WAYPOINT, 0), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.SetPrimaryObjective:
@@ -5440,6 +6107,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("show_message", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.SetSubObjective:
+                    entity.AddParameter("target_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("title", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("map_description", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("title_list", new cString("A1_G0000_RIP_0010A"), ParameterVariant.PARAMETER, overwrite);
@@ -5464,6 +6132,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("clear_objective", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.DebugGraph:
+                    entity.AddParameter("Inputs", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("scale", new cFloat(1f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("duration", new cFloat(5f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("samples_per_second", new cFloat(60f), ParameterVariant.PARAMETER, overwrite);
@@ -5481,17 +6150,27 @@ namespace CATHODE.Scripting
                     break;
                 case FunctionType.AchievementUniqueCounter:
                     entity.AddParameter("achievement_id", new cString("CA_IDTAG_STAT"), ParameterVariant.PARAMETER, overwrite);
-                    entity.AddParameter("unique_object", new cResource(), ParameterVariant.PARAMETER, overwrite);
+                    entity.AddParameter("unique_object", new cString(), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.SetRichPresence:
                     entity.AddParameter("presence_id", new cString("NULL_STRING"), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("mission_number", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.SmokeCylinder:
+                    entity.AddParameter("pos", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("radius", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("height", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("duration", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.SmokeCylinderAttachmentInterface:
+                    entity.AddParameter("radius", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("height", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("duration", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.PointTracker:
+                    entity.AddParameter("origin", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("target_offset", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("origin_offset", new cVector3(new Vector3(0, 0, 0)), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("max_speed", new cFloat(180.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("damping_factor", new cFloat(0.6f), ParameterVariant.PARAMETER, overwrite);
@@ -5499,10 +6178,13 @@ namespace CATHODE.Scripting
                 case FunctionType.ThrowingPointOfImpact:
                     break;
                 case FunctionType.VisibilityMaster:
+                    entity.AddParameter("renderable", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.RENDERABLE_INSTANCE) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("mastered_by_visibility", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.MotionTrackerMonitor:
                     break;
                 case FunctionType.GlobalEvent:
+                    entity.AddParameter("EventValue", new cInteger(1), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("EventName", new cString(""), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.GlobalEventMonitor:
@@ -5527,6 +6209,9 @@ namespace CATHODE.Scripting
                     entity.AddParameter("x3", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.InteractiveMovementControl:
+                    entity.AddParameter("duration", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("start_time", new cFloat(0.0f), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("progress_path", new cSpline(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("can_go_both_ways", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("use_left_input_stick", new cBool(true), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("base_progress_speed", new cFloat(1.0f), ParameterVariant.PARAMETER, overwrite);
@@ -5537,6 +6222,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("track_position", new cTransform(), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.PlayForMinDuration:
+                    entity.AddParameter("MinDuration", new cFloat(5.0f), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.GCIP_WorldPickup:
                     entity.AddParameter("Pipe", new cBool(true), ParameterVariant.PARAMETER, overwrite);
@@ -5564,6 +6250,7 @@ namespace CATHODE.Scripting
                     entity.AddParameter("MissionNumber", new cFloat(0.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.Torch_Control:
+                    entity.AddParameter("character", new cResource(new ResourceReference[] { new ResourceReference(ResourceType.CHARACTER) }.ToList<ResourceReference>(), entity.shortGUID), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.DoorStatus:
                     entity.AddParameter("hacking_difficulty", new cInteger(0), ParameterVariant.PARAMETER, overwrite);
@@ -5613,11 +6300,22 @@ namespace CATHODE.Scripting
                 case FunctionType.PhysicsSystem:
                     break;
                 case FunctionType.BulletChamber:
+                    entity.AddParameter("Slot1", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Slot2", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Slot3", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Slot4", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Slot5", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Slot6", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Weapon", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("Geometry", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.PlayerDeathCounter:
+                    entity.AddParameter("filter", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("Limit", new cInteger(1), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.RadiosityIsland:
+                    entity.AddParameter("composites", new cString(), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("exclusions", new cString(), ParameterVariant.INPUT_PIN, overwrite);
                     break;
                 case FunctionType.RadiosityProxy:
                     entity.AddParameter("position", new cTransform(), ParameterVariant.PARAMETER, overwrite);
@@ -5638,6 +6336,8 @@ namespace CATHODE.Scripting
                     entity.AddParameter("star3", new cBool(false), ParameterVariant.PARAMETER, overwrite);
                     break;
                 case FunctionType.ProximityDetector:
+                    entity.AddParameter("filter", new cBool(true), ParameterVariant.INPUT_PIN, overwrite);
+                    entity.AddParameter("detector_position", new cTransform(), ParameterVariant.INPUT_PIN, overwrite);
                     entity.AddParameter("min_distance", new cFloat(0.3f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("max_distance", new cFloat(100.0f), ParameterVariant.PARAMETER, overwrite);
                     entity.AddParameter("requires_line_of_sight", new cBool(true), ParameterVariant.PARAMETER, overwrite);
@@ -5646,7 +6346,6 @@ namespace CATHODE.Scripting
                 case FunctionType.FakeAILightSourceInPlayersHand:
                     entity.AddParameter("radius", new cFloat(5.0f), ParameterVariant.PARAMETER, overwrite);
                     break;
-
             }
         }
     }
