@@ -153,14 +153,18 @@ namespace CATHODE.Scripting
             for (int i = 0; i < inheritance.Count; i++) 
                 ApplyDefaultParametersForFunction(entity, inheritance[i], overwriteExisting);
 
-            //If we're a composite reference, add the composite's parameters too
+            //If we're a composite reference, add the composite's parameters and inputs too
             if (entity.variant == EntityVariant.FUNCTION && !CommandsUtils.FunctionTypeExists(((FunctionEntity)entity).function))
             {
                 if (_commands == null) return;
                 Composite comp = _commands.Entries.FirstOrDefault(o => o.shortGUID == ((FunctionEntity)entity).function);
                 if (comp == null) return;
                 for (int i = 0; i < comp.variables.Count; i++)
-                    entity.AddParameter(comp.variables[i].name, comp.variables[i].type, ParameterVariant.PARAMETER, overwriteExisting); //TODO: These are not always parameters - how can we distinguish?
+                {
+                    CompositePinInfoTable.PinInfo info = CompositeUtils.GetParameterInfo(comp, comp.variables[i]);
+                    if (info.Direction == PinDirection.IN)
+                        entity.AddParameter(comp.variables[i].name, comp.variables[i].type, ParameterVariant.INPUT_PIN, overwriteExisting);
+                }
             }
         }
 
