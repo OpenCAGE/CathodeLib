@@ -15,19 +15,20 @@ namespace CATHODE.Scripting
     }
 
     /* Parameter variants */
+    [Flags]
     public enum ParameterVariant
     {
-        REFERENCE_PIN,
-        TARGET_PIN,
-        STATE_PARAMETER,
-        INPUT_PIN,
-        OUTPUT_PIN,
-        PARAMETER,
-        INTERNAL,
-        METHOD_FUNCTION, 
-        METHOD_PIN,
+        REFERENCE_PIN = 1 << 0,  
+        TARGET_PIN = 1 << 1, 
+        STATE_PARAMETER = 1 << 2,
+        INPUT_PIN = 1 << 3, 
+        OUTPUT_PIN = 1 << 4,
+        PARAMETER = 1 << 5,
+        INTERNAL = 1 << 6,  
+        METHOD_FUNCTION = 1 << 7,
+        METHOD_PIN = 1 << 8
     }
-    
+
     /* Entity node pin direction */
     public enum PinDirection
     {
