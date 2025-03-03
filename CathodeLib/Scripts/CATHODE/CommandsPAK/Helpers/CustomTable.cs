@@ -54,6 +54,9 @@ namespace CathodeLib
                     if (toWrite[tableType] == null) writer.Write((Int32)0);
                     else
                     {
+#if DEBUG
+                        long startSize = writer.BaseStream.Length;
+#endif
                         switch (tableType)
                         {
                             case CustomEndTables.ENTITY_NAMES:
@@ -84,6 +87,11 @@ namespace CathodeLib
                                 ((CompositePinInfoTable)toWrite[tableType]).Write(writer);
                                 break;
                         }
+#if DEBUG
+                        //TODO: we write every table every time, which seems perhaps illogical?
+                        if (tableType == table)
+                            Console.WriteLine("[" + (writer.BaseStream.Length - startSize) + "] Wrote table " + tableType);
+#endif
                     }
                 }
 
@@ -665,7 +673,7 @@ namespace CathodeLib
             }
 
             byte version = reader.ReadByte();
-            if (version == 1)
+            if (version == 0 || version == 1)
             {
                 composite_pin_infos = new Dictionary<ShortGuid, List<PinInfo>>();
                 return;
