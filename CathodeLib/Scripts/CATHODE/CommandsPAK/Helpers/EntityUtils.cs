@@ -141,11 +141,14 @@ namespace CATHODE.Scripting
         {
             //Figure out the chain of inheritance to this function type
             List<FunctionType> inheritance = new List<FunctionType>();
-            while (currentType != FunctionType.EntityMethodInterface)
+            FunctionType typeDescending = currentType;
+            while (true)
             {
-                inheritance.Add(currentType);
+                inheritance.Add(typeDescending);
                 if (!includeInheritedMembers) break;
-                currentType = GetBaseFunction(currentType);
+                FunctionType? baseFunc = GetBaseFunction(typeDescending);
+                if (baseFunc != null)
+                    typeDescending = baseFunc.Value;
             }
             inheritance.Reverse();
 
@@ -171,38 +174,38 @@ namespace CATHODE.Scripting
                     CompositePinInfoTable.PinInfo info = CompositeUtils.GetParameterInfo(comp, comp.variables[i]);
                     if (info == null)
                         continue;
-                    switch (info.PinTypeGUID.ToString())
+                    switch ((CompositePinType)info.PinTypeGUID.ToUInt32())
                     {
                         //TODO: need to filter these to the ones that should actually be params. i assume it's inputs and methods?
-                        //case "CompositeReferencePin":
-                        //case "CompositeOutputVariablePin":
-                        //case "CompositeOutputAnimationInfoVariablePin":
-                        //case "CompositeOutputBoolVariablePin":
-                        //case "CompositeOutputDirectionVariablePin":
-                        //case "CompositeOutputEnumVariablePin":
-                        //case "CompositeOutputEnumStringVariablePin":
-                        //case "CompositeOutputFloatVariablePin":
-                        //case "CompositeOutputIntVariablePin":
-                        //case "CompositeOutputObjectVariablePin":
-                        //case "CompositeOutputPositionVariablePin":
-                        //case "CompositeOutputStringVariablePin":
-                        //case "CompositeOutputZoneLinkPtrVariablePin":
-                        //case "CompositeOutputZonePtrVariablePin":
-                        //case "CompositeTargetPin":
-                        case "CompositeInputVariablePin":
-                        case "CompositeInputAnimationInfoVariablePin":
-                        case "CompositeInputBoolVariablePin":
-                        case "CompositeInputDirectionVariablePin":
-                        case "CompositeInputEnumVariablePin":
-                        case "CompositeInputEnumStringVariablePin":
-                        case "CompositeInputFloatVariablePin":
-                        case "CompositeInputIntVariablePin":
-                        case "CompositeInputObjectVariablePin":
-                        case "CompositeInputPositionVariablePin":
-                        case "CompositeInputStringVariablePin":
-                        case "CompositeInputZoneLinkPtrVariablePin":
-                        case "CompositeInputZonePtrVariablePin":
-                        case "CompositeMethodPin":
+                        //case CompositePinType.CompositeReferencePin:
+                        //case CompositePinType.CompositeOutputVariablePin:
+                        //case CompositePinType.CompositeOutputAnimationInfoVariablePin:
+                        //case CompositePinType.CompositeOutputBoolVariablePin:
+                        //case CompositePinType.CompositeOutputDirectionVariablePin:
+                        //case CompositePinType.CompositeOutputEnumVariablePin:
+                        //case CompositePinType.CompositeOutputEnumStringVariablePin:
+                        //case CompositePinType.CompositeOutputFloatVariablePin:
+                        //case CompositePinType.CompositeOutputIntVariablePin:
+                        //case CompositePinType.CompositeOutputObjectVariablePin:
+                        //case CompositePinType.CompositeOutputPositionVariablePin:
+                        //case CompositePinType.CompositeOutputStringVariablePin:
+                        //case CompositePinType.CompositeOutputZoneLinkPtrVariablePin:
+                        //case CompositePinType.CompositeOutputZonePtrVariablePin:
+                        //case CompositePinType.CompositeTargetPin:
+                        case CompositePinType.CompositeInputVariablePin:
+                        case CompositePinType.CompositeInputAnimationInfoVariablePin:
+                        case CompositePinType.CompositeInputBoolVariablePin:
+                        case CompositePinType.CompositeInputDirectionVariablePin:
+                        case CompositePinType.CompositeInputEnumVariablePin:
+                        case CompositePinType.CompositeInputEnumStringVariablePin:
+                        case CompositePinType.CompositeInputFloatVariablePin:
+                        case CompositePinType.CompositeInputIntVariablePin:
+                        case CompositePinType.CompositeInputObjectVariablePin:
+                        case CompositePinType.CompositeInputPositionVariablePin:
+                        case CompositePinType.CompositeInputStringVariablePin:
+                        case CompositePinType.CompositeInputZoneLinkPtrVariablePin:
+                        case CompositePinType.CompositeInputZonePtrVariablePin:
+                        case CompositePinType.CompositeMethodPin:
                             entity.AddParameter(comp.variables[i].name, comp.variables[i].type, ParameterVariant.INPUT_PIN, overwriteExisting);
                             break;
                     }
@@ -210,19 +213,15 @@ namespace CATHODE.Scripting
             }
         }
 
-        /* Gets the function this function inherits from - you can keep calling this down to EntityMethodInterface */
-        public static FunctionType GetBaseFunction(FunctionEntity entity)
+        /* Gets the function this function inherits from - if it inherits from nothing, it will return null */
+        public static FunctionType? GetBaseFunction(FunctionEntity entity)
         {
             return GetBaseFunction(CommandsUtils.GetFunctionType(entity));
         }
-        public static FunctionType GetBaseFunction(FunctionType type)
+        public static FunctionType? GetBaseFunction(FunctionType type)
         {
             switch (type)
             {
-                //This is as far as we go, but it actually inherits from EntityResourceInterface
-                case FunctionType.EntityMethodInterface:
-                    return FunctionType.EntityMethodInterface;
-
                 case FunctionType.AccessTerminal:
                     return FunctionType.ScriptInterface;
                 case FunctionType.AchievementMonitor:
@@ -289,18 +288,10 @@ namespace CATHODE.Scripting
                     return FunctionType.ScriptInterface;
                 case FunctionType.CAGEAnimation:
                     return FunctionType.TransformerInterface;
-                case FunctionType.CameraAimAssistant:
-                    return FunctionType.EntityInterface;
-                case FunctionType.CameraBehaviorInterface:
-                    return FunctionType.EntityInterface;
                 case FunctionType.CameraCollisionBox:
                     return FunctionType.Box;
                 case FunctionType.CameraDofController:
                     return FunctionType.CameraBehaviorInterface;
-                case FunctionType.CameraFinder:
-                    return FunctionType.EntityInterface;
-                case FunctionType.CameraPath:
-                    return FunctionType.EntityInterface;
                 case FunctionType.CameraPathDriven:
                     return FunctionType.CameraBehaviorInterface;
                 case FunctionType.CameraPlayAnimation:
@@ -483,8 +474,6 @@ namespace CATHODE.Scripting
                     return FunctionType.InspectorInterface;
                 case FunctionType.DebugCamera:
                     return FunctionType.SensorInterface;
-                case FunctionType.DebugCaptureCorpse:
-                    return FunctionType.EntityInterface;
                 case FunctionType.DebugCaptureScreenShot:
                     return FunctionType.AttachmentInterface;
                 case FunctionType.DebugCheckpoint:
@@ -495,8 +484,6 @@ namespace CATHODE.Scripting
                     return FunctionType.SensorInterface;
                 case FunctionType.DebugLoadCheckpoint:
                     return FunctionType.ModifierInterface;
-                case FunctionType.DebugMenuToggle:
-                    return FunctionType.EntityInterface;
                 case FunctionType.DebugObjectMarker:
                     return FunctionType.ScriptInterface;
                 case FunctionType.DebugPositionMarker:
@@ -561,8 +548,6 @@ namespace CATHODE.Scripting
                     return FunctionType.ScriptInterface;
                 case FunctionType.ENT_Debug_Exit_Game:
                     return FunctionType.InspectorInterface;
-                case FunctionType.EntityInterface:
-                    return FunctionType.EntityMethodInterface;
                 case FunctionType.EnvironmentMap:
                     return FunctionType.AttachmentInterface;
                 case FunctionType.EnvironmentModelReference:
@@ -751,8 +736,6 @@ namespace CATHODE.Scripting
                     return FunctionType.ModifierInterface;
                 case FunctionType.FogSphere:
                     return FunctionType.Sphere;
-                case FunctionType.FollowCameraModifier:
-                    return FunctionType.EntityInterface;
                 case FunctionType.FollowTask:
                     return FunctionType.IdleTask;
                 case FunctionType.Force_UI_Visibility:
@@ -1299,8 +1282,6 @@ namespace CATHODE.Scripting
                     return FunctionType.ScriptInterface;
                 case FunctionType.Player_Sensor:
                     return FunctionType.SensorInterface;
-                case FunctionType.PlayerCamera:
-                    return FunctionType.EntityInterface;
                 case FunctionType.PlayerCameraMonitor:
                     return FunctionType.ScriptInterface;
                 case FunctionType.PlayerCampaignDeaths:
@@ -1435,8 +1416,6 @@ namespace CATHODE.Scripting
                     return FunctionType.TransformerInterface;
                 case FunctionType.ScreenFadeOutToWhiteTimed:
                     return FunctionType.TransformerInterface;
-                case FunctionType.ScriptInterface:
-                    return FunctionType.EntityInterface;
                 case FunctionType.ScriptVariable:
                     return FunctionType.ScriptInterface;
                 case FunctionType.SensorAttachmentInterface:
@@ -1575,8 +1554,6 @@ namespace CATHODE.Scripting
                     return FunctionType.ScriptInterface;
                 case FunctionType.StateQuery:
                     return FunctionType.InspectorInterface;
-                case FunctionType.StealCamera:
-                    return FunctionType.EntityInterface;
                 case FunctionType.StreamingMonitor:
                     return FunctionType.SensorInterface;
                 case FunctionType.SurfaceEffectBox:
@@ -1603,8 +1580,6 @@ namespace CATHODE.Scripting
                     return FunctionType.SensorInterface;
                 case FunctionType.ToggleFunctionality:
                     return FunctionType.ScriptInterface;
-                case FunctionType.TogglePlayerTorch:
-                    return FunctionType.EntityInterface;
                 case FunctionType.TorchDynamicMovement:
                     return FunctionType.ScriptInterface;
                 case FunctionType.TransformerInterface:
@@ -1860,7 +1835,7 @@ namespace CATHODE.Scripting
                 case FunctionType.ZoneLoaded:
                     return FunctionType.ScriptInterface;
             }
-            throw new Exception("Unhandled function type");
+            return null;
         }
 
         /* Pull non-vanilla entity names from the CommandsPAK */
