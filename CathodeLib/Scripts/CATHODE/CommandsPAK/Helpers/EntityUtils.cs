@@ -180,6 +180,7 @@ namespace CATHODE.Scripting
                         //case "CompositeOutputBoolVariablePin":
                         //case "CompositeOutputDirectionVariablePin":
                         //case "CompositeOutputEnumVariablePin":
+                        //case "CompositeOutputEnumStringVariablePin":
                         //case "CompositeOutputFloatVariablePin":
                         //case "CompositeOutputIntVariablePin":
                         //case "CompositeOutputObjectVariablePin":
@@ -193,6 +194,7 @@ namespace CATHODE.Scripting
                         case "CompositeInputBoolVariablePin":
                         case "CompositeInputDirectionVariablePin":
                         case "CompositeInputEnumVariablePin":
+                        case "CompositeInputEnumStringVariablePin":
                         case "CompositeInputFloatVariablePin":
                         case "CompositeInputIntVariablePin":
                         case "CompositeInputObjectVariablePin":
