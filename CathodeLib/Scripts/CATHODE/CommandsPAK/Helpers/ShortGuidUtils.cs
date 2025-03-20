@@ -26,11 +26,11 @@ namespace CATHODE.Scripting
         static ShortGuidUtils()
         {
 #if UNITY_EDITOR || UNITY_STANDALONE
-            byte[] dbContent = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/entity_parameter_names.bin");
+            byte[] dbContent = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_shortguid_lut.bin");
 #else
-            byte[] dbContent = CathodeLib.Properties.Resources.entity_parameter_names;
-            if (File.Exists("LocalDB/entity_parameter_names.bin"))
-                dbContent = File.ReadAllBytes("LocalDB/entity_parameter_names.bin");
+            byte[] dbContent = CathodeLib.Properties.Resources.cathode_shortguid_lut;
+            if (File.Exists("LocalDB/cathode_shortguid_lut.bin"))
+                dbContent = File.ReadAllBytes("LocalDB/cathode_shortguid_lut.bin");
 #endif
 
             BinaryReader reader = new BinaryReader(new MemoryStream(dbContent));
