@@ -147,8 +147,8 @@ namespace CATHODE.Scripting
                 inheritance.Add(typeDescending);
                 if (!includeInheritedMembers) break;
                 FunctionType? baseFunc = GetBaseFunction(typeDescending);
-                if (baseFunc != null)
-                    typeDescending = baseFunc.Value;
+                if (baseFunc == null) break;
+                typeDescending = baseFunc.Value;
             }
             inheritance.Reverse();
 
@@ -174,15 +174,27 @@ namespace CATHODE.Scripting
                     CompositePinInfoTable.PinInfo info = CompositeUtils.GetParameterInfo(comp, comp.variables[i]);
                     if (info == null)
                         continue;
-                    switch ((CompositePinType)info.PinTypeGUID.ToUInt32())
+                    CompositePinType pinType = (CompositePinType)info.PinTypeGUID.ToUInt32();
+                    //TODO: need to filter these to the ones that should actually be params. i assume it's inputs and methods?
+                    switch (pinType)
                     {
-                        //TODO: need to filter these to the ones that should actually be params. i assume it's inputs and methods?
                         //case CompositePinType.CompositeReferencePin:
+                        case CompositePinType.CompositeInputVariablePin:
+                        case CompositePinType.CompositeInputAnimationInfoVariablePin:
+                        case CompositePinType.CompositeInputBoolVariablePin:
+                        case CompositePinType.CompositeInputDirectionVariablePin:
+                        case CompositePinType.CompositeInputEnumStringVariablePin:
+                        case CompositePinType.CompositeInputFloatVariablePin:
+                        case CompositePinType.CompositeInputIntVariablePin:
+                        case CompositePinType.CompositeInputObjectVariablePin:
+                        case CompositePinType.CompositeInputPositionVariablePin:
+                        case CompositePinType.CompositeInputStringVariablePin:
+                        case CompositePinType.CompositeInputZoneLinkPtrVariablePin:
+                        case CompositePinType.CompositeInputZonePtrVariablePin:
                         //case CompositePinType.CompositeOutputVariablePin:
                         //case CompositePinType.CompositeOutputAnimationInfoVariablePin:
                         //case CompositePinType.CompositeOutputBoolVariablePin:
                         //case CompositePinType.CompositeOutputDirectionVariablePin:
-                        //case CompositePinType.CompositeOutputEnumVariablePin:
                         //case CompositePinType.CompositeOutputEnumStringVariablePin:
                         //case CompositePinType.CompositeOutputFloatVariablePin:
                         //case CompositePinType.CompositeOutputIntVariablePin:
@@ -192,21 +204,18 @@ namespace CATHODE.Scripting
                         //case CompositePinType.CompositeOutputZoneLinkPtrVariablePin:
                         //case CompositePinType.CompositeOutputZonePtrVariablePin:
                         //case CompositePinType.CompositeTargetPin:
-                        case CompositePinType.CompositeInputVariablePin:
-                        case CompositePinType.CompositeInputAnimationInfoVariablePin:
-                        case CompositePinType.CompositeInputBoolVariablePin:
-                        case CompositePinType.CompositeInputDirectionVariablePin:
-                        case CompositePinType.CompositeInputEnumVariablePin:
-                        case CompositePinType.CompositeInputEnumStringVariablePin:
-                        case CompositePinType.CompositeInputFloatVariablePin:
-                        case CompositePinType.CompositeInputIntVariablePin:
-                        case CompositePinType.CompositeInputObjectVariablePin:
-                        case CompositePinType.CompositeInputPositionVariablePin:
-                        case CompositePinType.CompositeInputStringVariablePin:
-                        case CompositePinType.CompositeInputZoneLinkPtrVariablePin:
-                        case CompositePinType.CompositeInputZonePtrVariablePin:
                         case CompositePinType.CompositeMethodPin:
                             entity.AddParameter(comp.variables[i].name, comp.variables[i].type, ParameterVariant.INPUT_PIN, overwriteExisting);
+                            break;
+                        case CompositePinType.CompositeInputEnumVariablePin:
+                        //case CompositePinType.CompositeOutputEnumVariablePin:
+                            {
+                                Parameter param = comp.variables[i].GetParameter(comp.variables[i].name);
+                                int paramI = 0;
+                                if (param != null && param.content.dataType == DataType.ENUM)
+                                    paramI = ((cEnum)param.content).enumIndex;
+                                entity.AddParameter(comp.variables[i].name, new cEnum(info.PinEnumTypeGUID, paramI), pinType == CompositePinType.CompositeInputEnumVariablePin ? ParameterVariant.INPUT_PIN : ParameterVariant.OUTPUT_PIN, overwriteExisting);
+                            }
                             break;
                     }
                 }
