@@ -103,9 +103,9 @@ namespace CathodeLib.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
-        internal static byte[] entity_parameter_names {
+        internal static byte[] cathode_shortguid_lut {
             get {
-                object obj = ResourceManager.GetObject("entity_parameter_names", resourceCulture);
+                object obj = ResourceManager.GetObject("cathode_shortguid_lut", resourceCulture);
                 return ((byte[])(obj));
             }
         }
