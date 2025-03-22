@@ -106,8 +106,13 @@ namespace CATHODE.Scripting.Internal
             switch (dataType)
             {
                 case DataType.RESOURCE:
-                    return Utilities.CloneObject(this);
-                //HOTFIX FOR VECTOR 3 CLONE ISSUE - TODO: FIND WHY THIS ISN'T WORKING WITH MEMBERWISE CLONE
+                    cResource r = (cResource)this.MemberwiseClone();
+                    r.value = ((cResource)this).value.Select(item => (ResourceReference)item.Clone()).ToList();
+                    return r;
+                case DataType.SPLINE:
+                    cSpline s = (cSpline)this.MemberwiseClone();
+                    s.splinePoints = ((cSpline)this).splinePoints.Select(item => (cTransform)item.Clone()).ToList();
+                    return s;
                 case DataType.VECTOR:
                     cVector3 v3 = (cVector3)this.MemberwiseClone();
                     Vector3 v3_v = (Vector3)((cVector3)this).value;
@@ -132,7 +137,6 @@ namespace CATHODE.Scripting.Internal
                     tr.rotation = new Vector3(tr_r.X, tr_r.Y, tr_r.Z);
 #endif
                     return tr;
-                //END OF HOTFIX - SHOULD THIS ALSO APPLY TO OTHERS?? SPLINE?
                 default:
                     return this.MemberwiseClone();
             }

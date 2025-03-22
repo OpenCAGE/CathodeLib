@@ -184,19 +184,6 @@ namespace CathodeLib
             Write<T>(stream, aux.ToArray<T>());
         }
 
-        //Clones an object (slow!)
-        public static T CloneObject<T>(T obj)
-        {
-            //A somewhat hacky an inefficient way of deep cloning an object (TODO: optimise this as we use it a lot!)
-            MemoryStream ms = new MemoryStream();
-            new BinaryFormatter().Serialize(ms, obj);
-            ms.Position = 0;
-            T obj2 = (T)new BinaryFormatter().Deserialize(ms);
-            ms.Close();
-            return obj2;
-            //obj.MemberwiseClone();
-        }
-
         //Generate a hashed string for use in the animation system (FNV hash)
         public static uint AnimationHashedString(string str)
         {
