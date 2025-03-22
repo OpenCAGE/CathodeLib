@@ -2,7 +2,7 @@
 using System.Runtime.InteropServices;
 using CathodeLib;
 
-namespace CATHODE
+namespace CATHODE.EXPERIMENTAL
 {
     /* PROGRESSION.AIS */
     public class ProgressionSave : CathodeFile
