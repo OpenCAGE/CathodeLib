@@ -61,6 +61,8 @@ namespace CATHODE.Scripting
         COLOUR,
         RESOURCE_ID,
         REFERENCE_FRAME,
+
+        ENUM_STRING = -1,
     }
 
     /* Object types */

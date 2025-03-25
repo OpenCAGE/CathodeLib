@@ -186,6 +186,7 @@ namespace CathodeLib
         }
 
         /* Get the pin info for a composite VariableEntity */
+        //TODO: move this to ParameterUtils
         public static CompositePinInfoTable.PinInfo GetParameterInfo(Composite composite, VariableEntity variableEnt)
         {
             return GetParameterInfo(composite.shortGUID, variableEnt.shortGUID);

@@ -249,11 +249,22 @@ namespace CATHODE.Scripting
         public cResource() 
         {
             this.shortGUID = ShortGuidUtils.GenerateRandom();
-            dataType = DataType.RESOURCE; 
+            dataType = DataType.RESOURCE;
         }
-        public cResource(ShortGuid shortGuid)
+        public cResource(ResourceType type)
         {
-            this.shortGUID = shortGuid;
+            this.shortGUID = new ShortGuid((UInt32)type);
+            dataType = DataType.RESOURCE;
+        }
+        public cResource(ShortGuid resourceID)
+        {
+            this.shortGUID = resourceID;
+            dataType = DataType.RESOURCE;
+        }
+        public cResource(List<ResourceReference> value, ResourceType type)
+        {
+            this.value = value;
+            this.shortGUID = new ShortGuid((UInt32)type);
             dataType = DataType.RESOURCE;
         }
         public cResource(List<ResourceReference> value, ShortGuid resourceID)
@@ -303,6 +314,11 @@ namespace CATHODE.Scripting
             this.value = value;
             dataType = DataType.VECTOR;
         }
+        public cVector3(float x, float y, float z)
+        {
+            this.value = new Vector3(x,y,z);
+            dataType = DataType.VECTOR;
+        }
 
         public Vector3 value = new Vector3();
 
@@ -320,7 +336,7 @@ namespace CATHODE.Scripting
             this.enumIndex = 0;
             dataType = DataType.ENUM;
         }
-        public cEnum(ShortGuid enumID, int enumIndex) //todo: deprecate?
+        public cEnum(ShortGuid enumID, int enumIndex = 0)
         {
             this.enumID = enumID;
             this.enumIndex = enumIndex;
@@ -339,6 +355,34 @@ namespace CATHODE.Scripting
         public override string ToString()
         {
             return enumID.ToString() + " -> " + enumIndex;
+        }
+    }
+    [Serializable]
+    public class cEnumString : cString
+    {
+        public cEnumString()
+        {
+            this.enumID = ShortGuidUtils.Generate(((EnumType)0).ToString());
+            dataType = DataType.ENUM_STRING;
+        }
+        public cEnumString(ShortGuid enumID, string enumString = "") 
+        {
+            this.enumID = enumID;
+            this.value = enumString;
+            dataType = DataType.ENUM_STRING;
+        }
+        public cEnumString(EnumStringType enumType, string enumString = "")
+        {
+            this.enumID = ShortGuidUtils.Generate(enumType.ToString());
+            this.value = enumString;
+            dataType = DataType.ENUM_STRING;
+        }
+
+        public ShortGuid enumID;
+
+        public override string ToString()
+        {
+            return enumID.ToString() + " -> " + value;
         }
     }
     [Serializable]

@@ -152,6 +152,9 @@ namespace CATHODE.Scripting.Internal
                 case DataType.ENUM:
                     data = new cEnum();
                     break;
+                case DataType.ENUM_STRING:
+                    data = new cEnumString();
+                    break;
                 case DataType.SPLINE:
                     data = new cSpline();
                     break;
@@ -334,27 +337,24 @@ namespace CATHODE.Scripting
     [Serializable]
     public class VariableEntity : Entity
     {
-        public VariableEntity(bool addDefaultParam = false) : base(EntityVariant.VARIABLE) { if (addDefaultParam) AddParameter(name, type); }
-        public VariableEntity(ShortGuid shortGUID, bool addDefaultParam = false) : base(shortGUID, EntityVariant.VARIABLE) { if (addDefaultParam) AddParameter(name, type); }
+        public VariableEntity() : base(EntityVariant.VARIABLE) {  }
+        public VariableEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.VARIABLE) { }
 
-        public VariableEntity(string parameter, DataType type, bool addDefaultParam = false) : base(EntityVariant.VARIABLE)
+        public VariableEntity(string parameter, DataType type) : base(EntityVariant.VARIABLE)
         {
             this.name = ShortGuidUtils.Generate(parameter);
             this.type = type;
-            if (addDefaultParam) AddParameter(name, type);
         }
 
-        public VariableEntity(ShortGuid shortGUID, ShortGuid parameter, DataType type, bool addDefaultParam = false) : base(shortGUID, EntityVariant.VARIABLE)
+        public VariableEntity(ShortGuid shortGUID, ShortGuid parameter, DataType type) : base(shortGUID, EntityVariant.VARIABLE)
         {
             this.name = parameter;
             this.type = type;
-            if (addDefaultParam) AddParameter(name, type);
         }
-        public VariableEntity(ShortGuid shortGUID, string parameter, DataType type, bool addDefaultParam = false) : base(shortGUID, EntityVariant.VARIABLE)
+        public VariableEntity(ShortGuid shortGUID, string parameter, DataType type) : base(shortGUID, EntityVariant.VARIABLE)
         {
             this.name = ShortGuidUtils.Generate(parameter);
             this.type = type;
-            if (addDefaultParam) AddParameter(name, type);
         }
 
         public ShortGuid name;
@@ -379,36 +379,30 @@ namespace CATHODE.Scripting
             resources.Clear();
         }
 
-        public FunctionEntity(string function, bool autoGenerateParameters = false) : base(EntityVariant.FUNCTION)
+        public FunctionEntity(string function) : base(EntityVariant.FUNCTION)
         {
             this.function = ShortGuidUtils.Generate(function);
-            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
-        public FunctionEntity(ShortGuid function, bool autoGenerateParameters = false) : base(EntityVariant.FUNCTION)
+        public FunctionEntity(Composite function) : base (EntityVariant.FUNCTION)
         {
-            this.function = function;
-            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
+            this.function = function.shortGUID;
         }
-        public FunctionEntity(FunctionType function, bool autoGenerateParameters = false) : base(EntityVariant.FUNCTION)
+        public FunctionEntity(FunctionType function) : base(EntityVariant.FUNCTION)
         {
             this.function = CommandsUtils.GetFunctionTypeGUID(function);
-            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
 
-        public FunctionEntity(ShortGuid shortGUID, ShortGuid function, bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.FUNCTION)
-        {
-            this.function = function;
-            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
-        }
-        public FunctionEntity(ShortGuid shortGUID, string function, bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.FUNCTION)
+        public FunctionEntity(ShortGuid shortGUID, string function) : base(shortGUID, EntityVariant.FUNCTION)
         {
             this.function = ShortGuidUtils.Generate(function);
-            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
-        public FunctionEntity(ShortGuid shortGUID, FunctionType function, bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.FUNCTION)
+        public FunctionEntity(ShortGuid shortGUID, Composite function) : base(shortGUID, EntityVariant.FUNCTION)
+        {
+            this.function = function.shortGUID;
+        }
+        public FunctionEntity(ShortGuid shortGUID, FunctionType function) : base(shortGUID, EntityVariant.FUNCTION)
         {
             this.function = CommandsUtils.GetFunctionTypeGUID(function);
-            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
         }
 
         public ShortGuid function;
@@ -464,14 +458,14 @@ namespace CATHODE.Scripting
         {
             this.function = targetType;
             if (hierarchy != null) this.proxy.path = hierarchy;
-            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
+            if (autoGenerateParameters) ParameterUtils.AddAllDefaultParameters(this, null);
         }
         public ProxyEntity(ShortGuid shortGUID, ShortGuid[] hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.PROXY)
         {
             this.shortGUID = shortGUID;
             this.function = targetType; 
             if (hierarchy != null) this.proxy.path = hierarchy;
-            if (autoGenerateParameters) EntityUtils.ApplyDefaults(this);
+            if (autoGenerateParameters) ParameterUtils.AddAllDefaultParameters(this, null);
         }
 
         public ShortGuid function;                  //The "function" value on the entity we're proxying
@@ -500,8 +494,8 @@ namespace CATHODE.Scripting
     [Serializable]
     public class CAGEAnimation : FunctionEntity
     {
-        public CAGEAnimation(bool autoGenerateParameters = false) : base(FunctionType.CAGEAnimation, autoGenerateParameters) { }
-        public CAGEAnimation(ShortGuid id, bool autoGenerateParameters = false) : base(id, FunctionType.CAGEAnimation, autoGenerateParameters) { }
+        public CAGEAnimation() : base(FunctionType.CAGEAnimation) { }
+        public CAGEAnimation(ShortGuid id) : base(id, FunctionType.CAGEAnimation) { }
 
         public List<Connection> connections = new List<Connection>();
         public List<Animation> animations = new List<Animation>();
@@ -565,8 +559,8 @@ namespace CATHODE.Scripting
     [Serializable]
     public class TriggerSequence : FunctionEntity
     {
-        public TriggerSequence(bool autoGenerateParameters = false) : base(FunctionType.TriggerSequence, autoGenerateParameters) { }
-        public TriggerSequence(ShortGuid id, bool autoGenerateParameters = false) : base(id, FunctionType.TriggerSequence, autoGenerateParameters) { }
+        public TriggerSequence() : base(FunctionType.TriggerSequence) { }
+        public TriggerSequence(ShortGuid id) : base(id, FunctionType.TriggerSequence) { }
 
         public List<Entity> entities = new List<Entity>();
         public List<Event> events = new List<Event>();
