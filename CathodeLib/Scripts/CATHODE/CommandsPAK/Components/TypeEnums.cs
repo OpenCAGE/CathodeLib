@@ -55,10 +55,12 @@ namespace CATHODE.Scripting
 
         FILEPATH,
         OBJECT,
-        ZONE_LINK_PTR,
-        ZONE_PTR,
+        ZONE_LINK,
+        ZONE,
         ANIMATION_INFO,
         COLOUR,
+        RESOURCE_ID,
+        REFERENCE_FRAME,
     }
 
     /* Object types */

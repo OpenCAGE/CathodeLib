@@ -179,8 +179,8 @@ namespace CATHODE.Scripting
             _dataTypeLUT.Add(ShortGuidUtils.Generate("Enum"), DataType.ENUM);
             _dataTypeLUT.Add(ShortGuidUtils.Generate("ShortGuid"), DataType.RESOURCE);
             _dataTypeLUT.Add(ShortGuidUtils.Generate("Object"), DataType.OBJECT);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("ZonePtr"), DataType.ZONE_PTR);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("ZoneLinkPtr"), DataType.ZONE_LINK_PTR);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("ZonePtr"), DataType.ZONE);
+            _dataTypeLUT.Add(ShortGuidUtils.Generate("ZoneLinkPtr"), DataType.ZONE_LINK);
             _dataTypeLUT.Add(ShortGuidUtils.Generate("AnimationInfoPtr"), DataType.ANIMATION_INFO);
             _dataTypeLUT.Add(ShortGuidUtils.Generate("Colour"), DataType.COLOUR);
             _dataTypeLUT.Add(ShortGuidUtils.Generate(""), DataType.NONE);
