@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Data.Common;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace CATHODE.Scripting
@@ -71,7 +72,6 @@ namespace CATHODE.Scripting
                 case EntityVariant.FUNCTION:
                     ApplyDefaultFunction((FunctionEntity)entity, entity, composite, variants, overwrite, includeInherited);
                     break;
-                //TODO: the proxy and alias logic here can be written better, but i'm tired and lazy right now
                 case EntityVariant.PROXY:
                     {
                         if (includeInherited)
@@ -151,7 +151,9 @@ namespace CATHODE.Scripting
             }
             else
             {
-                switch ((CompositePinType)pinInfo.PinTypeGUID.ToUInt32())
+                CompositePinType pinType = (CompositePinType)pinInfo.PinTypeGUID.ToUInt32();
+                ParameterVariant paramVariant = CompositeUtils.PinTypeToParameterVariant(pinType);
+                switch (pinType)
                 {
                     case CompositePinType.CompositeInputAnimationInfoVariablePin:
                     case CompositePinType.CompositeInputBoolVariablePin:
@@ -164,16 +166,16 @@ namespace CATHODE.Scripting
                     case CompositePinType.CompositeInputVariablePin:
                     case CompositePinType.CompositeInputZoneLinkPtrVariablePin:
                     case CompositePinType.CompositeInputZonePtrVariablePin:
-                        if (variants.HasFlag(ParameterVariant.INPUT_PIN))
-                            entity.AddParameter(variableEntity.name, variableEntity.type, ParameterVariant.INPUT_PIN, overwrite);
+                        if (variants.HasFlag(paramVariant))
+                            entity.AddParameter(variableEntity.name, variableEntity.type, paramVariant, overwrite);
                         break;
                     case CompositePinType.CompositeInputEnumVariablePin:
-                        if (variants.HasFlag(ParameterVariant.PARAMETER))
-                            entity.AddParameter(variableEntity.name, new cEnum(pinInfo.PinEnumTypeGUID, -1), ParameterVariant.INPUT_PIN, overwrite);
+                        if (variants.HasFlag(paramVariant))
+                            entity.AddParameter(variableEntity.name, new cEnum(pinInfo.PinEnumTypeGUID, -1), paramVariant, overwrite);
                         break;
                     case CompositePinType.CompositeInputEnumStringVariablePin:
-                        if (variants.HasFlag(ParameterVariant.PARAMETER))
-                            entity.AddParameter(variableEntity.name, new cEnumString(pinInfo.PinEnumTypeGUID, ""), ParameterVariant.INPUT_PIN, overwrite);
+                        if (variants.HasFlag(paramVariant))
+                            entity.AddParameter(variableEntity.name, new cEnumString(pinInfo.PinEnumTypeGUID, ""), paramVariant, overwrite);
                         break;
                     case CompositePinType.CompositeOutputAnimationInfoVariablePin:
                     case CompositePinType.CompositeOutputBoolVariablePin:
@@ -186,28 +188,28 @@ namespace CATHODE.Scripting
                     case CompositePinType.CompositeOutputVariablePin:
                     case CompositePinType.CompositeOutputZoneLinkPtrVariablePin:
                     case CompositePinType.CompositeOutputZonePtrVariablePin:
-                        if (variants.HasFlag(ParameterVariant.OUTPUT_PIN))
-                            entity.AddParameter(variableEntity.name, variableEntity.type, ParameterVariant.OUTPUT_PIN, overwrite);
+                        if (variants.HasFlag(paramVariant))
+                            entity.AddParameter(variableEntity.name, variableEntity.type, paramVariant, overwrite);
                         break;
                     case CompositePinType.CompositeOutputEnumVariablePin:
-                        if (variants.HasFlag(ParameterVariant.PARAMETER))
-                            entity.AddParameter(variableEntity.name, new cEnum(pinInfo.PinEnumTypeGUID, -1), ParameterVariant.OUTPUT_PIN, overwrite);
+                        if (variants.HasFlag(paramVariant))
+                            entity.AddParameter(variableEntity.name, new cEnum(pinInfo.PinEnumTypeGUID, -1), paramVariant, overwrite);
                         break;
                     case CompositePinType.CompositeOutputEnumStringVariablePin:
-                        if (variants.HasFlag(ParameterVariant.PARAMETER))
-                            entity.AddParameter(variableEntity.name, new cEnumString(pinInfo.PinEnumTypeGUID, ""), ParameterVariant.OUTPUT_PIN, overwrite);
+                        if (variants.HasFlag(paramVariant))
+                            entity.AddParameter(variableEntity.name, new cEnumString(pinInfo.PinEnumTypeGUID, ""), paramVariant, overwrite);
                         break;
                     case CompositePinType.CompositeMethodPin:
                         if (variants.HasFlag(ParameterVariant.METHOD_PIN) || variants.HasFlag(ParameterVariant.METHOD_FUNCTION))
-                            entity.AddParameter(variableEntity.name, variableEntity.type, ParameterVariant.METHOD_PIN, overwrite);
+                            entity.AddParameter(variableEntity.name, variableEntity.type, paramVariant, overwrite);
                         break;
                     case CompositePinType.CompositeTargetPin:
-                        if (variants.HasFlag(ParameterVariant.TARGET_PIN))
-                            entity.AddParameter(variableEntity.name, variableEntity.type, ParameterVariant.TARGET_PIN, overwrite);
+                        if (variants.HasFlag(paramVariant))
+                            entity.AddParameter(variableEntity.name, variableEntity.type, paramVariant, overwrite);
                         break;
                     case CompositePinType.CompositeReferencePin:
-                        if (variants.HasFlag(ParameterVariant.REFERENCE_PIN))
-                            entity.AddParameter(variableEntity.name, variableEntity.type, ParameterVariant.REFERENCE_PIN, overwrite);
+                        if (variants.HasFlag(paramVariant))
+                            entity.AddParameter(variableEntity.name, variableEntity.type, paramVariant, overwrite);
                         break;
                     default:
                         throw new Exception("Unexpected type!");
@@ -237,6 +239,67 @@ namespace CATHODE.Scripting
                     ApplyDefaultVariable(variable, entity, composite, variants, overwrite);
                 }
             }
+        }
+
+        /* Get all possible parameters for a given entity */
+        public static List<(ShortGuid, ParameterVariant, DataType)> GetAllParameters(Entity entity, Composite composite, bool includeInherited = true)
+        {
+            List<(ShortGuid, ParameterVariant, DataType)> parameters = new List<(ShortGuid, ParameterVariant, DataType)>();
+            switch (entity.variant)
+            {
+                case EntityVariant.FUNCTION:
+                    FunctionEntity functionEntity = (FunctionEntity)entity;
+                    if (CommandsUtils.FunctionTypeExists(functionEntity.function))
+                    {
+                        FunctionType? functionType = (FunctionType)functionEntity.function.ToUInt32();
+                        while (true)
+                        {
+                            parameters.AddRange(GetAllParameters(functionType.Value));
+                            if (!includeInherited) break;
+                            functionType = GetInheritedFunction(functionType.Value);
+                            if (functionType == null) break;
+                        }
+                    }
+                    else
+                    {
+                        if (includeInherited)
+                            parameters.AddRange(GetAllParameters(FunctionType.CompositeInterface));
+                        Composite compositeInstance = _commands.GetComposite((functionEntity).function);
+                        foreach (VariableEntity variable in compositeInstance.variables)
+                        {
+                            parameters.AddRange(GetAllParameters(variable, composite, includeInherited));
+                        }
+                    }
+                    break;
+                case EntityVariant.PROXY:
+                    if (includeInherited)
+                        parameters.AddRange(GetAllParameters(FunctionType.CompositeInterface));
+                    ProxyEntity proxyEntity = (ProxyEntity)entity;
+                    Entity proxiedEntity = proxyEntity.proxy.GetPointedEntity(_commands);
+                    if (proxiedEntity != null)
+                        parameters.AddRange(GetAllParameters(proxiedEntity, composite));
+                    break;
+                case EntityVariant.ALIAS:
+                    if (includeInherited)
+                        parameters.AddRange(GetAllParameters(FunctionType.CompositeInterface));
+                    AliasEntity aliasEntity = (AliasEntity)entity;
+                    Entity aliasedEntity = aliasEntity.alias.GetPointedEntity(_commands);
+                    if (aliasedEntity != null)
+                        parameters.AddRange(GetAllParameters(aliasedEntity, composite));
+                    break;
+                case EntityVariant.VARIABLE:
+                    VariableEntity variableEntity = (VariableEntity)entity;
+                    CompositePinInfoTable.PinInfo info = CompositeUtils.GetParameterInfo(composite, variableEntity);
+                    if (info == null)
+                        parameters.Add((variableEntity.name, ParameterVariant.PARAMETER, variableEntity.type));
+                    else
+                    {
+                        parameters.Add((variableEntity.name, CompositeUtils.PinTypeToParameterVariant(info.PinTypeGUID), variableEntity.type));
+                    }
+
+                    break;
+            }
+            return parameters;
         }
 
         /* Get all possible parameters for a given function type */
@@ -317,6 +380,265 @@ namespace CATHODE.Scripting
             return parameters;
         }
 
+        /* Get metadata about a parameter on an entity */
+        public static (ParameterVariant?, DataType?) GetParameterMetadata(Entity entity, string parameter)
+        {
+            return GetParameterMetadata(entity, ShortGuidUtils.Generate(parameter));
+        }
+        public static (ParameterVariant?, DataType?) GetParameterMetadata(Entity entity, ShortGuid parameter)
+        {
+            switch (entity.variant)
+            {
+                case EntityVariant.VARIABLE:
+                    if (parameter == ((VariableEntity)entity).name)
+                        return (ParameterVariant.PARAMETER, ((VariableEntity)entity).type);
+                    break;
+                case EntityVariant.FUNCTION:
+                    FunctionEntity functionEntity = (FunctionEntity)entity;
+                    if (CommandsUtils.FunctionTypeExists(functionEntity.function))
+                    {
+                        FunctionType? functionType = (FunctionType)functionEntity.function.ToUInt32();
+                        while (true)
+                        {
+                            var metadata = GetParameterMetadata(functionType.Value, parameter);
+                            if (metadata.Item1 != null)
+                                return metadata;
+                            functionType = GetInheritedFunction(functionType.Value);
+                            if (functionType == null) break;
+                        }
+                    }
+                    else
+                    {
+                        var metadata = GetParameterMetadata(FunctionType.CompositeInterface, parameter);
+                        if (metadata.Item1 != null)
+                            return metadata;
+                        Composite composite = _commands.GetComposite(functionEntity.function);
+                        if (composite != null)
+                        {
+                            VariableEntity var = composite.variables.FirstOrDefault(o => o.name == parameter);
+                            if (var != null)
+                            {
+                                CompositePinInfoTable.PinInfo info = CompositeUtils.GetParameterInfo(composite, var);
+                                if (info == null)
+                                    return (ParameterVariant.PARAMETER, var.type);
+                                else
+                                {
+                                    return (CompositeUtils.PinTypeToParameterVariant(info.PinTypeGUID), var.type);
+                                }
+                            }
+                        }
+                    }
+                    break;
+                case EntityVariant.PROXY:
+                    {
+                        var metadata = GetParameterMetadata(FunctionType.ProxyInterface, parameter);
+                        if (metadata.Item1 != null)
+                            return metadata;
+                        ProxyEntity proxyEntity = (ProxyEntity)entity;
+                        Entity proxiedEntity = proxyEntity.proxy.GetPointedEntity(_commands);
+                        if (proxiedEntity != null)
+                            return GetParameterMetadata(proxiedEntity, parameter);
+                        break;
+                    }
+                case EntityVariant.ALIAS:
+                    AliasEntity aliasEntity = (AliasEntity)entity;
+                    Entity aliasedEntity = aliasEntity.alias.GetPointedEntity(_commands);
+                    if (aliasedEntity != null)
+                        return GetParameterMetadata(aliasedEntity, parameter);
+                    break;
+            }
+            return (null, null);
+        }
+
+        /* Get metadata about a parameter on a function */
+        public static (ParameterVariant?, DataType?) GetParameterMetadata(FunctionType function, string parameter)
+        {
+            return GetParameterMetadata(function, ShortGuidUtils.Generate(parameter));
+        }
+        public static (ParameterVariant?, DataType?) GetParameterMetadata(FunctionType function, ShortGuid parameter)
+        {
+            Dictionary<ParameterVariant, int> offsets = _functionVariantOffsets[function];
+            foreach (KeyValuePair<ParameterVariant, int> entry in offsets)
+            {
+                (ParameterVariant?, DataType?) data = GetParameterMetadata(function, parameter, entry.Key);
+                if (data.Item1 != null && data.Item2 != null)
+                    return data;
+            }
+            return (null, null);
+        }
+        public static (ParameterVariant?, DataType?) GetParameterMetadata(FunctionType function, ShortGuid parameter, ParameterVariant variant)
+        {
+            List<(ShortGuid, ParameterVariant, DataType)> parameters = new List<(ShortGuid, ParameterVariant, DataType)>();
+            using (BinaryReader reader = new BinaryReader(new MemoryStream(_functionInfo)))
+            {
+                reader.BaseStream.Position = _functionVariantOffsets[function][variant];
+                int paramCount = reader.ReadInt32();
+                for (int i = 0; i < paramCount; i++)
+                {
+                    uint paramID = reader.ReadUInt32();
+                    bool isCorrectParam = paramID == parameter.ToUInt32();
+                    switch (variant)
+                    {
+                        case ParameterVariant.TARGET_PIN:
+                        case ParameterVariant.REFERENCE_PIN:
+                        case ParameterVariant.METHOD_FUNCTION:
+                        case ParameterVariant.METHOD_PIN:
+                            if (isCorrectParam)
+                                return (variant, DataType.FLOAT);
+                            break;
+                        default:
+                            DataType dataType = (DataType)reader.ReadInt32();
+                            if (isCorrectParam)
+                                return (variant, dataType);
+                            switch (dataType)
+                            {
+                                case DataType.BOOL:
+                                    reader.BaseStream.Position += 1;
+                                    break;
+                                case DataType.INTEGER:
+                                    reader.BaseStream.Position += 4;
+                                    break;
+                                case DataType.FLOAT:
+                                    reader.BaseStream.Position += 4;
+                                    break;
+                                case DataType.STRING:
+                                case DataType.FILEPATH:
+                                    {
+                                        int seek = reader.ReadByte();
+                                        reader.BaseStream.Position += seek;
+                                    }
+                                    break;
+                                case DataType.ENUM:
+                                    {
+                                        int enumType = reader.ReadInt32();
+                                        if (enumType != -1)
+                                        {
+                                            reader.BaseStream.Position += 4;
+                                        }
+                                    }
+                                    break;
+                                case DataType.ENUM_STRING:
+                                    {
+                                        int seek = reader.ReadByte();
+                                        reader.BaseStream.Position += seek;
+                                        seek = reader.ReadByte();
+                                        reader.BaseStream.Position += seek;
+                                    }
+                                    break;
+                                case DataType.VECTOR:
+                                    reader.BaseStream.Position += 12;
+                                    break;
+                                case DataType.RESOURCE:
+                                    reader.BaseStream.Position += 4;
+                                    break;
+                                default:
+                                    //Any other types have no default values.
+                                    break;
+                            }
+                            break;
+                    }
+                }
+            }
+            return (null, null);
+        }
+
+        /* Create ParameterData with default values for the given entity's parameter */
+        public static ParameterData CreateDefaultParameterData(Entity entity, Composite composite, string parameter)
+        {
+            return CreateDefaultParameterData(entity, composite, ShortGuidUtils.Generate(parameter));
+        }
+        public static ParameterData CreateDefaultParameterData(Entity entity, Composite composite, ShortGuid parameter)
+        {
+            switch (entity.variant)
+            {
+                case EntityVariant.VARIABLE:
+                    VariableEntity variableEntity = (VariableEntity)entity;
+                    if (parameter == variableEntity.name)
+                    {
+                        CompositePinInfoTable.PinInfo info = CompositeUtils.GetParameterInfo(composite, variableEntity);
+                        switch (variableEntity.type)
+                        {
+                            case DataType.FLOAT:
+                                return new cFloat();
+                            case DataType.INTEGER:
+                                return new cInteger();
+                            case DataType.BOOL:
+                                return new cBool();
+                            case DataType.RESOURCE:
+                                return new cResource();
+                            case DataType.ENUM:
+                                if (info == null)
+                                    return new cEnum();
+                                else
+                                    return new cEnum(info.PinEnumTypeGUID, -1);
+                            case DataType.ENUM_STRING:
+                                if (info == null)
+                                    return new cEnumString();
+                                else
+                                    return new cEnumString(info.PinEnumTypeGUID, "");
+                            case DataType.STRING:
+                            case DataType.FILEPATH:
+                                return new cString();
+                            case DataType.SPLINE:
+                                return new cSpline();
+                            default:
+                                return new cString(); //string, or float?
+                        }
+                    }
+                    break;
+                case EntityVariant.FUNCTION:
+                    FunctionEntity functionEntity = (FunctionEntity)entity;
+                    if (CommandsUtils.FunctionTypeExists(functionEntity.function))
+                    {
+                        FunctionType? functionType = (FunctionType)functionEntity.function.ToUInt32();
+                        while (true)
+                        {
+                            var data = CreateDefaultParameterData(functionType.Value, parameter);
+                            if (data != null)
+                                return data;
+                            functionType = GetInheritedFunction(functionType.Value);
+                            if (functionType == null) break;
+                        }
+                    }
+                    else
+                    {
+                        var data = CreateDefaultParameterData(FunctionType.CompositeInterface, parameter);
+                        if (data != null)
+                            return data;
+                        Composite comp = _commands.GetComposite(functionEntity.function);
+                        if (composite != null)
+                        {
+                            VariableEntity var = comp.variables.FirstOrDefault(o => o.name == parameter);
+                            if (var != null)
+                            {
+                                data = CreateDefaultParameterData(var, comp, parameter);
+                                if (data != null) 
+                                    return data;
+                            }
+                        }
+                    }
+                    break;
+                case EntityVariant.PROXY:
+                    {
+                        var data = CreateDefaultParameterData(FunctionType.ProxyInterface, parameter);
+                        if (data != null)
+                            return data;
+                        ProxyEntity proxyEntity = (ProxyEntity)entity;
+                        Entity proxiedEntity = proxyEntity.proxy.GetPointedEntity(_commands, out Composite proxiedComposite);
+                        if (proxiedEntity != null)
+                            return CreateDefaultParameterData(proxiedEntity, proxiedComposite, parameter);
+                        break;
+                    }
+                case EntityVariant.ALIAS:
+                    AliasEntity aliasEntity = (AliasEntity)entity;
+                    Entity aliasedEntity = aliasEntity.alias.GetPointedEntity(_commands, out Composite aliasedComposite);
+                    if (aliasedEntity != null)
+                        return CreateDefaultParameterData(aliasedEntity, aliasedComposite, parameter);
+                    break;
+            }
+            return null;
+        }
+
         /* Create ParameterData with default values for the given function type's parameter */
         public static ParameterData CreateDefaultParameterData(FunctionType function, string parameter)
         {
@@ -349,7 +671,9 @@ namespace CATHODE.Scripting
                         case ParameterVariant.REFERENCE_PIN:
                         case ParameterVariant.METHOD_FUNCTION:
                         case ParameterVariant.METHOD_PIN:
-                            return new cFloat();
+                            if (isCorrectParam)
+                                return new cFloat();
+                            break;
                         default:
                             DataType dataType = (DataType)reader.ReadInt32();
                             switch (dataType)

@@ -11,6 +11,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Serialization.Json;
 using System.Security.Cryptography;
 using System.Text;
+using static CathodeLib.CompositePinInfoTable;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #endif
@@ -201,6 +202,54 @@ namespace CathodeLib
             if (_pinInfoVanilla.composite_pin_infos.TryGetValue(composite, out List<CompositePinInfoTable.PinInfo> vanillaInfos))
                 info = vanillaInfos.FirstOrDefault(o => o.VariableGUID == variableEnt);
             return info;
+        }
+
+        public static ParameterVariant PinTypeToParameterVariant(ShortGuid type)
+        {
+            return PinTypeToParameterVariant((CompositePinType)type.ToUInt32());
+        }
+        public static ParameterVariant PinTypeToParameterVariant(CompositePinType type)
+        {
+            switch (type)
+            {
+
+                case CompositePinType.CompositeInputAnimationInfoVariablePin:
+                case CompositePinType.CompositeInputBoolVariablePin:
+                case CompositePinType.CompositeInputDirectionVariablePin:
+                case CompositePinType.CompositeInputFloatVariablePin:
+                case CompositePinType.CompositeInputIntVariablePin:
+                case CompositePinType.CompositeInputObjectVariablePin:
+                case CompositePinType.CompositeInputPositionVariablePin:
+                case CompositePinType.CompositeInputStringVariablePin:
+                case CompositePinType.CompositeInputVariablePin:
+                case CompositePinType.CompositeInputZoneLinkPtrVariablePin:
+                case CompositePinType.CompositeInputZonePtrVariablePin:
+                case CompositePinType.CompositeInputEnumVariablePin:
+                case CompositePinType.CompositeInputEnumStringVariablePin:
+                    return ParameterVariant.INPUT_PIN;
+                    break;
+                case CompositePinType.CompositeOutputAnimationInfoVariablePin:
+                case CompositePinType.CompositeOutputBoolVariablePin:
+                case CompositePinType.CompositeOutputDirectionVariablePin:
+                case CompositePinType.CompositeOutputFloatVariablePin:
+                case CompositePinType.CompositeOutputIntVariablePin:
+                case CompositePinType.CompositeOutputObjectVariablePin:
+                case CompositePinType.CompositeOutputPositionVariablePin:
+                case CompositePinType.CompositeOutputStringVariablePin:
+                case CompositePinType.CompositeOutputVariablePin:
+                case CompositePinType.CompositeOutputZoneLinkPtrVariablePin:
+                case CompositePinType.CompositeOutputZonePtrVariablePin:
+                    return ParameterVariant.OUTPUT_PIN;
+                case CompositePinType.CompositeMethodPin:
+                    return ParameterVariant.METHOD_PIN;
+                    break;
+                case CompositePinType.CompositeTargetPin:
+                    return ParameterVariant.TARGET_PIN;
+                case CompositePinType.CompositeReferencePin:
+                    return ParameterVariant.REFERENCE_PIN;
+                default:
+                    throw new Exception("Unexpected type!");
+            }
         }
 
         /* Generate a checksum for a Composite object */
