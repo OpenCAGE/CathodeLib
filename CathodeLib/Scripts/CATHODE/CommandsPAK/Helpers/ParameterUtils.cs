@@ -14,6 +14,7 @@ namespace CATHODE.Scripting
         private static byte[] _functionInfo;
         private static Dictionary<FunctionType, Dictionary<ParameterVariant, int>> _functionVariantOffsets = new Dictionary<FunctionType, Dictionary<ParameterVariant, int>>();
         private static Dictionary<FunctionType, FunctionType?> _functionBaseClasses = new Dictionary<FunctionType, FunctionType?>();
+        private static Tuple<int, int> _relayInfoOffset;
 
         //this really needs deprecating
         public static Commands LinkedCommands => _commands;
@@ -47,6 +48,8 @@ namespace CATHODE.Scripting
                         variantOffsets.Add((ParameterVariant)reader.ReadInt32(), reader.ReadInt32());
                     }
                 }
+
+                _relayInfoOffset = new Tuple<int, int>(reader.ReadInt32(), reader.ReadInt32());
             }
         }
 
@@ -753,6 +756,23 @@ namespace CATHODE.Scripting
                 }
             }
             return null;
+        }
+
+        /* Get the relay pin for a given method pin */
+        public static ShortGuid GetRelay(ShortGuid guid)
+        {
+            using (BinaryReader reader = new BinaryReader(new MemoryStream(_functionInfo)))
+            {
+                reader.BaseStream.Position = _relayInfoOffset.Item1;
+                for (int i = 0; i < _relayInfoOffset.Item2; i++)
+                {
+                    UInt32 method = reader.ReadUInt32();
+                    UInt32 relay = reader.ReadUInt32();
+                    if (method == guid.ToUInt32())
+                        return new ShortGuid(relay);
+                }
+            }
+            return ShortGuid.Invalid;
         }
     }
 }
