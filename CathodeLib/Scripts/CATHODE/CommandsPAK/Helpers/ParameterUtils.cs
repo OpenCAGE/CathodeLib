@@ -273,15 +273,13 @@ namespace CATHODE.Scripting
                     break;
                 case EntityVariant.PROXY:
                     if (includeInherited)
-                        parameters.AddRange(GetAllParameters(FunctionType.CompositeInterface));
+                        parameters.AddRange(GetAllParameters(FunctionType.ProxyInterface));
                     ProxyEntity proxyEntity = (ProxyEntity)entity;
                     Entity proxiedEntity = proxyEntity.proxy.GetPointedEntity(_commands);
                     if (proxiedEntity != null)
                         parameters.AddRange(GetAllParameters(proxiedEntity, composite));
                     break;
                 case EntityVariant.ALIAS:
-                    if (includeInherited)
-                        parameters.AddRange(GetAllParameters(FunctionType.CompositeInterface));
                     AliasEntity aliasEntity = (AliasEntity)entity;
                     Entity aliasedEntity = aliasEntity.alias.GetPointedEntity(_commands);
                     if (aliasedEntity != null)
