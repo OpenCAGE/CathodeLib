@@ -267,7 +267,7 @@ namespace CATHODE.Scripting
                         Composite compositeInstance = _commands.GetComposite((functionEntity).function);
                         foreach (VariableEntity variable in compositeInstance.variables)
                         {
-                            parameters.AddRange(GetAllParameters(variable, composite, includeInherited));
+                            parameters.AddRange(GetAllParameters(variable, compositeInstance, includeInherited));
                         }
                     }
                     break;
