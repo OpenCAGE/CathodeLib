@@ -712,7 +712,8 @@ namespace CATHODE.Scripting
                                         int enumType = reader.ReadInt32();
                                         if (enumType == -1)
                                         {
-                                            return new cEnum();
+                                            if (isCorrectParam)
+                                                return new cEnum();
                                         }
                                         else
                                         {
