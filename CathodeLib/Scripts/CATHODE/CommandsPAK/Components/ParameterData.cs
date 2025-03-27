@@ -332,8 +332,8 @@ namespace CATHODE.Scripting
     {
         public cEnum()
         {
-            this.enumID = ShortGuidUtils.Generate(((EnumType)0).ToString());
-            this.enumIndex = 0;
+            this.enumID = ShortGuid.Invalid;
+            this.enumIndex = -1;
             dataType = DataType.ENUM;
         }
         public cEnum(ShortGuid enumID, int enumIndex = 0)
@@ -350,7 +350,7 @@ namespace CATHODE.Scripting
         }
 
         public ShortGuid enumID;
-        public int enumIndex = 0;
+        public int enumIndex;
 
         public override string ToString()
         {
@@ -362,7 +362,7 @@ namespace CATHODE.Scripting
     {
         public cEnumString()
         {
-            this.enumID = ShortGuidUtils.Generate(((EnumType)0).ToString());
+            this.enumID = ShortGuid.Invalid;
             dataType = DataType.ENUM_STRING;
         }
         public cEnumString(ShortGuid enumID, string enumString = "") 

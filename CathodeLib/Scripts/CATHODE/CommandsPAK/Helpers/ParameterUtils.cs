@@ -381,18 +381,18 @@ namespace CATHODE.Scripting
             return parameters;
         }
 
-        /* Get metadata about a parameter on an entity */
-        public static (ParameterVariant?, DataType?) GetParameterMetadata(Entity entity, string parameter)
+        /* Get metadata about a parameter on an entity: variant, type, and function/composite that implements (if applicable) */
+        public static (ParameterVariant?, DataType?, ShortGuid) GetParameterMetadata(Entity entity, string parameter)
         {
             return GetParameterMetadata(entity, ShortGuidUtils.Generate(parameter));
         }
-        public static (ParameterVariant?, DataType?) GetParameterMetadata(Entity entity, ShortGuid parameter)
+        public static (ParameterVariant?, DataType?, ShortGuid) GetParameterMetadata(Entity entity, ShortGuid parameter)
         {
             switch (entity.variant)
             {
                 case EntityVariant.VARIABLE:
                     if (parameter == ((VariableEntity)entity).name)
-                        return (ParameterVariant.PARAMETER, ((VariableEntity)entity).type);
+                        return (ParameterVariant.PARAMETER, ((VariableEntity)entity).type, ShortGuid.Invalid);
                     break;
                 case EntityVariant.FUNCTION:
                     FunctionEntity functionEntity = (FunctionEntity)entity;
@@ -403,7 +403,7 @@ namespace CATHODE.Scripting
                         {
                             var metadata = GetParameterMetadata(functionType.Value, parameter);
                             if (metadata.Item1 != null)
-                                return metadata;
+                                return (metadata.Item1, metadata.Item2, metadata.Item3 == null ? ShortGuid.Invalid : new ShortGuid((UInt32)metadata.Item3));
                             functionType = GetInheritedFunction(functionType.Value);
                             if (functionType == null) break;
                         }
@@ -412,7 +412,7 @@ namespace CATHODE.Scripting
                     {
                         var metadata = GetParameterMetadata(FunctionType.CompositeInterface, parameter);
                         if (metadata.Item1 != null)
-                            return metadata;
+                            return (metadata.Item1, metadata.Item2, metadata.Item3 == null ? ShortGuid.Invalid : new ShortGuid((UInt32)metadata.Item3));
                         Composite composite = _commands.GetComposite(functionEntity.function);
                         if (composite != null)
                         {
@@ -421,10 +421,10 @@ namespace CATHODE.Scripting
                             {
                                 CompositePinInfoTable.PinInfo info = CompositeUtils.GetParameterInfo(composite, var);
                                 if (info == null)
-                                    return (ParameterVariant.PARAMETER, var.type);
+                                    return (ParameterVariant.PARAMETER, var.type, composite.shortGUID);
                                 else
                                 {
-                                    return (CompositeUtils.PinTypeToParameterVariant(info.PinTypeGUID), var.type);
+                                    return (CompositeUtils.PinTypeToParameterVariant(info.PinTypeGUID), var.type, composite.shortGUID);
                                 }
                             }
                         }
@@ -434,7 +434,7 @@ namespace CATHODE.Scripting
                     {
                         var metadata = GetParameterMetadata(FunctionType.ProxyInterface, parameter);
                         if (metadata.Item1 != null)
-                            return metadata;
+                            return (metadata.Item1, metadata.Item2, metadata.Item3 == null ? ShortGuid.Invalid : new ShortGuid((UInt32)metadata.Item3));
                         ProxyEntity proxyEntity = (ProxyEntity)entity;
                         Entity proxiedEntity = proxyEntity.proxy.GetPointedEntity(_commands);
                         if (proxiedEntity != null)
@@ -448,26 +448,26 @@ namespace CATHODE.Scripting
                         return GetParameterMetadata(aliasedEntity, parameter);
                     break;
             }
-            return (null, null);
+            return (null, null, ShortGuid.Invalid);
         }
 
-        /* Get metadata about a parameter on a function */
-        public static (ParameterVariant?, DataType?) GetParameterMetadata(FunctionType function, string parameter)
+        /* Get metadata about a parameter on a function: variant, type, and function that implements */
+        public static (ParameterVariant?, DataType?, FunctionType?) GetParameterMetadata(FunctionType function, string parameter)
         {
             return GetParameterMetadata(function, ShortGuidUtils.Generate(parameter));
         }
-        public static (ParameterVariant?, DataType?) GetParameterMetadata(FunctionType function, ShortGuid parameter)
+        public static (ParameterVariant?, DataType?, FunctionType?) GetParameterMetadata(FunctionType function, ShortGuid parameter)
         {
             Dictionary<ParameterVariant, int> offsets = _functionVariantOffsets[function];
             foreach (KeyValuePair<ParameterVariant, int> entry in offsets)
             {
-                (ParameterVariant?, DataType?) data = GetParameterMetadata(function, parameter, entry.Key);
-                if (data.Item1 != null && data.Item2 != null)
+                (ParameterVariant?, DataType?, FunctionType?) data = GetParameterMetadata(function, parameter, entry.Key);
+                if (data.Item1 != null && data.Item2 != null && data.Item3 != null)
                     return data;
             }
-            return (null, null);
+            return (null, null, null);
         }
-        public static (ParameterVariant?, DataType?) GetParameterMetadata(FunctionType function, ShortGuid parameter, ParameterVariant variant)
+        public static (ParameterVariant?, DataType?, FunctionType?) GetParameterMetadata(FunctionType function, ShortGuid parameter, ParameterVariant variant)
         {
             List<(ShortGuid, ParameterVariant, DataType)> parameters = new List<(ShortGuid, ParameterVariant, DataType)>();
             using (BinaryReader reader = new BinaryReader(new MemoryStream(_functionInfo)))
@@ -485,12 +485,12 @@ namespace CATHODE.Scripting
                         case ParameterVariant.METHOD_FUNCTION:
                         case ParameterVariant.METHOD_PIN:
                             if (isCorrectParam)
-                                return (variant, DataType.FLOAT);
+                                return (variant, DataType.FLOAT, function);
                             break;
                         default:
                             DataType dataType = (DataType)reader.ReadInt32();
                             if (isCorrectParam)
-                                return (variant, dataType);
+                                return (variant, dataType, function);
                             switch (dataType)
                             {
                                 case DataType.BOOL:
@@ -540,7 +540,7 @@ namespace CATHODE.Scripting
                     }
                 }
             }
-            return (null, null);
+            return (null, null, null);
         }
 
         /* Create ParameterData with default values for the given entity's parameter */
@@ -747,8 +747,8 @@ namespace CATHODE.Scripting
                                         reader.BaseStream.Position += 4;
                                     break;
                                 default:
-                                    return new cFloat();
-                                    //Any other types have no default values.
+                                    if (isCorrectParam)
+                                        return new cFloat(); //Any other types have no default values.
                                     break;
                             }
                             break;
