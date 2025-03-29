@@ -65,7 +65,6 @@ namespace CathodeLib
             dbContent = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/composite_parameter_info.bin");
 #else
             dbContent = CathodeLib.Properties.Resources.composite_parameter_info;
-            File.WriteAllBytes("composite_parameter_info_test", dbContent);
             if (File.Exists("LocalDB/composite_parameter_info.bin"))
                 dbContent = File.ReadAllBytes("LocalDB/composite_parameter_info.bin");
 #endif
