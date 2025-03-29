@@ -69,7 +69,7 @@ Check out a full overview of the Commands structure [on the Wiki](https://github
     - Get/set content as an `XmlDocument` via `BML.Content`
 
 ## For saves:
-- `CATHODE.ProgressionSave` handles `PROGRESSION.AIS` files
+- `CATHODE.EXPERIMENTAL.ProgressionSave` handles `PROGRESSION.AIS` files
 - `CATHODE.EXPERIMENTAL.MissionSave` handles `*.AIS` files (experimental)
  
 ---
