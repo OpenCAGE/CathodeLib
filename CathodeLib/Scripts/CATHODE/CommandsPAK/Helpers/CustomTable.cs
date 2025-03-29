@@ -692,6 +692,7 @@ namespace CathodeLib
                     pin_info.PinTypeGUID = Utilities.Consume<ShortGuid>(reader);
                     if (version >= 3)
                         pin_info.PinEnumTypeGUID = Utilities.Consume<ShortGuid>(reader);
+                    //TODO: We should include the default index here too for enums.
                     pin_infos.Add(pin_info);
                 }
             }
