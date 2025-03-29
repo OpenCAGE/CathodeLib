@@ -20,9 +20,13 @@ namespace CATHODE.Scripting
         public static Commands LinkedCommands => _commands;
         private static Commands _commands;
 
+        private static uint _nameID; //We remove the "name" param on every entity except Zone, since that is handled by EntityUtils.
+
         /* Load all FunctionEntity metadata from our offline DB */
         static ParameterUtils()
         {
+            _nameID = ShortGuidUtils.Generate("name").ToUInt32();
+
 #if UNITY_EDITOR || UNITY_STANDALONE
             _functionInfo = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_entity_lut.bin");
 #else
@@ -327,7 +331,8 @@ namespace CATHODE.Scripting
                                 break;
                             default:
                                 DataType dataType = (DataType)reader.ReadInt32();
-                                parameters.Add((new ShortGuid(paramID), entry.Key, dataType));
+                                if (!(function != FunctionType.Zone && paramID == _nameID))
+                                    parameters.Add((new ShortGuid(paramID), entry.Key, dataType));
                                 switch (dataType)
                                 {
                                     case DataType.BOOL:
@@ -702,8 +707,9 @@ namespace CATHODE.Scripting
                                     break;
                                 case DataType.STRING:
                                 case DataType.FILEPATH:
-                                    if (isCorrectParam)
-                                        return new cString(reader.ReadString());
+                                    if (isCorrectParam) 
+                                        if (!(function != FunctionType.Zone && paramID == _nameID))
+                                            return new cString(reader.ReadString());
                                     else
                                     {
                                         int seek = reader.ReadByte();
@@ -729,7 +735,7 @@ namespace CATHODE.Scripting
                                     break;
                                 case DataType.ENUM_STRING:
                                     if (isCorrectParam)
-                                        new cEnumString((EnumStringType)Enum.Parse(typeof(EnumStringType), reader.ReadString()), reader.ReadString());
+                                        return new cEnumString((EnumStringType)Enum.Parse(typeof(EnumStringType), reader.ReadString()), reader.ReadString());
                                     else
                                     {
                                         int seek = reader.ReadByte();
