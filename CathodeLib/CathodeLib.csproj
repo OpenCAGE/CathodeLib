@@ -10,11 +10,14 @@
     <Authors>Matt Filer</Authors>
     <Description>Provides support for parsing and writing common Alien: Isolation formats from the Cathode engine.</Description>
     <Copyright>Matt Filer 2025</Copyright>
-    <Version>0.8.0</Version>
+    <Version>0.8.1</Version>
     <OutputType>Library</OutputType>
-    <AssemblyVersion>0.7.8.0</AssemblyVersion>
-    <FileVersion>0.7.8.0</FileVersion>
+    <AssemblyVersion>0.7.8.1</AssemblyVersion>
+    <FileVersion>0.7.8.1</FileVersion>
     <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>alien, modding, alien isolation, mod tool, file utility</PackageTags>
+    <Title>CathodeLib</Title>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -32,6 +35,10 @@
     <None Include="..\icon.png">
       <Pack>True</Pack>
       <PackagePath></PackagePath>
+    </None>
+    <None Include="..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
     </None>
   </ItemGroup>
 

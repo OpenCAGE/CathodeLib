@@ -556,6 +556,9 @@ namespace CATHODE.Scripting
                     VariableEntity variableEntity = (VariableEntity)entity;
                     if (parameter == variableEntity.name)
                     {
+                        ParameterData defaultVal = variableEntity.GetParameter(parameter)?.content;
+                        if (defaultVal != null)
+                            return (ParameterData)defaultVal.Clone();
                         CompositePinInfoTable.PinInfo info = CompositeUtils.GetParameterInfo(composite, variableEntity);
                         switch (variableEntity.type)
                         {

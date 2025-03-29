@@ -238,6 +238,8 @@ namespace CathodeLib
                 case CompositePinType.CompositeOutputVariablePin:
                 case CompositePinType.CompositeOutputZoneLinkPtrVariablePin:
                 case CompositePinType.CompositeOutputZonePtrVariablePin:
+                case CompositePinType.CompositeOutputEnumVariablePin:
+                case CompositePinType.CompositeOutputEnumStringVariablePin:
                     return ParameterVariant.OUTPUT_PIN;
                 case CompositePinType.CompositeMethodPin:
                     return ParameterVariant.METHOD_PIN;
