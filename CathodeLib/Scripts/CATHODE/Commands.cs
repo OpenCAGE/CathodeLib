@@ -1,5 +1,3 @@
-//#define DO_PRETTY_COMPOSITES
-
 using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using CathodeLib;
@@ -36,6 +34,10 @@ namespace CATHODE
         //  - Pause Menu Instance
         private ShortGuid[] _entryPoints = null;
         private Composite[] _entryPointObjects = null;
+
+        //Set this value to true before initialising your Commands object to load with non-capitalised composite names.
+        //Changing this value AFTER loading will not make any difference to the loaded Commands object, only future ones.
+        public static bool UsePrettyPaths = false;
 
         #region FILE_IO
         override protected bool LoadInternal()
@@ -151,10 +153,12 @@ namespace CATHODE
                         //Read script ID and string name
                         reader_parallel.BaseStream.Position = (scriptStartOffset * 4) + 4;
                         composite.name = Utilities.ReadString(reader_parallel);
-#if DO_PRETTY_COMPOSITES
-                        string prettyPath = CompositePathDB.GetPrettyPathForComposite(composite.shortGUID);
-                        if (prettyPath != "") composite.name = prettyPath;
-#endif
+                        if (UsePrettyPaths)
+                        {
+                            string prettyPath = CompositeUtils.GetPrettyPath(composite.shortGUID);
+                            if (prettyPath != "") composite.name = prettyPath;
+                            composite.name = composite.name.Replace("/", "\\");
+                        }
                         Utilities.Align(reader_parallel, 4);
 
                         //Pull data from those offsets
@@ -360,8 +364,8 @@ namespace CATHODE
                                                     CAGEAnimation.Event.Keyframe keyframe = new CAGEAnimation.Event.Keyframe();
                                                     reader_parallel.BaseStream.Position += 4;
                                                     keyframe.secondsSinceStart = reader_parallel.ReadSingle(); 
-                                                    keyframe.start = Utilities.Consume<ShortGuid>(reader_parallel);
-                                                    keyframe.unk3 = Utilities.Consume<ShortGuid>(reader_parallel);
+                                                    keyframe.startEvent = Utilities.Consume<ShortGuid>(reader_parallel);
+                                                    keyframe.reverseEvent = Utilities.Consume<ShortGuid>(reader_parallel);
                                                     reader_parallel.BaseStream.Position += 8;
                                                     thisParamSet.keyframes.Add(keyframe);
                                                 }
@@ -1034,8 +1038,8 @@ namespace CATHODE
                                                 CAGEAnimation.Event.Keyframe key = cageAnimationEntities[i][p].events[pp].keyframes[ppp];
                                                 writer.Write((Int32)1);
                                                 writer.Write(key.secondsSinceStart);
-                                                Utilities.Write<ShortGuid>(writer, key.start);
-                                                Utilities.Write<ShortGuid>(writer, key.unk3);
+                                                Utilities.Write<ShortGuid>(writer, key.startEvent);
+                                                Utilities.Write<ShortGuid>(writer, key.reverseEvent);
                                                 writer.Write(keyframeRefs.Count == 0 ? 3 : 4);
                                                 writer.Write((Int32)0);
                                             }

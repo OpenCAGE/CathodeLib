@@ -1,6 +1,9 @@
-﻿using CATHODE.Scripting.Internal;
+//#define DO_DEBUG_DUMP
+
+using CATHODE.Scripting.Internal;
 using CathodeLib;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
@@ -23,15 +26,30 @@ namespace CATHODE.Scripting
         static ShortGuidUtils()
         {
 #if UNITY_EDITOR || UNITY_STANDALONE
-            BinaryReader reader = new BinaryReader(File.OpenRead(Application.streamingAssetsPath + "/NodeDBs/entity_parameter_names.bin"));
+            byte[] dbContent = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_shortguid_lut.bin");
 #else
-            BinaryReader reader = new BinaryReader(new MemoryStream(CathodeLib.Properties.Resources.entity_parameter_names));
+            byte[] dbContent = CathodeLib.Properties.Resources.cathode_shortguid_lut;
+            if (File.Exists("LocalDB/cathode_shortguid_lut.bin"))
+                dbContent = File.ReadAllBytes("LocalDB/cathode_shortguid_lut.bin");
 #endif
+
+            BinaryReader reader = new BinaryReader(new MemoryStream(dbContent));
             _vanilla = new GuidNameTable();
             _custom = new GuidNameTable();
             while (reader.BaseStream.Position < reader.BaseStream.Length)
                 Cache(new ShortGuid(reader), reader.ReadString(), true);
             reader.Close();
+
+#if DO_DEBUG_DUMP
+            Directory.CreateDirectory("DebugDump");
+            List<string> parameters = new List<string>();
+            foreach (KeyValuePair<string, ShortGuid> value in _vanilla.cache)
+            {
+                parameters.Add(value.Key);
+            }
+            parameters.Sort();
+            File.WriteAllLines("DebugDump/parameters.txt", parameters);
+#endif
         }
 
         /* Optionally, link a Commands file which can be used to save custom ShortGuids to */
@@ -51,10 +69,10 @@ namespace CATHODE.Scripting
         /* Generate a ShortGuid to interface with the Cathode scripting system */
         public static ShortGuid Generate(string value, bool cache = true)
         {
-            if (_vanilla.cache.ContainsKey(value)) 
-                return _vanilla.cache[value];
-            if (_custom.cache.ContainsKey(value))
-                return _custom.cache[value];
+            if (_custom.cache.TryGetValue(value, out ShortGuid customVal))
+                return customVal;
+            if (_vanilla.cache.TryGetValue(value, out ShortGuid vanillaVal)) 
+                return vanillaVal;
 
             SHA1Managed sha1 = new SHA1Managed();
             byte[] hash1 = sha1.ComputeHash(Encoding.UTF8.GetBytes(value));
@@ -93,10 +111,10 @@ namespace CATHODE.Scripting
         /* Attempts to look up the string for a given ShortGuid */
         public static string FindString(ShortGuid guid)
         {
-            if (_custom.cacheReversed.ContainsKey(guid))
-                return _custom.cacheReversed[guid];
-            if (_vanilla.cacheReversed.ContainsKey(guid))
-                return _vanilla.cacheReversed[guid];
+            if (_custom.cacheReversed.TryGetValue(guid, out string customVal))
+                return customVal;
+            if (_vanilla.cacheReversed.TryGetValue(guid, out string vanillaVal))
+                return vanillaVal;
 
             return guid.ToByteString();
         }
@@ -120,7 +138,7 @@ namespace CATHODE.Scripting
                 guid = Generate(str, false);
                 i++;
             }
-            Cache(guid, str);
+            //Cache(guid, str);
             return guid;
         }
 

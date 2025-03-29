@@ -83,6 +83,16 @@ namespace CathodeLib.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
+        internal static byte[] composite_parameter_info {
+            get {
+                object obj = ResourceManager.GetObject("composite_parameter_info", resourceCulture);
+                return ((byte[])(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Byte[].
+        /// </summary>
         internal static byte[] composite_paths {
             get {
                 object obj = ResourceManager.GetObject("composite_paths", resourceCulture);
@@ -93,9 +103,9 @@ namespace CathodeLib.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
-        internal static byte[] entity_parameter_names {
+        internal static byte[] cathode_shortguid_lut {
             get {
-                object obj = ResourceManager.GetObject("entity_parameter_names", resourceCulture);
+                object obj = ResourceManager.GetObject("cathode_shortguid_lut", resourceCulture);
                 return ((byte[])(obj));
             }
         }
@@ -106,6 +116,16 @@ namespace CathodeLib.Properties {
         internal static byte[] sound_names {
             get {
                 object obj = ResourceManager.GetObject("sound_names", resourceCulture);
+                return ((byte[])(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Byte[].
+        /// </summary>
+        internal static byte[] cathode_entity_lut {
+            get {
+                object obj = ResourceManager.GetObject("cathode_entity_lut", resourceCulture);
                 return ((byte[])(obj));
             }
         }

@@ -17,10 +17,13 @@ namespace CATHODE.Scripting
         static EnumUtils()
         {
 #if UNITY_EDITOR || UNITY_STANDALONE
-            lookup_enum = ReadDB(File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/composite_entity_names.bin")).Cast<EnumDescriptor>().ToList();
+            byte[] dbContent = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_enum_lut.bin");
 #else
-            lookup_enum = ReadDB(CathodeLib.Properties.Resources.cathode_enum_lut).Cast<EnumDescriptor>().ToList();
+            byte[] dbContent = CathodeLib.Properties.Resources.cathode_enum_lut;
+            if (File.Exists("LocalDB/cathode_enum_lut.bin"))
+                dbContent = File.ReadAllBytes("LocalDB/cathode_enum_lut.bin");
 #endif
+            lookup_enum = ReadDB(dbContent).Cast<EnumDescriptor>().ToList();
         }
 
         //Check the formatted enum dump for content
@@ -48,7 +51,6 @@ namespace CATHODE.Scripting
                 int entryCount = reader.ReadInt32();
                 for (int x = 0; x < entryCount; x++) 
                     thisDesc.Entries.Add(new EnumDescriptor.Entry() { Name = reader.ReadString(), Index = reader.ReadInt32() });
-                Console.WriteLine(thisDesc.Name);
                 toReturn.Add(thisDesc);
             }
             reader.Close();

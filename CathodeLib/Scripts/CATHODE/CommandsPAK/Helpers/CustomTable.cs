@@ -1,7 +1,8 @@
-﻿using CATHODE.Scripting;
+using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using System;
 using System.Collections.Generic;
+using System.Data.Common;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -53,6 +54,9 @@ namespace CathodeLib
                     if (toWrite[tableType] == null) writer.Write((Int32)0);
                     else
                     {
+#if DEBUG
+                        long startSize = writer.BaseStream.Length;
+#endif
                         switch (tableType)
                         {
                             case CustomEndTables.ENTITY_NAMES:
@@ -73,7 +77,21 @@ namespace CathodeLib
                             case CustomEndTables.COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO:
                                 ((CompositeFlowgraphCompatibilityTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomEndTables.COMPOSITE_PARAMETER_MODIFICATION:
+                                ((CompositeParameterModificationTable)toWrite[tableType]).Write(writer);
+                                break;
+                            case CustomEndTables.ENTITY_APPLIED_DEFAULTS:
+                                ((EntityAppliedDefaultsTable)toWrite[tableType]).Write(writer);
+                                break;
+                            case CustomEndTables.COMPOSITE_PIN_INFO:
+                                ((CompositePinInfoTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
+#if DEBUG
+                        //TODO: we write every table every time, which seems perhaps illogical?
+                        if (tableType == table)
+                            Console.WriteLine("[" + (writer.BaseStream.Length - startSize) + "] Wrote table " + tableType);
+#endif
                     }
                 }
 
@@ -127,6 +145,15 @@ namespace CathodeLib
                         break;
                     case CustomEndTables.COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO:
                         data = new CompositeFlowgraphCompatibilityTable(reader);
+                        break;
+                    case CustomEndTables.COMPOSITE_PARAMETER_MODIFICATION:
+                        data = new CompositeParameterModificationTable(reader);
+                        break;
+                    case CustomEndTables.ENTITY_APPLIED_DEFAULTS:
+                        data = new EntityAppliedDefaultsTable(reader);
+                        break;
+                    case CustomEndTables.COMPOSITE_PIN_INFO:
+                        data = new CompositePinInfoTable(reader);
                         break;
                 }
             }
@@ -525,6 +552,175 @@ namespace CathodeLib
         {
             public ShortGuid composite_id;
             public bool flowgraphs_supported;
+        }
+    }
+    public class CompositeParameterModificationTable : CustomTable.Table
+    {
+        public CompositeParameterModificationTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomEndTables.COMPOSITE_PARAMETER_MODIFICATION;
+        }
+
+        public Dictionary<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>> modified_params;
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+            {
+                modified_params = new Dictionary<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>>();
+                return;
+            }
+
+            int count = reader.ReadInt32();
+            modified_params = new Dictionary<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>>(count);
+            for (int i = 0; i < count; i++)
+            {
+                Dictionary<ShortGuid, HashSet<ShortGuid>> entities = new Dictionary<ShortGuid, HashSet<ShortGuid>>();
+                modified_params.Add(Utilities.Consume<ShortGuid>(reader), entities);
+                int entity_count = reader.ReadInt32();
+                for (int x = 0; x < entity_count; x++)
+                {
+                    HashSet<ShortGuid> parameters = new HashSet<ShortGuid>();
+                    entities.Add(Utilities.Consume<ShortGuid>(reader), parameters);
+                    int parameter_count = reader.ReadInt32();
+                    for (int z = 0; z < parameter_count; z++)
+                    {
+                        parameters.Add(Utilities.Consume<ShortGuid>(reader));
+                    }
+                }
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(modified_params.Count);
+            foreach (KeyValuePair<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>> composites in modified_params)
+            {
+                Utilities.Write<ShortGuid>(writer, composites.Key);
+                writer.Write(composites.Value.Count);
+                foreach (KeyValuePair<ShortGuid, HashSet<ShortGuid>> entity in composites.Value)
+                {
+                    Utilities.Write<ShortGuid>(writer, entity.Key);
+                    writer.Write(entity.Value.Count);
+                    foreach (ShortGuid parameter in entity.Value)
+                    {
+                        Utilities.Write<ShortGuid>(writer, parameter);
+                    }
+                }
+            }
+        }
+    }
+    public class EntityAppliedDefaultsTable : CustomTable.Table
+    {
+        public EntityAppliedDefaultsTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomEndTables.ENTITY_APPLIED_DEFAULTS;
+        }
+
+        public Dictionary<ShortGuid, HashSet<ShortGuid>> applied_defaults;
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+            {
+                applied_defaults = new Dictionary<ShortGuid, HashSet<ShortGuid>>();
+                return;
+            }
+
+            int count = reader.ReadInt32();
+            applied_defaults = new Dictionary<ShortGuid, HashSet<ShortGuid>>(count);
+            for (int i = 0; i < count; i++)
+            {
+                HashSet<ShortGuid> entities = new HashSet<ShortGuid>();
+                applied_defaults.Add(Utilities.Consume<ShortGuid>(reader), entities);
+                int entity_count = reader.ReadInt32();
+                for (int x = 0; x < entity_count; x++)
+                {
+                    entities.Add(Utilities.Consume<ShortGuid>(reader));
+                }
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(applied_defaults.Count);
+            foreach (KeyValuePair<ShortGuid, HashSet<ShortGuid>> composites in applied_defaults)
+            {
+                Utilities.Write<ShortGuid>(writer, composites.Key);
+                writer.Write(composites.Value.Count);
+                foreach (ShortGuid entity in composites.Value)
+                {
+                    Utilities.Write<ShortGuid>(writer, entity);
+                }
+            }
+        }
+    }
+    public class CompositePinInfoTable : CustomTable.Table
+    {
+        public CompositePinInfoTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomEndTables.COMPOSITE_PIN_INFO;
+        }
+
+        public Dictionary<ShortGuid, List<PinInfo>> composite_pin_infos;
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+            {
+                composite_pin_infos = new Dictionary<ShortGuid, List<PinInfo>>();
+                return;
+            }
+
+            byte version = reader.ReadByte();
+            if (version == 0 || version == 1)
+            {
+                composite_pin_infos = new Dictionary<ShortGuid, List<PinInfo>>();
+                return;
+            }
+            int count = reader.ReadInt32();
+            composite_pin_infos = new Dictionary<ShortGuid, List<PinInfo>>(count);
+            for (int i = 0; i < count; i++)
+            {
+                List<PinInfo> pin_infos = new List<PinInfo>();
+                composite_pin_infos.Add(Utilities.Consume<ShortGuid>(reader), pin_infos);
+                int pin_count = reader.ReadInt32();
+                for (int z = 0; z < pin_count; z++)
+                {
+                    PinInfo pin_info = new PinInfo();
+                    pin_info.VariableGUID = Utilities.Consume<ShortGuid>(reader);
+                    pin_info.PinTypeGUID = Utilities.Consume<ShortGuid>(reader);
+                    if (version >= 3)
+                        pin_info.PinEnumTypeGUID = Utilities.Consume<ShortGuid>(reader);
+                    //TODO: We should include the default index here too for enums.
+                    pin_infos.Add(pin_info);
+                }
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(PinInfo.VERSION);
+            writer.Write(composite_pin_infos.Count);
+            foreach (KeyValuePair<ShortGuid, List<PinInfo>> composites in composite_pin_infos)
+            {
+                Utilities.Write<ShortGuid>(writer, composites.Key);
+                writer.Write(composites.Value.Count);
+                foreach (PinInfo pin_info in composites.Value)
+                {
+                    Utilities.Write<ShortGuid>(writer, pin_info.VariableGUID);
+                    Utilities.Write<ShortGuid>(writer, pin_info.PinTypeGUID);
+                    Utilities.Write<ShortGuid>(writer, pin_info.PinEnumTypeGUID);
+                }
+            }
+        }
+
+        public class PinInfo
+        {
+            public const byte VERSION = 3;
+            public ShortGuid VariableGUID;
+            public ShortGuid PinTypeGUID;
+            public ShortGuid PinEnumTypeGUID; //For Enum and EnumString types
         }
     }
 }

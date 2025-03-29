@@ -75,7 +75,15 @@ namespace CATHODE
                     Matrix4x4 Matrix = Utilities.Consume<Matrix4x4>(reader); //This is always identity
 
                     uint id = reader.ReadUInt32();
-                    anim.SkeletonName = _strings.Entries[id];
+                    if (_strings.Entries.TryGetValue(id, out string name))
+                    {
+                        anim.SkeletonName = name;
+                    }
+                    else
+                    {
+                        Console.WriteLine("WARNING: Skeleton ID " + id + " could not look up a name!");
+                        anim.SkeletonName = id.ToString();
+                    }
                     reader.BaseStream.Position += 4;
                     anim.ResourceIndex = reader.ReadInt32(); //the index which links through to the resource reference in COMMANDS
 

@@ -72,34 +72,34 @@ namespace CATHODE.Scripting
         }
 
         /* Add a new function entity */
-        public FunctionEntity AddFunction(FunctionType function, bool autopopulateParameters = false)
+        public FunctionEntity AddFunction(FunctionType function)
         {
             FunctionEntity func = null;
             switch (function) {
                 case FunctionType.CAGEAnimation:
-                    func = new CAGEAnimation(autopopulateParameters);
+                    func = new CAGEAnimation();
                     break;
                 case FunctionType.TriggerSequence:
-                    func = new TriggerSequence(autopopulateParameters);
+                    func = new TriggerSequence();
                     break;
                 default:
-                    func = new FunctionEntity(function, autopopulateParameters);
+                    func = new FunctionEntity(function);
                     break;
             }
             functions.Add(func);
             return func;
         }
-        public FunctionEntity AddFunction(Composite composite, bool autopopulateParameters = false)
+        public FunctionEntity AddFunction(Composite composite)
         {
-            FunctionEntity func = new FunctionEntity(composite.shortGUID, autopopulateParameters);
+            FunctionEntity func = new FunctionEntity(composite);
             functions.Add(func);
             return func;
         }
 
         /* Add a new variable entity */
-        public VariableEntity AddVariable(string parameter, DataType type, bool addDefaultParam = false)
+        public VariableEntity AddVariable(string parameter, DataType type)
         {
-            VariableEntity vari = new VariableEntity(parameter, type, addDefaultParam);
+            VariableEntity vari = new VariableEntity(parameter, type);
             variables.Add(vari);
             return vari;
         }

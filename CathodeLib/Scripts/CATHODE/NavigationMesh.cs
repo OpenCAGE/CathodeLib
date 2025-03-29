@@ -111,13 +111,6 @@ namespace CATHODE.EXPERIMENTAL
             /// Packed data representing neighbor polygons references and flags for each edge.
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)]
             public UInt16[] neis;
-
-            // TODO: Stuff below this point is uncertain. This is not standard detour stuff.
-            public int VertexCount;
-            public UInt16 Flags;
-            public byte Type;// : 6;
-            public byte Area;// : 2;
-            public byte PaddingZero_;
         };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -148,8 +141,10 @@ namespace CATHODE.EXPERIMENTAL
             public char vertCount;
             /// The number of triangles in the sub-mesh.
             public char triCount;			
+
+            //Added by CA: this is always zero
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public byte[] _padding; // this isn't in base dt!
+            public byte[] _padding;
         };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -183,6 +178,19 @@ namespace CATHODE.EXPERIMENTAL
             public char side;
             /// The id of the offmesh connection. (User assigned when the navigation mesh is built.)
             public int userId;
+
+            
+        	//Below are additions by CA
+        
+        	public int zero_1; //Always 0
+        
+        	// entity handle to PathfindingWaitNode
+        	public EntityHandle entity;
+        
+        	public float unk;
+        
+        	public int zero_2; //Always 0
+        	public int three; //Always 3
         };
         #endregion
     }
