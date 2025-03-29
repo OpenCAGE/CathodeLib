@@ -46,9 +46,9 @@ namespace CATHODE.Scripting.Internal
                 case DataType.VECTOR:
                     return ((cVector3)x).value == ((cVector3)y).value;
                 case DataType.ENUM:
-                    cEnum x_e = (cEnum)x;
-                    cEnum y_e = (cEnum)y;
-                    return x_e.enumIndex == y_e.enumIndex && x_e.enumID == y_e.enumID;
+                    return ((cEnum)x).enumIndex == ((cEnum)y).enumIndex && ((cEnum)x).enumID == ((cEnum)y).enumID;
+                case DataType.ENUM_STRING:
+                    return ((cEnumString)x).value == ((cEnumString)y).value && ((cEnumString)x).enumID == ((cEnumString)y).enumID;
                 case DataType.SPLINE:
                     return ((cSpline)x).splinePoints == ((cSpline)y).splinePoints;
                 case DataType.NONE:
@@ -89,8 +89,9 @@ namespace CATHODE.Scripting.Internal
                 case DataType.VECTOR:
                     return ((cVector3)this).value.GetHashCode();
                 case DataType.ENUM:
-                    cEnum x_e = (cEnum)this;
-                    return x_e.enumID.ToByteString().GetHashCode() + x_e.enumIndex;
+                    return ((cEnum)this).enumID.ToByteString().GetHashCode() + ((cEnum)this).enumIndex;
+                case DataType.ENUM_STRING:
+                    return ((cEnumString)this).enumID.ToByteString().GetHashCode() + ((cEnumString)this).value.GetHashCode();
                 case DataType.SPLINE:
                     cSpline x_sd = (cSpline)this;
                     int x_sd_i = 0;

@@ -705,7 +705,7 @@ namespace CATHODE
                 for (int i = 0; i < parameters.Count; i++)
                 {
                     parameterOffsets.Add(parameters[i], (int)writer.BaseStream.Position / 4);
-                    Utilities.Write<ShortGuid>(writer, CommandsUtils.GetDataTypeGUID(parameters[i].dataType));
+                    Utilities.Write<ShortGuid>(writer, CommandsUtils.GetDataTypeGUID(parameters[i].dataType == DataType.ENUM_STRING ? DataType.STRING : parameters[i].dataType));
                     switch (parameters[i].dataType)
                     {
                         case DataType.TRANSFORM:
