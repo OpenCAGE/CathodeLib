@@ -1,4 +1,4 @@
-﻿using CathodeLib;
+using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
