@@ -1072,6 +1072,8 @@ namespace CATHODE.Scripting
     /* Enum strings available within Cathode (these are cString type, but can be looked up using DATA) */
     public enum EnumStringType : uint
     {
+        //TODO: need to update the enum webpage with these
+
         ACHIEVEMENT_ID = 3485949151,
         ACHIEVEMENT_STAT_ID = 1970461931,
         ANIM_SET = 796973007,
@@ -1079,20 +1081,23 @@ namespace CATHODE.Scripting
         ATTRIBUTE_SET = 2268397301,
         BLUEPRINT_TYPE = 3218638249,
         CHR_SKELETON_SET = 3537648953,
-        CUSTOM_PRESET_SET = 935006766,
-        DVR_MOMENT_ID = 1074858079,
         GAME_VARIABLE = 3806196912,
         GAMEPLAY_TIP_STRING_ID = 3550943910,
         IDTAG_ID = 3358979085,
-        MAP_ELEMENT_ID = 3723361710,
         MAP_KEYFRAME_ID = 1494642745,
         NOSTROMO_LOG_ID = 1157640041,
         OBJECTIVE_ENTRY_ID = 3067794301,
         PRESENCE_ID = 2589585909,
         SEVASTOPOL_LOG_ID = 3163607120,
+        SOUND_ARGUMENT = 4000624401,
         SOUND_EVENT = 3122669037,
         SOUND_FOOTWEAR_GROUP = 911429336,
         SOUND_LEG_GROUP = 1285801591,
+        SOUND_PARAMETER = 743631359,
+        SOUND_REVERB = 1053063402,
+        SOUND_RTPC = 3430842214,
+        SOUND_STATE = 3294208177,
+        SOUND_SWITCH = 1905083384,
         SOUND_TORSO_GROUP = 1112933567,
         TUTORIAL_ENTRY_ID = 2135177174,
     }

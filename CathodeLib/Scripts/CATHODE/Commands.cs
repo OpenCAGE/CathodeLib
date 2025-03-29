@@ -722,6 +722,7 @@ namespace CATHODE
                         case DataType.INTEGER:
                             writer.Write(((cInteger)parameters[i]).value);
                             break;
+                        case DataType.ENUM_STRING:
                         case DataType.STRING:
                             int stringStart = ((int)writer.BaseStream.Position + 4) / 4;
                             byte[] stringStartRaw = BitConverter.GetBytes(stringStart);
