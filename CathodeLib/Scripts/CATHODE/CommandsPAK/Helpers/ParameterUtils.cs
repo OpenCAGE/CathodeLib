@@ -481,6 +481,7 @@ namespace CATHODE.Scripting
                                 dataType = DataType.FLOAT;
                             if (isCorrectParam)
                                 return (variant, dataType, function);
+                            if (variant == ParameterVariant.TARGET_PIN) continue; //TargetPin can have a type, but doesn't have data.
                             switch (dataType)
                             {
                                 case DataType.BOOL:
