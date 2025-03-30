@@ -1,4 +1,4 @@
-﻿using CATHODE.Scripting.Internal;
+using CATHODE.Scripting.Internal;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
@@ -81,9 +81,9 @@ namespace CATHODE.Scripting
                     break;
                 case EntityVariant.PROXY:
                     {
-                        if (includeInherited)
-                            ApplyDefaults(entity, overwrite, variants, FunctionType.ProxyInterface);
                         Entity proxiedEntity = ((ProxyEntity)entity).proxy.GetPointedEntity(_commands, out Composite proxiedComposite);
+                        if (includeInherited)
+                            ApplyDefaults(proxiedEntity, entity, overwrite, variants, FunctionType.ProxyInterface);
                         if (proxiedEntity != null && proxiedComposite != null)
                         {
                             switch (proxiedEntity.variant)
@@ -115,7 +115,7 @@ namespace CATHODE.Scripting
                                     break;
                                 case EntityVariant.PROXY:
                                     if (includeInherited)
-                                        ApplyDefaults(aliasedEntity, overwrite, variants, FunctionType.ProxyInterface);
+                                        ApplyDefaults(aliasedEntity, entity, overwrite, variants, FunctionType.ProxyInterface);
                                     Entity proxiedEntity = ((ProxyEntity)aliasedEntity).proxy.GetPointedEntity(_commands, out Composite proxiedComposite);
                                     if (proxiedEntity != null && proxiedComposite != null)
                                     {
@@ -140,25 +140,26 @@ namespace CATHODE.Scripting
                     break;
             }
         }
-        private static void ApplyDefaults(Entity entity, bool overwrite, ParameterVariant variants, FunctionType function)
+        private static void ApplyDefaults(Entity baseEntity, Entity targetEntity, bool overwrite, ParameterVariant variants, FunctionType function)
         {
             List<(ShortGuid, ParameterVariant, DataType)> parameters = GetAllParameters(function);
             foreach ((ShortGuid guid, ParameterVariant variant, DataType type) in parameters)
             {
                 if (!variants.HasFlag(variant)) continue;
-                entity.AddParameter(guid, CreateDefaultParameterData(function, guid, variant), variant, overwrite);
+                ParameterData defaultValue = baseEntity.GetParameter(guid)?.content; 
+                targetEntity.AddParameter(guid, defaultValue != null ? defaultValue : CreateDefaultParameterData(function, guid, variant), variant, overwrite);
             }
         }
-        private static void ApplyDefaultVariable(VariableEntity variableEntity, Entity entity, Composite composite, ParameterVariant variants, bool overwrite)
+        private static void ApplyDefaultVariable(VariableEntity baseEntity, Entity targetEntity, Composite composite, ParameterVariant variants, bool overwrite)
         {
-            var pinInfo = CompositeUtils.GetParameterInfo(composite, variableEntity);
-            ParameterData defaultValue = variableEntity.GetParameter(variableEntity.name)?.content;
+            var pinInfo = CompositeUtils.GetParameterInfo(composite, baseEntity);
+            ParameterData defaultValue = baseEntity.GetParameter(baseEntity.name)?.content;
             if (defaultValue != null)
             {
                 if (pinInfo == null)
                 {
                     if (variants.HasFlag(ParameterVariant.PARAMETER))
-                        entity.AddParameter(variableEntity.name, defaultValue, ParameterVariant.PARAMETER, overwrite);
+                        targetEntity.AddParameter(baseEntity.name, defaultValue, ParameterVariant.PARAMETER, overwrite);
                 }
                 else
                 {
@@ -168,11 +169,11 @@ namespace CATHODE.Scripting
                     {
                         case CompositePinType.CompositeMethodPin:
                             if (variants.HasFlag(ParameterVariant.METHOD_PIN) || variants.HasFlag(ParameterVariant.METHOD_FUNCTION))
-                                entity.AddParameter(variableEntity.name, defaultValue, paramVariant, overwrite);
+                                targetEntity.AddParameter(baseEntity.name, defaultValue, paramVariant, overwrite);
                             break;
                         default:
                             if (variants.HasFlag(paramVariant))
-                                entity.AddParameter(variableEntity.name, defaultValue, paramVariant, overwrite);
+                                targetEntity.AddParameter(baseEntity.name, defaultValue, paramVariant, overwrite);
                             break;
                     }
                 }
@@ -182,7 +183,7 @@ namespace CATHODE.Scripting
                 if (pinInfo == null)
                 {
                     if (variants.HasFlag(ParameterVariant.PARAMETER))
-                        entity.AddParameter(variableEntity.name, variableEntity.type, ParameterVariant.PARAMETER, overwrite);
+                        targetEntity.AddParameter(baseEntity.name, baseEntity.type, ParameterVariant.PARAMETER, overwrite);
                 }
                 else
                 {
@@ -192,24 +193,24 @@ namespace CATHODE.Scripting
                     {
                         case CompositePinType.CompositeMethodPin:
                             if (variants.HasFlag(ParameterVariant.METHOD_PIN) || variants.HasFlag(ParameterVariant.METHOD_FUNCTION))
-                                entity.AddParameter(variableEntity.name, variableEntity.type, paramVariant, overwrite);
+                                targetEntity.AddParameter(baseEntity.name, baseEntity.type, paramVariant, overwrite);
                             break;
                         default:
                             if (variants.HasFlag(paramVariant))
-                                entity.AddParameter(variableEntity.name, variableEntity.type, paramVariant, overwrite);
+                                targetEntity.AddParameter(baseEntity.name, baseEntity.type, paramVariant, overwrite);
                             break;
                     }
                 }
             }
         }
-        private static void ApplyDefaultFunction(FunctionEntity functionEntity, Entity entity, Composite composite, ParameterVariant variants, bool overwrite, bool includeInherited)
+        private static void ApplyDefaultFunction(FunctionEntity baseEntity, Entity targetEntity, Composite composite, ParameterVariant variants, bool overwrite, bool includeInherited)
         {
-            if (CommandsUtils.FunctionTypeExists((functionEntity).function))
+            if (CommandsUtils.FunctionTypeExists((baseEntity).function))
             {
-                FunctionType? functionType = (FunctionType)(functionEntity).function.ToUInt32();
+                FunctionType? functionType = (FunctionType)(baseEntity).function.ToUInt32();
                 while (true)
                 {
-                    ApplyDefaults(entity, overwrite, variants, functionType.Value);
+                    ApplyDefaults(baseEntity, targetEntity, overwrite, variants, functionType.Value);
                     if (!includeInherited) break;
                     functionType = GetInheritedFunction(functionType.Value);
                     if (functionType == null) break;
@@ -218,11 +219,11 @@ namespace CATHODE.Scripting
             else
             {
                 if (includeInherited)
-                    ApplyDefaults(entity, overwrite, variants, FunctionType.CompositeInterface);
-                Composite compositeInstance = _commands.GetComposite((functionEntity).function);
+                    ApplyDefaults(baseEntity, targetEntity, overwrite, variants, FunctionType.CompositeInterface);
+                Composite compositeInstance = _commands.GetComposite((baseEntity).function);
                 foreach (VariableEntity variable in compositeInstance.variables)
                 {
-                    ApplyDefaultVariable(variable, entity, compositeInstance, variants, overwrite);
+                    ApplyDefaultVariable(variable, targetEntity, compositeInstance, variants, overwrite);
                 }
             }
         }
