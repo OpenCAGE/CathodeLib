@@ -152,75 +152,53 @@ namespace CATHODE.Scripting
         private static void ApplyDefaultVariable(VariableEntity variableEntity, Entity entity, Composite composite, ParameterVariant variants, bool overwrite)
         {
             var pinInfo = CompositeUtils.GetParameterInfo(composite, variableEntity);
-            if (pinInfo == null)
+            ParameterData defaultValue = variableEntity.GetParameter(variableEntity.name)?.content;
+            if (defaultValue != null)
             {
-                if (variants.HasFlag(ParameterVariant.PARAMETER))
-                    entity.AddParameter(variableEntity.name, variableEntity.type, ParameterVariant.PARAMETER, overwrite);
+                if (pinInfo == null)
+                {
+                    if (variants.HasFlag(ParameterVariant.PARAMETER))
+                        entity.AddParameter(variableEntity.name, defaultValue, ParameterVariant.PARAMETER, overwrite);
+                }
+                else
+                {
+                    CompositePinType pinType = (CompositePinType)pinInfo.PinTypeGUID.ToUInt32();
+                    ParameterVariant paramVariant = CompositeUtils.PinTypeToParameterVariant(pinType);
+                    switch (pinType)
+                    {
+                        case CompositePinType.CompositeMethodPin:
+                            if (variants.HasFlag(ParameterVariant.METHOD_PIN) || variants.HasFlag(ParameterVariant.METHOD_FUNCTION))
+                                entity.AddParameter(variableEntity.name, defaultValue, paramVariant, overwrite);
+                            break;
+                        default:
+                            if (variants.HasFlag(paramVariant))
+                                entity.AddParameter(variableEntity.name, defaultValue, paramVariant, overwrite);
+                            break;
+                    }
+                }
             }
             else
             {
-                CompositePinType pinType = (CompositePinType)pinInfo.PinTypeGUID.ToUInt32();
-                ParameterVariant paramVariant = CompositeUtils.PinTypeToParameterVariant(pinType);
-                switch (pinType)
+                if (pinInfo == null)
                 {
-                    case CompositePinType.CompositeInputAnimationInfoVariablePin:
-                    case CompositePinType.CompositeInputBoolVariablePin:
-                    case CompositePinType.CompositeInputDirectionVariablePin:
-                    case CompositePinType.CompositeInputFloatVariablePin:
-                    case CompositePinType.CompositeInputIntVariablePin:
-                    case CompositePinType.CompositeInputObjectVariablePin:
-                    case CompositePinType.CompositeInputPositionVariablePin:
-                    case CompositePinType.CompositeInputStringVariablePin:
-                    case CompositePinType.CompositeInputVariablePin:
-                    case CompositePinType.CompositeInputZoneLinkPtrVariablePin:
-                    case CompositePinType.CompositeInputZonePtrVariablePin:
-                        if (variants.HasFlag(paramVariant))
-                            entity.AddParameter(variableEntity.name, variableEntity.type, paramVariant, overwrite);
-                        break;
-                    case CompositePinType.CompositeInputEnumVariablePin:
-                        if (variants.HasFlag(paramVariant))
-                            entity.AddParameter(variableEntity.name, new cEnum(pinInfo.PinEnumTypeGUID, -1), paramVariant, overwrite);
-                        break;
-                    case CompositePinType.CompositeInputEnumStringVariablePin:
-                        if (variants.HasFlag(paramVariant))
-                            entity.AddParameter(variableEntity.name, new cEnumString(pinInfo.PinEnumTypeGUID, ""), paramVariant, overwrite);
-                        break;
-                    case CompositePinType.CompositeOutputAnimationInfoVariablePin:
-                    case CompositePinType.CompositeOutputBoolVariablePin:
-                    case CompositePinType.CompositeOutputDirectionVariablePin:
-                    case CompositePinType.CompositeOutputFloatVariablePin:
-                    case CompositePinType.CompositeOutputIntVariablePin:
-                    case CompositePinType.CompositeOutputObjectVariablePin:
-                    case CompositePinType.CompositeOutputPositionVariablePin:
-                    case CompositePinType.CompositeOutputStringVariablePin:
-                    case CompositePinType.CompositeOutputVariablePin:
-                    case CompositePinType.CompositeOutputZoneLinkPtrVariablePin:
-                    case CompositePinType.CompositeOutputZonePtrVariablePin:
-                        if (variants.HasFlag(paramVariant))
-                            entity.AddParameter(variableEntity.name, variableEntity.type, paramVariant, overwrite);
-                        break;
-                    case CompositePinType.CompositeOutputEnumVariablePin:
-                        if (variants.HasFlag(paramVariant))
-                            entity.AddParameter(variableEntity.name, new cEnum(pinInfo.PinEnumTypeGUID, -1), paramVariant, overwrite);
-                        break;
-                    case CompositePinType.CompositeOutputEnumStringVariablePin:
-                        if (variants.HasFlag(paramVariant))
-                            entity.AddParameter(variableEntity.name, new cEnumString(pinInfo.PinEnumTypeGUID, ""), paramVariant, overwrite);
-                        break;
-                    case CompositePinType.CompositeMethodPin:
-                        if (variants.HasFlag(ParameterVariant.METHOD_PIN) || variants.HasFlag(ParameterVariant.METHOD_FUNCTION))
-                            entity.AddParameter(variableEntity.name, variableEntity.type, paramVariant, overwrite);
-                        break;
-                    case CompositePinType.CompositeTargetPin:
-                        if (variants.HasFlag(paramVariant))
-                            entity.AddParameter(variableEntity.name, variableEntity.type, paramVariant, overwrite);
-                        break;
-                    case CompositePinType.CompositeReferencePin:
-                        if (variants.HasFlag(paramVariant))
-                            entity.AddParameter(variableEntity.name, variableEntity.type, paramVariant, overwrite);
-                        break;
-                    default:
-                        throw new Exception("Unexpected type!");
+                    if (variants.HasFlag(ParameterVariant.PARAMETER))
+                        entity.AddParameter(variableEntity.name, variableEntity.type, ParameterVariant.PARAMETER, overwrite);
+                }
+                else
+                {
+                    CompositePinType pinType = (CompositePinType)pinInfo.PinTypeGUID.ToUInt32();
+                    ParameterVariant paramVariant = CompositeUtils.PinTypeToParameterVariant(pinType);
+                    switch (pinType)
+                    {
+                        case CompositePinType.CompositeMethodPin:
+                            if (variants.HasFlag(ParameterVariant.METHOD_PIN) || variants.HasFlag(ParameterVariant.METHOD_FUNCTION))
+                                entity.AddParameter(variableEntity.name, variableEntity.type, paramVariant, overwrite);
+                            break;
+                        default:
+                            if (variants.HasFlag(paramVariant))
+                                entity.AddParameter(variableEntity.name, variableEntity.type, paramVariant, overwrite);
+                            break;
+                    }
                 }
             }
         }
@@ -244,7 +222,7 @@ namespace CATHODE.Scripting
                 Composite compositeInstance = _commands.GetComposite((functionEntity).function);
                 foreach (VariableEntity variable in compositeInstance.variables)
                 {
-                    ApplyDefaultVariable(variable, entity, composite, variants, overwrite);
+                    ApplyDefaultVariable(variable, entity, compositeInstance, variants, overwrite);
                 }
             }
         }
