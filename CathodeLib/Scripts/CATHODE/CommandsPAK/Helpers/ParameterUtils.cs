@@ -307,7 +307,7 @@ namespace CATHODE.Scripting
             return parameters;
         }
 
-        /* Get all possible parameters for a given function type */
+        /* Get all possible parameters for a given function type (not including inherited) */
         public static List<(ShortGuid, ParameterVariant, DataType)> GetAllParameters(FunctionType function)
         {
             List<(ShortGuid, ParameterVariant, DataType)> parameters = new List<(ShortGuid, ParameterVariant, DataType)>();
@@ -323,7 +323,6 @@ namespace CATHODE.Scripting
                         uint paramID = reader.ReadUInt32();
                         switch (entry.Key)
                         {
-                            case ParameterVariant.TARGET_PIN:
                             case ParameterVariant.REFERENCE_PIN:
                             case ParameterVariant.METHOD_FUNCTION:
                             case ParameterVariant.METHOD_PIN:
@@ -332,7 +331,12 @@ namespace CATHODE.Scripting
                             default:
                                 DataType dataType = (DataType)reader.ReadInt32();
                                 if (!(function != FunctionType.Zone && paramID == _nameID))
+                                {
+                                    if (dataType == DataType.NONE) //This only applies to TARGET_PIN, sometimes it has a value, other times it doesn't. If it doesn't, fall back to FLOAT for now.
+                                        dataType = DataType.FLOAT;
                                     parameters.Add((new ShortGuid(paramID), entry.Key, dataType));
+                                }
+                                if (entry.Key == ParameterVariant.TARGET_PIN) continue; //TargetPin can have a type, but doesn't have data.
                                 switch (dataType)
                                 {
                                     case DataType.BOOL:
@@ -485,7 +489,6 @@ namespace CATHODE.Scripting
                     bool isCorrectParam = paramID == parameter.ToUInt32();
                     switch (variant)
                     {
-                        case ParameterVariant.TARGET_PIN:
                         case ParameterVariant.REFERENCE_PIN:
                         case ParameterVariant.METHOD_FUNCTION:
                         case ParameterVariant.METHOD_PIN:
