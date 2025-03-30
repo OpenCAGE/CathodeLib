@@ -162,7 +162,8 @@ namespace CATHODE.Scripting.Internal
                     data = new cResource(shortGUID);
                     break;
                 default:
-                    Console.WriteLine("WARNING: Tried to add parameter of type which is currently unsupported by CathodeLib (" + type + ")");
+                    data = new cFloat();
+                    Console.WriteLine("WARNING: Tried to add parameter of type which is currently unsupported by CathodeLib (" + type + ") - falling back to FLOAT"); //todo: should we fall to STRING?
                     return null;
             }
             return AddParameter(id, data, variant, overwriteIfExists);

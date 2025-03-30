@@ -69,7 +69,7 @@ namespace CATHODE.Scripting
         }
 
         /* Add all parameters to a given entity with default values (NOTE: you only need to pass in composite if Entity is an Alias or Variable, otherwise feel free to pass null) */
-        public static void AddAllDefaultParameters(Entity entity, Composite composite, bool overwrite = true, ParameterVariant variants = ParameterVariant.INPUT_PIN | ParameterVariant.INTERNAL | /*ParameterVariant.METHOD_FUNCTION | */ParameterVariant.METHOD_PIN | ParameterVariant.OUTPUT_PIN | ParameterVariant.PARAMETER | ParameterVariant.REFERENCE_PIN | ParameterVariant.STATE_PARAMETER | ParameterVariant.TARGET_PIN, bool includeInherited = true)
+        public static void AddAllDefaultParameters(Entity entity, Composite composite, bool overwrite = true, ParameterVariant variants = ParameterVariant.STATE_PARAMETER | ParameterVariant.INPUT_PIN | ParameterVariant.PARAMETER, bool includeInherited = true)
         {
             switch (entity.variant)
             {
@@ -154,7 +154,8 @@ namespace CATHODE.Scripting
             var pinInfo = CompositeUtils.GetParameterInfo(composite, variableEntity);
             if (pinInfo == null)
             {
-                entity.AddParameter(variableEntity.name, variableEntity.type);
+                if (variants.HasFlag(ParameterVariant.PARAMETER))
+                    entity.AddParameter(variableEntity.name, variableEntity.type, ParameterVariant.PARAMETER, overwrite);
             }
             else
             {
@@ -497,6 +498,8 @@ namespace CATHODE.Scripting
                             break;
                         default:
                             DataType dataType = (DataType)reader.ReadInt32();
+                            if (dataType == DataType.NONE) //This only applies to TARGET_PIN, sometimes it has a value, other times it doesn't. If it doesn't, fall back to FLOAT for now.
+                                dataType = DataType.FLOAT;
                             if (isCorrectParam)
                                 return (variant, dataType, function);
                             switch (dataType)
