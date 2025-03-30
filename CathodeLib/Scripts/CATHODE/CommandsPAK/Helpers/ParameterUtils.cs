@@ -707,9 +707,8 @@ namespace CATHODE.Scripting
                                     break;
                                 case DataType.STRING:
                                 case DataType.FILEPATH:
-                                    if (isCorrectParam) 
-                                        if (!(function != FunctionType.Zone && paramID == _nameID))
-                                            return new cString(reader.ReadString());
+                                    if (isCorrectParam && !(function != FunctionType.Zone && paramID == _nameID))
+                                        return new cString(reader.ReadString());
                                     else
                                     {
                                         int seek = reader.ReadByte();

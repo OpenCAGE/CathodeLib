@@ -173,6 +173,9 @@ namespace CATHODE.Scripting.Internal
         }
         public Parameter AddParameter(ShortGuid id, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER, bool overwriteIfExists = true)
         {
+            if (data == null)
+                Console.WriteLine("WARNING: Entity " + this.shortGUID + " (" + this.variant + ") has null parameter data for " + id.ToString());
+
             Parameter param = GetParameter(id);
             //TODO: we should also take inputs and outputs into account here??
             if (param == null)
