@@ -14,11 +14,11 @@ using System.Numerics;
 namespace CATHODE
 {
     /* DATA/TEXT/**//**.TXT */
-    public class Strings : CathodeFile
+    public class TextDB : CathodeFile
     {
         public Dictionary<string, string> Entries = new Dictionary<string, string>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
-        public Strings(string path) : base(path) { }
+        public TextDB(string path) : base(path) { }
 
         #region FILE_IO
         override protected bool LoadInternal()
@@ -84,6 +84,11 @@ namespace CATHODE
             return true;
         }
         #endregion
+
+        public override string ToString()
+        {
+            return Path.GetFileNameWithoutExtension(_filepath);
+        }
 
         #region STRUCTURES
         private enum CurrentReadState
