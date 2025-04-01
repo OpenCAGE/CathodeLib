@@ -6,6 +6,9 @@ using System.Data.Common;
 using System.IO;
 using System.Linq;
 using System.Text;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+using UnityEngine;
+#endif
 
 namespace CATHODE.Scripting
 {
