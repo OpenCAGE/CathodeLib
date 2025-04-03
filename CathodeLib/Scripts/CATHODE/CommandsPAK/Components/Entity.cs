@@ -193,18 +193,19 @@ namespace CATHODE.Scripting.Internal
         }
 
         /* Remove a parameter from the entity */
-        public void RemoveParameter(string name)
+        public bool RemoveParameter(string name)
         {
             ShortGuid name_id = ShortGuidUtils.Generate(name);
-            RemoveParameter(name_id);
+            return RemoveParameter(name_id);
         }
-        public void RemoveParameter(Parameter param)
+        public bool RemoveParameter(Parameter param)
         {
-            RemoveParameter(param.name);
+            return RemoveParameter(param.name);
         }
-        public void RemoveParameter(ShortGuid guid)
+        public bool RemoveParameter(ShortGuid guid)
         {
-            parameters.RemoveAll(o => o.name == guid);
+            int count = parameters.RemoveAll(o => o.name == guid);
+            return count != 0;
         }
 
         /* Add a link from a parameter on us out to a parameter on another entity */
