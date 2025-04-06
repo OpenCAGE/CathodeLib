@@ -35,58 +35,7 @@ namespace CathodeLib
 
         static CompositeUtils()
         {
-#if UNITY_EDITOR || UNITY_STANDALONE
-            byte[] dbContent = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/composite_paths.bin");
-#else
-            byte[] dbContent = CathodeLib.Properties.Resources.composite_paths;
-            if (File.Exists("LocalDB/composite_paths.bin"))
-                dbContent = File.ReadAllBytes("LocalDB/composite_paths.bin");
-#endif
-            using (BinaryReader reader = new BinaryReader(new MemoryStream(dbContent)))
-            {
-                int compositeCount = reader.ReadInt32();
-                _pathLookup = new Dictionary<ShortGuid, string>(compositeCount);
-                for (int i = 0; i < compositeCount; i++)
-                    _pathLookup.Add(Utilities.Consume<ShortGuid>(reader), reader.ReadString());
-            }
-
-#if DO_DEBUG_DUMP
-            Directory.CreateDirectory("DebugDump");
-            List<string> paths = new List<string>();
-            foreach (KeyValuePair<ShortGuid, string> value in _pathLookup)
-            {
-                paths.Add(value.Value);
-            }
-            paths.Sort();
-            File.WriteAllLines("DebugDump/paths.txt", paths);
-#endif
-
-#if UNITY_EDITOR || UNITY_STANDALONE
-            dbContent = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/composite_parameter_info.bin");
-#else
-            dbContent = CathodeLib.Properties.Resources.composite_parameter_info;
-            if (File.Exists("LocalDB/composite_parameter_info.bin"))
-                dbContent = File.ReadAllBytes("LocalDB/composite_parameter_info.bin");
-#endif
             _pinInfoVanilla = new CompositePinInfoTable();
-            using (BinaryReader reader = new BinaryReader(new MemoryStream(dbContent)))
-            {
-                _pinInfoVanilla.Read(reader);
-            }
-
-#if DO_DEBUG_DUMP
-            Directory.CreateDirectory("DebugDump/pin_info");
-            foreach (KeyValuePair<ShortGuid, List<CompositePinInfoTable.PinInfo>> entry in _pinInfoVanilla.composite_pin_infos)
-            {
-                List<string> names = new List<string>();
-                foreach (CompositePinInfoTable.PinInfo value in entry.Value)
-                {
-                    names.Add(value.VariableGUID.ToByteString() + " -> " + value.Direction.ToString());
-                } 
-                names.Sort();
-                File.WriteAllLines("DebugDump/pin_info/" + entry.Key.ToByteString() + ".txt", names);
-            }
-#endif
         }
 
         public static void LinkCommands(Commands commands)

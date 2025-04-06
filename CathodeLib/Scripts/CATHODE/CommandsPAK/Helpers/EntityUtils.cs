@@ -30,32 +30,8 @@ namespace CATHODE.Scripting
         /* Load all standard entity/composite names from our offline DB */
         static EntityUtils()
         {
-#if UNITY_EDITOR || UNITY_STANDALONE
-            byte[] dbContent = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/composite_entity_names.bin");
-#else
-            byte[] dbContent = CathodeLib.Properties.Resources.composite_entity_names;
-            if (File.Exists("LocalDB/composite_entity_names.bin"))
-                dbContent = File.ReadAllBytes("LocalDB/composite_entity_names.bin");
-#endif
-            using (BinaryReader reader = new BinaryReader(new MemoryStream(dbContent)))
-            {
-                _vanilla = new EntityNameTable(reader);
-                _custom = new EntityNameTable();
-            }
-
-#if DO_DEBUG_DUMP
-            Directory.CreateDirectory("DebugDump/entities");
-            foreach (KeyValuePair<ShortGuid, Dictionary<ShortGuid, string>> entry in _vanilla.names)
-            {
-                List<string> names = new List<string>();
-                foreach (KeyValuePair<ShortGuid, string> value in entry.Value)
-                {
-                    names.Add(value.Value);
-                }
-                names.Sort();
-                File.WriteAllLines("DebugDump/entities/" + entry.Key.ToByteString() + ".txt", names);
-            }
-#endif
+            _vanilla = new EntityNameTable();
+            _custom = new EntityNameTable();
         }
 
         //For testing
@@ -136,7 +112,7 @@ namespace CATHODE.Scripting
         }
         public static FunctionType? GetBaseFunction(FunctionType type)
         {
-            return ParameterUtils.GetInheritedFunction(type); //todo: sanity check this gives the same as the switch below
+            return null;
             switch (type)
             {
                 case FunctionType.AccessTerminal:

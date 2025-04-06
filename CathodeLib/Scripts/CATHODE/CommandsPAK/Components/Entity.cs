@@ -459,18 +459,16 @@ namespace CATHODE.Scripting
         public ProxyEntity() : base(EntityVariant.PROXY) { }
         public ProxyEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.PROXY) { }
 
-        public ProxyEntity(ShortGuid[] hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(EntityVariant.PROXY)
+        public ProxyEntity(ShortGuid[] hierarchy = null, ShortGuid targetType = new ShortGuid()) : base(EntityVariant.PROXY)
         {
             this.function = targetType;
             if (hierarchy != null) this.proxy.path = hierarchy;
-            if (autoGenerateParameters) ParameterUtils.AddAllDefaultParameters(this, null);
         }
-        public ProxyEntity(ShortGuid shortGUID, ShortGuid[] hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.PROXY)
+        public ProxyEntity(ShortGuid shortGUID, ShortGuid[] hierarchy = null, ShortGuid targetType = new ShortGuid()) : base(shortGUID, EntityVariant.PROXY)
         {
             this.shortGUID = shortGUID;
             this.function = targetType; 
             if (hierarchy != null) this.proxy.path = hierarchy;
-            if (autoGenerateParameters) ParameterUtils.AddAllDefaultParameters(this, null);
         }
 
         public ShortGuid function;                  //The "function" value on the entity we're proxying

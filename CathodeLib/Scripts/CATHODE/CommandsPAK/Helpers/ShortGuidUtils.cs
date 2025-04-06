@@ -25,31 +25,8 @@ namespace CATHODE.Scripting
         /* Pull in strings we know are cached as ShortGuid in Cathode */
         static ShortGuidUtils()
         {
-#if UNITY_EDITOR || UNITY_STANDALONE
-            byte[] dbContent = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_shortguid_lut.bin");
-#else
-            byte[] dbContent = CathodeLib.Properties.Resources.cathode_shortguid_lut;
-            if (File.Exists("LocalDB/cathode_shortguid_lut.bin"))
-                dbContent = File.ReadAllBytes("LocalDB/cathode_shortguid_lut.bin");
-#endif
-
-            BinaryReader reader = new BinaryReader(new MemoryStream(dbContent));
             _vanilla = new GuidNameTable();
             _custom = new GuidNameTable();
-            while (reader.BaseStream.Position < reader.BaseStream.Length)
-                Cache(new ShortGuid(reader), reader.ReadString(), true);
-            reader.Close();
-
-#if DO_DEBUG_DUMP
-            Directory.CreateDirectory("DebugDump");
-            List<string> parameters = new List<string>();
-            foreach (KeyValuePair<string, ShortGuid> value in _vanilla.cache)
-            {
-                parameters.Add(value.Key);
-            }
-            parameters.Sort();
-            File.WriteAllLines("DebugDump/parameters.txt", parameters);
-#endif
         }
 
         /* Optionally, link a Commands file which can be used to save custom ShortGuids to */

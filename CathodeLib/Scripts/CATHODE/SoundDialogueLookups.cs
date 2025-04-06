@@ -58,10 +58,10 @@ namespace CATHODE
             public uint id;
             public ShortGuid unk;
 
-            override public string ToString()
-            {
-                return SoundUtils.GetSoundName(id);
-            }
+            //override public string ToString()
+            //{
+            //    return SoundUtils.GetSoundName(id);
+            //}
         };
         #endregion
     }
