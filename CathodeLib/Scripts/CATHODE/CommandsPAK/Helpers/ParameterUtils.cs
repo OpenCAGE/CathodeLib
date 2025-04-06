@@ -579,6 +579,10 @@ namespace CATHODE.Scripting
                                 return new cString();
                             case DataType.SPLINE:
                                 return new cSpline();
+                            case DataType.VECTOR:
+                                return new cVector3();
+                            case DataType.TRANSFORM:
+                                return new cTransform();
                             default:
                                 return new cString(); //string, or float?
                         }
@@ -737,6 +741,10 @@ namespace CATHODE.Scripting
                                         return new cVector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                                     else
                                         reader.BaseStream.Position += 12;
+                                    break;
+                                case DataType.TRANSFORM:
+                                    if (isCorrectParam)
+                                        return new cTransform(); //There are no default transforms written
                                     break;
                                 case DataType.RESOURCE:
                                     if (isCorrectParam)
