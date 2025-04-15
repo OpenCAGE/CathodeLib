@@ -221,8 +221,14 @@ namespace CATHODE.Scripting
             }
             else
             {
-                if (includeInherited)
-                    ApplyDefaults(baseEntity, targetEntity, overwrite, variants, FunctionType.CompositeInterface);
+                FunctionType? functionType = FunctionType.CompositeInterface;
+                while (true)
+                {
+                    ApplyDefaults(baseEntity, targetEntity, overwrite, variants, functionType.Value);
+                    if (!includeInherited) break;
+                    functionType = GetInheritedFunction(functionType.Value);
+                    if (functionType == null) break;
+                }
                 Composite compositeInstance = _commands.GetComposite((baseEntity).function);
                 foreach (VariableEntity variable in compositeInstance.variables)
                 {
@@ -253,7 +259,16 @@ namespace CATHODE.Scripting
                     else
                     {
                         if (includeInherited)
-                            parameters.AddRange(GetAllParameters(FunctionType.CompositeInterface));
+                        {
+                            FunctionType? functionType = FunctionType.CompositeInterface;
+                            while (true)
+                            {
+                                parameters.AddRange(GetAllParameters(functionType.Value));
+                                if (!includeInherited) break;
+                                functionType = GetInheritedFunction(functionType.Value);
+                                if (functionType == null) break;
+                            }
+                        }
                         Composite compositeInstance = _commands.GetComposite((functionEntity).function);
                         foreach (VariableEntity variable in compositeInstance.variables)
                         {
@@ -263,7 +278,16 @@ namespace CATHODE.Scripting
                     break;
                 case EntityVariant.PROXY:
                     if (includeInherited)
-                        parameters.AddRange(GetAllParameters(FunctionType.ProxyInterface));
+                    {
+                        FunctionType? functionType = FunctionType.ProxyInterface;
+                        while (true)
+                        {
+                            parameters.AddRange(GetAllParameters(functionType.Value));
+                            if (!includeInherited) break;
+                            functionType = GetInheritedFunction(functionType.Value);
+                            if (functionType == null) break;
+                        }
+                    }
                     ProxyEntity proxyEntity = (ProxyEntity)entity;
                     Entity proxiedEntity = proxyEntity.proxy.GetPointedEntity(_commands);
                     if (proxiedEntity != null)
@@ -402,9 +426,15 @@ namespace CATHODE.Scripting
                     }
                     else
                     {
-                        var metadata = GetParameterMetadata(FunctionType.CompositeInterface, parameter);
-                        if (metadata.Item1 != null)
-                            return (metadata.Item1, metadata.Item2, metadata.Item3 == null ? ShortGuid.Invalid : new ShortGuid((UInt32)metadata.Item3));
+                        FunctionType? functionType = FunctionType.CompositeInterface;
+                        while (true)
+                        {
+                            var metadata = GetParameterMetadata(functionType.Value, parameter);
+                            if (metadata.Item1 != null)
+                                return (metadata.Item1, metadata.Item2, metadata.Item3 == null ? ShortGuid.Invalid : new ShortGuid((UInt32)metadata.Item3));
+                            functionType = GetInheritedFunction(functionType.Value);
+                            if (functionType == null) break;
+                        }
                         Composite composite = _commands.GetComposite(functionEntity.function);
                         if (composite != null)
                         {
@@ -424,9 +454,15 @@ namespace CATHODE.Scripting
                     break;
                 case EntityVariant.PROXY:
                     {
-                        var metadata = GetParameterMetadata(FunctionType.ProxyInterface, parameter);
-                        if (metadata.Item1 != null)
-                            return (metadata.Item1, metadata.Item2, metadata.Item3 == null ? ShortGuid.Invalid : new ShortGuid((UInt32)metadata.Item3));
+                        FunctionType? functionType = FunctionType.ProxyInterface;
+                        while (true)
+                        {
+                            var metadata = GetParameterMetadata(functionType.Value, parameter);
+                            if (metadata.Item1 != null)
+                                return (metadata.Item1, metadata.Item2, metadata.Item3 == null ? ShortGuid.Invalid : new ShortGuid((UInt32)metadata.Item3));
+                            functionType = GetInheritedFunction(functionType.Value);
+                            if (functionType == null) break;
+                        }
                         ProxyEntity proxyEntity = (ProxyEntity)entity;
                         Entity proxiedEntity = proxyEntity.proxy.GetPointedEntity(_commands);
                         if (proxiedEntity != null)
@@ -604,9 +640,16 @@ namespace CATHODE.Scripting
                     }
                     else
                     {
-                        var data = CreateDefaultParameterData(FunctionType.CompositeInterface, parameter);
-                        if (data != null)
-                            return data;
+                        ParameterData data;
+                        FunctionType? functionType = FunctionType.CompositeInterface;
+                        while (true)
+                        {
+                            data = CreateDefaultParameterData(functionType.Value, parameter);
+                            if (data != null)
+                                return data;
+                            functionType = GetInheritedFunction(functionType.Value);
+                            if (functionType == null) break;
+                        }
                         Composite comp = _commands.GetComposite(functionEntity.function);
                         if (composite != null)
                         {
@@ -622,9 +665,16 @@ namespace CATHODE.Scripting
                     break;
                 case EntityVariant.PROXY:
                     {
-                        var data = CreateDefaultParameterData(FunctionType.ProxyInterface, parameter);
-                        if (data != null)
-                            return data;
+                        ParameterData data;
+                        FunctionType? functionType = FunctionType.ProxyInterface;
+                        while (true)
+                        {
+                            data = CreateDefaultParameterData(functionType.Value, parameter);
+                            if (data != null)
+                                return data;
+                            functionType = GetInheritedFunction(functionType.Value);
+                            if (functionType == null) break;
+                        }
                         ProxyEntity proxyEntity = (ProxyEntity)entity;
                         Entity proxiedEntity = proxyEntity.proxy.GetPointedEntity(_commands, out Composite proxiedComposite);
                         if (proxiedEntity != null)
