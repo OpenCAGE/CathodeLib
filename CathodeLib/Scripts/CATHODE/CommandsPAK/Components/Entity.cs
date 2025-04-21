@@ -674,6 +674,16 @@ namespace CATHODE.Scripting
             EnsureFinalIsEmpty();
         }
         public ShortGuid[] path = new ShortGuid[0];
+        public List<uint> pathUint
+        {
+            get
+            {
+                List<uint> p = new List<uint>();
+                for (int i = 0; i < path.Length; i++)
+                    p.Add(path[i].ToUInt32());
+                return p;
+            }
+        }
 
         public static bool operator ==(EntityPath x, EntityPath y)
         {
