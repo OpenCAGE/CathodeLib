@@ -295,7 +295,7 @@ namespace CATHODE.Scripting
                     break;
                 case EntityVariant.ALIAS:
                     AliasEntity aliasEntity = (AliasEntity)entity;
-                    Entity aliasedEntity = aliasEntity.alias.GetPointedEntity(_commands);
+                    Entity aliasedEntity = aliasEntity.alias.GetPointedEntity(_commands, composite);
                     if (aliasedEntity != null)
                         parameters.AddRange(GetAllParameters(aliasedEntity, composite));
                     break;
@@ -398,11 +398,11 @@ namespace CATHODE.Scripting
         }
 
         /* Get metadata about a parameter on an entity: variant, type, and function/composite that implements (if applicable) */
-        public static (ParameterVariant?, DataType?, ShortGuid) GetParameterMetadata(Entity entity, string parameter)
+        public static (ParameterVariant?, DataType?, ShortGuid) GetParameterMetadata(Entity entity, string parameter, Composite composite)
         {
-            return GetParameterMetadata(entity, ShortGuidUtils.Generate(parameter));
+            return GetParameterMetadata(entity, ShortGuidUtils.Generate(parameter), composite);
         }
-        public static (ParameterVariant?, DataType?, ShortGuid) GetParameterMetadata(Entity entity, ShortGuid parameter)
+        public static (ParameterVariant?, DataType?, ShortGuid) GetParameterMetadata(Entity entity, ShortGuid parameter, Composite composite)
         {
             switch (entity.variant)
             {
@@ -435,18 +435,18 @@ namespace CATHODE.Scripting
                             functionType = GetInheritedFunction(functionType.Value);
                             if (functionType == null) break;
                         }
-                        Composite composite = _commands.GetComposite(functionEntity.function);
-                        if (composite != null)
+                        Composite compositeInstance = _commands.GetComposite(functionEntity.function);
+                        if (compositeInstance != null)
                         {
-                            VariableEntity var = composite.variables.FirstOrDefault(o => o.name == parameter);
+                            VariableEntity var = compositeInstance.variables.FirstOrDefault(o => o.name == parameter);
                             if (var != null)
                             {
-                                CompositePinInfoTable.PinInfo info = CompositeUtils.GetParameterInfo(composite, var);
+                                CompositePinInfoTable.PinInfo info = CompositeUtils.GetParameterInfo(compositeInstance, var);
                                 if (info == null)
-                                    return (ParameterVariant.PARAMETER, var.type, composite.shortGUID);
+                                    return (ParameterVariant.PARAMETER, var.type, compositeInstance.shortGUID);
                                 else
                                 {
-                                    return (CompositeUtils.PinTypeToParameterVariant(info.PinTypeGUID), var.type, composite.shortGUID);
+                                    return (CompositeUtils.PinTypeToParameterVariant(info.PinTypeGUID), var.type, compositeInstance.shortGUID);
                                 }
                             }
                         }
@@ -466,14 +466,14 @@ namespace CATHODE.Scripting
                         ProxyEntity proxyEntity = (ProxyEntity)entity;
                         Entity proxiedEntity = proxyEntity.proxy.GetPointedEntity(_commands);
                         if (proxiedEntity != null)
-                            return GetParameterMetadata(proxiedEntity, parameter);
+                            return GetParameterMetadata(proxiedEntity, parameter, composite);
                         break;
                     }
                 case EntityVariant.ALIAS:
                     AliasEntity aliasEntity = (AliasEntity)entity;
-                    Entity aliasedEntity = aliasEntity.alias.GetPointedEntity(_commands);
+                    Entity aliasedEntity = aliasEntity.alias.GetPointedEntity(_commands, composite);
                     if (aliasedEntity != null)
-                        return GetParameterMetadata(aliasedEntity, parameter);
+                        return GetParameterMetadata(aliasedEntity, parameter, composite);
                     break;
             }
             return (null, null, ShortGuid.Invalid);
@@ -683,7 +683,7 @@ namespace CATHODE.Scripting
                     }
                 case EntityVariant.ALIAS:
                     AliasEntity aliasEntity = (AliasEntity)entity;
-                    Entity aliasedEntity = aliasEntity.alias.GetPointedEntity(_commands, out Composite aliasedComposite);
+                    Entity aliasedEntity = aliasEntity.alias.GetPointedEntity(_commands, composite, out Composite aliasedComposite);
                     if (aliasedEntity != null)
                         return CreateDefaultParameterData(aliasedEntity, aliasedComposite, parameter);
                     break;
