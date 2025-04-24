@@ -162,7 +162,8 @@ namespace CATHODE.Scripting.Internal
                     data = new cResource(shortGUID);
                     break;
                 default:
-                    Console.WriteLine("WARNING: Tried to add parameter of type which is currently unsupported by CathodeLib (" + type + ")");
+                    data = new cFloat();
+                    Console.WriteLine("WARNING: Tried to add parameter of type which is currently unsupported by CathodeLib (" + type + ") - falling back to FLOAT"); //todo: should we fall to STRING?
                     return null;
             }
             return AddParameter(id, data, variant, overwriteIfExists);
@@ -173,6 +174,9 @@ namespace CATHODE.Scripting.Internal
         }
         public Parameter AddParameter(ShortGuid id, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER, bool overwriteIfExists = true)
         {
+            if (data == null)
+                Console.WriteLine("WARNING: Entity " + this.shortGUID + " (" + this.variant + ") has null parameter data for " + id.ToString());
+
             Parameter param = GetParameter(id);
             //TODO: we should also take inputs and outputs into account here??
             if (param == null)
@@ -189,18 +193,19 @@ namespace CATHODE.Scripting.Internal
         }
 
         /* Remove a parameter from the entity */
-        public void RemoveParameter(string name)
+        public bool RemoveParameter(string name)
         {
             ShortGuid name_id = ShortGuidUtils.Generate(name);
-            RemoveParameter(name_id);
+            return RemoveParameter(name_id);
         }
-        public void RemoveParameter(Parameter param)
+        public bool RemoveParameter(Parameter param)
         {
-            RemoveParameter(param.name);
+            return RemoveParameter(param.name);
         }
-        public void RemoveParameter(ShortGuid guid)
+        public bool RemoveParameter(ShortGuid guid)
         {
-            parameters.RemoveAll(o => o.name == guid);
+            int count = parameters.RemoveAll(o => o.name == guid);
+            return count != 0;
         }
 
         /* Add a link from a parameter on us out to a parameter on another entity */
@@ -454,18 +459,16 @@ namespace CATHODE.Scripting
         public ProxyEntity() : base(EntityVariant.PROXY) { }
         public ProxyEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.PROXY) { }
 
-        public ProxyEntity(ShortGuid[] hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(EntityVariant.PROXY)
+        public ProxyEntity(ShortGuid[] hierarchy = null, ShortGuid targetType = new ShortGuid()) : base(EntityVariant.PROXY)
         {
             this.function = targetType;
             if (hierarchy != null) this.proxy.path = hierarchy;
-            if (autoGenerateParameters) ParameterUtils.AddAllDefaultParameters(this, null);
         }
-        public ProxyEntity(ShortGuid shortGUID, ShortGuid[] hierarchy = null, ShortGuid targetType = new ShortGuid(), bool autoGenerateParameters = false) : base(shortGUID, EntityVariant.PROXY)
+        public ProxyEntity(ShortGuid shortGUID, ShortGuid[] hierarchy = null, ShortGuid targetType = new ShortGuid()) : base(shortGUID, EntityVariant.PROXY)
         {
             this.shortGUID = shortGUID;
             this.function = targetType; 
             if (hierarchy != null) this.proxy.path = hierarchy;
-            if (autoGenerateParameters) ParameterUtils.AddAllDefaultParameters(this, null);
         }
 
         public ShortGuid function;                  //The "function" value on the entity we're proxying
@@ -671,6 +674,16 @@ namespace CATHODE.Scripting
             EnsureFinalIsEmpty();
         }
         public ShortGuid[] path = new ShortGuid[0];
+        public List<uint> pathUint
+        {
+            get
+            {
+                List<uint> p = new List<uint>();
+                for (int i = 0; i < path.Length; i++)
+                    p.Add(path[i].ToUInt32());
+                return p;
+            }
+        }
 
         public static bool operator ==(EntityPath x, EntityPath y)
         {

@@ -29,7 +29,7 @@ namespace CATHODE
                 if (MagicValidation != "PAK2") { reader.Close(); return false; }
                 int offsetListBegin = reader.ReadInt32() + 16;
                 int entryCount = reader.ReadInt32();
-                reader.BaseStream.Position += 4; //Skip "4"
+                int alignment = reader.ReadInt32();
 
                 //Read all file names and create entries
                 for (int i = 0; i < entryCount; i++)
@@ -47,7 +47,10 @@ namespace CATHODE
 
                 //Read in the files to entries
                 for (int i = 0; i < entryCount; i++)
-                    Entries[i].Content = Utilities.RemoveLeadingNulls(reader.ReadBytes(FileOffsets[i + 1] - FileOffsets[i]));
+                {
+                    Utilities.Align(reader, alignment);
+                    Entries[i].Content = reader.ReadBytes(FileOffsets[i + 1] - (int)reader.BaseStream.Position);
+                }
             }
             return true;
         }
@@ -58,14 +61,12 @@ namespace CATHODE
             {
                 writer.BaseStream.SetLength(0);
                 Utilities.WriteString("PAK2", writer);
-                int OffsetListBegin_New = 0;
-                for (int i = 0; i < Entries.Count; i++) OffsetListBegin_New += Entries[i].Filename.Length + 1;
-                writer.Write(OffsetListBegin_New);
+                writer.Write(0);
                 writer.Write(Entries.Count);
                 writer.Write(4);
 
                 //Write filenames
-                for (int i = 0; i < Entries.Count; i++) Utilities.WriteString(Entries[i].Filename.Replace("\\", "/"), writer, true);
+                for (int i = 0; i < Entries.Count; i++) Utilities.WriteString(Entries[i].Filename, writer, true);
 
                 //Write placeholder offsets for now, we'll correct them after writing the content
                 int offsetListBegin = (int)writer.BaseStream.Position;
@@ -75,12 +76,15 @@ namespace CATHODE
                 List<int> offsets = new List<int>();
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    while (writer.BaseStream.Position % 4 != 0) writer.Write((byte)0x00);
+                    Utilities.Align(writer, 4);
                     writer.Write(Entries[i].Content);
                     offsets.Add((int)writer.BaseStream.Position);
                 }
+                Utilities.Align(writer, 4);
 
                 //Re-write offsets with correct values
+                writer.BaseStream.Position = 4;
+                writer.Write(offsetListBegin - 16);
                 writer.BaseStream.Position = offsetListBegin;
                 for (int i = 0; i < Entries.Count; i++) writer.Write(offsets[i]);
             }

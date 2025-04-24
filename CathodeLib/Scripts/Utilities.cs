@@ -44,7 +44,7 @@ namespace CathodeLib
         //Align the stream
         public static void Align(BinaryReader reader, int val = 4)
         {
-            while (reader.BaseStream.Position % val != 0) reader.ReadByte();
+            reader.BaseStream.Seek((val - (reader.BaseStream.Position % val)) % val, SeekOrigin.Current);
         }
         public static void Align(BinaryWriter writer, int val = 4, byte fillWith = 0x00)
         {

@@ -1,4 +1,4 @@
-﻿using CathodeLib;
+using CathodeLib;
 using System;
 using System.Buffers.Binary;
 using System.Collections;

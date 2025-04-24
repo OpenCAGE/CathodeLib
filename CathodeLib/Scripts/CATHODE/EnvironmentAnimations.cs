@@ -163,7 +163,11 @@ namespace CATHODE
                 int stacked_Entries1 = 0;
                 for (int i = 0; i < Entries.Count; i++)
                 {
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                    Utilities.Write(writer, Matrix4x4.identity);
+#else
                     Utilities.Write(writer, Matrix4x4.Identity);
+#endif
                     Utilities.Write(writer, Utilities.AnimationHashedString(Entries[i].SkeletonName));
                     writer.Write((Int32)0);
                     Utilities.Write(writer, Entries[i].ResourceIndex);
@@ -186,7 +190,7 @@ namespace CATHODE
             }
             return true;
         }
-        #endregion
+#endregion
 
         #region HELPERS
         private List<T> PopulateArray<T>(BinaryReader reader, T[] array)

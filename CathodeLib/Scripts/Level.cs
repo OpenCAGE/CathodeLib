@@ -46,7 +46,7 @@ namespace CathodeLib
         public SoundFlashModels SoundFlashModels;
         public SoundLoadZones SoundLoadZones;
 
-        public Dictionary<string, Dictionary<string, Strings>> Strings;
+        public Dictionary<string, Dictionary<string, TextDB>> Strings;
 
         public class State
         {
@@ -149,15 +149,15 @@ namespace CathodeLib
                 textList.AddRange(Directory.GetFiles(path + "/TEXT/", "*.TXT", SearchOption.AllDirectories));
             }
             textList.Reverse();
-            Strings = new Dictionary<string, Dictionary<string, Strings>>();
+            Strings = new Dictionary<string, Dictionary<string, TextDB>>();
             foreach (string textDB in textList)
             {
                 string lang = Path.GetFileName(Path.GetDirectoryName(textDB));
                 string db = Path.GetFileNameWithoutExtension(textDB);
                 if (!globalDBs.Contains(db) && !levelDBs.Contains(db)) continue;
-                if (!Strings.ContainsKey(lang)) Strings.Add(lang, new Dictionary<string, Strings>());
+                if (!Strings.ContainsKey(lang)) Strings.Add(lang, new Dictionary<string, TextDB>());
                 if (Strings[lang].ContainsKey(db)) continue;
-                Strings[lang].Add(db, new Strings(textDB));
+                Strings[lang].Add(db, new TextDB(textDB));
             }
         }
 

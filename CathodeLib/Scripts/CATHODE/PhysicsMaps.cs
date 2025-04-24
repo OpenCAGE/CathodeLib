@@ -46,9 +46,15 @@ namespace CATHODE
                     Vector4 Row2 = Utilities.Consume<Vector4>(reader);
                     double[,] matrix = new double[,]
                     {
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                        {Row0.x, Row0.y, Row0.z, Row0.w},
+                        {Row1.x, Row1.y, Row1.z, Row1.w},
+                        {Row2.x, Row2.y, Row2.z, Row2.w},
+#else
                         {Row0.X, Row0.Y, Row0.Z, Row0.W},
                         {Row1.X, Row1.Y, Row1.Z, Row1.W},
                         {Row2.X, Row2.Y, Row2.Z, Row2.W},
+#endif
                     };
 
                     entry.Position = new Vector3(
@@ -56,12 +62,22 @@ namespace CATHODE
                         (float)matrix[1, 3],
                         (float)matrix[2, 3]
                     );
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                    Matrix4x4 matrix4x4 = new Matrix4x4(
+                        new Vector4((float)matrix[0, 0], (float)matrix[0, 1], (float)matrix[0, 2], 0),
+                        new Vector4((float)matrix[1, 0], (float)matrix[1, 1], (float)matrix[1, 2], 0),
+                        new Vector4((float)matrix[2, 0], (float)matrix[2, 1], (float)matrix[2, 2], 0),
+                        new Vector4(0, 0, 0, 1)
+                    );
+                    entry.Rotation = Quaternion.LookRotation(matrix4x4.GetColumn(2), matrix4x4.GetColumn(1));
+#else
                     entry.Rotation = Quaternion.CreateFromRotationMatrix(new Matrix4x4(
                         (float)matrix[0, 0], (float)matrix[0, 1], (float)matrix[0, 2], 0,
                         (float)matrix[1, 0], (float)matrix[1, 1], (float)matrix[1, 2], 0,
                         (float)matrix[2, 0], (float)matrix[2, 1], (float)matrix[2, 2], 0,
                         0, 0, 0, 1
                     ));
+#endif
 
                     reader.BaseStream.Position += 8;
                     Entries.Add(entry);
@@ -87,10 +103,17 @@ namespace CATHODE
                     Utilities.Write(writer, Entries[i].composite_instance_id);
                     Utilities.Write(writer, Entries[i].entity);
 
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                    Matrix4x4 rotationMatrix4x4 = Matrix4x4.Rotate(Entries[i].Rotation);
+                    Vector4 Row0 = new Vector4(rotationMatrix4x4.m11, rotationMatrix4x4.m12, rotationMatrix4x4.m13, Entries[i].Position.x);
+                    Vector4 Row1 = new Vector4(rotationMatrix4x4.m21, rotationMatrix4x4.m22, rotationMatrix4x4.m23, Entries[i].Position.y);
+                    Vector4 Row2 = new Vector4(rotationMatrix4x4.m31, rotationMatrix4x4.m32, rotationMatrix4x4.m33, Entries[i].Position.z);
+#else
                     Matrix4x4 rotationMatrix4x4 = Matrix4x4.CreateFromQuaternion(Entries[i].Rotation);
                     Vector4 Row0 = new Vector4(rotationMatrix4x4.M11, rotationMatrix4x4.M12, rotationMatrix4x4.M13, Entries[i].Position.X);
                     Vector4 Row1 = new Vector4(rotationMatrix4x4.M21, rotationMatrix4x4.M22, rotationMatrix4x4.M23, Entries[i].Position.Y);
                     Vector4 Row2 = new Vector4(rotationMatrix4x4.M31, rotationMatrix4x4.M32, rotationMatrix4x4.M33, Entries[i].Position.Z);
+#endif
 
                     Utilities.Write<Vector4>(writer, Row0);
                     Utilities.Write<Vector4>(writer, Row1);
@@ -100,7 +123,7 @@ namespace CATHODE
             }
             return true;
         }
-        #endregion
+#endregion
 
         #region STRUCTURES
         public class Entry

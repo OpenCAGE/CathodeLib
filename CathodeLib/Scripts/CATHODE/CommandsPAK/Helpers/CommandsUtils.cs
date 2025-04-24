@@ -3,9 +3,13 @@ using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+using UnityEngine;
+#else
+using System.Numerics;
+#endif
 
 namespace CATHODE.Scripting
 {
@@ -343,7 +347,11 @@ namespace CATHODE.Scripting
                 if (comp == null)
                     break;
             }
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+            return (globalTransform.position, Quaternion.Euler(globalTransform.rotation.x, globalTransform.rotation.y, globalTransform.rotation.z));
+#else
             return (globalTransform.position, Quaternion.CreateFromYawPitchRoll(globalTransform.rotation.Y * (float)Math.PI / 180.0f, globalTransform.rotation.X * (float)Math.PI / 180.0f, globalTransform.rotation.Z * (float)Math.PI / 180.0f));
+#endif
         }
 
         /* CA's CAGE doesn't properly tidy up hierarchies pointing to deleted entities - so we can do that to save confusion */
@@ -460,6 +468,6 @@ namespace CATHODE.Scripting
                 "\n - " + (originalLinkCount - newLinkCount) + " entity links (of " + originalLinkCount + ")");
             return true;
         }
-        #endregion
+#endregion
     }
 }
