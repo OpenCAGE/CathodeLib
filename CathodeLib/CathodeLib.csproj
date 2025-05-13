@@ -10,9 +10,9 @@
     <Authors>Matt Filer</Authors>
     <Description>Provides support for parsing and writing common Alien: Isolation formats from the Cathode engine.</Description>
     <Copyright>Matt Filer 2025</Copyright>
-    <Version>0.8.2</Version>
+    <Version>0.8.3</Version>
     <OutputType>Library</OutputType>
-    <AssemblyVersion>0.7.8.2</AssemblyVersion>
+    <AssemblyVersion>0.7.8.3</AssemblyVersion>
     <FileVersion>0.7.8.2</FileVersion>
     <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
     <PackageReadmeFile>README.md</PackageReadmeFile>
