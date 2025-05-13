@@ -122,23 +122,17 @@ namespace CATHODE.Scripting
         /* Generate a random unique ShortGuid */
         public static ShortGuid GenerateRandom()
         {
-            string str = DateTime.Now.ToString("G");
+            string str = Guid.NewGuid().ToString();
             ShortGuid guid = Generate(str, false);
-            int i = 0;
-            int c_i = 0;
+            int s = 0;
             while (_vanilla.cache.ContainsKey(str) || _custom.cache.ContainsKey(str) || _vanilla.cacheReversed.ContainsKey(guid) || _custom.cacheReversed.ContainsKey(guid))
             {
-                str = guid.ToByteString();
-                if (i > 1000)
-                {
-                    str += (char)c_i;
-                    c_i++;
-                    i = 0;
-                }
+                str = $"{str}_{s++}";
                 guid = Generate(str, false);
-                i++;
+
+                if (s > 10000) throw new Exception("Failed to generate unique ShortGuid after many attempts.");
             }
-            //Cache(guid, str);
+            Cache(guid, str);
             return guid;
         }
 
