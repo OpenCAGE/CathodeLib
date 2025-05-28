@@ -37,42 +37,36 @@ namespace CATHODE.Scripting
     }
 
     /* Data types */
-    //TODO: update this enum with ShortGuid vals to remove lookup table
-    public enum DataType 
+    public enum DataType : uint
     {
-        STRING,
-        FLOAT,
-        INTEGER,
-        BOOL,
-        VECTOR,
-        TRANSFORM,
-        ENUM,
-
-        SPLINE,
-        RESOURCE,
-
-        NONE, //Translates to a blank string (this typically means the datatype has got lost in the hierarchy chain)
-
-        FILEPATH,
-        OBJECT,
-        ZONE_LINK,
-        ZONE,
-        ANIMATION_INFO,
-        COLOUR,
-        RESOURCE_ID,
-        REFERENCE_FRAME,
-
-        ENUM_STRING = -1,
+        BOOL = 2524318704,              //bool
+        INTEGER = 3878011271,           //int
+        FLOAT = 4252267228,             //float
+        STRING = 952963460,             //String
+        FILEPATH = 3235614061,          //FilePath
+        SPLINE = 1519291998,            //SplineData
+        VECTOR = 3221177144,            //Direction
+        TRANSFORM = 47672282,           //Position
+        ENUM = 2355275711,              //Enum
+        ENUM_STRING = 0,            //NOTE: This is a type which is custom-implemented to allow string type lookups, not compiled to PAK
+        RESOURCE = 2466820086,          //ShortGuid
+        OBJECT = 97021639,              //Object
+        ZONE = 1585375953,              //ZonePtr
+        ZONE_LINK = 3718330750,         //ZoneLinkPtr
+        RESOURCE_ID = 3015148165,       //ResourceID
+        REFERENCE_FRAME = 3002644745,   //ReferenceFramePtr
+        ANIMATION_INFO = 947236160,     //AnimationInfoPtr
+        COLOUR = 3916917329,            //Colour
+        NONE = 2350126629,          //NOTE: Translates to a blank string (this typically means the datatype has got lost in the hierarchy chain)
     }
 
     /* Object types */
-    //TODO: update this enum with ShortGuid vals to remove lookup table
-    public enum ObjectType
+    public enum ObjectType : uint
     {
-        ENTITY,
-        MARKER,
-        CHARACTER,
-        CAMERA
+        ENTITY = 2350126629,
+        MARKER = 938076563,
+        CHARACTER = 3311499658,
+        CAMERA = 1530210895,
     }
 
     /* Function types */

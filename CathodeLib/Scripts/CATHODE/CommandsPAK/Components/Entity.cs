@@ -157,7 +157,7 @@ namespace CATHODE.Scripting.Internal
                 default:
                     data = new cFloat();
                     Console.WriteLine("WARNING: Tried to add parameter of type which is currently unsupported by CathodeLib (" + type + ") - falling back to FLOAT"); //todo: should we fall to STRING?
-                    return null;
+                    break;
             }
             return AddParameter(id, data, variant, overwriteIfExists);
         }

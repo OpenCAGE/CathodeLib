@@ -71,7 +71,7 @@ namespace CATHODE
                         using (BinaryReader reader_parallel = new BinaryReader(new MemoryStream(content)))
                         {
                             reader_parallel.BaseStream.Position = parameterOffsets[i] * 4;
-                            parametersArr[i] = new ParameterData(CommandsUtils.GetDataType(new ShortGuid(reader_parallel)));
+                            parametersArr[i] = new ParameterData((DataType)reader_parallel.ReadUInt32());
                             switch (parametersArr[i].dataType)
                             {
                                 case DataType.TRANSFORM:
@@ -207,7 +207,7 @@ namespace CATHODE
                                         {
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 12);
                                             VariableEntity dtEntity = new VariableEntity(new ShortGuid(reader_parallel));
-                                            dtEntity.type = CommandsUtils.GetDataType(new ShortGuid(reader_parallel));
+                                            dtEntity.type = (DataType)reader_parallel.ReadUInt32();
                                             dtEntity.name = new ShortGuid(reader_parallel);
                                             composite.variables.Add(dtEntity);
                                             break;
@@ -311,10 +311,10 @@ namespace CATHODE
 
                                                 CAGEAnimation.Connection header = new CAGEAnimation.Connection();
                                                 header.shortGUID = new ShortGuid(reader_parallel);
-                                                header.objectType = CommandsUtils.GetObjectType(new ShortGuid(reader_parallel));
+                                                header.objectType = (ObjectType)reader_parallel.ReadUInt32();
                                                 header.keyframeID = new ShortGuid(reader_parallel);
                                                 header.parameterID = new ShortGuid(reader_parallel);
-                                                header.parameterDataType = CommandsUtils.GetDataType(new ShortGuid(reader_parallel));
+                                                header.parameterDataType = (DataType)reader_parallel.ReadUInt32();
                                                 header.parameterSubID = new ShortGuid(reader_parallel);
 
                                                 int hierarchyCount = JumpToOffset(reader_parallel);
@@ -700,7 +700,7 @@ namespace CATHODE
                 for (int i = 0; i < parameters.Count; i++)
                 {
                     parameterOffsets.Add(parameters[i], (int)writer.BaseStream.Position / 4);
-                    Utilities.Write<ShortGuid>(writer, CommandsUtils.GetDataTypeGUID(parameters[i].dataType == DataType.ENUM_STRING ? DataType.STRING : parameters[i].dataType));
+                    writer.Write((uint)(parameters[i].dataType == DataType.ENUM_STRING ? DataType.STRING : parameters[i].dataType));
                     switch (parameters[i].dataType)
                     {
                         case DataType.TRANSFORM:
@@ -878,7 +878,7 @@ namespace CATHODE
                                     for (int p = 0; p < Entries[i].variables.Count; p++)
                                     {
                                         writer.Write(Entries[i].variables[p].shortGUID.AsUInt32);
-                                        writer.Write(CommandsUtils.GetDataTypeGUID(Entries[i].variables[p].type).AsUInt32);
+                                        writer.Write((uint)Entries[i].variables[p].type);
                                         writer.Write(Entries[i].variables[p].name.AsUInt32);
                                     }
                                     break;
@@ -977,10 +977,10 @@ namespace CATHODE
                                         {
                                             CAGEAnimation.Connection header = cageAnimationEntities[i][p].connections[pp];
                                             Utilities.Write(writer, header.shortGUID);
-                                            Utilities.Write(writer, CommandsUtils.GetObjectTypeGUID(header.objectType));
+                                            writer.Write((uint)header.objectType);
                                             Utilities.Write(writer, header.keyframeID);
                                             Utilities.Write(writer, header.parameterID);
-                                            Utilities.Write(writer, CommandsUtils.GetDataTypeGUID(header.parameterDataType));
+                                            writer.Write((uint)header.parameterDataType);
                                             Utilities.Write(writer, header.parameterSubID);
                                             writer.Write(hierarchyOffsets[pp] / 4);
                                             writer.Write(header.connectedEntity.path.Length);

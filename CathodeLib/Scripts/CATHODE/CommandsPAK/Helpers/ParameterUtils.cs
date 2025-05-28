@@ -336,7 +336,7 @@ namespace CATHODE.Scripting
                                 parameters.Add((new ShortGuid(paramID), entry.Key, DataType.FLOAT));
                                 break;
                             default:
-                                DataType dataType = (DataType)reader.ReadInt32();
+                                DataType dataType = IntToDatatype(reader.ReadInt32());
                                 if (!(function != FunctionType.Zone && paramID == _nameID))
                                 {
                                     if (dataType == DataType.NONE) //This only applies to TARGET_PIN, sometimes it has a value, other times it doesn't. If it doesn't, fall back to FLOAT for now.
@@ -515,7 +515,7 @@ namespace CATHODE.Scripting
                                 return (variant, DataType.FLOAT, function);
                             break;
                         default:
-                            DataType dataType = (DataType)reader.ReadInt32();
+                            DataType dataType = IntToDatatype(reader.ReadInt32());
                             if (dataType == DataType.NONE) //This only applies to TARGET_PIN, sometimes it has a value, other times it doesn't. If it doesn't, fall back to FLOAT for now.
                                 dataType = DataType.FLOAT;
                             if (isCorrectParam)
@@ -727,7 +727,7 @@ namespace CATHODE.Scripting
                                 return new cFloat();
                             break;
                         default:
-                            DataType dataType = (DataType)reader.ReadInt32();
+                            DataType dataType = IntToDatatype(reader.ReadInt32());
                             switch (dataType)
                             {
                                 case DataType.BOOL:
@@ -829,6 +829,53 @@ namespace CATHODE.Scripting
                 }
             }
             return ShortGuid.Invalid;
+        }
+
+        //This is a mapping for the old datatype enum which is still used by the BIN file - need to move it across to the new one.
+        private static DataType IntToDatatype(int i)
+        {
+            switch (i)
+            {
+                case 0:
+                    return DataType.STRING;
+                case 1:
+                    return DataType.FLOAT;
+                case 2:
+                    return DataType.INTEGER;
+                case 3:
+                    return DataType.BOOL;
+                case 4:
+                    return DataType.VECTOR;
+                case 5:
+                    return DataType.TRANSFORM;
+                case 6:
+                    return DataType.ENUM;
+                case 7:
+                    return DataType.SPLINE;
+                case 8:
+                    return DataType.RESOURCE;
+                case 9:
+                    return DataType.NONE;
+                case 10:
+                    return DataType.FILEPATH;
+                case 11:
+                    return DataType.OBJECT;
+                case 12:
+                    return DataType.ZONE_LINK;
+                case 13:
+                    return DataType.ZONE;
+                case 14:
+                    return DataType.ANIMATION_INFO;
+                case 15:
+                    return DataType.COLOUR;
+                case 16:
+                    return DataType.RESOURCE_ID;
+                case 17:
+                    return DataType.REFERENCE_FRAME;
+                case -1:
+                    return DataType.ENUM_STRING;
+            }
+            throw new Exception();
         }
     }
 }

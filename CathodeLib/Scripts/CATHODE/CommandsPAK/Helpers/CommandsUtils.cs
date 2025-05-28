@@ -26,9 +26,6 @@ namespace CATHODE.Scripting
         static CommandsUtils()
         {
             _purged = new CompositePurgeTable();
-
-            SetupDataTypeLUT();
-            SetupObjectTypeLUT();
         }
 
         /* Optionally, link a Commands file which can be used to save purge states to */
@@ -118,86 +115,6 @@ namespace CATHODE.Scripting
             }
             return null;
         }
-
-        #region DATATYPE_TYPE_UTILS
-        /* Data Types */
-        private static Dictionary<ShortGuid, DataType> _dataTypeLUT = new Dictionary<ShortGuid, DataType>();
-        private static void SetupDataTypeLUT()
-        {
-            if (_dataTypeLUT.Count != 0) return;
-
-            //todo: replace this with enum values
-
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("bool"), DataType.BOOL);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("int"), DataType.INTEGER);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("float"), DataType.FLOAT);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("String"), DataType.STRING);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("FilePath"), DataType.FILEPATH);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("SplineData"), DataType.SPLINE);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("Direction"), DataType.VECTOR);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("Position"), DataType.TRANSFORM);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("Enum"), DataType.ENUM);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("ShortGuid"), DataType.RESOURCE);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("Object"), DataType.OBJECT);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("ZonePtr"), DataType.ZONE);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("ZoneLinkPtr"), DataType.ZONE_LINK);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("AnimationInfoPtr"), DataType.ANIMATION_INFO);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate("Colour"), DataType.COLOUR);
-            _dataTypeLUT.Add(ShortGuidUtils.Generate(""), DataType.NONE);
-        }
-        public static DataType GetDataType(byte[] tag)
-        {
-            return GetDataType(new ShortGuid(tag));
-        }
-        public static DataType GetDataType(ShortGuid tag)
-        {
-            SetupDataTypeLUT();
-            return _dataTypeLUT[tag];
-        }
-        public static ShortGuid GetDataTypeGUID(DataType type)
-        {
-            SetupDataTypeLUT();
-            return _dataTypeLUT.FirstOrDefault(x => x.Value == type).Key;
-        }
-        public static bool DataTypeExists(ShortGuid tag)
-        {
-            return _dataTypeLUT.ContainsKey(tag);
-        }
-        #endregion
-
-        #region OBJECT_TYPE_UTILS
-        /* Object Types */
-        private static Dictionary<ShortGuid, ObjectType> _objectTypeLUT = new Dictionary<ShortGuid, ObjectType>();
-        private static void SetupObjectTypeLUT()
-        {
-            if (_objectTypeLUT.Count != 0) return;
-
-            //todo: replace this with enum values
-
-            _objectTypeLUT.Add(ShortGuidUtils.Generate(""), ObjectType.ENTITY);
-            _objectTypeLUT.Add(ShortGuidUtils.Generate("Marker"), ObjectType.MARKER);
-            _objectTypeLUT.Add(ShortGuidUtils.Generate("Character"), ObjectType.CHARACTER);
-            _objectTypeLUT.Add(ShortGuidUtils.Generate("Camera"), ObjectType.CAMERA);
-        }
-        public static ObjectType GetObjectType(byte[] tag)
-        {
-            return GetObjectType(new ShortGuid(tag));
-        }
-        public static ObjectType GetObjectType(ShortGuid tag)
-        {
-            SetupObjectTypeLUT();
-            return _objectTypeLUT[tag];
-        }
-        public static ShortGuid GetObjectTypeGUID(ObjectType type)
-        {
-            SetupObjectTypeLUT();
-            return _objectTypeLUT.FirstOrDefault(x => x.Value == type).Key;
-        }
-        public static bool DataObjectExists(ShortGuid tag)
-        {
-            return _objectTypeLUT.ContainsKey(tag);
-        }
-        #endregion
 
         #region HELPER_FUNCS
         /* Resolve an entity hierarchy */

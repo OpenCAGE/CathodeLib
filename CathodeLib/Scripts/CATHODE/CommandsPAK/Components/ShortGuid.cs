@@ -110,6 +110,16 @@ namespace CATHODE.Scripting
         public static bool operator ==(ShortGuid x, FunctionType y) => x.val == (uint)y;
         public static bool operator !=(ShortGuid x, FunctionType y) => x.val != (uint)y;
 
+        public bool IsDataType => Enum.IsDefined(typeof(DataType), val);
+        public DataType AsDataType => (DataType)val;
+        public static bool operator ==(ShortGuid x, DataType y) => x.val == (uint)y;
+        public static bool operator !=(ShortGuid x, DataType y) => x.val != (uint)y;
+
+        public bool IsObjectType => Enum.IsDefined(typeof(ObjectType), val);
+        public ObjectType AsObjectType => (ObjectType)val;
+        public static bool operator ==(ShortGuid x, ObjectType y) => x.val == (uint)y;
+        public static bool operator !=(ShortGuid x, ObjectType y) => x.val != (uint)y;
+
         public bool IsResourceType => Enum.IsDefined(typeof(ResourceType), val);
         public ResourceType AsResourceType => (ResourceType)val;
         public static bool operator ==(ShortGuid x, ResourceType y) => x.val == (uint)y;
