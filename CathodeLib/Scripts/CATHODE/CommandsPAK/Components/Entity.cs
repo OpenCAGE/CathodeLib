@@ -1,8 +1,4 @@
 using CATHODE.Scripting.Internal;
-#if DEBUG
-using Newtonsoft.Json.Converters;
-using Newtonsoft.Json;
-#endif
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -35,9 +31,6 @@ namespace CATHODE.Scripting.Internal
         }
 
         public ShortGuid shortGUID; //Translates to string via EntityNameLookup.GetEntityName
-#if DEBUG
-        [JsonConverter(typeof(StringEnumConverter))]
-#endif
         public EntityVariant variant;
 
         public List<EntityConnector> childLinks = new List<EntityConnector>();
@@ -363,9 +356,6 @@ namespace CATHODE.Scripting
         }
 
         public ShortGuid name;
-#if DEBUG
-        [JsonConverter(typeof(StringEnumConverter))]
-#endif
         public DataType type = DataType.NONE;
 
         public override string ToString()
@@ -443,7 +433,7 @@ namespace CATHODE.Scripting
             {
                 Parameter resourceParam = GetParameter("resource");
                 if (resourceParam != null && resourceParam.content != null && resourceParam.content.dataType == DataType.RESOURCE)
-                    resource = ((cResource)resourceParam.content).GetResource(ResourceType.COLLISION_MAPPING);
+                    resource = ((cResource)resourceParam.content).GetResource(type);
             }
             return resource;
         }
@@ -510,16 +500,10 @@ namespace CATHODE.Scripting
             public ShortGuid shortGUID; //Unique ID - TODO: can we just generate this?
             public ShortGuid keyframeID; //The keyframe ID we're pointing to
 
-#if DEBUG
-            [JsonConverter(typeof(StringEnumConverter))]
-#endif
             public ObjectType objectType; //The type of object at the connected entity
 
             //Specifics for the parameter we're connected to
             public ShortGuid parameterID;
-#if DEBUG
-            [JsonConverter(typeof(StringEnumConverter))]
-#endif
             public DataType parameterDataType; 
             public ShortGuid parameterSubID; //if parameterID is position, this might be x for example
 
@@ -662,9 +646,6 @@ namespace CATHODE.Scripting
     /// The path should always be written to Commands with a trailing ShortGuid.Invalid.
     /// </summary>
     [Serializable]
-#if DEBUG
-    [JsonConverter(typeof(EntityPathConverter))]
-#endif
     public class EntityPath
     {
         public EntityPath() { }
@@ -910,28 +891,4 @@ namespace CATHODE.Scripting
             return instanceGenerated;
         }
     }
-
-#if DEBUG
-    public class EntityPathConverter : JsonConverter
-    {
-        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
-        {
-            writer.WriteValue(((EntityPath)value).GetAsString());
-        }
-
-        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
-        {
-            EntityPath e = new EntityPath();
-            List<string> vals = reader.Value.ToString().Split(new[] { " -> " }, StringSplitOptions.None).ToList();
-            e.path = new ShortGuid[vals.Count];
-            for (int i = 0; i < vals.Count; i++) e.path[i] = new ShortGuid(vals[i]);
-            return e;
-        }
-
-        public override bool CanConvert(Type objectType)
-        {
-            return objectType == typeof(EntityPath);
-        }
-    }
-#endif
 }

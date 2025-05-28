@@ -1,7 +1,4 @@
-﻿#if DEBUG
-using Newtonsoft.Json;
-#endif
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -11,9 +8,6 @@ namespace CATHODE.Scripting
     /* A unique id assigned to CATHODE objects */
     [Serializable]
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-#if DEBUG
-    [JsonConverter(typeof(ShortGuidConverter))]
-#endif
     public struct ShortGuid : IComparable<ShortGuid>
     {
         public static readonly ShortGuid Invalid = new ShortGuid(0);
@@ -147,25 +141,4 @@ namespace CATHODE.Scripting
             return BitConverter.GetBytes(val);
         }
     }
-
-#if DEBUG
-    public class ShortGuidConverter : JsonConverter
-    {
-        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
-        {
-            ShortGuid user = (ShortGuid)value;
-            writer.WriteValue(user.ToString());
-        }
-
-        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
-        {
-            return new ShortGuid((byte[])reader.Value);
-        }
-
-        public override bool CanConvert(Type objectType)
-        {
-            return objectType == typeof(ShortGuid);
-        }
-    }
-#endif
 }
