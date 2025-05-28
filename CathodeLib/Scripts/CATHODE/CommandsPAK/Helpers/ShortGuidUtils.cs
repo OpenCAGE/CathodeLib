@@ -92,9 +92,9 @@ namespace CATHODE.Scripting
         /* Combines two ShortGuid objects into one */
         public static ShortGuid Combine(this ShortGuid guid1, ShortGuid guid2)
         {
-            if (guid2.ToUInt32() != 0)
+            if (guid2.AsUInt32() != 0)
             {
-                if (guid1.ToUInt32() != 0)
+                if (guid1.AsUInt32() != 0)
                 {
                     byte[] guid1_b = guid1.ToBytes();
                     byte[] guid2_b = guid2.ToBytes();

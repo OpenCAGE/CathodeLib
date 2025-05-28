@@ -28,7 +28,7 @@ namespace CATHODE.Scripting
         /* Load all FunctionEntity metadata from our offline DB */
         static ParameterUtils()
         {
-            _nameID = ShortGuidUtils.Generate("name").ToUInt32();
+            _nameID = ShortGuidUtils.Generate("name").AsUInt32();
 
 #if UNITY_EDITOR || UNITY_STANDALONE
             _functionInfo = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_entity_lut.bin");
@@ -166,7 +166,7 @@ namespace CATHODE.Scripting
                 }
                 else
                 {
-                    CompositePinType pinType = (CompositePinType)pinInfo.PinTypeGUID.ToUInt32();
+                    CompositePinType pinType = (CompositePinType)pinInfo.PinTypeGUID.AsUInt32();
                     ParameterVariant paramVariant = CompositeUtils.PinTypeToParameterVariant(pinType);
                     switch (pinType)
                     {
@@ -190,7 +190,7 @@ namespace CATHODE.Scripting
                 }
                 else
                 {
-                    CompositePinType pinType = (CompositePinType)pinInfo.PinTypeGUID.ToUInt32();
+                    CompositePinType pinType = (CompositePinType)pinInfo.PinTypeGUID.AsUInt32();
                     ParameterVariant paramVariant = CompositeUtils.PinTypeToParameterVariant(pinType);
                     switch (pinType)
                     {
@@ -208,9 +208,9 @@ namespace CATHODE.Scripting
         }
         private static void ApplyDefaultFunction(FunctionEntity baseEntity, Entity targetEntity, Composite composite, ParameterVariant variants, bool overwrite, bool includeInherited)
         {
-            if (CommandsUtils.FunctionTypeExists((baseEntity).function))
+            if (baseEntity.function.IsFunctionType)
             {
-                FunctionType? functionType = (FunctionType)(baseEntity).function.ToUInt32();
+                FunctionType? functionType = baseEntity.function.AsFunctionType;
                 while (true)
                 {
                     ApplyDefaults(baseEntity, targetEntity, overwrite, variants, functionType.Value);
@@ -245,9 +245,9 @@ namespace CATHODE.Scripting
             {
                 case EntityVariant.FUNCTION:
                     FunctionEntity functionEntity = (FunctionEntity)entity;
-                    if (CommandsUtils.FunctionTypeExists(functionEntity.function))
+                    if (functionEntity.function.IsFunctionType)
                     {
-                        FunctionType? functionType = (FunctionType)functionEntity.function.ToUInt32();
+                        FunctionType? functionType = functionEntity.function.AsFunctionType;
                         while (true)
                         {
                             parameters.AddRange(GetAllParameters(functionType.Value));
@@ -412,9 +412,9 @@ namespace CATHODE.Scripting
                     break;
                 case EntityVariant.FUNCTION:
                     FunctionEntity functionEntity = (FunctionEntity)entity;
-                    if (CommandsUtils.FunctionTypeExists(functionEntity.function))
+                    if (functionEntity.function.IsFunctionType)
                     {
-                        FunctionType? functionType = (FunctionType)functionEntity.function.ToUInt32();
+                        FunctionType? functionType = (FunctionType)functionEntity.function.AsUInt32();
                         while (true)
                         {
                             var metadata = GetParameterMetadata(functionType.Value, parameter);
@@ -505,7 +505,7 @@ namespace CATHODE.Scripting
                 for (int i = 0; i < paramCount; i++)
                 {
                     uint paramID = reader.ReadUInt32();
-                    bool isCorrectParam = paramID == parameter.ToUInt32();
+                    bool isCorrectParam = paramID == parameter.AsUInt32();
                     switch (variant)
                     {
                         case ParameterVariant.REFERENCE_PIN:
@@ -626,9 +626,9 @@ namespace CATHODE.Scripting
                     break;
                 case EntityVariant.FUNCTION:
                     FunctionEntity functionEntity = (FunctionEntity)entity;
-                    if (CommandsUtils.FunctionTypeExists(functionEntity.function))
+                    if (functionEntity.function.IsFunctionType)
                     {
-                        FunctionType? functionType = (FunctionType)functionEntity.function.ToUInt32();
+                        FunctionType? functionType = functionEntity.function.AsFunctionType;
                         while (true)
                         {
                             var data = CreateDefaultParameterData(functionType.Value, parameter);
@@ -716,7 +716,7 @@ namespace CATHODE.Scripting
                 for (int i = 0; i < paramCount; i++)
                 {
                     uint paramID = reader.ReadUInt32();
-                    bool isCorrectParam = paramID == parameter.ToUInt32();
+                    bool isCorrectParam = paramID == parameter.AsUInt32();
                     switch (variant)
                     {
                         case ParameterVariant.TARGET_PIN:
@@ -824,7 +824,7 @@ namespace CATHODE.Scripting
                 {
                     UInt32 method = reader.ReadUInt32();
                     UInt32 relay = reader.ReadUInt32();
-                    if (method == guid.ToUInt32())
+                    if (method == guid.AsUInt32())
                         return new ShortGuid(relay);
                 }
             }

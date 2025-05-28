@@ -27,10 +27,8 @@ namespace CATHODE.Scripting
         {
             _purged = new CompositePurgeTable();
 
-            SetupFunctionTypeLUT();
             SetupDataTypeLUT();
             SetupObjectTypeLUT();
-            SetupResourceEntryTypeLUT();
         }
 
         /* Optionally, link a Commands file which can be used to save purge states to */
@@ -121,56 +119,14 @@ namespace CATHODE.Scripting
             return null;
         }
 
-        #region FUNCTION_TYPE_UTILS
-        /* Function Types */
-        private static Dictionary<ShortGuid, FunctionType> _functionTypeLUT = new Dictionary<ShortGuid, FunctionType>();
-        private static void SetupFunctionTypeLUT()
-        {
-            if (_functionTypeLUT.Count != 0) return;
-
-            foreach (FunctionType functionType in Enum.GetValues(typeof(FunctionType)))
-            {
-                string shortGuidString = functionType.ToString();
-                if (functionType == FunctionType.GCIP_WorldPickup) 
-                    shortGuidString = "n:\\content\\build\\library\\archetypes\\gameplay\\gcip_worldpickup";
-                if (functionType == FunctionType.PlayForMinDuration)
-                    shortGuidString = "n:\\content\\build\\library\\ayz\\animation\\logichelpers\\playforminduration";
-                if (functionType == FunctionType.Torch_Control)
-                    shortGuidString = "n:\\content\\build\\library\\archetypes\\script\\gameplay\\torch_control";
-
-                _functionTypeLUT.Add(ShortGuidUtils.Generate(shortGuidString), functionType);
-            }
-        }
-        public static FunctionType GetFunctionType(byte[] tag)
-        {
-            return GetFunctionType(new ShortGuid(tag));
-        }
-        public static FunctionType GetFunctionType(FunctionEntity ent)
-        {
-            return GetFunctionType(ent.function);
-        }
-        public static FunctionType GetFunctionType(ShortGuid tag)
-        {
-            SetupFunctionTypeLUT();
-            return _functionTypeLUT[tag];
-        }
-        public static ShortGuid GetFunctionTypeGUID(FunctionType type)
-        {
-            SetupFunctionTypeLUT();
-            return _functionTypeLUT.FirstOrDefault(x => x.Value == type).Key;
-        }
-        public static bool FunctionTypeExists(ShortGuid tag)
-        {
-            return _functionTypeLUT.ContainsKey(tag);
-        }
-        #endregion
-
         #region DATATYPE_TYPE_UTILS
         /* Data Types */
         private static Dictionary<ShortGuid, DataType> _dataTypeLUT = new Dictionary<ShortGuid, DataType>();
         private static void SetupDataTypeLUT()
         {
             if (_dataTypeLUT.Count != 0) return;
+
+            //todo: replace this with enum values
 
             _dataTypeLUT.Add(ShortGuidUtils.Generate("bool"), DataType.BOOL);
             _dataTypeLUT.Add(ShortGuidUtils.Generate("int"), DataType.INTEGER);
@@ -216,6 +172,8 @@ namespace CATHODE.Scripting
         {
             if (_objectTypeLUT.Count != 0) return;
 
+            //todo: replace this with enum values
+
             _objectTypeLUT.Add(ShortGuidUtils.Generate(""), ObjectType.ENTITY);
             _objectTypeLUT.Add(ShortGuidUtils.Generate("Marker"), ObjectType.MARKER);
             _objectTypeLUT.Add(ShortGuidUtils.Generate("Character"), ObjectType.CHARACTER);
@@ -238,32 +196,6 @@ namespace CATHODE.Scripting
         public static bool DataObjectExists(ShortGuid tag)
         {
             return _objectTypeLUT.ContainsKey(tag);
-        }
-        #endregion
-
-        #region RESOURCE_TYPE_UTILS
-        /* Resource Reference Types */
-        private static Dictionary<ShortGuid, ResourceType> _resourceReferenceTypeLUT = new Dictionary<ShortGuid, ResourceType>();
-        private static void SetupResourceEntryTypeLUT()
-        {
-            if (_resourceReferenceTypeLUT.Count != 0) return;
-
-            foreach (ResourceType referenceType in Enum.GetValues(typeof(ResourceType)))
-                _resourceReferenceTypeLUT.Add(ShortGuidUtils.Generate(referenceType.ToString()), referenceType);
-        }
-        public static ResourceType GetResourceEntryType(byte[] tag)
-        {
-            return GetResourceEntryType(new ShortGuid(tag));
-        }
-        public static ResourceType GetResourceEntryType(ShortGuid tag)
-        {
-            SetupResourceEntryTypeLUT();
-            return _resourceReferenceTypeLUT[tag];
-        }
-        public static ShortGuid GetResourceEntryTypeGUID(ResourceType type)
-        {
-            SetupResourceEntryTypeLUT();
-            return _resourceReferenceTypeLUT.FirstOrDefault(x => x.Value == type).Key;
         }
         #endregion
 
@@ -377,7 +309,7 @@ namespace CATHODE.Scripting
             //Clear functions
             List<FunctionEntity> functionsPurged = new List<FunctionEntity>();
             for (int i = 0; i < composite.functions.Count; i++)
-                if (CommandsUtils.FunctionTypeExists(composite.functions[i].function) || commands.GetComposite(composite.functions[i].function) != null)
+                if (composite.functions[i].function.IsFunctionType || commands.GetComposite(composite.functions[i].function) != null)
                     functionsPurged.Add(composite.functions[i]);
             originalFuncCount = composite.functions.Count;
             composite.functions = functionsPurged;

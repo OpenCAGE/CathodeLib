@@ -231,11 +231,10 @@ namespace CATHODE
                                             reader_parallel.BaseStream.Position = (offsetPairs[x].GlobalOffset * 4) + (y * 8);
                                             ShortGuid entityID = new ShortGuid(reader_parallel);
                                             ShortGuid functionID = new ShortGuid(reader_parallel);
-                                            if (CommandsUtils.FunctionTypeExists(functionID))
+                                            if (functionID.IsFunctionType)
                                             {
                                                 //This entity executes a hard-coded CATHODE function
-                                                FunctionType functionType = CommandsUtils.GetFunctionType(functionID);
-                                                switch (functionType)
+                                                switch (functionID.AsFunctionType)
                                                 {
                                                     case FunctionType.CAGEAnimation:
                                                         CAGEAnimation cageAnimation = new CAGEAnimation(entityID);
@@ -269,7 +268,7 @@ namespace CATHODE
                                             resource.position = new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle());
                                             resource.rotation = new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle());
                                             resource.resource_id = new ShortGuid(reader_parallel);
-                                            resource.resource_type = CommandsUtils.GetResourceEntryType(reader_parallel.ReadBytes(4));
+                                            resource.resource_type = (ResourceType)reader_parallel.ReadUInt32();
                                             switch (resource.resource_type)
                                             {
                                                 case ResourceType.RENDERABLE_INSTANCE:
@@ -550,10 +549,9 @@ namespace CATHODE
             {
                 Parallel.For(0, Entries[i].functions.Count, x =>
                 {
-                    if (CommandsUtils.FunctionTypeExists(Entries[i].functions[x].function))
+                    if (Entries[i].functions[x].function.IsFunctionType)
                     {
-                        FunctionType type = CommandsUtils.GetFunctionType(Entries[i].functions[x].function);
-                        switch (type)
+                        switch (Entries[i].functions[x].function.AsFunctionType)
                         {
                             case FunctionType.TRAV_1ShotClimbUnder:
                             case FunctionType.TRAV_1ShotFloorVentEntrance:
@@ -613,13 +611,10 @@ namespace CATHODE
             });
 
             //Make sure our composites are in ID order
-            Entries = Entries.OrderBy(o => o.shortGUID.ToUInt32()).ToList();
+            Entries = Entries.OrderBy(o => o.shortGUID.AsUInt32()).ToList();
             #endregion
 
             #region WORK_OUT_WHAT_TO_WRITE
-            //Remember some ShortGuid vals here to save re-calling them every time
-            ShortGuid SHORTGUID_CAGEAnimation = CommandsUtils.GetFunctionTypeGUID(FunctionType.CAGEAnimation);
-            ShortGuid SHORTGUID_TriggerSequence = CommandsUtils.GetFunctionTypeGUID(FunctionType.TriggerSequence);
             ShortGuid SHORTGUID_resource = ShortGuidUtils.Generate("resource");
 
             //Work out data to write
@@ -635,10 +630,10 @@ namespace CATHODE
             Parallel.For(0, Entries.Count, i => 
             {
                 List<Entity> ents = Entries[i].GetEntities();
-                linkedEntities[i] = new List<Entity>(ents.FindAll(o => o.childLinks.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
-                parameterisedEntities[i] = new List<Entity>(ents.FindAll(o => o.parameters.Count != 0)).OrderBy(o => o.shortGUID.ToUInt32()).ToList();
-                reshuffledAliases[i] = Entries[i].aliases.OrderBy(o => o.shortGUID.ToUInt32()).ToList();
-                reshuffledAliasPathHashes[i] = Entries[i].aliases.OrderBy(o => o.alias.GeneratePathHash().ToUInt32()).ToList();
+                linkedEntities[i] = new List<Entity>(ents.FindAll(o => o.childLinks.Count != 0)).OrderBy(o => o.shortGUID.AsUInt32()).ToList();
+                parameterisedEntities[i] = new List<Entity>(ents.FindAll(o => o.parameters.Count != 0)).OrderBy(o => o.shortGUID.AsUInt32()).ToList();
+                reshuffledAliases[i] = Entries[i].aliases.OrderBy(o => o.shortGUID.AsUInt32()).ToList();
+                reshuffledAliasPathHashes[i] = Entries[i].aliases.OrderBy(o => o.alias.GeneratePathHash().AsUInt32()).ToList();
 
                 cageAnimationEntities[i] = new List<CAGEAnimation>();
                 triggerSequenceEntities[i] = new List<TriggerSequence>();
@@ -646,13 +641,13 @@ namespace CATHODE
                 for (int x = 0; x < Entries[i].functions.Count; x++)
                 {
                     //If this function is a valid CAGEAnimation or TriggerSequence, remember it
-                    if (Entries[i].functions[x].function == SHORTGUID_CAGEAnimation)
+                    if (Entries[i].functions[x].function == FunctionType.CAGEAnimation)
                     {
                         CAGEAnimation thisEntity = (CAGEAnimation)Entries[i].functions[x];
                         if (thisEntity.connections.Count == 0 && thisEntity.animations.Count == 0 && thisEntity.events.Count == 0) continue;
                         cageAnimationEntities[i].Add(thisEntity);
                     }
-                    else if (Entries[i].functions[x].function == SHORTGUID_TriggerSequence)
+                    else if (Entries[i].functions[x].function == FunctionType.TriggerSequence)
                     {
                         TriggerSequence thisEntity = (TriggerSequence)Entries[i].functions[x];
                         if (thisEntity.entities.Count == 0 && thisEntity.events.Count == 0) continue;
@@ -729,7 +724,7 @@ namespace CATHODE
                             stringStartRaw[3] = 0x80;
                             writer.Write(stringStartRaw);
                             string str = ((cString)parameters[i]).value.Replace("\u0092", "'"); 
-                            writer.Write(ShortGuidUtils.Generate(str, false).ToUInt32());
+                            writer.Write(ShortGuidUtils.Generate(str, false).AsUInt32());
                             for (int x = 0; x < str.Length; x++) writer.Write(str[x]);
                             writer.Write((char)0x00);
                             Utilities.Align(writer, 4);
@@ -819,7 +814,7 @@ namespace CATHODE
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, linkedEntities[i].Count);
                                     for (int p = 0; p < linkedEntities[i].Count; p++)
                                     {
-                                        writer.Write(linkedEntities[i][p].shortGUID.ToUInt32());
+                                        writer.Write(linkedEntities[i][p].shortGUID.AsUInt32());
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
                                     }
@@ -832,7 +827,7 @@ namespace CATHODE
                                     foreach (Entity entityWithParam in parameterisedEntities[i])
                                     {
                                         offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, entityWithParam.parameters.Count));
-                                        List<Parameter> sortedParams = entityWithParam.parameters.OrderBy(o => o.name.ToUInt32()).ToList();
+                                        List<Parameter> sortedParams = entityWithParam.parameters.OrderBy(o => o.name.AsUInt32()).ToList();
                                         for (int y = 0; y < sortedParams.Count; y++)
                                         {
                                             Utilities.Write<ShortGuid>(writer, sortedParams[y].name);
@@ -843,7 +838,7 @@ namespace CATHODE
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, offsetPairs.Count);
                                     for (int p = 0; p < parameterisedEntities[i].Count; p++)
                                     {
-                                        writer.Write(parameterisedEntities[i][p].shortGUID.ToUInt32());
+                                        writer.Write(parameterisedEntities[i][p].shortGUID.AsUInt32());
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
                                     }
@@ -861,7 +856,7 @@ namespace CATHODE
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledAliases[i].Count);
                                     for (int p = 0; p < reshuffledAliases[i].Count; p++)
                                     {
-                                        writer.Write(reshuffledAliases[i][p].shortGUID.ToUInt32());
+                                        writer.Write(reshuffledAliases[i][p].shortGUID.AsUInt32());
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
                                     }
@@ -872,8 +867,8 @@ namespace CATHODE
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, reshuffledAliasPathHashes[i].Count);
                                     for (int p = 0; p < reshuffledAliasPathHashes[i].Count; p++)
                                     {
-                                        writer.Write(reshuffledAliasPathHashes[i][p].shortGUID.ToUInt32());
-                                        writer.Write(reshuffledAliasPathHashes[i][p].alias.GeneratePathHash().ToUInt32());
+                                        writer.Write(reshuffledAliasPathHashes[i][p].shortGUID.AsUInt32());
+                                        writer.Write(reshuffledAliasPathHashes[i][p].alias.GeneratePathHash().AsUInt32());
                                     }
                                     break;
                                 }
@@ -882,9 +877,9 @@ namespace CATHODE
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, Entries[i].variables.Count);
                                     for (int p = 0; p < Entries[i].variables.Count; p++)
                                     {
-                                        writer.Write(Entries[i].variables[p].shortGUID.ToUInt32());
-                                        writer.Write(CommandsUtils.GetDataTypeGUID(Entries[i].variables[p].type).ToUInt32());
-                                        writer.Write(Entries[i].variables[p].name.ToUInt32());
+                                        writer.Write(Entries[i].variables[p].shortGUID.AsUInt32());
+                                        writer.Write(CommandsUtils.GetDataTypeGUID(Entries[i].variables[p].type).AsUInt32());
+                                        writer.Write(Entries[i].variables[p].name.AsUInt32());
                                     }
                                     break;
                                 }
@@ -900,11 +895,11 @@ namespace CATHODE
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, offsetPairs.Count);
                                     for (int p = 0; p < Entries[i].proxies.Count; p++)
                                     {
-                                        writer.Write(Entries[i].proxies[p].shortGUID.ToUInt32());
+                                        writer.Write(Entries[i].proxies[p].shortGUID.AsUInt32());
                                         writer.Write(offsetPairs[p].GlobalOffset / 4);
                                         writer.Write(offsetPairs[p].EntryCount);
-                                        writer.Write(Entries[i].proxies[p].shortGUID.ToUInt32());
-                                        writer.Write(Entries[i].proxies[p].function.ToUInt32());
+                                        writer.Write(Entries[i].proxies[p].shortGUID.AsUInt32());
+                                        writer.Write(Entries[i].proxies[p].function.AsUInt32());
                                     }
                                     break;
                                 }
@@ -913,8 +908,8 @@ namespace CATHODE
                                     scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, Entries[i].functions.Count);
                                     for (int p = 0; p < Entries[i].functions.Count; p++)
                                     {
-                                        writer.Write(Entries[i].functions[p].shortGUID.ToUInt32());
-                                        writer.Write(Entries[i].functions[p].function.ToUInt32());
+                                        writer.Write(Entries[i].functions[p].shortGUID.AsUInt32());
+                                        writer.Write(Entries[i].functions[p].function.AsUInt32());
                                     }
                                     break;
                                 }
@@ -938,8 +933,8 @@ namespace CATHODE
                                         writer.Write(resourceReferences[i][p].rotation.Y);
                                         writer.Write(resourceReferences[i][p].rotation.Z);
 #endif
-                                        writer.Write(resourceReferences[i][p].resource_id.ToUInt32()); //Sometimes this is the entity ID that uses the resource, other times it's the "resource" parameter ID link
-                                        writer.Write(CommandsUtils.GetResourceEntryTypeGUID(resourceReferences[i][p].resource_type).ToUInt32());
+                                        writer.Write(resourceReferences[i][p].resource_id.AsUInt32()); //Sometimes this is the entity ID that uses the resource, other times it's the "resource" parameter ID link
+                                        writer.Write((uint)resourceReferences[i][p].resource_type);
                                         switch (resourceReferences[i][p].resource_type)
                                         {
                                             case ResourceType.RENDERABLE_INSTANCE:
@@ -948,7 +943,7 @@ namespace CATHODE
                                                 break;
                                             case ResourceType.COLLISION_MAPPING:
                                                 writer.Write(resourceReferences[i][p].index);
-                                                writer.Write(resourceReferences[i][p].entityID.ToUInt32());
+                                                writer.Write(resourceReferences[i][p].entityID.AsUInt32());
                                                 break;
                                             case ResourceType.ANIMATED_MODEL:
                                             case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
@@ -1067,7 +1062,7 @@ namespace CATHODE
                                         Utilities.Write<int>(writer, internalOffsets);
 
                                         globalOffsets.Add((int)writer.BaseStream.Position);
-                                        writer.Write(cageAnimationEntities[i][p].shortGUID.ToUInt32());
+                                        writer.Write(cageAnimationEntities[i][p].shortGUID.AsUInt32());
                                         writer.Write(headerOffset / 4);
                                         writer.Write(cageAnimationEntities[i][p].connections.Count);
                                         writer.Write(animationOffset / 4);
@@ -1106,13 +1101,13 @@ namespace CATHODE
                                         int eventOffset = (int)writer.BaseStream.Position;
                                         for (int pp = 0; pp < triggerSequenceEntities[i][p].events.Count; pp++)
                                         {
-                                            writer.Write(triggerSequenceEntities[i][p].events[pp].start.ToUInt32());
-                                            writer.Write(triggerSequenceEntities[i][p].events[pp].shortGUID.ToUInt32());
-                                            writer.Write(triggerSequenceEntities[i][p].events[pp].end.ToUInt32());
+                                            writer.Write(triggerSequenceEntities[i][p].events[pp].start.AsUInt32());
+                                            writer.Write(triggerSequenceEntities[i][p].events[pp].shortGUID.AsUInt32());
+                                            writer.Write(triggerSequenceEntities[i][p].events[pp].end.AsUInt32());
                                         }
 
                                         globalOffsets.Add((int)writer.BaseStream.Position);
-                                        writer.Write(triggerSequenceEntities[i][p].shortGUID.ToUInt32());
+                                        writer.Write(triggerSequenceEntities[i][p].shortGUID.AsUInt32());
                                         writer.Write(triggerOffset / 4);
                                         writer.Write(triggerSequenceEntities[i][p].entities.Count);
                                         writer.Write(eventOffset / 4);
@@ -1151,7 +1146,7 @@ namespace CATHODE
                     }
 
                     //Write function count (TODO: sometimes this count excludes some entities in the vanilla paks - why?)
-                    writer.Write(Entries[i].functions.FindAll(o => CommandsUtils.FunctionTypeExists(o.function)).Count);
+                    writer.Write(Entries[i].functions.FindAll(o => o.function.IsFunctionType).Count);
                     writer.Write(Entries[i].functions.Count);
                 }
                 #endregion

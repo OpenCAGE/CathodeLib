@@ -60,15 +60,13 @@ namespace CATHODE.Scripting
         /* Returns a collection of function entities in the composite matching the given type */
         public List<FunctionEntity> GetFunctionEntitiesOfType(FunctionType type)
         {
-            ShortGuid guid = CommandsUtils.GetFunctionTypeGUID(type);
-            return functions.FindAll(o => o.function == guid);
+            return functions.FindAll(o => o.function == type);
         }
 
         /* Removes all function entities in the composite matching the given type */
         public void RemoveAllFunctionEntitiesOfType(FunctionType type)
         {
-            ShortGuid guid = CommandsUtils.GetFunctionTypeGUID(type);
-            functions.RemoveAll(o => o.function == guid);
+            functions.RemoveAll(o => o.function == type);
         }
 
         /* Add a new function entity */

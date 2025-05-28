@@ -205,7 +205,7 @@ namespace CathodeLib
 
         public static ParameterVariant PinTypeToParameterVariant(ShortGuid type)
         {
-            return PinTypeToParameterVariant((CompositePinType)type.ToUInt32());
+            return PinTypeToParameterVariant((CompositePinType)type.AsUInt32());
         }
         public static ParameterVariant PinTypeToParameterVariant(CompositePinType type)
         {

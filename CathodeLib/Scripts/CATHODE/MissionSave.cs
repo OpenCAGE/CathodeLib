@@ -95,7 +95,7 @@ namespace CATHODE.EXPERIMENTAL
         {
             //Read leaf name
             ShortGuid id = Utilities.Consume<ShortGuid>(stream);
-            if (id.ToUInt32() == 0) return null;
+            if (id.AsUInt32() == 0) return null;
 
             string id_str = id.ToString();
             Console.WriteLine("Reading " + id_str);

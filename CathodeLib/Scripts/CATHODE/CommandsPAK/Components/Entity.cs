@@ -54,9 +54,9 @@ namespace CATHODE.Scripting.Internal
         {
             if (other == null) return 1;
 
-            if (this.shortGUID.ToUInt32() > other.shortGUID.ToUInt32())
+            if (this.shortGUID.AsUInt32() > other.shortGUID.AsUInt32())
                 return 1;
-            else if (this.shortGUID.ToUInt32() < other.shortGUID.ToUInt32())
+            else if (this.shortGUID.AsUInt32() < other.shortGUID.AsUInt32())
                 return -1;
 
             return 0;
@@ -394,7 +394,7 @@ namespace CATHODE.Scripting
         }
         public FunctionEntity(FunctionType function) : base(EntityVariant.FUNCTION)
         {
-            this.function = CommandsUtils.GetFunctionTypeGUID(function);
+            this.function = new ShortGuid((uint)function);
         }
 
         public FunctionEntity(ShortGuid shortGUID, string function) : base(shortGUID, EntityVariant.FUNCTION)
@@ -407,7 +407,7 @@ namespace CATHODE.Scripting
         }
         public FunctionEntity(ShortGuid shortGUID, FunctionType function) : base(shortGUID, EntityVariant.FUNCTION)
         {
-            this.function = CommandsUtils.GetFunctionTypeGUID(function);
+            this.function = new ShortGuid((uint)function);
         }
 
         public ShortGuid function;
@@ -680,7 +680,7 @@ namespace CATHODE.Scripting
             {
                 List<uint> p = new List<uint>();
                 for (int i = 0; i < path.Length; i++)
-                    p.Add(path[i].ToUInt32());
+                    p.Add(path[i].AsUInt32());
                 return p;
             }
         }
@@ -742,7 +742,7 @@ namespace CATHODE.Scripting
         public UInt32 ToUInt32()
         {
             UInt32 val = 0;
-            for (int i = 0; i < path.Length; i++) val += path[i].ToUInt32();
+            for (int i = 0; i < path.Length; i++) val += path[i].AsUInt32();
             return val;
         }
 
@@ -816,7 +816,7 @@ namespace CATHODE.Scripting
         /* Generate a zone ID (use this when the EntityHandle points to a Zone entity) */
         public ShortGuid GenerateZoneID()
         {
-            return new ShortGuid(0 + GenerateCompositeInstanceID().ToUInt32() + GetPointedEntityID().ToUInt32() + 1);
+            return new ShortGuid(0 + GenerateCompositeInstanceID().AsUInt32() + GetPointedEntityID().AsUInt32() + 1);
         }
 
         /* Add the next entity GUID along the path */

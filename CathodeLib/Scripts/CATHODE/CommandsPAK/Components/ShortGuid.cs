@@ -78,11 +78,11 @@ namespace CATHODE.Scripting
 
         public static bool operator ==(ShortGuid x, uint y)
         {
-            return x.ToUInt32() == y;
+            return x.AsUInt32() == y;
         }
         public static bool operator !=(ShortGuid x, uint y)
         {
-            return x.ToUInt32() != y;
+            return x.AsUInt32() != y;
         }
 
         public override int GetHashCode()
@@ -106,16 +106,42 @@ namespace CATHODE.Scripting
         {
             return ShortGuidUtils.FindString(this);
         }
-        public uint ToUInt32()
+        [Obsolete("This method has been deprecated. Please use AsUInt32.")]
+        public uint ToUInt32() => AsUInt32();
+        public uint AsUInt32()
         {
             return val;
         }
+
+        public bool IsFunctionType => Enum.IsDefined(typeof(FunctionType), val);
+        public FunctionType AsFunctionType => (FunctionType)val;
+        public static bool operator ==(ShortGuid x, FunctionType y) => x.val == (uint)y;
+        public static bool operator !=(ShortGuid x, FunctionType y) => x.val != (uint)y;
+
+        public bool IsResourceType => Enum.IsDefined(typeof(ResourceType), val);
+        public ResourceType AsResourceType => (ResourceType)val;
+        public static bool operator ==(ShortGuid x, ResourceType y) => x.val == (uint)y;
+        public static bool operator !=(ShortGuid x, ResourceType y) => x.val != (uint)y;
+
+        public bool IsEnumType => Enum.IsDefined(typeof(EnumType), val);
+        public EnumType AsEnumType => (EnumType)val;
+        public static bool operator ==(ShortGuid x, EnumType y) => x.val == (uint)y;
+        public static bool operator !=(ShortGuid x, EnumType y) => x.val != (uint)y;
+
+        public bool IsEnumStringType => Enum.IsDefined(typeof(EnumStringType), val);
+        public EnumStringType AsEnumStringType => (EnumStringType)val;
+        public static bool operator ==(ShortGuid x, EnumStringType y) => x.val == (uint)y;
+        public static bool operator !=(ShortGuid x, EnumStringType y) => x.val != (uint)y;
+
+        public bool IsCompositePinType => Enum.IsDefined(typeof(CompositePinType), val);
+        public CompositePinType AsCompositePinType => (CompositePinType)val;
+        public static bool operator ==(ShortGuid x, CompositePinType y) => x.val == (uint)y;
+        public static bool operator !=(ShortGuid x, CompositePinType y) => x.val != (uint)y;
 
         public string ToByteString()
         {
             return BitConverter.ToString(BitConverter.GetBytes(val));
         }
-
         public byte[] ToBytes()
         {
             return BitConverter.GetBytes(val);
