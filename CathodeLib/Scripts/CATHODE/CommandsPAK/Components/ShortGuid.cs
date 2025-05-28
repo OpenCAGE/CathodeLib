@@ -72,11 +72,11 @@ namespace CATHODE.Scripting
 
         public static bool operator ==(ShortGuid x, uint y)
         {
-            return x.AsUInt32() == y;
+            return x.AsUInt32 == y;
         }
         public static bool operator !=(ShortGuid x, uint y)
         {
-            return x.AsUInt32() != y;
+            return x.AsUInt32 != y;
         }
 
         public override int GetHashCode()
@@ -101,11 +101,9 @@ namespace CATHODE.Scripting
             return ShortGuidUtils.FindString(this);
         }
         [Obsolete("This method has been deprecated. Please use AsUInt32.")]
-        public uint ToUInt32() => AsUInt32();
-        public uint AsUInt32()
-        {
-            return val;
-        }
+        public uint ToUInt32() => AsUInt32;
+
+        public uint AsUInt32 => val;
 
         public bool IsFunctionType => Enum.IsDefined(typeof(FunctionType), val);
         public FunctionType AsFunctionType => (FunctionType)val;

@@ -28,7 +28,7 @@ namespace CATHODE.Scripting
         /* Load all FunctionEntity metadata from our offline DB */
         static ParameterUtils()
         {
-            _nameID = ShortGuidUtils.Generate("name").AsUInt32();
+            _nameID = ShortGuidUtils.Generate("name").AsUInt32;
 
 #if UNITY_EDITOR || UNITY_STANDALONE
             _functionInfo = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_entity_lut.bin");
@@ -166,7 +166,7 @@ namespace CATHODE.Scripting
                 }
                 else
                 {
-                    CompositePinType pinType = (CompositePinType)pinInfo.PinTypeGUID.AsUInt32();
+                    CompositePinType pinType = (CompositePinType)pinInfo.PinTypeGUID.AsUInt32;
                     ParameterVariant paramVariant = CompositeUtils.PinTypeToParameterVariant(pinType);
                     switch (pinType)
                     {
@@ -190,7 +190,7 @@ namespace CATHODE.Scripting
                 }
                 else
                 {
-                    CompositePinType pinType = (CompositePinType)pinInfo.PinTypeGUID.AsUInt32();
+                    CompositePinType pinType = (CompositePinType)pinInfo.PinTypeGUID.AsUInt32;
                     ParameterVariant paramVariant = CompositeUtils.PinTypeToParameterVariant(pinType);
                     switch (pinType)
                     {
@@ -414,7 +414,7 @@ namespace CATHODE.Scripting
                     FunctionEntity functionEntity = (FunctionEntity)entity;
                     if (functionEntity.function.IsFunctionType)
                     {
-                        FunctionType? functionType = (FunctionType)functionEntity.function.AsUInt32();
+                        FunctionType? functionType = (FunctionType)functionEntity.function.AsUInt32;
                         while (true)
                         {
                             var metadata = GetParameterMetadata(functionType.Value, parameter);
@@ -505,7 +505,7 @@ namespace CATHODE.Scripting
                 for (int i = 0; i < paramCount; i++)
                 {
                     uint paramID = reader.ReadUInt32();
-                    bool isCorrectParam = paramID == parameter.AsUInt32();
+                    bool isCorrectParam = paramID == parameter.AsUInt32;
                     switch (variant)
                     {
                         case ParameterVariant.REFERENCE_PIN:
@@ -716,7 +716,7 @@ namespace CATHODE.Scripting
                 for (int i = 0; i < paramCount; i++)
                 {
                     uint paramID = reader.ReadUInt32();
-                    bool isCorrectParam = paramID == parameter.AsUInt32();
+                    bool isCorrectParam = paramID == parameter.AsUInt32;
                     switch (variant)
                     {
                         case ParameterVariant.TARGET_PIN:
@@ -824,7 +824,7 @@ namespace CATHODE.Scripting
                 {
                     UInt32 method = reader.ReadUInt32();
                     UInt32 relay = reader.ReadUInt32();
-                    if (method == guid.AsUInt32())
+                    if (method == guid.AsUInt32)
                         return new ShortGuid(relay);
                 }
             }

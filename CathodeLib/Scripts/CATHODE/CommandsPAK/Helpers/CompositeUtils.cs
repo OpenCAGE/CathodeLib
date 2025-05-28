@@ -205,13 +205,12 @@ namespace CathodeLib
 
         public static ParameterVariant PinTypeToParameterVariant(ShortGuid type)
         {
-            return PinTypeToParameterVariant((CompositePinType)type.AsUInt32());
+            return PinTypeToParameterVariant((CompositePinType)type.AsUInt32);
         }
         public static ParameterVariant PinTypeToParameterVariant(CompositePinType type)
         {
             switch (type)
             {
-
                 case CompositePinType.CompositeInputAnimationInfoVariablePin:
                 case CompositePinType.CompositeInputBoolVariablePin:
                 case CompositePinType.CompositeInputDirectionVariablePin:
@@ -226,7 +225,6 @@ namespace CathodeLib
                 case CompositePinType.CompositeInputEnumVariablePin:
                 case CompositePinType.CompositeInputEnumStringVariablePin:
                     return ParameterVariant.INPUT_PIN;
-                    break;
                 case CompositePinType.CompositeOutputAnimationInfoVariablePin:
                 case CompositePinType.CompositeOutputBoolVariablePin:
                 case CompositePinType.CompositeOutputDirectionVariablePin:
@@ -243,7 +241,6 @@ namespace CathodeLib
                     return ParameterVariant.OUTPUT_PIN;
                 case CompositePinType.CompositeMethodPin:
                     return ParameterVariant.METHOD_PIN;
-                    break;
                 case CompositePinType.CompositeTargetPin:
                     return ParameterVariant.TARGET_PIN;
                 case CompositePinType.CompositeReferencePin:

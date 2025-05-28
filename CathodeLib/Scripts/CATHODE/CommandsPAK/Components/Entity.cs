@@ -47,9 +47,9 @@ namespace CATHODE.Scripting.Internal
         {
             if (other == null) return 1;
 
-            if (this.shortGUID.AsUInt32() > other.shortGUID.AsUInt32())
+            if (this.shortGUID.AsUInt32 > other.shortGUID.AsUInt32)
                 return 1;
-            else if (this.shortGUID.AsUInt32() < other.shortGUID.AsUInt32())
+            else if (this.shortGUID.AsUInt32 < other.shortGUID.AsUInt32)
                 return -1;
 
             return 0;
@@ -661,7 +661,7 @@ namespace CATHODE.Scripting
             {
                 List<uint> p = new List<uint>();
                 for (int i = 0; i < path.Length; i++)
-                    p.Add(path[i].AsUInt32());
+                    p.Add(path[i].AsUInt32);
                 return p;
             }
         }
@@ -723,7 +723,7 @@ namespace CATHODE.Scripting
         public UInt32 ToUInt32()
         {
             UInt32 val = 0;
-            for (int i = 0; i < path.Length; i++) val += path[i].AsUInt32();
+            for (int i = 0; i < path.Length; i++) val += path[i].AsUInt32;
             return val;
         }
 
@@ -797,7 +797,7 @@ namespace CATHODE.Scripting
         /* Generate a zone ID (use this when the EntityHandle points to a Zone entity) */
         public ShortGuid GenerateZoneID()
         {
-            return new ShortGuid(0 + GenerateCompositeInstanceID().AsUInt32() + GetPointedEntityID().AsUInt32() + 1);
+            return new ShortGuid(0 + GenerateCompositeInstanceID().AsUInt32 + GetPointedEntityID().AsUInt32 + 1);
         }
 
         /* Add the next entity GUID along the path */

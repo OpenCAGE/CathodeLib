@@ -38,7 +38,7 @@ namespace CATHODE.Scripting
 
     /* Data types */
     //TODO: update this enum with ShortGuid vals to remove lookup table
-    public enum DataType
+    public enum DataType 
     {
         STRING,
         FLOAT,
@@ -1106,35 +1106,37 @@ namespace CATHODE.Scripting
     /* Composite pin types (VariableEntity) */
     public enum CompositePinType : uint
     {
-        CompositeReferencePin = 2326962096,
-        CompositeOutputVariablePin = 2202902248,
-        CompositeOutputAnimationInfoVariablePin = 712682220,
-        CompositeOutputBoolVariablePin = 3443023490,
-        CompositeOutputDirectionVariablePin = 3619143719,
-        CompositeOutputEnumVariablePin = 1595866449,
-        CompositeOutputEnumStringVariablePin = 3977836244,
-        CompositeOutputFloatVariablePin = 217091275,
-        CompositeOutputIntVariablePin = 2694489183,
-        CompositeOutputObjectVariablePin = 1299870628,
-        CompositeOutputPositionVariablePin = 1368829043,
-        CompositeOutputStringVariablePin = 1711548160,
-        CompositeOutputZoneLinkPtrVariablePin = 2549127114,
-        CompositeOutputZonePtrVariablePin = 2976446104,
         CompositeTargetPin = 4176414020,
+        CompositeMethodPin = 2212203344,
+        CompositeReferencePin = 2326962096,
+
         CompositeInputVariablePin = 3412421806,
-        CompositeInputAnimationInfoVariablePin = 3856327596,
+        CompositeInputStringVariablePin = 458649818,
         CompositeInputBoolVariablePin = 659685776,
+        CompositeInputFloatVariablePin = 344254110,
+        CompositeInputIntVariablePin = 3823412342,
+        CompositeInputPositionVariablePin = 3238621894,
         CompositeInputDirectionVariablePin = 1574847448,
         CompositeInputEnumVariablePin = 2270274110,
         CompositeInputEnumStringVariablePin = 3154853240,
-        CompositeInputFloatVariablePin = 344254110,
-        CompositeInputIntVariablePin = 3823412342,
         CompositeInputObjectVariablePin = 1916831869,
-        CompositeInputPositionVariablePin = 3238621894,
-        CompositeInputStringVariablePin = 458649818,
+        CompositeInputAnimationInfoVariablePin = 3856327596,
         CompositeInputZoneLinkPtrVariablePin = 3696062380,
         CompositeInputZonePtrVariablePin = 4165021392,
-        CompositeMethodPin = 2212203344,
+
+        CompositeOutputVariablePin = 2202902248,
+        CompositeOutputStringVariablePin = 1711548160,
+        CompositeOutputBoolVariablePin = 3443023490,
+        CompositeOutputFloatVariablePin = 217091275,
+        CompositeOutputIntVariablePin = 2694489183,
+        CompositeOutputPositionVariablePin = 1368829043,
+        CompositeOutputDirectionVariablePin = 3619143719,
+        CompositeOutputEnumVariablePin = 1595866449,
+        CompositeOutputEnumStringVariablePin = 3977836244,
+        CompositeOutputObjectVariablePin = 1299870628,
+        CompositeOutputAnimationInfoVariablePin = 712682220,
+        CompositeOutputZoneLinkPtrVariablePin = 2549127114,
+        CompositeOutputZonePtrVariablePin = 2976446104,
     }
 }
 namespace CATHODE.Scripting.Internal
