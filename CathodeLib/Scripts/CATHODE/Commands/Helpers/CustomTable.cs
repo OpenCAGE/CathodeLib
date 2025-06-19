@@ -104,6 +104,10 @@ namespace CathodeLib
         /* Read a CathodeLib data table from the Commands PAK */
         public static Table ReadTable(string filepath, CustomEndTables table)
         {
+            //TEMP unsupported
+            if (Path.GetExtension(filepath).ToUpper() == ".BIN")
+                return null;
+
             if (!File.Exists(filepath)) return null;
 
             Table data = null;

@@ -255,21 +255,21 @@ namespace CATHODE.Scripting
                 {
                     case "TriggerSequence":
                         TriggerSequence trig = (TriggerSequence)composite.functions[i];
-                        List<TriggerSequence.Entity> trigSeq = new List<TriggerSequence.Entity>();
-                        for (int x = 0; x < trig.entities.Count; x++)
-                            if (ResolveHierarchy(commands, composite, trig.entities[x].connectedEntity.path, out Composite flowTemp, out string hierarchy) != null)
-                                trigSeq.Add(trig.entities[x]);
-                        originalTriggerCount += trig.entities.Count;
+                        List<TriggerSequence.SequenceEntry> trigSeq = new List<TriggerSequence.SequenceEntry>();
+                        for (int x = 0; x < trig.sequence.Count; x++)
+                            if (ResolveHierarchy(commands, composite, trig.sequence[x].connectedEntity.path, out Composite flowTemp, out string hierarchy) != null)
+                                trigSeq.Add(trig.sequence[x]);
+                        originalTriggerCount += trig.sequence.Count;
                         newTriggerCount += trigSeq.Count;
-                        trig.entities = trigSeq;
+                        trig.sequence = trigSeq;
                         break;
                     case "CAGEAnimation":
                         CAGEAnimation anim = (CAGEAnimation)composite.functions[i];
                         List<CAGEAnimation.Connection> headers = new List<CAGEAnimation.Connection>();
                         for (int x = 0; x < anim.connections.Count; x++)
                         {
-                            List<CAGEAnimation.Animation> anim_target = anim.animations.FindAll(o => o.shortGUID == anim.connections[x].keyframeID);
-                            List<CAGEAnimation.Event> event_target = anim.events.FindAll(o => o.shortGUID == anim.connections[x].keyframeID);
+                            List<CAGEAnimation.FloatTrack> anim_target = anim.animations.FindAll(o => o.shortGUID == anim.connections[x].target_track);
+                            List<CAGEAnimation.EventTrack> event_target = anim.events.FindAll(o => o.shortGUID == anim.connections[x].target_track);
                             if (!(anim_target.Count == 0 && event_target.Count == 0) &&
                                 ResolveHierarchy(commands, composite, anim.connections[x].connectedEntity.path, out Composite flowTemp, out string hierarchy) != null)
                                 headers.Add(anim.connections[x]);

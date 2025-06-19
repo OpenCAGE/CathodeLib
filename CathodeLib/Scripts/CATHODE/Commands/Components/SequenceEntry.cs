@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Xml.Linq;
+
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -491,28 +493,48 @@ namespace CATHODE.Scripting
         public CAGEAnimation(ShortGuid id) : base(id, FunctionType.CAGEAnimation) { }
 
         public List<Connection> connections = new List<Connection>();
-        public List<Animation> animations = new List<Animation>();
-        public List<Event> events = new List<Event>();
+        public List<FloatTrack> animations = new List<FloatTrack>();
+        public List<EventTrack> events = new List<EventTrack>();
 
         [Serializable]
         public class Connection
         {
-            public ShortGuid shortGUID; //Unique ID - TODO: can we just generate this?
-            public ShortGuid keyframeID; //The keyframe ID we're pointing to
+            public ShortGuid binding_guid; //Unique ID - TODO: can we just generate this?
+            public ShortGuid target_track; //The keyframe ID we're pointing to
 
-            public ObjectType objectType; //The type of object at the connected entity
+            public ObjectType binding_type; //The type of object at the connected entity
 
             //Specifics for the parameter we're connected to
-            public ShortGuid parameterID;
-            public DataType parameterDataType; 
-            public ShortGuid parameterSubID; //if parameterID is position, this might be x for example
+            public ShortGuid target_param;
+            public DataType target_param_type; 
+            public ShortGuid target_sub_param; //if parameterID is position, this might be x for example
 
             //The path to the connected entity which has the above parameter
-            public EntityPath connectedEntity = new EntityPath(); 
+            public EntityPath connectedEntity = new EntityPath();
         }
 
+        public enum InterpolationMode
+        {
+            Invalid,
+            Flat,
+            Linear,
+            Bezier,
+        };
+
+        public enum TrackType
+        {
+            T_FLOAT, //float_track
+            T_FLOAT3, //vector_track
+            T_POSITION, //position_track
+            T_STRING, //event_track
+            T_GUID, //guid_track
+            T_MASTERING, //mastering_track
+            NUM_ANIM_TRACK_TYPES,
+            UNKNOWN_ANIM_TRACK_TYPE = -1
+        };
+
         [Serializable]
-        public class Animation
+        public class FloatTrack
         {
             public ShortGuid shortGUID;
             public List<Keyframe> keyframes = new List<Keyframe>();
@@ -520,16 +542,18 @@ namespace CATHODE.Scripting
             [Serializable]
             public class Keyframe
             {
-                public float secondsSinceStart = 0.0f;
-                public float paramValue = 0.0f;
+                public InterpolationMode mode;
+                public float time = 0.0f;
 
-                public Vector2 startVelocity = new Vector2(1,0);
-                public Vector2 endVelocity = new Vector2(1, 0);
+                public Vector2 value = new Vector2(1, 0);
+
+                public Vector2 tan_in = new Vector2(1,0);
+                public Vector2 tan_out = new Vector2(1, 0);
             }
         }
 
         [Serializable]
-        public class Event
+        public class EventTrack
         {
             public ShortGuid shortGUID;
             public List<Keyframe> keyframes = new List<Keyframe>();
@@ -537,9 +561,22 @@ namespace CATHODE.Scripting
             [Serializable]
             public class Keyframe
             {
-                public float secondsSinceStart = 0.0f;
-                public ShortGuid startEvent;
-                public ShortGuid reverseEvent;
+                public Keyframe() { }
+                public Keyframe(float time, string event_name)
+                {
+                    this.time = time;
+                    forward = ShortGuidUtils.Generate(event_name);
+                    reverse = ShortGuidUtils.Generate("reverse_" + event_name);
+                }
+
+                public InterpolationMode mode;
+                public float time = 0.0f;
+
+                public ShortGuid forward;
+                public ShortGuid reverse; //"reverse_" + start
+
+                public TrackType track_type;
+                public float duration;
             }
         }
     }
@@ -549,29 +586,35 @@ namespace CATHODE.Scripting
         public TriggerSequence() : base(FunctionType.TriggerSequence) { }
         public TriggerSequence(ShortGuid id) : base(id, FunctionType.TriggerSequence) { }
 
-        public List<Entity> entities = new List<Entity>();
-        public List<Event> events = new List<Event>();
+        public List<SequenceEntry> sequence = new List<SequenceEntry>();
+        public List<MethodEntry> methods = new List<MethodEntry>();
 
         [Serializable]
-        public class Entity
+        public class SequenceEntry
         {
             public float timing = 0.0f;
             public EntityPath connectedEntity = new EntityPath();
         }
         [Serializable]
-        public class Event
+        public class MethodEntry
         {
-            public Event() { }
-            public Event(ShortGuid start, ShortGuid end) 
+            public MethodEntry() { }
+            public MethodEntry(string method)
             {
-                this.start = start;
-                this.end = end;
-                shortGUID = ShortGuidUtils.GenerateRandom();
+                this.method = ShortGuidUtils.Generate(method);
+                this.relay = ShortGuidUtils.Generate(method + "_relay");
+                this.finished = ShortGuidUtils.Generate(method + "_finished");
+            }
+            public MethodEntry(ShortGuid method, ShortGuid relay, ShortGuid finished) 
+            {
+                this.method = method;
+                this.relay = relay; //method + "_relay"
+                this.finished = finished; //method + "_finished"
             }
 
-            public ShortGuid start;
-            public ShortGuid shortGUID; 
-            public ShortGuid end;
+            public ShortGuid method;
+            public ShortGuid relay; 
+            public ShortGuid finished;
         }
     }
     #endregion
