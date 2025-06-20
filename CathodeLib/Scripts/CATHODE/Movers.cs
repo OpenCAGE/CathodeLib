@@ -48,11 +48,11 @@ namespace CATHODE
                     mvr.renderable_element_count = reader.ReadInt32();
                     mvr.resource_index = reader.ReadInt32();
                     reader.BaseStream.Position += 12;
-                    mvr.render_info_descriptor = (CULL_FLAG)reader.ReadInt32();
+                    mvr.cull_flags = (CullFlag)reader.ReadInt32();
                     mvr.entity = Utilities.Consume<EntityHandle>(reader);
                     mvr.environment_map_index = reader.ReadInt32();
                     mvr.emissive_tint = new Vector3(reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
-                    mvr.emissive_flags = (LightOverrideFlags)reader.ReadByte();
+                    mvr.emissive_flags = (EmissiveFlag)reader.ReadByte();
                     mvr.emissive_intensity_multiplier = reader.ReadSingle();
                     mvr.emissive_radiosity_multiplier = reader.ReadSingle();
                     mvr.primary_zone_id = Utilities.Consume<ShortGuid>(reader);
@@ -99,7 +99,7 @@ namespace CATHODE
                     writer.Write(Entries[i].renderable_element_count);
                     writer.Write(Entries[i].resource_index);
                     writer.Write(new byte[12]);
-                    writer.Write((int)Entries[i].render_info_descriptor);
+                    writer.Write((int)Entries[i].cull_flags);
                     Utilities.Write<EntityHandle>(writer, Entries[i].entity);
                     writer.Write(Entries[i].environment_map_index);
                     writer.Write((byte)Entries[i].emissive_tint.X);
@@ -142,7 +142,7 @@ namespace CATHODE
 
         #region STRUCTURES
         [Flags]
-        public enum CULL_FLAG : int
+        public enum CullFlag : int
         {
             NO_CAST_SHADOWS = 1 << 0,
             NO_RENDER = 1 << 2,
@@ -154,7 +154,7 @@ namespace CATHODE
         };
 
         [Flags]
-        public enum LightOverrideFlags : byte
+        public enum EmissiveFlag : byte
         {
             None = 0,
             ReplaceTint = 1,
@@ -213,13 +213,13 @@ namespace CATHODE
 
             public int resource_index = 0; //Resources.bin index value
 
-            public CULL_FLAG render_info_descriptor = CULL_FLAG.DEFAULT;
+            public CullFlag cull_flags = CullFlag.DEFAULT;
 
             public EntityHandle entity; //The entity in the Commands file
             public int environment_map_index = -1; //environment_map.bin index
 
             public Vector3 emissive_tint = new Vector3(255, 255, 255); // sRGB
-            public LightOverrideFlags emissive_flags = LightOverrideFlags.None;
+            public EmissiveFlag emissive_flags = EmissiveFlag.None;
             public float emissive_intensity_multiplier = 1.0f;
             public float emissive_radiosity_multiplier = 0.0f;
 
