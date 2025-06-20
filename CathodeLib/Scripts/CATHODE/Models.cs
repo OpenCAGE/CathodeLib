@@ -114,11 +114,11 @@ namespace CATHODE
 
                     submesh.MaterialLibraryIndex = bin.ReadInt32();
 
-                    submesh.Unknown2_ = bin.ReadUInt32(); // NOTE: Flags?
+                    submesh.Flags = (CS2.Component.LOD.RenderingFlag)bin.ReadUInt32(); 
 
-                    submesh.UnknownIndex = bin.ReadInt32(); // NOTE: -1 means no index. Seems to be related to Next/Parent.
+                    submesh.CollisionProxy = bin.ReadInt32(); 
                     bin.BaseStream.Position += 4; //length
-                    submesh.CollisionIndex_ = bin.ReadInt32(); // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
+                    submesh.WeightedCollisionIndex = bin.ReadInt32(); // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
                     
                     int boneArrayOffset = bin.ReadInt32();
 
@@ -127,7 +127,7 @@ namespace CATHODE
                     bin.BaseStream.Position += 2; //this is VertexFormatIndex again
 
                     submesh.ScaleFactor = bin.ReadUInt16();
-                    submesh.HeadRelated_ = bin.ReadInt16(); // NOTE: Seems to be valid on some 'HEAD' models, otherwise -1. Maybe morphing related???
+                    submesh.MorphAnimSet = bin.ReadInt16(); // NOTE: Seems to be valid on some 'HEAD' models, otherwise -1. Maybe morphing related???
                     submesh.VertexCount = bin.ReadUInt16();
                     submesh.IndexCount = bin.ReadUInt16();
                     submesh.boneIndices.Capacity = bin.ReadUInt16();
@@ -335,16 +335,16 @@ namespace CATHODE
                                 bin.Write(Entries[i].Components[z].LODs[x].Submeshes.Count - 1 == y ? -1 : _writeList.Count + 1);
                                 bin.Write(y == 0 && Entries[i].Components[z].LODs.Count - 1 != x ? _writeList.Count + Entries[i].Components[z].LODs[x].Submeshes.Count : -1);
                                 bin.Write((Int32)mesh.MaterialLibraryIndex);
-                                bin.Write((Int32)mesh.Unknown2_);
-                                bin.Write((Int32)mesh.UnknownIndex);
+                                bin.Write((Int32)mesh.Flags);
+                                bin.Write((Int32)mesh.CollisionProxy);
                                 bin.Write((Int32)mesh.content.Length);
-                                bin.Write((Int32)mesh.CollisionIndex_);
+                                bin.Write((Int32)mesh.WeightedCollisionIndex);
                                 bin.Write((Int32)boneOffset);
                                 bin.Write((Int16)vertexFormats.IndexOf(mesh.VertexFormat));
                                 bin.Write((Int16)vertexFormats.IndexOf(mesh.VertexFormatLowDetail));
                                 bin.Write((Int16)vertexFormats.IndexOf(mesh.VertexFormat));
                                 bin.Write((Int16)mesh.ScaleFactor);
-                                bin.Write((Int16)mesh.HeadRelated_);
+                                bin.Write((Int16)mesh.MorphAnimSet);
                                 bin.Write((Int16)mesh.VertexCount);
                                 bin.Write((Int16)mesh.IndexCount);
                                 bin.Write((Int16)mesh.boneIndices.Count);
@@ -663,6 +663,43 @@ namespace CATHODE
                         Submeshes.Clear();
                     }
 
+                    [Flags]
+                    public enum RenderingFlag
+                    {
+                        // The "HAS" ones are for parent models to avoid checking children
+
+                        DYNAMIC_GEOM = 1 << 0,
+                        HELPER_NODE = 1 << 1,
+                        IS_LOD = 1 << 2,
+                        TOP_LOD_OVERRIDE = 1 << 3,
+                        IS_LOD_SUB_MESH = 1 << 4,
+                        IS_BALLISTIC_LOD = 1 << 5, 
+                        IS_SHADOW_LOD = 1 << 6,
+                        HAS_SHADOW_LOD = 1 << 7,
+                        NEVER_LOADED = 1 << 8,
+                        IS_OCCLUSION_VOLUME = 1 << 9,
+
+                        IS_FIRST_PERSON_LOD = 1 << 10, // only used if first person camera is enabled
+                        HAS_FIRST_PERSON_LOD = 1 << 11,
+
+                        IS_THIRD_PERSON_LOD = 1 << 12,
+                        HAS_THIRD_PERSON_LOD = 1 << 13,
+
+                        IS_SHADOW_CASTING = 1 << 14,
+                        HAS_SHADOW_CASTING = 1 << 15,
+
+                        INTERACTIONS_ONLY = 1 << 16, 
+                        NO_INTERACTIONS = 1 << 17, // when not interacting the game swaps to a noclip FP model
+
+                        IS_REFLECTION_LOD = 1 << 18,
+                        HAS_REFLECTION_LOD = 1 << 19,
+
+                        IS_CHARACTER_HEAD = 1 << 20,
+
+                        IS_LEVEL_PACK = 1 << (27 + FileIdentifiers.LEVEL_PAK),
+                        IS_GLOBAL_PACK = 1 << (27 + FileIdentifiers.GLOBAL_PAK)
+                    };
+
                     public class Submesh
                     {
                         public Vector3 AABBMin = new Vector3(-1,-1,-1);        // <---- When importing a new model, setting these all to zero seem to make it invisible??
@@ -673,22 +710,16 @@ namespace CATHODE
 
                         public int MaterialLibraryIndex;
 
-                        public uint Unknown2_; // NOTE: Flags? - maybe we can calculate this when writing rather than storing it here
-                                               // - 134239524 = not in pak??
-                                               // - 134239233 = dynamic_mesh
-                                               // - 134282240 = first entry for regular
-                                               // - 134239232 = subsequent entry for regular (aisde from "Global\\" stuff which is first entry)
-                                               // - 134239236 = first entry for LOD
-                                               // - 134239248 = subsequent entries for LOD
+                        public RenderingFlag Flags;
 
-                        public int UnknownIndex = -1;    // NOTE: -1 means no index. Seems to be related to Next/Parent.
-                        public int CollisionIndex_ = -1; // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
+                        public int CollisionProxy = -1;    // NOTE: -1 means no index. Seems to be related to Next/Parent.
+                        public int WeightedCollisionIndex = -1; // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
 
                         public AlienVBF VertexFormat;
                         public AlienVBF VertexFormatLowDetail;
 
                         public UInt16 ScaleFactor = 1; 
-                        public Int16 HeadRelated_ = -1; // NOTE: Seems to be valid on some 'HEAD' models, otherwise -1. Maybe morphing related???
+                        public Int16 MorphAnimSet = -1; // MORPH_TARGET_DB.BIN (wip)
 
                         public int VertexCount;
                         public int IndexCount;
