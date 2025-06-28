@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using CathodeLib;
@@ -13,9 +13,6 @@ using System.Reflection;
 using System.Data;
 using static CATHODE.Textures.TEX4;
 using static CATHODE.Resources;
-
-
-
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;

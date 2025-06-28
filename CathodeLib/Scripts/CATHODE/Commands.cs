@@ -44,8 +44,6 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal()
         {
-            //_filepath = Filepath.Substring(0, Filepath.Length - 3) + "BIN";
-
             byte[] content = File.ReadAllBytes(_filepath);
             switch (Path.GetExtension(_filepath).ToUpper())
             {

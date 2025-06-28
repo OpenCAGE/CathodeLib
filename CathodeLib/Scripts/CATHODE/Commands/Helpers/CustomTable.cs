@@ -31,7 +31,7 @@ namespace CathodeLib
             int endPos;
             using (BinaryReader reader = new BinaryReader(File.OpenRead(filepath)))
             {
-                TableExists(reader, out endPos);
+                TableExists(reader, Path.GetExtension(filepath).ToUpper() == ".PAK", out endPos);
             }
 
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(filepath)))
@@ -88,7 +88,6 @@ namespace CathodeLib
                                 break;
                         }
 #if DEBUG
-                        //TODO: we write every table every time, which seems perhaps illogical?
                         if (tableType == table)
                             Console.WriteLine("[" + (writer.BaseStream.Length - startSize) + "] Wrote table " + tableType);
 #endif
@@ -104,16 +103,12 @@ namespace CathodeLib
         /* Read a CathodeLib data table from the Commands PAK */
         public static Table ReadTable(string filepath, CustomEndTables table)
         {
-            //TEMP unsupported
-            if (Path.GetExtension(filepath).ToUpper() == ".BIN")
-                return null;
-
             if (!File.Exists(filepath)) return null;
 
             Table data = null;
             using (BinaryReader reader = new BinaryReader(File.OpenRead(filepath)))
             {
-                if (!TableExists(reader, out int endPos))
+                if (!TableExists(reader, Path.GetExtension(filepath).ToUpper() == ".PAK", out int endPos))
                     return null;
 
                 int customDbCount = reader.ReadInt32();
@@ -164,10 +159,17 @@ namespace CathodeLib
             return data;
         }
 
-        private static bool TableExists(BinaryReader reader, out int endPos)
+        private static bool TableExists(BinaryReader reader, bool isPAK, out int endPos)
         {
-            reader.BaseStream.Position = 20;
-            endPos = (reader.ReadInt32() * 4) + (reader.ReadInt32() * 4);
+            if (isPAK)
+            {
+                reader.BaseStream.Position = 20;
+                endPos = (reader.ReadInt32() * 4) + (reader.ReadInt32() * 4);
+            }
+            else
+            {
+                endPos = reader.ReadInt32();
+            }
             reader.BaseStream.Position = endPos;
             return (int)reader.BaseStream.Length - endPos != 0 && reader.ReadByte() == _version;
         }

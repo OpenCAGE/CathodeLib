@@ -573,7 +573,7 @@ namespace CATHODE.Scripting
                 public float time = 0.0f;
 
                 public ShortGuid forward;
-                public ShortGuid reverse; //"reverse_" + start
+                public ShortGuid reverse; //"reverse_" + forward
 
                 public TrackType track_type;
                 public float duration;
