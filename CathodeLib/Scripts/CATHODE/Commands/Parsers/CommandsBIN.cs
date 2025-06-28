@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using CathodeLib;
@@ -212,8 +212,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     func.shortGUID = guid;
                                     func.function = function;
                                     string name = Utilities.ReadString(reader, command_entries[i + 4].Item2);
-                                    EntityUtils.SetName(cache.Item1, func, name);
-                                    Console.WriteLine(func.shortGUID.ToByteString() + " Name = " + name);
+                                    //EntityUtils.SetName(cache.Item1, func, name);
                                     if (!cache.Item2.ContainsKey(func.shortGUID))
                                     {
                                         cache.Item1.functions.Add(func);
@@ -477,8 +476,9 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_EVENT_TRACK:
                                         case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_SPLINE:
                                             //todo - check PATH/FLOAT_TRACK/EVENT_TRACK
-                                            List<cTransform> points = new List<cTransform>((int)length);
-                                            for (int x = 0; x < length; x++)
+                                            length /= 24;
+                                            List<cTransform> points = new List<cTransform>((int)length - 1);
+                                            for (int x = 0; x < length - 1; x++)
                                             {
                                                 cTransform spline_point = new cTransform();
                                                 spline_point.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
@@ -495,10 +495,6 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             if (paramName != NAME_GUID || (ent.variant == EntityVariant.FUNCTION && ((FunctionEntity)ent).function.AsFunctionType == FunctionType.Zone)) //Skipping "name" parameter as this is handled by our name table
                                                 ent.AddParameter(paramName, paramData);
                                     }
-                                    else
-                                    {
-                                        Console.WriteLine("WARNING: Failed to lookup entity for parameter");
-                                    }
                                 }
                                 break;
                             case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_LINK:
@@ -507,6 +503,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     ShortGuid parentEntID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 3].Item2);
                                     if (cache.Item2.TryGetValue(parentEntID, out Entity parent))
                                     {
+                                        //TODO: is there a count here?
                                         parent.childLinks.Add(new EntityConnector()
                                         {
                                             ID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 2].Item2),
@@ -516,10 +513,6 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             //i + 7 = type
                                             linkedParamID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 8].Item2),
                                         });
-                                    }
-                                    else
-                                    {
-                                        Console.WriteLine("WARNING: Failed to lookup entity for link");
                                     }
                                 }
                                 break;
@@ -653,8 +646,9 @@ namespace CATHODE.Scripting.Internal.Parsers
                         _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
 
                         offset = (int)_dataBufferStream.Position;
-                        Utilities.WriteString(EntityUtils.GetName(composite, func), _dataWriter, true);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(func.shortGUID.ToString().Length + 1), offset));
+                        string name = EntityUtils.GetName(composite, func);
+                        Utilities.WriteString(name, _dataWriter, true);
+                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(name.Length + 1), offset));
                     }
 
                     foreach (var alias in composite.aliases)
@@ -716,8 +710,9 @@ namespace CATHODE.Scripting.Internal.Parsers
                         _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
 
                         offset = (int)_dataBufferStream.Position;
-                        Utilities.WriteString(variable.name.ToString(), _dataWriter, true);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(variable.name.ToString().Length + 1), offset));
+                        string name = variable.name.ToString();
+                        Utilities.WriteString(name, _dataWriter, true);
+                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(name.Length + 1), offset));
                     }
                 }
 
@@ -744,8 +739,9 @@ namespace CATHODE.Scripting.Internal.Parsers
                                 _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
 
                                 offset = (int)_dataBufferStream.Position;
-                                Utilities.WriteString(method.method.ToString(), _dataWriter, true);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(method.method.ToString().Length + 1), offset));
+                                string name = method.method.ToString();
+                                Utilities.WriteString(name, _dataWriter, true);
+                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(name.Length + 1), offset));
                             }
 
                             foreach (var sequenceEntry in trig.sequence)
@@ -982,37 +978,12 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         _dataWriter.Write(point.rotation.X);
                                         _dataWriter.Write(point.rotation.Z);
                                     }
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_SPLINE | (uint)s.splinePoints.Count, offset));
+                                    _dataWriter.Write(-1.0f); _dataWriter.Write(-1.0f); _dataWriter.Write(-1.0f);
+                                    _dataWriter.Write(-1.0f); _dataWriter.Write(-1.0f); _dataWriter.Write(-1.0f);
+                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_SPLINE | (uint)((s.splinePoints.Count + 1) * 24), offset));
                                     break;
                             }
                         }
-
-                        /*
-                        foreach (var link in entity.childLinks)
-                        {
-                            int offset = (int)_dataBufferStream.Position;
-                            _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_PARAMETER | CommandTypes.COMMAND_ADD), offset));
-
-                            Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            offset = (int)_dataBufferStream.Position;
-                            Utilities.Write<ShortGuid>(_dataWriter, entity.shortGUID);
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            //TODO: type guid for entity
-                            offset = (int)_dataBufferStream.Position;
-                            Utilities.Write<ShortGuid>(_dataWriter, new ShortGuid(0));
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            offset = (int)_dataBufferStream.Position;
-                            Utilities.Write<ShortGuid>(_dataWriter, link.thisParamID);
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            offset = (int)_dataBufferStream.Position;
-                            _commandEntries.Add(new Tuple<uint, int>(1124007936, offset));
-                        }
-                        */
                     }
 
                     foreach (var entity in composite.GetEntities())
@@ -1074,6 +1045,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                     }
                     content = stream.ToArray();
                 }
+                File.WriteAllBytes("output.bin", _dataBufferStream.ToArray());
             }
         }
 
