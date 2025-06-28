@@ -26,11 +26,15 @@ namespace CATHODE.Scripting.Internal.Parsers
     {
         private static ShortGuid NAME_GUID;
         private static ShortGuid ANIM_TRACK_TYPE_GUID;
+        private static ShortGuid PHYSICS_SYSTEM_GUID;
+        private static ShortGuid RESOURCE_GUID;
 
         static CommandsBIN()
         {
             NAME_GUID = ShortGuidUtils.Generate("name");
             ANIM_TRACK_TYPE_GUID = ShortGuidUtils.Generate("ANIM_TRACK_TYPE");
+            PHYSICS_SYSTEM_GUID = ShortGuidUtils.Generate("PhysicsSystem");
+            RESOURCE_GUID = ShortGuidUtils.Generate("resource");
         }
 
         // see void EntityManager::apply_commands
@@ -55,6 +59,113 @@ namespace CATHODE.Scripting.Internal.Parsers
 
             using (BinaryReader reader = new BinaryReader(new MemoryStream(data_buffer)))
             {
+                /*
+                int y = 0;
+                while (y < command_entries.Length)
+                {
+                    uint id = command_entries[y].Item1;
+                    uint count = (id & (uint)CommandTypes.COMMAND_SIZE_MASK);
+                    if ((id & (uint)CommandTypes.COMMAND_ADD) != 0)
+                    {
+                        Console.WriteLine("[" + y + "] ADD " + count);
+                        switch (id & (uint)CommandTypes.COMMAND_IDENTIFIER_MASK)
+                        {
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_TEMPLATE:
+                                Console.WriteLine("\t CONTEXT_TEMPLATE");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_ROOT:
+                                Console.WriteLine("\t CONTEXT_ROOT");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_ENTITY:
+                                Console.WriteLine("\t CONTEXT_ENTITY");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_ALIAS:
+                                Console.WriteLine("\t CONTEXT_ALIAS");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_PROXY:
+                                Console.WriteLine("\t CONTEXT_PROXY");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_CONNECTOR:
+                                Console.WriteLine("\t CONTEXT_CONNECTOR");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_METHOD:
+                                Console.WriteLine("\t CONTEXT_METHOD");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_SEQUENCE:
+                                Console.WriteLine("\t CONTEXT_SEQUENCE");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_BINDING:
+                                Console.WriteLine("\t CONTEXT_BINDING");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_TRACK:
+                                Console.WriteLine("\t CONTEXT_TRACK");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_RESOURCE:
+                                Console.WriteLine("\t CONTEXT_RESOURCE");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_PARAMETER:
+                                Console.WriteLine("\t CONTEXT_PARAMETER");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_LINK:
+                                Console.WriteLine("\t CONTEXT_LINK");
+                                break;
+                        };
+                    }
+                    else if ((id & (uint)CommandTypes.COMMAND_REMOVE) != 0)
+                    {
+                        Console.WriteLine("[" + y + "] REMOVE " + count);
+                        switch (id & (uint)CommandTypes.COMMAND_IDENTIFIER_MASK)
+                        {
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_TEMPLATE:
+                                Console.WriteLine("\t CONTEXT_TEMPLATE");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_ROOT:
+                                Console.WriteLine("\t CONTEXT_ROOT");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_ENTITY:
+                                Console.WriteLine("\t CONTEXT_ENTITY");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_ALIAS:
+                                Console.WriteLine("\t CONTEXT_ALIAS");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_PROXY:
+                                Console.WriteLine("\t CONTEXT_PROXY");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_CONNECTOR:
+                                Console.WriteLine("\t CONTEXT_CONNECTOR");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_METHOD:
+                                Console.WriteLine("\t CONTEXT_METHOD");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_SEQUENCE:
+                                Console.WriteLine("\t CONTEXT_SEQUENCE");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_BINDING:
+                                Console.WriteLine("\t CONTEXT_BINDING");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_TRACK:
+                                Console.WriteLine("\t CONTEXT_TRACK");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_RESOURCE:
+                                Console.WriteLine("\t CONTEXT_RESOURCE");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_PARAMETER:
+                                Console.WriteLine("\t CONTEXT_PARAMETER");
+                                break;
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_LINK:
+                                Console.WriteLine("\t CONTEXT_LINK");
+                                break;
+                        };
+                    }
+                    else
+                    {
+                        string sdfdf = "";
+                    }
+                    y += (int)count;
+                }
+                */
+
+
                 for (int i = 0; i < command_entries.Length; i++)
                 {
                     uint id = command_entries[i].Item1;
@@ -101,6 +212,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     func.shortGUID = guid;
                                     func.function = function;
                                     string name = Utilities.ReadString(reader, command_entries[i + 4].Item2);
+                                    EntityUtils.SetName(cache.Item1, func, name);
+                                    Console.WriteLine(func.shortGUID.ToByteString() + " Name = " + name);
                                     if (!cache.Item2.ContainsKey(func.shortGUID))
                                     {
                                         cache.Item1.functions.Add(func);
@@ -255,6 +368,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     ShortGuid trackID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 3].Item2);
                                     reader.BaseStream.Position = command_entries[i + 4].Item2;
                                     cEnum trackType = new cEnum(new ShortGuid(reader), reader.ReadInt32());
+                                    uint keyframes = (command_entries[i + 5].Item1 & (uint)CommandTypes.COMMAND_SIZE_MASK);
                                     switch (trackType.enumIndex)
                                     {
                                         case (int)CAGEAnimation.TrackType.FLOAT:
@@ -265,14 +379,18 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     track = new CAGEAnimation.FloatTrack() { shortGUID = trackID };
                                                     cageAnim.animations.Add(track);
                                                 }
-                                                track.keyframes.Add(new CAGEAnimation.FloatTrack.Keyframe()
+                                                keyframes /= 32;
+                                                for (int x = 0; x < keyframes - 1; x++)
                                                 {
-                                                    mode = (CAGEAnimation.InterpolationMode)Utilities.Consume<int>(reader, command_entries[i + 5].Item2),
-                                                    time = Utilities.Consume<float>(reader, command_entries[i + 5].Item2 + 4),
-                                                    value = Utilities.Consume<Vector2>(reader, command_entries[i + 5].Item2 + 8),
-                                                    tan_in = Utilities.Consume<Vector2>(reader, command_entries[i + 5].Item2 + 16),
-                                                    tan_out = Utilities.Consume<Vector2>(reader, command_entries[i + 5].Item2 + 24),
-                                                });
+                                                    track.keyframes.Add(new CAGEAnimation.FloatTrack.Keyframe()
+                                                    {
+                                                        mode = (CAGEAnimation.InterpolationMode)Utilities.Consume<int>(reader, command_entries[i + 5].Item2 + (32 * x)),
+                                                        time = Utilities.Consume<float>(reader, command_entries[i + 5].Item2 + 4 + (32 * x)),
+                                                        value = Utilities.Consume<Vector2>(reader, command_entries[i + 5].Item2 + 8 + (32 * x)),
+                                                        tan_in = Utilities.Consume<Vector2>(reader, command_entries[i + 5].Item2 + 16 + (32 * x)),
+                                                        tan_out = Utilities.Consume<Vector2>(reader, command_entries[i + 5].Item2 + 24 + (32 * x)),
+                                                    });
+                                                }
                                             }
                                             break;
                                         case (int)CAGEAnimation.TrackType.GUID: 
@@ -285,15 +403,19 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     track = new CAGEAnimation.EventTrack() { shortGUID = trackID };
                                                     cageAnim.events.Add(track);
                                                 }
-                                                track.keyframes.Add(new CAGEAnimation.EventTrack.Keyframe()
+                                                keyframes /= 24;
+                                                for (int x = 0; x < keyframes - 1; x++)
                                                 {
-                                                    mode = (CAGEAnimation.InterpolationMode)Utilities.Consume<int>(reader, command_entries[i + 5].Item2),
-                                                    time = Utilities.Consume<float>(reader, command_entries[i + 5].Item2 + 4),
-                                                    forward = Utilities.Consume<ShortGuid>(reader, command_entries[i + 5].Item2 + 8),
-                                                    reverse = Utilities.Consume<ShortGuid>(reader, command_entries[i + 5].Item2 + 12),
-                                                    track_type = (CAGEAnimation.TrackType)Utilities.Consume<int>(reader, command_entries[i + 5].Item2 + 16),
-                                                    duration = Utilities.Consume<float>(reader, command_entries[i + 5].Item2 + 20),
-                                                });
+                                                    track.keyframes.Add(new CAGEAnimation.EventTrack.Keyframe()
+                                                    {
+                                                        mode = (CAGEAnimation.InterpolationMode)Utilities.Consume<int>(reader, command_entries[i + 5].Item2 + (24 * x)),
+                                                        time = Utilities.Consume<float>(reader, command_entries[i + 5].Item2 + 4 + (24 * x)),
+                                                        forward = Utilities.Consume<ShortGuid>(reader, command_entries[i + 5].Item2 + 8 + (24 * x)),
+                                                        reverse = Utilities.Consume<ShortGuid>(reader, command_entries[i + 5].Item2 + 12 + (24 * x)),
+                                                        track_type = (CAGEAnimation.TrackType)Utilities.Consume<int>(reader, command_entries[i + 5].Item2 + 16 + (24 * x)),
+                                                        duration = Utilities.Consume<float>(reader, command_entries[i + 5].Item2 + 20 + (24 * x)),
+                                                    });
+                                                }
                                             }
                                             break;
                                     }
@@ -311,99 +433,71 @@ namespace CATHODE.Scripting.Internal.Parsers
                     {
                         switch (id & (uint)CommandTypes.COMMAND_IDENTIFIER_MASK)
                         {
-                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_RESOURCE:
-                                {
-                                    Tuple<Composite, Dictionary<ShortGuid, Entity>> cache = entityCache[Utilities.Consume<ShortGuid>(reader, command_entries[i + 1].Item2)];
-                                    ShortGuid entityID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 2].Item2);
-                                    if (cache.Item2.TryGetValue(entityID, out Entity ent))
-                                    {
-                                        ResourceReference resource = new ResourceReference();
-                                        reader.BaseStream.Position = command_entries[i + 6].Item2;
-                                        resource.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                                        resource.rotation = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                                        //resource.resource_id
-                                        resource.resource_type = (ResourceType)Utilities.Consume<uint>(reader, command_entries[i + 3].Item2);
-                                        switch (resource.resource_type)
-                                        {
-                                            case ResourceType.RENDERABLE_INSTANCE:
-                                                resource.index = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
-                                                resource.count = Utilities.Consume<int>(reader, command_entries[i + 5].Item2);
-                                                break;
-                                            case ResourceType.COLLISION_MAPPING:
-                                                resource.index = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
-                                                resource.entityID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 5].Item2);
-                                                break;
-                                            case ResourceType.ANIMATED_MODEL:
-                                            case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                resource.index = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
-                                                break;
-                                        }
-                                        ((FunctionEntity)ent).resources.Add(resource);
-                                    }
-                                }
-                                break;
                             case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_PARAMETER:
                                 {
                                     Tuple<Composite, Dictionary<ShortGuid, Entity>> cache = entityCache[Utilities.Consume<ShortGuid>(reader, command_entries[i + 1].Item2)];
                                     ShortGuid entityID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 2].Item2);
+                                    ShortGuid type = Utilities.Consume<ShortGuid>(reader, command_entries[i + 3].Item2); //FunctionType guid?
+                                    ShortGuid paramName = Utilities.Consume<ShortGuid>(reader, command_entries[i + 4].Item2);
+                                    ParameterData paramData = null;
+                                    reader.BaseStream.Position = command_entries[i + 5].Item2;
+                                    uint length = (uint)CommandTypes.COMMAND_SIZE_MASK & command_entries[i + 5].Item1;
+                                    switch ((uint)CommandTypes.COMMAND_IDENTIFIER_MASK & command_entries[i + 5].Item1)
+                                    {
+                                        case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_POSITION:
+                                            paramData = new cTransform();
+                                            ((cTransform)paramData).position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                                            float _x, _y, _z; _y = reader.ReadSingle(); _x = reader.ReadSingle(); _z = reader.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
+                                            ((cTransform)paramData).rotation = new Vector3(_x, _y, _z);
+                                            break;
+                                        case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_INT:
+                                            paramData = new cInteger(reader.ReadInt32());
+                                            break;
+                                        case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_FILE_PATH:
+                                        case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_STRING:
+                                            paramData = new cString(Utilities.ReadString(reader)); // ((cString)paramData).value.Length + 1 == length
+                                            break;
+                                        case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_BOOL:
+                                            paramData = new cBool(reader.ReadBoolean());
+                                            break;
+                                        case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_FLOAT:
+                                            paramData = new cFloat(reader.ReadSingle());
+                                            break;
+                                        case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_GUID:
+                                            paramData = new cResource(new ShortGuid(reader));
+                                            break;
+                                        case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_VECTOR:
+                                            paramData = new cVector3(new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()));
+                                            break;
+                                        case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_ENUM:
+                                            paramData = new cEnum(new ShortGuid(reader), reader.ReadInt32());
+                                            break;
+                                        case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_PATH:
+                                        case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_FLOAT_TRACK:
+                                        case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_EVENT_TRACK:
+                                        case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_SPLINE:
+                                            //todo - check PATH/FLOAT_TRACK/EVENT_TRACK
+                                            List<cTransform> points = new List<cTransform>((int)length);
+                                            for (int x = 0; x < length; x++)
+                                            {
+                                                cTransform spline_point = new cTransform();
+                                                spline_point.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                                                float __x, __y, __z; __y = reader.ReadSingle(); __x = reader.ReadSingle(); __z = reader.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
+                                                spline_point.rotation = new Vector3(__x, __y, __z);
+                                                points.Add(spline_point);
+                                            }
+                                            paramData = new cSpline(points);
+                                            break;
+                                    };
                                     if (cache.Item2.TryGetValue(entityID, out Entity ent))
                                     {
-                                        ShortGuid type = Utilities.Consume<ShortGuid>(reader, command_entries[i + 3].Item2); //FunctionType guid?
-                                        ShortGuid paramName = Utilities.Consume<ShortGuid>(reader, command_entries[i + 4].Item2);
-                                        ParameterData paramData = null;
-                                        reader.BaseStream.Position = command_entries[i + 5].Item2;
-                                        uint length = (uint)CommandTypes.COMMAND_SIZE_MASK & command_entries[i + 5].Item1;
-                                        switch ((uint)CommandTypes.COMMAND_IDENTIFIER_MASK & command_entries[i + 5].Item1)
-                                        {
-                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_POSITION:
-                                                paramData = new cTransform();
-                                                ((cTransform)paramData).position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                                                float _x, _y, _z; _y = reader.ReadSingle(); _x = reader.ReadSingle(); _z = reader.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
-                                                ((cTransform)paramData).rotation = new Vector3(_x, _y, _z);
-                                                break;
-                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_INT:
-                                                paramData = new cInteger(reader.ReadInt32());
-                                                break;
-                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_FILE_PATH:
-                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_STRING:
-                                                paramData = new cString(Utilities.ReadString(reader)); // ((cString)paramData).value.Length + 1 == length
-                                                break;
-                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_BOOL:
-                                                paramData = new cBool(reader.ReadBoolean());
-                                                break;
-                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_FLOAT:
-                                                paramData = new cFloat(reader.ReadSingle());
-                                                break;
-                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_GUID:
-                                                paramData = new cResource(new ShortGuid(reader));
-                                                break;
-                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_VECTOR:
-                                                paramData = new cVector3(new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()));
-                                                break;
-                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_ENUM:
-                                                paramData = new cEnum(new ShortGuid(reader), reader.ReadInt32());
-                                                break;
-                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_PATH:
-                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_FLOAT_TRACK:
-                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_EVENT_TRACK:
-                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_SPLINE:
-                                                //todo - check PATH/FLOAT_TRACK/EVENT_TRACK
-                                                List<cTransform> points = new List<cTransform>((int)length);
-                                                for (int x = 0; x < length; x++)
-                                                {
-                                                    cTransform spline_point = new cTransform();
-                                                    spline_point.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                                                    float __x, __y, __z; __y = reader.ReadSingle(); __x = reader.ReadSingle(); __z = reader.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
-                                                    spline_point.rotation = new Vector3(__x, __y, __z);
-                                                    points.Add(spline_point);
-                                                }
-                                                paramData = new cSpline(points);
-                                                break;
-                                        };
-
                                         if (paramData != null) //Skipping nulls: links seem to get added as null parameters
                                             if (paramName != NAME_GUID || (ent.variant == EntityVariant.FUNCTION && ((FunctionEntity)ent).function.AsFunctionType == FunctionType.Zone)) //Skipping "name" parameter as this is handled by our name table
                                                 ent.AddParameter(paramName, paramData);
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine("WARNING: Failed to lookup entity for parameter");
                                     }
                                 }
                                 break;
@@ -422,6 +516,86 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             //i + 7 = type
                                             linkedParamID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 8].Item2),
                                         });
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine("WARNING: Failed to lookup entity for link");
+                                    }
+                                }
+                                break;
+                        };
+                    }
+                }
+
+                for (int i = 0; i < command_entries.Length; i++)
+                {
+                    uint id = command_entries[i].Item1;
+                    uint count = (id & (uint)CommandTypes.COMMAND_SIZE_MASK);
+                    if ((id & (uint)CommandTypes.COMMAND_ADD) != 0)
+                    {
+                        switch (id & (uint)CommandTypes.COMMAND_IDENTIFIER_MASK)
+                        {
+                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_RESOURCE:
+                                {
+                                    Tuple<Composite, Dictionary<ShortGuid, Entity>> cache = entityCache[Utilities.Consume<ShortGuid>(reader, command_entries[i + 1].Item2)];
+                                    ResourceReference resource = new ResourceReference();
+                                    reader.BaseStream.Position = command_entries[i + 6].Item2;
+                                    resource.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                                    resource.rotation = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                                    resource.resource_id = Utilities.Consume<ShortGuid>(reader, command_entries[i + 2].Item2);
+                                    resource.resource_type = (ResourceType)Utilities.Consume<uint>(reader, command_entries[i + 3].Item2);
+                                    switch (resource.resource_type)
+                                    {
+                                        case ResourceType.RENDERABLE_INSTANCE:
+                                            resource.index = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
+                                            resource.count = Utilities.Consume<int>(reader, command_entries[i + 5].Item2);
+                                            break;
+                                        case ResourceType.COLLISION_MAPPING:
+                                            resource.index = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
+                                            resource.entityID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 5].Item2);
+                                            break;
+                                        case ResourceType.ANIMATED_MODEL:
+                                        case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
+                                            resource.index = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
+                                            break;
+                                    }
+                                    if (cache.Item2.TryGetValue(resource.resource_id, out Entity ent))
+                                    {
+                                        ((FunctionEntity)ent).resources.Add(resource);
+                                    }
+                                    else
+                                    {
+                                        bool addedAsParam = false;
+                                        foreach (Entity entity in cache.Item1.GetEntities())
+                                        {
+                                            foreach (Parameter parameter in entity.parameters)
+                                            {
+                                                if (parameter.name != RESOURCE_GUID) continue;
+                                                if (((cResource)parameter.content).shortGUID == resource.resource_id)
+                                                {
+                                                    ((cResource)parameter.content).value.Add(resource);
+                                                    addedAsParam = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        if (!addedAsParam)
+                                        {
+                                            if (resource.resource_type == ResourceType.DYNAMIC_PHYSICS_SYSTEM)
+                                            {
+                                                FunctionEntity physEnt = cache.Item1.functions.FirstOrDefault(o => o.function == PHYSICS_SYSTEM_GUID);
+                                                if (physEnt != null)
+                                                {
+                                                    physEnt.resources.Add(resource);
+                                                    addedAsParam = true;
+                                                }
+                                            }
+                                            if (!addedAsParam)
+                                            {
+                                                Console.WriteLine("Failed to find entity or parameter [" + resource.resource_id.ToByteString() + "] in composite: " + cache.Item1.name);
+                                                Console.WriteLine("\t Type - " + resource.resource_type);
+                                            }
+                                        }
                                     }
                                 }
                                 break;
@@ -478,9 +652,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                         Utilities.Write<ShortGuid>(_dataWriter, func.function);
                         _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
 
-                        //TODO: entity name
                         offset = (int)_dataBufferStream.Position;
-                        Utilities.WriteString(func.shortGUID.ToString(), _dataWriter, true);
+                        Utilities.WriteString(EntityUtils.GetName(composite, func), _dataWriter, true);
                         _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(func.shortGUID.ToString().Length + 1), offset));
                     }
 
@@ -536,7 +709,7 @@ namespace CATHODE.Scripting.Internal.Parsers
 
                         offset = (int)_dataBufferStream.Position;
                         _dataWriter.Write((uint)variable.type);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
 
                         offset = (int)_dataBufferStream.Position;
                         Utilities.Write<ShortGuid>(_dataWriter, variable.name);
@@ -641,68 +814,74 @@ namespace CATHODE.Scripting.Internal.Parsers
 
                             foreach (var floatTrack in cageAnim.animations)
                             {
+                                int offset = (int)_dataBufferStream.Position;
+                                _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_TRACK | CommandTypes.COMMAND_ADD), offset));
+
+                                Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
+                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+
+                                offset = (int)_dataBufferStream.Position;
+                                Utilities.Write<ShortGuid>(_dataWriter, cageAnim.shortGUID);
+                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+
+                                offset = (int)_dataBufferStream.Position;
+                                Utilities.Write<ShortGuid>(_dataWriter, floatTrack.shortGUID);
+                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+
+                                offset = (int)_dataBufferStream.Position;
+                                Utilities.Write<ShortGuid>(_dataWriter, ANIM_TRACK_TYPE_GUID);
+                                _dataWriter.Write((int)CAGEAnimation.TrackType.FLOAT);
+                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_ENUM | 8, offset));
+
+                                offset = (int)_dataBufferStream.Position;
                                 foreach (var keyframe in floatTrack.keyframes)
                                 {
-                                    int offset = (int)_dataBufferStream.Position;
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_TRACK | CommandTypes.COMMAND_ADD), offset));
-
-                                    Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                    offset = (int)_dataBufferStream.Position;
-                                    Utilities.Write<ShortGuid>(_dataWriter, cageAnim.shortGUID);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                    offset = (int)_dataBufferStream.Position;
-                                    Utilities.Write<ShortGuid>(_dataWriter, floatTrack.shortGUID);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                    offset = (int)_dataBufferStream.Position;
-                                    Utilities.Write<ShortGuid>(_dataWriter, ANIM_TRACK_TYPE_GUID);
-                                    _dataWriter.Write((int)CAGEAnimation.TrackType.FLOAT);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_ENUM | 8, offset));
-
-                                    offset = (int)_dataBufferStream.Position;
+                                    _dataWriter.Write((int)keyframe.mode);
+                                    _dataWriter.Write(keyframe.time);
                                     _dataWriter.Write(keyframe.value.X);
                                     _dataWriter.Write(keyframe.value.Y);
                                     _dataWriter.Write(keyframe.tan_in.X);
                                     _dataWriter.Write(keyframe.tan_in.Y);
                                     _dataWriter.Write(keyframe.tan_out.X);
                                     _dataWriter.Write(keyframe.tan_out.Y);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_FLOAT_TRACK | 24, offset));
                                 }
+                                _dataWriter.Write(new byte[32]);
+                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_FLOAT_TRACK | (uint)(32 * (floatTrack.keyframes.Count + 1)), offset));
                             }
 
                             foreach (var eventTrack in cageAnim.events)
                             {
+                                int offset = (int)_dataBufferStream.Position;
+                                _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_TRACK | CommandTypes.COMMAND_ADD), offset));
+
+                                Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
+                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+
+                                offset = (int)_dataBufferStream.Position;
+                                Utilities.Write<ShortGuid>(_dataWriter, cageAnim.shortGUID);
+                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+
+                                offset = (int)_dataBufferStream.Position;
+                                Utilities.Write<ShortGuid>(_dataWriter, eventTrack.shortGUID);
+                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+
+                                offset = (int)_dataBufferStream.Position;
+                                Utilities.Write<ShortGuid>(_dataWriter, ANIM_TRACK_TYPE_GUID);
+                                _dataWriter.Write((int)(eventTrack.keyframes.Count == 0 ? CAGEAnimation.TrackType.INVALID : eventTrack.keyframes[0].track_type));
+                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_ENUM | 8, offset));
+
+                                offset = (int)_dataBufferStream.Position;
                                 foreach (var keyframe in eventTrack.keyframes)
                                 {
-                                    int offset = (int)_dataBufferStream.Position;
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_TRACK | CommandTypes.COMMAND_ADD), offset));
-
-                                    Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                    offset = (int)_dataBufferStream.Position;
-                                    Utilities.Write<ShortGuid>(_dataWriter, cageAnim.shortGUID);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                    offset = (int)_dataBufferStream.Position;
-                                    Utilities.Write<ShortGuid>(_dataWriter, eventTrack.shortGUID);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                    offset = (int)_dataBufferStream.Position;
-                                    Utilities.Write<ShortGuid>(_dataWriter, ANIM_TRACK_TYPE_GUID);
-                                    _dataWriter.Write((int)keyframe.track_type);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_ENUM | 8, offset));
-
-                                    offset = (int)_dataBufferStream.Position;
+                                    _dataWriter.Write((int)keyframe.mode);
+                                    _dataWriter.Write(keyframe.time);
                                     Utilities.Write<ShortGuid>(_dataWriter, keyframe.forward);
                                     Utilities.Write<ShortGuid>(_dataWriter, keyframe.reverse);
                                     _dataWriter.Write((int)keyframe.track_type);
                                     _dataWriter.Write(keyframe.duration);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_EVENT_TRACK | 16, offset));
                                 }
+                                _dataWriter.Write(new byte[24]);
+                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_EVENT_TRACK | (uint)(24 * (eventTrack.keyframes.Count + 1)), offset));
                             }
                         }
                     }
@@ -714,72 +893,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                     {
                         foreach (var resource in func.resources)
                         {
-                            int offset = (int)_dataBufferStream.Position;
-                            _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_RESOURCE | CommandTypes.COMMAND_ADD), offset));
-
-                            Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            offset = (int)_dataBufferStream.Position;
-                            Utilities.Write<ShortGuid>(_dataWriter, func.shortGUID);
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            offset = (int)_dataBufferStream.Position;
-                            _dataWriter.Write((uint)resource.resource_type);
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            switch (resource.resource_type)
-                            {
-                                case ResourceType.RENDERABLE_INSTANCE:
-                                    offset = (int)_dataBufferStream.Position;
-                                    _dataWriter.Write(resource.index);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
-
-                                    offset = (int)_dataBufferStream.Position;
-                                    _dataWriter.Write(resource.count);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
-                                    break;
-                                case ResourceType.COLLISION_MAPPING:
-                                    offset = (int)_dataBufferStream.Position;
-                                    _dataWriter.Write(resource.index);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
-
-                                    offset = (int)_dataBufferStream.Position;
-                                    Utilities.Write<ShortGuid>(_dataWriter, resource.entityID);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
-                                    break;
-                                case ResourceType.ANIMATED_MODEL:
-                                case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                    offset = (int)_dataBufferStream.Position;
-                                    _dataWriter.Write(resource.index);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
-
-                                    offset = (int)_dataBufferStream.Position;
-                                    _dataWriter.Write(0);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
-                                    break;
-                                default:
-                                    offset = (int)_dataBufferStream.Position;
-                                    _dataWriter.Write(0);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
-
-                                    offset = (int)_dataBufferStream.Position;
-                                    _dataWriter.Write(0);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
-                                    break;
-                            }
-
-                            offset = (int)_dataBufferStream.Position;
-                            _dataWriter.Write(resource.position.X);
-                            _dataWriter.Write(resource.position.Y);
-                            _dataWriter.Write(resource.position.Z);
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_POSITION | 8, offset));
-
-                            offset = (int)_dataBufferStream.Position;
-                            _dataWriter.Write(resource.rotation.X);
-                            _dataWriter.Write(resource.rotation.Y);
-                            _dataWriter.Write(resource.rotation.Z);
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_POSITION | 8, offset));
+                            AddResourceCommand(_commandEntries, _dataBufferStream, _dataWriter, composite, resource);
                         }
                     }
 
@@ -838,8 +952,11 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_FLOAT | 4, offset));
                                     break;
                                 case DataType.RESOURCE:
-                                    Utilities.Write<ShortGuid>(_dataWriter, ((cResource)paramEntry.content).shortGUID);
+                                    cResource r = (cResource)paramEntry.content;
+                                    Utilities.Write<ShortGuid>(_dataWriter, r.shortGUID);
                                     _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+                                    for (int x = 0; x < r.value.Count; x++)
+                                        AddResourceCommand(_commandEntries, _dataBufferStream, _dataWriter, composite, r.value[x]);
                                     break;
                                 case DataType.VECTOR:
                                     cVector3 v = (cVector3)paramEntry.content;
@@ -958,6 +1075,73 @@ namespace CATHODE.Scripting.Internal.Parsers
                     content = stream.ToArray();
                 }
             }
+        }
+
+        private static void AddResourceCommand(List<Tuple<uint, int>> _commandEntries, MemoryStream _dataBufferStream, BinaryWriter _dataWriter, Composite composite, ResourceReference resource)
+        {
+            int offset = (int)_dataBufferStream.Position;
+            _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_RESOURCE | CommandTypes.COMMAND_ADD), offset));
+
+            Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
+            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+
+            offset = (int)_dataBufferStream.Position;
+            Utilities.Write<ShortGuid>(_dataWriter, resource.resource_id);
+            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+
+            offset = (int)_dataBufferStream.Position;
+            _dataWriter.Write((uint)resource.resource_type);
+            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+
+            switch (resource.resource_type)
+            {
+                case ResourceType.RENDERABLE_INSTANCE:
+                    offset = (int)_dataBufferStream.Position;
+                    _dataWriter.Write(resource.index);
+                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+
+                    offset = (int)_dataBufferStream.Position;
+                    _dataWriter.Write(resource.count);
+                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+                    break;
+                case ResourceType.COLLISION_MAPPING:
+                    offset = (int)_dataBufferStream.Position;
+                    _dataWriter.Write(resource.index);
+                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+
+                    offset = (int)_dataBufferStream.Position;
+                    Utilities.Write<ShortGuid>(_dataWriter, resource.entityID);
+                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+                    break;
+                case ResourceType.ANIMATED_MODEL:
+                case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
+                    offset = (int)_dataBufferStream.Position;
+                    _dataWriter.Write(resource.index);
+                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+
+                    offset = (int)_dataBufferStream.Position;
+                    _dataWriter.Write(0);
+                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+                    break;
+                default:
+                    offset = (int)_dataBufferStream.Position;
+                    _dataWriter.Write(0);
+                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+
+                    offset = (int)_dataBufferStream.Position;
+                    _dataWriter.Write(0);
+                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+                    break;
+            }
+
+            offset = (int)_dataBufferStream.Position;
+            _dataWriter.Write(resource.position.X);
+            _dataWriter.Write(resource.position.Y);
+            _dataWriter.Write(resource.position.Z);
+            _dataWriter.Write(resource.rotation.X);
+            _dataWriter.Write(resource.rotation.Y);
+            _dataWriter.Write(resource.rotation.Z);
+            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_POSITION | 24, offset));
         }
 
         private enum CommandTypes : uint

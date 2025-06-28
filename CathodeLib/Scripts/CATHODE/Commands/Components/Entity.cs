@@ -529,6 +529,8 @@ namespace CATHODE.Scripting
             STRING,
             GUID,
             MASTERING,
+
+            INVALID = -1
         };
 
         [Serializable]
