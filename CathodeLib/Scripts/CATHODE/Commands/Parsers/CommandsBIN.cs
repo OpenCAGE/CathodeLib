@@ -1045,7 +1045,6 @@ namespace CATHODE.Scripting.Internal.Parsers
                     }
                     content = stream.ToArray();
                 }
-                File.WriteAllBytes("output.bin", _dataBufferStream.ToArray());
             }
         }
 
