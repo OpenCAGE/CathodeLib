@@ -576,8 +576,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                                 Vector3 pos = ((cTransform)parameters[i]).position;
                                 Vector3 rot = ((cTransform)parameters[i]).rotation;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
-                            writer.Write(pos.x); writer.Write(pos.y); writer.Write(pos.z);
-                            writer.Write(rot.y); writer.Write(rot.x); writer.Write(rot.z);
+                                writer.Write(pos.x); writer.Write(pos.y); writer.Write(pos.z);
+                                writer.Write(rot.y); writer.Write(rot.x); writer.Write(rot.z);
 #else
                                 writer.Write(pos.X); writer.Write(pos.Y); writer.Write(pos.Z);
                                 writer.Write(rot.Y); writer.Write(rot.X); writer.Write(rot.Z);
@@ -610,7 +610,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                             case DataType.VECTOR:
                                 Vector3 dir = ((cVector3)parameters[i]).value;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
-                            writer.Write(dir.x); writer.Write(dir.y); writer.Write(dir.z);
+                                writer.Write(dir.x); writer.Write(dir.y); writer.Write(dir.z);
 #else
                                 writer.Write(dir.X); writer.Write(dir.Y); writer.Write(dir.Z);
 #endif
@@ -626,12 +626,12 @@ namespace CATHODE.Scripting.Internal.Parsers
                                 for (int x = 0; x < thisSpline.splinePoints.Count; x++)
                                 {
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
-                                writer.Write(thisSpline.splinePoints[x].position.x);
-                                writer.Write(thisSpline.splinePoints[x].position.y);
-                                writer.Write(thisSpline.splinePoints[x].position.z);
-                                writer.Write(thisSpline.splinePoints[x].rotation.y);
-                                writer.Write(thisSpline.splinePoints[x].rotation.x);
-                                writer.Write(thisSpline.splinePoints[x].rotation.z);
+                                    writer.Write(thisSpline.splinePoints[x].position.x);
+                                    writer.Write(thisSpline.splinePoints[x].position.y);
+                                    writer.Write(thisSpline.splinePoints[x].position.z);
+                                    writer.Write(thisSpline.splinePoints[x].rotation.y);
+                                    writer.Write(thisSpline.splinePoints[x].rotation.x);
+                                    writer.Write(thisSpline.splinePoints[x].rotation.z);
 #else
                                     writer.Write(thisSpline.splinePoints[x].position.X);
                                     writer.Write(thisSpline.splinePoints[x].position.Y);
@@ -788,12 +788,12 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         for (int p = 0; p < resourceReferences[i].Count; p++)
                                         {
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
-                                        writer.Write(resourceReferences[i][p].position.x);
-                                        writer.Write(resourceReferences[i][p].position.y);
-                                        writer.Write(resourceReferences[i][p].position.z);
-                                        writer.Write(resourceReferences[i][p].rotation.x);
-                                        writer.Write(resourceReferences[i][p].rotation.y);
-                                        writer.Write(resourceReferences[i][p].rotation.z);
+                                            writer.Write(resourceReferences[i][p].position.x);
+                                            writer.Write(resourceReferences[i][p].position.y);
+                                            writer.Write(resourceReferences[i][p].position.z);
+                                            writer.Write(resourceReferences[i][p].rotation.x);
+                                            writer.Write(resourceReferences[i][p].rotation.y);
+                                            writer.Write(resourceReferences[i][p].rotation.z);
 #else
                                             writer.Write(resourceReferences[i][p].position.X);
                                             writer.Write(resourceReferences[i][p].position.Y);

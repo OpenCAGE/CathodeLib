@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text;
 using CathodeLib;
@@ -24,6 +24,13 @@ namespace CATHODE.Scripting.Internal.Parsers
 {
     public static class CommandsBIN
     {
+        private static ShortGuid NAME_GUID;
+
+        static CommandsBIN()
+        {
+            NAME_GUID = ShortGuidUtils.Generate("name");
+        }
+
         // see void EntityManager::apply_commands
         public static void Read(byte[] content, out ShortGuid[] EntryPoints, out List<Composite> Entries)
         {
@@ -390,6 +397,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         ShortGuid paramName = Utilities.Consume<ShortGuid>(reader, command_entries[i + 4].Item2);
                                         ParameterData paramData = null;
                                         reader.BaseStream.Position = command_entries[i + 5].Item2;
+                                        uint length = (uint)CommandTypes.COMMAND_SIZE_MASK & command_entries[i + 5].Item1;
                                         switch ((uint)CommandTypes.COMMAND_IDENTIFIER_MASK & command_entries[i + 5].Item1)
                                         {
                                             case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_POSITION:
@@ -401,8 +409,9 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_INT:
                                                 paramData = new cInteger(reader.ReadInt32());
                                                 break;
+                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_FILE_PATH:
                                             case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_STRING:
-                                                paramData = new cString(Utilities.ReadString(reader));
+                                                paramData = new cString(Utilities.ReadString(reader)); // ((cString)paramData).value.Length + 1 == length
                                                 break;
                                             case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_BOOL:
                                                 paramData = new cBool(reader.ReadBoolean());
@@ -419,18 +428,27 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_ENUM:
                                                 paramData = new cEnum(new ShortGuid(reader), reader.ReadInt32());
                                                 break;
-                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_FILE_PATH:
-                                                {
-                                                    //todo
-                                                    break;
-                                                }
+                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_PATH:
+                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_FLOAT_TRACK:
+                                            case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_EVENT_TRACK:
                                             case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_SPLINE:
+                                                //todo - check PATH/FLOAT_TRACK/EVENT_TRACK
+                                                List<cTransform> points = new List<cTransform>((int)length);
+                                                for (int x = 0; x < length; x++)
                                                 {
-                                                    //toodo
-                                                    break;
+                                                    cTransform spline_point = new cTransform();
+                                                    spline_point.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                                                    float __x, __y, __z; __y = reader.ReadSingle(); __x = reader.ReadSingle(); __z = reader.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
+                                                    spline_point.rotation = new Vector3(__x, __y, __z);
+                                                    points.Add(spline_point);
                                                 }
+                                                paramData = new cSpline(points);
+                                                break;
                                         };
-                                        ent.AddParameter(paramName, paramData);
+
+                                        if (paramData != null) //Skipping nulls: links seem to get added as null parameters
+                                            if (paramName != NAME_GUID || (ent.variant == EntityVariant.FUNCTION && ((FunctionEntity)ent).function.AsFunctionType == FunctionType.Zone)) //Skipping "name" parameter as this is handled by our name table
+                                                ent.AddParameter(paramName, paramData);
                                     }
                                 }
                                 break;
