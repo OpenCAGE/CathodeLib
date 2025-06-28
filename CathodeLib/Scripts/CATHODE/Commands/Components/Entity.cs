@@ -523,14 +523,12 @@ namespace CATHODE.Scripting
 
         public enum TrackType
         {
-            T_FLOAT, //float_track
-            T_FLOAT3, //vector_track
-            T_POSITION, //position_track
-            T_STRING, //event_track
-            T_GUID, //guid_track
-            T_MASTERING, //mastering_track
-            NUM_ANIM_TRACK_TYPES,
-            UNKNOWN_ANIM_TRACK_TYPE = -1
+            FLOAT,
+            FLOAT3,
+            POSITION,
+            STRING,
+            GUID,
+            MASTERING,
         };
 
         [Serializable]
