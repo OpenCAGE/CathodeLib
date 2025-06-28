@@ -17,12 +17,9 @@ namespace CATHODE.EXPERIMENTAL
         public List<int> Indexes = new List<int>();
         public List<Node> Values = new List<Node>();
 
-        public bool directional_lights_enabled;
-        public Vector3 light_colour;
-        public Vector3 light_direction;
-        public Int16 light_feature_flags;
+        public DirectionalLight Sun = new DirectionalLight();
 
-        public static new Implementation Implementation = Implementation.NONE;
+        public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
         public Lights(string path) : base(path) { }
 
         #region FILE_IO
@@ -31,6 +28,8 @@ namespace CATHODE.EXPERIMENTAL
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
                 reader.BaseStream.Position += 8;
+
+                //TODO: how do the indexes map to the nodes?
 
                 int numInstances = reader.ReadInt32();
                 for (int i = 0; i < numInstances; i++)
@@ -53,11 +52,10 @@ namespace CATHODE.EXPERIMENTAL
                     Values.Add(node);
                 }
 
-                //Directional light info
-                directional_lights_enabled = reader.ReadBoolean();
-                light_colour = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                light_direction = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                light_feature_flags = reader.ReadInt16();
+                Sun.enabled = reader.ReadBoolean();
+                Sun.colour = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                Sun.direction = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                Sun.feature_flags = (LightFeature)reader.ReadUInt16();
             }
             return true;
         }
@@ -66,8 +64,6 @@ namespace CATHODE.EXPERIMENTAL
         {
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
-                //TODO: this data is ordered by array entry -4 and then -3 i think
-
                 writer.BaseStream.SetLength(0);
                 Utilities.WriteString("ligt", writer);
                 writer.Write(4);
@@ -79,13 +75,20 @@ namespace CATHODE.EXPERIMENTAL
                 writer.Write((Int16)Values.Count);
                 for (int i = 0; i < Values.Count; i++)
                 {
-
+                    Utilities.Write<Vector3>(writer, Values[i].min);
+                    Utilities.Write<Vector3>(writer, Values[i].max);
+                    writer.Write((Int16)Values[i].childA);
+                    writer.Write((Int16)Values[i].childB);
+                    writer.Write((Int16)Values[i].first);
+                    writer.Write((Int16)Values[i].count);
+                    writer.Write(Values[i].is_leaf);
+                    writer.Write(new byte[3]);
                 }
 
-                writer.Write(directional_lights_enabled);
-                Utilities.Write<Vector3>(writer, light_colour);
-                Utilities.Write<Vector3>(writer, light_direction);
-                writer.Write(light_feature_flags);
+                writer.Write(Sun.enabled);
+                Utilities.Write<Vector3>(writer, Sun.colour);
+                Utilities.Write<Vector3>(writer, Sun.direction);
+                writer.Write((ushort)Sun.feature_flags);
             }
             return true;
         }
@@ -101,6 +104,14 @@ namespace CATHODE.EXPERIMENTAL
             public Int16 first;
             public Int16 count;
             public bool is_leaf;
+        }
+
+        public class DirectionalLight
+        {
+            public bool enabled;
+            public Vector3 colour;
+            public Vector3 direction;
+            public LightFeature feature_flags;
         }
         #endregion
     }
