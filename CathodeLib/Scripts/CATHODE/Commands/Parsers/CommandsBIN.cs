@@ -95,11 +95,11 @@ namespace CATHODE.Scripting.Internal.Parsers
                             case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_ENTITY:
                                 {
                                     Tuple<Composite, Dictionary<ShortGuid, Entity>> cache = entityCache[Utilities.Consume<ShortGuid>(reader, command_entries[i + 1].Item2)];
-                                    FunctionEntity func = new FunctionEntity()
-                                    {
-                                        shortGUID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 2].Item2),
-                                        function = Utilities.Consume<ShortGuid>(reader, command_entries[i + 3].Item2)
-                                    };
+                                    ShortGuid guid = Utilities.Consume<ShortGuid>(reader, command_entries[i + 2].Item2);
+                                    ShortGuid function = Utilities.Consume<ShortGuid>(reader, command_entries[i + 3].Item2);
+                                    FunctionEntity func = function.AsFunctionType == FunctionType.TriggerSequence ? new TriggerSequence() : function.AsFunctionType == FunctionType.CAGEAnimation ? new CAGEAnimation() : new FunctionEntity();
+                                    func.shortGUID = guid;
+                                    func.function = function;
                                     string name = Utilities.ReadString(reader, command_entries[i + 4].Item2);
                                     if (!cache.Item2.ContainsKey(func.shortGUID))
                                     {
@@ -114,7 +114,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     AliasEntity alias = new AliasEntity()
                                     {
                                         shortGUID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 2].Item2),
-                                        alias = new EntityPath() { path = Utilities.ConsumeArray<ShortGuid>(reader, (int)(command_entries[i + 3].Item1 & (uint)CommandTypes.COMMAND_SIZE_MASK), command_entries[i + 3].Item2) }
+                                        alias = new EntityPath() { path = Utilities.ConsumeArray<ShortGuid>(reader, (int)(command_entries[i + 3].Item1 & (uint)CommandTypes.COMMAND_SIZE_MASK) / 4, command_entries[i + 3].Item2) }
                                     };
                                     if (!cache.Item2.ContainsKey(alias.shortGUID))
                                     {
@@ -130,7 +130,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     {
                                         shortGUID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 2].Item2),
                                         function = Utilities.Consume<ShortGuid>(reader, command_entries[i + 3].Item2),
-                                        proxy = new EntityPath() { path = Utilities.ConsumeArray<ShortGuid>(reader, (int)(command_entries[i + 4].Item1 & (uint)CommandTypes.COMMAND_SIZE_MASK), command_entries[i + 4].Item2) }
+                                        proxy = new EntityPath() { path = Utilities.ConsumeArray<ShortGuid>(reader, (int)(command_entries[i + 4].Item1 & (uint)CommandTypes.COMMAND_SIZE_MASK) / 4, command_entries[i + 4].Item2) }
                                     };
                                     if (!cache.Item2.ContainsKey(prox.shortGUID))
                                     {
@@ -208,16 +208,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     TriggerSequence trig = null;
                                     if (cache.Item2.TryGetValue(entityID, out Entity ent))
                                     {
-                                        if (ent is TriggerSequence)
-                                            trig = (TriggerSequence)ent;
-                                        else
-                                        {
-                                            cache.Item2.Remove(ent.shortGUID);
-                                            cache.Item1.functions.Remove((FunctionEntity)ent);
-                                            trig = new TriggerSequence(ent.shortGUID);
-                                            cache.Item2.Add(ent.shortGUID, trig);
-                                            cache.Item1.functions.Add(trig);
-                                        }
+                                        trig = (TriggerSequence)ent;
                                     }
                                     else
                                     {
@@ -228,7 +219,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     trig.sequence.Add(new TriggerSequence.SequenceEntry()
                                     {
                                         timing = Utilities.Consume<float>(reader, command_entries[i + 3].Item2),
-                                        connectedEntity = new EntityPath() { path = Utilities.ConsumeArray<ShortGuid>(reader, (int)(command_entries[i + 4].Item1 & (uint)CommandTypes.COMMAND_SIZE_MASK), command_entries[i + 4].Item2) }
+                                        connectedEntity = new EntityPath() { path = Utilities.ConsumeArray<ShortGuid>(reader, (int)(command_entries[i + 4].Item1 & (uint)CommandTypes.COMMAND_SIZE_MASK) / 4, command_entries[i + 4].Item2) }
                                     });
                                 }
                                 break;
@@ -239,16 +230,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     CAGEAnimation cageAnim = null;
                                     if (cache.Item2.TryGetValue(entityID, out Entity ent))
                                     {
-                                        if (ent is CAGEAnimation)
-                                            cageAnim = (CAGEAnimation)ent;
-                                        else
-                                        {
-                                            cache.Item2.Remove(ent.shortGUID);
-                                            cache.Item1.functions.Remove((FunctionEntity)ent);
-                                            cageAnim = new CAGEAnimation(ent.shortGUID);
-                                            cache.Item2.Add(ent.shortGUID, cageAnim);
-                                            cache.Item1.functions.Add(cageAnim);
-                                        }
+                                        cageAnim = (CAGEAnimation)ent;
                                     }
                                     else
                                     {
@@ -259,12 +241,12 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     cageAnim.connections.Add(new CAGEAnimation.Connection()
                                     {
                                         binding_guid = Utilities.Consume<ShortGuid>(reader, command_entries[i + 3].Item2),
-                                        //track_guid = 4
+                                        target_track = Utilities.Consume<ShortGuid>(reader, command_entries[i + 4].Item2),
                                         target_param = Utilities.Consume<ShortGuid>(reader, command_entries[i + 5].Item2),
                                         target_param_type = (DataType)Utilities.Consume<uint>(reader, command_entries[i + 6].Item2),
                                         target_sub_param = Utilities.Consume<ShortGuid>(reader, command_entries[i + 7].Item2),
-                                        //binding_type = 8
-                                        connectedEntity = new EntityPath() { path = Utilities.ConsumeArray<ShortGuid>(reader, (int)(command_entries[i + 9].Item1 & (uint)CommandTypes.COMMAND_SIZE_MASK), command_entries[i + 9].Item2) }
+                                        binding_type = (ObjectType)Utilities.Consume<uint>(reader, command_entries[i + 8].Item2),
+                                        connectedEntity = new EntityPath() { path = Utilities.ConsumeArray<ShortGuid>(reader, (int)(command_entries[i + 9].Item1 & (uint)CommandTypes.COMMAND_SIZE_MASK) / 4, command_entries[i + 9].Item2) }
                                     });
                                 }
                                 break;
@@ -275,16 +257,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     CAGEAnimation cageAnim = null;
                                     if (cache.Item2.TryGetValue(entityID, out Entity ent))
                                     {
-                                        if (ent is CAGEAnimation)
-                                            cageAnim = (CAGEAnimation)ent;
-                                        else
-                                        {
-                                            cache.Item2.Remove(ent.shortGUID);
-                                            cache.Item1.functions.Remove((FunctionEntity)ent);
-                                            cageAnim = new CAGEAnimation(ent.shortGUID);
-                                            cache.Item2.Add(ent.shortGUID, cageAnim);
-                                            cache.Item1.functions.Add(cageAnim);
-                                        }
+                                        cageAnim = (CAGEAnimation)ent;
                                     }
                                     else
                                     {
