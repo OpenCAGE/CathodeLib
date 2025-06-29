@@ -13,6 +13,12 @@ using System.Reflection;
 using System.Data;
 using static CATHODE.Textures.TEX4;
 using static CATHODE.Resources;
+using System.Runtime.InteropServices;
+using static CATHODE.Scripting.CAGEAnimation;
+using static CATHODE.Scripting.TriggerSequence;
+
+
+
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
@@ -609,110 +615,52 @@ namespace CATHODE.Scripting.Internal.Parsers
             {
                 foreach (var composite in Entries)
                 {
-                    int offset = (int)_dataBufferStream.Position;
-                    _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_TEMPLATE | CommandTypes.COMMAND_ADD), offset));
-
-                    Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
-                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                    offset = (int)_dataBufferStream.Position;
-                    Utilities.WriteString(composite.name, _dataWriter, true);
-                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(composite.name.Length + 1), offset));
+                    _commandEntries.Add(ContextCommand(_dataWriter, CommandTypes.CONTEXT_TEMPLATE));
+                    _commandEntries.Add(DataCommand(_dataWriter, composite.shortGUID));
+                    _commandEntries.Add(DataCommand(_dataWriter, composite.name));
                 }
 
-                {
-                    int offset = (int)_dataBufferStream.Position;
-                    _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_ROOT | CommandTypes.COMMAND_ADD), offset));
-                    Utilities.Write<ShortGuid>(_dataWriter, EntryPoints[0]);
-                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-                }
+                _commandEntries.Add(ContextCommand(_dataWriter, CommandTypes.CONTEXT_ROOT));
+                _commandEntries.Add(DataCommand(_dataWriter, EntryPoints[0]));
 
                 foreach (var composite in Entries)
                 {
                     foreach (var func in composite.functions)
                     {
-                        int offset = (int)_dataBufferStream.Position;
-                        _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_ENTITY | CommandTypes.COMMAND_ADD), offset));
-
-                        Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                        offset = (int)_dataBufferStream.Position;
-                        Utilities.Write<ShortGuid>(_dataWriter, func.shortGUID);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                        offset = (int)_dataBufferStream.Position;
-                        Utilities.Write<ShortGuid>(_dataWriter, func.function);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                        offset = (int)_dataBufferStream.Position;
-                        string name = EntityUtils.GetName(composite, func);
-                        Utilities.WriteString(name, _dataWriter, true);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(name.Length + 1), offset));
+                        _commandEntries.Add(ContextCommand(_dataWriter, CommandTypes.CONTEXT_ENTITY));
+                        _commandEntries.Add(DataCommand(_dataWriter, composite.shortGUID));
+                        _commandEntries.Add(DataCommand(_dataWriter, func.shortGUID));
+                        _commandEntries.Add(DataCommand(_dataWriter, func.function));
+                        _commandEntries.Add(DataCommand(_dataWriter, EntityUtils.GetName(composite, func)));
                     }
 
                     foreach (var alias in composite.aliases)
                     {
-                        int offset = (int)_dataBufferStream.Position;
-                        _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_ALIAS | CommandTypes.COMMAND_ADD), offset));
-
-                        Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                        offset = (int)_dataBufferStream.Position;
-                        Utilities.Write<ShortGuid>(_dataWriter, alias.shortGUID);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                        offset = (int)_dataBufferStream.Position;
-                        Utilities.Write<ShortGuid>(_dataWriter, alias.alias.path);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_PATH | (uint)(alias.alias.path.Length * 4), offset));
+                        _commandEntries.Add(ContextCommand(_dataWriter, CommandTypes.CONTEXT_ALIAS));
+                        _commandEntries.Add(DataCommand(_dataWriter, composite.shortGUID));
+                        _commandEntries.Add(DataCommand(_dataWriter, alias.shortGUID));
+                        _commandEntries.Add(DataCommand(_dataWriter, alias.alias));
                     }
 
                     foreach (var proxy in composite.proxies)
                     {
-                        int offset = (int)_dataBufferStream.Position;
-                        _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_PROXY | CommandTypes.COMMAND_ADD), offset));
-
-                        Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                        offset = (int)_dataBufferStream.Position;
-                        Utilities.Write<ShortGuid>(_dataWriter, proxy.shortGUID);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                        offset = (int)_dataBufferStream.Position;
-                        Utilities.Write<ShortGuid>(_dataWriter, proxy.function);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                        offset = (int)_dataBufferStream.Position;
-                        Utilities.Write<ShortGuid>(_dataWriter, proxy.proxy.path);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_PATH | (uint)(proxy.proxy.path.Length * 4), offset));
+                        _commandEntries.Add(ContextCommand(_dataWriter, CommandTypes.CONTEXT_PROXY));
+                        _commandEntries.Add(DataCommand(_dataWriter, composite.shortGUID));
+                        _commandEntries.Add(DataCommand(_dataWriter, proxy.shortGUID));
+                        _commandEntries.Add(DataCommand(_dataWriter, proxy.function));
+                        _commandEntries.Add(DataCommand(_dataWriter, composite.shortGUID));
+                        _commandEntries.Add(DataCommand(_dataWriter, composite.shortGUID));
+                        _commandEntries.Add(DataCommand(_dataWriter, proxy.proxy));
                     }
 
                     foreach (var variable in composite.variables)
                     {
-                        int offset = (int)_dataBufferStream.Position;
-                        _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_CONNECTOR | CommandTypes.COMMAND_ADD), offset));
-
-                        Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                        offset = (int)_dataBufferStream.Position;
-                        Utilities.Write<ShortGuid>(_dataWriter, variable.shortGUID);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                        offset = (int)_dataBufferStream.Position;
-                        _dataWriter.Write((uint)variable.type);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                        offset = (int)_dataBufferStream.Position;
-                        Utilities.Write<ShortGuid>(_dataWriter, variable.name);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                        offset = (int)_dataBufferStream.Position;
-                        string name = variable.name.ToString();
-                        Utilities.WriteString(name, _dataWriter, true);
-                        _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(name.Length + 1), offset));
+                        _commandEntries.Add(ContextCommand(_dataWriter, CommandTypes.CONTEXT_METHOD));
+                        _commandEntries.Add(DataCommand(_dataWriter, composite.shortGUID));
+                        _commandEntries.Add(DataCommand(_dataWriter, variable.shortGUID));
+                        _commandEntries.Add(DataCommand(_dataWriter, new ShortGuid((uint)variable.type)));
+                        _commandEntries.Add(DataCommand(_dataWriter, variable.name));
+                        _commandEntries.Add(DataCommand(_dataWriter, variable.name.ToString()));
                     }
                 }
 
@@ -724,112 +672,49 @@ namespace CATHODE.Scripting.Internal.Parsers
                         {
                             foreach (var method in trig.methods)
                             {
-                                int offset = (int)_dataBufferStream.Position;
-                                _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_METHOD | CommandTypes.COMMAND_ADD), offset));
-
-                                Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                Utilities.Write<ShortGuid>(_dataWriter, trig.shortGUID);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                Utilities.Write<ShortGuid>(_dataWriter, trig.function);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                string name = method.method.ToString();
-                                Utilities.WriteString(name, _dataWriter, true);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(name.Length + 1), offset));
+                                _commandEntries.Add(ContextCommand(_dataWriter, CommandTypes.CONTEXT_METHOD));
+                                _commandEntries.Add(DataCommand(_dataWriter, composite.shortGUID));
+                                _commandEntries.Add(DataCommand(_dataWriter, trig.shortGUID));
+                                _commandEntries.Add(DataCommand(_dataWriter, trig.function));
+                                _commandEntries.Add(DataCommand(_dataWriter, composite.shortGUID));
+                                _commandEntries.Add(DataCommand(_dataWriter, composite.shortGUID));
+                                _commandEntries.Add(DataCommand(_dataWriter, method.method.ToString()));
                             }
 
                             foreach (var sequenceEntry in trig.sequence)
                             {
-                                int offset = (int)_dataBufferStream.Position;
-                                _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_SEQUENCE | CommandTypes.COMMAND_ADD), offset));
-
-                                Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                Utilities.Write<ShortGuid>(_dataWriter, trig.shortGUID);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                _dataWriter.Write(sequenceEntry.timing);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_FLOAT | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                Utilities.Write<ShortGuid>(_dataWriter, sequenceEntry.connectedEntity.path);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_PATH | (uint)(sequenceEntry.connectedEntity.path.Length * 4), offset));
+                                _commandEntries.Add(ContextCommand(_dataWriter, CommandTypes.CONTEXT_SEQUENCE));
+                                _commandEntries.Add(DataCommand(_dataWriter, composite.shortGUID));
+                                _commandEntries.Add(DataCommand(_dataWriter, trig.shortGUID));
+                                _commandEntries.Add(DataCommand(_dataWriter, sequenceEntry.timing));
+                                _commandEntries.Add(DataCommand(_dataWriter, sequenceEntry.connectedEntity));
                             }
                         }
                         else if (func is CAGEAnimation cageAnim)
                         {
                             foreach (var connection in cageAnim.connections)
                             {
-                                int offset = (int)_dataBufferStream.Position;
-                                _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_BINDING | CommandTypes.COMMAND_ADD), offset));
-
-                                Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                Utilities.Write<ShortGuid>(_dataWriter, cageAnim.shortGUID);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                Utilities.Write<ShortGuid>(_dataWriter, connection.binding_guid);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                Utilities.Write<ShortGuid>(_dataWriter, connection.target_track);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                Utilities.Write<ShortGuid>(_dataWriter, connection.target_param);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                _dataWriter.Write((uint)connection.target_param_type);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                Utilities.Write<ShortGuid>(_dataWriter, connection.target_sub_param);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                _dataWriter.Write((uint)connection.binding_type);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                Utilities.Write<ShortGuid>(_dataWriter, connection.connectedEntity.path);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_PATH | (uint)(connection.connectedEntity.path.Length * 4), offset));
+                                _commandEntries.Add(ContextCommand(_dataWriter, CommandTypes.CONTEXT_BINDING));
+                                _commandEntries.Add(DataCommand(_dataWriter, composite.shortGUID));
+                                _commandEntries.Add(DataCommand(_dataWriter, cageAnim.shortGUID));
+                                _commandEntries.Add(DataCommand(_dataWriter, connection.binding_guid));
+                                _commandEntries.Add(DataCommand(_dataWriter, connection.target_track));
+                                _commandEntries.Add(DataCommand(_dataWriter, connection.target_param));
+                                _commandEntries.Add(DataCommand(_dataWriter, new ShortGuid((uint)connection.target_param_type)));
+                                _commandEntries.Add(DataCommand(_dataWriter, connection.target_sub_param));
+                                _commandEntries.Add(DataCommand(_dataWriter, new ShortGuid((uint)connection.binding_type)));
+                                _commandEntries.Add(DataCommand(_dataWriter, connection.connectedEntity));
                             }
 
                             foreach (var floatTrack in cageAnim.animations)
                             {
+                                _commandEntries.Add(ContextCommand(_dataWriter, CommandTypes.CONTEXT_TRACK));
+                                _commandEntries.Add(DataCommand(_dataWriter, composite.shortGUID));
+                                _commandEntries.Add(DataCommand(_dataWriter, cageAnim.shortGUID));
+                                _commandEntries.Add(DataCommand(_dataWriter, floatTrack.shortGUID));
+                                _commandEntries.Add(DataCommand(_dataWriter, new cEnum(ANIM_TRACK_TYPE_GUID, (int)CAGEAnimation.TrackType.FLOAT)));
+
                                 int offset = (int)_dataBufferStream.Position;
-                                _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_TRACK | CommandTypes.COMMAND_ADD), offset));
-
-                                Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                Utilities.Write<ShortGuid>(_dataWriter, cageAnim.shortGUID);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                Utilities.Write<ShortGuid>(_dataWriter, floatTrack.shortGUID);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                Utilities.Write<ShortGuid>(_dataWriter, ANIM_TRACK_TYPE_GUID);
-                                _dataWriter.Write((int)CAGEAnimation.TrackType.FLOAT);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_ENUM | 8, offset));
-
-                                offset = (int)_dataBufferStream.Position;
                                 foreach (var keyframe in floatTrack.keyframes)
                                 {
                                     _dataWriter.Write((int)keyframe.mode);
@@ -847,26 +732,13 @@ namespace CATHODE.Scripting.Internal.Parsers
 
                             foreach (var eventTrack in cageAnim.events)
                             {
+                                _commandEntries.Add(ContextCommand(_dataWriter, CommandTypes.CONTEXT_TRACK));
+                                _commandEntries.Add(DataCommand(_dataWriter, composite.shortGUID));
+                                _commandEntries.Add(DataCommand(_dataWriter, cageAnim.shortGUID));
+                                _commandEntries.Add(DataCommand(_dataWriter, eventTrack.shortGUID));
+                                _commandEntries.Add(DataCommand(_dataWriter, new cEnum(ANIM_TRACK_TYPE_GUID, (int)(eventTrack.keyframes.Count == 0 ? CAGEAnimation.TrackType.INVALID : eventTrack.keyframes[0].track_type))));
+
                                 int offset = (int)_dataBufferStream.Position;
-                                _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_TRACK | CommandTypes.COMMAND_ADD), offset));
-
-                                Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                Utilities.Write<ShortGuid>(_dataWriter, cageAnim.shortGUID);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                Utilities.Write<ShortGuid>(_dataWriter, eventTrack.shortGUID);
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                                offset = (int)_dataBufferStream.Position;
-                                Utilities.Write<ShortGuid>(_dataWriter, ANIM_TRACK_TYPE_GUID);
-                                _dataWriter.Write((int)(eventTrack.keyframes.Count == 0 ? CAGEAnimation.TrackType.INVALID : eventTrack.keyframes[0].track_type));
-                                _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_ENUM | 8, offset));
-
-                                offset = (int)_dataBufferStream.Position;
                                 foreach (var keyframe in eventTrack.keyframes)
                                 {
                                     _dataWriter.Write((int)keyframe.mode);
@@ -889,7 +761,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                     {
                         foreach (var resource in func.resources)
                         {
-                            AddResourceCommand(_commandEntries, _dataBufferStream, _dataWriter, composite, resource);
+                            AddResourceCommand(_commandEntries, _dataWriter, composite, resource);
                         }
                     }
 
@@ -897,90 +769,43 @@ namespace CATHODE.Scripting.Internal.Parsers
                     {
                         foreach (var paramEntry in entity.parameters)
                         {
-                            int offset = (int)_dataBufferStream.Position;
-                            _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_PARAMETER | CommandTypes.COMMAND_ADD), offset));
-
-                            Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            offset = (int)_dataBufferStream.Position;
-                            Utilities.Write<ShortGuid>(_dataWriter, entity.shortGUID);
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            //TODO: type guid for entity
-                            offset = (int)_dataBufferStream.Position;
-                            Utilities.Write<ShortGuid>(_dataWriter, new ShortGuid(0));
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            offset = (int)_dataBufferStream.Position;
-                            Utilities.Write<ShortGuid>(_dataWriter, paramEntry.name);
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            offset = (int)_dataBufferStream.Position;
+                            _commandEntries.Add(ContextCommand(_dataWriter, CommandTypes.CONTEXT_PARAMETER));
+                            _commandEntries.Add(DataCommand(_dataWriter, composite.shortGUID));
+                            _commandEntries.Add(DataCommand(_dataWriter, entity.shortGUID));
+                            _commandEntries.Add(DataCommand(_dataWriter, new ShortGuid(0))); //TODO: type guid for entity
+                            _commandEntries.Add(DataCommand(_dataWriter, paramEntry.name));
                             switch (paramEntry.content.dataType)
                             {
                                 case DataType.TRANSFORM:
-                                    cTransform t = (cTransform)paramEntry.content;
-                                    _dataWriter.Write(t.position.X);
-                                    _dataWriter.Write(t.position.Y);
-                                    _dataWriter.Write(t.position.Z);
-                                    _dataWriter.Write(t.rotation.Y);
-                                    _dataWriter.Write(t.rotation.X);
-                                    _dataWriter.Write(t.rotation.Z);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_POSITION | 24, offset));
+                                    _commandEntries.Add(DataCommand(_dataWriter, (cTransform)paramEntry.content));
                                     break;
                                 case DataType.INTEGER:
-                                    _dataWriter.Write(((cInteger)paramEntry.content).value);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+                                    _commandEntries.Add(DataCommand(_dataWriter, ((cInteger)paramEntry.content).value));
                                     break;
                                 case DataType.ENUM_STRING:
                                 case DataType.STRING:
-                                    cString st = (cString)paramEntry.content;
-                                    Utilities.WriteString(st.value, _dataWriter, true);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(st.value.Length + 1), offset));
+                                    _commandEntries.Add(DataCommand(_dataWriter, ((cString)paramEntry.content).value));
                                     break;
                                 case DataType.BOOL:
-                                    _dataWriter.Write(((cBool)paramEntry.content).value);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_BOOL | 1, offset));
+                                    _commandEntries.Add(DataCommand(_dataWriter, ((cBool)paramEntry.content).value));
                                     break;
                                 case DataType.FLOAT:
-                                    _dataWriter.Write(((cFloat)paramEntry.content).value);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_FLOAT | 4, offset));
+                                    _commandEntries.Add(DataCommand(_dataWriter, ((cFloat)paramEntry.content).value));
                                     break;
                                 case DataType.RESOURCE:
                                     cResource r = (cResource)paramEntry.content;
-                                    Utilities.Write<ShortGuid>(_dataWriter, r.shortGUID);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+                                    _commandEntries.Add(DataCommand(_dataWriter, r.shortGUID));
                                     for (int x = 0; x < r.value.Count; x++)
-                                        AddResourceCommand(_commandEntries, _dataBufferStream, _dataWriter, composite, r.value[x]);
+                                        AddResourceCommand(_commandEntries, _dataWriter, composite, r.value[x]);
                                     break;
                                 case DataType.VECTOR:
-                                    cVector3 v = (cVector3)paramEntry.content;
-                                    _dataWriter.Write(v.value.X);
-                                    _dataWriter.Write(v.value.Y);
-                                    _dataWriter.Write(v.value.Z);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_VECTOR | 12, offset));
+                                    _commandEntries.Add(DataCommand(_dataWriter, (cVector3)paramEntry.content));
                                     break;
                                 case DataType.ENUM:
-                                    cEnum e = (cEnum)paramEntry.content;
-                                    Utilities.Write<ShortGuid>(_dataWriter, e.enumID);
-                                    _dataWriter.Write(e.enumIndex);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_ENUM | 8, offset));
+                                    _commandEntries.Add(DataCommand(_dataWriter, (cEnum)paramEntry.content));
                                     break;
                                 case DataType.SPLINE:
-                                    cSpline s = (cSpline)paramEntry.content;
-                                    foreach (var point in s.splinePoints)
-                                    {
-                                        _dataWriter.Write(point.position.X);
-                                        _dataWriter.Write(point.position.Y);
-                                        _dataWriter.Write(point.position.Z);
-                                        _dataWriter.Write(point.rotation.Y);
-                                        _dataWriter.Write(point.rotation.X);
-                                        _dataWriter.Write(point.rotation.Z);
-                                    }
-                                    _dataWriter.Write(-1.0f); _dataWriter.Write(-1.0f); _dataWriter.Write(-1.0f);
-                                    _dataWriter.Write(-1.0f); _dataWriter.Write(-1.0f); _dataWriter.Write(-1.0f);
-                                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_SPLINE | (uint)((s.splinePoints.Count + 1) * 24), offset));
+                                    _commandEntries.Add(DataCommand(_dataWriter, (cSpline)paramEntry.content));
                                     break;
                             }
                         }
@@ -990,41 +815,15 @@ namespace CATHODE.Scripting.Internal.Parsers
                     {
                         foreach (var link in entity.childLinks)
                         {
-                            int offset = (int)_dataBufferStream.Position;
-                            _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_LINK | CommandTypes.COMMAND_ADD), offset));
-
-                            Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            offset = (int)_dataBufferStream.Position;
-                            Utilities.Write<ShortGuid>(_dataWriter, link.ID);
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            offset = (int)_dataBufferStream.Position;
-                            Utilities.Write<ShortGuid>(_dataWriter, entity.shortGUID);
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            //TODO: get this entity type (required?)
-                            offset = (int)_dataBufferStream.Position;
-                            Utilities.Write<ShortGuid>(_dataWriter, new ShortGuid(0));
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            offset = (int)_dataBufferStream.Position;
-                            Utilities.Write<ShortGuid>(_dataWriter, link.thisParamID);
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            offset = (int)_dataBufferStream.Position;
-                            Utilities.Write<ShortGuid>(_dataWriter, link.linkedEntityID);
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            //TODO: get linked entity type (required?)
-                            offset = (int)_dataBufferStream.Position;
-                            Utilities.Write<ShortGuid>(_dataWriter, new ShortGuid(0));
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-                            offset = (int)_dataBufferStream.Position;
-                            Utilities.Write<ShortGuid>(_dataWriter, link.linkedParamID);
-                            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+                            _commandEntries.Add(ContextCommand(_dataWriter, CommandTypes.CONTEXT_LINK));
+                            _commandEntries.Add(DataCommand(_dataWriter, composite.shortGUID));
+                            _commandEntries.Add(DataCommand(_dataWriter, link.ID));
+                            _commandEntries.Add(DataCommand(_dataWriter, entity.shortGUID));
+                            _commandEntries.Add(DataCommand(_dataWriter, new ShortGuid(0))); //TODO: get this entity type (required?)
+                            _commandEntries.Add(DataCommand(_dataWriter, link.thisParamID));
+                            _commandEntries.Add(DataCommand(_dataWriter, link.linkedEntityID));
+                            _commandEntries.Add(DataCommand(_dataWriter, new ShortGuid(0))); //TODO: get linked entity type (required?)
+                            _commandEntries.Add(DataCommand(_dataWriter, link.linkedParamID));
                         }
                     }
                 }
@@ -1048,71 +847,119 @@ namespace CATHODE.Scripting.Internal.Parsers
             }
         }
 
-        private static void AddResourceCommand(List<Tuple<uint, int>> _commandEntries, MemoryStream _dataBufferStream, BinaryWriter _dataWriter, Composite composite, ResourceReference resource)
+        private static Tuple<uint, int> ContextCommand(BinaryWriter writer, CommandTypes context)
         {
-            int offset = (int)_dataBufferStream.Position;
-            _commandEntries.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_RESOURCE | CommandTypes.COMMAND_ADD), offset));
+            return new Tuple<uint, int>((uint)(context | CommandTypes.COMMAND_ADD), (int)writer.BaseStream.Position);
+        }
 
-            Utilities.Write<ShortGuid>(_dataWriter, composite.shortGUID);
-            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+        private static Tuple<uint, int> DataCommand<T>(BinaryWriter writer, T value)
+        {
+            CommandTypes t = 0;
+            int size = 0;
+            switch (value)
+            {
+                case uint _:
+                case int _:
+                    size = 4;
+                    t = CommandTypes.DATA_INT;
+                    Utilities.Write<T>(writer, value);
+                    break;
+                case bool bl:
+                    size = 1;
+                    t = CommandTypes.DATA_BOOL;
+                    writer.Write(bl);
+                    break;
+                case float fl:
+                    size = 4;
+                    t = CommandTypes.DATA_FLOAT;
+                    writer.Write(fl);
+                    break;
+                case string st:
+                    size = st.Length + 1;
+                    t = CommandTypes.DATA_STRING; 
+                    Utilities.WriteString(st, writer, true);
+                    break;
+                case ShortGuid _:
+                    size = 4;
+                    t = CommandTypes.DATA_GUID;
+                    Utilities.Write<T>(writer, value);
+                    break;
+                case EntityPath ep:
+                    size = ep.path.Length * 4;
+                    t = CommandTypes.DATA_PATH;
+                    Utilities.Write<ShortGuid>(writer, ep.path);
+                    break;
+                case cTransform tr:
+                    size = 24;
+                    t = CommandTypes.DATA_POSITION;
+                    writer.Write(tr.position.X);
+                    writer.Write(tr.position.Y);
+                    writer.Write(tr.position.Z);
+                    writer.Write(tr.rotation.Y);
+                    writer.Write(tr.rotation.X);
+                    writer.Write(tr.rotation.Z);
+                    break;
+                case cVector3 ve:
+                    size = 12;
+                    t = CommandTypes.DATA_VECTOR;
+                    writer.Write(ve.value.X);
+                    writer.Write(ve.value.Y);
+                    writer.Write(ve.value.Z);
+                    break;
+                case cEnum en:
+                    size = 8;
+                    t = CommandTypes.DATA_ENUM;
+                    Utilities.Write<ShortGuid>(writer, en.enumID);
+                    writer.Write(en.enumIndex);
+                    break;
+                case cSpline sp:
+                    size = (sp.splinePoints.Count + 1) * 24;
+                    t = CommandTypes.DATA_SPLINE;
+                    foreach (var point in sp.splinePoints)
+                    {
+                        writer.Write(point.position.X);
+                        writer.Write(point.position.Y);
+                        writer.Write(point.position.Z);
+                        writer.Write(point.rotation.Y);
+                        writer.Write(point.rotation.X);
+                        writer.Write(point.rotation.Z);
+                    }
+                    writer.Write(-1.0f); writer.Write(-1.0f); writer.Write(-1.0f);
+                    writer.Write(-1.0f); writer.Write(-1.0f); writer.Write(-1.0f);
+                    break;
+                default:
+                    throw new Exception("Unhandled data type");
+            }
+            return new Tuple<uint, int>((uint)t | (uint)size, (int)writer.BaseStream.Position - size);
+        }
 
-            offset = (int)_dataBufferStream.Position;
-            Utilities.Write<ShortGuid>(_dataWriter, resource.resource_id);
-            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
-            offset = (int)_dataBufferStream.Position;
-            _dataWriter.Write((uint)resource.resource_type);
-            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-
+        private static void AddResourceCommand(List<Tuple<uint, int>> _commandEntries, BinaryWriter _dataWriter, Composite composite, ResourceReference resource)
+        {
+            _commandEntries.Add(ContextCommand(_dataWriter, CommandTypes.CONTEXT_RESOURCE));
+            _commandEntries.Add(DataCommand(_dataWriter, composite.shortGUID));
+            _commandEntries.Add(DataCommand(_dataWriter, resource.resource_id));
+            _commandEntries.Add(DataCommand(_dataWriter, new ShortGuid((uint)resource.resource_type)));
             switch (resource.resource_type)
             {
                 case ResourceType.RENDERABLE_INSTANCE:
-                    offset = (int)_dataBufferStream.Position;
-                    _dataWriter.Write(resource.index);
-                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
-
-                    offset = (int)_dataBufferStream.Position;
-                    _dataWriter.Write(resource.count);
-                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+                    _commandEntries.Add(DataCommand(_dataWriter, resource.index));
+                    _commandEntries.Add(DataCommand(_dataWriter, resource.count));
                     break;
                 case ResourceType.COLLISION_MAPPING:
-                    offset = (int)_dataBufferStream.Position;
-                    _dataWriter.Write(resource.index);
-                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
-
-                    offset = (int)_dataBufferStream.Position;
-                    Utilities.Write<ShortGuid>(_dataWriter, resource.entityID);
-                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+                    _commandEntries.Add(DataCommand(_dataWriter, resource.index));
+                    _commandEntries.Add(DataCommand(_dataWriter, resource.entityID.AsUInt32));
                     break;
                 case ResourceType.ANIMATED_MODEL:
                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                    offset = (int)_dataBufferStream.Position;
-                    _dataWriter.Write(resource.index);
-                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
-
-                    offset = (int)_dataBufferStream.Position;
-                    _dataWriter.Write(0);
-                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+                    _commandEntries.Add(DataCommand(_dataWriter, resource.index));
+                    _commandEntries.Add(DataCommand(_dataWriter, 0));
                     break;
                 default:
-                    offset = (int)_dataBufferStream.Position;
-                    _dataWriter.Write(0);
-                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
-
-                    offset = (int)_dataBufferStream.Position;
-                    _dataWriter.Write(0);
-                    _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+                    _commandEntries.Add(DataCommand(_dataWriter, 0));
+                    _commandEntries.Add(DataCommand(_dataWriter, 0));
                     break;
             }
-
-            offset = (int)_dataBufferStream.Position;
-            _dataWriter.Write(resource.position.X);
-            _dataWriter.Write(resource.position.Y);
-            _dataWriter.Write(resource.position.Z);
-            _dataWriter.Write(resource.rotation.X);
-            _dataWriter.Write(resource.rotation.Y);
-            _dataWriter.Write(resource.rotation.Z);
-            _commandEntries.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_POSITION | 24, offset));
+            _commandEntries.Add(DataCommand(_dataWriter, new cTransform(resource.position, resource.rotation)));
         }
 
         private enum CommandTypes : uint
