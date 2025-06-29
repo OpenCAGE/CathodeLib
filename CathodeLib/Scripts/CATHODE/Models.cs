@@ -108,8 +108,8 @@ namespace CATHODE
                     submesh.AABBMax = Utilities.Consume<Vector3>(bin);
                     submesh.LODMaxDistance_ = bin.ReadSingle();
 
-                    int nextSubmeshInLOD = bin.ReadInt32();
-                    int nextLOD = bin.ReadInt32();
+                    int nextSubmeshInLOD = bin.ReadInt32(); //child model id
+                    int nextLOD = bin.ReadInt32(); //child lod id
                     if (nextLOD != -1) LODs.Add(nextLOD);
 
                     submesh.MaterialLibraryIndex = bin.ReadInt32();
@@ -712,8 +712,8 @@ namespace CATHODE
 
                         public RenderingFlag Flags;
 
-                        public int CollisionProxy = -1;    // NOTE: -1 means no index. Seems to be related to Next/Parent.
-                        public int WeightedCollisionIndex = -1; // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
+                        public int CollisionProxy = -1; // Index in COLLISION.HKX
+                        public int WeightedCollisionIndex = -1; // Index in COLLISION.BIN
 
                         public AlienVBF VertexFormat;
                         public AlienVBF VertexFormatLowDetail;
