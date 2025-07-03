@@ -116,7 +116,7 @@ namespace CATHODE
 
                     submesh.Flags = (CS2.Component.LOD.RenderingFlag)bin.ReadUInt32(); 
 
-                    submesh.CollisionProxy = bin.ReadInt32(); 
+                    submesh.CollisionProxyIndex = bin.ReadInt32(); 
                     bin.BaseStream.Position += 4; //length
                     submesh.WeightedCollisionIndex = bin.ReadInt32(); // NODE: If this is not -1, model piece name starts with "COL_" and are always character models.
                     
@@ -336,7 +336,7 @@ namespace CATHODE
                                 bin.Write(y == 0 && Entries[i].Components[z].LODs.Count - 1 != x ? _writeList.Count + Entries[i].Components[z].LODs[x].Submeshes.Count : -1);
                                 bin.Write((Int32)mesh.MaterialLibraryIndex);
                                 bin.Write((Int32)mesh.Flags);
-                                bin.Write((Int32)mesh.CollisionProxy);
+                                bin.Write((Int32)mesh.CollisionProxyIndex);
                                 bin.Write((Int32)mesh.content.Length);
                                 bin.Write((Int32)mesh.WeightedCollisionIndex);
                                 bin.Write((Int32)boneOffset);
@@ -712,7 +712,7 @@ namespace CATHODE
 
                         public RenderingFlag Flags;
 
-                        public int CollisionProxy = -1; // Index in COLLISION.HKX
+                        public int CollisionProxyIndex = -1; // Index in COLLISION.HKX
                         public int WeightedCollisionIndex = -1; // Index in COLLISION.BIN
 
                         public AlienVBF VertexFormat;

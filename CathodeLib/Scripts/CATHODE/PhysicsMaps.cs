@@ -129,7 +129,7 @@ namespace CATHODE
         public class Entry
         {
             //Should match system_index on the PhysicsSystem entity.
-            public int physics_system_index; //TODO: is this the havok index? collision.map points to havok indexes, so would make sense
+            public int physics_system_index; // the proxy index for the system to clone
 
             //DYNAMIC_PHYSICS_SYSTEM
             public ShortGuid resource_type;
