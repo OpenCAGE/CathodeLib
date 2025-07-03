@@ -95,6 +95,26 @@ namespace CATHODE.EXPERIMENTAL
         #endregion
 
         #region STRUCTURES
+        public enum LightFeature : ushort
+        {
+            SoftDiffuse = 1 << 0,
+            Specular = 1 << 1,
+            Shadow = 1 << 2,
+            Gobo = 1 << 3,
+            Animated = 1 << 4,
+            LensFlare = 1 << 5,
+            NoClip = 1 << 6,
+            DiffuseBias = 1 << 7,
+            AreaLight = 1 << 8,
+            SquareLight = 1 << 9,
+            Flashlight = 1 << 10,
+            PhysicalAttenuation = 1 << 11,
+            Distance_Mip_Selection_Gobo = 1 << 12,
+            Volume = 1 << 13,
+            NoAlphaLight = 1 << 14,
+            HorizontalGoboFlip = 1 << 15
+        };
+
         public class Node
         {
             public Vector3 min;
