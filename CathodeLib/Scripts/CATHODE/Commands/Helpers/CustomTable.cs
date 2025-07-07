@@ -31,7 +31,7 @@ namespace CathodeLib
             int endPos;
             using (BinaryReader reader = new BinaryReader(File.OpenRead(filepath)))
             {
-                TableExists(reader, Path.GetExtension(filepath).ToUpper() == ".PAK", out endPos);
+                TableExists(reader, filepath, out endPos);
             }
 
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(filepath)))
@@ -108,7 +108,7 @@ namespace CathodeLib
             Table data = null;
             using (BinaryReader reader = new BinaryReader(File.OpenRead(filepath)))
             {
-                if (!TableExists(reader, Path.GetExtension(filepath).ToUpper() == ".PAK", out int endPos))
+                if (!TableExists(reader, filepath, out int endPos))
                     return null;
 
                 int customDbCount = reader.ReadInt32();
@@ -159,16 +159,20 @@ namespace CathodeLib
             return data;
         }
 
-        private static bool TableExists(BinaryReader reader, bool isPAK, out int endPos)
+        private static bool TableExists(BinaryReader reader, string filepath, out int endPos)
         {
-            if (isPAK)
+            switch (Path.GetFileName(filepath).ToUpper())
             {
-                reader.BaseStream.Position = 20;
-                endPos = (reader.ReadInt32() * 4) + (reader.ReadInt32() * 4);
-            }
-            else
-            {
-                endPos = reader.ReadInt32();
+                case "COMMANDS.PAK":
+                    reader.BaseStream.Position = 20;
+                    endPos = (reader.ReadInt32() * 4) + (reader.ReadInt32() * 4);
+                    break;
+                case "COMMANDS.BIN":
+                    endPos = reader.ReadInt32();
+                    break;
+                default:
+                    endPos = 0;
+                    break;
             }
             reader.BaseStream.Position = endPos;
             return (int)reader.BaseStream.Length - endPos != 0 && reader.ReadByte() == _version;
@@ -279,10 +283,10 @@ namespace CathodeLib
         public override void Write(BinaryWriter writer)
         {
             writer.Write(cache.Count);
-            foreach (KeyValuePair<string, ShortGuid> composite in cache)
+            foreach (KeyValuePair<string, ShortGuid> val in cache)
             {
-                Utilities.Write<ShortGuid>(writer, composite.Value);
-                writer.Write(composite.Key);
+                Utilities.Write<ShortGuid>(writer, val.Value);
+                writer.Write(val.Key);
             }
         }
     }
