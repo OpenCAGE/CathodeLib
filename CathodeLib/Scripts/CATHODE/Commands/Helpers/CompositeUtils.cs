@@ -28,7 +28,6 @@ namespace CathodeLib
 
         //Has metadata for the composite pins, to let you figure if they're in or out (you should update this with any you add, if you're using this info)
         private static CompositePinInfoTable _pinInfoCustom;
-        private static CompositePinInfoTable _pinInfoVanilla;
 
         public static Commands LinkedCommands => _commands;
         private static Commands _commands;
@@ -60,19 +59,6 @@ namespace CathodeLib
             paths.Sort();
             File.WriteAllLines("DebugDump/paths.txt", paths);
 #endif
-
-#if UNITY_EDITOR || UNITY_STANDALONE
-            dbContent = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/composite_parameter_info.bin");
-#else
-            dbContent = CathodeLib.Properties.Resources.composite_parameter_info;
-            if (File.Exists("LocalDB/composite_parameter_info.bin"))
-                dbContent = File.ReadAllBytes("LocalDB/composite_parameter_info.bin");
-#endif
-            _pinInfoVanilla = new CompositePinInfoTable();
-            using (BinaryReader reader = new BinaryReader(new MemoryStream(dbContent)))
-            {
-                _pinInfoVanilla.Read(reader);
-            }
 
 #if DO_DEBUG_DUMP
             Directory.CreateDirectory("DebugDump/pin_info");
@@ -198,7 +184,7 @@ namespace CathodeLib
                 info = customInfos.FirstOrDefault(o => o.VariableGUID == variableEnt);
             if (info != null)
                 return info;
-            if (_pinInfoVanilla.composite_pin_infos.TryGetValue(composite, out List<CompositePinInfoTable.PinInfo> vanillaInfos))
+            if (CustomTable.Vanilla.CompositePinInfos.composite_pin_infos.TryGetValue(composite, out List<CompositePinInfoTable.PinInfo> vanillaInfos))
                 info = vanillaInfos.FirstOrDefault(o => o.VariableGUID == variableEnt);
             return info;
         }

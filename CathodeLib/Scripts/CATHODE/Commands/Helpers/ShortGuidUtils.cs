@@ -1,5 +1,3 @@
-//#define DO_DEBUG_DUMP
-
 using CATHODE.Scripting.Internal;
 using CathodeLib;
 using System;
@@ -16,41 +14,10 @@ namespace CATHODE.Scripting
 {
     public static class ShortGuidUtils
     {
-        private static GuidNameTable _vanilla = null;
-        private static GuidNameTable _custom = null;
+        private static GuidNameTable _custom = new GuidNameTable();
 
         public static Commands LinkedCommands => _commands;
         private static Commands _commands;
-
-        /* Pull in strings we know are cached as ShortGuid in Cathode */
-        static ShortGuidUtils()
-        {
-#if UNITY_EDITOR || UNITY_STANDALONE
-            byte[] dbContent = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/cathode_shortguid_lut.bin");
-#else
-            byte[] dbContent = CathodeLib.Properties.Resources.cathode_shortguid_lut;
-            if (File.Exists("LocalDB/cathode_shortguid_lut.bin"))
-                dbContent = File.ReadAllBytes("LocalDB/cathode_shortguid_lut.bin");
-#endif
-
-            BinaryReader reader = new BinaryReader(new MemoryStream(dbContent));
-            _vanilla = new GuidNameTable();
-            _custom = new GuidNameTable();
-            while (reader.BaseStream.Position < reader.BaseStream.Length)
-                Cache(new ShortGuid(reader), reader.ReadString(), true);
-            reader.Close();
-
-#if DO_DEBUG_DUMP
-            Directory.CreateDirectory("DebugDump");
-            List<string> parameters = new List<string>();
-            foreach (KeyValuePair<string, ShortGuid> value in _vanilla.cache)
-            {
-                parameters.Add(value.Key);
-            }
-            parameters.Sort();
-            File.WriteAllLines("DebugDump/parameters.txt", parameters);
-#endif
-        }
 
         /* Optionally, link a Commands file which can be used to save custom ShortGuids to */
         public static void LinkCommands(Commands commands)
@@ -71,7 +38,7 @@ namespace CATHODE.Scripting
         {
             if (_custom.cache.TryGetValue(value, out ShortGuid customVal))
                 return customVal;
-            if (_vanilla.cache.TryGetValue(value, out ShortGuid vanillaVal)) 
+            if (CustomTable.Vanilla.ShortGuids.cache.TryGetValue(value, out ShortGuid vanillaVal)) 
                 return vanillaVal;
 
             SHA1Managed sha1 = new SHA1Managed();
@@ -113,7 +80,7 @@ namespace CATHODE.Scripting
         {
             if (_custom.cacheReversed.TryGetValue(guid, out string customVal))
                 return customVal;
-            if (_vanilla.cacheReversed.TryGetValue(guid, out string vanillaVal))
+            if (CustomTable.Vanilla.ShortGuids.cacheReversed.TryGetValue(guid, out string vanillaVal))
                 return vanillaVal;
 
             return guid.ToByteString();
@@ -125,7 +92,8 @@ namespace CATHODE.Scripting
             string str = Guid.NewGuid().ToString();
             ShortGuid guid = Generate(str, false);
             int s = 0;
-            while (_vanilla.cache.ContainsKey(str) || _custom.cache.ContainsKey(str) || _vanilla.cacheReversed.ContainsKey(guid) || _custom.cacheReversed.ContainsKey(guid))
+            while (CustomTable.Vanilla.ShortGuids.cache.ContainsKey(str) || _custom.cache.ContainsKey(str) || 
+                   CustomTable.Vanilla.ShortGuids.cacheReversed.ContainsKey(guid) || _custom.cacheReversed.ContainsKey(guid))
             {
                 str = $"{str}_{s++}";
                 guid = Generate(str, false);
@@ -137,25 +105,16 @@ namespace CATHODE.Scripting
         }
 
         /* Cache a pre-generated ShortGuid */
-        private static void Cache(ShortGuid guid, string value, bool isVanilla = false)
+        private static void Cache(ShortGuid guid, string value)
         {
-            if (isVanilla)
+            //TODO: need to fix this for BSPNOSTROMO_RIPLEY_PATCH (?)
+            if (_custom.cache.ContainsKey(value)) return;
+            _custom.cache.Add(value, guid);
+            try
             {
-                if (_vanilla.cache.ContainsKey(value)) return;
-                _vanilla.cache.Add(value, guid);
-                _vanilla.cacheReversed.Add(guid, value);
+                _custom.cacheReversed.Add(guid, value);
             }
-            else
-            {
-                //TODO: need to fix this for BSPNOSTROMO_RIPLEY_PATCH (?)
-                if (_custom.cache.ContainsKey(value)) return;
-                _custom.cache.Add(value, guid);
-                try
-                {
-                    _custom.cacheReversed.Add(guid, value);
-                }
-                catch { }
-            }
+            catch { }
         }
 
         /* Pull non-vanilla ShortGuid from the CommandsPAK */

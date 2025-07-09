@@ -1173,4 +1173,12 @@ namespace CATHODE.Scripting.Internal
 
         NUMBER_OF_END_TABLES, //USED FOR COUNTING ONLY
     }
+
+    /* Type of file the end table is being written to */
+    public enum EndTableFileType
+    {
+        COMMANDS_PAK,
+        COMMANDS_BIN,
+        STANDALONE,
+    }
 }

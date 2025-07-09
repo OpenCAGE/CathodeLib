@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Data.Common;
 using System.Drawing;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 
 namespace CathodeLib
@@ -13,10 +14,56 @@ namespace CathodeLib
     {
         private static readonly byte _version = 50;
 
-        /* Write a CathodeLib data table to the Commands PAK */
+        public static VanillaData Vanilla = new VanillaData();
+        public class VanillaData
+        {
+            public VanillaData()
+            {
+#if UNITY_EDITOR || UNITY_STANDALONE
+                byte[] content = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/composite_parameter_info.bin");
+#else
+                byte[] content = CathodeLib.Properties.Resources.composite_parameter_info;
+                if (File.Exists("LocalDB\\info.dat"))
+                    content = File.ReadAllBytes("LocalDB\\info.dat");
+#endif
+                using (MemoryStream stream = new MemoryStream())
+                using (GZipStream compressedStream = new GZipStream(new MemoryStream(content), CompressionMode.Decompress))
+                {
+                    compressedStream.CopyTo(stream);
+                    content = stream.ToArray();
+                }
+
+                CompositeFlowgraphs = (CompositeFlowgraphTable)ReadTable(content, CustomEndTables.COMPOSITE_FLOWGRAPHS);
+                CompositePinInfos = (CompositePinInfoTable)ReadTable(content, CustomEndTables.COMPOSITE_PIN_INFO);
+                EntityNames = (EntityNameTable)ReadTable(content, CustomEndTables.ENTITY_NAMES);
+                ShortGuids = (GuidNameTable)ReadTable(content, CustomEndTables.SHORT_GUIDS);
+
+                //TODO - tables for:
+                //     - Entity Metadata
+                //     - Enum Metadata (or, perhaps this just becomes real code, with enum reflected via ShortGuid table lookup?)
+                //     - Pretty Paths
+
+            }
+
+            public readonly CompositeFlowgraphTable CompositeFlowgraphs;
+            public readonly CompositePinInfoTable CompositePinInfos;
+            public readonly EntityNameTable EntityNames;
+            public readonly GuidNameTable ShortGuids;
+        }
+
+        public static void TestOnly()
+        {
+            int test = Vanilla.CompositeFlowgraphs.flowgraphs.Count;
+            string sdsdf = "";
+        }
+
+        /* Write a CathodeLib data table to disk */
         public static void WriteTable(string filepath, CustomEndTables table, Table content)
         {
-            if (!File.Exists(filepath)) return;
+            //TODO: Perhaps we should write to a buffer, and then gzip the buffer, and then append that, instead?
+
+            if (!File.Exists(filepath))
+                File.WriteAllBytes(filepath, new byte[0]);
 
             Dictionary<CustomEndTables, Table> toWrite = new Dictionary<CustomEndTables, Table>();
             for (int i = 0; i < (int)CustomEndTables.NUMBER_OF_END_TABLES; i++)
@@ -31,7 +78,7 @@ namespace CathodeLib
             int endPos;
             using (BinaryReader reader = new BinaryReader(File.OpenRead(filepath)))
             {
-                TableExists(reader, filepath, out endPos);
+                TableExists(reader, GetFileType(filepath), out endPos);
             }
 
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(filepath)))
@@ -72,7 +119,7 @@ namespace CathodeLib
                                 ((CompositeModificationInfoTable)toWrite[tableType]).Write(writer);
                                 break;
                             case CustomEndTables.COMPOSITE_FLOWGRAPHS:
-                                ((CompositeFlowgraphsTable)toWrite[tableType]).Write(writer);
+                                ((CompositeFlowgraphTable)toWrite[tableType]).Write(writer);
                                 break;
                             case CustomEndTables.COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO:
                                 ((CompositeFlowgraphCompatibilityTable)toWrite[tableType]).Write(writer);
@@ -100,15 +147,20 @@ namespace CathodeLib
             }
         }
 
-        /* Read a CathodeLib data table from the Commands PAK */
+        /* Read a CathodeLib data table from disk or memory */
         public static Table ReadTable(string filepath, CustomEndTables table)
         {
-            if (!File.Exists(filepath)) return null;
-
+            if (!File.Exists(filepath))
+                return null;
+            return ReadTable(File.ReadAllBytes(filepath), table, GetFileType(filepath));
+        }
+        public static Table ReadTable(byte[] content, CustomEndTables table, EndTableFileType type = EndTableFileType.STANDALONE)
+        {
             Table data = null;
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(filepath)))
+            using (MemoryStream stream = new MemoryStream(content))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
-                if (!TableExists(reader, filepath, out int endPos))
+                if (!TableExists(reader, type, out int endPos))
                     return null;
 
                 int customDbCount = reader.ReadInt32();
@@ -140,7 +192,7 @@ namespace CathodeLib
                         data = new CompositeModificationInfoTable(reader);
                         break;
                     case CustomEndTables.COMPOSITE_FLOWGRAPHS:
-                        data = new CompositeFlowgraphsTable(reader);
+                        data = new CompositeFlowgraphTable(reader);
                         break;
                     case CustomEndTables.COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO:
                         data = new CompositeFlowgraphCompatibilityTable(reader);
@@ -159,15 +211,27 @@ namespace CathodeLib
             return data;
         }
 
-        private static bool TableExists(BinaryReader reader, string filepath, out int endPos)
+        private static EndTableFileType GetFileType(string filepath)
         {
             switch (Path.GetFileName(filepath).ToUpper())
             {
                 case "COMMANDS.PAK":
+                    return EndTableFileType.COMMANDS_PAK;
+                case "COMMANDS.BIN":
+                    return EndTableFileType.COMMANDS_BIN;
+            }
+            return EndTableFileType.STANDALONE;
+        }
+
+        private static bool TableExists(BinaryReader reader, EndTableFileType type, out int endPos)
+        {
+            switch (type)
+            {
+                case EndTableFileType.COMMANDS_PAK:
                     reader.BaseStream.Position = 20;
                     endPos = (reader.ReadInt32() * 4) + (reader.ReadInt32() * 4);
                     break;
-                case "COMMANDS.BIN":
+                case EndTableFileType.COMMANDS_BIN:
                     endPos = reader.ReadInt32();
                     break;
                 default:
@@ -372,9 +436,9 @@ namespace CathodeLib
             public int modification_date; //unix timecode
         }
     }
-    public class CompositeFlowgraphsTable : CustomTable.Table //NOTE TO SELF: use this same class for reading/writing the default data stored in the script editor
+    public class CompositeFlowgraphTable : CustomTable.Table //NOTE TO SELF: use this same class for reading/writing the default data stored in the script editor
     {
-        public CompositeFlowgraphsTable(BinaryReader reader = null) : base(reader)
+        public CompositeFlowgraphTable(BinaryReader reader = null) : base(reader)
         {
             type = CustomEndTables.COMPOSITE_FLOWGRAPHS;
         }
@@ -512,7 +576,7 @@ namespace CathodeLib
 
                 public class ConnectionMeta
                 {
-                    public ShortGuid ParameterGUID; 
+                    public ShortGuid ParameterGUID;
                     public ShortGuid ConnectedEntityGUID;
                     public ShortGuid ConnectedParameterGUID;
                     public int ConnectedNodeID;

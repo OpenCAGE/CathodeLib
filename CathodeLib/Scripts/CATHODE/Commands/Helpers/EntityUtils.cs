@@ -20,49 +20,17 @@ namespace CATHODE.Scripting
     //This serves as a helpful extension to manage entity names, and get FunctionEntity metadata
     public static class EntityUtils
     {
-        private static EntityNameTable _vanilla;
-        private static EntityNameTable _custom;
+        private static EntityNameTable _custom = new EntityNameTable();
 
         //TODO: this should be moved to a central location which passes it to all utils.
         public static Commands LinkedCommands => _commands;
         private static Commands _commands;
 
-        /* Load all standard entity/composite names from our offline DB */
-        static EntityUtils()
-        {
-#if UNITY_EDITOR || UNITY_STANDALONE
-            byte[] dbContent = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/composite_entity_names.bin");
-#else
-            byte[] dbContent = CathodeLib.Properties.Resources.composite_entity_names;
-            if (File.Exists("LocalDB/composite_entity_names.bin"))
-                dbContent = File.ReadAllBytes("LocalDB/composite_entity_names.bin");
-#endif
-            using (BinaryReader reader = new BinaryReader(new MemoryStream(dbContent)))
-            {
-                _vanilla = new EntityNameTable(reader);
-                _custom = new EntityNameTable();
-            }
-
-#if DO_DEBUG_DUMP
-            Directory.CreateDirectory("DebugDump/entities");
-            foreach (KeyValuePair<ShortGuid, Dictionary<ShortGuid, string>> entry in _vanilla.names)
-            {
-                List<string> names = new List<string>();
-                foreach (KeyValuePair<ShortGuid, string> value in entry.Value)
-                {
-                    names.Add(value.Value);
-                }
-                names.Sort();
-                File.WriteAllLines("DebugDump/entities/" + entry.Key.ToByteString() + ".txt", names);
-            }
-#endif
-        }
-
         //For testing
         public static List<string> GetAllVanillaNames()
         {
             List<string> names = new List<string>();
-            foreach (var entry in _vanilla.names)
+            foreach (var entry in CustomTable.Vanilla.EntityNames.names)
             {
                 foreach (var entry2 in entry.Value)
                 {
@@ -100,7 +68,7 @@ namespace CATHODE.Scripting
             if (_custom.names.TryGetValue(compositeID, out Dictionary<ShortGuid, string> customComposite))
                 if (customComposite.TryGetValue(entityID, out string customName))
                     return customName;
-            if (_vanilla.names.TryGetValue(compositeID, out Dictionary<ShortGuid, string> vanillaComposite))
+            if (CustomTable.Vanilla.EntityNames.names.TryGetValue(compositeID, out Dictionary<ShortGuid, string> vanillaComposite))
                 if (vanillaComposite.TryGetValue(entityID, out string vanillaName))
                     return vanillaName;
             return entityID.ToByteString();
