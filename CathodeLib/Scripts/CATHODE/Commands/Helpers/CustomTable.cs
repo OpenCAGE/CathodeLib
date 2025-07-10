@@ -88,7 +88,7 @@ namespace CathodeLib
                 int posToWriteOffsets = (int)writer.BaseStream.Position;
                 Dictionary<CustomTableType, int> tableOffsets = new Dictionary<CustomTableType, int>();
                 for (int i = 0; i < (int)CustomTableType.NUMBER_OF_END_TABLES; i++)
-                    writer.Write((Int32)0);
+                    writer.Write(-1);
 
                 for (int i = 0; i < (int)CustomTableType.NUMBER_OF_END_TABLES; i++)
                 {
@@ -300,6 +300,10 @@ namespace CathodeLib
             {
                 ShortGuid compositeID = Utilities.Consume<ShortGuid>(reader);
                 int entityCount = reader.ReadInt32();
+
+                if (compositeID == ShortGuid.Invalid || entityCount == 0)
+                    continue;
+
                 names.Add(compositeID, new Dictionary<ShortGuid, string>(entityCount));
                 for (int x = 0; x < entityCount; x++)
                 {
@@ -838,6 +842,9 @@ namespace CathodeLib
             int length = reader.ReadInt32();
             content = reader.ReadBytes(length);
 
+            if (content.Length == 0)
+                return;
+
             using (BinaryReader contentReader = new BinaryReader(new MemoryStream(content)))
             {
                 int functionTypeCount = contentReader.ReadInt32();
@@ -884,22 +891,16 @@ namespace CathodeLib
 
         private const byte _version = 1;
 
-        public List<EnumDescriptor> enums;
+        public List<EnumDescriptor> enums = new List<EnumDescriptor>();
 
         public override void Read(BinaryReader reader)
         {
             if (reader == null)
-            {
-                enums = new List<EnumDescriptor>();
                 return;
-            }
 
             byte version = reader.ReadByte();
             if (version != _version)
-            {
-                enums = new List<EnumDescriptor>();
                 return;
-            }
 
             int count = reader.ReadInt32();
             for (int i = 0; i < count; i++)
