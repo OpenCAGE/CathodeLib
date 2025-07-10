@@ -105,7 +105,7 @@ namespace CATHODE.Scripting
         /* Add a new proxy entity */
         public ProxyEntity AddProxy(Commands commands, ShortGuid[] hierarchy)
         {
-            CommandsUtils.ResolveHierarchy(commands, this, hierarchy, out Composite targetComposite, out string str);
+            commands.Utils.ResolveHierarchy(this, hierarchy, out Composite targetComposite, out string str);
             Entity ent = targetComposite.GetEntityByID(hierarchy[hierarchy.Length - 2]);
             if (ent.variant != EntityVariant.FUNCTION) return null;
 

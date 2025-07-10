@@ -7,6 +7,7 @@ using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using static CATHODE.SkeleDB;
 
 namespace CathodeLib
 {
@@ -14,7 +15,7 @@ namespace CathodeLib
     {
         private static readonly byte _version = 50;
 
-        public static VanillaData Vanilla = new VanillaData();
+        public readonly static VanillaData Vanilla = new VanillaData();
         public class VanillaData
         {
             public VanillaData()
@@ -22,7 +23,7 @@ namespace CathodeLib
 #if UNITY_EDITOR || UNITY_STANDALONE
                 byte[] content = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/composite_parameter_info.bin");
 #else
-                byte[] content = CathodeLib.Properties.Resources.composite_parameter_info;
+                byte[] content = null;// = CathodeLib.Properties.Resources.composite_parameter_info; <- todo: embed
                 if (File.Exists("LocalDB\\info.dat"))
                     content = File.ReadAllBytes("LocalDB\\info.dat");
 #endif
@@ -33,42 +34,37 @@ namespace CathodeLib
                     content = stream.ToArray();
                 }
 
-                CompositeFlowgraphs = (CompositeFlowgraphTable)ReadTable(content, CustomEndTables.COMPOSITE_FLOWGRAPHS);
-                CompositePinInfos = (CompositePinInfoTable)ReadTable(content, CustomEndTables.COMPOSITE_PIN_INFO);
-                EntityNames = (EntityNameTable)ReadTable(content, CustomEndTables.ENTITY_NAMES);
-                ShortGuids = (GuidNameTable)ReadTable(content, CustomEndTables.SHORT_GUIDS);
+                CompositePaths = (CompositePathTable)ReadTable(content, CustomTableType.COMPOSITE_PATHS);
+                CompositeFlowgraphs = (CompositeFlowgraphTable)ReadTable(content, CustomTableType.COMPOSITE_FLOWGRAPHS);
+                CompositePinInfos = (CompositePinInfoTable)ReadTable(content, CustomTableType.COMPOSITE_PIN_INFO);
+                EntityNames = (EntityNameTable)ReadTable(content, CustomTableType.ENTITY_NAMES);
+                ShortGuids = (GuidNameTable)ReadTable(content, CustomTableType.SHORT_GUIDS);
 
                 //TODO - tables for:
                 //     - Entity Metadata
                 //     - Enum Metadata (or, perhaps this just becomes real code, with enum reflected via ShortGuid table lookup?)
-                //     - Pretty Paths
 
             }
 
+            public readonly CompositePathTable CompositePaths;
             public readonly CompositeFlowgraphTable CompositeFlowgraphs;
             public readonly CompositePinInfoTable CompositePinInfos;
             public readonly EntityNameTable EntityNames;
             public readonly GuidNameTable ShortGuids;
         }
 
-        public static void TestOnly()
-        {
-            int test = Vanilla.CompositeFlowgraphs.flowgraphs.Count;
-            string sdsdf = "";
-        }
-
         /* Write a CathodeLib data table to disk */
-        public static void WriteTable(string filepath, CustomEndTables table, Table content)
+        public static void WriteTable(string filepath, CustomTableType table, Table content)
         {
             //TODO: Perhaps we should write to a buffer, and then gzip the buffer, and then append that, instead?
 
             if (!File.Exists(filepath))
                 File.WriteAllBytes(filepath, new byte[0]);
 
-            Dictionary<CustomEndTables, Table> toWrite = new Dictionary<CustomEndTables, Table>();
-            for (int i = 0; i < (int)CustomEndTables.NUMBER_OF_END_TABLES; i++)
+            Dictionary<CustomTableType, Table> toWrite = new Dictionary<CustomTableType, Table>();
+            for (int i = 0; i < (int)CustomTableType.NUMBER_OF_END_TABLES; i++)
             {
-                CustomEndTables tableType = (CustomEndTables)i;
+                CustomTableType tableType = (CustomTableType)i;
                 if (tableType == table)
                     toWrite.Add(tableType, content);
                 else
@@ -87,16 +83,16 @@ namespace CathodeLib
                 writer.BaseStream.Position = endPos;
                 writer.Write(_version);
 
-                writer.Write((Int32)CustomEndTables.NUMBER_OF_END_TABLES);
+                writer.Write((Int32)CustomTableType.NUMBER_OF_END_TABLES);
 
                 int posToWriteOffsets = (int)writer.BaseStream.Position;
-                Dictionary<CustomEndTables, int> tableOffsets = new Dictionary<CustomEndTables, int>();
-                for (int i = 0; i < (int)CustomEndTables.NUMBER_OF_END_TABLES; i++)
+                Dictionary<CustomTableType, int> tableOffsets = new Dictionary<CustomTableType, int>();
+                for (int i = 0; i < (int)CustomTableType.NUMBER_OF_END_TABLES; i++)
                     writer.Write((Int32)0);
 
-                for (int i = 0; i < (int)CustomEndTables.NUMBER_OF_END_TABLES; i++)
+                for (int i = 0; i < (int)CustomTableType.NUMBER_OF_END_TABLES; i++)
                 {
-                    CustomEndTables tableType = (CustomEndTables)i;
+                    CustomTableType tableType = (CustomTableType)i;
                     tableOffsets.Add(tableType, (int)writer.BaseStream.Position);
                     if (toWrite[tableType] == null) writer.Write((Int32)0);
                     else
@@ -106,32 +102,36 @@ namespace CathodeLib
 #endif
                         switch (tableType)
                         {
-                            case CustomEndTables.ENTITY_NAMES:
+                            case CustomTableType.ENTITY_NAMES:
                                 ((EntityNameTable)toWrite[tableType]).Write(writer);
                                 break;
-                            case CustomEndTables.SHORT_GUIDS:
+                            case CustomTableType.SHORT_GUIDS:
                                 ((GuidNameTable)toWrite[tableType]).Write(writer);
                                 break;
-                            case CustomEndTables.COMPOSITE_PURGE_STATES:
+                            case CustomTableType.COMPOSITE_PURGE_STATES:
                                 ((CompositePurgeTable)toWrite[tableType]).Write(writer);
                                 break;
-                            case CustomEndTables.COMPOSITE_MODIFICATION_INFO:
+                            case CustomTableType.COMPOSITE_MODIFICATION_INFO:
                                 ((CompositeModificationInfoTable)toWrite[tableType]).Write(writer);
                                 break;
-                            case CustomEndTables.COMPOSITE_FLOWGRAPHS:
+                            case CustomTableType.COMPOSITE_FLOWGRAPHS:
                                 ((CompositeFlowgraphTable)toWrite[tableType]).Write(writer);
                                 break;
-                            case CustomEndTables.COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO:
+                            case CustomTableType.COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO:
                                 ((CompositeFlowgraphCompatibilityTable)toWrite[tableType]).Write(writer);
                                 break;
-                            case CustomEndTables.COMPOSITE_PARAMETER_MODIFICATION:
+                            case CustomTableType.COMPOSITE_PARAMETER_MODIFICATION:
                                 ((CompositeParameterModificationTable)toWrite[tableType]).Write(writer);
                                 break;
-                            case CustomEndTables.ENTITY_APPLIED_DEFAULTS:
+                            case CustomTableType.ENTITY_APPLIED_DEFAULTS:
                                 ((EntityAppliedDefaultsTable)toWrite[tableType]).Write(writer);
                                 break;
-                            case CustomEndTables.COMPOSITE_PIN_INFO:
+                            case CustomTableType.COMPOSITE_PIN_INFO:
                                 ((CompositePinInfoTable)toWrite[tableType]).Write(writer);
+                                break;
+                                //cathode ones
+                            case CustomTableType.COMPOSITE_PATHS:
+                                ((CompositePathTable)toWrite[tableType]).Write(writer);
                                 break;
                         }
 #if DEBUG
@@ -142,19 +142,19 @@ namespace CathodeLib
                 }
 
                 writer.BaseStream.Position = posToWriteOffsets;
-                for (int i = 0; i < (int)CustomEndTables.NUMBER_OF_END_TABLES; i++)
-                    writer.Write(tableOffsets[(CustomEndTables)i]);
+                for (int i = 0; i < (int)CustomTableType.NUMBER_OF_END_TABLES; i++)
+                    writer.Write(tableOffsets[(CustomTableType)i]);
             }
         }
 
         /* Read a CathodeLib data table from disk or memory */
-        public static Table ReadTable(string filepath, CustomEndTables table)
+        public static Table ReadTable(string filepath, CustomTableType table)
         {
             if (!File.Exists(filepath))
                 return null;
             return ReadTable(File.ReadAllBytes(filepath), table, GetFileType(filepath));
         }
-        public static Table ReadTable(byte[] content, CustomEndTables table, EndTableFileType type = EndTableFileType.STANDALONE)
+        public static Table ReadTable(byte[] content, CustomTableType table, CustomTableFileType type = CustomTableFileType.STANDALONE)
         {
             Table data = null;
             using (MemoryStream stream = new MemoryStream(content))
@@ -168,7 +168,7 @@ namespace CathodeLib
                 int dbOffset = -1;
                 for (int i = 0; i < customDbCount; i++)
                 {
-                    CustomEndTables tbl = (CustomEndTables)i;
+                    CustomTableType tbl = (CustomTableType)i;
                     if (tbl == table)
                         dbOffset = reader.ReadInt32();
                     else
@@ -179,59 +179,63 @@ namespace CathodeLib
                 reader.BaseStream.Position = dbOffset;
                 switch (table)
                 {
-                    case CustomEndTables.ENTITY_NAMES:
+                    case CustomTableType.ENTITY_NAMES:
                         data = new EntityNameTable(reader);
                         break;
-                    case CustomEndTables.SHORT_GUIDS:
+                    case CustomTableType.SHORT_GUIDS:
                         data = new GuidNameTable(reader);
                         break;
-                    case CustomEndTables.COMPOSITE_PURGE_STATES:
+                    case CustomTableType.COMPOSITE_PURGE_STATES:
                         data = new CompositePurgeTable(reader);
                         break;
-                    case CustomEndTables.COMPOSITE_MODIFICATION_INFO:
+                    case CustomTableType.COMPOSITE_MODIFICATION_INFO:
                         data = new CompositeModificationInfoTable(reader);
                         break;
-                    case CustomEndTables.COMPOSITE_FLOWGRAPHS:
+                    case CustomTableType.COMPOSITE_FLOWGRAPHS:
                         data = new CompositeFlowgraphTable(reader);
                         break;
-                    case CustomEndTables.COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO:
+                    case CustomTableType.COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO:
                         data = new CompositeFlowgraphCompatibilityTable(reader);
                         break;
-                    case CustomEndTables.COMPOSITE_PARAMETER_MODIFICATION:
+                    case CustomTableType.COMPOSITE_PARAMETER_MODIFICATION:
                         data = new CompositeParameterModificationTable(reader);
                         break;
-                    case CustomEndTables.ENTITY_APPLIED_DEFAULTS:
+                    case CustomTableType.ENTITY_APPLIED_DEFAULTS:
                         data = new EntityAppliedDefaultsTable(reader);
                         break;
-                    case CustomEndTables.COMPOSITE_PIN_INFO:
+                    case CustomTableType.COMPOSITE_PIN_INFO:
                         data = new CompositePinInfoTable(reader);
+                        break;
+                        //cathode ones
+                    case CustomTableType.COMPOSITE_PATHS:
+                        data = new CompositePathTable(reader);
                         break;
                 }
             }
             return data;
         }
 
-        private static EndTableFileType GetFileType(string filepath)
+        private static CustomTableFileType GetFileType(string filepath)
         {
             switch (Path.GetFileName(filepath).ToUpper())
             {
                 case "COMMANDS.PAK":
-                    return EndTableFileType.COMMANDS_PAK;
+                    return CustomTableFileType.COMMANDS_PAK;
                 case "COMMANDS.BIN":
-                    return EndTableFileType.COMMANDS_BIN;
+                    return CustomTableFileType.COMMANDS_BIN;
             }
-            return EndTableFileType.STANDALONE;
+            return CustomTableFileType.STANDALONE;
         }
 
-        private static bool TableExists(BinaryReader reader, EndTableFileType type, out int endPos)
+        private static bool TableExists(BinaryReader reader, CustomTableFileType type, out int endPos)
         {
             switch (type)
             {
-                case EndTableFileType.COMMANDS_PAK:
+                case CustomTableFileType.COMMANDS_PAK:
                     reader.BaseStream.Position = 20;
                     endPos = (reader.ReadInt32() * 4) + (reader.ReadInt32() * 4);
                     break;
-                case EndTableFileType.COMMANDS_BIN:
+                case CustomTableFileType.COMMANDS_BIN:
                     endPos = reader.ReadInt32();
                     break;
                 default:
@@ -249,7 +253,7 @@ namespace CathodeLib
                 Read(reader);
             }
 
-            public CustomEndTables type = CustomEndTables.NUMBER_OF_END_TABLES;
+            public CustomTableType type = CustomTableType.NUMBER_OF_END_TABLES;
 
             public virtual void Read(BinaryReader reader)
             {
@@ -267,7 +271,7 @@ namespace CathodeLib
     {
         public EntityNameTable(BinaryReader reader = null) : base(reader)
         {
-            type = CustomEndTables.ENTITY_NAMES;
+            type = CustomTableType.ENTITY_NAMES;
         }
 
         public Dictionary<ShortGuid, Dictionary<ShortGuid, string>> names;
@@ -314,7 +318,7 @@ namespace CathodeLib
     {
         public GuidNameTable(BinaryReader reader = null) : base(reader)
         {
-            type = CustomEndTables.SHORT_GUIDS;
+            type = CustomTableType.SHORT_GUIDS;
         }
 
         public Dictionary<string, ShortGuid> cache;
@@ -358,7 +362,7 @@ namespace CathodeLib
     {
         public CompositePurgeTable(BinaryReader reader = null) : base(reader)
         {
-            type = CustomEndTables.COMPOSITE_PURGE_STATES;
+            type = CustomTableType.COMPOSITE_PURGE_STATES;
         }
 
         public List<ShortGuid> purged;
@@ -393,7 +397,7 @@ namespace CathodeLib
     {
         public CompositeModificationInfoTable(BinaryReader reader = null) : base(reader)
         {
-            type = CustomEndTables.COMPOSITE_MODIFICATION_INFO;
+            type = CustomTableType.COMPOSITE_MODIFICATION_INFO;
         }
 
         public List<ModificationInfo> modification_info;
@@ -440,7 +444,7 @@ namespace CathodeLib
     {
         public CompositeFlowgraphTable(BinaryReader reader = null) : base(reader)
         {
-            type = CustomEndTables.COMPOSITE_FLOWGRAPHS;
+            type = CustomTableType.COMPOSITE_FLOWGRAPHS;
         }
 
         public List<FlowgraphMeta> flowgraphs;
@@ -588,7 +592,7 @@ namespace CathodeLib
     {
         public CompositeFlowgraphCompatibilityTable(BinaryReader reader = null) : base(reader)
         {
-            type = CustomEndTables.COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO;
+            type = CustomTableType.COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO;
         }
 
         public List<CompatibilityInfo> compatibility_info;
@@ -632,7 +636,7 @@ namespace CathodeLib
     {
         public CompositeParameterModificationTable(BinaryReader reader = null) : base(reader)
         {
-            type = CustomEndTables.COMPOSITE_PARAMETER_MODIFICATION;
+            type = CustomTableType.COMPOSITE_PARAMETER_MODIFICATION;
         }
 
         public Dictionary<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>> modified_params;
@@ -688,7 +692,7 @@ namespace CathodeLib
     {
         public EntityAppliedDefaultsTable(BinaryReader reader = null) : base(reader)
         {
-            type = CustomEndTables.ENTITY_APPLIED_DEFAULTS;
+            type = CustomTableType.ENTITY_APPLIED_DEFAULTS;
         }
 
         public Dictionary<ShortGuid, HashSet<ShortGuid>> applied_defaults;
@@ -733,7 +737,7 @@ namespace CathodeLib
     {
         public CompositePinInfoTable(BinaryReader reader = null) : base(reader)
         {
-            type = CustomEndTables.COMPOSITE_PIN_INFO;
+            type = CustomTableType.COMPOSITE_PIN_INFO;
         }
 
         public Dictionary<ShortGuid, List<PinInfo>> composite_pin_infos;
@@ -795,6 +799,66 @@ namespace CathodeLib
             public ShortGuid VariableGUID;
             public ShortGuid PinTypeGUID;
             public ShortGuid PinEnumTypeGUID; //For Enum and EnumString types
+        }
+    }
+
+    //todo: cathode enum/entity info tables
+
+    public class CompositePathTable : CustomTable.Table
+    {
+        public CompositePathTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.COMPOSITE_PATHS;
+        }
+
+        public Dictionary<ShortGuid, string> composite_paths;
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+            {
+                composite_paths = new Dictionary<ShortGuid, string>();
+                return;
+            }
+
+            int compositeCount = reader.ReadInt32();
+            composite_paths = new Dictionary<ShortGuid, string>(compositeCount);
+            for (int i = 0; i < compositeCount; i++)
+                composite_paths.Add(Utilities.Consume<ShortGuid>(reader), reader.ReadString());
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(composite_paths.Count);
+            foreach (KeyValuePair<ShortGuid, string> composites in composite_paths)
+            {
+                Utilities.Write<ShortGuid>(writer, composites.Key);
+                writer.Write(composites.Value);
+            }
+        }
+
+        /* Gets a pretty Composite name */
+        public string GetFullPath(ShortGuid guid)
+        {
+            if (composite_paths.TryGetValue(guid, out string toReturn))
+                return toReturn;
+            return "";
+        }
+
+        /* Gets a pretty Composite name, including trimming direct paths */
+        public string GetPrettyPath(ShortGuid guid)
+        {
+            string fullPath = GetFullPath(guid);
+            if (fullPath.Length < 1) return "";
+            string first25 = fullPath.Substring(0, 25).ToUpper();
+            switch (first25)
+            {
+                case @"N:\CONTENT\BUILD\LIBRARY\":
+                    return fullPath.Substring(25);
+                case @"N:\CONTENT\BUILD\LEVELS\P":
+                    return fullPath.Substring(17);
+            }
+            return fullPath;
         }
     }
 }

@@ -1154,28 +1154,32 @@ namespace CATHODE.Scripting.Internal
         NUMBER_OF_SCRIPT_BLOCKS,  //THIS IS NOT A DATA BLOCK: merely used as an easy way of sanity checking the number of blocks in-code!
     }
 
-    /* Custom tables written at the end of the PAK to store extra info */
-    public enum CustomEndTables
+    /* Types of custom table available for reading/writing various metadata */
+    public enum CustomTableType
     {
         //NOTE: NEVER remove options from here, or re-order them.
         //      Doing this will cause issues with backwards compatibility.
-        ENTITY_NAMES,
-        SHORT_GUIDS,
-        COMPOSITE_PURGE_STATES,
-        COMPOSITE_MODIFICATION_INFO,
-        COMPOSITE_FLOWGRAPHS,
-        COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO,
-        COMPOSITE_PARAMETER_MODIFICATION,
-        ENTITY_APPLIED_DEFAULTS,
-        COMPOSITE_PIN_INFO,
+
+        ENTITY_NAMES,                           // Instanced entity name database
+        SHORT_GUIDS,                            // ShortGuid hashed strings
+        COMPOSITE_PURGE_STATES,                 // Which composites have had invalid entities removed
+        COMPOSITE_MODIFICATION_INFO,            // Which composites have been modified
+        COMPOSITE_FLOWGRAPHS,                   // Composite flowgraph layouts mapped by composite GUIDs
+        COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO, // Which composites have flowgraph support (really, this should just be checked via the modification status)
+        COMPOSITE_PARAMETER_MODIFICATION,       // Which parameters have been modified
+        ENTITY_APPLIED_DEFAULTS,                // Which entities have had their defaults applied (not yet implemented)
+        COMPOSITE_PIN_INFO,                     // Variable entity metadata 
+        CATHODE_ENTITY_INFO,                    // Database of available Cathode entities
+        CATHODE_ENUM_INFO,                      // Database of available Cathode enums
+        COMPOSITE_PATHS,                        // Full properly-cased paths for vanilla composites
 
         //Add new entries here
 
         NUMBER_OF_END_TABLES, //USED FOR COUNTING ONLY
     }
 
-    /* Type of file the end table is being written to */
-    public enum EndTableFileType
+    /* Type of file the custom table is being written to */
+    public enum CustomTableFileType
     {
         COMMANDS_PAK,
         COMMANDS_BIN,

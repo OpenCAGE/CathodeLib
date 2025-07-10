@@ -56,25 +56,6 @@ namespace CATHODE.Scripting
             return guid;
         }
 
-        /* Combines two ShortGuid objects into one */
-        public static ShortGuid Combine(this ShortGuid guid1, ShortGuid guid2)
-        {
-            if (guid2.AsUInt32 != 0)
-            {
-                if (guid1.AsUInt32 != 0)
-                {
-                    byte[] guid1_b = guid1.ToBytes();
-                    byte[] guid2_b = guid2.ToBytes();
-
-                    ulong hash = BitConverter.ToUInt64(new byte[8] { guid1_b[0], guid1_b[1], guid1_b[2], guid1_b[3], guid2_b[0], guid2_b[1], guid2_b[2], guid2_b[3] }, 0);
-                    hash = ~hash + hash * 262144; hash = (hash ^ (hash >> 31)) * 21; hash = (hash ^ (hash >> 11)) * 65;
-                    return new ShortGuid(((uint)(hash >> 22) ^ (uint)hash));
-                }
-                return guid2;
-            }
-            return guid1;
-        }
-
         /* Attempts to look up the string for a given ShortGuid */
         public static string FindString(ShortGuid guid)
         {
@@ -120,7 +101,7 @@ namespace CATHODE.Scripting
         /* Pull non-vanilla ShortGuid from the CommandsPAK */
         private static void LoadCustomNames(string filepath)
         {
-            _custom = (GuidNameTable)CustomTable.ReadTable(filepath, CustomEndTables.SHORT_GUIDS);
+            _custom = (GuidNameTable)CustomTable.ReadTable(filepath, CustomTableType.SHORT_GUIDS);
             if (_custom == null) _custom = new GuidNameTable();
             Console.WriteLine("Loaded " + _custom.cache.Count + " custom ShortGuids!");
         }
@@ -128,7 +109,7 @@ namespace CATHODE.Scripting
         /* Write non-vanilla entity names to the CommandsPAK */
         private static void SaveCustomNames(string filepath)
         {
-            CustomTable.WriteTable(filepath, CustomEndTables.SHORT_GUIDS, _custom);
+            CustomTable.WriteTable(filepath, CustomTableType.SHORT_GUIDS, _custom);
             Console.WriteLine("Saved " + _custom.cache.Count + " custom ShortGuids!");
         }
     }

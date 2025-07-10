@@ -127,12 +127,6 @@ namespace CATHODE.Scripting.Internal.Parsers
                         //Read script ID and string name
                         reader_parallel.BaseStream.Position = (scriptStartOffset * 4) + 4;
                         composite.name = Utilities.ReadString(reader_parallel);
-                        if (Commands.UsePrettyPaths)
-                        {
-                            string prettyPath = CompositeUtils.GetPrettyPath(composite.shortGUID);
-                            if (prettyPath != "") composite.name = prettyPath;
-                            composite.name = composite.name.Replace("/", "\\");
-                        }
                         Utilities.Align(reader_parallel, 4);
 
                         //Pull data from those offsets

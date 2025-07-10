@@ -1,7 +1,10 @@
-﻿using System;
+﻿using CathodeLib;
+using System;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace CATHODE.Scripting
 {
@@ -43,6 +46,25 @@ namespace CATHODE.Scripting
             byte[] array = new byte[arr.Length];
             for (int i = 0; i < arr.Length; i++) array[i] = Convert.ToByte(arr[i], 16);
             val = BitConverter.ToUInt32(array, 0);
+        }
+
+        /* Combines this ShortGuid with another */
+        public ShortGuid Combine(ShortGuid guid2)
+        {
+            if (guid2.AsUInt32 != 0)
+            {
+                if (AsUInt32 != 0)
+                {
+                    byte[] guid1_b = ToBytes();
+                    byte[] guid2_b = guid2.ToBytes();
+
+                    ulong hash = BitConverter.ToUInt64(new byte[8] { guid1_b[0], guid1_b[1], guid1_b[2], guid1_b[3], guid2_b[0], guid2_b[1], guid2_b[2], guid2_b[3] }, 0);
+                    hash = ~hash + hash * 262144; hash = (hash ^ (hash >> 31)) * 21; hash = (hash ^ (hash >> 11)) * 65;
+                    return new ShortGuid(((uint)(hash >> 22) ^ (uint)hash));
+                }
+                return guid2;
+            }
+            return this;
         }
 
         public override bool Equals(object obj)

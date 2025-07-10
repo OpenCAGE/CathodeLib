@@ -538,7 +538,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                         commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
 
                         offset = (int)bufferWriter.BaseStream.Position;
-                        string name = EntityUtils.GetName(composite, func);
+                        string name = "";//EntityUtils.GetName(composite, func);
                         Utilities.WriteString(name, bufferWriter, true);
                         commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(name.Length + 1), offset));
                     }

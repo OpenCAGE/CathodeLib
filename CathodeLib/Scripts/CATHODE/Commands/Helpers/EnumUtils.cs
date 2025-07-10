@@ -40,6 +40,8 @@ namespace CATHODE.Scripting
         //Read a generic entity database file
         private static List<EnumDescriptor> ReadDB(byte[] db_content)
         {
+            //TODO: compress
+
             List<EnumDescriptor> toReturn = new List<EnumDescriptor>();
             BinaryReader reader = new BinaryReader(new MemoryStream(db_content));
             int count = reader.ReadInt32();

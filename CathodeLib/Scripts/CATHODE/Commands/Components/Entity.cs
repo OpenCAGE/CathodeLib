@@ -759,7 +759,7 @@ namespace CATHODE.Scripting
         }
         public string GetAsString(Commands commands, Composite composite, bool withIDs = true)
         {
-            CommandsUtils.ResolveHierarchy(commands, composite, path, out Composite comp, out string str, withIDs);
+            commands.Utils.ResolveHierarchy(composite, path, out Composite comp, out string str, withIDs);
             return str;
         }
 
@@ -773,13 +773,13 @@ namespace CATHODE.Scripting
         /* Get the entity this path points to: FROM THE ROOT OF THE COMMANDS */
         public Entity GetPointedEntity(Commands commands)
         {
-            return CommandsUtils.ResolveHierarchy(commands, commands.EntryPoints[0], path, out Composite comp, out string str);
+            return commands.Utils.ResolveHierarchy(commands.EntryPoints[0], path, out Composite comp, out string str);
         }
 
         /* Get the entity this path points to: FROM THE ROOT OF THE COMMANDS, RETURNING THE CONTAINED COMPOSITE */
         public Entity GetPointedEntity(Commands commands, out Composite containedComposite)
         {
-            Entity ent = CommandsUtils.ResolveHierarchy(commands, commands.EntryPoints[0], path, out Composite comp, out string str);
+            Entity ent = commands.Utils.ResolveHierarchy(commands.EntryPoints[0], path, out Composite comp, out string str);
             containedComposite = comp;
             return ent;
         }
@@ -787,13 +787,13 @@ namespace CATHODE.Scripting
         /* Get the entity this path points to: FROM A SPECIFIED COMPOSITE */
         public Entity GetPointedEntity(Commands commands, Composite startComposite)
         {
-            return CommandsUtils.ResolveHierarchy(commands, startComposite, path, out Composite comp, out string str);
+            return commands.Utils.ResolveHierarchy(startComposite, path, out Composite comp, out string str);
         }
 
         /* Get the entity this path points to: FROM A SPECIFIED COMPOSITE, RETURNING THE CONTAINED COMPOSITE */
         public Entity GetPointedEntity(Commands commands, Composite startComposite, out Composite containedComposite)
         {
-            Entity ent = CommandsUtils.ResolveHierarchy(commands, startComposite, path, out Composite comp, out string str);
+            Entity ent = commands.Utils.ResolveHierarchy(startComposite, path, out Composite comp, out string str);
             containedComposite = comp;
             return ent;
         }
