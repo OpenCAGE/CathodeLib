@@ -864,6 +864,13 @@ namespace CathodeLib
         public override void Write(BinaryWriter writer)
         {
             writer.Write(_version);
+
+            if (content == null)
+            {
+                writer.Write(0);
+                return;
+            }
+
             writer.Write(content.Length);
             writer.Write(content);
         }
