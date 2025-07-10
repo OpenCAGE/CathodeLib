@@ -22,12 +22,13 @@ namespace CathodeLib
             public VanillaData()
             {
 #if UNITY_EDITOR || UNITY_STANDALONE
-                byte[] content = File.ReadAllBytes(Application.streamingAssetsPath + "/NodeDBs/composite_parameter_info.bin");
+                byte[] content = File.ReadAllBytes(Application.streamingAssetsPath + "/info.dat");
 #else
-                byte[] content = null;// = CathodeLib.Properties.Resources.composite_parameter_info; <- todo: embed
+                byte[] content = CathodeLib.Properties.Resources.info;
                 if (File.Exists("LocalDB\\info.dat"))
                     content = File.ReadAllBytes("LocalDB\\info.dat");
 #endif
+
                 using (MemoryStream stream = new MemoryStream())
                 using (GZipStream compressedStream = new GZipStream(new MemoryStream(content), CompressionMode.Decompress))
                 {

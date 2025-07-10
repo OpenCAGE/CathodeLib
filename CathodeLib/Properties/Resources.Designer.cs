@@ -63,19 +63,9 @@ namespace CathodeLib.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
-        internal static byte[] cathode_entity_lut {
+        internal static byte[] info {
             get {
-                object obj = ResourceManager.GetObject("cathode_entity_lut", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] cathode_enum_lut {
-            get {
-                object obj = ResourceManager.GetObject("cathode_enum_lut", resourceCulture);
+                object obj = ResourceManager.GetObject("info", resourceCulture);
                 return ((byte[])(obj));
             }
         }
