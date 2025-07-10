@@ -7,6 +7,7 @@ using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Runtime.InteropServices.ComTypes;
 using static CATHODE.SkeleDB;
 
 namespace CathodeLib
@@ -39,11 +40,8 @@ namespace CathodeLib
                 CompositePinInfos = (CompositePinInfoTable)ReadTable(content, CustomTableType.COMPOSITE_PIN_INFO);
                 EntityNames = (EntityNameTable)ReadTable(content, CustomTableType.ENTITY_NAMES);
                 ShortGuids = (GuidNameTable)ReadTable(content, CustomTableType.SHORT_GUIDS);
-
-                //TODO - tables for:
-                //     - Entity Metadata
-                //     - Enum Metadata (or, perhaps this just becomes real code, with enum reflected via ShortGuid table lookup?)
-
+                CathodeEntities = (CathodeEntityTable)ReadTable(content, CustomTableType.CATHODE_ENTITY_INFO);
+                CathodeEnums = (CathodeEnumTable)ReadTable(content, CustomTableType.CATHODE_ENUM_INFO);
             }
 
             public readonly CompositePathTable CompositePaths;
@@ -51,6 +49,8 @@ namespace CathodeLib
             public readonly CompositePinInfoTable CompositePinInfos;
             public readonly EntityNameTable EntityNames;
             public readonly GuidNameTable ShortGuids;
+            public readonly CathodeEntityTable CathodeEntities;
+            public readonly CathodeEnumTable CathodeEnums;
         }
 
         /* Write a CathodeLib data table to disk */
@@ -129,7 +129,12 @@ namespace CathodeLib
                             case CustomTableType.COMPOSITE_PIN_INFO:
                                 ((CompositePinInfoTable)toWrite[tableType]).Write(writer);
                                 break;
-                                //cathode ones
+                            case CustomTableType.CATHODE_ENTITY_INFO:
+                                ((CathodeEntityTable)toWrite[tableType]).Write(writer);
+                                break;
+                            case CustomTableType.CATHODE_ENUM_INFO:
+                                ((CathodeEnumTable)toWrite[tableType]).Write(writer);
+                                break;
                             case CustomTableType.COMPOSITE_PATHS:
                                 ((CompositePathTable)toWrite[tableType]).Write(writer);
                                 break;
@@ -206,7 +211,12 @@ namespace CathodeLib
                     case CustomTableType.COMPOSITE_PIN_INFO:
                         data = new CompositePinInfoTable(reader);
                         break;
-                        //cathode ones
+                    case CustomTableType.CATHODE_ENTITY_INFO:
+                        data = new CathodeEntityTable(reader);
+                        break;
+                    case CustomTableType.CATHODE_ENUM_INFO:
+                        data = new CathodeEnumTable(reader);
+                        break;
                     case CustomTableType.COMPOSITE_PATHS:
                         data = new CompositePathTable(reader);
                         break;
@@ -801,9 +811,132 @@ namespace CathodeLib
             public ShortGuid PinEnumTypeGUID; //For Enum and EnumString types
         }
     }
+    public class CathodeEntityTable : CustomTable.Table
+    {
+        public CathodeEntityTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.CATHODE_ENTITY_INFO;
+        }
 
-    //todo: cathode enum/entity info tables
+        private const byte _version = 1;
 
+        public byte[] content = null;
+
+        public Dictionary<FunctionType, Dictionary<ParameterVariant, int>> FunctionVariantOffsets = new Dictionary<FunctionType, Dictionary<ParameterVariant, int>>();
+        public Dictionary<FunctionType, FunctionType?> FunctionBaseClasses = new Dictionary<FunctionType, FunctionType?>();
+        public Tuple<int, int> RelayInfoOffset;
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+                return;
+
+            byte version = reader.ReadByte();
+            if (version != _version)
+                return;
+
+            int length = reader.ReadInt32();
+            content = reader.ReadBytes(length);
+
+            using (BinaryReader contentReader = new BinaryReader(new MemoryStream(content)))
+            {
+                int functionTypeCount = contentReader.ReadInt32();
+                for (int i = 0; i < functionTypeCount; i++)
+                {
+                    FunctionType function = (FunctionType)contentReader.ReadUInt32();
+
+                    uint baseClass = contentReader.ReadUInt32();
+                    FunctionBaseClasses.Add(function, baseClass == 0 ? (FunctionType?)null : (FunctionType)baseClass);
+
+                    int numberOfVariants = contentReader.ReadInt32();
+                    Dictionary<ParameterVariant, int> variantOffsets = new Dictionary<ParameterVariant, int>(numberOfVariants);
+                    FunctionVariantOffsets.Add(function, variantOffsets);
+                    for (int x = 0; x < numberOfVariants; x++)
+                    {
+                        variantOffsets.Add((ParameterVariant)contentReader.ReadInt32(), contentReader.ReadInt32());
+                    }
+                }
+
+                RelayInfoOffset = new Tuple<int, int>(contentReader.ReadInt32(), contentReader.ReadInt32());
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(_version);
+            writer.Write(content.Length);
+            writer.Write(content);
+        }
+    }
+    public class CathodeEnumTable : CustomTable.Table
+    {
+        public CathodeEnumTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.CATHODE_ENUM_INFO;
+        }
+
+        private const byte _version = 1;
+
+        public List<EnumDescriptor> enums;
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+            {
+                enums = new List<EnumDescriptor>();
+                return;
+            }
+
+            byte version = reader.ReadByte();
+            if (version != _version)
+            {
+                enums = new List<EnumDescriptor>();
+                return;
+            }
+
+            int count = reader.ReadInt32();
+            for (int i = 0; i < count; i++)
+            {
+                EnumDescriptor thisDesc = new EnumDescriptor();
+                thisDesc.ID = new ShortGuid(reader.ReadBytes(4));
+                thisDesc.Name = reader.ReadString();
+                int entryCount = reader.ReadInt32();
+                for (int x = 0; x < entryCount; x++)
+                    thisDesc.Entries.Add(new EnumDescriptor.Entry() { Name = reader.ReadString(), Index = reader.ReadInt32() });
+                enums.Add(thisDesc);
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(_version);
+            writer.Write(enums.Count);
+            for (int i = 0; i < enums.Count; i++)
+            {
+                writer.Write(enums[i].ID.ToBytes());
+                writer.Write(enums[i].Name);
+                writer.Write(enums[i].Entries.Count);
+                for (int x = 0; x < enums[i].Entries.Count; x++)
+                {
+                    writer.Write(enums[i].Entries[x].Name);
+                    writer.Write(enums[i].Entries[x].Index);
+                }
+            }
+        }
+
+        public class EnumDescriptor
+        {
+            public string Name;
+            public List<Entry> Entries = new List<Entry>();
+            public ShortGuid ID;
+
+            public class Entry
+            {
+                public string Name;
+                public int Index;
+            }
+        }
+    }
     public class CompositePathTable : CustomTable.Table
     {
         public CompositePathTable(BinaryReader reader = null) : base(reader)
