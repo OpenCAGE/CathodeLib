@@ -37,7 +37,6 @@ namespace CathodeLib
                 }
 
                 CompositePaths = (CompositePathTable)ReadTable(content, CustomTableType.COMPOSITE_PATHS);
-                CompositeFlowgraphs = (CompositeFlowgraphTable)ReadTable(content, CustomTableType.COMPOSITE_FLOWGRAPHS);
                 CompositePinInfos = (CompositePinInfoTable)ReadTable(content, CustomTableType.COMPOSITE_PIN_INFO);
                 EntityNames = (EntityNameTable)ReadTable(content, CustomTableType.ENTITY_NAMES);
                 ShortGuids = (GuidNameTable)ReadTable(content, CustomTableType.SHORT_GUIDS);
@@ -46,7 +45,6 @@ namespace CathodeLib
             }
 
             public readonly CompositePathTable CompositePaths;
-            public readonly CompositeFlowgraphTable CompositeFlowgraphs;
             public readonly CompositePinInfoTable CompositePinInfos;
             public readonly EntityNameTable EntityNames;
             public readonly GuidNameTable ShortGuids;
