@@ -4,34 +4,20 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #endif
 
+[assembly: InternalsVisibleTo("CATHODE.Scripting")]
 namespace CATHODE.Scripting
 {
     public static class ShortGuidUtils
     {
         private static GuidNameTable _custom = new GuidNameTable();
-
-        public static Commands LinkedCommands => _commands;
-        private static Commands _commands;
-
-        /* Optionally, link a Commands file which can be used to save custom ShortGuids to */
-        public static void LinkCommands(Commands commands)
-        {
-            if (_commands != null)
-                _commands.OnSaveSuccess -= SaveCustomNames;
-
-            _commands = commands;
-            if (_commands == null) return;
-
-            _commands.OnSaveSuccess += SaveCustomNames;
-
-            LoadCustomNames(commands.Filepath);
-        }
 
         /* Generate a ShortGuid to interface with the Cathode scripting system */
         public static ShortGuid Generate(string value, bool cache = true)
@@ -86,31 +72,60 @@ namespace CATHODE.Scripting
         }
 
         /* Cache a pre-generated ShortGuid */
-        private static void Cache(ShortGuid guid, string value)
+        private static bool Cache(ShortGuid guid, string value)
         {
-            //TODO: need to fix this for BSPNOSTROMO_RIPLEY_PATCH (?)
-            if (_custom.cache.ContainsKey(value)) return;
+            if (_custom.cache.ContainsKey(value)) return false;
             _custom.cache.Add(value, guid);
             try
             {
+                //TODO: need to fix this for BSPNOSTROMO_RIPLEY_PATCH (?)
                 _custom.cacheReversed.Add(guid, value);
             }
             catch { }
+            return true;
         }
 
-        /* Pull non-vanilla ShortGuid from the CommandsPAK */
+        #region Commands Linking
+        private static List<Commands> _commands = new List<Commands>();
+
+        /* Utilised by CommandsUtils: this connects up a loaded Commands object, allowing generated ShortGuids to be stored for re-use next session */
+        internal static void LinkCommands(Commands commands)
+        {
+            if (_commands.FirstOrDefault(o => o.Filepath == commands.Filepath) != null)
+                return;
+
+            _commands.Add(commands);
+            commands.OnSaveSuccess += SaveCustomNames;
+            LoadCustomNames(commands.Filepath);
+        }
+        internal static void UnlinkCommands(Commands commands)
+        {
+            Commands linkedCommands = _commands.FirstOrDefault(o => o.Filepath == commands.Filepath);
+            if (linkedCommands == null)
+                return;
+            _commands.Remove(linkedCommands);
+        }
+
+        /* Load/save custom shortguids */
         private static void LoadCustomNames(string filepath)
         {
-            _custom = (GuidNameTable)CustomTable.ReadTable(filepath, CustomTableType.SHORT_GUIDS);
-            if (_custom == null) _custom = new GuidNameTable();
-            Console.WriteLine("Loaded " + _custom.cache.Count + " custom ShortGuids!");
-        }
+            GuidNameTable guids = (GuidNameTable)CustomTable.ReadTable(filepath, CustomTableType.SHORT_GUIDS);
+            if (guids == null)
+                return;
 
-        /* Write non-vanilla entity names to the CommandsPAK */
+            int added = 0;
+            foreach (KeyValuePair<string, ShortGuid> str in guids.cache)
+            {
+                if (Cache(str.Value, str.Key))
+                    added++;
+            }
+            Console.WriteLine("Loaded " + added + " ShortGuids!");
+        }
         private static void SaveCustomNames(string filepath)
         {
             CustomTable.WriteTable(filepath, CustomTableType.SHORT_GUIDS, _custom);
-            Console.WriteLine("Saved " + _custom.cache.Count + " custom ShortGuids!");
+            Console.WriteLine("Saved " + _custom.cache.Count + " ShortGuids!");
         }
+        #endregion
     }
 }

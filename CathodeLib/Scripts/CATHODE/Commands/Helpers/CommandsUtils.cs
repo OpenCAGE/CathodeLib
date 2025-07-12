@@ -45,6 +45,13 @@ namespace CATHODE.Scripting
                 LoadInfo(_commands.Filepath);
 
             _nameID = ShortGuidUtils.Generate("name").AsUInt32;
+
+            ShortGuidUtils.LinkCommands(_commands);
+        }
+
+        ~CommandsUtils()
+        {
+            ShortGuidUtils.UnlinkCommands(_commands);
         }
 
         #region Generic Utility Functions
@@ -1284,20 +1291,28 @@ namespace CATHODE.Scripting
         private void LoadInfo(string filepath)
         {
             _compPurges = (CompositePurgeTable)CustomTable.ReadTable(filepath, CustomTableType.COMPOSITE_PURGE_STATES);
-            if (_compPurges == null) _compPurges = new CompositePurgeTable();
-            Console.WriteLine("Registered " + _compPurges.purged.Count + " pre-purged composites!");
+            if (_compPurges == null) 
+                _compPurges = new CompositePurgeTable();
+            else
+                Console.WriteLine("Registered " + _compPurges.purged.Count + " pre-purged composites!");
 
             _entityNames = (EntityNameTable)CustomTable.ReadTable(filepath, CustomTableType.ENTITY_NAMES);
-            if (_entityNames == null) _entityNames = new EntityNameTable();
-            Console.WriteLine("Loaded " + _entityNames.names.Count + " custom entity names!");
+            if (_entityNames == null) 
+                _entityNames = new EntityNameTable();
+            else
+                Console.WriteLine("Loaded " + _entityNames.names.Count + " custom entity names!");
 
             _modificationInfo = (CompositeModificationInfoTable)CustomTable.ReadTable(filepath, CustomTableType.COMPOSITE_MODIFICATION_INFO);
-            if (_modificationInfo == null) _modificationInfo = new CompositeModificationInfoTable();
-            Console.WriteLine("Loaded modification info for " + _modificationInfo.modification_info.Count + " composites!");
+            if (_modificationInfo == null) 
+                _modificationInfo = new CompositeModificationInfoTable();
+            else
+                Console.WriteLine("Loaded modification info for " + _modificationInfo.modification_info.Count + " composites!");
 
             _pinInfo = (CompositePinInfoTable)CustomTable.ReadTable(filepath, CustomTableType.COMPOSITE_PIN_INFO);
-            if (_pinInfo == null) _pinInfo = new CompositePinInfoTable();
-            Console.WriteLine("Loaded custom pin info for " + _pinInfo.composite_pin_infos.Count + " composites!");
+            if (_pinInfo == null) 
+                _pinInfo = new CompositePinInfoTable();
+            else
+                Console.WriteLine("Loaded custom pin info for " + _pinInfo.composite_pin_infos.Count + " composites!");
         }
         private void SaveInfo(string filepath)
         {
