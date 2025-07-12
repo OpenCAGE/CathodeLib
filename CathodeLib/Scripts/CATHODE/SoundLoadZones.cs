@@ -13,7 +13,7 @@ namespace CATHODE
     /* DATA/ENV/PRODUCTION/x/WORLD/SOUNDLOADZONES.DAT */
     public class SoundLoadZones : CathodeFile
     {
-        //This seems to specify all the sound banks that are loaded within the level. They can be specified via spatial zones, but this feature is never used.
+        //This specifies all the sound banks that are loaded within the level. They can be specified via spatial zones, but this feature is never used.
 
         public List<string> Entries = new List<string>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;

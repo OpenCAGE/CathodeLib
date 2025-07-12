@@ -44,6 +44,7 @@ namespace CATHODE
                 for (int i = 0; i < Entries.Count; i++)
                 {
                     writer.Write(Entries[i].flash_texture_id);
+                    writer.Write(Entries[i].model_indexes.Count);
                     for (int x = 0; x < Entries[i].model_indexes.Count; x++)
                         writer.Write(Entries[i].model_indexes[x]);
                 }

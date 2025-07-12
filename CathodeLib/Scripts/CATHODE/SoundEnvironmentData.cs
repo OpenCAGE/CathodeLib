@@ -13,6 +13,8 @@ namespace CATHODE
     /* DATA/ENV/PRODUCTION/x/WORLD/SOUNDENVIRONMENTDATA.DAT */
     public class SoundEnvironmentData : CathodeFile
     {
+        //This stores the reverbs that are used within the level. Similar to SoundLoadZones, these can be stored with spatial zones, but this feature is unused.
+
         public List<string> Entries = new List<string>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public SoundEnvironmentData(string path) : base(path) { }
@@ -22,7 +24,7 @@ namespace CATHODE
         {
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
-                reader.BaseStream.Position += 4;
+                reader.BaseStream.Position += 4; //version
                 int entryCount = reader.ReadInt32();
                 for (int i = 0; i < entryCount; i++)
                 {
@@ -32,6 +34,7 @@ namespace CATHODE
                         Entries.Add(Utilities.ReadString(contentReader));
                     }
                 }
+                reader.BaseStream.Position += 4; //zone count - always zero
             }
             return true;
         }
@@ -45,11 +48,8 @@ namespace CATHODE
                 writer.Write(Entries.Count);
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    writer.Write(new byte[100]);
-                    long resetPos = writer.BaseStream.Position;
-                    writer.BaseStream.Position -= 100;
                     Utilities.WriteString(Entries[i], writer);
-                    writer.BaseStream.Position = resetPos;
+                    writer.Write(new byte[100 - Entries[i].Length]);
                 }
                 writer.Write(0);
             }
