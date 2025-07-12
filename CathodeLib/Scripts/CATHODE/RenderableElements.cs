@@ -1,4 +1,5 @@
 ﻿using CathodeLib;
+using System;
 using System.Collections.Generic;
 using System.IO;
 
@@ -20,13 +21,14 @@ namespace CATHODE
                 for (int i = 0; i < entryCount; i++)
                 {
                     Element element = new Element();
-                    reader.BaseStream.Position += 4;
+                    element.ModelLocation = (PakLocation)reader.ReadInt32();
                     element.ModelIndex = reader.ReadInt32();
-                    reader.BaseStream.Position += 5;
+                    element.ModelSubplatformDependent = reader.ReadBoolean();
+                    element.MaterialLocation = (PakLocation)reader.ReadInt32();
                     element.MaterialIndex = reader.ReadInt32();
-                    reader.BaseStream.Position += 1;
+                    element.MaterialSubplatformDependent = reader.ReadBoolean();
                     element.LODIndex = reader.ReadInt32();
-                    element.LODCount = reader.ReadByte(); //TODO: convert to int for ease of use?
+                    element.LODCount = reader.ReadByte();
                     Entries.Add(element);
                 }
             }
@@ -41,11 +43,12 @@ namespace CATHODE
                 writer.Write(Entries.Count);
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    writer.Write(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                    writer.Write((int)Entries[i].ModelLocation);
                     writer.Write(Entries[i].ModelIndex);
-                    writer.Write(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00 });
+                    writer.Write(Entries[i].ModelSubplatformDependent);
+                    writer.Write((int)Entries[i].MaterialLocation);
                     writer.Write(Entries[i].MaterialIndex);
-                    writer.Write((byte)0x00);
+                    writer.Write(Entries[i].MaterialSubplatformDependent);
                     writer.Write(Entries[i].LODIndex);
                     writer.Write((byte)Entries[i].LODCount);
                 }
@@ -57,11 +60,23 @@ namespace CATHODE
         #region STRUCTURES
         public class Element
         {
-            public int ModelIndex;
-            public int MaterialIndex;
+            public Element() { }
+            public Element(int modelIndex, int materialIndex)
+            {
+                ModelIndex = modelIndex;
+                MaterialIndex = materialIndex;
+            }
+
+            public PakLocation ModelLocation = PakLocation.LEVEL;
+            public int ModelIndex = -1;
+            public bool ModelSubplatformDependent = false;
+
+            public PakLocation MaterialLocation = PakLocation.LEVEL;
+            public int MaterialIndex = -1;
+            public bool MaterialSubplatformDependent = false;
 
             public int LODIndex = -1; //This is the index of the REDS entry that we use for our LOD model/material
-            public byte LODCount = 0; //This is the number of entries sequentially from the LODIndex to use for the LOD from REDS
+            public int LODCount = 0; //This is the number of entries sequentially from the LODIndex to use for the LOD from REDS
         }
         #endregion
     }

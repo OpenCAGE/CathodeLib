@@ -696,8 +696,8 @@ namespace CATHODE
 
                         IS_CHARACTER_HEAD = 1 << 20,
 
-                        IS_LEVEL_PACK = 1 << (27 + FileIdentifiers.LEVEL_PAK),
-                        IS_GLOBAL_PACK = 1 << (27 + FileIdentifiers.GLOBAL_PAK)
+                        IS_LEVEL_PACK = 1 << (27 + PakLocation.LEVEL),
+                        IS_GLOBAL_PACK = 1 << (27 + PakLocation.GLOBAL)
                     };
 
                     public class Submesh

@@ -1,3 +1,4 @@
+using CATHODE.Enums;
 using CATHODE.Scripting;
 using CathodeLib;
 using System;
@@ -40,20 +41,20 @@ namespace CATHODE
                     entry.components.Arms.AccessoryIndex = reader.ReadInt32();
                     entry.components.Collision.AccessoryIndex = reader.ReadInt32();
 
-                    entry.asset_type = (CharacterAttributes.AssetType)reader.ReadInt32(); 
-                    entry.voice_actor = (CharacterAttributes.VoiceActor)reader.ReadInt32();
-                    entry.gender = (CharacterAttributes.Gender)reader.ReadInt32();
-                    entry.ethnicity = (CharacterAttributes.Ethnicity)reader.ReadInt32();
-                    entry.build = (CharacterAttributes.Build)reader.ReadInt32();
+                    entry.asset_type = (CharacterAsset)reader.ReadInt32(); 
+                    entry.voice_actor = (VoiceActor)reader.ReadInt32();
+                    entry.gender = (CharacterGender)reader.ReadInt32();
+                    entry.ethnicity = (CharacterEthnicity)reader.ReadInt32();
+                    entry.build = (CharacterBuild)reader.ReadInt32();
 
                     byte[] stringBlock = reader.ReadBytes(260);
                     entry.face_skeleton = Utilities.ReadString(stringBlock);
                     stringBlock = reader.ReadBytes(260);
                     entry.gender_skeleton = Utilities.ReadString(stringBlock);
 
-                    entry.foley.Torso = (CharacterAttributes.FoleySounds.Type)reader.ReadInt32();
-                    entry.foley.Leg = (CharacterAttributes.FoleySounds.Type)reader.ReadInt32();
-                    entry.foley.Footwear = (CharacterAttributes.FoleySounds.Type)reader.ReadInt32();
+                    entry.foley.Torso = (FoleySound)reader.ReadInt32();
+                    entry.foley.Leg = (FoleySound)reader.ReadInt32();
+                    entry.foley.Footwear = (FoleySound)reader.ReadInt32();
                     Entries.Add(entry);
                 }
             }
@@ -115,11 +116,11 @@ namespace CATHODE
             public EntityHandle character = new EntityHandle();
             public Components components = new Components();
 
-            public AssetType asset_type = AssetType.ASSETSET_01; //TODO: Is this defined by CUSTOMCHARACTERASSETDATA.BIN?
+            public CharacterAsset asset_type = CharacterAsset.ASSETSET_01; //TODO: Is this defined by CUSTOMCHARACTERASSETDATA.BIN?
             public VoiceActor voice_actor = VoiceActor.CV1;
-            public Gender gender = Gender.MALE;
-            public Ethnicity ethnicity = Ethnicity.CAUCASIAN;
-            public Build build = Build.STANDARD;
+            public CharacterGender gender = CharacterGender.MALE;
+            public CharacterEthnicity ethnicity = CharacterEthnicity.CAUCASIAN;
+            public CharacterBuild build = CharacterBuild.STANDARD;
 
             public string face_skeleton = "AL";
             public string gender_skeleton = "MALE";
@@ -144,71 +145,9 @@ namespace CATHODE
 
             public class FoleySounds
             {
-                public Type Torso = Type.HEAVY_OVERALLS;
-                public Type Leg = Type.HEAVY_OVERALLS;
-                public Type Footwear = Type.BOOTS;
-
-                public enum Type // Cathode scripting CHARACTER_FOLEY_SOUND enum
-                {
-                    LEATHER = 0,
-                    HEAVY_JACKET = 1, 
-                    HEAVY_OVERALLS = 2, 
-                    SHIRT = 3, 
-                    SUIT_JACKET = 4, 
-                    SUIT_TROUSERS = 5, 
-                    JEANS = 6, 
-                    BOOTS = 7, 
-                    FLATS = 8, 
-                    TRAINERS = 9,
-                }
-            }
-
-            public enum AssetType // Cathode scripting CUSTOM_CHARACTER_ASSETS enum
-            {
-                ASSETSET_01, //Medical
-                ASSETSET_02, //Engineering
-                ASSETSET_03, //Generic
-                ASSETSET_04, //Technical
-                ASSETSET_05, // ?
-                ASSETSET_06, // ?
-                ASSETSET_07, // ?
-                ASSETSET_08, // ?
-                ASSETSET_09, // ?
-                ASSETSET_10, // ?
-            }
-            public enum VoiceActor // Cathode scripting DIALOGUE_VOICE_ACTOR enum
-            {
-                AUTO, 
-                CV1, 
-                CV2, 
-                CV3, 
-                CV4, 
-                CV5, 
-                CV6, 
-                RT1, 
-                RT2, 
-                RT3, 
-                RT4, 
-                AN1, 
-                AN2, 
-                AN3, 
-                ANH, 
-            }
-            public enum Gender // Cathode scripting CUSTOM_CHARACTER_GENDER enum
-            {
-                MALE, 
-                FEMALE, 
-            }
-            public enum Ethnicity // Cathode scripting CUSTOM_CHARACTER_ETHNICITY enum
-            {
-                AFRICAN, 
-                CAUCASIAN, 
-                ASIAN, 
-            }
-            public enum Build // Cathode scripting CUSTOM_CHARACTER_BUILD enum
-            {
-                STANDARD, 
-                HEAVY, 
+                public FoleySound Torso = FoleySound.HEAVY_OVERALLS;
+                public FoleySound Leg = FoleySound.HEAVY_OVERALLS;
+                public FoleySound Footwear = FoleySound.BOOTS;
             }
         };
         #endregion

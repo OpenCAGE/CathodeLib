@@ -1,4 +1,5 @@
-﻿using CATHODE.Scripting;
+﻿using CATHODE.Enums;
+using CATHODE.Scripting;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
@@ -43,12 +44,12 @@ namespace CATHODE
                         Utilities.WriteString(Entries[i].Components[x].Name, writer, false);
                         writer.BaseStream.Position += 64 - Entries[i].Components[x].Name.Length;
 
-                        writer.Write(Entries[i].Components[x].unk1);
-                        writer.Write(Entries[i].Components[x].unk2);
-                        writer.Write(Entries[i].Components[x].unk3);
-                        writer.Write(Entries[i].Components[x].unk4);
-                        writer.Write(Entries[i].Components[x].unk5);
-                        writer.Write(Entries[i].Components[x].unk6);
+                        writer.Write((int)Entries[i].Components[x].Model);
+                        writer.Write((int)Entries[i].Components[x].Gender);
+                        writer.Write((int)Entries[i].Components[x].Ethnicity);
+                        writer.Write((int)Entries[i].Components[x].Build);
+                        writer.Write((int)Entries[i].Components[x].SleeveType);
+                        writer.Write((int)Entries[i].Components[x].SoundType);
                     }
                 }
             }
@@ -60,24 +61,21 @@ namespace CATHODE
         private void Read(ComponentType type, BinaryReader reader)
         {
             int entryCount = reader.ReadInt32();
-            Entry arms = new Entry() { Type = ComponentType.ARMS };
+            Entry entry = new Entry() { Type = type };
             for (int i = 0; i < entryCount; i++)
             {
                 Entry.Component component = new Entry.Component();
                 byte[] stringBlock = reader.ReadBytes(64);
                 component.Name = Utilities.ReadString(stringBlock);
-
-                //TODO: these seem to get concatenated in code
-                component.unk1 = reader.ReadInt32();
-                component.unk2 = reader.ReadInt32();
-                component.unk3 = reader.ReadInt32();
-                component.unk4 = reader.ReadInt32();
-                component.unk5 = reader.ReadInt32();
-                component.unk6 = reader.ReadInt32();
-
-                arms.Components.Add(component);
+                component.Model = (CharacterModel)reader.ReadInt32();
+                component.Gender = (CharacterGender)reader.ReadInt32();
+                component.Ethnicity = (CharacterEthnicity)reader.ReadInt32();
+                component.Build = (CharacterBuild)reader.ReadInt32();
+                component.SleeveType = (CharacterSleeve)reader.ReadInt32();
+                component.SoundType = (FoleySound)reader.ReadInt32();
+                entry.Components.Add(component);
             }
-            Entries.Add(arms);
+            Entries.Add(entry);
         }
         #endregion
 
@@ -91,12 +89,12 @@ namespace CATHODE
             {
                 public string Name;
 
-                public int unk1;
-                public int unk2;
-                public int unk3;
-                public int unk4;
-                public int unk5;
-                public int unk6;
+                public CharacterModel Model;
+                public CharacterGender Gender;
+                public CharacterEthnicity Ethnicity;
+                public CharacterBuild Build;
+                public CharacterSleeve SleeveType;
+                public FoleySound SoundType;
             }
         };
 

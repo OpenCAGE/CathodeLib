@@ -440,11 +440,14 @@ namespace CathodeLib
         }
     }
 
+    public enum PakLocation
+    {
+        LEVEL,
+        GLOBAL
+    }
+
     public enum FileIdentifiers
     {
-        LEVEL_PAK = 0,
-        GLOBAL_PAK = 1,
-
         HEADER_FILE = 96,
         ASSET_FILE = 14,
 
