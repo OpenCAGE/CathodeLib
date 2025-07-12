@@ -15,7 +15,7 @@ namespace CATHODE
         public List<CharacterDefinition> CharacterDefinitions = new List<CharacterDefinition>();
         public Dictionary<CharacterPopulation, List<Preset>> Presets = new Dictionary<CharacterPopulation, List<Preset>>();
 
-        public static new Implementation Implementation = Implementation.NONE;
+        public static new Implementation Implementation = Implementation.CREATE | Implementation.SAVE | Implementation.LOAD;
         public CustomCharacterInfo(string path) : base(path) { }
 
         #region FILE_IO
