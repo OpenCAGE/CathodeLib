@@ -14,6 +14,11 @@ namespace CathodeLib
     public class Utilities
     {
         //Read a single templated object
+        public static T Consume<T>(BinaryReader reader, int offset)
+        {
+            reader.BaseStream.Position = offset;
+            return Consume<T>(reader);
+        }
         public static T Consume<T>(BinaryReader reader)
         {
             byte[] bytes = reader.ReadBytes(Marshal.SizeOf(typeof(T)));
@@ -28,6 +33,11 @@ namespace CathodeLib
         }
 
         //Read a templated array
+        public static T[] ConsumeArray<T>(BinaryReader reader, int count, int offset)
+        {
+            reader.BaseStream.Position = offset;
+            return ConsumeArray<T>(reader, count);
+        }
         public static T[] ConsumeArray<T>(BinaryReader reader, int count)
         {
             T[] toReturn = new T[count];
@@ -428,6 +438,12 @@ namespace CathodeLib
         {
             return FlipEndian(BitConverter.GetBytes(ThisEndian));
         }
+    }
+
+    public enum PakLocation
+    {
+        LEVEL,
+        GLOBAL
     }
 
     public enum FileIdentifiers

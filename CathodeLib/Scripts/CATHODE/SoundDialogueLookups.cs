@@ -13,8 +13,10 @@ namespace CATHODE
     /* DATA/ENV/PRODUCTION/x/WORLD/SOUNDDIALOGUELOOKUPS.DAT */
     public class SoundDialogueLookups : CathodeFile
     {
-        public List<Sound> Entries = new List<Sound>();
-        public static new Implementation Implementation = Implementation.LOAD;
+        //This stores the associated sound and animation hashes for soundbank entries
+
+        public List<Soundbank> Entries = new List<Soundbank>();
+        public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE | Implementation.CREATE;
         public SoundDialogueLookups(string path) : base(path) { }
 
         #region FILE_IO
@@ -22,16 +24,26 @@ namespace CATHODE
         {
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
-                reader.BaseStream.Position += 16; //All unknowns
-                int entryCount = ((int)reader.BaseStream.Length / 8) - 2; //We can probably work this out from the previous unknowns
-                for (int i = 0; i < entryCount; i++)
+                reader.BaseStream.Position += 4; //version
+                int soundbankCount = reader.ReadInt32();
+                for (int i = 0; i < soundbankCount; i++)
                 {
-                    Sound s = new Sound();
-                    s.id = reader.ReadUInt32();
-                    s.unk = Utilities.Consume<ShortGuid>(reader);
-                    Entries.Add(s);
+                    Soundbank bank = new Soundbank()
+                    {
+                        id = reader.ReadUInt32()
+                    };
+                    int hashCount = reader.ReadInt32();
+                    for (int x = 0;x < hashCount; x++)
+                    {
+                        Soundbank.ResourceHashes hashes = new Soundbank.ResourceHashes()
+                        {
+                            SoundHash = reader.ReadUInt32(),
+                            AnimationHash = reader.ReadUInt32(),
+                        };
+                        bank.hashes.Add(hashes);
+                    }
+                    Entries.Add(bank);
                 }
-
             }
             return true;
         }
@@ -41,11 +53,17 @@ namespace CATHODE
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
-                writer.Write(new byte[16]);
-                for (int i = 0; i < Entries.Count; i++)
+                writer.Write(1);
+                writer.Write(Entries.Count);
+                foreach (Soundbank soundbank in Entries)
                 {
-                    writer.Write(Entries[i].id);
-                    Utilities.Write<ShortGuid>(writer, Entries[i].unk);
+                    writer.Write(soundbank.id);
+                    writer.Write(soundbank.hashes.Count);
+                    foreach (Soundbank.ResourceHashes hashes in soundbank.hashes)
+                    {
+                        writer.Write(hashes.SoundHash);
+                        writer.Write(hashes.AnimationHash);
+                    }
                 }
             }
             return true;
@@ -53,14 +71,14 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class Sound
+        public class Soundbank
         {
-            public uint id;
-            public ShortGuid unk;
-
-            override public string ToString()
+            public uint id; //This is the hashed soundbank string name (hashed via Utilities.SoundHashedString)
+            public List<ResourceHashes> hashes = new List<ResourceHashes>();
+            public class ResourceHashes
             {
-                return SoundUtils.GetSoundName(id);
+                public uint SoundHash; //Generated from the wav filename
+                public uint AnimationHash; //Can be looked up using animation string table
             }
         };
         #endregion

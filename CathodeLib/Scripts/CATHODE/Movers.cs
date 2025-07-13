@@ -19,9 +19,7 @@ namespace CATHODE
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
         public Movers(string path) : base(path) { }
 
-        private int _entryCountUnk = 0;
-
-        private List<MOVER_DESCRIPTOR> _writeList = new List<MOVER_DESCRIPTOR>();
+        private List<MOVER_DESCRIPTOR> _writeList = new List<MOVER_DESCRIPTOR>(); //todo: deprecate this
 
         ~Movers()
         {
@@ -38,9 +36,33 @@ namespace CATHODE
             {
                 reader.BaseStream.Position += 4;
                 int entryCount = reader.ReadInt32();
-                _entryCountUnk = reader.ReadInt32(); //a count of something - not sure what. not sure if it's actually used by the game
-                reader.BaseStream.Position += 20;
-                Entries = new List<MOVER_DESCRIPTOR>(Utilities.ConsumeArray<MOVER_DESCRIPTOR>(reader, entryCount));
+                reader.BaseStream.Position += 24;
+                
+                for (int i = 0; i < entryCount; i++)
+                {
+                    MOVER_DESCRIPTOR mvr = new MOVER_DESCRIPTOR();
+                    mvr.transform = Utilities.Consume<Matrix4x4>(reader);
+                    mvr.gpu_constants = Utilities.ConsumeArray<float>(reader, 24);
+                    mvr.render_constants = Utilities.ConsumeArray<float>(reader, 21);
+                    mvr.renderable_element_index = reader.ReadInt32();
+                    mvr.renderable_element_count = reader.ReadInt32();
+                    mvr.resource_index = reader.ReadInt32();
+                    reader.BaseStream.Position += 12;
+                    mvr.cull_flags = (CullFlag)reader.ReadInt32();
+                    mvr.entity = Utilities.Consume<EntityHandle>(reader);
+                    mvr.environment_map_index = reader.ReadInt32();
+                    mvr.emissive_tint = new Vector3(reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
+                    mvr.emissive_flags = (EmissiveFlag)reader.ReadByte();
+                    mvr.emissive_intensity_multiplier = reader.ReadSingle();
+                    mvr.emissive_radiosity_multiplier = reader.ReadSingle();
+                    mvr.primary_zone_id = Utilities.Consume<ShortGuid>(reader);
+                    mvr.secondary_zone_id = Utilities.Consume<ShortGuid>(reader);
+                    mvr.lighting_master_id = reader.ReadInt32();
+                    mvr.material_mapping_index = reader.ReadInt16();
+                    mvr.flags = Utilities.Consume<MoverFlag>(reader);
+                    reader.BaseStream.Position += 8;
+                    Entries.Add(mvr);
+                }
             }
 
             _writeList.AddRange(Entries);
@@ -49,18 +71,50 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
+            int non_stationary = 0;
+            for (int i = 0; i < Entries.Count; i++)
+                if (!Entries[i].flags.stationary)
+                    non_stationary++;
+
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
                 writer.Write((Entries.Count * 320) + 32);
                 writer.Write(Entries.Count);
-                writer.Write(_entryCountUnk);
+                writer.Write(non_stationary);
                 writer.Write(0);
                 writer.Write(320);
                 writer.Write(0); 
                 writer.Write(0); 
                 writer.Write(0);
-                Utilities.Write<MOVER_DESCRIPTOR>(writer, Entries);
+
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    Utilities.Write<Matrix4x4>(writer, Entries[i].transform);
+                    for (int x = 0; x < 24; x++)
+                        writer.Write(Entries[i].gpu_constants[x]);
+                    for (int x = 0; x < 21; x++)
+                        writer.Write(Entries[i].render_constants[x]);
+                    writer.Write(Entries[i].renderable_element_index);
+                    writer.Write(Entries[i].renderable_element_count);
+                    writer.Write(Entries[i].resource_index);
+                    writer.Write(new byte[12]);
+                    writer.Write((int)Entries[i].cull_flags);
+                    Utilities.Write<EntityHandle>(writer, Entries[i].entity);
+                    writer.Write(Entries[i].environment_map_index);
+                    writer.Write((byte)Entries[i].emissive_tint.X);
+                    writer.Write((byte)Entries[i].emissive_tint.Y);
+                    writer.Write((byte)Entries[i].emissive_tint.Z);
+                    writer.Write((byte)Entries[i].emissive_flags);
+                    writer.Write(Entries[i].emissive_intensity_multiplier);
+                    writer.Write(Entries[i].emissive_radiosity_multiplier);
+                    Utilities.Write<ShortGuid>(writer, Entries[i].primary_zone_id);
+                    Utilities.Write<ShortGuid>(writer, Entries[i].secondary_zone_id);
+                    writer.Write(Entries[i].lighting_master_id);
+                    writer.Write(Entries[i].material_mapping_index);
+                    Utilities.Write<MoverFlag>(writer, Entries[i].flags);
+                    writer.Write(new byte[8]);
+                }
             }
             _writeList.Clear();
             _writeList.AddRange(Entries);
@@ -87,160 +141,94 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        //Pulled from the iOS decomp
-        public enum RENDERABLE_INSTANCE_Type
+        [Flags]
+        public enum CullFlag : int
         {
-            RenderableLightInstance = 0,
-            RenderableDynamicFXInstance = 1,
-            RenderableDynamicTempFXInstance = 2,
-            RenderableEnvironmentInstance = 3,
-            RenderableCharacterInstance = 4,
-            RenderableMiscInstance = 5,
-            RenderablePlanetInstance = 6,
-            RenderableEnvironmentExtraInstance = 7,
-            RenderableFogSphereInstance = 8,
-        }
+            NO_CAST_SHADOWS = 1 << 0,
+            NO_RENDER = 1 << 2,
+            INCLUDE_IN_REFLECTIVE = 1 << 3,
+            ALWAYS_PASS = 1 << 4,
+            NO_SIZE_CULLING = 1 << 5,
+            NO_CAST_TORCH_SHADOW = 1 << 6,
+            DEFAULT = 1 << 7,
+        };
+
+        [Flags]
+        public enum EmissiveFlag : byte
+        {
+            None = 0,
+            ReplaceTint = 1,
+            ReplaceIntensity = 2,
+            MasterOff = 4
+        };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct MoverFlag
+        {
+            public bool requires_script
+            {
+                get
+                {
+                    return (flags & 0x0004) != 0;
+                }
+                set
+                {
+                    flags |= 0x0004;
+                }
+            }
+            public bool visible
+            {
+                get
+                {
+                    return (flags & 0x0001) != 0;
+                }
+                set
+                {
+                    flags |= 0x0001;
+                }
+            }
+            public bool stationary
+            {
+                get
+                {
+                    return (flags & 0x0002) != 0;
+                }
+                set
+                {
+                    flags |= 0x0002;
+                }
+            }
+            private short flags;
+        }
+
         public class MOVER_DESCRIPTOR
         {
-            /*
-
-             RenderableScene::calculate_renderable_instance_type is called on RenderableElementSet which seems to define a type (RENDERABLE_INSTANCE::Type?) 
-             It can have values 1-9, which I think are one of (as per RenderableScene::InstanceManager):
-                - RenderableCharacterInstance
-                - RenderableDynamicFXInstance
-                - RenderableDynamicTempFXInstance
-                - RenderableEnvironmentExtraInstance
-                - RenderableEnvironmentInstance
-                - RenderableFogSphereInstance
-                - RenderableLightInstance
-                - RenderableMiscInstance
-                - RenderablePlanetInstance
-             Logic is applied based on a numeric range, rather than per individual number (although maybe specific logic is applied within these ranges)
-             The ranges are:
-                - 1-9
-                - 3-9
-                - 5-9
-                - 7-9
-             These ranges are found using RenderableScene::ForEachInstanceType<min,max>
-             MVR and REDS data is used per Type, being pulled from MOVER_DESCRIPTOR and RenderableElementSet respectively
-
-             RenderableElementSet is always paired with a MOVER_DESCRIPTOR (see RenderableScene::create_instance)
-
-             RenderableEnvironmentInstance::set_constants is what uses RENDER_CONSTANTS - look there to define that struct
-             RenderableEnvironmentInstance::set_gpu_constants is what uses GPU_CONSTANTS - look there to define that struct
-
-             RenderableScene::initialize passes MOVER_DESCRIPTOR to create_instance and defines its length as 320
-             RenderableScene::create_instance takes MOVER_DESCRIPTOR and grabs two values:
-                296: (uint) uVar1 - used as first parameter in call to RenderableScene::add_new_zone, which passes it to g_zone_ids
-                300: (uint) uVar3 - used as second parameter in call to RenderableScene::add_new_zone, which does some conditional check to call Zone::activate
-
-             INSTANCE_DATABASE::initialise_emissive_surfaces uses MOVER_DESCRIPTOR:
-                284: dunno what this is used for, but it goes +4, +8 - so 3 offsets?
-
-             RENDERABLE_INSTANCE::TYPE values RenderableLightInstance/RenderableDynamicFxInstance/RenderableDynamicTempFXInstance/etc do this...
-                RenderableScene::InstanceManager<>::reserve_light_light_master_sets takes takes MOVER_DESCRIPTOR and grabs two values:
-                   304: uint* appears if this is 0 then light or w/e isn't initialised, then some CONCAT44 operation is applied with its value, stacking with previous lights in a while loop
-                RenderableScene::InstanceManager<>::add_instance_to_light_master_set also grabs this same value (304) and checks to see if its 0, then if its less than or equal to another value.
-
-             For personal reference of offset conversions:
-                0x40 = 64
-                0xa0 = 160
-                0x10c = 268
-                0x118 = 280
-                0x130 = 304
-                0x136 = 310
-                0x140 = 320
-
-             RenderableCharacterInstance:
-                0: MATRIX_44
-                64: GPU_CONSTANTS
-                160: RENDER_CONSTANTS
-                268: uint* (visibility)
-                310: ushort* which is used for a couple things...
-                   RenderableCharacterInstance + 0x34 (ushort*) - (ushort)((uVar1 & 4) << 2)
-                   if ((uVar1 & 1) != 0) then RenderableCharacterInstance::activate
-
-             RenderableEnvironmentInstance:
-                0: MATRIX_44
-                64: GPU_CONSTANTS
-                160: RENDER_CONSTANTS
-                268: uint* (visibility)
-                280: undefined4* which sets RenderableEnvironmentInstance + 0xa0 as (short)*
-                310: ushort* which is used for a couple things...
-                   RenderableEnvironmentInstance + 0x34 (ushort*) - (ushort)((uVar1 & 4) << 2)
-                   if ((uVar1 & 1) != 0) then RenderableEnvironmentInstance::activate
-
-             RenderableDynamicTempFXInstance:
-                0: MATRIX_44
-                64: GPU_CONSTANTS
-                160: RENDER_CONSTANTS
-                268: uint* (visibility)
-                310: if ((uVar3 & 1) != 0) then RenderableDynamicFxInstance::activate
-
-             RenderableDynamicFxInstance:
-                0: MATRIX_44
-                64: GPU_CONSTANTS 
-                160: RENDER_CONSTANTS
-                268: uint* (visibility)
-                310: *something* 
-
-             RenderableLightInstance:
-                0: MATRIX_44
-                64: GPU_CONSTANTS
-                160: RENDER_CONSTANTS
-                268: uint* (visibility)
-                310: ushort* (logic checks on this value releated to activating RenderableLightInstance and calling LIGHT_MANAGER::add_dynamic_light)
-
-             */
-
             public Matrix4x4 transform;
-            //64
-            public GPU_CONSTANTS gpu_constants;
-            //144
-            public UInt64 fogsphere_val1; // 0xa0 in RenderableFogSphereInstance
-            public UInt64 fogsphere_val2; // 0xa8 in RenderableFogSphereInstance
-                                          //160
-            public RENDER_CONSTANTS render_constants;
 
-            //244
-            public UInt32 renderable_element_index; //reds.bin index
-            public UInt32 renderable_element_count; //reds.bin count
+            public float[] gpu_constants; 
+            public float[] render_constants;
 
-            public int resource_index; //This is the index value from Resources.bin
-            //256
-            public Vector3 Unknowns5_;
-            public UInt32 visibility; // pulled from iOS dump - should be visibility var?
-                                      //272
+            public int renderable_element_index; //reds.bin index
+            public int renderable_element_count; //reds.bin count
+
+            public int resource_index = 0; //Resources.bin index value
+
+            public CullFlag cull_flags = CullFlag.DEFAULT;
 
             public EntityHandle entity; //The entity in the Commands file
+            public int environment_map_index = -1; //environment_map.bin index
 
-            //280
-            public Int32 environment_map_index = -1; //environment_map.bin index - converted to short in code
-                                               //284
-            public float emissive_val1; //emissive surface val1
-            public float emissive_val2; //emissive surface val2
-            public float emissive_val3; //emissive surface val3
-                                        //296
+            public Vector3 emissive_tint = new Vector3(255, 255, 255); // sRGB
+            public EmissiveFlag emissive_flags = EmissiveFlag.None;
+            public float emissive_intensity_multiplier = 1.0f;
+            public float emissive_radiosity_multiplier = 0.0f;
 
-            //If primary zone ID or secondary zone ID are zero, they are not applied to a zone. it seems like the game hacks this by setting the primary id to 1 to add it to a sort of "global zone", for entities that are spawned but not in a zone.
-            public ShortGuid primary_zone_id;
-            public ShortGuid secondary_zone_id;
+            public ShortGuid primary_zone_id; //zero is "unzoned"
+            public ShortGuid secondary_zone_id; //zero is "unzoned"
+            public int lighting_master_id = 0;
+            public short material_mapping_index;
 
-                                          //304
-            public UInt32 Unknowns61_; //uVar3 in reserve_light_light_master_sets, val of LightMasterSet, or an incrementer
-
-
-            public UInt16 Unknown17_;   // TODO: flags? always "65535" on BSP_LV426 1 and 2
-
-
-                                        //310
-            public UInt16 instanceTypeFlags; //ushort - used for bitwise flags depending on mover RENDERABLE_INSTANCE::Type. Environment types seem to use first bit to decide if its position comes from MVR.
-                                             //312
-            public UInt32 Unknowns70_;
-            public UInt32 Unknowns71_;
-            //320
+            public MoverFlag flags;
 
             ~MOVER_DESCRIPTOR()
             {
@@ -249,86 +237,6 @@ namespace CATHODE
                 entity = null;
             }
         };
-
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public class GPU_CONSTANTS //As best I can tell, this is 80 bytes long
-        {
-            /*
-
-            As per RenderableEnvironmentInstance::set_gpu_constants, values are at:
-            (undefined 8) 0
-            (undefined 8) 8
-            (undefined 8) 16
-            (undefined 8) 24
-            (undefined 8) 32
-            (undefined 8) 40
-            (undefined 8) 48
-            (undefined 8) 56
-            (undefined 8) 64
-            (undefined 8) 72
-
-            */
-
-
-            //64
-            public Vector4 LightColour = new Vector4(1,1,1,1);
-            public Vector4 MaterialTint = new Vector4(1,1,1,1);
-            //96
-            public float lightVolumeIntensity = 1; //todo: idk if this is right, but editing this value seems to increase/decrease the brightness of the light volume meshes
-            public float particleIntensity = 1; //0 = black particle
-            public float particleSystemOffset = 0; //todo: not sure entirely, but increasing this value seems to apply an offset to particle systems
-                                               //108
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
-            public byte[] blankSpace1;
-            //116
-            public float lightRadius = 0;
-            public Vector2 textureTile = new Vector2(1,1); //x = horizontal tile, y = vertical tile
-                                        //128
-            public float UnknownValue1_ = 1;
-            public float UnknownValue2_ = 1;
-            public float UnknownValue3_ = 0;
-            public float UnknownValue4_ = 0;
-            //144
-
-            ~GPU_CONSTANTS()
-            {
-                blankSpace1 = null;
-            }
-        }
-
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public class RENDER_CONSTANTS //appears to be 84 long
-        {
-            /*
-
-            used in
-              RenderableEnvironmentInstance::set_constants
-              RenderableMiscInstance::set_constants 
-              RenderablePlanetInstance::set_constants
-            etc
-
-            */
-
-            //160
-            public Vector4 Unknown3_ = new Vector4(0,0,0,0);
-            //176
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public UInt32[] Unknowns2_; 
-            //184
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public Vector3[] UnknownMinMax_; // NOTE: Sometimes I see 'nan's here too.
-                                             //208
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 36)]
-            public byte[] blankSpace3;
-            //244
-
-            ~RENDER_CONSTANTS()
-            {
-                Unknowns2_ = null;
-                UnknownMinMax_ = null;
-                blankSpace3 = null;
-            }
-        }
         #endregion
     }
 }

@@ -63,49 +63,9 @@ namespace CathodeLib.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
-        internal static byte[] cathode_enum_lut {
+        internal static byte[] info {
             get {
-                object obj = ResourceManager.GetObject("cathode_enum_lut", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] composite_entity_names {
-            get {
-                object obj = ResourceManager.GetObject("composite_entity_names", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] composite_parameter_info {
-            get {
-                object obj = ResourceManager.GetObject("composite_parameter_info", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] composite_paths {
-            get {
-                object obj = ResourceManager.GetObject("composite_paths", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] cathode_shortguid_lut {
-            get {
-                object obj = ResourceManager.GetObject("cathode_shortguid_lut", resourceCulture);
+                object obj = ResourceManager.GetObject("info", resourceCulture);
                 return ((byte[])(obj));
             }
         }
@@ -116,16 +76,6 @@ namespace CathodeLib.Properties {
         internal static byte[] sound_names {
             get {
                 object obj = ResourceManager.GetObject("sound_names", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] cathode_entity_lut {
-            get {
-                object obj = ResourceManager.GetObject("cathode_entity_lut", resourceCulture);
                 return ((byte[])(obj));
             }
         }

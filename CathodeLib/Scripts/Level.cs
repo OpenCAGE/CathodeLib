@@ -37,7 +37,7 @@ namespace CathodeLib
         public MaterialMappings MaterialMappings;
         public PathBarrierResources PathBarrierResources;
         public Lights Lights;
-        public Collisions Collisions;
+        public Collisions WeightedCollisions;
         public SoundNodeNetwork SoundNodeNetwork;
         public SoundBankData SoundBankData;
         public SoundDialogueLookups SoundDialogueLookups;
@@ -90,7 +90,7 @@ namespace CathodeLib
             //MaterialMappings = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK");
             //PathBarrierResources = new PathBarrierResources(path + "/WORLD/PATH_BARRIER_RESOURCES");
             Lights = new Lights(path + "/WORLD/LIGHTS.BIN");
-            //Collisions = new Collisions(path + "/WORLD/COLLISION.BIN");
+            WeightedCollisions = new Collisions(path + "/WORLD/COLLISION.BIN");
             //SoundNodeNetwork = new SoundNodeNetwork(path + "/WORLD/SNDNODENETWORK.DAT");
             //SoundBankData = new SoundBankData(path + "/WORLD/SOUNDBANKDATA.DAT");
             //SoundDialogueLookups = new SoundDialogueLookups(path + "/WORLD/SOUNDDIALOGUELOOKUPS.DAT");
@@ -166,8 +166,10 @@ namespace CathodeLib
         {
             //TODO: This puts the assumption on the user that they have updated all the indexes correctly in Commands. Need to just pass direct objects.
             Commands.Save();
+            Commands.Save(Commands.Filepath.Substring(0, Commands.Filepath.Length - 3) + "BIN", false);
             EnvironmentAnimations.Save();
             Shaders.Save();
+            WeightedCollisions.Save();
 
             /* UPDATE MOVER INDEXES */
 

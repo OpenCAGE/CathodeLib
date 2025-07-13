@@ -40,57 +40,16 @@ namespace CATHODE
                 for (int i = 0; i < entryCount; i++)
                 {
                     Entry entry = new Entry();
-
-                    entry.UnknownFlag = reader.ReadInt32(); //NOTE: if you filter by this value, all the UnknownIndex1s increment, UnknownIndex2s/collision_index don't increment but are grouped by -1s and non -1s, 
-
-                    //todo: compare flag value across levels
-
-                    entry.UnknownIndex1= reader.ReadInt32();
-                    entry.id = Utilities.Consume<ShortGuid>(reader);
-                    entry.entity = Utilities.Consume<EntityHandle>(reader);
-                    entry.UnknownIndex2 = reader.ReadInt32();
-                    entry.collision_index = reader.ReadInt16();
-                    entry.UnknownValue = reader.ReadInt16();
-                    entry.zone_id = Utilities.Consume<ShortGuid>(reader);
+                    entry.Flags = (CollisionFlags)reader.ReadInt32();
+                    entry.Index = reader.ReadInt32();
+                    entry.ID = Utilities.Consume<ShortGuid>(reader);
+                    entry.Entity = Utilities.Consume<EntityHandle>(reader);
+                    entry.MaterialIndex = reader.ReadInt32();
+                    entry.CollisionProxyIndex = reader.ReadInt16();
+                    entry.MappingIndex = reader.ReadInt16();
+                    entry.ZoneID = Utilities.Consume<ShortGuid>(reader);
                     reader.BaseStream.Position += 16;
                     Entries.Add(entry);
-
-                    if (minUnk1 < entry.UnknownIndex1)
-                        minUnk1 = entry.UnknownIndex1;
-                    if (minUnk2 < entry.UnknownIndex2)
-                        minUnk2 = entry.UnknownIndex2;
-                    if (minColIn < entry.collision_index)
-                        minColIn = entry.collision_index;
-
-                    if (!flags.Contains(entry.UnknownFlag))
-                        flags.Add(entry.UnknownFlag);
-
-                    if (entry.collision_index != -1 && entry.UnknownIndex1 == -1 && entry.UnknownIndex2 == -1 && entry.UnknownValue == -1)
-                    {
-                        string sdfsdf = "";
-                    }
-
-                    if (entry.UnknownIndex1 == -1 && entry.UnknownIndex2 == -1 && entry.UnknownValue == -1)
-                    {
-                        string sdfsdf = "";
-                    }
-
-                    string flagBin = BitConverter.ToString(BitConverter.GetBytes(entry.UnknownFlag));
-                    if (!dictest.ContainsKey(flagBin))
-                        dictest.Add(flagBin, new List<string>());
-
-                    dictest[flagBin].Add(entry.UnknownIndex1 + " -> " + entry.UnknownIndex2 + " -> " + entry.collision_index);
-
-                   //if (entry.UnknownFlag == -1073737335)
-                   //    Console.WriteLine(entry.UnknownIndex1);
-
-                    //if (entry.UnknownFlag == 4429)
-                    //    Console.WriteLine(entry.UnknownIndex1);
-
-                    //if (entry.UnknownFlag == -1073737405)
-                    //    Console.WriteLine(entry.UnknownIndex1);
-
-                    //Console.WriteLine(entry.UnknownFlag + " -> " + entry.UnknownIndex1 + " -> " + entry.UnknownIndex2 + " -> " + entry.collision_index + " -> " + entry.UnknownValue);
                 }
             }
 
@@ -113,24 +72,14 @@ namespace CATHODE
 
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    //writer.Write(-268427008);
-                    //writer.Write(-1);
-
-                    writer.Write(Entries[i].UnknownFlag);
-                    writer.Write(Entries[i].UnknownIndex1);
-
-                    Utilities.Write<ShortGuid>(writer, Entries[i].id);
-                    Utilities.Write<EntityHandle>(writer, Entries[i].entity);
-
-                    writer.Write(-1);
-                    //writer.Write(Entries[i].UnknownIndex2);
-
-                    writer.Write((Int16)Entries[i].collision_index);
-
-                    writer.Write((short)-1);
-                    //writer.Write((Int16)Entries[i].UnknownValue);
-
-                    Utilities.Write<ShortGuid>(writer, Entries[i].zone_id);
+                    writer.Write((int)Entries[i].Flags);
+                    writer.Write(Entries[i].Index);
+                    Utilities.Write<ShortGuid>(writer, Entries[i].ID);
+                    Utilities.Write<EntityHandle>(writer, Entries[i].Entity);
+                    writer.Write((Int32)Entries[i].MaterialIndex);
+                    writer.Write((Int16)Entries[i].CollisionProxyIndex);
+                    writer.Write((Int16)Entries[i].MappingIndex);
+                    Utilities.Write<ShortGuid>(writer, Entries[i].ZoneID);
                     writer.Write(new byte[16]);
                 }
             }
@@ -141,24 +90,24 @@ namespace CATHODE
         #region STRUCTURES
         public class Entry
         {
-            public ShortGuid id = ShortGuid.Invalid; //This is the name of the entity hashed via ShortGuid
-            public EntityHandle entity = new EntityHandle();
-            public ShortGuid zone_id = ShortGuid.Invalid; //this maps the entity to a zone ID. interestingly, this seems to be the point of truth for the zone rendering
+            public ShortGuid ID = ShortGuid.Invalid; //This is the name of the entity hashed via ShortGuid
+            public EntityHandle Entity = new EntityHandle();
+            public ShortGuid ZoneID = ShortGuid.Invalid; //this maps the entity to a zone ID. interestingly, this seems to be the point of truth for the zone rendering
 
-            public int collision_index = -1; //maps to havok hkx entry
+            public int CollisionProxyIndex = -1; // Index in COLLISION.HKX
+            public int MaterialIndex = -1; // Index in LEVEL_MODELS.MTL
 
-            public int UnknownFlag = 0;
-            public int UnknownIndex1 = -1;
-            public int UnknownIndex2 = -1;
-            public int UnknownValue = -1;
+            public CollisionFlags Flags = 0;
+            public int Index = -1; //Compound shape index for static and ballistic collision 
+            public int MappingIndex = -1;
 
             public static bool operator ==(Entry x, Entry y)
             {
                 if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
                 if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
-                if (x.id != y.id) return false;
-                if (x.zone_id != y.zone_id) return false;
-                if (x.entity != y.entity) return false;
+                if (x.ID != y.ID) return false;
+                if (x.ZoneID != y.ZoneID) return false;
+                if (x.Entity != y.Entity) return false;
                 return true;
             }
             public static bool operator !=(Entry x, Entry y)
@@ -169,19 +118,72 @@ namespace CATHODE
             public override bool Equals(object obj)
             {
                 return obj is Entry entry &&
-                       EqualityComparer<ShortGuid>.Default.Equals(id, entry.id) &&
-                       EqualityComparer<EntityHandle>.Default.Equals(entity, entry.entity) &&
-                       EqualityComparer<ShortGuid>.Default.Equals(zone_id, entry.zone_id);
+                       EqualityComparer<ShortGuid>.Default.Equals(ID, entry.ID) &&
+                       EqualityComparer<EntityHandle>.Default.Equals(Entity, entry.Entity) &&
+                       EqualityComparer<ShortGuid>.Default.Equals(ZoneID, entry.ZoneID);
             }
 
             public override int GetHashCode()
             {
                 int hashCode = 1001543423;
-                hashCode = hashCode * -1521134295 + id.GetHashCode();
-                hashCode = hashCode * -1521134295 + EqualityComparer<EntityHandle>.Default.GetHashCode(entity);
-                hashCode = hashCode * -1521134295 + zone_id.GetHashCode();
+                hashCode = hashCode * -1521134295 + ID.GetHashCode();
+                hashCode = hashCode * -1521134295 + EqualityComparer<EntityHandle>.Default.GetHashCode(Entity);
+                hashCode = hashCode * -1521134295 + ZoneID.GetHashCode();
                 return hashCode;
             }
+        };
+
+        [Flags]
+        public enum CollisionFlags : uint
+        {
+            //Type of collider
+            STANDARD = 0x00000010,
+            PHANTOM = 0x00000020, //trigger volume
+            DYNAMIC = 0x00000030,
+            PATHFINDING = 0x00000040,
+            CAMERA = 0x00000050,
+            SOUND = 0x00000060,
+            USER_INTERFACE = 0x00000070,
+            PLAYER = 0x00000080,
+            COLLISION_TYPE_MASK = 0x0000001F,
+
+            //Way the collider is stored 
+            LANDSCAPE = 0x00000020,  //landscapeShape
+            WORLD = 0x00000040,  //compoundShape
+            BALLISTIC = 0x00000080,  //ballisticShape
+            STORAGE_TYPE_MASK = 0x000000E0,
+
+            //Way the collider moves
+            FIXED = 0x00000100, //static
+            KEYFRAMED = 0x00000200, //by animation
+            SIMULATING = 0x00000400, //by physics
+            MOTION_TYPE_MASK = 0x00000F00,
+
+            //Where the collider comes from
+            PREBUILT = 0x00001000, //baked from level compile
+            RESOURCE = 0x00002000, //temporary from a resource
+            SYSTEM = 0x00004000, //part of a physics system
+            SCRIPT = 0x00008000, //temporary from a script entity
+            SOURCE_TYPE_MASK = 0x0000F000,
+
+            //The collider's state
+            GHOSTED = 0x10000000, //no collision (cannot simulate either)
+            PRE_GHOSTED = 0x20000000, //ghosted on start
+            FROZEN = 0x40000000, //cannot simulate
+            PRE_FROZEN = 0x80000000, //frozen on start
+            REMOVED = 0x01000000,
+            FORCE_KEYFRAMED = 0x02000000, //never simulates
+            BALLISTIC_ONLY = 0x04000000,
+            STANDARD_ONLY = 0x08000000,
+            PRE_ZERO_GRAVITY = 0x00100000, //reports sliding events
+            SOFT_COLLISION = 0x00200000, //reports sliding events
+            REPORT_SLIDING = 0x00400000, //reports sliding events
+            IS_SUBMERGED = 0x00800000,
+            ZERO_GRAVITY = 0x00010000, //gravity has been modified
+            REPORTING = 0x00020000,  //animated trigger has moved/toggled
+            FORCE_TRANSPARENT = 0x00040000,
+            HIGH_PRIORITY = 0x00080000, //priority ui collision
+            STATE_MASK = 0xFFFF0000,
         };
         #endregion
     }

@@ -61,19 +61,17 @@ namespace CATHODE
                     bin.BaseStream.Position += 4; //fourcc
                     Entries[i].Format = (TextureFormat)bin.ReadInt32();
                     bin.BaseStream.Position += 8; //Lengths
-                    Entries[i].tex_LowRes.Width = bin.ReadInt16();
-                    Entries[i].tex_LowRes.Height = bin.ReadInt16();
-                    Entries[i].tex_LowRes.Depth = bin.ReadInt16();
-                    Entries[i].tex_HighRes.Width = bin.ReadInt16();
-                    Entries[i].tex_HighRes.Height = bin.ReadInt16();
-                    Entries[i].tex_HighRes.Depth = bin.ReadInt16();
-                    Entries[i].tex_LowRes.MipLevels = bin.ReadInt16();
-                    Entries[i].tex_HighRes.MipLevels = bin.ReadInt16();
-                    Entries[i].Type = (AlienTextureType)bin.ReadInt32();
-                    Entries[i].UnknownTexThing = (AlienUnknownTextureThing)bin.ReadInt16();
-                    bin.BaseStream.Position += 2; //Always 2048
-                    bin.BaseStream.Position += 4; //Skip filename offset value
-                    bin.BaseStream.Position += 4; //Skip unused
+                    Entries[i].TexturePersistent.Width = bin.ReadInt16();
+                    Entries[i].TexturePersistent.Height = bin.ReadInt16();
+                    Entries[i].TexturePersistent.Depth = bin.ReadInt16();
+                    Entries[i].TextureStreamed.Width = bin.ReadInt16();
+                    Entries[i].TextureStreamed.Height = bin.ReadInt16();
+                    Entries[i].TextureStreamed.Depth = bin.ReadInt16();
+                    Entries[i].TexturePersistent.MipLevels = bin.ReadInt16();
+                    Entries[i].TextureStreamed.MipLevels = bin.ReadInt16();
+                    Entries[i].StateFlags = (TextureStateFlag)bin.ReadInt32();
+                    Entries[i].UsageFlags = (TextureUsageFlag)bin.ReadInt32();
+                    bin.BaseStream.Position += 8; //Skip filename offset value
                     _writeList.Add(Entries[i]);
                 }
             }
@@ -90,35 +88,25 @@ namespace CATHODE
                 int endOfHeaders = 32 + (entryCount * 48);
                 for (int i = 0; i < entryCount; i++)
                 {
-                    //Read texture info
-                    pak.BaseStream.Position += 8; //Skip unused
+                    pak.BaseStream.Position += 8;
                     int length = BigEndianUtils.ReadInt32(pak);
-                    pak.BaseStream.Position += 4; //Skip length check
+                    pak.BaseStream.Position += 4; 
                     int offset = BigEndianUtils.ReadInt32(pak);
-                    pak.BaseStream.Position += 2; //Skip unused
-                    bool isHighRes = BigEndianUtils.ReadInt16(pak) == 1;
-                    pak.BaseStream.Position += 4; //Skip unused + 256
-                    UInt32 unk1 = BigEndianUtils.ReadUInt32(pak);
+                    int sort = BigEndianUtils.ReadInt32(pak);
+                    pak.BaseStream.Position += 8;
                     UInt16 unk2 = BigEndianUtils.ReadUInt16(pak);
                     int textureIndex = BigEndianUtils.ReadInt16(pak);
-                    pak.BaseStream.Position += 4; //Skip unused
-                    UInt32 unk3 = BigEndianUtils.ReadUInt32(pak);
-                    UInt32 unk4 = BigEndianUtils.ReadUInt32(pak);
+                    pak.BaseStream.Position += 12;
 
-                    //Find the entry
-                    TEX4.Part tex = (isHighRes) ? Entries[textureIndex].tex_HighRes : Entries[textureIndex].tex_LowRes;
-
-                    //Write out the unknown info
-                    tex.unk1 = unk1;
-                    tex.unk2 = unk2;
-                    tex.unk3 = unk3;
-                    tex.unk4 = unk4;
-
-                    //Pull in texture content
+                    //Store texture content
+                    TEX4.Texture tex = (sort == 1) ? Entries[textureIndex].TextureStreamed : Entries[textureIndex].TexturePersistent;
                     int offsetToReturnTo = (int)pak.BaseStream.Position;
                     pak.BaseStream.Position = endOfHeaders + offset;
                     tex.Content = pak.ReadBytes(length);
                     pak.BaseStream.Position = offsetToReturnTo;
+
+                    //Write out the unknown info
+                    tex.unk2 = unk2;
                 }
             }
             return true;
@@ -145,19 +133,18 @@ namespace CATHODE
                 {
                     Utilities.WriteString("tex4", bin);
                     bin.Write((Int32)Entries[i].Format);
-                    bin.Write(Entries[i].tex_HighRes.Content == null ? 0 : Entries[i].tex_HighRes.Content.Length);
-                    bin.Write(Entries[i].tex_LowRes.Content == null ? 0 : Entries[i].tex_LowRes.Content.Length);
-                    bin.Write((Int16)Entries[i].tex_LowRes.Width);
-                    bin.Write((Int16)Entries[i].tex_LowRes.Height);
-                    bin.Write((Int16)Entries[i].tex_LowRes.Depth);
-                    bin.Write((Int16)Entries[i].tex_HighRes.Width);
-                    bin.Write((Int16)Entries[i].tex_HighRes.Height);
-                    bin.Write((Int16)Entries[i].tex_HighRes.Depth);
-                    bin.Write((Int16)Entries[i].tex_LowRes.MipLevels);
-                    bin.Write((Int16)Entries[i].tex_HighRes.MipLevels);
-                    bin.Write((Int32)Entries[i].Type);
-                    bin.Write((Int16)Entries[i].UnknownTexThing);
-                    bin.Write((Int16)2048); //TODO: derive this from the actual texture
+                    bin.Write(Entries[i].TextureStreamed.Content == null ? 0 : Entries[i].TextureStreamed.Content.Length);
+                    bin.Write(Entries[i].TexturePersistent.Content == null ? 0 : Entries[i].TexturePersistent.Content.Length);
+                    bin.Write((Int16)Entries[i].TexturePersistent.Width);
+                    bin.Write((Int16)Entries[i].TexturePersistent.Height);
+                    bin.Write((Int16)Entries[i].TexturePersistent.Depth);
+                    bin.Write((Int16)Entries[i].TextureStreamed.Width);
+                    bin.Write((Int16)Entries[i].TextureStreamed.Height);
+                    bin.Write((Int16)Entries[i].TextureStreamed.Depth);
+                    bin.Write((Int16)Entries[i].TexturePersistent.MipLevels);
+                    bin.Write((Int16)Entries[i].TextureStreamed.MipLevels);
+                    bin.Write((Int32)Entries[i].StateFlags);
+                    bin.Write((Int32)Entries[i].UsageFlags);
                     bin.Write((Int32)filenameOffsets[i]);
                     bin.Write(new byte[4]);
                     entryCount++;
@@ -178,7 +165,7 @@ namespace CATHODE
                 {
                     for (int i = 0; i < Entries.Count; i++)
                     {
-                        TEX4.Part tex = (x == 0) ? Entries[i].tex_LowRes : Entries[i].tex_HighRes;
+                        TEX4.Texture tex = (x == 0) ? Entries[i].TexturePersistent : Entries[i].TextureStreamed;
                         if (tex.Content == null) continue;
                         writeCount++;
                     }
@@ -193,7 +180,7 @@ namespace CATHODE
                 {
                     for (int i = 0; i < Entries.Count; i++)
                     {
-                        TEX4.Part tex = (x == 0) ? Entries[i].tex_LowRes : Entries[i].tex_HighRes;
+                        TEX4.Texture tex = (x == 0) ? Entries[i].TexturePersistent : Entries[i].TextureStreamed;
                         offsets.Add((int)pak.BaseStream.Position - contentOffset);
                         if (tex.Content != null)
                         {
@@ -205,27 +192,23 @@ namespace CATHODE
                 //Write texture headers
                 pak.BaseStream.Position = 32;
                 int y = 0;
-                for (int x = 0; x < 2; x++)
+                for (int sort = 0; sort < 2; sort++)
                 {
                     for (int i = 0; i < Entries.Count; i++)
                     {
-                        TEX4.Part tex = (x == 0) ? Entries[i].tex_LowRes : Entries[i].tex_HighRes;
+                        TEX4.Texture tex = (sort == 0) ? Entries[i].TexturePersistent : Entries[i].TextureStreamed;
                         if (tex.Content != null)
                         {
                             pak.Write(new byte[8]);
                             pak.Write(BigEndianUtils.FlipEndian(tex.Content.Length));
                             pak.Write(BigEndianUtils.FlipEndian(tex.Content.Length));
                             pak.Write(BigEndianUtils.FlipEndian((Int32)offsets[y]));
-                            pak.Write(new byte[2]);
-                            pak.Write(BigEndianUtils.FlipEndian((Int16)x)); //isHighRes
-                            pak.Write(new byte[2]);
-                            pak.Write(BigEndianUtils.FlipEndian((Int16)256)); //TODO: derive this from the actual texture?
-                            pak.Write(BigEndianUtils.FlipEndian((Int32)tex.unk1));
+                            pak.Write(BigEndianUtils.FlipEndian(sort));
+                            pak.Write(BigEndianUtils.FlipEndian(256));
+                            pak.Write(new byte[4]);
                             pak.Write(BigEndianUtils.FlipEndian((Int16)tex.unk2));
                             pak.Write(BigEndianUtils.FlipEndian((Int16)i));
-                            pak.Write(new byte[4]);
-                            pak.Write(BigEndianUtils.FlipEndian((Int32)tex.unk3));
-                            pak.Write(BigEndianUtils.FlipEndian((Int32)tex.unk4));
+                            pak.Write(new byte[12]);
                         }
                         y++;
                     }
@@ -267,19 +250,19 @@ namespace CATHODE
             public string Name = "";
 
             public TextureFormat Format;
-            public AlienTextureType Type;
-            public AlienUnknownTextureThing UnknownTexThing;
+            public TextureStateFlag StateFlags;
+            public TextureUsageFlag UsageFlags;
 
-            public Part tex_LowRes = new Part();
-            public Part tex_HighRes = new Part();
+            public Texture TexturePersistent = new Texture(); // A lower res version of the texture kept loaded forever
+            public Texture TextureStreamed = new Texture();   // A higher res version of the texture which is streamed when required (not all have this)
 
             ~TEX4()
             {
-                tex_LowRes = null;
-                tex_HighRes = null;
+                TexturePersistent = null;
+                TextureStreamed = null;
             }
 
-            public class Part
+            public class Texture
             {
                 public Int16 Width = 0;
                 public Int16 Height = 0;
@@ -290,43 +273,59 @@ namespace CATHODE
                 public byte[] Content = null;
 
                 //Saving these so we can re-write without issue (TODO: figure them out)
-                public UInt32 unk1 = 0;
                 public UInt16 unk2 = 0;
-                public UInt32 unk3 = 0;
-                public UInt32 unk4 = 0;
 
-                ~Part()
+                ~Texture()
                 {
                     Content = null;
                 }
             }
         }
 
-        public enum TextureFormat : int
+        public enum TextureFormat
         {
-            DXGI_FORMAT_B8G8R8A8_UNORM = 0x2,
-            SIGNED_DISTANCE_FIELD = 0x4,
-            DXGI_FORMAT_B8G8R8_UNORM = 0x5,
-            DXGI_FORMAT_BC1_UNORM = 0x6,
-            DXGI_FORMAT_BC3_UNORM = 0x9,
-            DXGI_FORMAT_BC5_UNORM = 0x8,
-            DXGI_FORMAT_BC7_UNORM = 0xD
+            A32R32G32B32F,
+            A16R16G16B16,
+            A8R8G8B8,
+            X8R8G8B8,
+            A8,
+            L8,
+            DXT1,
+            DXT3,
+            DXN,
+            DXT5,
+            A4R4G4B4,
+            CTX1,
+            BC6H,
+            BC7,
+            R16F,
+            AUTO,
         }
 
-        public enum AlienTextureType
+        [Flags]
+        public enum TextureStateFlag
         {
-            SPECULAR_OR_NORMAL = 0,
-            DIFFUSE = 1,
-            LUT = 21,
-
-            DECAL = 5,
-            ENVIRONMENT_MAP = 7,
+            ALLOW_SRGB = 1 << 0,
+            CUBE = 1 << 1,
+            NON_SOLID = 1 << 2,
+            SWIZZLED = 1 << 3,
+            VOLUME = 1 << 4,
+            EXPORTED_WITH_WARNINGS = 1 << 5,
+            FLASH_TEXTURE = 1 << 6
         }
 
-        public enum AlienUnknownTextureThing
+        [Flags]
+        public enum TextureUsageFlag
         {
-            REGULAR_TEXTURE = 0,
-            SOME_SPECIAL_TEXTURE = 9,
+            DEFAULT = 0,
+            POST_PROCESSING = 1 << 0,
+            LENS_FLARE = 1 << 1,
+            GALAXY = 1 << 2,
+            LENS_DUST = 1 << 3,
+
+            //NOTE: Weirdly, the GLOBAL PAK still seems to report as LEVEL, so I think it's safe to always just set that
+            IS_LEVEL_PACK = 1 << 27,
+            IS_GLOBAL_PACK = 1 << 28,
         }
         #endregion
     }
