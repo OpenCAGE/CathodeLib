@@ -1,18 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Text;
 using CathodeLib;
 using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
-using CATHODE.Scripting;
-using System.Drawing;
-using System.Windows.Media.Animation;
-using System.ComponentModel.Design.Serialization;
-using System.Reflection;
-using System.Data;
-using static CATHODE.Textures.TEX4;
-using static CATHODE.Resources;
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;

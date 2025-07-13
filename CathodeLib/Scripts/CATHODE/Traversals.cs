@@ -10,12 +10,11 @@ using System.Runtime.InteropServices;
 using UnityEngine;
 #else
 using System.Numerics;
-using System.Runtime.InteropServices;
 #endif
 
 namespace CATHODE.EXPERIMENTAL
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/COLLISION.BIN */
+    /* DATA/ENV/PRODUCTION/x/WORLD/STATE_x/TRAVERSAL */
     public class Traversals : CathodeFile
     {
         //NOTE: Not bothering finishing reversing this one as it's not actually used.
