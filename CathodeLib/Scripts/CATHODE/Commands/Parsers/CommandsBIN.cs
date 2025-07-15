@@ -479,8 +479,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                 }
             }
 
-            EntryPoints[1] = Entries.FirstOrDefault(o => o.name == "GLOBAL").shortGUID;
-            EntryPoints[2] = Entries.FirstOrDefault(o => o.name == "PAUSEMENU").shortGUID;
+            EntryPoints[1] = Entries.FirstOrDefault(o => o.name.ToUpper() == "GLOBAL").shortGUID;
+            EntryPoints[2] = Entries.FirstOrDefault(o => o.name.ToUpper() == "PAUSEMENU").shortGUID;
         }
 
         public static void Write(ShortGuid[] EntryPoints, List<Composite> Entries, out byte[] content)
