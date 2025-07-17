@@ -86,28 +86,8 @@ namespace CATHODE.Scripting
         }
 
         #region Commands Linking
-        private static List<Commands> _commands = new List<Commands>();
-
-        /* Utilised by CommandsUtils: this connects up a loaded Commands object, allowing generated ShortGuids to be stored for re-use next session */
-        internal static void LinkCommands(Commands commands)
-        {
-            if (_commands.FirstOrDefault(o => o.Filepath == commands.Filepath) != null)
-                return;
-
-            _commands.Add(commands);
-            commands.OnSaveSuccess += SaveCustomNames;
-            LoadCustomNames(commands.Filepath);
-        }
-        internal static void UnlinkCommands(Commands commands)
-        {
-            Commands linkedCommands = _commands.FirstOrDefault(o => o.Filepath == commands.Filepath);
-            if (linkedCommands == null)
-                return;
-            _commands.Remove(linkedCommands);
-        }
-
         /* Load/save custom shortguids */
-        private static void LoadCustomNames(string filepath)
+        internal static void LoadCustomNames(string filepath)
         {
             GuidNameTable guids = (GuidNameTable)CustomTable.ReadTable(filepath, CustomTableType.SHORT_GUIDS);
             if (guids == null)
@@ -121,7 +101,7 @@ namespace CATHODE.Scripting
             }
             Console.WriteLine("Loaded " + added + " ShortGuids!");
         }
-        private static void SaveCustomNames(string filepath)
+        internal static void SaveCustomNames(string filepath)
         {
             CustomTable.WriteTable(filepath, CustomTableType.SHORT_GUIDS, _custom);
             Console.WriteLine("Saved " + _custom.cache.Count + " ShortGuids!");

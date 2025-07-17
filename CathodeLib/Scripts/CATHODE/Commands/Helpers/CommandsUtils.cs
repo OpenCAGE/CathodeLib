@@ -36,6 +36,7 @@ namespace CATHODE.Scripting
 
         public CommandsUtils(Commands commands)
         {
+            _nameID = ShortGuidUtils.Generate("name").AsUInt32;
             _commands = commands;
 
             _commands.OnLoadSuccess += LoadInfo;
@@ -43,15 +44,12 @@ namespace CATHODE.Scripting
 
             if (_commands.Loaded)
                 LoadInfo(_commands.Filepath);
-
-            _nameID = ShortGuidUtils.Generate("name").AsUInt32;
-
-            ShortGuidUtils.LinkCommands(_commands);
+            ShortGuidUtils.LoadCustomNames(_commands.Filepath);
         }
 
         ~CommandsUtils()
         {
-            ShortGuidUtils.UnlinkCommands(_commands);
+            ShortGuidUtils.SaveCustomNames(_commands.Filepath);
         }
 
         #region Generic Utility Functions
