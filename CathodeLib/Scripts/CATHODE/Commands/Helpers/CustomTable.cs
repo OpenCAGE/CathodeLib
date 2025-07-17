@@ -576,6 +576,7 @@ namespace CathodeLib
 
             public PointF CanvasPosition;
             public float CanvasScale;
+            public SupportedLevel SupportedLevels; //NOTE: Only used on vanilla layouts
 
             public List<NodeMeta> Nodes = new List<NodeMeta>();
 
@@ -598,6 +599,45 @@ namespace CathodeLib
                     public ShortGuid ConnectedParameterGUID;
                     public int ConnectedNodeID;
                 }
+            }
+
+            [Flags]
+            public enum SupportedLevel
+            {
+                BSP_LV426_PT01 = 1 << 0,
+                BSP_LV426_PT02 = 1 << 1,
+                BSP_TORRENS = 1 << 2,
+                BSPNOSTROMO_RIPLEY_PATCH = 1 << 4,
+                BSPNOSTROMO_TWOTEAMS_PATCH = 1 << 5,
+                CHALLENGEMAP1 = 1 << 6,
+                CHALLENGEMAP3 = 1 << 7,
+                CHALLENGEMAP4 = 1 << 8,
+                CHALLENGEMAP5 = 1 << 9,
+                CHALLENGEMAP7 = 1 << 10,
+                CHALLENGEMAP9 = 1 << 11,
+                CHALLENGEMAP11 = 1 << 12,
+                CHALLENGEMAP12 = 1 << 13,
+                CHALLENGEMAP14 = 1 << 14,
+                CHALLENGEMAP16 = 1 << 15,
+                SALVAGEMODE1 = 1 << 16,
+                SALVAGEMODE2 = 1 << 17,
+                ENG_ALIEN_NEST = 1 << 18,
+                ENG_REACTORCORE = 1 << 19,
+                ENG_TOWPLATFORM = 1 << 20,
+                FRONTEND = 1 << 21,
+                HAB_AIRPORT = 1 << 22,
+                HAB_CORPORATEPENT = 1 << 23,
+                HAB_SHOPPINGCENTRE = 1 << 24,
+                SCI_ANDROIDLAB = 1 << 25,
+                SCI_HOSPITALLOWER = 1 << 26,
+                SCI_HOSPITALUPPER = 1 << 27,
+                SCI_HUB = 1 << 28,
+                SOLACE = 1 << 29,
+                TECH_COMMS = 1 << 30,
+                TECH_HUB = 1 << 31,
+                TECH_MUTHRCORE = 1 << 32,
+                TECH_RND = 1 << 33,
+                TECH_RND_HZDLAB = 1 << 34,
             }
         }
     }
