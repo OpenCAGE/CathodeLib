@@ -592,10 +592,12 @@ namespace CATHODE.Scripting
                             case ParameterVariant.REFERENCE_PIN:
                             case ParameterVariant.METHOD_FUNCTION:
                             case ParameterVariant.METHOD_PIN:
+                                ShortGuid param = new ShortGuid(paramID);
                                 parameters.Add((new ShortGuid(paramID), entry.Key, DataType.FLOAT));
                                 break;
                             default:
-                                DataType dataType = (DataType)reader.ReadInt32();
+                                int dataTypeTemp = reader.ReadInt32();
+                                DataType dataType = dataTypeTemp == -1 ? DataType.ENUM_STRING : (DataType)dataTypeTemp;
                                 if (!(function != FunctionType.Zone && paramID == _nameID))
                                 {
                                     if (dataType == DataType.NONE) //This only applies to TARGET_PIN, sometimes it has a value, other times it doesn't. If it doesn't, fall back to FLOAT for now.
@@ -774,7 +776,8 @@ namespace CATHODE.Scripting
                                 return (variant, DataType.FLOAT, function);
                             break;
                         default:
-                            DataType dataType = (DataType)reader.ReadInt32();
+                            int dataTypeTemp = reader.ReadInt32();
+                            DataType dataType = dataTypeTemp == -1 ? DataType.ENUM_STRING : (DataType)dataTypeTemp;
                             if (dataType == DataType.NONE) //This only applies to TARGET_PIN, sometimes it has a value, other times it doesn't. If it doesn't, fall back to FLOAT for now.
                                 dataType = DataType.FLOAT;
                             if (isCorrectParam)
@@ -986,7 +989,8 @@ namespace CATHODE.Scripting
                                 return new cFloat();
                             break;
                         default:
-                            DataType dataType = (DataType)reader.ReadInt32();
+                            int dataTypeTemp = reader.ReadInt32();
+                            DataType dataType = dataTypeTemp == -1 ? DataType.ENUM_STRING : (DataType)dataTypeTemp;
                             switch (dataType)
                             {
                                 case DataType.BOOL:
