@@ -489,7 +489,8 @@ namespace CathodeLib
 
                 flowgraph.UsesShortenedNames = reader.ReadBoolean();
                 flowgraph.IsUnfinished = reader.ReadBoolean();
-                reader.BaseStream.Position += 8; //reserved
+                flowgraph.SupportedLevels = (FlowgraphMeta.SupportedLevel)reader.ReadInt32();
+                reader.BaseStream.Position += 4; //reserved
 
                 int nodeMetaCount = reader.ReadInt32();
                 for (int x = 0; x < nodeMetaCount; x++)
@@ -537,7 +538,8 @@ namespace CathodeLib
 
                 writer.Write(flowgraphs[i].UsesShortenedNames);
                 writer.Write(flowgraphs[i].IsUnfinished);
-                writer.Write(new byte[8]); //reserved
+                writer.Write((int)flowgraphs[i].SupportedLevels);
+                writer.Write(new byte[4]); //reserved
 
                 writer.Write(flowgraphs[i].Nodes.Count);
                 for (int x = 0; x < flowgraphs[i].Nodes.Count; x++)
