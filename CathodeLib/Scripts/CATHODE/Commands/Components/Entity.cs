@@ -621,7 +621,7 @@ namespace CATHODE.Scripting
 
     [Serializable]
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct EntityConnector
+    public struct EntityConnector : IEquatable<EntityConnector>
     {
         public EntityConnector(ShortGuid linkedEntity, ShortGuid param, ShortGuid linkedParam)
         {
@@ -640,7 +640,7 @@ namespace CATHODE.Scripting
             linkedEntityID = linkedEntity.shortGUID;
         }
 
-        public ShortGuid ID;   //The unique ID for this connection
+        public ShortGuid ID;   //The unique ID for this connection - ignored in equality checks, but used to identify the connection in the composite (maybe should be removed)
 
         public ShortGuid thisParamID;    //The ID of the parameter
         public ShortGuid linkedParamID;  //The ID of the parameter we're connecting to
@@ -651,19 +651,26 @@ namespace CATHODE.Scripting
             return comp.GetEntityByID(linkedEntityID);
         }
 
+        public override string ToString()
+        {
+            return "[" + thisParamID + "] -> " + linkedEntityID.ToByteString() + " [" + linkedParamID + "]";
+        }
+
+        public bool Equals(EntityConnector other)
+        {
+            return this.thisParamID.Equals(other.thisParamID) &&
+                   this.linkedEntityID.Equals(other.linkedEntityID) &&
+                   this.linkedParamID.Equals(other.linkedParamID);
+        }
+
         public override bool Equals(object obj)
         {
-            return obj is EntityConnector connector &&
-                   EqualityComparer<ShortGuid>.Default.Equals(ID, connector.ID) &&
-                   EqualityComparer<ShortGuid>.Default.Equals(thisParamID, connector.thisParamID) &&
-                   EqualityComparer<ShortGuid>.Default.Equals(linkedParamID, connector.linkedParamID) &&
-                   EqualityComparer<ShortGuid>.Default.Equals(linkedEntityID, connector.linkedEntityID);
+            return obj is EntityConnector other && Equals(other);
         }
 
         public override int GetHashCode()
         {
-            int hashCode = -1516234163;
-            hashCode = hashCode * -1521134295 + ID.GetHashCode();
+            int hashCode = 937505261;
             hashCode = hashCode * -1521134295 + thisParamID.GetHashCode();
             hashCode = hashCode * -1521134295 + linkedParamID.GetHashCode();
             hashCode = hashCode * -1521134295 + linkedEntityID.GetHashCode();
@@ -672,7 +679,6 @@ namespace CATHODE.Scripting
 
         public static bool operator ==(EntityConnector x, EntityConnector y)
         {
-            if (x.ID != y.ID) return false;
             if (x.thisParamID != y.thisParamID) return false;
             if (x.linkedParamID != y.linkedParamID) return false;
             if (x.linkedEntityID != y.linkedEntityID) return false;
