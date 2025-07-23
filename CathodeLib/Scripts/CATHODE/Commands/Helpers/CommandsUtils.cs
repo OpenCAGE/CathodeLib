@@ -414,7 +414,7 @@ namespace CATHODE.Scripting
         }
         private void ApplyDefaultVariable(VariableEntity baseEntity, Entity targetEntity, Composite composite, ParameterVariant variants, bool overwrite)
         {
-            var pinInfo = _commands.Utils.GetParameterInfo(composite, baseEntity);
+            var pinInfo = _commands.Utils.GetPinInfo(composite, baseEntity);
             ParameterData defaultValue = baseEntity.GetParameter(baseEntity.name)?.content;
             if (defaultValue != null)
             {
@@ -560,7 +560,7 @@ namespace CATHODE.Scripting
                     break;
                 case EntityVariant.VARIABLE:
                     VariableEntity variableEntity = (VariableEntity)entity;
-                    CompositePinInfoTable.PinInfo info = _commands.Utils.GetParameterInfo(composite, variableEntity);
+                    CompositePinInfoTable.PinInfo info = _commands.Utils.GetPinInfo(composite, variableEntity);
                     if (info == null)
                         parameters.Add((variableEntity.name, ParameterVariant.PARAMETER, variableEntity.type));
                     else
@@ -702,7 +702,7 @@ namespace CATHODE.Scripting
                             VariableEntity var = compositeInstance.variables.FirstOrDefault(o => o.name == parameter);
                             if (var != null)
                             {
-                                CompositePinInfoTable.PinInfo info = _commands.Utils.GetParameterInfo(compositeInstance, var);
+                                CompositePinInfoTable.PinInfo info = _commands.Utils.GetPinInfo(compositeInstance, var);
                                 if (info == null)
                                     return (ParameterVariant.PARAMETER, var.type, compositeInstance.shortGUID);
                                 else
@@ -851,7 +851,7 @@ namespace CATHODE.Scripting
                         ParameterData defaultVal = variableEntity.GetParameter(parameter)?.content;
                         if (defaultVal != null)
                             return (ParameterData)defaultVal.Clone();
-                        CompositePinInfoTable.PinInfo info = _commands.Utils.GetParameterInfo(composite, variableEntity);
+                        CompositePinInfoTable.PinInfo info = _commands.Utils.GetPinInfo(composite, variableEntity);
                         switch (variableEntity.type)
                         {
                             case DataType.FLOAT:
@@ -1161,11 +1161,9 @@ namespace CATHODE.Scripting
         #endregion
 
         #region Composite Pin Info 
-        //TODO: perhaps this should be in ParameterUtils?
-
         /* Set/update the pin info for a composite VariableEntity */
-        public void SetParameterInfo(Composite composite, CompositePinInfoTable.PinInfo info) => SetParameterInfo(composite.shortGUID, info);
-        public void SetParameterInfo(ShortGuid composite, CompositePinInfoTable.PinInfo info)
+        public void SetPinInfo(Composite composite, CompositePinInfoTable.PinInfo info) => SetPinInfo(composite.shortGUID, info);
+        public void SetPinInfo(ShortGuid composite, CompositePinInfoTable.PinInfo info)
         {
             List<CompositePinInfoTable.PinInfo> infos;
             if (!_pinInfo.composite_pin_infos.TryGetValue(composite, out infos))
@@ -1179,8 +1177,8 @@ namespace CATHODE.Scripting
         }
 
         /* Get the pin info for a composite VariableEntity */
-        public CompositePinInfoTable.PinInfo GetParameterInfo(Composite composite, VariableEntity variableEnt) => GetParameterInfo(composite.shortGUID, variableEnt.shortGUID);
-        public CompositePinInfoTable.PinInfo GetParameterInfo(ShortGuid composite, ShortGuid variableEnt)
+        public CompositePinInfoTable.PinInfo GetPinInfo(Composite composite, VariableEntity variableEnt) => GetPinInfo(composite.shortGUID, variableEnt.shortGUID);
+        public CompositePinInfoTable.PinInfo GetPinInfo(ShortGuid composite, ShortGuid variableEnt)
         {
             CompositePinInfoTable.PinInfo info = null;
             if (_pinInfo.composite_pin_infos.TryGetValue(composite, out List<CompositePinInfoTable.PinInfo> customInfos))
