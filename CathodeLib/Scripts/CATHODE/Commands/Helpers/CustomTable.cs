@@ -567,7 +567,7 @@ namespace CathodeLib
             }
         }
 
-        public class FlowgraphMeta
+        public class FlowgraphMeta : IEquatable<FlowgraphMeta>
         {
             public const byte VERSION = 1;
             public bool UsesShortenedNames = false;
@@ -582,6 +582,27 @@ namespace CathodeLib
 
             public List<NodeMeta> Nodes = new List<NodeMeta>();
 
+            public bool Equals(FlowgraphMeta other)
+            {
+                if (other is null) return false;
+                if (ReferenceEquals(this, other)) return true;
+
+                if (CompositeGUID != other.CompositeGUID) return false;
+                if (Name != other.Name) return false;
+
+                return this.Nodes.SequenceEqual(other.Nodes);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as FlowgraphMeta);
+            }
+
+            public override int GetHashCode()
+            {
+                return 249714186 + EqualityComparer<List<NodeMeta>>.Default.GetHashCode(Nodes);
+            }
+
             public class NodeMeta
             {
                 public ShortGuid EntityGUID;
@@ -594,12 +615,62 @@ namespace CathodeLib
 
                 public List<ConnectionMeta> Connections = new List<ConnectionMeta>(); //NOTE: This is connections OUT of this node
 
+                public bool Equals(NodeMeta other)
+                {
+                    if (other is null) return false;
+                    if (ReferenceEquals(this, other)) return true;
+
+                    return EntityGUID.Equals(other.EntityGUID) &&
+                           NodeID == other.NodeID &&
+                           Position.Equals(other.Position) &&
+                           PinsIn.SequenceEqual(other.PinsIn) &&
+                           PinsOut.SequenceEqual(other.PinsOut) &&
+                           Connections.SequenceEqual(other.Connections);
+                }
+
+                public override bool Equals(object obj) => Equals(obj as NodeMeta);
+
+                public override int GetHashCode()
+                {
+                    int hashCode = -993535992;
+                    hashCode = hashCode * -1521134295 + EntityGUID.GetHashCode();
+                    hashCode = hashCode * -1521134295 + NodeID.GetHashCode();
+                    hashCode = hashCode * -1521134295 + Position.GetHashCode();
+                    hashCode = hashCode * -1521134295 + EqualityComparer<List<ShortGuid>>.Default.GetHashCode(PinsIn);
+                    hashCode = hashCode * -1521134295 + EqualityComparer<List<ShortGuid>>.Default.GetHashCode(PinsOut);
+                    hashCode = hashCode * -1521134295 + EqualityComparer<List<ConnectionMeta>>.Default.GetHashCode(Connections);
+                    return hashCode;
+                }
+
                 public class ConnectionMeta
                 {
                     public ShortGuid ParameterGUID;
                     public ShortGuid ConnectedEntityGUID;
                     public ShortGuid ConnectedParameterGUID;
                     public int ConnectedNodeID;
+
+                    public bool Equals(ConnectionMeta other)
+                    {
+                        if (other is null) return false;
+                        if (ReferenceEquals(this, other)) return true;
+
+                        return ParameterGUID.Equals(other.ParameterGUID) &&
+                               ConnectedEntityGUID.Equals(other.ConnectedEntityGUID) &&
+                               ConnectedParameterGUID.Equals(other.ConnectedParameterGUID) &&
+                               ConnectedNodeID == other.ConnectedNodeID;
+                    }
+
+                    public override bool Equals(object obj) => Equals(obj as ConnectionMeta);
+
+                    public override int GetHashCode()
+                    {
+                        int hashCode = 1477210510;
+                        hashCode = hashCode * -1521134295 + ParameterGUID.GetHashCode();
+                        hashCode = hashCode * -1521134295 + ConnectedEntityGUID.GetHashCode();
+                        hashCode = hashCode * -1521134295 + ConnectedParameterGUID.GetHashCode();
+                        hashCode = hashCode * -1521134295 + ConnectedNodeID.GetHashCode();
+                        return hashCode;
+                    }
                 }
             }
 
@@ -609,8 +680,8 @@ namespace CathodeLib
                 BSP_LV426_PT01 = 1 << 0,
                 BSP_LV426_PT02 = 1 << 1,
                 BSP_TORRENS = 1 << 2,
-                BSPNOSTROMO_RIPLEY_PATCH = 1 << 4,
-                BSPNOSTROMO_TWOTEAMS_PATCH = 1 << 5,
+                BSPNOSTROMO_RIPLEY = 1 << 4,
+                BSPNOSTROMO_TWOTEAMS = 1 << 5,
                 CHALLENGEMAP1 = 1 << 6,
                 CHALLENGEMAP3 = 1 << 7,
                 CHALLENGEMAP4 = 1 << 8,
