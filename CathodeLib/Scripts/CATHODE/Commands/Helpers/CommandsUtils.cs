@@ -44,12 +44,6 @@ namespace CATHODE.Scripting
 
             if (_commands.Loaded)
                 LoadInfo(_commands.Filepath);
-            ShortGuidUtils.LoadCustomNames(_commands.Filepath);
-        }
-
-        ~CommandsUtils()
-        {
-            ShortGuidUtils.SaveCustomNames(_commands.Filepath);
         }
 
         #region Generic Utility Functions
@@ -1243,6 +1237,8 @@ namespace CATHODE.Scripting
         /* Handle loading/saving "purge states" -> this tracks the composites that have had unresolvable entities removed from */
         private void LoadInfo(string filepath)
         {
+            ShortGuidUtils.LoadCustomNames(_commands.Filepath);
+
             _compPurges = (CompositePurgeTable)CustomTable.ReadTable(filepath, CustomTableType.COMPOSITE_PURGE_STATES);
             if (_compPurges == null) 
                 _compPurges = new CompositePurgeTable();
@@ -1269,6 +1265,8 @@ namespace CATHODE.Scripting
         }
         private void SaveInfo(string filepath)
         {
+            ShortGuidUtils.SaveCustomNames(_commands.Filepath);
+
             CustomTable.WriteTable(filepath, CustomTableType.COMPOSITE_PURGE_STATES, _compPurges);
             Console.WriteLine("Stored " + _compPurges.purged.Count + " pre-purged composites!");
 
