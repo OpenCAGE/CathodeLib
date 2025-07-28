@@ -489,8 +489,7 @@ namespace CathodeLib
 
                 flowgraph.UsesShortenedNames = reader.ReadBoolean();
                 flowgraph.IsUnfinished = reader.ReadBoolean();
-                flowgraph.SupportedLevels = (FlowgraphMeta.SupportedLevel)reader.ReadInt32();
-                reader.BaseStream.Position += 4; //reserved
+                flowgraph.SupportedLevels = (FlowgraphMeta.SupportedLevel)reader.ReadInt64();
 
                 int nodeMetaCount = reader.ReadInt32();
                 for (int x = 0; x < nodeMetaCount; x++)
@@ -538,8 +537,7 @@ namespace CathodeLib
 
                 writer.Write(flowgraphs[i].UsesShortenedNames);
                 writer.Write(flowgraphs[i].IsUnfinished);
-                writer.Write((int)flowgraphs[i].SupportedLevels);
-                writer.Write(new byte[4]); //reserved
+                writer.Write((long)flowgraphs[i].SupportedLevels);
 
                 writer.Write(flowgraphs[i].Nodes.Count);
                 for (int x = 0; x < flowgraphs[i].Nodes.Count; x++)
@@ -675,7 +673,7 @@ namespace CathodeLib
             }
 
             [Flags]
-            public enum SupportedLevel
+            public enum SupportedLevel : long
             {
                 BSP_LV426_PT01 = 1 << 0,
                 BSP_LV426_PT02 = 1 << 1,
@@ -707,10 +705,10 @@ namespace CathodeLib
                 SCI_HUB = 1 << 28,
                 SOLACE = 1 << 29,
                 TECH_COMMS = 1 << 30,
-                TECH_HUB = 1 << 31,
-                TECH_MUTHRCORE = 1 << 32,
-                TECH_RND = 1 << 33,
-                TECH_RND_HZDLAB = 1 << 34,
+                TECH_HUB = 1L << 31,
+                TECH_MUTHRCORE = 1L << 32,
+                TECH_RND = 1L << 33,
+                TECH_RND_HZDLAB = 1L << 34,
             }
         }
     }
