@@ -83,7 +83,6 @@ namespace CATHODE
             //Validate entry points and composite count
             if (Entries.Count == 0) return false;
             if (_entryPoints == null) _entryPoints = new ShortGuid[3];
-            if (_entryPoints[0].IsInvalid || _entryPoints[1].IsInvalid || _entryPoints[2].IsInvalid || Entries.Count == 0) return false;
 
             #region FIX_POTENTIAL_ERRORS
             //If we have composites but the entry points are broken, correct them first!
