@@ -474,9 +474,8 @@ namespace CathodeLib
 
             byte version = reader.ReadByte();
             if (version != FlowgraphMeta.VERSION)
-            {
-                //Add compatibility here when required
-            }
+                return;
+
             for (int i = 0; i < count; i++)
             {
                 FlowgraphMeta flowgraph = new FlowgraphMeta();
@@ -487,8 +486,6 @@ namespace CathodeLib
                 flowgraph.CanvasPosition = new PointF(reader.ReadSingle(), reader.ReadSingle());
                 flowgraph.CanvasScale = reader.ReadSingle();
 
-                flowgraph.UsesShortenedNames = reader.ReadBoolean();
-                flowgraph.IsUnfinished = reader.ReadBoolean();
                 flowgraph.SupportedLevels = (FlowgraphMeta.SupportedLevel)reader.ReadInt64();
 
                 int nodeMetaCount = reader.ReadInt32();
@@ -497,13 +494,7 @@ namespace CathodeLib
                     FlowgraphMeta.NodeMeta node = new FlowgraphMeta.NodeMeta();
                     node.EntityGUID = Utilities.Consume<ShortGuid>(reader);
                     node.NodeID = reader.ReadInt32();
-
                     node.Position = new Point(reader.ReadInt32(), reader.ReadInt32());
-
-                    int inCount = reader.ReadInt32();
-                    node.PinsIn = Utilities.ConsumeArray<ShortGuid>(reader, inCount).ToList();
-                    int outCount = reader.ReadInt32();
-                    node.PinsOut = Utilities.ConsumeArray<ShortGuid>(reader, outCount).ToList();
 
                     int connectionCount = reader.ReadInt32();
                     for (int z = 0; z < connectionCount; z++)
@@ -513,7 +504,7 @@ namespace CathodeLib
                         connection.ConnectedEntityGUID = Utilities.Consume<ShortGuid>(reader);
                         connection.ConnectedParameterGUID = Utilities.Consume<ShortGuid>(reader);
                         connection.ConnectedNodeID = reader.ReadInt32();
-                        node.Connections.Add(connection);
+                        node.ConnectionsOut.Add(connection);
                     }
 
                     flowgraph.Nodes.Add(node);
@@ -535,8 +526,6 @@ namespace CathodeLib
                 writer.Write(flowgraphs[i].CanvasPosition.Y);
                 writer.Write(flowgraphs[i].CanvasScale);
 
-                writer.Write(flowgraphs[i].UsesShortenedNames);
-                writer.Write(flowgraphs[i].IsUnfinished);
                 writer.Write((long)flowgraphs[i].SupportedLevels);
 
                 writer.Write(flowgraphs[i].Nodes.Count);
@@ -548,18 +537,13 @@ namespace CathodeLib
                     writer.Write(flowgraphs[i].Nodes[x].Position.X);
                     writer.Write(flowgraphs[i].Nodes[x].Position.Y);
 
-                    writer.Write(flowgraphs[i].Nodes[x].PinsIn.Count);
-                    Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].PinsIn);
-                    writer.Write(flowgraphs[i].Nodes[x].PinsOut.Count);
-                    Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].PinsOut);
-
-                    writer.Write(flowgraphs[i].Nodes[x].Connections.Count);
-                    for (int z = 0; z < flowgraphs[i].Nodes[x].Connections.Count; z++)
+                    writer.Write(flowgraphs[i].Nodes[x].ConnectionsOut.Count);
+                    for (int z = 0; z < flowgraphs[i].Nodes[x].ConnectionsOut.Count; z++)
                     {
-                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].Connections[z].ParameterGUID);
-                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].Connections[z].ConnectedEntityGUID);
-                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].Connections[z].ConnectedParameterGUID);
-                        writer.Write(flowgraphs[i].Nodes[x].Connections[z].ConnectedNodeID);
+                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsOut[z].ParameterGUID);
+                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsOut[z].ConnectedEntityGUID);
+                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsOut[z].ConnectedParameterGUID);
+                        writer.Write(flowgraphs[i].Nodes[x].ConnectionsOut[z].ConnectedNodeID);
                     }
                 }
             }
@@ -567,15 +551,14 @@ namespace CathodeLib
 
         public class FlowgraphMeta : IEquatable<FlowgraphMeta>
         {
-            public const byte VERSION = 1;
-            public bool UsesShortenedNames = false;
-            public bool IsUnfinished = false;
+            public const byte VERSION = 2;
 
             public ShortGuid CompositeGUID;
             public string Name;
 
             public PointF CanvasPosition;
             public float CanvasScale;
+
             public SupportedLevel SupportedLevels; //NOTE: Only used on vanilla layouts
 
             public List<NodeMeta> Nodes = new List<NodeMeta>();
@@ -605,13 +588,9 @@ namespace CathodeLib
             {
                 public ShortGuid EntityGUID;
                 public int NodeID;
-
                 public Point Position;
 
-                public List<ShortGuid> PinsIn = new List<ShortGuid>();
-                public List<ShortGuid> PinsOut = new List<ShortGuid>();
-
-                public List<ConnectionMeta> Connections = new List<ConnectionMeta>(); //NOTE: This is connections OUT of this node
+                public List<ConnectionMeta> ConnectionsOut = new List<ConnectionMeta>();
 
                 public bool Equals(NodeMeta other)
                 {
@@ -621,22 +600,18 @@ namespace CathodeLib
                     return EntityGUID.Equals(other.EntityGUID) &&
                            NodeID == other.NodeID &&
                            Position.Equals(other.Position) &&
-                           PinsIn.SequenceEqual(other.PinsIn) &&
-                           PinsOut.SequenceEqual(other.PinsOut) &&
-                           Connections.SequenceEqual(other.Connections);
+                           ConnectionsOut.SequenceEqual(other.ConnectionsOut);
                 }
 
                 public override bool Equals(object obj) => Equals(obj as NodeMeta);
 
                 public override int GetHashCode()
                 {
-                    int hashCode = -993535992;
+                    int hashCode = -779242009;
                     hashCode = hashCode * -1521134295 + EntityGUID.GetHashCode();
                     hashCode = hashCode * -1521134295 + NodeID.GetHashCode();
                     hashCode = hashCode * -1521134295 + Position.GetHashCode();
-                    hashCode = hashCode * -1521134295 + EqualityComparer<List<ShortGuid>>.Default.GetHashCode(PinsIn);
-                    hashCode = hashCode * -1521134295 + EqualityComparer<List<ShortGuid>>.Default.GetHashCode(PinsOut);
-                    hashCode = hashCode * -1521134295 + EqualityComparer<List<ConnectionMeta>>.Default.GetHashCode(Connections);
+                    hashCode = hashCode * -1521134295 + EqualityComparer<List<ConnectionMeta>>.Default.GetHashCode(ConnectionsOut);
                     return hashCode;
                 }
 
