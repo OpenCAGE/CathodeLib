@@ -137,6 +137,9 @@ namespace CathodeLib
                             case CustomTableType.COMPOSITE_PATHS:
                                 ((CompositePathTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomTableType.COMPOSITE_PAGE_HISTORY:
+                                ((CompositePageHistoryTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
 #if DEBUG
                         if (tableType == table)
@@ -218,6 +221,9 @@ namespace CathodeLib
                         break;
                     case CustomTableType.COMPOSITE_PATHS:
                         data = new CompositePathTable(reader);
+                        break;
+                    case CustomTableType.COMPOSITE_PAGE_HISTORY:
+                        data = new CompositePageHistoryTable(reader);
                         break;
                 }
             }
@@ -1119,6 +1125,39 @@ namespace CathodeLib
                     return fullPath.Substring(17);
             }
             return fullPath;
+        }
+    }
+    public class CompositePageHistoryTable : CustomTable.Table
+    {
+        public CompositePageHistoryTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.COMPOSITE_PAGE_HISTORY;
+        }
+
+        public Dictionary<ShortGuid, string> last_composite_page;
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+            {
+                last_composite_page = new Dictionary<ShortGuid, string>();
+                return;
+            }
+
+            int compositeCount = reader.ReadInt32();
+            last_composite_page = new Dictionary<ShortGuid, string>(compositeCount);
+            for (int i = 0; i < compositeCount; i++)
+                last_composite_page.Add(Utilities.Consume<ShortGuid>(reader), reader.ReadString());
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(last_composite_page.Count);
+            foreach (KeyValuePair<ShortGuid, string> composites in last_composite_page)
+            {
+                Utilities.Write<ShortGuid>(writer, composites.Key);
+                writer.Write(composites.Value);
+            }
         }
     }
 }

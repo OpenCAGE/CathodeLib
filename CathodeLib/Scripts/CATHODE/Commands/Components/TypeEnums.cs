@@ -1172,6 +1172,7 @@ namespace CATHODE.Scripting.Internal
         CATHODE_ENTITY_INFO,                    // Database of available Cathode entities
         CATHODE_ENUM_INFO,                      // Database of available Cathode enums
         COMPOSITE_PATHS,                        // Full properly-cased paths for vanilla composites
+        COMPOSITE_PAGE_HISTORY,                 // Stores the previously opened flowgraph page for a composite
 
         //Add new entries here
 
