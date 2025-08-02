@@ -507,6 +507,16 @@ namespace CathodeLib
                         node.ConnectionsOut.Add(connection);
                     }
 
+                    bool hasUnlinkedPins = reader.ReadBoolean();
+                    if (hasUnlinkedPins)
+                    {
+                        FlowgraphMeta.NodeMeta.UnlinkedPinMeta pin = new FlowgraphMeta.NodeMeta.UnlinkedPinMeta();
+                        pin.ParameterGUID = Utilities.Consume<ShortGuid>(reader);
+                        pin.PinLocation = reader.ReadByte();
+                        pin.PinStyle = reader.ReadByte();
+                        node.UnlinkedPins.Add(pin);
+                    }
+
                     flowgraph.Nodes.Add(node);
                 }
                 flowgraphs.Add(flowgraph);
@@ -545,13 +555,29 @@ namespace CathodeLib
                         Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsOut[z].ConnectedParameterGUID);
                         writer.Write(flowgraphs[i].Nodes[x].ConnectionsOut[z].ConnectedNodeID);
                     }
+
+                    if (flowgraphs[i].Nodes[x].UnlinkedPins.Count == 0)
+                    {
+                        writer.Write(false);
+                    }
+                    else
+                    {
+                        writer.Write(true);
+                        writer.Write(flowgraphs[i].Nodes[x].UnlinkedPins.Count);
+                        for (int m = 0; m < flowgraphs[i].Nodes[x].UnlinkedPins.Count; m++)
+                        {
+                            Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].UnlinkedPins[m].ParameterGUID);
+                            writer.Write(flowgraphs[i].Nodes[x].UnlinkedPins[m].PinLocation);
+                            writer.Write(flowgraphs[i].Nodes[x].UnlinkedPins[m].PinStyle);
+                        }
+                    }
                 }
             }
         }
 
         public class FlowgraphMeta : IEquatable<FlowgraphMeta>
         {
-            public const byte VERSION = 2;
+            public const byte VERSION = 3;
 
             public ShortGuid CompositeGUID;
             public string Name;
@@ -591,6 +617,7 @@ namespace CathodeLib
                 public Point Position;
 
                 public List<ConnectionMeta> ConnectionsOut = new List<ConnectionMeta>();
+                public List<UnlinkedPinMeta> UnlinkedPins = new List<UnlinkedPinMeta>(); //NOTE: Only used on non-vanilla layouts
 
                 public bool Equals(NodeMeta other)
                 {
@@ -644,6 +671,13 @@ namespace CathodeLib
                         hashCode = hashCode * -1521134295 + ConnectedNodeID.GetHashCode();
                         return hashCode;
                     }
+                }
+
+                public class UnlinkedPinMeta
+                {
+                    public ShortGuid ParameterGUID;
+                    public byte PinLocation;
+                    public byte PinStyle;
                 }
             }
 
