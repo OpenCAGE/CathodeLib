@@ -27,14 +27,14 @@ namespace CATHODE.Scripting.Internal.Parsers
             RESOURCE_GUID = ShortGuidUtils.Generate("resource");
         }
 
-        public static void Read(byte[] content, out ShortGuid[] EntryPoints, out List<Composite> Entries)
+        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries)
         {
             EntryPoints = new ShortGuid[3];
             Entries = new List<Composite>();
 
             Tuple<uint, int>[] command_entries;
             byte[] data_buffer;
-            using (BinaryReader reader = new BinaryReader(new MemoryStream(content)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 int filesize = reader.ReadInt32();
                 command_entries = new Tuple<uint, int>[reader.ReadInt32()]; // data_id / offset

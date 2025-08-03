@@ -15,12 +15,15 @@ namespace CATHODE
     {
         public List<AssetDefinition> Entries = new List<AssetDefinition>();
         public static new Implementation Implementation = Implementation.NONE;
+
         public CustomCharacterAssetData(string path) : base(path) { }
+        public CustomCharacterAssetData(MemoryStream stream, string path = "") : base(stream, path) { }
+        public CustomCharacterAssetData(byte[] data, string path = "") : base(data, path) { }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 reader.BaseStream.Position += 4; //version
                 int count = reader.ReadInt32();

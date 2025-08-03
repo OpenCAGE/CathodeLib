@@ -18,11 +18,16 @@ namespace CATHODE
     {
         public Dictionary<string, string> Entries = new Dictionary<string, string>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
         public TextDB(string path) : base(path) { }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
+            //NOTE: Loading via byte[] or MemoryStream is not currently supported. Must be loaded via disk from a filepath!
+            if (_filepath == "")
+                return false;
+
             CurrentReadState state = CurrentReadState.NONE;
             string content = File.ReadAllText(_filepath);
             string id = "";

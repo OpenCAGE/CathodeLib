@@ -16,16 +16,19 @@ namespace CATHODE
     {
         public List<NetworkInfo> Entries = new List<NetworkInfo>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
         public SoundNodeNetwork(string path) : base(path) { }
+        public SoundNodeNetwork(MemoryStream stream, string path = "") : base(stream, path) { }
+        public SoundNodeNetwork(byte[] data, string path = "") : base(data, path) { }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
             var rawNetworkLinks = new List<(NetworkInfo owner, ushort netId, uint guid, ushort nodeId, ushort linkedNodeId)>();
             var rawNetworkPaths = new List<(NetworkInfo owner, ushort netId, List<uint> guids)>();
             var rawNodeLinks = new List<(NetworkNode owner, ushort linkedNodeId, byte pathDist, byte obstrDist)>();
 
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 reader.BaseStream.Position += 4; //version
                 int numNodes = reader.ReadUInt16();

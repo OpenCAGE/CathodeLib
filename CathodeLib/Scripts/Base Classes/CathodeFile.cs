@@ -27,18 +27,39 @@ namespace CathodeLib
             _loaded = Load();
         }
 
+        public CathodeFile(MemoryStream stream, string virtualPath = "")
+        {
+            _filepath = virtualPath;
+            _loaded = Load(stream);
+        }
+
+        public CathodeFile(byte[] data, string virtualPath = "")
+        {
+            _filepath = virtualPath;
+            using (var stream = new MemoryStream(data))
+            {
+                _loaded = Load(stream);
+            }
+        }
+
         #region EXTERNAL_FUNCS
         /* Try and load the file, if it exists */
-        private bool Load()
+        protected bool Load()
+        {
+            return Load(File.Exists(_filepath) ? new MemoryStream(File.ReadAllBytes(_filepath)) : null);
+        }
+
+        /* Load from MemoryStream */
+        protected bool Load(MemoryStream stream)
         {
             OnLoadBegin?.Invoke(_filepath);
-            if (!File.Exists(_filepath)) return false;
+            if (stream == null || stream.Length == 0) return false;
 
 #if !CATHODE_FAIL_HARD
             try
             {
 #endif
-                if (LoadInternal())
+                if (LoadInternal(stream))
                 {
                     OnLoadSuccess?.Invoke(_filepath);
                     return true;
@@ -57,6 +78,7 @@ namespace CathodeLib
         public bool Save()
         {
             OnSaveBegin?.Invoke(_filepath);
+            if (_filepath == "") return false;
 
 #if !CATHODE_FAIL_HARD
             try
@@ -90,7 +112,7 @@ namespace CathodeLib
 
         #region TO_OVERRIDE
         /* Virtual function to override in inherited classes for loading the file */
-        protected virtual bool LoadInternal()
+        protected virtual bool LoadInternal(MemoryStream stream)
         {
             Console.WriteLine("WARNING: This class does not implement loading functionality!");
             return false;

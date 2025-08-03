@@ -15,9 +15,10 @@ namespace CATHODE.Scripting.Internal.Parsers
 {
     public static class CommandsPAK
     {
-        public static void Read(byte[] content, out ShortGuid[] EntryPoints, out List<Composite> Entries)
+        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries)
         {
-            using (BinaryReader reader = new BinaryReader(new MemoryStream(content)))
+            byte[] content = stream.ToArray(); //NOTE: this gives us quite a memory overhead, which should probably be changed.
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 //Read entry points
                 EntryPoints = new ShortGuid[3];

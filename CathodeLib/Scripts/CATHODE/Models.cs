@@ -16,6 +16,7 @@ namespace CATHODE
     {
         public List<CS2> Entries = new List<CS2>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
         public Models(string path) : base(path) { }
 
         private List<CS2.Component.LOD.Submesh> _writeList = new List<CS2.Component.LOD.Submesh>();
@@ -29,8 +30,12 @@ namespace CATHODE
 
         #region FILE_IO
         /* Load the file */
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
+            //NOTE: Loading via byte[] or MemoryStream is not currently supported. Must be loaded via disk from a filepath!
+            if (_filepath == "")
+                return false;
+
             _filepathBIN = _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "MODELS_" + Path.GetFileName(_filepath).Substring(0, Path.GetFileName(_filepath).Length - 11) + ".BIN";
 
             if (!File.Exists(_filepathBIN)) return false;

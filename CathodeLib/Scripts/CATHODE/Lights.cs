@@ -16,16 +16,17 @@ namespace CATHODE.EXPERIMENTAL
     {
         public List<int> Indexes = new List<int>();
         public List<Node> Values = new List<Node>();
-
         public DirectionalLight Sun = new DirectionalLight();
-
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
+
         public Lights(string path) : base(path) { }
+        public Lights(MemoryStream stream, string path = "") : base(stream, path) { }
+        public Lights(byte[] data, string path = "") : base(data, path) { }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 reader.BaseStream.Position += 8;
 

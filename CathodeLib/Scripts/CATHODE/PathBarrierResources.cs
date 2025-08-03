@@ -11,12 +11,15 @@ namespace CATHODE
     {
         public List<Entry> Entries = new List<Entry>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
         public PathBarrierResources(string path) : base(path) { }
+        public PathBarrierResources(MemoryStream stream, string path = "") : base(stream, path) { }
+        public PathBarrierResources(byte[] data, string path = "") : base(data, path) { }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 reader.BaseStream.Position = 4; //59
                 int entryCount = reader.ReadInt32();

@@ -15,15 +15,18 @@ namespace CATHODE
     public class AlphaLightLevel : CathodeFile
     {
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
         public AlphaLightLevel(string path) : base(path) { }
+        public AlphaLightLevel(MemoryStream stream, string path = "") : base(stream, path) { }
+        public AlphaLightLevel(byte[] data, string path = "") : base(data, path) { }
 
         public Vector2 Resolution;
         public byte[] ImageData; // this is in A16B16G16R16F format
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 reader.BaseStream.Position += 8;
                 Resolution = new Vector2(reader.ReadInt32(), reader.ReadInt32());

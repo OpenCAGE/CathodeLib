@@ -17,12 +17,15 @@ namespace CATHODE
 
         public List<string> Entries = new List<string>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
         public SoundBankData(string path) : base(path) { }
+        public SoundBankData(MemoryStream stream, string path = "") : base(stream, path) { }
+        public SoundBankData(byte[] data, string path = "") : base(data, path) { }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 reader.BaseStream.Position += 4;
                 int entryCount = reader.ReadInt32();

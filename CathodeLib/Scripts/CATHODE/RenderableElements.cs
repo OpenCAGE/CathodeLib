@@ -10,12 +10,15 @@ namespace CATHODE
     {
         public List<Element> Entries = new List<Element>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
         public RenderableElements(string path) : base(path) { }
+        public RenderableElements(MemoryStream stream, string path = "") : base(stream, path) { }
+        public RenderableElements(byte[] data, string path = "") : base(data, path) { }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 int entryCount = reader.ReadInt32();
                 for (int i = 0; i < entryCount; i++)

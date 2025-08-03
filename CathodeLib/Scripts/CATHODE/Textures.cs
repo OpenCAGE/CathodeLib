@@ -12,6 +12,7 @@ namespace CATHODE
     {
         public List<TEX4> Entries = new List<TEX4>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
         public Textures(string path) : base(path) { }
 
         public List<TEX4> _writeList = new List<TEX4>();
@@ -24,8 +25,12 @@ namespace CATHODE
         }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
+            //NOTE: Loading via byte[] or MemoryStream is not currently supported. Must be loaded via disk from a filepath!
+            if (_filepath == "")
+                return false;
+
             if (Path.GetFileName(_filepath).Substring(0, 5).ToUpper() != "LEVEL")
                 _filepathBIN = _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "GLOBAL_TEXTURES_HEADERS.ALL.BIN";
             else

@@ -14,12 +14,15 @@ namespace CATHODE
     {
         public Dictionary<uint, string> Entries = new Dictionary<uint, string>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
         public AnimationStrings(string path) : base(path) { }
+        public AnimationStrings(MemoryStream stream, string path = "") : base(stream, path) { }
+        public AnimationStrings(byte[] data, string path = "") : base(data, path) { }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 int entryCount = reader.ReadInt32();
                 int stringCount = reader.ReadInt32();

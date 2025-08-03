@@ -26,8 +26,12 @@ namespace CATHODE
         }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
+            //NOTE: Loading via byte[] or MemoryStream is not currently supported. Must be loaded via disk from a filepath!
+            if (_filepath == "")
+                return false;
+
             string trimmed = _filepath.Substring(0, _filepath.Length - 4);
             _filepathBIN = trimmed + "_BIN.PAK";
             _filepathIDX = trimmed + "_IDX_REMAP.PAK";

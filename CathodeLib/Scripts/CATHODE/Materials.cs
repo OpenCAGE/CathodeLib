@@ -12,6 +12,7 @@ namespace CATHODE
     {
         public List<Material> Entries = new List<Material>();
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
+
         public Materials(string path) : base(path) { }
 
         public List<byte[]> CSTData { get { return _cstData; } } //WIP
@@ -25,8 +26,12 @@ namespace CATHODE
         private string _filepathCST;
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
+            //NOTE: Loading via byte[] or MemoryStream is not currently supported. Must be loaded via disk from a filepath!
+            if (_filepath == "")
+                return false;
+
             _filepathCST = _filepath.Substring(0, _filepath.Length - 3) + "CST";
             if (!File.Exists(_filepathCST)) return false;
 

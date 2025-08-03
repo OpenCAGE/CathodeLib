@@ -24,7 +24,16 @@ namespace CATHODE
     {
         public List<Composite> Entries = new List<Composite>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
         public Commands(string path) : base(path)
+        {
+            Utils = new CommandsUtils(this);
+        }
+        public Commands(MemoryStream stream, string path = "") : base(stream, path)
+        {
+            Utils = new CommandsUtils(this);
+        }
+        public Commands(byte[] data, string path = "") : base(data, path)
         {
             Utils = new CommandsUtils(this);
         }
@@ -50,16 +59,16 @@ namespace CATHODE
         public readonly CommandsUtils Utils;
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            byte[] content = File.ReadAllBytes(_filepath);
+            byte[] content = stream.ToArray();
             switch (Path.GetExtension(_filepath).ToUpper())
             {
                 case ".PAK":
-                    CommandsPAK.Read(content, out _entryPoints, out Entries);
+                    CommandsPAK.Read(stream, out _entryPoints, out Entries);
                     break;
                 case ".BIN":
-                    CommandsBIN.Read(content, out _entryPoints, out Entries);
+                    CommandsBIN.Read(stream, out _entryPoints, out Entries);
                     break;
                 default:
                     return false;

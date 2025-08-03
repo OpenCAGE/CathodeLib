@@ -25,12 +25,15 @@ namespace CATHODE.EXPERIMENTAL
         public dtOffMeshConnection[] OffMeshConnections;
 
         public static new Implementation Implementation = Implementation.LOAD;
+
         public NavigationMesh(string path) : base(path) { }
+        public NavigationMesh(MemoryStream stream, string path = "") : base(stream, path) { }
+        public NavigationMesh(byte[] data, string path = "") : base(data, path) { }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 Header = Utilities.Consume<dtMeshHeader>(reader);
                 Vertices = Utilities.ConsumeArray<Vector3>(reader, Header.vertCount);

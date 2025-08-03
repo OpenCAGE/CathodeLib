@@ -21,12 +21,15 @@ namespace CATHODE
     {
         public List<WeightedCollision> Entries = new List<WeightedCollision>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
         public Collisions(string path) : base(path) { }
+        public Collisions(MemoryStream stream, string path = "") : base(stream, path) { }
+        public Collisions(byte[] data, string path = "") : base(data, path) { }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (var reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (var reader = new BinaryReader(stream))
             {
                 //remove these if exceptions dont throw
                 byte[] magic = reader.ReadBytes(4);

@@ -20,27 +20,30 @@ namespace CATHODE
         public SkeleDB(string path, AnimationStrings strings) : base(path)
         {
             _strings = strings;
-
-            //TEMP
-            OnLoadBegin?.Invoke(_filepath);
-            if (LoadInternal())
-            {
-                _loaded = true;
-                OnLoadSuccess?.Invoke(_filepath);
-            }
+            _loaded = Load();
+        }
+        public SkeleDB(MemoryStream stream, AnimationStrings strings, string path = "") : base(stream, path)
+        {
+            _strings = strings;
+            _loaded = Load();
+        }
+        public SkeleDB(byte[] data, AnimationStrings strings, string path = "") : base(data, path)
+        {
+            _strings = strings;
+            _loaded = Load();
         }
 
         private AnimationStrings _strings;
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
             if (_strings == null)
                 return false;
 
             Entries = new Data();
 
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 int pairCount = reader.ReadInt32();
                 int idCount = reader.ReadInt32();
