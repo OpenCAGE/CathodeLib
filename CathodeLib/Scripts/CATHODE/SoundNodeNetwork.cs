@@ -1,4 +1,4 @@
-﻿using CATHODE.Scripting;
+using CATHODE.Scripting;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
@@ -14,107 +14,104 @@ namespace CATHODE
     /* DATA/ENV/PRODUCTION/x/WORLD/SNDNODENETWORK.DAT */
     public class SoundNodeNetwork : CathodeFile
     {
-        public List<NetworkInfo> NetworkInfos = new List<NetworkInfo>();
-        public List<NetworkNode> AllNodes = new List<NetworkNode>(); //todo: should just generate this automatically
+        public List<NetworkInfo> Entries = new List<NetworkInfo>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public SoundNodeNetwork(string path) : base(path) { }
 
         #region FILE_IO
         override protected bool LoadInternal()
         {
+            var rawNetworkLinks = new List<(NetworkInfo owner, ushort netId, uint guid, ushort nodeId, ushort linkedNodeId)>();
+            var rawNetworkPaths = new List<(NetworkInfo owner, ushort netId, List<uint> guids)>();
+            var rawNodeLinks = new List<(NetworkNode owner, ushort linkedNodeId, byte pathDist, byte obstrDist)>();
+
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
                 reader.BaseStream.Position += 4; //version
                 int numNodes = reader.ReadUInt16();
                 int numNetworks = reader.ReadUInt16();
 
+                List<NetworkNode> allNodes = new List<NetworkNode>(numNodes);
+                Entries = new List<NetworkInfo>(numNetworks);
+
                 for (int i = 0; i < numNetworks; i++)
                 {
-                    var networkInfo = new NetworkInfo();
-
+                    NetworkInfo networkInfo = new NetworkInfo();
                     ushort nameSize = reader.ReadUInt16();
                     networkInfo.NetworkName = Encoding.ASCII.GetString(reader.ReadBytes(nameSize));
-
                     networkInfo.ReverbIndex = reader.ReadUInt16();
                     networkInfo.EnterEventIndex = (short)reader.ReadUInt16();
                     networkInfo.ExitEventIndex = (short)reader.ReadUInt16();
                     networkInfo.RoomSizeValue = reader.ReadUInt32();
                     networkInfo.LinkedNetworkScalar = reader.ReadSingle();
-
                     networkInfo.NetworkBottomLeft = Utilities.Consume<Vector3>(reader);
                     networkInfo.NetworkTopRight = Utilities.Consume<Vector3>(reader);
+                    reader.BaseStream.Position += 2; //node/link counts
 
-                    ushort nodeCountInNetwork = reader.ReadUInt16();
                     ushort linkedNetworkCount = reader.ReadUInt16();
-
                     for (int j = 0; j < linkedNetworkCount; j++)
-                    {
-                        networkInfo.LinkedNetworks.Add(new NetworkLinkData
-                        {
-                            LinkedNetworkId = reader.ReadUInt16(),
-                            BarrierInstanceGuid = reader.ReadUInt32(),
-                            NodeId = reader.ReadUInt16(),
-                            LinkedNodeId = reader.ReadUInt16()
-                        });
-                    }
+                        rawNetworkLinks.Add((networkInfo, reader.ReadUInt16(), reader.ReadUInt32(), reader.ReadUInt16(), reader.ReadUInt16()));
 
                     ushort pathCount = reader.ReadUInt16();
                     for (int j = 0; j < pathCount; j++)
                     {
-                        var path = new NetworkPath();
-                        path.NetworkId = reader.ReadUInt16();
+                        ushort netId = reader.ReadUInt16();
                         ushort barrierCount = reader.ReadUInt16();
-                        for (int k = 0; k < barrierCount; k++)
-                        {
-                            path.BarrierGuids.Add(reader.ReadUInt32());
-                        }
-                        networkInfo.NetworkPaths.Add(path);
+                        var guids = new List<uint>(barrierCount);
+                        for (int k = 0; k < barrierCount; k++) guids.Add(reader.ReadUInt32());
+                        rawNetworkPaths.Add((networkInfo, netId, guids));
                     }
-
-                    NetworkInfos.Add(networkInfo);
+                    Entries.Add(networkInfo);
                 }
 
                 for (int i = 0; i < numNodes; i++)
                 {
-                    var node = new NetworkNode
-                    {
-                        SoundNetworkId = reader.ReadUInt16(),
-                        Position = Utilities.Consume<Vector3>(reader)
-                    };
+                    var networkOwner = Entries[reader.ReadUInt16()];
+                    NetworkNode newNode = new NetworkNode(networkOwner, Utilities.Consume<Vector3>(reader));
+                    networkOwner.Nodes.Add(newNode);
+                    allNodes.Add(newNode);
 
                     ushort linkedNodeCount = reader.ReadUInt16();
                     for (int j = 0; j < linkedNodeCount; j++)
-                    {
-                        node.NodeLinks.Add(new NodeLinkData
-                        {
-                            LinkedNodeId = reader.ReadUInt16(),
-                            PathDistance = reader.ReadByte(),
-                            ObstructedDistance = reader.ReadByte()
-                        });
-                    }
-                    AllNodes.Add(node);
+                        rawNodeLinks.Add((newNode, reader.ReadUInt16(), reader.ReadByte(), reader.ReadByte()));
                 }
 
-                foreach (var node in AllNodes)
-                {
-                    if (node.SoundNetworkId < NetworkInfos.Count)
-                    {
-                        NetworkInfos[node.SoundNetworkId].Nodes.Add(node);
-                    }
-                }
+                foreach (var link in rawNetworkLinks)
+                    link.owner.LinkedNetworks.Add(new NetworkLinkData(Entries[link.netId], link.guid, allNodes[link.nodeId], allNodes[link.linkedNodeId]));
+
+                foreach (var path in rawNetworkPaths)
+                    path.owner.NetworkPaths.Add(new NetworkPath(Entries[path.netId], path.guids));
+
+                foreach (var link in rawNodeLinks)
+                    link.owner.NodeLinks.Add(new NodeLinkData(allNodes[link.linkedNodeId], link.pathDist, link.obstrDist));
             }
+
             return true;
         }
 
         override protected bool SaveInternal()
         {
+            List<NetworkNode> allNodes = new List<NetworkNode>();
+            Dictionary<NetworkNode, ushort> nodeToIndex = new Dictionary<NetworkNode, ushort>();
+            Dictionary<NetworkInfo, ushort> networkToIndex = new Dictionary<NetworkInfo, ushort>();
+
+            for (ushort i = 0; i < Entries.Count; i++)
+            {
+                networkToIndex.Add(Entries[i], i);
+                foreach (var node in Entries[i].Nodes)
+                {
+                    nodeToIndex.Add(node, (ushort)allNodes.Count);
+                    allNodes.Add(node);
+                }
+            }
+
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.Write(14);
-                writer.Write((ushort)AllNodes.Count);
-                writer.Write((ushort)NetworkInfos.Count);
+                writer.Write((ushort)allNodes.Count);
+                writer.Write((ushort)Entries.Count);
 
-                foreach (var networkInfo in NetworkInfos)
+                foreach (var networkInfo in Entries)
                 {
                     byte[] nameBytes = Encoding.ASCII.GetBytes(networkInfo.NetworkName);
                     writer.Write((ushort)nameBytes.Length);
@@ -134,16 +131,16 @@ namespace CATHODE
 
                     foreach (var link in networkInfo.LinkedNetworks)
                     {
-                        writer.Write(link.LinkedNetworkId);
+                        writer.Write(networkToIndex[link.LinkedNetwork]);
                         writer.Write(link.BarrierInstanceGuid);
-                        writer.Write(link.NodeId);
-                        writer.Write(link.LinkedNodeId);
+                        writer.Write(nodeToIndex[link.Node]);
+                        writer.Write(nodeToIndex[link.LinkedNode]);
                     }
 
                     writer.Write((ushort)networkInfo.NetworkPaths.Count);
                     foreach (var path in networkInfo.NetworkPaths)
                     {
-                        writer.Write(path.NetworkId);
+                        writer.Write(networkToIndex[path.Network]);
                         writer.Write((ushort)path.BarrierGuids.Count);
                         foreach (uint guid in path.BarrierGuids)
                         {
@@ -152,16 +149,16 @@ namespace CATHODE
                     }
                 }
 
-                foreach (var node in AllNodes)
+                foreach (var node in allNodes)
                 {
-                    writer.Write(node.SoundNetworkId);
+                    writer.Write(networkToIndex[node.SoundNetwork]);
                     Utilities.Write<Vector3>(writer, node.Position);
                     writer.Write((ushort)node.NodeLinks.Count);
 
                     foreach (var link in node.NodeLinks)
                     {
-                        writer.Write(link.LinkedNodeId);
-                        writer.Write(link.PathDistance); 
+                        writer.Write(nodeToIndex[link.LinkedNode]);
+                        writer.Write(link.PathDistance);
                         writer.Write(link.ObstructedDistance);
                     }
                 }
@@ -173,30 +170,38 @@ namespace CATHODE
         #region STRUCTURES
         public class NodeLinkData
         {
-            public ushort LinkedNodeId;
+            public NetworkNode LinkedNode;
             public byte PathDistance;
             public byte ObstructedDistance;
+
+            public NodeLinkData(NetworkNode node, byte path, byte obstructed) { LinkedNode = node; PathDistance = path; ObstructedDistance = obstructed; }
         }
 
         public class NetworkNode
         {
-            public ushort SoundNetworkId;
+            public NetworkInfo SoundNetwork;
             public Vector3 Position;
             public List<NodeLinkData> NodeLinks = new List<NodeLinkData>();
+
+            public NetworkNode(NetworkInfo net, Vector3 pos) { SoundNetwork = net; Position = pos; }
         }
 
         public class NetworkLinkData
         {
-            public ushort LinkedNetworkId;
+            public NetworkInfo LinkedNetwork;
             public uint BarrierInstanceGuid; //sound barrier collision
-            public ushort NodeId;
-            public ushort LinkedNodeId;
+            public NetworkNode Node;
+            public NetworkNode LinkedNode;
+
+            public NetworkLinkData(NetworkInfo net, uint guid, NetworkNode node, NetworkNode linkedNode) { LinkedNetwork = net; BarrierInstanceGuid = guid; Node = node; LinkedNode = linkedNode; }
         }
 
         public class NetworkPath
         {
-            public ushort NetworkId;
+            public NetworkInfo Network;
             public List<uint> BarrierGuids = new List<uint>(); //sound barrier entities
+
+            public NetworkPath(NetworkInfo net, List<uint> guids) { Network = net; BarrierGuids = guids; }
         }
 
         public class NetworkInfo
