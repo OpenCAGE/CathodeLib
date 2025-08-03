@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Xml.Linq;
 
 namespace CATHODE
@@ -13,228 +14,93 @@ namespace CATHODE
     /* DATA/ENV/PRODUCTION/x/WORLD/SNDNODENETWORK.DAT */
     public class SoundNodeNetwork : CathodeFile
     {
-        private List<string> Entries = new List<string>();
-        public static new Implementation Implementation = Implementation.NONE;
+        public List<NetworkInfo> NetworkInfos = new List<NetworkInfo>();
+        public List<NetworkNode> AllNodes = new List<NetworkNode>(); //todo: should just generate this automatically
+        public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public SoundNodeNetwork(string path) : base(path) { }
-
-        private int _test = 0;
-        private int test
-        {
-            set
-            {
-                _test = value;
-                Console.WriteLine(_test);
-            }
-            get
-            {
-                return _test;
-            }
-        }
-        private float _testf = 0;
-        private float testf
-        {
-            set
-            {
-                _testf = value;
-                Console.WriteLine(_testf);
-            }
-            get
-            {
-                return _testf;
-            }
-        }
-
-        //This file is seemingly somewhat ordered by size? Biggest listener networks get their headers written first ish.
 
         #region FILE_IO
         override protected bool LoadInternal()
         {
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
-                reader.BaseStream.Position += 4;
-                int count1 = reader.ReadInt16();
-                int entryCount = reader.ReadInt16();
-                for (int x = 0; x < entryCount; x++)
+                reader.BaseStream.Position += 4; //version
+                int numNodes = reader.ReadUInt16();
+                int numNetworks = reader.ReadUInt16();
+
+                for (int i = 0; i < numNetworks; i++)
                 {
-                    if (Entries.Count != 0 && Entries[Entries.Count - 1] == "Corridor Junction Area")
+                    var networkInfo = new NetworkInfo();
+
+                    ushort nameSize = reader.ReadUInt16();
+                    networkInfo.NetworkName = Encoding.ASCII.GetString(reader.ReadBytes(nameSize));
+
+                    networkInfo.ReverbIndex = reader.ReadUInt16();
+                    networkInfo.EnterEventIndex = (short)reader.ReadUInt16();
+                    networkInfo.ExitEventIndex = (short)reader.ReadUInt16();
+                    networkInfo.RoomSizeValue = reader.ReadUInt32();
+                    networkInfo.LinkedNetworkScalar = reader.ReadSingle();
+
+                    networkInfo.NetworkBottomLeft = Utilities.Consume<Vector3>(reader);
+                    networkInfo.NetworkTopRight = Utilities.Consume<Vector3>(reader);
+
+                    ushort nodeCountInNetwork = reader.ReadUInt16();
+                    ushort linkedNetworkCount = reader.ReadUInt16();
+
+                    for (int j = 0; j < linkedNetworkCount; j++)
                     {
-                        string sddsf = "";
+                        networkInfo.LinkedNetworks.Add(new NetworkLinkData
+                        {
+                            LinkedNetworkId = reader.ReadUInt16(),
+                            BarrierInstanceGuid = reader.ReadUInt32(),
+                            NodeId = reader.ReadUInt16(),
+                            LinkedNodeId = reader.ReadUInt16()
+                        });
                     }
 
-                    int strLength = reader.ReadInt16();
-                    string listenerName = ""; //confirmed via dev screenshot
-                    for (int i = 0; i < strLength; i++) listenerName += reader.ReadChar();
-                    Entries.Add(listenerName);
-
-                    //start header
-                    Console.WriteLine("start header");
-
-                    int typeID = reader.ReadInt16();
-
-                    test = reader.ReadInt16();  
-                    test = reader.ReadInt16();  
-
-                    test = reader.ReadInt16();  
-                    test = reader.ReadInt16();  
-
-                    testf = reader.ReadSingle(); //always 1?
-                    if (testf != 1)
+                    ushort pathCount = reader.ReadUInt16();
+                    for (int j = 0; j < pathCount; j++)
                     {
-                        throw new Exception("");
+                        var path = new NetworkPath();
+                        path.NetworkId = reader.ReadUInt16();
+                        ushort barrierCount = reader.ReadUInt16();
+                        for (int k = 0; k < barrierCount; k++)
+                        {
+                            path.BarrierGuids.Add(reader.ReadUInt32());
+                        }
+                        networkInfo.NetworkPaths.Add(path);
                     }
 
-                    testf = reader.ReadSingle();
-                    testf = reader.ReadSingle();
-                    testf = reader.ReadSingle();
-
-                    testf = reader.ReadSingle();
-                    testf = reader.ReadSingle();
-                    testf = reader.ReadSingle();
-
-                    //Somewhere here we should have an Ambience sound event (maybe start/stop?)
-
-                    //I'm unsure if these are actually int16
-                    test = reader.ReadInt16();
-                    test = reader.ReadInt16();
-                    test = reader.ReadInt16();
-
-                    if (test == 0)
-                    {
-                        string sdfdf = "";
-                        continue; //44 bytes
-                    }
-                    //^ doing this gets us a bit further on BSP_TORRENS, but we still crash after "Torrens Bridge Corridor" due to something there.
-
-                    //I'm unsure if these are actually int16
-                    test = reader.ReadInt16();
-                    test = reader.ReadInt16();
-
-                    Console.WriteLine("Header Over");
-
-                    //end next bit (48) <- this is all useful above here but just skipping for now, figure out datatypes from ps3 dump
-
-                    //TODO: typeID is not the type ID as i expected, since two type 0's load differently on tech_hub
-
-                    switch (typeID)
-                    {
-                        //case 0:
-                         //   reader.BaseStream.Position = 13044; //temp hack
-                         //   break;
-                        default:
-                            //if (typeID == 0)
-                            //{
-                            //    string dafssdf = "";
-                            //}
-
-                            Console.WriteLine("!!!! loading type: " + typeID);
-                            LoadRecursive(reader);
-                            break;
-                    }
+                    NetworkInfos.Add(networkInfo);
                 }
 
-
-
-
-                //footer? noticing a pattern here
-
-                test = reader.ReadInt32(); 
-                test = reader.ReadInt32();
-                test = reader.ReadInt32();
-
-                test = reader.ReadInt16();
-                test = reader.ReadInt16();
-                test = reader.ReadByte();
-                test = reader.ReadByte();
-
-                test = reader.ReadInt16();
-                test = reader.ReadByte();
-                test = reader.ReadByte();
-
-                test = reader.ReadInt16();
-                test = reader.ReadByte();
-                test = reader.ReadByte();
-
-                test = reader.ReadInt16();
-                test = reader.ReadByte();
-                test = reader.ReadByte();
-
-                test = reader.ReadInt16();
-                test = reader.ReadByte();
-                test = reader.ReadByte();
-
-                test = reader.ReadInt16();
-
-                // --
-
-                test = reader.ReadInt32();
-                test = reader.ReadInt32();
-                test = reader.ReadInt32();
-
-                test = reader.ReadInt16();
-                test = reader.ReadInt16();
-                test = reader.ReadByte();
-                test = reader.ReadByte();
-
-                test = reader.ReadInt16();
-                test = reader.ReadByte();
-                test = reader.ReadByte();
-
-                test = reader.ReadInt16();
-                test = reader.ReadByte();
-                test = reader.ReadByte();
-
-                test = reader.ReadInt16();
-                test = reader.ReadByte();
-                test = reader.ReadByte();
-
-                test = reader.ReadInt16();
-
-                // --
-
-                test = reader.ReadInt32();
-                test = reader.ReadInt32();
-                test = reader.ReadInt32();
-
-                test = reader.ReadInt16();
-                test = reader.ReadInt16();
-                test = reader.ReadByte();
-                test = reader.ReadByte();
-
-                test = reader.ReadInt16();
-                test = reader.ReadByte();
-                test = reader.ReadByte();
-
-                test = reader.ReadInt16();
-                test = reader.ReadByte();
-                test = reader.ReadByte();
-
-                test = reader.ReadInt16();
-
-                // ---
-
-                test = reader.ReadInt32();
-                test = reader.ReadInt32();
-                test = reader.ReadInt32();
-                test = reader.ReadInt16();
-                test = reader.ReadInt16();
-
-                string bruh = "";
-
-                //38
-                reader.BaseStream.Position += 38;
-
-                int a = reader.ReadInt16();
-                int b = reader.ReadInt16();
-                int c = reader.ReadInt16();
-                ShortGuid d = Utilities.Consume<ShortGuid>(reader);
-                int e = reader.ReadInt32();
-
-
-                for (int i = 0; i < 999; i++)
+                for (int i = 0; i < numNodes; i++)
                 {
-                    UInt16 x_index = reader.ReadUInt16();
-                    UInt16 y_index = reader.ReadUInt16();
-                    UInt16 z_index = reader.ReadUInt16();
+                    var node = new NetworkNode
+                    {
+                        SoundNetworkId = reader.ReadUInt16(),
+                        Position = Utilities.Consume<Vector3>(reader)
+                    };
+
+                    ushort linkedNodeCount = reader.ReadUInt16();
+                    for (int j = 0; j < linkedNodeCount; j++)
+                    {
+                        node.NodeLinks.Add(new NodeLinkData
+                        {
+                            LinkedNodeId = reader.ReadUInt16(),
+                            PathDistance = reader.ReadByte(),
+                            ObstructedDistance = reader.ReadByte()
+                        });
+                    }
+                    AllNodes.Add(node);
+                }
+
+                foreach (var node in AllNodes)
+                {
+                    if (node.SoundNetworkId < NetworkInfos.Count)
+                    {
+                        NetworkInfos[node.SoundNetworkId].Nodes.Add(node);
+                    }
                 }
             }
             return true;
@@ -244,38 +110,109 @@ namespace CATHODE
         {
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
-                writer.BaseStream.SetLength(0);
+                writer.Write(14);
+                writer.Write((ushort)AllNodes.Count);
+                writer.Write((ushort)NetworkInfos.Count);
+
+                foreach (var networkInfo in NetworkInfos)
+                {
+                    byte[] nameBytes = Encoding.ASCII.GetBytes(networkInfo.NetworkName);
+                    writer.Write((ushort)nameBytes.Length);
+                    writer.Write(nameBytes);
+
+                    writer.Write(networkInfo.ReverbIndex);
+                    writer.Write((ushort)networkInfo.EnterEventIndex);
+                    writer.Write((ushort)networkInfo.ExitEventIndex);
+                    writer.Write(networkInfo.RoomSizeValue);
+                    writer.Write(networkInfo.LinkedNetworkScalar);
+
+                    Utilities.Write<Vector3>(writer, networkInfo.NetworkBottomLeft);
+                    Utilities.Write<Vector3>(writer, networkInfo.NetworkTopRight);
+
+                    writer.Write((ushort)networkInfo.Nodes.Count);
+                    writer.Write((ushort)networkInfo.LinkedNetworks.Count);
+
+                    foreach (var link in networkInfo.LinkedNetworks)
+                    {
+                        writer.Write(link.LinkedNetworkId);
+                        writer.Write(link.BarrierInstanceGuid);
+                        writer.Write(link.NodeId);
+                        writer.Write(link.LinkedNodeId);
+                    }
+
+                    writer.Write((ushort)networkInfo.NetworkPaths.Count);
+                    foreach (var path in networkInfo.NetworkPaths)
+                    {
+                        writer.Write(path.NetworkId);
+                        writer.Write((ushort)path.BarrierGuids.Count);
+                        foreach (uint guid in path.BarrierGuids)
+                        {
+                            writer.Write(guid);
+                        }
+                    }
+                }
+
+                foreach (var node in AllNodes)
+                {
+                    writer.Write(node.SoundNetworkId);
+                    Utilities.Write<Vector3>(writer, node.Position);
+                    writer.Write((ushort)node.NodeLinks.Count);
+
+                    foreach (var link in node.NodeLinks)
+                    {
+                        writer.Write(link.LinkedNodeId);
+                        writer.Write(link.PathDistance); 
+                        writer.Write(link.ObstructedDistance);
+                    }
+                }
             }
             return true;
         }
         #endregion
 
-        private void LoadRecursive(BinaryReader reader)
+        #region STRUCTURES
+        public class NodeLinkData
         {
-            test = reader.ReadInt16(); //small
-            test = reader.ReadInt16(); //bigger
-
-            int countOne = reader.ReadInt16(); //count of next block
-            Console.WriteLine("Count of block 1: " + countOne);
-
-            for (int z = 0; z < countOne; z++)
-            {
-                test = reader.ReadInt16(); //something index
-                int countTwo = reader.ReadInt16(); //count of next ints
-                Console.WriteLine("Count of block 2: " + countTwo);
-
-                if (countTwo == 0)
-                {
-                    LoadRecursive(reader);
-
-                    break; //??
-                }
-
-                for (int i = 0; i < countTwo; i++)
-                {
-                    test = reader.ReadInt32(); //probs indexes to the float array at the bottom of the file
-                }
-            }
+            public ushort LinkedNodeId;
+            public byte PathDistance;
+            public byte ObstructedDistance;
         }
+
+        public class NetworkNode
+        {
+            public ushort SoundNetworkId;
+            public Vector3 Position;
+            public List<NodeLinkData> NodeLinks = new List<NodeLinkData>();
+        }
+
+        public class NetworkLinkData
+        {
+            public ushort LinkedNetworkId;
+            public uint BarrierInstanceGuid; //sound barrier collision
+            public ushort NodeId;
+            public ushort LinkedNodeId;
+        }
+
+        public class NetworkPath
+        {
+            public ushort NetworkId;
+            public List<uint> BarrierGuids = new List<uint>(); //sound barrier entities
+        }
+
+        public class NetworkInfo
+        {
+            public string NetworkName;
+            public ushort ReverbIndex;
+            public short EnterEventIndex; //-1 if none
+            public short ExitEventIndex; //-1 if none
+            public uint RoomSizeValue;
+            public float LinkedNetworkScalar;
+            public Vector3 NetworkBottomLeft;
+            public Vector3 NetworkTopRight;
+            public List<NetworkNode> Nodes = new List<NetworkNode>();
+            public List<NetworkLinkData> LinkedNetworks = new List<NetworkLinkData>();
+            public List<NetworkPath> NetworkPaths = new List<NetworkPath>();
+        }
+        #endregion
     }
 }
