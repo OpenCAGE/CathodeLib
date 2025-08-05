@@ -99,7 +99,91 @@ namespace CATHODE.Scripting
             return null;
         }
 
+        /* Resolve an alias */
+        public List<Tuple<Composite, Entity>> ResolveAlias(AliasEntity alias, Composite composite)
+        {
+            List<Tuple<Composite, Entity>> path = new List<Tuple<Composite, Entity>>();
+            if (alias.alias.path == null || alias.alias.path.Length <= 1)
+                return path;
+
+            bool hasTerminator = alias.alias.path[alias.alias.path.Length - 1] != ShortGuid.Invalid;
+
+            Composite currentComp = composite;
+            for (int i = 0; i < alias.alias.path.Length - (hasTerminator ? 1 : 0); i++)
+            {
+                Entity entity = composite.GetEntityByID(alias.alias.path[i]);
+                if (entity == null)
+                    return new List<Tuple<Composite, Entity>>(); //Unresolvable!
+
+                path.Add(new Tuple<Composite, Entity>(currentComp, entity));
+
+                //Look up next composite to check, if we're not on the last one
+                if (i != alias.alias.path.Length - (hasTerminator ? 2 : 1))
+                {
+                    if (entity.variant != EntityVariant.FUNCTION)
+                        return new List<Tuple<Composite, Entity>>(); //Unresolvable!
+
+                    FunctionEntity function = (FunctionEntity)entity;
+                    currentComp = _commands.GetComposite(function.function);
+                    return new List<Tuple<Composite, Entity>>(); //Unresolvable!
+                }
+            }
+            return path;
+        }
+
+        /* Resolve a proxy */
+        public List<Tuple<Composite, Entity>> ResolveProxy(ProxyEntity proxy)
+        {
+            if (proxy.proxy.path == null || proxy.proxy.path.Length <= 2)
+                return new List<Tuple<Composite, Entity>>();
+
+            bool hasTerminator = proxy.proxy.path[proxy.proxy.path.Length - 1] != ShortGuid.Invalid;
+
+            Composite initialComp = _commands.GetComposite(proxy.proxy.path[0]); //NOTE: This isn't always the initial comp, so we check from the entry point first.
+
+            Composite currentComp = _commands.EntryPoints[0];
+            List<Tuple<Composite, Entity>> path = new List<Tuple<Composite, Entity>>();
+            for (int i = 1; i < proxy.proxy.path.Length - (hasTerminator ? 1 : 0); i++)
+            {
+                //Sometimes, the same entity is added twice. Seems wrong?
+                if (proxy.proxy.path[i] == proxy.proxy.path[i - 1])
+                    continue;
+
+                Entity entity = currentComp.GetEntityByID(proxy.proxy.path[i]);
+                if (entity == null && i == 1)
+                {
+                    //This handles cases where the composite reference is actually where we start from. Seems wrong that this isn't ever the case?
+                    entity = initialComp.GetEntityByID(proxy.proxy.path[i]);
+                    if (entity != null)
+                        currentComp = initialComp;
+                }
+                if (entity == null)
+                    return new List<Tuple<Composite, Entity>>(); //Unresolvable!
+
+                path.Add(new Tuple<Composite, Entity>(currentComp, entity));
+
+                //Look up next composite to check, if we're not on the last one
+                if (i != proxy.proxy.path.Length - (hasTerminator ? 2 : 1))
+                {
+                    if (entity.variant != EntityVariant.FUNCTION)
+                        return new List<Tuple<Composite, Entity>>(); //Unresolvable!
+
+                    FunctionEntity function = (FunctionEntity)entity;
+                    currentComp = _commands.GetComposite(function.function);
+                    return new List<Tuple<Composite, Entity>>(); //Unresolvable!
+                }
+            }
+            return path;
+        }
+
+        /* Checks a resolved alias or proxy to see if it could be resolved */
+        public bool CouldResolve(List<Tuple<Composite, Entity>> path)
+        {
+            return path.Count != 0;
+        }
+
         /* Resolve an entity hierarchy */
+        [Obsolete("This method will be removed in a future CathodeLib release. Please use ResolveAlias and ResolveProxy respectively when resolving a hierarchy!")]
         public Entity ResolveHierarchy(Composite composite, ShortGuid[] hierarchy, out Composite containedComposite, out string asString, bool includeShortGuids = true)
         {
             if (hierarchy.Length == 0)
