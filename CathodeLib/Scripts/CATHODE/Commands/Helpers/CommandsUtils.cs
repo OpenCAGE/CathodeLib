@@ -102,23 +102,27 @@ namespace CATHODE.Scripting
         /* Resolve an alias */
         public List<Tuple<Composite, Entity>> ResolveAlias(AliasEntity alias, Composite composite)
         {
+            return ResolveAlias(alias?.alias?.path, composite);
+        }
+        public List<Tuple<Composite, Entity>> ResolveAlias(ShortGuid[] hierarchy, Composite composite)
+        {
             List<Tuple<Composite, Entity>> path = new List<Tuple<Composite, Entity>>();
-            if (alias.alias.path == null || alias.alias.path.Length <= 1)
+            if (hierarchy == null || composite == null || hierarchy.Length <= 1)
                 return path;
 
-            bool hasTerminator = alias.alias.path[alias.alias.path.Length - 1] != ShortGuid.Invalid;
+            bool hasTerminator = hierarchy[hierarchy.Length - 1] != ShortGuid.Invalid;
 
             Composite currentComp = composite;
-            for (int i = 0; i < alias.alias.path.Length - (hasTerminator ? 1 : 0); i++)
+            for (int i = 0; i < hierarchy.Length - (hasTerminator ? 1 : 0); i++)
             {
-                Entity entity = composite.GetEntityByID(alias.alias.path[i]);
+                Entity entity = composite.GetEntityByID(hierarchy[i]);
                 if (entity == null)
                     return new List<Tuple<Composite, Entity>>(); //Unresolvable!
 
                 path.Add(new Tuple<Composite, Entity>(currentComp, entity));
 
                 //Look up next composite to check, if we're not on the last one
-                if (i != alias.alias.path.Length - (hasTerminator ? 2 : 1))
+                if (i != hierarchy.Length - (hasTerminator ? 2 : 1))
                 {
                     if (entity.variant != EntityVariant.FUNCTION)
                         return new List<Tuple<Composite, Entity>>(); //Unresolvable!
@@ -134,26 +138,30 @@ namespace CATHODE.Scripting
         /* Resolve a proxy */
         public List<Tuple<Composite, Entity>> ResolveProxy(ProxyEntity proxy)
         {
-            if (proxy.proxy.path == null || proxy.proxy.path.Length <= 2)
+            return ResolveProxy(proxy?.proxy?.path);
+        }
+        public List<Tuple<Composite, Entity>> ResolveProxy(ShortGuid[] hierarchy)
+        { 
+            if (hierarchy == null || hierarchy.Length <= 2)
                 return new List<Tuple<Composite, Entity>>();
 
-            bool hasTerminator = proxy.proxy.path[proxy.proxy.path.Length - 1] != ShortGuid.Invalid;
+            bool hasTerminator = hierarchy[hierarchy.Length - 1] != ShortGuid.Invalid;
 
-            Composite initialComp = _commands.GetComposite(proxy.proxy.path[0]); //NOTE: This isn't always the initial comp, so we check from the entry point first.
+            Composite initialComp = _commands.GetComposite(hierarchy[0]); //NOTE: This isn't always the initial comp, so we check from the entry point first.
 
             Composite currentComp = _commands.EntryPoints[0];
             List<Tuple<Composite, Entity>> path = new List<Tuple<Composite, Entity>>();
-            for (int i = 1; i < proxy.proxy.path.Length - (hasTerminator ? 1 : 0); i++)
+            for (int i = 1; i < hierarchy.Length - (hasTerminator ? 1 : 0); i++)
             {
                 //Sometimes, the same entity is added twice. Seems wrong?
-                if (proxy.proxy.path[i] == proxy.proxy.path[i - 1])
+                if (hierarchy[i] == hierarchy[i - 1])
                     continue;
 
-                Entity entity = currentComp.GetEntityByID(proxy.proxy.path[i]);
+                Entity entity = currentComp.GetEntityByID(hierarchy[i]);
                 if (entity == null && i == 1)
                 {
                     //This handles cases where the composite reference is actually where we start from. Seems wrong that this isn't ever the case?
-                    entity = initialComp.GetEntityByID(proxy.proxy.path[i]);
+                    entity = initialComp.GetEntityByID(hierarchy[i]);
                     if (entity != null)
                         currentComp = initialComp;
                 }
@@ -163,7 +171,7 @@ namespace CATHODE.Scripting
                 path.Add(new Tuple<Composite, Entity>(currentComp, entity));
 
                 //Look up next composite to check, if we're not on the last one
-                if (i != proxy.proxy.path.Length - (hasTerminator ? 2 : 1))
+                if (i != hierarchy.Length - (hasTerminator ? 2 : 1))
                 {
                     if (entity.variant != EntityVariant.FUNCTION)
                         return new List<Tuple<Composite, Entity>>(); //Unresolvable!
@@ -180,6 +188,27 @@ namespace CATHODE.Scripting
         public bool CouldResolve(List<Tuple<Composite, Entity>> path)
         {
             return path.Count != 0;
+        }
+
+        /* Checks a resolved alias or proxy to get the pointed Entity and Composite */
+        public (Composite, Entity) GetResolvedTarget(List<Tuple<Composite, Entity>> path)
+        {
+            if (!CouldResolve(path))
+                return (null, null);
+            return (path[path.Count].Item1, path[path.Count].Item2);
+        }
+
+        /* Gets a resolved alias or proxy as a string representation */
+        public string GetResolvedAsString(List<Tuple<Composite, Entity>> path, bool includeGuids)
+        {
+            string hierarchyString = "";
+            for (int i = 0; i < path.Count; i++)
+            {
+                if (includeGuids) hierarchyString += "[" + path[i].Item2.shortGUID.ToByteString() + "] ";
+                hierarchyString += GetEntityName(path[i].Item1, path[i].Item2);
+                if (i != path.Count - 1) hierarchyString += " -> ";
+            }
+            return hierarchyString;
         }
 
         /* Resolve an entity hierarchy */
@@ -289,7 +318,7 @@ namespace CATHODE.Scripting
             int originalLinkCount = 0;
             int originalFuncCount = 0;
 
-            //Clear functions
+            //Functions must be a valid FunctionType, or point to a Composite that exists
             List<FunctionEntity> functionsPurged = new List<FunctionEntity>();
             for (int i = 0; i < composite.functions.Count; i++)
                 if (composite.functions[i].function.IsFunctionType || _commands.GetComposite(composite.functions[i].function) != null)
@@ -297,67 +326,68 @@ namespace CATHODE.Scripting
             originalFuncCount = composite.functions.Count;
             composite.functions = functionsPurged;
 
-            //Clear aliases
+            //Aliases must point to children of the Composite that still exist
             List<AliasEntity> aliasesPurged = new List<AliasEntity>();
             for (int i = 0; i < composite.aliases.Count; i++)
-                if (ResolveHierarchy(composite, composite.aliases[i].alias.path, out Composite flowTemp, out string hierarchy) != null)
+                if (!CouldResolve(ResolveAlias(composite.aliases[i], composite)))
                     aliasesPurged.Add(composite.aliases[i]);
             originalAliasCount = composite.aliases.Count;
             composite.aliases = aliasesPurged;
 
-            //Clear proxies
+            //Proxies must be able to be resolved in some form
             List<ProxyEntity> proxyPurged = new List<ProxyEntity>();
             for (int i = 0; i < composite.proxies.Count; i++)
-                if (ResolveHierarchy(composite, composite.proxies[i].proxy.path, out Composite flowTemp, out string hierarchy) != null)
+                if (!CouldResolve(ResolveProxy(composite.proxies[i])))
                     proxyPurged.Add(composite.proxies[i]);
             originalProxyCount = composite.proxies.Count;
             composite.proxies = proxyPurged;
 
-            //Clear TriggerSequence and CAGEAnimation entities
             for (int i = 0; i < composite.functions.Count; i++)
             {
                 //TODO: will this also clear up TriggerSequence/CAGEAnimation data for proxies?
                 switch (ShortGuidUtils.FindString(composite.functions[i].function))
                 {
                     case "TriggerSequence":
+                        //TriggerSequence sequences must point to entities that still exist
                         TriggerSequence trig = (TriggerSequence)composite.functions[i];
-                        List<TriggerSequence.SequenceEntry> trigSeq = new List<TriggerSequence.SequenceEntry>();
+                        List<TriggerSequence.SequenceEntry> sequencePurged = new List<TriggerSequence.SequenceEntry>();
                         for (int x = 0; x < trig.sequence.Count; x++)
-                            if (ResolveHierarchy(composite, trig.sequence[x].connectedEntity.path, out Composite flowTemp, out string hierarchy) != null)
-                                trigSeq.Add(trig.sequence[x]);
+                            if (CouldResolve(ResolveAlias(trig.sequence[x].connectedEntity.path, composite)))
+                                sequencePurged.Add(trig.sequence[x]);
                         originalTriggerCount += trig.sequence.Count;
-                        newTriggerCount += trigSeq.Count;
-                        trig.sequence = trigSeq;
+                        newTriggerCount += sequencePurged.Count;
+                        trig.sequence = sequencePurged;
                         break;
                     case "CAGEAnimation":
+                        //CAGEAnimation connections must point to entities that still exist
                         CAGEAnimation anim = (CAGEAnimation)composite.functions[i];
-                        List<CAGEAnimation.Connection> headers = new List<CAGEAnimation.Connection>();
+                        List<CAGEAnimation.Connection> connectionsPurged = new List<CAGEAnimation.Connection>();
                         for (int x = 0; x < anim.connections.Count; x++)
                         {
-                            List<CAGEAnimation.FloatTrack> anim_target = anim.animations.FindAll(o => o.shortGUID == anim.connections[x].target_track);
-                            List<CAGEAnimation.EventTrack> event_target = anim.events.FindAll(o => o.shortGUID == anim.connections[x].target_track);
-                            if (!(anim_target.Count == 0 && event_target.Count == 0) &&
-                                ResolveHierarchy(composite, anim.connections[x].connectedEntity.path, out Composite flowTemp, out string hierarchy) != null)
-                                headers.Add(anim.connections[x]);
+                            //TODO: Worth also removing connections that have no event/float tracks?
+                            //List<CAGEAnimation.FloatTrack> floatTracks = anim.animations.FindAll(o => o.shortGUID == anim.connections[x].target_track);
+                            //List<CAGEAnimation.EventTrack> eventTracks = anim.events.FindAll(o => o.shortGUID == anim.connections[x].target_track);
+                            if (CouldResolve(ResolveAlias(anim.connections[x].connectedEntity.path, composite)))
+                                connectionsPurged.Add(anim.connections[x]);
                         }
                         originalAnimCount += anim.connections.Count;
-                        newAnimCount += headers.Count;
-                        anim.connections = headers;
+                        newAnimCount += connectionsPurged.Count;
+                        anim.connections = connectionsPurged;
                         break;
                 }
             }
 
-            //Clear links 
+            //Links must point to entities that still exist within the same Composite
             List<Entity> entities = composite.GetEntities();
             for (int i = 0; i < entities.Count; i++)
             {
-                List<EntityConnector> childLinksPurged = new List<EntityConnector>();
+                List<EntityConnector> linksPurged = new List<EntityConnector>();
                 for (int x = 0; x < entities[i].childLinks.Count; x++)
                     if (composite.GetEntityByID(entities[i].childLinks[x].linkedEntityID) != null)
-                        childLinksPurged.Add(entities[i].childLinks[x]);
+                        linksPurged.Add(entities[i].childLinks[x]);
                 originalLinkCount += entities[i].childLinks.Count;
-                newLinkCount += childLinksPurged.Count;
-                entities[i].childLinks = childLinksPurged;
+                newLinkCount += linksPurged.Count;
+                entities[i].childLinks = linksPurged;
             }
 
             if (originalUnknownCount +

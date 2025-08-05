@@ -454,13 +454,13 @@ namespace CATHODE.Scripting
         public ProxyEntity(ShortGuid[] hierarchy = null, ShortGuid targetType = new ShortGuid()) : base(EntityVariant.PROXY)
         {
             this.function = targetType;
-            if (hierarchy != null) this.proxy.path = hierarchy;
+            if (hierarchy != null) this.proxy = new EntityPath(hierarchy);
         }
         public ProxyEntity(ShortGuid shortGUID, ShortGuid[] hierarchy = null, ShortGuid targetType = new ShortGuid()) : base(shortGUID, EntityVariant.PROXY)
         {
             this.shortGUID = shortGUID;
             this.function = targetType; 
-            if (hierarchy != null) this.proxy.path = hierarchy;
+            if (hierarchy != null) this.proxy = new EntityPath(hierarchy);
         }
 
         public ShortGuid function;                  //The "function" value on the entity we're proxying
@@ -474,12 +474,12 @@ namespace CATHODE.Scripting
 
         public AliasEntity(ShortGuid[] hierarchy = null) : base(EntityVariant.ALIAS)
         {
-            if (hierarchy != null) this.alias.path = hierarchy;
+            if (hierarchy != null) this.alias = new EntityPath(hierarchy);
         }
         public AliasEntity(ShortGuid shortGUID, ShortGuid[] hierarchy = null) : base(shortGUID, EntityVariant.ALIAS)
         {
             this.shortGUID = shortGUID;
-            if (hierarchy != null) this.alias.path = hierarchy;
+            if (hierarchy != null) this.alias = new EntityPath(hierarchy);
         }
 
         public EntityPath alias = new EntityPath(); //A path to the entity we're an alias of
@@ -700,7 +700,7 @@ namespace CATHODE.Scripting
         public EntityPath() { }
         public EntityPath(ShortGuid[] _path)
         {
-            path = (ShortGuid[])_path.Clone();
+            path = _path;
             EnsureFinalIsEmpty();
         }
         public ShortGuid[] path = new ShortGuid[0];
