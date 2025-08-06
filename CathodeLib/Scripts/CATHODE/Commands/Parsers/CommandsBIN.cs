@@ -170,6 +170,11 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     TriggerSequence trig = null;
                                     if (cache.Item2.TryGetValue(entityID, out Entity ent))
                                     {
+                                        if (ent.variant == EntityVariant.PROXY)
+                                        {
+                                            Console.WriteLine("WARNING: Skipping load of proxy TriggerSequence!");
+                                            break;
+                                        }
                                         trig = (TriggerSequence)ent;
                                     }
                                     else
