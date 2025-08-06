@@ -19,6 +19,11 @@ namespace CATHODE.Scripting.Internal.Parsers
         private static ShortGuid PHYSICS_SYSTEM_GUID;
         private static ShortGuid RESOURCE_GUID;
 
+#if COMPILE_NAME_LIST
+        public static Dictionary<ShortGuid, Dictionary<ShortGuid, string>> EntityNames = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>();
+        public static Dictionary<ShortGuid, string> ParameterNames = new Dictionary<ShortGuid, string>();
+#endif
+
         static CommandsBIN()
         {
             NAME_GUID = ShortGuidUtils.Generate("name");
@@ -29,6 +34,11 @@ namespace CATHODE.Scripting.Internal.Parsers
 
         public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries)
         {
+#if COMPILE_NAME_LIST
+            EntityNames.Clear();
+            ParameterNames.Clear();
+#endif
+
             EntryPoints = new ShortGuid[3];
             Entries = new List<Composite>();
 
@@ -94,7 +104,12 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     func.shortGUID = guid;
                                     func.function = function;
                                     string name = Utilities.ReadString(reader, command_entries[i + 4].Item2);
-                                    //EntityUtils.SetName(cache.Item1, func, name);
+#if COMPILE_NAME_LIST
+                                    if (!EntityNames.ContainsKey(cache.Item1.shortGUID))
+                                        EntityNames.Add(cache.Item1.shortGUID, new Dictionary<ShortGuid, string>());
+                                    if (!EntityNames[cache.Item1.shortGUID].ContainsKey(guid) && name != "")
+                                        EntityNames[cache.Item1.shortGUID].Add(guid, name);
+#endif
                                     if (!cache.Item2.ContainsKey(func.shortGUID))
                                     {
                                         cache.Item1.functions.Add(func);
@@ -143,7 +158,10 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         name = Utilities.Consume<ShortGuid>(reader, command_entries[i + 4].Item2)
                                     };
                                     string name = Utilities.ReadString(reader, command_entries[i + 5].Item2);
-                                    //ShortGuidUtils.Generate(name); //Keep track of variable names
+#if COMPILE_NAME_LIST
+                                    if (!ParameterNames.ContainsKey(var.name) && name != "")
+                                        ParameterNames.Add(var.name, name);
+#endif
                                     if (!cache.Item2.ContainsKey(var.shortGUID))
                                     {
                                         cache.Item1.variables.Add(var);
@@ -184,6 +202,15 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         cache.Item1.functions.Add(trig);
                                     }
                                     string name = Utilities.ReadString(reader, command_entries[i + 4].Item2);
+#if COMPILE_NAME_LIST
+                                    ShortGuid guid = ShortGuidUtils.Generate(name);
+                                    if (!ParameterNames.ContainsKey(guid) && name != "")
+                                    {
+                                        ParameterNames.Add(guid, name);
+                                        ParameterNames.Add(ShortGuidUtils.Generate(name + "_relay"), name + "_relay");
+                                        ParameterNames.Add(ShortGuidUtils.Generate(name + "_finished"), name + "_finished");
+                                    }
+#endif
                                     trig.methods.Add(new TriggerSequence.MethodEntry(name));
                                 }
                                 break;
