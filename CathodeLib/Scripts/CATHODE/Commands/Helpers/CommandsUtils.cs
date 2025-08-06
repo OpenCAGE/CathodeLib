@@ -99,10 +99,39 @@ namespace CATHODE.Scripting
             return null;
         }
 
+        /* Resolve an alias or proxy */
+        public List<Tuple<Composite, Entity>> ResolveAliasOrProxy(Entity entity, Composite composite)
+        {
+            switch (entity?.variant)
+            {
+                case EntityVariant.ALIAS:
+                    return ResolveAlias((AliasEntity)entity, composite);
+                case EntityVariant.PROXY:
+                    return ResolveProxy((ProxyEntity)entity);
+                default:
+                    return new List<Tuple<Composite, Entity>>();
+            }
+        }
+        public List<Tuple<Composite, Entity>> ResolveAliasOrProxy(EntityPath path, Composite composite)
+        {
+            return ResolveAliasOrProxy(path?.path, composite);
+        }
+        public List<Tuple<Composite, Entity>> ResolveAliasOrProxy(ShortGuid[] hierarchy, Composite composite)
+        {
+            List<Tuple<Composite,Entity>> path = ResolveAlias(hierarchy, composite);
+            if (CouldResolve(path))
+                return path;
+            return ResolveProxy(hierarchy);
+        }
+
         /* Resolve an alias */
         public List<Tuple<Composite, Entity>> ResolveAlias(AliasEntity alias, Composite composite)
         {
             return ResolveAlias(alias?.alias?.path, composite);
+        }
+        public List<Tuple<Composite, Entity>> ResolveAlias(EntityPath path, Composite composite)
+        {
+            return ResolveAlias(path?.path, composite);
         }
         public List<Tuple<Composite, Entity>> ResolveAlias(ShortGuid[] hierarchy, Composite composite)
         {
@@ -110,12 +139,12 @@ namespace CATHODE.Scripting
             if (hierarchy == null || composite == null || hierarchy.Length <= 1)
                 return path;
 
-            bool hasTerminator = hierarchy[hierarchy.Length - 1] != ShortGuid.Invalid;
+            bool hasTerminator = hierarchy[hierarchy.Length - 1] == ShortGuid.Invalid;
 
             Composite currentComp = composite;
             for (int i = 0; i < hierarchy.Length - (hasTerminator ? 1 : 0); i++)
             {
-                Entity entity = composite.GetEntityByID(hierarchy[i]);
+                Entity entity = currentComp.GetEntityByID(hierarchy[i]);
                 if (entity == null)
                     return new List<Tuple<Composite, Entity>>(); //Unresolvable!
 
@@ -128,8 +157,9 @@ namespace CATHODE.Scripting
                         return new List<Tuple<Composite, Entity>>(); //Unresolvable!
 
                     FunctionEntity function = (FunctionEntity)entity;
-                    currentComp = _commands.GetComposite(function.function);
-                    return new List<Tuple<Composite, Entity>>(); //Unresolvable!
+                    currentComp = _commands.GetComposite(function.function); 
+                    if (currentComp == null)
+                        return new List<Tuple<Composite, Entity>>(); //Unresolvable!
                 }
             }
             return path;
@@ -140,12 +170,16 @@ namespace CATHODE.Scripting
         {
             return ResolveProxy(proxy?.proxy?.path);
         }
+        public List<Tuple<Composite, Entity>> ResolveProxy(EntityPath path)
+        {
+            return ResolveProxy(path?.path);
+        }
         public List<Tuple<Composite, Entity>> ResolveProxy(ShortGuid[] hierarchy)
         { 
             if (hierarchy == null || hierarchy.Length <= 2)
                 return new List<Tuple<Composite, Entity>>();
 
-            bool hasTerminator = hierarchy[hierarchy.Length - 1] != ShortGuid.Invalid;
+            bool hasTerminator = hierarchy[hierarchy.Length - 1] == ShortGuid.Invalid;
 
             Composite initialComp = _commands.GetComposite(hierarchy[0]); //NOTE: This isn't always the initial comp, so we check from the entry point first.
 
@@ -160,6 +194,9 @@ namespace CATHODE.Scripting
                 Entity entity = currentComp.GetEntityByID(hierarchy[i]);
                 if (entity == null && i == 1)
                 {
+                    if (initialComp == null)
+                        return new List<Tuple<Composite, Entity>>(); //Unresolvable!
+
                     //This handles cases where the composite reference is actually where we start from. Seems wrong that this isn't ever the case?
                     entity = initialComp.GetEntityByID(hierarchy[i]);
                     if (entity != null)
@@ -178,7 +215,8 @@ namespace CATHODE.Scripting
 
                     FunctionEntity function = (FunctionEntity)entity;
                     currentComp = _commands.GetComposite(function.function);
-                    return new List<Tuple<Composite, Entity>>(); //Unresolvable!
+                    if (currentComp == null)
+                        return new List<Tuple<Composite, Entity>>(); //Unresolvable!
                 }
             }
             return path;
@@ -195,11 +233,11 @@ namespace CATHODE.Scripting
         {
             if (!CouldResolve(path))
                 return (null, null);
-            return (path[path.Count].Item1, path[path.Count].Item2);
+            return (path[path.Count - 1].Item1, path[path.Count - 1].Item2);
         }
 
         /* Gets a resolved alias or proxy as a string representation */
-        public string GetResolvedAsString(List<Tuple<Composite, Entity>> path, bool includeGuids)
+        public string GetResolvedAsString(List<Tuple<Composite, Entity>> path, bool includeGuids = true)
         {
             string hierarchyString = "";
             for (int i = 0; i < path.Count; i++)
@@ -329,7 +367,7 @@ namespace CATHODE.Scripting
             //Aliases must point to children of the Composite that still exist
             List<AliasEntity> aliasesPurged = new List<AliasEntity>();
             for (int i = 0; i < composite.aliases.Count; i++)
-                if (!CouldResolve(ResolveAlias(composite.aliases[i], composite)))
+                if (CouldResolve(ResolveAlias(composite.aliases[i], composite)))
                     aliasesPurged.Add(composite.aliases[i]);
             originalAliasCount = composite.aliases.Count;
             composite.aliases = aliasesPurged;
@@ -337,7 +375,7 @@ namespace CATHODE.Scripting
             //Proxies must be able to be resolved in some form
             List<ProxyEntity> proxyPurged = new List<ProxyEntity>();
             for (int i = 0; i < composite.proxies.Count; i++)
-                if (!CouldResolve(ResolveProxy(composite.proxies[i])))
+                if (CouldResolve(ResolveProxy(composite.proxies[i])))
                     proxyPurged.Add(composite.proxies[i]);
             originalProxyCount = composite.proxies.Count;
             composite.proxies = proxyPurged;
@@ -451,7 +489,7 @@ namespace CATHODE.Scripting
                     break;
                 case EntityVariant.PROXY:
                     {
-                        Entity proxiedEntity = ((ProxyEntity)entity).proxy.GetPointedEntity(_commands, out Composite proxiedComposite);
+                        (Composite proxiedComposite, Entity proxiedEntity) = _commands.Utils.GetResolvedTarget(_commands.Utils.ResolveProxy((ProxyEntity)entity));
                         if (includeInherited)
                             ApplyDefaults(proxiedEntity, entity, overwrite, variants, FunctionType.ProxyInterface);
                         if (proxiedEntity != null && proxiedComposite != null)
@@ -472,7 +510,7 @@ namespace CATHODE.Scripting
                     break;
                 case EntityVariant.ALIAS:
                     {
-                        Entity aliasedEntity = ((AliasEntity)entity).alias.GetPointedEntity(_commands, composite, out Composite aliasedComposite);
+                        (Composite aliasedComposite, Entity aliasedEntity) = _commands.Utils.GetResolvedTarget(_commands.Utils.ResolveAlias((AliasEntity)entity, composite));
                         if (aliasedEntity != null && aliasedComposite != null)
                         {
                             switch (aliasedEntity.variant)
@@ -486,7 +524,7 @@ namespace CATHODE.Scripting
                                 case EntityVariant.PROXY:
                                     if (includeInherited)
                                         ApplyDefaults(aliasedEntity, entity, overwrite, variants, FunctionType.ProxyInterface);
-                                    Entity proxiedEntity = ((ProxyEntity)aliasedEntity).proxy.GetPointedEntity(_commands, out Composite proxiedComposite);
+                                    (Composite proxiedComposite, Entity proxiedEntity) = _commands.Utils.GetResolvedTarget(_commands.Utils.ResolveProxy((ProxyEntity)aliasedEntity));
                                     if (proxiedEntity != null && proxiedComposite != null)
                                     {
                                         switch (proxiedEntity.variant)
@@ -655,14 +693,12 @@ namespace CATHODE.Scripting
                             if (functionType == null) break;
                         }
                     }
-                    ProxyEntity proxyEntity = (ProxyEntity)entity;
-                    Entity proxiedEntity = proxyEntity.proxy.GetPointedEntity(_commands);
+                    (Composite proxiedComposite, Entity proxiedEntity) = GetResolvedTarget(ResolveProxy((ProxyEntity)entity));
                     if (proxiedEntity != null)
-                        parameters.AddRange(GetAllParameters(proxiedEntity, composite));
+                        parameters.AddRange(GetAllParameters(proxiedEntity, composite)); //note while reading through again, shouldn't these be Proxied/Aliased composites?
                     break;
                 case EntityVariant.ALIAS:
-                    AliasEntity aliasEntity = (AliasEntity)entity;
-                    Entity aliasedEntity = aliasEntity.alias.GetPointedEntity(_commands, composite);
+                    (Composite aliasedComposite, Entity aliasedEntity) = GetResolvedTarget(ResolveAlias((AliasEntity)entity, composite));
                     if (aliasedEntity != null)
                         parameters.AddRange(GetAllParameters(aliasedEntity, composite));
                     break;
@@ -833,14 +869,14 @@ namespace CATHODE.Scripting
                             if (functionType == null) break;
                         }
                         ProxyEntity proxyEntity = (ProxyEntity)entity;
-                        Entity proxiedEntity = proxyEntity.proxy.GetPointedEntity(_commands);
+                        Entity proxiedEntity = GetResolvedTarget(ResolveProxy(proxyEntity)).Item2;
                         if (proxiedEntity != null)
                             return GetParameterMetadata(proxiedEntity, parameter, composite);
                         break;
                     }
                 case EntityVariant.ALIAS:
                     AliasEntity aliasEntity = (AliasEntity)entity;
-                    Entity aliasedEntity = aliasEntity.alias.GetPointedEntity(_commands, composite);
+                    Entity aliasedEntity = GetResolvedTarget(ResolveAlias(aliasEntity, composite)).Item2;
                     if (aliasedEntity != null)
                         return GetParameterMetadata(aliasedEntity, parameter, composite);
                     break;
@@ -1045,15 +1081,13 @@ namespace CATHODE.Scripting
                             functionType = GetInheritedFunction(functionType.Value);
                             if (functionType == null) break;
                         }
-                        ProxyEntity proxyEntity = (ProxyEntity)entity;
-                        Entity proxiedEntity = proxyEntity.proxy.GetPointedEntity(_commands, out Composite proxiedComposite);
+                        (Composite proxiedComposite, Entity proxiedEntity) = GetResolvedTarget(ResolveProxy((ProxyEntity)entity));
                         if (proxiedEntity != null)
                             return CreateDefaultParameterData(proxiedEntity, proxiedComposite, parameter);
                         break;
                     }
                 case EntityVariant.ALIAS:
-                    AliasEntity aliasEntity = (AliasEntity)entity;
-                    Entity aliasedEntity = aliasEntity.alias.GetPointedEntity(_commands, composite, out Composite aliasedComposite);
+                    (Composite aliasedComposite, Entity aliasedEntity) = GetResolvedTarget(ResolveAlias((AliasEntity)entity, composite));
                     if (aliasedEntity != null)
                         return CreateDefaultParameterData(aliasedEntity, aliasedComposite, parameter);
                     break;

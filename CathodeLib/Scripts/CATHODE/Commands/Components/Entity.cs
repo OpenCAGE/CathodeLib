@@ -752,8 +752,7 @@ namespace CATHODE.Scripting
             }
         }
 
-        /* Get this path as a string */
-        public string GetAsString()
+        public override string ToString()
         {
             string val = "";
             for (int i = 0; i < path.Length; i++)
@@ -763,10 +762,11 @@ namespace CATHODE.Scripting
             }
             return val;
         }
-        public string GetAsString(Commands commands, Composite composite, bool withIDs = true)
+
+        [Obsolete("Please use CommandsUtils GetResolvedAsString after resolving with ResolveAliasOrProxy.")]
+        public string ToString(Commands commands, Composite composite, bool withIDs = true)
         {
-            commands.Utils.ResolveHierarchy(composite, path, out Composite comp, out string str, withIDs);
-            return str;
+            return commands.Utils.GetResolvedAsString(commands.Utils.ResolveAliasOrProxy(path, composite), withIDs);
         }
 
         public UInt32 ToUInt32()
@@ -774,34 +774,6 @@ namespace CATHODE.Scripting
             UInt32 val = 0;
             for (int i = 0; i < path.Length; i++) val += path[i].AsUInt32;
             return val;
-        }
-
-        /* Get the entity this path points to: FROM THE ROOT OF THE COMMANDS */
-        public Entity GetPointedEntity(Commands commands)
-        {
-            return commands.Utils.ResolveHierarchy(commands.EntryPoints[0], path, out Composite comp, out string str);
-        }
-
-        /* Get the entity this path points to: FROM THE ROOT OF THE COMMANDS, RETURNING THE CONTAINED COMPOSITE */
-        public Entity GetPointedEntity(Commands commands, out Composite containedComposite)
-        {
-            Entity ent = commands.Utils.ResolveHierarchy(commands.EntryPoints[0], path, out Composite comp, out string str);
-            containedComposite = comp;
-            return ent;
-        }
-
-        /* Get the entity this path points to: FROM A SPECIFIED COMPOSITE */
-        public Entity GetPointedEntity(Commands commands, Composite startComposite)
-        {
-            return commands.Utils.ResolveHierarchy(startComposite, path, out Composite comp, out string str);
-        }
-
-        /* Get the entity this path points to: FROM A SPECIFIED COMPOSITE, RETURNING THE CONTAINED COMPOSITE */
-        public Entity GetPointedEntity(Commands commands, Composite startComposite, out Composite containedComposite)
-        {
-            Entity ent = commands.Utils.ResolveHierarchy(startComposite, path, out Composite comp, out string str);
-            containedComposite = comp;
-            return ent;
         }
 
         /* Get the ID of the entity that this path points to */
@@ -815,12 +787,6 @@ namespace CATHODE.Scripting
                 break;
             }
             return id;
-        }
-
-        /* Does this path point to a valid entity? */
-        public bool IsPathValid(Commands commands, Composite composite)
-        {
-            return GetPointedEntity(commands, composite) != null;
         }
 
         /* Generate the checksum used identify the path */
