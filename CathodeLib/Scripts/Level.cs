@@ -180,8 +180,11 @@ namespace CathodeLib
                 lightMovers.Add(Movers.GetAtWriteIndex(Lights.Entries[i].MoverIndex));
             */
             List<Movers.MOVER_DESCRIPTOR> envMapMovers = new List<Movers.MOVER_DESCRIPTOR>();
-            for (int i = 0; i < EnvironmentMaps.Entries.Count; i++)
-                envMapMovers.Add(Movers.GetAtWriteIndex(EnvironmentMaps.Entries[i].MoverIndex));
+            Parallel.For(0, EnvironmentMaps.Entries.Count, i =>
+            {
+                lock (envMapMovers)
+                    envMapMovers.Add(Movers.GetAtWriteIndex(EnvironmentMaps.Entries[i].MoverIndex));
+            });
             Movers.Save();
 
             /*
@@ -198,11 +201,13 @@ namespace CathodeLib
 
             //Update mover indexes for envmap refs
             List<EnvironmentMaps.Mapping> envMaps = new List<EnvironmentMaps.Mapping>();
-            for (int i = 0; i < EnvironmentMaps.Entries.Count; i++)
+            Parallel.For(0, EnvironmentMaps.Entries.Count, i =>
             {
                 EnvironmentMaps.Entries[i].MoverIndex = Movers.GetWriteIndex(envMapMovers[i]);
-                if (EnvironmentMaps.Entries[i].MoverIndex != -1) envMaps.Add(EnvironmentMaps.Entries[i]);
-            }
+                if (EnvironmentMaps.Entries[i].MoverIndex != -1)
+                    lock (envMaps)
+                        envMaps.Add(EnvironmentMaps.Entries[i]);
+            });
             EnvironmentMaps.Entries = envMaps;
             EnvironmentMaps.Save();
 
@@ -212,11 +217,13 @@ namespace CathodeLib
             //Get REDS links as actual objects
             List<Models.CS2.Component.LOD.Submesh> redsModels = new List<Models.CS2.Component.LOD.Submesh>();
             List<Materials.Material> redsMaterials = new List<Materials.Material>();
-            for (int i = 0; i < RenderableElements.Entries.Count; i++)
+            Parallel.For(0, RenderableElements.Entries.Count, i =>
             {
-                redsModels.Add(Models.GetAtWriteIndex(RenderableElements.Entries[i].ModelIndex));
-                redsMaterials.Add(Materials.GetAtWriteIndex(RenderableElements.Entries[i].MaterialIndex));
-            }
+                lock (redsModels)
+                    redsModels.Add(Models.GetAtWriteIndex(RenderableElements.Entries[i].ModelIndex));
+                lock (redsMaterials)
+                    redsMaterials.Add(Materials.GetAtWriteIndex(RenderableElements.Entries[i].MaterialIndex));
+            });
 
             //Get model links as actual objects
             List<Materials.Material> modelMaterials = new List<Materials.Material>();

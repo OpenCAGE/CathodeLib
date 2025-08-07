@@ -527,13 +527,14 @@ namespace CATHODE.Scripting.Internal.Parsers
                 resourceReferences[i] = resourceReferences[i].Distinct().ToList();
             });
 
-            for (int i = 0; i < Entries.Count; i++)
+            Parallel.For(0, Entries.Count, i =>
             {
                 List<Entity> ents = Entries[i].GetEntities();
                 for (int x = 0; x < ents.Count; x++)
                     for (int y = 0; y < ents[x].parameters.Count; y++)
-                        parameters.Add(ents[x].parameters[y].content);
-            }
+                        lock (parameters)
+                            parameters.Add(ents[x].parameters[y].content);
+            });
             parameters = parameters.Distinct().ToList();
 
             using (MemoryStream stream = new MemoryStream())
