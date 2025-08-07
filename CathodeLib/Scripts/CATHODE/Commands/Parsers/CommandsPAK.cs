@@ -162,7 +162,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             AliasEntity overrider = new AliasEntity(new ShortGuid(reader_parallel));
                                             int NumberOfParams = JumpToOffset(reader_parallel);
                                             overrider.alias.path = Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams);
-                                            composite.aliases.Add(overrider);
+                                            composite.aliases_dictionary.Add(overrider.shortGUID, overrider);
                                             break;
                                         }
                                     case CompositeFileData.ALIAS_PATH_HASHES:
@@ -177,7 +177,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             VariableEntity dtEntity = new VariableEntity(new ShortGuid(reader_parallel));
                                             dtEntity.type = (DataType)reader_parallel.ReadUInt32();
                                             dtEntity.name = new ShortGuid(reader_parallel);
-                                            composite.variables.Add(dtEntity);
+                                            composite.variables_dictionary.Add(dtEntity.shortGUID, dtEntity);
                                             break;
                                         }
                                     case CompositeFileData.PROXIES:
@@ -191,7 +191,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             ShortGuid idCheck = new ShortGuid(reader_parallel);
                                             if (idCheck != thisProxy.shortGUID) throw new Exception("Proxy ID mismatch!");
                                             thisProxy.function = new ShortGuid(reader_parallel);
-                                            composite.proxies.Add(thisProxy);
+                                            composite.proxies_dictionary.Add(thisProxy.shortGUID, thisProxy);
                                             break;
                                         }
                                     case CompositeFileData.FUNCTION_ENTITIES:
@@ -206,16 +206,16 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                 {
                                                     case FunctionType.CAGEAnimation:
                                                         CAGEAnimation cageAnimation = new CAGEAnimation(entityID);
-                                                        composite.functions.Add(cageAnimation);
+                                                        composite.functions_dictionary.Add(cageAnimation.shortGUID, cageAnimation);
                                                         break;
                                                     case FunctionType.TriggerSequence:
                                                         TriggerSequence triggerSequence = new TriggerSequence(entityID);
-                                                        composite.functions.Add(triggerSequence);
+                                                        composite.functions_dictionary.Add(triggerSequence.shortGUID, triggerSequence);
                                                         break;
                                                     default:
                                                         FunctionEntity funcEntity = new FunctionEntity(entityID);
                                                         funcEntity.function = functionID;
-                                                        composite.functions.Add(funcEntity);
+                                                        composite.functions_dictionary.Add(funcEntity.shortGUID, funcEntity);
                                                         break;
                                                 }
                                             }
@@ -224,7 +224,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                 //This entity is an instance of a composite entity collection
                                                 FunctionEntity funcEntity = new FunctionEntity(entityID);
                                                 funcEntity.function = functionID;
-                                                composite.functions.Add(funcEntity);
+                                                composite.functions_dictionary.Add(funcEntity.shortGUID, funcEntity);
                                             }
                                             break;
                                         }

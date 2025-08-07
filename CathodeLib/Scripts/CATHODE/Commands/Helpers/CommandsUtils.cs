@@ -356,85 +356,140 @@ namespace CATHODE.Scripting
             int originalLinkCount = 0;
             int originalFuncCount = 0;
 
-            //Functions must be a valid FunctionType, or point to a Composite that exists
-            List<FunctionEntity> functionsPurged = new List<FunctionEntity>();
-            for (int i = 0; i < composite.functions.Count; i++)
-                if (composite.functions[i].function.IsFunctionType || _commands.GetComposite(composite.functions[i].function) != null)
-                    functionsPurged.Add(composite.functions[i]);
-            originalFuncCount = composite.functions.Count;
-            composite.functions = functionsPurged;
-
-            //Aliases must point to children of the Composite that still exist
-            List<AliasEntity> aliasesPurged = new List<AliasEntity>();
-            for (int i = 0; i < composite.aliases.Count; i++)
-                if (CouldResolve(ResolveAlias(composite.aliases[i], composite)))
-                    aliasesPurged.Add(composite.aliases[i]);
-            originalAliasCount = composite.aliases.Count;
-            composite.aliases = aliasesPurged;
-
-            //Proxies must be able to be resolved in some form
-            List<ProxyEntity> proxyPurged = new List<ProxyEntity>();
-            for (int i = 0; i < composite.proxies.Count; i++)
-                if (CouldResolve(ResolveProxy(composite.proxies[i])))
-                    proxyPurged.Add(composite.proxies[i]);
-            originalProxyCount = composite.proxies.Count;
-            composite.proxies = proxyPurged;
-
-            for (int i = 0; i < composite.functions.Count; i++)
+            // Functions must be a valid FunctionType, or point to a Composite that exists
+            // Use dictionary for O(1) lookups and efficient removal
+            var functionsToRemove = new List<ShortGuid>();
+            foreach (var kvp in composite.functions_dictionary)
             {
-                //TODO: will this also clear up TriggerSequence/CAGEAnimation data for proxies?
-                switch (ShortGuidUtils.FindString(composite.functions[i].function))
+                if (!(kvp.Value.function.IsFunctionType || _commands.GetComposite(kvp.Value.function) != null))
+                {
+                    functionsToRemove.Add(kvp.Key);
+                }
+            }
+            originalFuncCount = composite.functions_dictionary.Count;
+            foreach (var guid in functionsToRemove)
+            {
+                composite.functions_dictionary.Remove(guid);
+            }
+
+                    // Aliases must point to children of the Composite that still exist
+        // Also remove aliases that don't have any links in or out, or any parameters
+        var aliasesToRemove = new List<ShortGuid>();
+        foreach (var kvp in composite.aliases_dictionary)
+        {
+            var alias = kvp.Value;
+            // Remove if alias cannot be resolved
+            if (!CouldResolve(ResolveAlias(alias, composite)))
+            {
+                aliasesToRemove.Add(kvp.Key);
+            }
+            // Remove if alias has no child links, no parameters, and no parent links
+            else if (alias.childLinks.Count == 0 && 
+                     alias.parameters.Count == 0 && 
+                     alias.GetParentLinks(composite).Count == 0)
+            {
+                aliasesToRemove.Add(kvp.Key);
+            }
+        }
+        originalAliasCount = composite.aliases_dictionary.Count;
+        foreach (var guid in aliasesToRemove)
+        {
+            composite.aliases_dictionary.Remove(guid);
+        }
+
+            // Proxies must be able to be resolved in some form
+            var proxiesToRemove = new List<ShortGuid>();
+            foreach (var kvp in composite.proxies_dictionary)
+            {
+                if (!CouldResolve(ResolveProxy(kvp.Value)))
+                {
+                    proxiesToRemove.Add(kvp.Key);
+                }
+            }
+            originalProxyCount = composite.proxies_dictionary.Count;
+            foreach (var guid in proxiesToRemove)
+            {
+                composite.proxies_dictionary.Remove(guid);
+            }
+
+            // Process special function types (TriggerSequence and CAGEAnimation)
+            foreach (var kvp in composite.functions_dictionary)
+            {
+                var function = kvp.Value;
+                switch (ShortGuidUtils.FindString(function.function))
                 {
                     case "TriggerSequence":
-                        //TriggerSequence sequences must point to entities that still exist
-                        TriggerSequence trig = (TriggerSequence)composite.functions[i];
-                        List<TriggerSequence.SequenceEntry> sequencePurged = new List<TriggerSequence.SequenceEntry>();
-                        for (int x = 0; x < trig.sequence.Count; x++)
-                            if (CouldResolve(ResolveAlias(trig.sequence[x].connectedEntity.path, composite)))
-                                sequencePurged.Add(trig.sequence[x]);
+                        // TriggerSequence sequences must point to entities that still exist
+                        TriggerSequence trig = (TriggerSequence)function;
+                        var sequenceToRemove = new List<TriggerSequence.SequenceEntry>();
+                        foreach (var entry in trig.sequence)
+                        {
+                            if (!CouldResolve(ResolveAlias(entry.connectedEntity.path, composite)))
+                            {
+                                sequenceToRemove.Add(entry);
+                            }
+                        }
                         originalTriggerCount += trig.sequence.Count;
-                        newTriggerCount += sequencePurged.Count;
-                        trig.sequence = sequencePurged;
+                        newTriggerCount += trig.sequence.Count - sequenceToRemove.Count;
+                        foreach (var entry in sequenceToRemove)
+                        {
+                            trig.sequence.Remove(entry);
+                        }
                         break;
                     case "CAGEAnimation":
-                        //CAGEAnimation connections must point to entities that still exist
-                        CAGEAnimation anim = (CAGEAnimation)composite.functions[i];
-                        List<CAGEAnimation.Connection> connectionsPurged = new List<CAGEAnimation.Connection>();
-                        for (int x = 0; x < anim.connections.Count; x++)
+                        // CAGEAnimation connections must point to entities that still exist
+                        CAGEAnimation anim = (CAGEAnimation)function;
+                        var connectionsToRemove = new List<CAGEAnimation.Connection>();
+                        foreach (var connection in anim.connections)
                         {
                             //TODO: Worth also removing connections that have no event/float tracks?
-                            //List<CAGEAnimation.FloatTrack> floatTracks = anim.animations.FindAll(o => o.shortGUID == anim.connections[x].target_track);
-                            //List<CAGEAnimation.EventTrack> eventTracks = anim.events.FindAll(o => o.shortGUID == anim.connections[x].target_track);
-                            if (CouldResolve(ResolveAlias(anim.connections[x].connectedEntity.path, composite)))
-                                connectionsPurged.Add(anim.connections[x]);
+                            //List<CAGEAnimation.FloatTrack> floatTracks = anim.animations.FindAll(o => o.shortGUID == connection.target_track);
+                            //List<CAGEAnimation.EventTrack> eventTracks = anim.events.FindAll(o => o.shortGUID == connection.target_track);
+                            if (!CouldResolve(ResolveAlias(connection.connectedEntity.path, composite)))
+                            {
+                                connectionsToRemove.Add(connection);
+                            }
                         }
                         originalAnimCount += anim.connections.Count;
-                        newAnimCount += connectionsPurged.Count;
-                        anim.connections = connectionsPurged;
+                        newAnimCount += anim.connections.Count - connectionsToRemove.Count;
+                        foreach (var connection in connectionsToRemove)
+                        {
+                            anim.connections.Remove(connection);
+                        }
                         break;
                 }
             }
 
-            //Links must point to entities that still exist within the same Composite
-            List<Entity> entities = composite.GetEntities();
-            for (int i = 0; i < entities.Count; i++)
+            // Links must point to entities that still exist within the same Composite
+            // Use dictionary values for efficient entity lookup
+            var allEntities = composite.GetEntities();
+            foreach (var entity in allEntities)
             {
-                List<EntityConnector> linksPurged = new List<EntityConnector>();
-                for (int x = 0; x < entities[i].childLinks.Count; x++)
-                    if (composite.GetEntityByID(entities[i].childLinks[x].linkedEntityID) != null)
-                        linksPurged.Add(entities[i].childLinks[x]);
-                originalLinkCount += entities[i].childLinks.Count;
-                newLinkCount += linksPurged.Count;
-                entities[i].childLinks = linksPurged;
+                var linksToRemove = new List<EntityConnector>();
+                foreach (var link in entity.childLinks)
+                {
+                    if (composite.GetEntityByID(link.linkedEntityID) == null)
+                    {
+                        linksToRemove.Add(link);
+                    }
+                }
+                originalLinkCount += entity.childLinks.Count;
+                newLinkCount += entity.childLinks.Count - linksToRemove.Count;
+                foreach (var link in linksToRemove)
+                {
+                    entity.childLinks.Remove(link);
+                }
             }
 
-            if (originalUnknownCount +
-                (originalFuncCount - composite.functions.Count) +
-                (originalProxyCount - composite.proxies.Count) +
-                (originalAliasCount - composite.aliases.Count) +
+            int totalRemoved = originalUnknownCount +
+                (originalFuncCount - composite.functions_dictionary.Count) +
+                (originalProxyCount - composite.proxies_dictionary.Count) +
+                (originalAliasCount - composite.aliases_dictionary.Count) +
                 (originalTriggerCount - newTriggerCount) +
                 (originalAnimCount - newAnimCount) +
-                (originalLinkCount - newLinkCount) == 0)
+                (originalLinkCount - newLinkCount);
+
+            if (totalRemoved == 0)
             {
                 //Console.WriteLine("Purge found nothing to clear up.");
                 return true;
@@ -443,9 +498,9 @@ namespace CATHODE.Scripting
             Console.WriteLine(
                 "Purged all dead hierarchies and entities in " + composite.name + "!" +
                 "\n - " + originalUnknownCount + " unknown entities" +
-                "\n - " + (originalFuncCount - composite.functions.Count) + " functions (of " + originalFuncCount + ")" +
-                "\n - " + (originalProxyCount - composite.proxies.Count) + " proxies (of " + originalProxyCount + ")" +
-                "\n - " + (originalAliasCount - composite.aliases.Count) + " aliases (of " + originalAliasCount + ")" +
+                "\n - " + (originalFuncCount - composite.functions_dictionary.Count) + " functions (of " + originalFuncCount + ")" +
+                "\n - " + (originalProxyCount - composite.proxies_dictionary.Count) + " proxies (of " + originalProxyCount + ")" +
+                "\n - " + (originalAliasCount - composite.aliases_dictionary.Count) + " aliases (of " + originalAliasCount + ")" +
                 "\n - " + (originalTriggerCount - newTriggerCount) + " triggers (of " + originalTriggerCount + ")" +
                 "\n - " + (originalAnimCount - newAnimCount) + " anim connections (of " + originalAnimCount + ")" +
                 "\n - " + (originalLinkCount - newLinkCount) + " entity links (of " + originalLinkCount + ")");

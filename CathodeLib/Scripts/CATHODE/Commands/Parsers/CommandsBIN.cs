@@ -112,7 +112,7 @@ namespace CATHODE.Scripting.Internal.Parsers
 #endif
                                     if (!cache.Item2.ContainsKey(func.shortGUID))
                                     {
-                                        cache.Item1.functions.Add(func);
+                                        cache.Item1.functions_dictionary.Add(func.shortGUID, func);
                                         cache.Item2.Add(func.shortGUID, func);
                                     }
                                 }
@@ -127,7 +127,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     };
                                     if (!cache.Item2.ContainsKey(alias.shortGUID))
                                     {
-                                        cache.Item1.aliases.Add(alias);
+                                        cache.Item1.aliases_dictionary.Add(alias.shortGUID, alias);
                                         cache.Item2.Add(alias.shortGUID, alias);
                                     }
                                 }
@@ -143,7 +143,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     };
                                     if (!cache.Item2.ContainsKey(prox.shortGUID))
                                     {
-                                        cache.Item1.proxies.Add(prox);
+                                        cache.Item1.proxies_dictionary.Add(prox.shortGUID, prox);
                                         cache.Item2.Add(prox.shortGUID, prox);
                                     }
                                 }
@@ -164,7 +164,7 @@ namespace CATHODE.Scripting.Internal.Parsers
 #endif
                                     if (!cache.Item2.ContainsKey(var.shortGUID))
                                     {
-                                        cache.Item1.variables.Add(var);
+                                        cache.Item1.variables_dictionary.Add(var.shortGUID, var);
                                         cache.Item2.Add(var.shortGUID, var);
                                     }
                                 }
@@ -199,7 +199,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     {
                                         trig = new TriggerSequence(entityID);
                                         cache.Item2.Add(ent.shortGUID, trig);
-                                        cache.Item1.functions.Add(trig);
+                                        cache.Item1.functions_dictionary.Add(trig.shortGUID, trig);
                                     }
                                     string name = Utilities.ReadString(reader, command_entries[i + 4].Item2);
 #if COMPILE_NAME_LIST
@@ -227,7 +227,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     {
                                         trig = new TriggerSequence(entityID);
                                         cache.Item2.Add(ent.shortGUID, trig);
-                                        cache.Item1.functions.Add(trig);
+                                        cache.Item1.functions_dictionary.Add(trig.shortGUID, trig);
                                     }
                                     trig.sequence.Add(new TriggerSequence.SequenceEntry()
                                     {
@@ -249,7 +249,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     {
                                         cageAnim = new CAGEAnimation(entityID);
                                         cache.Item2.Add(ent.shortGUID, cageAnim);
-                                        cache.Item1.functions.Add(cageAnim);
+                                        cache.Item1.functions_dictionary.Add(cageAnim.shortGUID, cageAnim);
                                     }
                                     cageAnim.connections.Add(new CAGEAnimation.Connection()
                                     {
@@ -276,7 +276,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     {
                                         cageAnim = new CAGEAnimation(entityID);
                                         cache.Item2.Add(ent.shortGUID, cageAnim);
-                                        cache.Item1.functions.Add(cageAnim);
+                                        cache.Item1.functions_dictionary.Add(cageAnim.shortGUID, cageAnim);
                                     }
                                     ShortGuid trackID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 3].Item2);
                                     reader.BaseStream.Position = command_entries[i + 4].Item2;
