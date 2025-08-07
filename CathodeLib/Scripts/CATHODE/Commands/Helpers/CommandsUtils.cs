@@ -47,52 +47,30 @@ namespace CATHODE.Scripting
         }
 
         #region Generic Utility Functions
-        /* Gets the composite that contains the entity */
+        /* Gets the composite that contains the entity - OPTIMIZED with caching */
         public Composite GetContainedComposite(Entity entity)
         {
+            if (entity == null) return null;
+            
             for (int i = 0; i < _commands.Entries.Count; i++)
             {
                 switch (entity.variant)
                 {
                     case EntityVariant.FUNCTION:
-                        for (int x = 0; x < _commands.Entries[i].functions.Count; x++)
-                        {
-                            if (_commands.Entries[i].functions[x].shortGUID == entity.shortGUID)
-                            {
-                                if (_commands.Entries[i].functions[x] == entity)
-                                    return _commands.Entries[i];
-                            }
-                        }
+                        if (_commands.Entries[i].functions_dictionary.TryGetValue(entity.shortGUID, out FunctionEntity func) && func == entity)
+                            return _commands.Entries[i];
                         break;
                     case EntityVariant.VARIABLE:
-                        for (int x = 0; x < _commands.Entries[i].variables.Count; x++)
-                        {
-                            if (_commands.Entries[i].variables[x].shortGUID == entity.shortGUID)
-                            {
-                                if (_commands.Entries[i].variables[x] == entity)
-                                    return _commands.Entries[i];
-                            }    
-                        }
+                        if (_commands.Entries[i].variables_dictionary.TryGetValue(entity.shortGUID, out VariableEntity var) && var == entity)
+                            return _commands.Entries[i];
                         break;
                     case EntityVariant.PROXY:
-                        for (int x = 0; x < _commands.Entries[i].proxies.Count; x++)
-                        {
-                            if (_commands.Entries[i].proxies[x].shortGUID == entity.shortGUID)
-                            {
-                                if (_commands.Entries[i].proxies[x] == entity)
-                                    return _commands.Entries[i];
-                            }
-                        }
+                        if (_commands.Entries[i].proxies_dictionary.TryGetValue(entity.shortGUID, out ProxyEntity proxy) && proxy == entity)
+                            return _commands.Entries[i];
                         break;
                     case EntityVariant.ALIAS:
-                        for (int x = 0; x < _commands.Entries[i].aliases.Count; x++)
-                        {
-                            if (_commands.Entries[i].aliases[x].shortGUID == entity.shortGUID)
-                            {
-                                if (_commands.Entries[i].aliases[x] == entity)
-                                    return _commands.Entries[i];
-                            }
-                        }
+                        if (_commands.Entries[i].aliases_dictionary.TryGetValue(entity.shortGUID, out AliasEntity alias) && alias == entity)
+                            return _commands.Entries[i];
                         break;
                 }
             }
@@ -135,14 +113,17 @@ namespace CATHODE.Scripting
         }
         public List<Tuple<Composite, Entity>> ResolveAlias(ShortGuid[] hierarchy, Composite composite)
         {
-            List<Tuple<Composite, Entity>> path = new List<Tuple<Composite, Entity>>();
             if (hierarchy == null || composite == null || hierarchy.Length <= 1)
-                return path;
+                return new List<Tuple<Composite, Entity>>();
 
             bool hasTerminator = hierarchy[hierarchy.Length - 1] == ShortGuid.Invalid;
+            int maxIndex = hierarchy.Length - (hasTerminator ? 1 : 0);
+            
+            // Pre-allocate list with estimated capacity
+            var path = new List<Tuple<Composite, Entity>>(maxIndex);
 
             Composite currentComp = composite;
-            for (int i = 0; i < hierarchy.Length - (hasTerminator ? 1 : 0); i++)
+            for (int i = 0; i < maxIndex; i++)
             {
                 Entity entity = currentComp.GetEntityByID(hierarchy[i]);
                 if (entity == null)
@@ -151,7 +132,7 @@ namespace CATHODE.Scripting
                 path.Add(new Tuple<Composite, Entity>(currentComp, entity));
 
                 //Look up next composite to check, if we're not on the last one
-                if (i != hierarchy.Length - (hasTerminator ? 2 : 1))
+                if (i != maxIndex - 1)
                 {
                     if (entity.variant != EntityVariant.FUNCTION)
                         return new List<Tuple<Composite, Entity>>(); //Unresolvable!
@@ -180,12 +161,16 @@ namespace CATHODE.Scripting
                 return new List<Tuple<Composite, Entity>>();
 
             bool hasTerminator = hierarchy[hierarchy.Length - 1] == ShortGuid.Invalid;
+            int maxIndex = hierarchy.Length - (hasTerminator ? 1 : 0);
 
             Composite initialComp = _commands.GetComposite(hierarchy[0]); //NOTE: This isn't always the initial comp, so we check from the entry point first.
 
             Composite currentComp = _commands.EntryPoints[0];
-            List<Tuple<Composite, Entity>> path = new List<Tuple<Composite, Entity>>();
-            for (int i = 1; i < hierarchy.Length - (hasTerminator ? 1 : 0); i++)
+            
+            // Pre-allocate list with estimated capacity
+            var path = new List<Tuple<Composite, Entity>>(maxIndex - 1);
+            
+            for (int i = 1; i < maxIndex; i++)
             {
                 //Sometimes, the same entity is added twice. Seems wrong?
                 if (hierarchy[i] == hierarchy[i - 1])
@@ -208,7 +193,7 @@ namespace CATHODE.Scripting
                 path.Add(new Tuple<Composite, Entity>(currentComp, entity));
 
                 //Look up next composite to check, if we're not on the last one
-                if (i != hierarchy.Length - (hasTerminator ? 2 : 1))
+                if (i != maxIndex - 1)
                 {
                     if (entity.variant != EntityVariant.FUNCTION)
                         return new List<Tuple<Composite, Entity>>(); //Unresolvable!
@@ -225,7 +210,7 @@ namespace CATHODE.Scripting
         /* Checks a resolved alias or proxy to see if it could be resolved */
         public bool CouldResolve(List<Tuple<Composite, Entity>> path)
         {
-            return path.Count != 0;
+            return path != null && path.Count != 0;
         }
 
         /* Checks a resolved alias or proxy to get the pointed Entity and Composite */
@@ -236,17 +221,27 @@ namespace CATHODE.Scripting
             return (path[path.Count - 1].Item1, path[path.Count - 1].Item2);
         }
 
-        /* Gets a resolved alias or proxy as a string representation */
+        /* Gets a resolved alias or proxy as a string representation - OPTIMIZED */
         public string GetResolvedAsString(List<Tuple<Composite, Entity>> path, bool includeGuids = true)
         {
-            string hierarchyString = "";
+            if (path == null || path.Count == 0)
+                return "";
+                
+            // Pre-allocate StringBuilder for better performance
+            var sb = new StringBuilder();
             for (int i = 0; i < path.Count; i++)
             {
-                if (includeGuids) hierarchyString += "[" + path[i].Item2.shortGUID.ToByteString() + "] ";
-                hierarchyString += GetEntityName(path[i].Item1, path[i].Item2);
-                if (i != path.Count - 1) hierarchyString += " -> ";
+                if (includeGuids) 
+                {
+                    sb.Append('[');
+                    sb.Append(path[i].Item2.shortGUID.ToByteString());
+                    sb.Append("] ");
+                }
+                sb.Append(GetEntityName(path[i].Item1, path[i].Item2));
+                if (i != path.Count - 1) 
+                    sb.Append(" -> ");
             }
-            return hierarchyString;
+            return sb.ToString();
         }
 
         /* Resolve an entity hierarchy */
