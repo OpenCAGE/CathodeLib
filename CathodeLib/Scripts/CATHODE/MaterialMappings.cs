@@ -20,6 +20,8 @@ namespace CATHODE
         //This is always the start of the mapping filepath - remove it for ease when adding new ones
         private const string _path = "n:/content/build/library/_material_libraries_/mappings/";
 
+        //NOTE: REDS is written by remapping the materials via these defs, from the original model values
+
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
