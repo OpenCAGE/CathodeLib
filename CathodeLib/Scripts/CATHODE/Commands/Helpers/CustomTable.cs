@@ -516,11 +516,15 @@ namespace CathodeLib
                     bool hasUnlinkedPins = reader.ReadBoolean();
                     if (hasUnlinkedPins)
                     {
-                        FlowgraphMeta.NodeMeta.UnlinkedPinMeta pin = new FlowgraphMeta.NodeMeta.UnlinkedPinMeta();
-                        pin.ParameterGUID = Utilities.Consume<ShortGuid>(reader);
-                        pin.PinLocation = reader.ReadByte();
-                        pin.PinStyle = reader.ReadByte();
-                        node.UnlinkedPins.Add(pin);
+                        int unlinkedCount = reader.ReadInt32();
+                        for (int z = 0; z < unlinkedCount; z++)
+                        {
+                            FlowgraphMeta.NodeMeta.UnlinkedPinMeta pin = new FlowgraphMeta.NodeMeta.UnlinkedPinMeta();
+                            pin.ParameterGUID = Utilities.Consume<ShortGuid>(reader);
+                            pin.PinLocation = reader.ReadByte();
+                            pin.PinStyle = reader.ReadByte();
+                            node.UnlinkedPins.Add(pin);
+                        }
                     }
 
                     flowgraph.Nodes.Add(node);
