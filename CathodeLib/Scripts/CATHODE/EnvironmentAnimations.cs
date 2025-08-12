@@ -22,20 +22,23 @@ namespace CATHODE
         public EnvironmentAnimations(string path, AnimationStrings strings) : base(path)
         {
             _strings = strings;
-
-            //TEMP
-            OnLoadBegin?.Invoke(_filepath);
-            if (LoadInternal())
-            {
-                _loaded = true;
-                OnLoadSuccess?.Invoke(_filepath);
-            }
+            _loaded = Load();
+        }
+        public EnvironmentAnimations(MemoryStream stream, AnimationStrings strings, string path = "") : base(stream, path)
+        {
+            _strings = strings;
+            _loaded = Load();
+        }
+        public EnvironmentAnimations(byte[] data, AnimationStrings strings, string path = "") : base(data, path)
+        {
+            _strings = strings;
+            _loaded = Load();
         }
 
         private AnimationStrings _strings;
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
             if (_strings == null)
                 return false;
@@ -44,7 +47,7 @@ namespace CATHODE
             //TODO: this is a mapping of ModelReference entities within the composite with EnvironmentModelReference in
             //      the IDs should line up.
 
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 //Read header
                 reader.BaseStream.Position += 8; //Skip version and filesize

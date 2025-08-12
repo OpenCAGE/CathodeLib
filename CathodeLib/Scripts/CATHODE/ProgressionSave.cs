@@ -9,12 +9,15 @@ namespace CATHODE.EXPERIMENTAL
     {
         public Progression Content;
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
+
         public ProgressionSave(string path) : base(path) { }
+        public ProgressionSave(MemoryStream stream, string path = "") : base(stream, path) { }
+        public ProgressionSave(byte[] data, string path = "") : base(data, path) { }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 Content = Utilities.Consume<Progression>(reader);
             }

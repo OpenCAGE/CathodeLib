@@ -19,6 +19,11 @@ namespace CATHODE.Scripting.Internal.Parsers
         private static ShortGuid PHYSICS_SYSTEM_GUID;
         private static ShortGuid RESOURCE_GUID;
 
+#if COMPILE_NAME_LIST
+        public static Dictionary<ShortGuid, Dictionary<ShortGuid, string>> EntityNames = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>();
+        public static Dictionary<ShortGuid, string> ParameterNames = new Dictionary<ShortGuid, string>();
+#endif
+
         static CommandsBIN()
         {
             NAME_GUID = ShortGuidUtils.Generate("name");
@@ -27,14 +32,19 @@ namespace CATHODE.Scripting.Internal.Parsers
             RESOURCE_GUID = ShortGuidUtils.Generate("resource");
         }
 
-        public static void Read(byte[] content, out ShortGuid[] EntryPoints, out List<Composite> Entries)
+        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries)
         {
+#if COMPILE_NAME_LIST
+            EntityNames.Clear();
+            ParameterNames.Clear();
+#endif
+
             EntryPoints = new ShortGuid[3];
             Entries = new List<Composite>();
 
             Tuple<uint, int>[] command_entries;
             byte[] data_buffer;
-            using (BinaryReader reader = new BinaryReader(new MemoryStream(content)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 int filesize = reader.ReadInt32();
                 command_entries = new Tuple<uint, int>[reader.ReadInt32()]; // data_id / offset
@@ -94,10 +104,15 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     func.shortGUID = guid;
                                     func.function = function;
                                     string name = Utilities.ReadString(reader, command_entries[i + 4].Item2);
-                                    //EntityUtils.SetName(cache.Item1, func, name);
+#if COMPILE_NAME_LIST
+                                    if (!EntityNames.ContainsKey(cache.Item1.shortGUID))
+                                        EntityNames.Add(cache.Item1.shortGUID, new Dictionary<ShortGuid, string>());
+                                    if (!EntityNames[cache.Item1.shortGUID].ContainsKey(guid) && name != "")
+                                        EntityNames[cache.Item1.shortGUID].Add(guid, name);
+#endif
                                     if (!cache.Item2.ContainsKey(func.shortGUID))
                                     {
-                                        cache.Item1.functions.Add(func);
+                                        cache.Item1.functions_dictionary.Add(func.shortGUID, func);
                                         cache.Item2.Add(func.shortGUID, func);
                                     }
                                 }
@@ -112,7 +127,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     };
                                     if (!cache.Item2.ContainsKey(alias.shortGUID))
                                     {
-                                        cache.Item1.aliases.Add(alias);
+                                        cache.Item1.aliases_dictionary.Add(alias.shortGUID, alias);
                                         cache.Item2.Add(alias.shortGUID, alias);
                                     }
                                 }
@@ -128,7 +143,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     };
                                     if (!cache.Item2.ContainsKey(prox.shortGUID))
                                     {
-                                        cache.Item1.proxies.Add(prox);
+                                        cache.Item1.proxies_dictionary.Add(prox.shortGUID, prox);
                                         cache.Item2.Add(prox.shortGUID, prox);
                                     }
                                 }
@@ -143,10 +158,13 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         name = Utilities.Consume<ShortGuid>(reader, command_entries[i + 4].Item2)
                                     };
                                     string name = Utilities.ReadString(reader, command_entries[i + 5].Item2);
-                                    //ShortGuidUtils.Generate(name); //Keep track of variable names
+#if COMPILE_NAME_LIST
+                                    if (!ParameterNames.ContainsKey(var.name) && name != "")
+                                        ParameterNames.Add(var.name, name);
+#endif
                                     if (!cache.Item2.ContainsKey(var.shortGUID))
                                     {
-                                        cache.Item1.variables.Add(var);
+                                        cache.Item1.variables_dictionary.Add(var.shortGUID, var);
                                         cache.Item2.Add(var.shortGUID, var);
                                     }
                                 }
@@ -170,15 +188,29 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     TriggerSequence trig = null;
                                     if (cache.Item2.TryGetValue(entityID, out Entity ent))
                                     {
+                                        if (ent.variant == EntityVariant.PROXY)
+                                        {
+                                            Console.WriteLine("WARNING: Skipping load of proxy TriggerSequence!");
+                                            break;
+                                        }
                                         trig = (TriggerSequence)ent;
                                     }
                                     else
                                     {
                                         trig = new TriggerSequence(entityID);
                                         cache.Item2.Add(ent.shortGUID, trig);
-                                        cache.Item1.functions.Add(trig);
+                                        cache.Item1.functions_dictionary.Add(trig.shortGUID, trig);
                                     }
                                     string name = Utilities.ReadString(reader, command_entries[i + 4].Item2);
+#if COMPILE_NAME_LIST
+                                    ShortGuid guid = ShortGuidUtils.Generate(name);
+                                    if (!ParameterNames.ContainsKey(guid) && name != "")
+                                    {
+                                        ParameterNames.Add(guid, name);
+                                        ParameterNames.Add(ShortGuidUtils.Generate(name + "_relay"), name + "_relay");
+                                        ParameterNames.Add(ShortGuidUtils.Generate(name + "_finished"), name + "_finished");
+                                    }
+#endif
                                     trig.methods.Add(new TriggerSequence.MethodEntry(name));
                                 }
                                 break;
@@ -195,7 +227,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     {
                                         trig = new TriggerSequence(entityID);
                                         cache.Item2.Add(ent.shortGUID, trig);
-                                        cache.Item1.functions.Add(trig);
+                                        cache.Item1.functions_dictionary.Add(trig.shortGUID, trig);
                                     }
                                     trig.sequence.Add(new TriggerSequence.SequenceEntry()
                                     {
@@ -217,7 +249,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     {
                                         cageAnim = new CAGEAnimation(entityID);
                                         cache.Item2.Add(ent.shortGUID, cageAnim);
-                                        cache.Item1.functions.Add(cageAnim);
+                                        cache.Item1.functions_dictionary.Add(cageAnim.shortGUID, cageAnim);
                                     }
                                     cageAnim.connections.Add(new CAGEAnimation.Connection()
                                     {
@@ -244,7 +276,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     {
                                         cageAnim = new CAGEAnimation(entityID);
                                         cache.Item2.Add(ent.shortGUID, cageAnim);
-                                        cache.Item1.functions.Add(cageAnim);
+                                        cache.Item1.functions_dictionary.Add(cageAnim.shortGUID, cageAnim);
                                     }
                                     ShortGuid trackID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 3].Item2);
                                     reader.BaseStream.Position = command_entries[i + 4].Item2;

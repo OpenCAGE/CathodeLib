@@ -10,7 +10,10 @@ namespace CATHODE.EXPERIMENTAL
     public class MissionSave : CathodeFile
     {
         public static new Implementation Implementation = Implementation.NONE;
+
         public MissionSave(string path) : base(path) { }
+        public MissionSave(MemoryStream stream, string path = "") : base(stream, path) { }
+        public MissionSave(byte[] data, string path = "") : base(data, path) { }
 
         private Header _header;
 
@@ -22,9 +25,9 @@ namespace CATHODE.EXPERIMENTAL
 
         #region FILE_IO
         /* Load the file */
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 _header = Utilities.Consume<Header>(reader);
                 switch (_header.VersionNum)

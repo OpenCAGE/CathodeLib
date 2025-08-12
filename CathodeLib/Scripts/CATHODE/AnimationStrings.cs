@@ -14,24 +14,28 @@ namespace CATHODE
     {
         public Dictionary<uint, string> Entries = new Dictionary<uint, string>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
         public AnimationStrings(string path) : base(path) { }
+        public AnimationStrings(MemoryStream stream, string path = "") : base(stream, path) { }
+        public AnimationStrings(byte[] data, string path = "") : base(data, path) { }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
-                //Read all data in
-                int EntryCount = reader.ReadInt32();
-                int StringCount = reader.ReadInt32();
-                Entry[] entries = Utilities.ConsumeArray<Entry>(reader, EntryCount);
-                int[] stringOffsets = Utilities.ConsumeArray<int>(reader, StringCount);
-                List<string> strings = new List<string>();
-                for (int i = 0; i < StringCount; i++) strings.Add(Utilities.ReadString(reader));
+                int entryCount = reader.ReadInt32();
+                int stringCount = reader.ReadInt32();
+                Entry[] entries = Utilities.ConsumeArray<Entry>(reader, entryCount);
+                int[] stringOffsets = Utilities.ConsumeArray<int>(reader, stringCount);
 
-                //Parse
-                for (int i = 0; i < entries.Length; i++) Entries.Add(entries[i].StringID, strings[entries[i].StringIndex]);
-                //TODO: encoding on a couple strings here is wrong
+                int baseline = (entryCount * 4 * 2) + 8 + (stringCount * 4);
+
+                List<string> strings = new List<string>();
+                for (int i = 0; i < stringCount; i++)
+                    strings.Add(Utilities.ReadString(reader, stringOffsets[i] + baseline, false));
+                for (int i = 0; i < entries.Length; i++) 
+                    Entries.Add(entries[i].StringID, strings[entries[i].StringIndex]);
             }
             return true;
         }

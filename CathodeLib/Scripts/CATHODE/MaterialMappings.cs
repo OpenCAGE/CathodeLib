@@ -12,15 +12,20 @@ namespace CATHODE
     {
         public List<Entry> Entries = new List<Entry>();
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
+
         public MaterialMappings(string path) : base(path) { }
+        public MaterialMappings(MemoryStream stream, string path = "") : base(stream, path) { }
+        public MaterialMappings(byte[] data, string path = "") : base(data, path) { }
 
         //This is always the start of the mapping filepath - remove it for ease when adding new ones
         private const string _path = "n:/content/build/library/_material_libraries_/mappings/";
 
+        //NOTE: REDS is written by remapping the materials via these defs, from the original model values
+
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 reader.BaseStream.Position += 8; //magic, version
                 int entryCount = reader.ReadInt32();

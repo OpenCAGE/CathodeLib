@@ -16,12 +16,15 @@ namespace CATHODE
     {
         public Dictionary<uint, string> Entries = new Dictionary<uint, string>();
         public static new Implementation Implementation = Implementation.LOAD;
+
         public AnimClipDB(string path) : base(path) { }
+        public AnimClipDB(MemoryStream stream, string path = "") : base(stream, path) { }
+        public AnimClipDB(byte[] data, string path = "") : base(data, path) { }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 int EntryCount1 = reader.ReadInt32();
                 int EntryCount2 = reader.ReadInt32();

@@ -1,6 +1,7 @@
 using CATHODE;
 using CATHODE.Scripting;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -77,80 +78,62 @@ namespace CathodeLib
         }
 
         //Reads a string up to a trailing 0x00 byte
-        public static string ReadString(byte[] bytes, int position)
-        {
-            string to_return = "";
-            for (int i = 0; i < int.MaxValue; i++)
-            {
-                byte this_byte = bytes[position + i];
-                if (this_byte == 0x00) break;
-                to_return += (char)this_byte;
-            }
-            return to_return;
-        }
         public static string ReadString(BinaryReader reader, int position, bool resetPosition = true)
         {
             long startPos = reader.BaseStream.Position;
             reader.BaseStream.Position = position;
-
-            string to_return = "";
-            for (int i = 0; i < int.MaxValue; i++)
+            List<byte> bytes = new List<byte>();
+            while (true)
             {
-                byte this_byte = reader.ReadByte();
-                if (this_byte == 0x00) break;
-                to_return += (char)this_byte;
+                byte b = reader.ReadByte();
+                if (b == 0x00)
+                    break;
+                bytes.Add(b);
             }
-
             if (resetPosition) reader.BaseStream.Position = startPos;
-            return to_return;
+            return Encoding.ASCII.GetString(bytes.ToArray());
+        }
+        public static string ReadString(byte[] byteArray, int position)
+        {
+            List<byte> bytes = new List<byte>();
+            for (int i = 0; i < byteArray.Length; i++)
+            {
+                if (byteArray[position + i] == 0x00)
+                    break;
+                bytes.Add(byteArray[position + i]);
+            }
+            return Encoding.ASCII.GetString(bytes.ToArray());
         }
         public static string ReadString(BinaryReader reader)
         {
-            string to_return = "";
-            for (int i = 0; i < int.MaxValue; i++)
+            List<byte> bytes = new List<byte>();
+            while (true)
             {
-                byte this_byte = reader.ReadByte();
-                if (this_byte == 0x00) break;
-                to_return += (char)this_byte;
+                byte b = reader.ReadByte();
+                if (b == 0x00)
+                    break;
+                bytes.Add(b);
             }
-            return to_return;
+            return Encoding.ASCII.GetString(bytes.ToArray());
         }
-        public static string ReadString(byte[] bytes)
+        public static string ReadString(byte[] byteArray)
         {
-            string to_return = "";
-            for (int i = 0; i < bytes.Length; i++)
+            List<byte> bytes = new List<byte>();
+            for (int i = 0; i < byteArray.Length; i++)
             {
-                byte this_byte = bytes[i];
-                if (this_byte == 0x00) break;
-                to_return += (char)this_byte;
+                if (byteArray[i] == 0x00)
+                    break;
+                bytes.Add(byteArray[i]);
             }
-            return to_return;
+            return Encoding.ASCII.GetString(bytes.ToArray());
         }
 
         //Writes a string without a leading length value
         public static void WriteString(string string_to_write, BinaryWriter writer, bool trailingByte = false)
         {
-            foreach (char character in string_to_write)
-                writer.Write(character);
-
-            if (trailingByte) writer.Write((char)0x00);
-        }
-
-
-        //Gets a string from a byte array (at position) by reading chars until a null is hit
-        public static string GetStringFromByteArray(byte[] byte_array, int position)
-        {
-            string to_return = "";
-            for (int i = 0; i < 999999999; i++)
-            {
-                byte this_byte = byte_array[position + i];
-                if (this_byte == 0x00)
-                {
-                    break;
-                }
-                to_return += (char)this_byte;
-            }
-            return to_return;
+            byte[] content = Encoding.ASCII.GetBytes(string_to_write);
+            writer.Write(content);
+            if (trailingByte) writer.Write((byte)0x00);
         }
 
         //Removes the leading nulls from a byte array, useful for cleaning byte-aligned file extracts

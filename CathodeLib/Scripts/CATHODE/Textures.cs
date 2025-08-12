@@ -12,6 +12,7 @@ namespace CATHODE
     {
         public List<TEX4> Entries = new List<TEX4>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
         public Textures(string path) : base(path) { }
 
         public List<TEX4> _writeList = new List<TEX4>();
@@ -24,8 +25,12 @@ namespace CATHODE
         }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
+            //NOTE: Loading via byte[] or MemoryStream is not currently supported. Must be loaded via disk from a filepath!
+            if (_filepath == "")
+                return false;
+
             if (Path.GetFileName(_filepath).Substring(0, 5).ToUpper() != "LEVEL")
                 _filepathBIN = _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "GLOBAL_TEXTURES_HEADERS.ALL.BIN";
             else
@@ -88,13 +93,13 @@ namespace CATHODE
                 int endOfHeaders = 32 + (entryCount * 48);
                 for (int i = 0; i < entryCount; i++)
                 {
+                    //Read texture header info [48]
                     pak.BaseStream.Position += 8;
                     int length = BigEndianUtils.ReadInt32(pak);
-                    pak.BaseStream.Position += 4; 
+                    pak.BaseStream.Position += 4; //length again
                     int offset = BigEndianUtils.ReadInt32(pak);
                     int sort = BigEndianUtils.ReadInt32(pak);
-                    pak.BaseStream.Position += 8;
-                    UInt16 unk2 = BigEndianUtils.ReadUInt16(pak);
+                    pak.BaseStream.Position += 10; //last 2 bytes here are a flag for low mip (sort tells us this already)
                     int textureIndex = BigEndianUtils.ReadInt16(pak);
                     pak.BaseStream.Position += 12;
 
@@ -104,9 +109,6 @@ namespace CATHODE
                     pak.BaseStream.Position = endOfHeaders + offset;
                     tex.Content = pak.ReadBytes(length);
                     pak.BaseStream.Position = offsetToReturnTo;
-
-                    //Write out the unknown info
-                    tex.unk2 = unk2;
                 }
             }
             return true;
@@ -206,7 +208,7 @@ namespace CATHODE
                             pak.Write(BigEndianUtils.FlipEndian(sort));
                             pak.Write(BigEndianUtils.FlipEndian(256));
                             pak.Write(new byte[4]);
-                            pak.Write(BigEndianUtils.FlipEndian((Int16)tex.unk2));
+                            pak.Write(BigEndianUtils.FlipEndian((Int16)(sort == 0 ? 32768 : 0)));
                             pak.Write(BigEndianUtils.FlipEndian((Int16)i));
                             pak.Write(new byte[12]);
                         }
@@ -271,9 +273,6 @@ namespace CATHODE
                 public Int16 MipLevels = 0;
 
                 public byte[] Content = null;
-
-                //Saving these so we can re-write without issue (TODO: figure them out)
-                public UInt16 unk2 = 0;
 
                 ~Texture()
                 {

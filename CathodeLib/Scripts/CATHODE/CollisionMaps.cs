@@ -15,10 +15,13 @@ namespace CATHODE
     {
         public List<Entry> Entries = new List<Entry>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
         public CollisionMaps(string path) : base(path) { }
+        public CollisionMaps(MemoryStream stream, string path = "") : base(stream, path) { }
+        public CollisionMaps(byte[] data, string path = "") : base(data, path) { }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
             int minUnk1 = 0;
             int minUnk2 = 0;
@@ -27,7 +30,7 @@ namespace CATHODE
             List<int> flags = new List<int>();
             Dictionary<string, List<string>> dictest = new Dictionary<string, List<string>>();
 
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 //The way this works:
                 // - First 18 entries are empty

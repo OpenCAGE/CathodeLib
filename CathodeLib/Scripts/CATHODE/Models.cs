@@ -16,6 +16,7 @@ namespace CATHODE
     {
         public List<CS2> Entries = new List<CS2>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
         public Models(string path) : base(path) { }
 
         private List<CS2.Component.LOD.Submesh> _writeList = new List<CS2.Component.LOD.Submesh>();
@@ -29,8 +30,12 @@ namespace CATHODE
 
         #region FILE_IO
         /* Load the file */
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
+            //NOTE: Loading via byte[] or MemoryStream is not currently supported. Must be loaded via disk from a filepath!
+            if (_filepath == "")
+                return false;
+
             _filepathBIN = _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "MODELS_" + Path.GetFileName(_filepath).Substring(0, Path.GetFileName(_filepath).Length - 11) + ".BIN";
 
             if (!File.Exists(_filepathBIN)) return false;
@@ -162,16 +167,15 @@ namespace CATHODE
                 int endOfHeaders = 32 + (entryCountActual * 48);
                 for (int i = 0; i < entryCount; i++)
                 {
-                    //Read submesh header info
+                    //Read submesh header info [48]
                     pak.BaseStream.Position += 8;
                     int length = BigEndianUtils.ReadInt32(pak);
                     pak.BaseStream.Position += 4; //length again 
                     int offset = BigEndianUtils.ReadInt32(pak);
-                    pak.BaseStream.Position += 8;
-                    int unk1 = BigEndianUtils.ReadInt32(pak);  //used to store some info on BSP_LV426_PT01
+                    int sort = BigEndianUtils.ReadInt32(pak);
+                    pak.BaseStream.Position += 8; 
                     int binIndex = BigEndianUtils.ReadInt32(pak);
-                    pak.BaseStream.Position += 8;
-                    int unk2 = BigEndianUtils.ReadInt32(pak); //used to store info on BSP_LV426_PT02
+                    pak.BaseStream.Position += 12;
 
                     //Create a new model instance to add these submeshes to
                     CS2 cs2 = Entries.FirstOrDefault(o => o.Name == filenameList[binIndex]);
@@ -181,7 +185,7 @@ namespace CATHODE
                         cs2.Name = filenameList[binIndex];
                         Entries.Add(cs2);
                     }
-                    CS2.Component component = new CS2.Component() { UnkLv426Pt1 = unk1, UnkLv426Pt2 = unk2 };
+                    CS2.Component component = new CS2.Component();
                     cs2.Components.Add(component);
 
                     //Read submesh content and add to appropriate model
@@ -430,16 +434,14 @@ namespace CATHODE
                         pak.Write(BigEndianUtils.FlipEndian((Int32)lengths[c]));
                         pak.Write(BigEndianUtils.FlipEndian((Int32)lengths[c]));
                         pak.Write(BigEndianUtils.FlipEndian((Int32)offsets[c]));
-                        c++;
+                        pak.Write(0);
+                        pak.Write(new byte[4] { 0x00, 0x01, 0x01, 0x00 });
+                        pak.Write(0);
 
-                        pak.Write(new byte[5]);
-                        pak.Write(new byte[2] { 0x01, 0x01 });
-                        pak.Write(new byte[1]);
-
-                        pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].Components[x].UnkLv426Pt1));
                         pak.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndex(Entries[i].Components[x].LODs[0].Submeshes[0])));
-                        pak.Write(new byte[8]);
-                        pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].Components[x].UnkLv426Pt2));
+                        pak.Write(new byte[12]);
+
+                        c++;
                     }
                 }
 
@@ -637,11 +639,6 @@ namespace CATHODE
             public class Component
             {
                 public List<LOD> LODs = new List<LOD>();
-
-                //Storing some unknown info about LV426 stuff (Pt1 and Pt2 respectively)
-                //I think these are just garbage values that got dumped by accident
-                public int UnkLv426Pt1 = 0;
-                public int UnkLv426Pt2 = 0;
 
                 ~Component()
                 {

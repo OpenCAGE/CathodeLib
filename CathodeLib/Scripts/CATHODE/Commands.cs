@@ -24,7 +24,16 @@ namespace CATHODE
     {
         public List<Composite> Entries = new List<Composite>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
         public Commands(string path) : base(path)
+        {
+            Utils = new CommandsUtils(this);
+        }
+        public Commands(MemoryStream stream, string path = "") : base(stream, path)
+        {
+            Utils = new CommandsUtils(this);
+        }
+        public Commands(byte[] data, string path = "") : base(data, path)
         {
             Utils = new CommandsUtils(this);
         }
@@ -50,16 +59,16 @@ namespace CATHODE
         public readonly CommandsUtils Utils;
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            byte[] content = File.ReadAllBytes(_filepath);
+            byte[] content = stream.ToArray();
             switch (Path.GetExtension(_filepath).ToUpper())
             {
                 case ".PAK":
-                    CommandsPAK.Read(content, out _entryPoints, out Entries);
+                    CommandsPAK.Read(stream, out _entryPoints, out Entries);
                     break;
                 case ".BIN":
-                    CommandsBIN.Read(content, out _entryPoints, out Entries);
+                    CommandsBIN.Read(stream, out _entryPoints, out Entries);
                     break;
                 default:
                     return false;
@@ -83,7 +92,6 @@ namespace CATHODE
             //Validate entry points and composite count
             if (Entries.Count == 0) return false;
             if (_entryPoints == null) _entryPoints = new ShortGuid[3];
-            if (_entryPoints[0].IsInvalid || _entryPoints[1].IsInvalid || _entryPoints[2].IsInvalid || Entries.Count == 0) return false;
 
             #region FIX_POTENTIAL_ERRORS
             //If we have composites but the entry points are broken, correct them first!
@@ -119,11 +127,12 @@ namespace CATHODE
             //Fix (& verify) entity-attached resource info
             Parallel.For(0, Entries.Count, i =>
             {
-                Parallel.For(0, Entries[i].functions.Count, x =>
+                var functions = Entries[i].functions_dictionary.Values;
+                Parallel.ForEach(functions, function =>
                 {
-                    if (Entries[i].functions[x].function.IsFunctionType)
+                    if (function.function.IsFunctionType)
                     {
-                        switch (Entries[i].functions[x].function.AsFunctionType)
+                        switch (function.function.AsFunctionType)
                         {
                             case FunctionType.TRAV_1ShotClimbUnder:
                             case FunctionType.TRAV_1ShotFloorVentEntrance:
@@ -139,42 +148,42 @@ namespace CATHODE
                             case FunctionType.TRAV_ContinuousLedge:
                             case FunctionType.TRAV_ContinuousPipe:
                             case FunctionType.TRAV_ContinuousTightGap:
-                                Entries[i].functions[x].AddResource(ResourceType.TRAVERSAL_SEGMENT);
+                                function.AddResource(ResourceType.TRAVERSAL_SEGMENT);
                                 break;
                             case FunctionType.NavMeshBarrier:
-                                Entries[i].functions[x].AddResource(ResourceType.NAV_MESH_BARRIER_RESOURCE);
+                                function.AddResource(ResourceType.NAV_MESH_BARRIER_RESOURCE);
                                 break;
                             case FunctionType.ExclusiveMaster:
-                                Entries[i].functions[x].AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE);
+                                function.AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE);
                                 break;
 
                             //NOTE: Really, DYNAMIC_PHYSICS_SYSTEM isn't actually on the entity, it's on the composite
                             case FunctionType.PhysicsSystem:
-                                Parameter dps_index = Entries[i].functions[x].GetParameter("system_index");
+                                Parameter dps_index = function.GetParameter("system_index");
                                 if (dps_index == null)
                                 {
                                     dps_index = new Parameter("system_index", new cInteger(0));
-                                    Entries[i].functions[x].parameters.Add(dps_index);
+                                    function.parameters.Add(dps_index);
                                 }
-                                Entries[i].functions[x].AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).index = ((cInteger)dps_index.content).value;
+                                function.AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).index = ((cInteger)dps_index.content).value;
                                 break;
 
                             case FunctionType.EnvironmentModelReference:
-                                Parameter rsc = Entries[i].functions[x].GetParameter("resource");
+                                Parameter rsc = function.GetParameter("resource");
                                 if (rsc == null)
                                 {
-                                    rsc = new Parameter("resource", new cResource(Entries[i].functions[x].shortGUID));
-                                    Entries[i].functions[x].parameters.Add(rsc);
+                                    rsc = new Parameter("resource", new cResource(function.shortGUID));
+                                    function.parameters.Add(rsc);
                                 }
                                 cResource rsc_p = (cResource)rsc.content;
                                 rsc_p.AddResource(ResourceType.ANIMATED_MODEL);
                                 break;
                             case FunctionType.ModelReference:
-                                Parameter mdl = Entries[i].functions[x].GetParameter("resource");
+                                Parameter mdl = function.GetParameter("resource");
                                 if (mdl == null)
                                 {
-                                    mdl = new Parameter("resource", new cResource(Entries[i].functions[x].shortGUID));
-                                    Entries[i].functions[x].parameters.Add(mdl);
+                                    mdl = new Parameter("resource", new cResource(function.shortGUID));
+                                    function.parameters.Add(mdl);
                                 }
                                 break;
                         }

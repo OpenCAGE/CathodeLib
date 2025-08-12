@@ -11,15 +11,18 @@ namespace CATHODE
     {
         public List<Mapping> Entries = new List<Mapping>();
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE | Implementation.CREATE;
+
         public EnvironmentMaps(string path) : base(path) { }
+        public EnvironmentMaps(MemoryStream stream, string path = "") : base(stream, path) { }
+        public EnvironmentMaps(byte[] data, string path = "") : base(data, path) { }
 
         //This is the number of environment maps in the level. We should never reference an index higher than this.
         public int EnvironmentMapCount = 0;
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 reader.BaseStream.Position += 8;
                 int entryCount = reader.ReadInt32();

@@ -16,12 +16,15 @@ namespace CATHODE
         public Dictionary<CharacterPopulation, List<Preset>> Presets = new Dictionary<CharacterPopulation, List<Preset>>();
 
         public static new Implementation Implementation = Implementation.CREATE | Implementation.SAVE | Implementation.LOAD;
+
         public CustomCharacterInfo(string path) : base(path) { }
+        public CustomCharacterInfo(MemoryStream stream, string path = "") : base(stream, path) { }
+        public CustomCharacterInfo(byte[] data, string path = "") : base(data, path) { }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 reader.BaseStream.Position = 4; //version
                 foreach (CharacterModel characterModel in Enum.GetValues(typeof(CharacterModel)))

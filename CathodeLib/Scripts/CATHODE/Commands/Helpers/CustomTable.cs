@@ -137,6 +137,9 @@ namespace CathodeLib
                             case CustomTableType.COMPOSITE_PATHS:
                                 ((CompositePathTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomTableType.COMPOSITE_PAGE_HISTORY:
+                                ((CompositePageHistoryTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
 #if DEBUG
                         if (tableType == table)
@@ -218,6 +221,9 @@ namespace CathodeLib
                         break;
                     case CustomTableType.COMPOSITE_PATHS:
                         data = new CompositePathTable(reader);
+                        break;
+                    case CustomTableType.COMPOSITE_PAGE_HISTORY:
+                        data = new CompositePageHistoryTable(reader);
                         break;
                 }
             }
@@ -474,9 +480,8 @@ namespace CathodeLib
 
             byte version = reader.ReadByte();
             if (version != FlowgraphMeta.VERSION)
-            {
-                //Add compatibility here when required
-            }
+                return;
+
             for (int i = 0; i < count; i++)
             {
                 FlowgraphMeta flowgraph = new FlowgraphMeta();
@@ -487,9 +492,7 @@ namespace CathodeLib
                 flowgraph.CanvasPosition = new PointF(reader.ReadSingle(), reader.ReadSingle());
                 flowgraph.CanvasScale = reader.ReadSingle();
 
-                flowgraph.UsesShortenedNames = reader.ReadBoolean();
-                flowgraph.IsUnfinished = reader.ReadBoolean();
-                reader.BaseStream.Position += 8; //reserved
+                flowgraph.SupportedLevels = (FlowgraphMeta.SupportedLevel)reader.ReadInt64();
 
                 int nodeMetaCount = reader.ReadInt32();
                 for (int x = 0; x < nodeMetaCount; x++)
@@ -497,13 +500,7 @@ namespace CathodeLib
                     FlowgraphMeta.NodeMeta node = new FlowgraphMeta.NodeMeta();
                     node.EntityGUID = Utilities.Consume<ShortGuid>(reader);
                     node.NodeID = reader.ReadInt32();
-
                     node.Position = new Point(reader.ReadInt32(), reader.ReadInt32());
-
-                    int inCount = reader.ReadInt32();
-                    node.PinsIn = Utilities.ConsumeArray<ShortGuid>(reader, inCount).ToList();
-                    int outCount = reader.ReadInt32();
-                    node.PinsOut = Utilities.ConsumeArray<ShortGuid>(reader, outCount).ToList();
 
                     int connectionCount = reader.ReadInt32();
                     for (int z = 0; z < connectionCount; z++)
@@ -513,7 +510,21 @@ namespace CathodeLib
                         connection.ConnectedEntityGUID = Utilities.Consume<ShortGuid>(reader);
                         connection.ConnectedParameterGUID = Utilities.Consume<ShortGuid>(reader);
                         connection.ConnectedNodeID = reader.ReadInt32();
-                        node.Connections.Add(connection);
+                        node.ConnectionsOut.Add(connection);
+                    }
+
+                    bool hasUnlinkedPins = reader.ReadBoolean();
+                    if (hasUnlinkedPins)
+                    {
+                        int unlinkedCount = reader.ReadInt32();
+                        for (int z = 0; z < unlinkedCount; z++)
+                        {
+                            FlowgraphMeta.NodeMeta.UnlinkedPinMeta pin = new FlowgraphMeta.NodeMeta.UnlinkedPinMeta();
+                            pin.ParameterGUID = Utilities.Consume<ShortGuid>(reader);
+                            pin.PinLocation = reader.ReadByte();
+                            pin.PinStyle = reader.ReadByte();
+                            node.UnlinkedPins.Add(pin);
+                        }
                     }
 
                     flowgraph.Nodes.Add(node);
@@ -535,9 +546,7 @@ namespace CathodeLib
                 writer.Write(flowgraphs[i].CanvasPosition.Y);
                 writer.Write(flowgraphs[i].CanvasScale);
 
-                writer.Write(flowgraphs[i].UsesShortenedNames);
-                writer.Write(flowgraphs[i].IsUnfinished);
-                writer.Write(new byte[8]); //reserved
+                writer.Write((long)flowgraphs[i].SupportedLevels);
 
                 writer.Write(flowgraphs[i].Nodes.Count);
                 for (int x = 0; x < flowgraphs[i].Nodes.Count; x++)
@@ -548,28 +557,37 @@ namespace CathodeLib
                     writer.Write(flowgraphs[i].Nodes[x].Position.X);
                     writer.Write(flowgraphs[i].Nodes[x].Position.Y);
 
-                    writer.Write(flowgraphs[i].Nodes[x].PinsIn.Count);
-                    Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].PinsIn);
-                    writer.Write(flowgraphs[i].Nodes[x].PinsOut.Count);
-                    Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].PinsOut);
-
-                    writer.Write(flowgraphs[i].Nodes[x].Connections.Count);
-                    for (int z = 0; z < flowgraphs[i].Nodes[x].Connections.Count; z++)
+                    writer.Write(flowgraphs[i].Nodes[x].ConnectionsOut.Count);
+                    for (int z = 0; z < flowgraphs[i].Nodes[x].ConnectionsOut.Count; z++)
                     {
-                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].Connections[z].ParameterGUID);
-                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].Connections[z].ConnectedEntityGUID);
-                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].Connections[z].ConnectedParameterGUID);
-                        writer.Write(flowgraphs[i].Nodes[x].Connections[z].ConnectedNodeID);
+                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsOut[z].ParameterGUID);
+                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsOut[z].ConnectedEntityGUID);
+                        Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsOut[z].ConnectedParameterGUID);
+                        writer.Write(flowgraphs[i].Nodes[x].ConnectionsOut[z].ConnectedNodeID);
+                    }
+
+                    if (flowgraphs[i].Nodes[x].UnlinkedPins.Count == 0)
+                    {
+                        writer.Write(false);
+                    }
+                    else
+                    {
+                        writer.Write(true);
+                        writer.Write(flowgraphs[i].Nodes[x].UnlinkedPins.Count);
+                        for (int m = 0; m < flowgraphs[i].Nodes[x].UnlinkedPins.Count; m++)
+                        {
+                            Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].UnlinkedPins[m].ParameterGUID);
+                            writer.Write(flowgraphs[i].Nodes[x].UnlinkedPins[m].PinLocation);
+                            writer.Write(flowgraphs[i].Nodes[x].UnlinkedPins[m].PinStyle);
+                        }
                     }
                 }
             }
         }
 
-        public class FlowgraphMeta
+        public class FlowgraphMeta : IEquatable<FlowgraphMeta>
         {
-            public const byte VERSION = 1;
-            public bool UsesShortenedNames = false;
-            public bool IsUnfinished = false;
+            public const byte VERSION = 3;
 
             public ShortGuid CompositeGUID;
             public string Name;
@@ -577,19 +595,62 @@ namespace CathodeLib
             public PointF CanvasPosition;
             public float CanvasScale;
 
+            public SupportedLevel SupportedLevels; //NOTE: Only used on vanilla layouts
+
             public List<NodeMeta> Nodes = new List<NodeMeta>();
+
+            public bool Equals(FlowgraphMeta other)
+            {
+                if (other is null) return false;
+                if (ReferenceEquals(this, other)) return true;
+
+                if (CompositeGUID != other.CompositeGUID) return false;
+                if (Name != other.Name) return false;
+
+                return this.Nodes.SequenceEqual(other.Nodes);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as FlowgraphMeta);
+            }
+
+            public override int GetHashCode()
+            {
+                return 249714186 + EqualityComparer<List<NodeMeta>>.Default.GetHashCode(Nodes);
+            }
 
             public class NodeMeta
             {
                 public ShortGuid EntityGUID;
                 public int NodeID;
-
                 public Point Position;
 
-                public List<ShortGuid> PinsIn = new List<ShortGuid>();
-                public List<ShortGuid> PinsOut = new List<ShortGuid>();
+                public List<ConnectionMeta> ConnectionsOut = new List<ConnectionMeta>();
+                public List<UnlinkedPinMeta> UnlinkedPins = new List<UnlinkedPinMeta>(); //NOTE: Only used on non-vanilla layouts
 
-                public List<ConnectionMeta> Connections = new List<ConnectionMeta>(); //NOTE: This is connections OUT of this node
+                public bool Equals(NodeMeta other)
+                {
+                    if (other is null) return false;
+                    if (ReferenceEquals(this, other)) return true;
+
+                    return EntityGUID.Equals(other.EntityGUID) &&
+                           NodeID == other.NodeID &&
+                           Position.Equals(other.Position) &&
+                           ConnectionsOut.SequenceEqual(other.ConnectionsOut);
+                }
+
+                public override bool Equals(object obj) => Equals(obj as NodeMeta);
+
+                public override int GetHashCode()
+                {
+                    int hashCode = -779242009;
+                    hashCode = hashCode * -1521134295 + EntityGUID.GetHashCode();
+                    hashCode = hashCode * -1521134295 + NodeID.GetHashCode();
+                    hashCode = hashCode * -1521134295 + Position.GetHashCode();
+                    hashCode = hashCode * -1521134295 + EqualityComparer<List<ConnectionMeta>>.Default.GetHashCode(ConnectionsOut);
+                    return hashCode;
+                }
 
                 public class ConnectionMeta
                 {
@@ -597,7 +658,76 @@ namespace CathodeLib
                     public ShortGuid ConnectedEntityGUID;
                     public ShortGuid ConnectedParameterGUID;
                     public int ConnectedNodeID;
+
+                    public bool Equals(ConnectionMeta other)
+                    {
+                        if (other is null) return false;
+                        if (ReferenceEquals(this, other)) return true;
+
+                        return ParameterGUID.Equals(other.ParameterGUID) &&
+                               ConnectedEntityGUID.Equals(other.ConnectedEntityGUID) &&
+                               ConnectedParameterGUID.Equals(other.ConnectedParameterGUID) &&
+                               ConnectedNodeID == other.ConnectedNodeID;
+                    }
+
+                    public override bool Equals(object obj) => Equals(obj as ConnectionMeta);
+
+                    public override int GetHashCode()
+                    {
+                        int hashCode = 1477210510;
+                        hashCode = hashCode * -1521134295 + ParameterGUID.GetHashCode();
+                        hashCode = hashCode * -1521134295 + ConnectedEntityGUID.GetHashCode();
+                        hashCode = hashCode * -1521134295 + ConnectedParameterGUID.GetHashCode();
+                        hashCode = hashCode * -1521134295 + ConnectedNodeID.GetHashCode();
+                        return hashCode;
+                    }
                 }
+
+                public class UnlinkedPinMeta
+                {
+                    public ShortGuid ParameterGUID;
+                    public byte PinLocation;
+                    public byte PinStyle;
+                }
+            }
+
+            [Flags]
+            public enum SupportedLevel : long
+            {
+                BSP_LV426_PT01 = 1 << 0,
+                BSP_LV426_PT02 = 1 << 1,
+                BSP_TORRENS = 1 << 2,
+                BSPNOSTROMO_RIPLEY = 1 << 4,
+                BSPNOSTROMO_TWOTEAMS = 1 << 5,
+                CHALLENGEMAP1 = 1 << 6,
+                CHALLENGEMAP3 = 1 << 7,
+                CHALLENGEMAP4 = 1 << 8,
+                CHALLENGEMAP5 = 1 << 9,
+                CHALLENGEMAP7 = 1 << 10,
+                CHALLENGEMAP9 = 1 << 11,
+                CHALLENGEMAP11 = 1 << 12,
+                CHALLENGEMAP12 = 1 << 13,
+                CHALLENGEMAP14 = 1 << 14,
+                CHALLENGEMAP16 = 1 << 15,
+                SALVAGEMODE1 = 1 << 16,
+                SALVAGEMODE2 = 1 << 17,
+                ENG_ALIEN_NEST = 1 << 18,
+                ENG_REACTORCORE = 1 << 19,
+                ENG_TOWPLATFORM = 1 << 20,
+                FRONTEND = 1 << 21,
+                HAB_AIRPORT = 1 << 22,
+                HAB_CORPORATEPENT = 1 << 23,
+                HAB_SHOPPINGCENTRE = 1 << 24,
+                SCI_ANDROIDLAB = 1 << 25,
+                SCI_HOSPITALLOWER = 1 << 26,
+                SCI_HOSPITALUPPER = 1 << 27,
+                SCI_HUB = 1 << 28,
+                SOLACE = 1 << 29,
+                TECH_COMMS = 1 << 30,
+                TECH_HUB = 1L << 31,
+                TECH_MUTHRCORE = 1L << 32,
+                TECH_RND = 1L << 33,
+                TECH_RND_HZDLAB = 1L << 34,
             }
         }
     }
@@ -999,6 +1129,39 @@ namespace CathodeLib
                     return fullPath.Substring(17);
             }
             return fullPath;
+        }
+    }
+    public class CompositePageHistoryTable : CustomTable.Table
+    {
+        public CompositePageHistoryTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.COMPOSITE_PAGE_HISTORY;
+        }
+
+        public Dictionary<ShortGuid, string> last_composite_page;
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+            {
+                last_composite_page = new Dictionary<ShortGuid, string>();
+                return;
+            }
+
+            int compositeCount = reader.ReadInt32();
+            last_composite_page = new Dictionary<ShortGuid, string>(compositeCount);
+            for (int i = 0; i < compositeCount; i++)
+                last_composite_page.Add(Utilities.Consume<ShortGuid>(reader), reader.ReadString());
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(last_composite_page.Count);
+            foreach (KeyValuePair<ShortGuid, string> composites in last_composite_page)
+            {
+                Utilities.Write<ShortGuid>(writer, composites.Key);
+                writer.Write(composites.Value);
+            }
         }
     }
 }

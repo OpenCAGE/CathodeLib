@@ -17,7 +17,10 @@ namespace CATHODE
     {
         public List<MOVER_DESCRIPTOR> Entries = new List<MOVER_DESCRIPTOR>();
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
+
         public Movers(string path) : base(path) { }
+        public Movers(MemoryStream stream, string path = "") : base(stream, path) { }
+        public Movers(byte[] data, string path = "") : base(data, path) { }
 
         private List<MOVER_DESCRIPTOR> _writeList = new List<MOVER_DESCRIPTOR>(); //todo: deprecate this
 
@@ -28,11 +31,11 @@ namespace CATHODE
         }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
             //note: first 12 always renderable but not linked to commands -> they are always the same models across every level. is it the content of GLOBAL?
 
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 reader.BaseStream.Position += 4;
                 int entryCount = reader.ReadInt32();

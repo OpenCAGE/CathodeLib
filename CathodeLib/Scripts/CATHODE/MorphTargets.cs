@@ -16,12 +16,15 @@ namespace CATHODE
     {
         public List<Entry> Entries = new List<Entry>();
         public static new Implementation Implementation = Implementation.NONE;
+
         public MorphTargets(string path) : base(path) { }
+        public MorphTargets(MemoryStream stream, string path = "") : base(stream, path) { }
+        public MorphTargets(byte[] data, string path = "") : base(data, path) { }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 int namesCount = reader.ReadInt32();
                 reader.BaseStream.Position += 4;

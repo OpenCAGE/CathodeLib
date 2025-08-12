@@ -42,7 +42,7 @@ namespace CATHODE.Scripting
         public ShortGuid(string id)
         {
             System.String[] arr = id.Split('-');
-            if (arr.Length != 4) throw new Exception("Tried to initialise ShortGuid without 4-byte ID string.");
+            if (arr.Length != 4) throw new Exception("Tried to initialise ShortGuid without 4-byte ID string. Please use ShortGuidUtils to generate from a regular string.");
             byte[] array = new byte[arr.Length];
             for (int i = 0; i < arr.Length; i++) array[i] = Convert.ToByte(arr[i], 16);
             val = BitConverter.ToUInt32(array, 0);

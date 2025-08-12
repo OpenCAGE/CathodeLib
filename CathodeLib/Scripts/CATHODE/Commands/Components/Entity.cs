@@ -454,13 +454,13 @@ namespace CATHODE.Scripting
         public ProxyEntity(ShortGuid[] hierarchy = null, ShortGuid targetType = new ShortGuid()) : base(EntityVariant.PROXY)
         {
             this.function = targetType;
-            if (hierarchy != null) this.proxy.path = hierarchy;
+            if (hierarchy != null) this.proxy = new EntityPath(hierarchy);
         }
         public ProxyEntity(ShortGuid shortGUID, ShortGuid[] hierarchy = null, ShortGuid targetType = new ShortGuid()) : base(shortGUID, EntityVariant.PROXY)
         {
             this.shortGUID = shortGUID;
             this.function = targetType; 
-            if (hierarchy != null) this.proxy.path = hierarchy;
+            if (hierarchy != null) this.proxy = new EntityPath(hierarchy);
         }
 
         public ShortGuid function;                  //The "function" value on the entity we're proxying
@@ -474,12 +474,12 @@ namespace CATHODE.Scripting
 
         public AliasEntity(ShortGuid[] hierarchy = null) : base(EntityVariant.ALIAS)
         {
-            if (hierarchy != null) this.alias.path = hierarchy;
+            if (hierarchy != null) this.alias = new EntityPath(hierarchy);
         }
         public AliasEntity(ShortGuid shortGUID, ShortGuid[] hierarchy = null) : base(shortGUID, EntityVariant.ALIAS)
         {
             this.shortGUID = shortGUID;
-            if (hierarchy != null) this.alias.path = hierarchy;
+            if (hierarchy != null) this.alias = new EntityPath(hierarchy);
         }
 
         public EntityPath alias = new EntityPath(); //A path to the entity we're an alias of
@@ -621,7 +621,7 @@ namespace CATHODE.Scripting
 
     [Serializable]
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct EntityConnector
+    public struct EntityConnector : IEquatable<EntityConnector>
     {
         public EntityConnector(ShortGuid linkedEntity, ShortGuid param, ShortGuid linkedParam)
         {
@@ -640,7 +640,7 @@ namespace CATHODE.Scripting
             linkedEntityID = linkedEntity.shortGUID;
         }
 
-        public ShortGuid ID;   //The unique ID for this connection
+        public ShortGuid ID;   //The unique ID for this connection - ignored in equality checks, but used to identify the connection in the composite (maybe should be removed)
 
         public ShortGuid thisParamID;    //The ID of the parameter
         public ShortGuid linkedParamID;  //The ID of the parameter we're connecting to
@@ -651,19 +651,26 @@ namespace CATHODE.Scripting
             return comp.GetEntityByID(linkedEntityID);
         }
 
+        public override string ToString()
+        {
+            return "[" + thisParamID + "] -> " + linkedEntityID.ToByteString() + " [" + linkedParamID + "]";
+        }
+
+        public bool Equals(EntityConnector other)
+        {
+            return this.thisParamID.Equals(other.thisParamID) &&
+                   this.linkedEntityID.Equals(other.linkedEntityID) &&
+                   this.linkedParamID.Equals(other.linkedParamID);
+        }
+
         public override bool Equals(object obj)
         {
-            return obj is EntityConnector connector &&
-                   EqualityComparer<ShortGuid>.Default.Equals(ID, connector.ID) &&
-                   EqualityComparer<ShortGuid>.Default.Equals(thisParamID, connector.thisParamID) &&
-                   EqualityComparer<ShortGuid>.Default.Equals(linkedParamID, connector.linkedParamID) &&
-                   EqualityComparer<ShortGuid>.Default.Equals(linkedEntityID, connector.linkedEntityID);
+            return obj is EntityConnector other && Equals(other);
         }
 
         public override int GetHashCode()
         {
-            int hashCode = -1516234163;
-            hashCode = hashCode * -1521134295 + ID.GetHashCode();
+            int hashCode = 937505261;
             hashCode = hashCode * -1521134295 + thisParamID.GetHashCode();
             hashCode = hashCode * -1521134295 + linkedParamID.GetHashCode();
             hashCode = hashCode * -1521134295 + linkedEntityID.GetHashCode();
@@ -672,7 +679,6 @@ namespace CATHODE.Scripting
 
         public static bool operator ==(EntityConnector x, EntityConnector y)
         {
-            if (x.ID != y.ID) return false;
             if (x.thisParamID != y.thisParamID) return false;
             if (x.linkedParamID != y.linkedParamID) return false;
             if (x.linkedEntityID != y.linkedEntityID) return false;
@@ -694,7 +700,7 @@ namespace CATHODE.Scripting
         public EntityPath() { }
         public EntityPath(ShortGuid[] _path)
         {
-            path = (ShortGuid[])_path.Clone();
+            path = _path;
             EnsureFinalIsEmpty();
         }
         public ShortGuid[] path = new ShortGuid[0];
@@ -746,8 +752,7 @@ namespace CATHODE.Scripting
             }
         }
 
-        /* Get this path as a string */
-        public string GetAsString()
+        public override string ToString()
         {
             string val = "";
             for (int i = 0; i < path.Length; i++)
@@ -757,10 +762,11 @@ namespace CATHODE.Scripting
             }
             return val;
         }
-        public string GetAsString(Commands commands, Composite composite, bool withIDs = true)
+
+        [Obsolete("Please use CommandsUtils GetResolvedAsString after resolving with ResolveAliasOrProxy.")]
+        public string ToString(Commands commands, Composite composite, bool withIDs = true)
         {
-            commands.Utils.ResolveHierarchy(composite, path, out Composite comp, out string str, withIDs);
-            return str;
+            return commands.Utils.GetResolvedAsString(commands.Utils.ResolveAliasOrProxy(path, composite), withIDs);
         }
 
         public UInt32 ToUInt32()
@@ -768,34 +774,6 @@ namespace CATHODE.Scripting
             UInt32 val = 0;
             for (int i = 0; i < path.Length; i++) val += path[i].AsUInt32;
             return val;
-        }
-
-        /* Get the entity this path points to: FROM THE ROOT OF THE COMMANDS */
-        public Entity GetPointedEntity(Commands commands)
-        {
-            return commands.Utils.ResolveHierarchy(commands.EntryPoints[0], path, out Composite comp, out string str);
-        }
-
-        /* Get the entity this path points to: FROM THE ROOT OF THE COMMANDS, RETURNING THE CONTAINED COMPOSITE */
-        public Entity GetPointedEntity(Commands commands, out Composite containedComposite)
-        {
-            Entity ent = commands.Utils.ResolveHierarchy(commands.EntryPoints[0], path, out Composite comp, out string str);
-            containedComposite = comp;
-            return ent;
-        }
-
-        /* Get the entity this path points to: FROM A SPECIFIED COMPOSITE */
-        public Entity GetPointedEntity(Commands commands, Composite startComposite)
-        {
-            return commands.Utils.ResolveHierarchy(startComposite, path, out Composite comp, out string str);
-        }
-
-        /* Get the entity this path points to: FROM A SPECIFIED COMPOSITE, RETURNING THE CONTAINED COMPOSITE */
-        public Entity GetPointedEntity(Commands commands, Composite startComposite, out Composite containedComposite)
-        {
-            Entity ent = commands.Utils.ResolveHierarchy(startComposite, path, out Composite comp, out string str);
-            containedComposite = comp;
-            return ent;
         }
 
         /* Get the ID of the entity that this path points to */
@@ -809,12 +787,6 @@ namespace CATHODE.Scripting
                 break;
             }
             return id;
-        }
-
-        /* Does this path point to a valid entity? */
-        public bool IsPathValid(Commands commands, Composite composite)
-        {
-            return GetPointedEntity(commands, composite) != null;
         }
 
         /* Generate the checksum used identify the path */

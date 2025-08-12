@@ -20,12 +20,17 @@ namespace CATHODE
     {
         public List<Entry> Entries = new List<Entry>();
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE | Implementation.CREATE;
+
         public RadiosityInstanceMap(string path) : base(path) { }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            string[] radiosityMappings = File.ReadAllLines(_filepath);
+            //NOTE: Loading via byte[] or MemoryStream is not currently supported. Must be loaded via disk from a filepath!
+            if (_filepath == "")
+                return false;
+
+            string[] radiosityMappings = File.ReadAllLines(_filepath); 
             foreach (string entry in radiosityMappings)
             {
                 string[] mapping = entry.Split(' ');

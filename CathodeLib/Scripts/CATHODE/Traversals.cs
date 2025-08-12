@@ -23,15 +23,18 @@ namespace CATHODE.EXPERIMENTAL
 
         /*public*/ private List<Entry> Entries = new List<Entry>();
         public static new Implementation Implementation = Implementation.SAVE;
+
         public Traversals(string path) : base(path) { }
+        public Traversals(MemoryStream stream, string path = "") : base(stream, path) { }
+        public Traversals(byte[] data, string path = "") : base(data, path) { }
 
         private char[] _magic = new char[4] { 't', 'r', 'a', 'v' };
         private int _version = 2;
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 char[] magic = reader.ReadChars(4);
                 if (!magic.SequenceEqual(_magic)) throw new Exception();

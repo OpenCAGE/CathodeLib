@@ -10,7 +10,10 @@ namespace CATHODE
     {
         public List<File> Entries = new List<File>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
         public PAK1(string path) : base(path) { }
+        public PAK1(MemoryStream stream, string path = "") : base(stream, path) { }
+        public PAK1(byte[] data, string path = "") : base(data, path) { }
 
         ~PAK1()
         {
@@ -18,9 +21,9 @@ namespace CATHODE
         }
 
         #region FILE_IO
-        override protected bool LoadInternal()
+        override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(System.IO.File.OpenRead(_filepath)))
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 //Read the header info
                 string MagicValidation = "";

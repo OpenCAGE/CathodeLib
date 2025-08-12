@@ -15,9 +15,10 @@ namespace CATHODE.Scripting.Internal.Parsers
 {
     public static class CommandsPAK
     {
-        public static void Read(byte[] content, out ShortGuid[] EntryPoints, out List<Composite> Entries)
+        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries)
         {
-            using (BinaryReader reader = new BinaryReader(new MemoryStream(content)))
+            byte[] content = stream.ToArray(); //NOTE: this gives us quite a memory overhead, which should probably be changed.
+            using (BinaryReader reader = new BinaryReader(stream))
             {
                 //Read entry points
                 EntryPoints = new ShortGuid[3];
@@ -161,7 +162,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             AliasEntity overrider = new AliasEntity(new ShortGuid(reader_parallel));
                                             int NumberOfParams = JumpToOffset(reader_parallel);
                                             overrider.alias.path = Utilities.ConsumeArray<ShortGuid>(reader_parallel, NumberOfParams);
-                                            composite.aliases.Add(overrider);
+                                            composite.aliases_dictionary.Add(overrider.shortGUID, overrider);
                                             break;
                                         }
                                     case CompositeFileData.ALIAS_PATH_HASHES:
@@ -176,7 +177,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             VariableEntity dtEntity = new VariableEntity(new ShortGuid(reader_parallel));
                                             dtEntity.type = (DataType)reader_parallel.ReadUInt32();
                                             dtEntity.name = new ShortGuid(reader_parallel);
-                                            composite.variables.Add(dtEntity);
+                                            composite.variables_dictionary.Add(dtEntity.shortGUID, dtEntity);
                                             break;
                                         }
                                     case CompositeFileData.PROXIES:
@@ -190,7 +191,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             ShortGuid idCheck = new ShortGuid(reader_parallel);
                                             if (idCheck != thisProxy.shortGUID) throw new Exception("Proxy ID mismatch!");
                                             thisProxy.function = new ShortGuid(reader_parallel);
-                                            composite.proxies.Add(thisProxy);
+                                            composite.proxies_dictionary.Add(thisProxy.shortGUID, thisProxy);
                                             break;
                                         }
                                     case CompositeFileData.FUNCTION_ENTITIES:
@@ -205,16 +206,16 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                 {
                                                     case FunctionType.CAGEAnimation:
                                                         CAGEAnimation cageAnimation = new CAGEAnimation(entityID);
-                                                        composite.functions.Add(cageAnimation);
+                                                        composite.functions_dictionary.Add(cageAnimation.shortGUID, cageAnimation);
                                                         break;
                                                     case FunctionType.TriggerSequence:
                                                         TriggerSequence triggerSequence = new TriggerSequence(entityID);
-                                                        composite.functions.Add(triggerSequence);
+                                                        composite.functions_dictionary.Add(triggerSequence.shortGUID, triggerSequence);
                                                         break;
                                                     default:
                                                         FunctionEntity funcEntity = new FunctionEntity(entityID);
                                                         funcEntity.function = functionID;
-                                                        composite.functions.Add(funcEntity);
+                                                        composite.functions_dictionary.Add(funcEntity.shortGUID, funcEntity);
                                                         break;
                                                 }
                                             }
@@ -223,7 +224,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                 //This entity is an instance of a composite entity collection
                                                 FunctionEntity funcEntity = new FunctionEntity(entityID);
                                                 funcEntity.function = functionID;
-                                                composite.functions.Add(funcEntity);
+                                                composite.functions_dictionary.Add(funcEntity.shortGUID, funcEntity);
                                             }
                                             break;
                                         }
@@ -408,22 +409,22 @@ namespace CATHODE.Scripting.Internal.Parsers
                         ShortGuid resParamID = ShortGuidUtils.Generate("resource");
                         ShortGuid physEntID = ShortGuidUtils.Generate("PhysicsSystem");
                         //Check to see if this resource applies to a PARAMETER on an entity
-                        for (int x = 0; x < composite.functions.Count; x++)
+                        foreach (var function in composite.functions_dictionary.Values)
                         {
-                            for (int y = 0; y < composite.functions[x].parameters.Count; y++)
+                            for (int y = 0; y < function.parameters.Count; y++)
                             {
-                                if (composite.functions[x].parameters[y].name != resParamID) continue;
+                                if (function.parameters[y].name != resParamID) continue;
 
-                                cResource resourceParam = (cResource)composite.functions[x].parameters[y].content;
+                                cResource resourceParam = (cResource)function.parameters[y].content;
                                 resourceParam.value.AddRange(resourceRefs.Where(o => o.resource_id == resourceParam.shortGUID));
                                 resourceRefs.RemoveAll(o => o.resource_id == resourceParam.shortGUID);
                             }
                         }
                         //Check to see if this resource applies directly to an ENTITY
-                        for (int x = 0; x < composite.functions.Count; x++)
+                        foreach (var function in composite.functions_dictionary.Values)
                         {
-                            composite.functions[x].resources.AddRange(resourceRefs.Where(o => o.resource_id == composite.functions[x].shortGUID));
-                            resourceRefs.RemoveAll(o => o.resource_id == composite.functions[x].shortGUID);
+                            function.resources.AddRange(resourceRefs.Where(o => o.resource_id == function.shortGUID));
+                            resourceRefs.RemoveAll(o => o.resource_id == function.shortGUID);
                         }
                         //Any that are left over will be applied to PhysicsSystem entities - really these just exist in the composite, but it's easier for us to track this way
                         if (resourceRefs.Count == 1 && resourceRefs[0].resource_type == ResourceType.DYNAMIC_PHYSICS_SYSTEM)
@@ -445,22 +446,22 @@ namespace CATHODE.Scripting.Internal.Parsers
                 /*
                 for (int i = 0; i < composites.Length; i++)
                 {
-                    for (int x = 0; x < composites[i].variables.Count; x++)
+                    foreach (var variable in composites[i].variables_dictionary.Values)
                     {
-                        if (composites[i].variables[x].type != DataType.NONE) continue;
+                        if (variable.type != DataType.NONE) continue;
                         for (int y = 0; y < composites.Length; y++)
                         {
-                            List<FunctionEntity> compInstance = composites[y].functions.FindAll(o => o.function == composites[i].shortGUID);
+                            List<FunctionEntity> compInstance = composites[y].functions_dictionary.Values.Where(o => o.function == composites[i].shortGUID).ToList();
                             for (int z = 0; z < compInstance.Count; z++)
                             {
-                                Parameter paramInstance = compInstance[z].parameters.FirstOrDefault(o => o.name == composites[i].variables[x].name);
+                                Parameter paramInstance = compInstance[z].parameters.FirstOrDefault(o => o.name == variable.name);
                                 if (paramInstance == null || paramInstance.content == null) continue;
-                                if (composites[i].variables[x].type != DataType.NONE && composites[i].variables[x].type != paramInstance.content.dataType)
+                                if (variable.type != DataType.NONE && variable.type != paramInstance.content.dataType)
                                 {
                                     throw new Exception("");
                                 }
-                                composites[i].variables[x].type = paramInstance.content.dataType;
-                                Console.WriteLine("Changing DataType of " + composites[i].variables[x].name.ToString() + " to " + paramInstance.content.dataType);
+                                variable.type = paramInstance.content.dataType;
+                                Console.WriteLine("Changing DataType of " + variable.name.ToString() + " to " + paramInstance.content.dataType);
                             }
                         }
                     }
@@ -499,40 +500,41 @@ namespace CATHODE.Scripting.Internal.Parsers
                 cageAnimationEntities[i] = new List<CAGEAnimation>();
                 triggerSequenceEntities[i] = new List<TriggerSequence>();
                 resourceReferences[i] = new List<ResourceReference>();
-                for (int x = 0; x < Entries[i].functions.Count; x++)
+                foreach (var function in Entries[i].functions_dictionary.Values)
                 {
                     //If this function is a valid CAGEAnimation or TriggerSequence, remember it
-                    if (Entries[i].functions[x].function == FunctionType.CAGEAnimation)
+                    if (function.function == FunctionType.CAGEAnimation)
                     {
-                        CAGEAnimation thisEntity = (CAGEAnimation)Entries[i].functions[x];
+                        CAGEAnimation thisEntity = (CAGEAnimation)function;
                         if (thisEntity.connections.Count == 0 && thisEntity.animations.Count == 0 && thisEntity.events.Count == 0) continue;
                         cageAnimationEntities[i].Add(thisEntity);
                     }
-                    else if (Entries[i].functions[x].function == FunctionType.TriggerSequence)
+                    else if (function.function == FunctionType.TriggerSequence)
                     {
-                        TriggerSequence thisEntity = (TriggerSequence)Entries[i].functions[x];
+                        TriggerSequence thisEntity = (TriggerSequence)function;
                         if (thisEntity.sequence.Count == 0 && thisEntity.methods.Count == 0) continue;
                         triggerSequenceEntities[i].Add(thisEntity);
                     }
 
                     //Get resources on this function
-                    resourceReferences[i].AddRange(Entries[i].functions[x].resources);
+                    resourceReferences[i].AddRange(function.resources);
 
                     //If the function contains a resource parameter, grab those too
-                    Parameter param = Entries[i].functions[x].GetParameter(SHORTGUID_resource);
+                    Parameter param = function.GetParameter(SHORTGUID_resource);
                     if (param == null) continue;
                     resourceReferences[i].AddRange(((cResource)param.content).value);
                 }
                 resourceReferences[i] = resourceReferences[i].Distinct().ToList();
             });
 
-            for (int i = 0; i < Entries.Count; i++)
+            Parallel.For(0, Entries.Count, i =>
             {
                 List<Entity> ents = Entries[i].GetEntities();
                 for (int x = 0; x < ents.Count; x++)
                     for (int y = 0; y < ents[x].parameters.Count; y++)
-                        parameters.Add(ents[x].parameters[y].content);
-            }
+                        lock (parameters)
+                            parameters.Add(ents[x].parameters[y].content);
+            });
             parameters = parameters.Distinct().ToList();
 
             using (MemoryStream stream = new MemoryStream())
@@ -736,42 +738,45 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     }
                                 case CompositeFileData.VARIABLES:
                                     {
-                                        scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, Entries[i].variables.Count);
-                                        for (int p = 0; p < Entries[i].variables.Count; p++)
+                                        var variables = Entries[i].variables_dictionary.Values.ToList();
+                                        scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, variables.Count);
+                                        foreach (var variable in variables)
                                         {
-                                            writer.Write(Entries[i].variables[p].shortGUID.AsUInt32);
-                                            writer.Write((uint)Entries[i].variables[p].type);
-                                            writer.Write(Entries[i].variables[p].name.AsUInt32);
+                                            writer.Write(variable.shortGUID.AsUInt32);
+                                            writer.Write((uint)variable.type);
+                                            writer.Write(variable.name.AsUInt32);
                                         }
                                         break;
                                     }
                                 case CompositeFileData.PROXIES:
                                     {
+                                        var proxies = Entries[i].proxies_dictionary.Values.ToList();
                                         List<OffsetPair> offsetPairs = new List<OffsetPair>();
-                                        for (int p = 0; p < Entries[i].proxies.Count; p++)
+                                        foreach (var proxy in proxies)
                                         {
-                                            offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, Entries[i].proxies[p].proxy.path.Length));
-                                            Utilities.Write<ShortGuid>(writer, Entries[i].proxies[p].proxy.path);
+                                            offsetPairs.Add(new OffsetPair(writer.BaseStream.Position, proxy.proxy.path.Length));
+                                            Utilities.Write<ShortGuid>(writer, proxy.proxy.path);
                                         }
 
                                         scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, offsetPairs.Count);
-                                        for (int p = 0; p < Entries[i].proxies.Count; p++)
+                                        for (int p = 0; p < proxies.Count; p++)
                                         {
-                                            writer.Write(Entries[i].proxies[p].shortGUID.AsUInt32);
+                                            writer.Write(proxies[p].shortGUID.AsUInt32);
                                             writer.Write(offsetPairs[p].GlobalOffset / 4);
                                             writer.Write(offsetPairs[p].EntryCount);
-                                            writer.Write(Entries[i].proxies[p].shortGUID.AsUInt32);
-                                            writer.Write(Entries[i].proxies[p].function.AsUInt32);
+                                            writer.Write(proxies[p].shortGUID.AsUInt32);
+                                            writer.Write(proxies[p].function.AsUInt32);
                                         }
                                         break;
                                     }
                                 case CompositeFileData.FUNCTION_ENTITIES:
                                     {
-                                        scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, Entries[i].functions.Count);
-                                        for (int p = 0; p < Entries[i].functions.Count; p++)
+                                        var functions = Entries[i].functions_dictionary.Values.ToList();
+                                        scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, functions.Count);
+                                        foreach (var function in functions)
                                         {
-                                            writer.Write(Entries[i].functions[p].shortGUID.AsUInt32);
-                                            writer.Write(Entries[i].functions[p].function.AsUInt32);
+                                            writer.Write(function.shortGUID.AsUInt32);
+                                            writer.Write(function.function.AsUInt32);
                                         }
                                         break;
                                     }
@@ -1007,8 +1012,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                         }
 
                         //Write function count (TODO: sometimes this count excludes some entities in the vanilla paks - why?)
-                        writer.Write(Entries[i].functions.FindAll(o => o.function.IsFunctionType).Count);
-                        writer.Write(Entries[i].functions.Count);
+                        writer.Write(Entries[i].functions_dictionary.Values.Count(o => o.function.IsFunctionType));
+                        writer.Write(Entries[i].functions_dictionary.Count);
                     }
                     #endregion
 
