@@ -98,7 +98,7 @@ Note: in debug mode the parsers will all fail hard, however in release mode all 
 - `CATHODE.SoundLoadZones` handles level `WORLD/SOUNDLOADZONES.DAT` files
 	- This specifies all soundbanks that are used within the level
 - `CATHODE.SoundNodeNetwork` handles level `WORLD/SOUNDNODENETWORK.DAT` files
-	- This defines the layout of the sound node network within the level, used for sound propagation (WIP)
+	- This defines the layout of the sound node network within the level, used for sound propagation
 - `CATHODE.TextDB` handles `*.TXT` files within `TEXT` directories
 	- This defines a database of subtitles, which are saved per language
 - `CATHODE.Textures` handles level `WORLD/LEVEL_TEXTURES.ALL.PAK` & `LEVEL_TEXTURE_HEADERS.ALL.BIN` files
