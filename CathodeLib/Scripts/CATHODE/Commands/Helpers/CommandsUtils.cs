@@ -47,7 +47,7 @@ namespace CATHODE.Scripting
         }
 
         #region Generic Utility Functions
-        /* Gets the composite that contains the entity - OPTIMIZED with caching */
+        /* Gets the composite that contains the entity */
         public Composite GetContainedComposite(Entity entity)
         {
             if (entity == null) return null;
@@ -160,14 +160,12 @@ namespace CATHODE.Scripting
             if (hierarchy == null || hierarchy.Length <= 2)
                 return new List<Tuple<Composite, Entity>>();
 
+            Composite initialComp = _commands.GetComposite(hierarchy[0]); //NOTE: This isn't always the initial comp, so we check from the entry point first.
+            Composite currentComp = _commands.EntryPoints[0];
+
             bool hasTerminator = hierarchy[hierarchy.Length - 1] == ShortGuid.Invalid;
             int maxIndex = hierarchy.Length - (hasTerminator ? 1 : 0);
-
-            Composite initialComp = _commands.GetComposite(hierarchy[0]); //NOTE: This isn't always the initial comp, so we check from the entry point first.
-
-            Composite currentComp = _commands.EntryPoints[0];
             
-            // Pre-allocate list with estimated capacity
             var path = new List<Tuple<Composite, Entity>>(maxIndex - 1);
             
             for (int i = 1; i < maxIndex; i++)
@@ -187,6 +185,46 @@ namespace CATHODE.Scripting
                     if (entity != null)
                         currentComp = initialComp;
                 }
+                if (entity == null)
+                    return new List<Tuple<Composite, Entity>>(); //Unresolvable!
+
+                path.Add(new Tuple<Composite, Entity>(currentComp, entity));
+
+                //Look up next composite to check, if we're not on the last one
+                if (i != maxIndex - 1)
+                {
+                    if (entity.variant != EntityVariant.FUNCTION)
+                        return new List<Tuple<Composite, Entity>>(); //Unresolvable!
+
+                    FunctionEntity function = (FunctionEntity)entity;
+                    currentComp = _commands.GetComposite(function.function);
+                    if (currentComp == null)
+                        return new List<Tuple<Composite, Entity>>(); //Unresolvable!
+                }
+            }
+            return path;
+        }
+
+        /* Resolve a hierarchy pointing from the root composite */
+        public List<Tuple<Composite, Entity>> ResolveHierarchy(EntityPath path)
+        {
+            return ResolveHierarchy(path?.path);
+        }
+        public List<Tuple<Composite, Entity>> ResolveHierarchy(ShortGuid[] hierarchy)
+        {
+            if (hierarchy == null || hierarchy.Length == 0)
+                return new List<Tuple<Composite, Entity>>();
+
+            Composite currentComp = _commands.EntryPoints[0];
+
+            bool hasTerminator = hierarchy[hierarchy.Length - 1] == ShortGuid.Invalid;
+            int maxIndex = hierarchy.Length - (hasTerminator ? 1 : 0);
+
+            var path = new List<Tuple<Composite, Entity>>(maxIndex - 1);
+
+            for (int i = 0; i < maxIndex; i++)
+            {
+                Entity entity = currentComp.GetEntityByID(hierarchy[i]);
                 if (entity == null)
                     return new List<Tuple<Composite, Entity>>(); //Unresolvable!
 
@@ -242,67 +280,6 @@ namespace CATHODE.Scripting
                     sb.Append(" -> ");
             }
             return sb.ToString();
-        }
-
-        /* Resolve an entity hierarchy */
-        [Obsolete("This method will be removed in a future CathodeLib release. Please use ResolveAlias and ResolveProxy respectively when resolving a hierarchy!")]
-        public Entity ResolveHierarchy(Composite composite, ShortGuid[] hierarchy, out Composite containedComposite, out string asString, bool includeShortGuids = true)
-        {
-            if (hierarchy.Length == 0)
-            {
-                containedComposite = null;
-                asString = "";
-                return null;
-            }
-
-            List<ShortGuid> hierarchyCopy = hierarchy.ToList();
-        
-            Composite currentFlowgraphToSearch = composite;
-            if (currentFlowgraphToSearch == null || currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[0]) == null)
-            {
-                currentFlowgraphToSearch = _commands.EntryPoints[0];
-                if (currentFlowgraphToSearch == null || currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[0]) == null)
-                {
-                    currentFlowgraphToSearch = _commands.GetComposite(hierarchyCopy[0]);
-                    if (currentFlowgraphToSearch == null || currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[1]) == null)
-                    {
-                        containedComposite = null;
-                        asString = "";
-                        return null;
-                    }
-                    hierarchyCopy.RemoveAt(0);
-                }
-            }
-        
-            Entity entity = null;
-            string hierarchyString = "";
-            for (int i = 0; i < hierarchyCopy.Count; i++)
-            {
-                entity = currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[i]);
-        
-                if (entity == null) break;
-                if (includeShortGuids) hierarchyString += "[" + entity.shortGUID.ToByteString() + "] ";
-                hierarchyString += GetEntityName(currentFlowgraphToSearch.shortGUID, entity.shortGUID);
-                if (i >= hierarchyCopy.Count - 2) break; //Last is always 00-00-00-00
-                hierarchyString += " -> ";
-        
-                if (entity.variant == EntityVariant.FUNCTION)
-                {
-                    Composite flowRef = _commands.GetComposite(((FunctionEntity)entity).function);
-                    if (flowRef != null)
-                    {
-                        currentFlowgraphToSearch = flowRef;
-                    }
-                    else
-                    {
-                        entity = null;
-                        break;
-                    }
-                }
-            }
-            containedComposite = (entity == null) ? null : currentFlowgraphToSearch;
-            asString = hierarchyString;
-            return entity;
         }
 
         /* Calculate an instanced entity's worldspace position & rotation */
