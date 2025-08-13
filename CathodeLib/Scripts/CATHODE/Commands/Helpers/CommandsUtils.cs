@@ -329,7 +329,6 @@ namespace CATHODE.Scripting
             int originalFuncCount = 0;
 
             // Functions must be a valid FunctionType, or point to a Composite that exists
-            // Use dictionary for O(1) lookups and efficient removal
             var functionsToRemove = new List<ShortGuid>();
             foreach (var kvp in composite.functions_dictionary)
             {
@@ -344,30 +343,30 @@ namespace CATHODE.Scripting
                 composite.functions_dictionary.Remove(guid);
             }
 
-                    // Aliases must point to children of the Composite that still exist
-        // Also remove aliases that don't have any links in or out, or any parameters
-        var aliasesToRemove = new List<ShortGuid>();
-        foreach (var kvp in composite.aliases_dictionary)
-        {
-            var alias = kvp.Value;
-            // Remove if alias cannot be resolved
-            if (!CouldResolve(ResolveAlias(alias, composite)))
+            // Aliases must point to children of the Composite that still exist
+            // Also remove aliases that don't have any links in or out, or any parameters
+            var aliasesToRemove = new List<ShortGuid>();
+            foreach (var kvp in composite.aliases_dictionary)
             {
-                aliasesToRemove.Add(kvp.Key);
+                var alias = kvp.Value;
+                // Remove if alias cannot be resolved
+                if (!CouldResolve(ResolveAlias(alias, composite)))
+                {
+                    aliasesToRemove.Add(kvp.Key);
+                }
+                // Remove if alias has no child links, no parameters, and no parent links
+                else if (alias.childLinks.Count == 0 && 
+                         alias.parameters.Count == 0 && 
+                         alias.GetParentLinks(composite).Count == 0)
+                {
+                    aliasesToRemove.Add(kvp.Key);
+                }
             }
-            // Remove if alias has no child links, no parameters, and no parent links
-            else if (alias.childLinks.Count == 0 && 
-                     alias.parameters.Count == 0 && 
-                     alias.GetParentLinks(composite).Count == 0)
+            originalAliasCount = composite.aliases_dictionary.Count;
+            foreach (var guid in aliasesToRemove)
             {
-                aliasesToRemove.Add(kvp.Key);
+                composite.aliases_dictionary.Remove(guid);
             }
-        }
-        originalAliasCount = composite.aliases_dictionary.Count;
-        foreach (var guid in aliasesToRemove)
-        {
-            composite.aliases_dictionary.Remove(guid);
-        }
 
             // Proxies must be able to be resolved in some form
             var proxiesToRemove = new List<ShortGuid>();

@@ -763,7 +763,7 @@ namespace CATHODE.Scripting
             return val;
         }
 
-        [Obsolete("Please use CommandsUtils GetResolvedAsString after resolving with ResolveAliasOrProxy.")]
+        [Obsolete("Please use CommandsUtils GetResolvedAsString after resolving with ResolveAliasOrProxy, or ResolveHierarchy if a direct style from root.")]
         public string ToString(Commands commands, Composite composite, bool withIDs = true)
         {
             return commands.Utils.GetResolvedAsString(commands.Utils.ResolveAliasOrProxy(path, composite), withIDs);

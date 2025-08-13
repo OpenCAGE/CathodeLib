@@ -318,7 +318,7 @@ namespace CathodeLib
                 string mapPath = galaxyBins[i].Substring(0, galaxyBins[i].Length - extraLength);
 
                 //Try match a few files outside of the GALAXY definition, to ensure we are actually a map.
-                if (!File.Exists(mapPath + "/WORLD/COMMANDS.PAK")) continue;
+                if (!File.Exists(mapPath + "/WORLD/COMMANDS.PAK") && !File.Exists(mapPath + "/WORLD/COMMANDS.BIN")) continue;
                 if (!File.Exists(mapPath + "/WORLD/MODELS.MVR")) continue;
                 if (!File.Exists(mapPath + "/RENDERABLE/LEVEL_MODELS.PAK")) continue;
                 if (!File.Exists(mapPath + "/RENDERABLE/MODELS_LEVEL.BIN")) continue;
