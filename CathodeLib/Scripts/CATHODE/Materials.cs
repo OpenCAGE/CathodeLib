@@ -231,7 +231,9 @@ namespace CATHODE
                 return "[" + Color + "] " + Name;
             }
 
-            //Offset and length within the CST file
+            /// <summary>
+            /// Offset and length within the CST file
+            /// </summary>
             public class ConstantBuffer
             {
                 public int Offset = 0;

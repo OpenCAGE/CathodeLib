@@ -14,7 +14,9 @@ namespace CathodeLib
 {
     public class Utilities
     {
-        //Read a single templated object
+        /// <summary>
+        /// Read a single templated object
+        /// </summary>
         public static T Consume<T>(BinaryReader reader, int offset)
         {
             reader.BaseStream.Position = offset;
@@ -33,7 +35,9 @@ namespace CathodeLib
             return theStructure;
         }
 
-        //Read a templated array
+        /// <summary>
+        /// Read a templated array
+        /// </summary>
         public static T[] ConsumeArray<T>(BinaryReader reader, int count, int offset)
         {
             reader.BaseStream.Position = offset;
@@ -52,7 +56,9 @@ namespace CathodeLib
             return toReturn;
         }
 
-        //Align the stream
+        /// <summary>
+        /// Align the stream
+        /// </summary>
         public static void Align(BinaryReader reader, int val = 4)
         {
             reader.BaseStream.Seek((val - (reader.BaseStream.Position % val)) % val, SeekOrigin.Current);
@@ -62,7 +68,9 @@ namespace CathodeLib
             while (writer.BaseStream.Position % val != 0) writer.Write(fillWith);
         }
 
-        //Reads a string with alternating nulls up to a trailing 0x00 byte
+        /// <summary>
+        /// Reads a string with alternating nulls up to a trailing 0x00 byte
+        /// </summary>
         public static string ReadStringAlternating(byte[] bytes)
         {
             byte[] trimmed = new byte[bytes.Length / 2];
@@ -77,7 +85,9 @@ namespace CathodeLib
             return ReadString(trimmed);
         }
 
-        //Reads a string up to a trailing 0x00 byte
+        /// <summary>
+        /// Reads a string up to a trailing 0x00 byte
+        /// </summary>
         public static string ReadString(BinaryReader reader, int position, bool resetPosition = true)
         {
             long startPos = reader.BaseStream.Position;
@@ -128,7 +138,9 @@ namespace CathodeLib
             return Encoding.ASCII.GetString(bytes.ToArray());
         }
 
-        //Writes a string without a leading length value
+        /// <summary>
+        /// Writes a string without a leading length value
+        /// </summary>
         public static void WriteString(string string_to_write, BinaryWriter writer, bool trailingByte = false)
         {
             byte[] content = Encoding.ASCII.GetBytes(string_to_write);
@@ -136,7 +148,9 @@ namespace CathodeLib
             if (trailingByte) writer.Write((byte)0x00);
         }
 
-        //Removes the leading nulls from a byte array, useful for cleaning byte-aligned file extracts
+        /// <summary>
+        /// Removes the leading nulls from a byte array, useful for cleaning byte-aligned file extracts
+        /// </summary>
         public static byte[] RemoveLeadingNulls(byte[] extracted_file)
         {
             //Remove from leading
@@ -155,7 +169,9 @@ namespace CathodeLib
             return to_return;
         }
 
-        //Write a templated type
+        /// <summary>
+        /// Write a templated type
+        /// </summary>
         public static void Write<T>(BinaryWriter stream, T aux)
         {
             int length = Marshal.SizeOf(aux);
@@ -177,7 +193,9 @@ namespace CathodeLib
             Write<T>(stream, aux.ToArray<T>());
         }
 
-        //Generate a hashed string for use in the animation system (FNV hash)
+        /// <summary>
+        /// Generate a hashed string for use in the animation system (FNV hash)
+        /// </summary>
         public static uint AnimationHashedString(string str)
         {
             uint hash = 0x811c9dc5;
@@ -193,7 +211,9 @@ namespace CathodeLib
             return hash;
         }
 
-        //Generate a hashed string for use in sound system (wwise FNV-1)
+        /// <summary>
+        /// Generate a hashed string for use in sound system (wwise FNV-1)
+        /// </summary>
         public static uint SoundHashedString(string str)
         {
             byte[] namebytes = Encoding.UTF8.GetBytes(str.ToLower());
@@ -208,7 +228,9 @@ namespace CathodeLib
             return hash;
         }
 
-        //Read a PAK
+        /// <summary>
+        /// Read a PAK
+        /// </summary>
         public static List<PAKContent> ReadPAK(string path, FileIdentifiers type)
         {
             List<PAKContent> content = new List<PAKContent>(); 
@@ -250,7 +272,9 @@ namespace CathodeLib
             return content;
         }
 
-        //Write a PAK
+        /// <summary>
+        /// Write a PAK
+        /// </summary>
         public static void WritePAK(string path, FileIdentifiers type, List<PAKContent> content)
         {
             bool e = type == FileIdentifiers.MODEL_DATA;

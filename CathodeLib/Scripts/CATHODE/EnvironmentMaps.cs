@@ -18,7 +18,9 @@ namespace CATHODE
         public EnvironmentMaps(MemoryStream stream, string path = "") : base(stream, path) { }
         public EnvironmentMaps(byte[] data, string path = "") : base(data, path) { }
 
-        //This is the number of environment maps in the level. We should never reference an index higher than this.
+        /// <summary>
+        /// This is the number of environment maps in the level. We should never reference an index higher than this.
+        /// </summary>
         public int EnvironmentMapCount = 0;
 
         #region FILE_IO

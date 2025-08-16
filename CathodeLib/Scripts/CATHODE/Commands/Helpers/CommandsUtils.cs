@@ -22,7 +22,9 @@ namespace CATHODE.Scripting
 {
     public class CommandsUtils
     {
-        //NOTE: This list is exposed publicly, because it is up to your app to manage it.
+        /// <summary>
+        /// NOTE: This list is exposed publicly, because it is up to your app to manage it.
+        /// </summary>
         public CompositePurgeTable PurgedComposites => _compPurges;
 
         private CompositePurgeTable _compPurges = new CompositePurgeTable();
@@ -1306,7 +1308,9 @@ namespace CATHODE.Scripting
         #endregion
 
         #region Enum Utils
-        //Check the formatted enum dump for content
+        /// <summary>
+        /// Check the formatted enum dump for content
+        /// </summary>
         public CathodeEnumTable.EnumDescriptor GetEnum(string name)
         {
             ShortGuid id = ShortGuidUtils.Generate(name);
