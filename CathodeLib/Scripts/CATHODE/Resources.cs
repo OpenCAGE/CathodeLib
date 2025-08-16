@@ -10,7 +10,9 @@ using static CATHODE.Resources;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/RESOURCES.BIN */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/WORLD/RESOURCES.BIN
+    /// </summary>
     public class Resources : CathodeFile
     {
         public List<Resource> Entries = new List<Resource>();

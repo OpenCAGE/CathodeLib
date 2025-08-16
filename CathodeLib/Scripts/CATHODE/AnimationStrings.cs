@@ -9,7 +9,9 @@ using CathodeLib;
 
 namespace CATHODE
 {
-    /* DATA/GLOBAL/ANIMATION.PAK -> ANIM_STRING_DB.BIN, ANIM_STRING_DB_DEBUG.BIN */
+    /// <summary>
+    /// DATA/GLOBAL/ANIMATION.PAK -> ANIM_STRING_DB.BIN, ANIM_STRING_DB_DEBUG.BIN
+    /// </summary>
     public class AnimationStrings : CathodeFile
     {
         public Dictionary<uint, string> Entries = new Dictionary<uint, string>();
@@ -73,7 +75,9 @@ namespace CATHODE
         #endregion
 
         #region ACCESSORS
-        /* Add a string to the DB */
+        /// <summary>
+        /// Add a string to the DB
+        /// </summary>
         public void AddString(string str)
         {
             uint id = Utilities.AnimationHashedString(str);
@@ -81,7 +85,9 @@ namespace CATHODE
             Entries.Add(id, str);
         }
 
-        /* Remove a string from the DB */
+        /// <summary>
+        /// Remove a string from the DB
+        /// </summary>
         public void RemoveString(string str)
         {
             uint id = Utilities.AnimationHashedString(str);

@@ -9,7 +9,9 @@ using static CATHODE.EXPERIMENTAL.MissionSave;
 
 namespace CATHODE
 {
-    /* DATA/CHR_INFO/CUSTOMCHARACTERCONSTRAINEDCOMPONENTS.BIN */
+    /// <summary>
+    /// DATA/CHR_INFO/CUSTOMCHARACTERCONSTRAINEDCOMPONENTS.BIN
+    /// </summary>
     public class CustomCharacterConstrainedComponents : CathodeFile
     {
         public List<Entry> Entries = new List<Entry>();

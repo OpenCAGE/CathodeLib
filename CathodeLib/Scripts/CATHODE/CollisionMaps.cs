@@ -10,7 +10,9 @@ namespace CATHODE
 {
     //This file defines additional info for entities with COLLISION_MAPPING resources.
 
-    /* DATA/ENV/PRODUCTION/x/WORLD/COLLISION.MAP */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/WORLD/COLLISION.MAP
+    /// </summary>
     public class CollisionMaps : CathodeFile
     {
         public List<Entry> Entries = new List<Entry>();

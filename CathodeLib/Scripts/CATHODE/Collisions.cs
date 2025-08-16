@@ -16,7 +16,9 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/COLLISION.BIN */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/WORLD/COLLISION.BIN
+    /// </summary>
     public class Collisions : CathodeFile
     {
         public List<WeightedCollision> Entries = new List<WeightedCollision>();

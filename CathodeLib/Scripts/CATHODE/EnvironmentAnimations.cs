@@ -13,7 +13,9 @@ using System.Numerics;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/ENVIRONMENT_ANIMATION.DAT */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/WORLD/ENVIRONMENT_ANIMATION.DAT
+    /// </summary>
     public class EnvironmentAnimations : CathodeFile
     {
         public List<EnvironmentAnimation> Entries = new List<EnvironmentAnimation>();

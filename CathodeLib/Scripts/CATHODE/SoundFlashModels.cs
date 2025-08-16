@@ -5,7 +5,9 @@ using System.IO;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/SOUNDFLASHMODELS.DAT */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/WORLD/SOUNDFLASHMODELS.DAT
+    /// </summary>
     public class SoundFlashModels : CathodeFile
     {
         //This stores the models which use flash textures, along with the flash texture ID

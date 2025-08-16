@@ -11,7 +11,9 @@ using CathodeLib;
 
 namespace CATHODE
 {
-    /* DATA/GLOBAL/ANIMATION.PAK -> ANIM_CLIP_DB.BIN */
+    /// <summary>
+    /// DATA/GLOBAL/ANIMATION.PAK -> ANIM_CLIP_DB.BIN
+    /// </summary>
     public class AnimClipDB : CathodeFile
     {
         public Dictionary<uint, string> Entries = new Dictionary<uint, string>();

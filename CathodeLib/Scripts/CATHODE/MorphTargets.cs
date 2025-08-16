@@ -11,7 +11,9 @@ using System.Numerics;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/MORPH_TARGET_DB.BIN */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/WORLD/MORPH_TARGET_DB.BIN
+    /// </summary>
     public class MorphTargets : CathodeFile
     {
         public List<Entry> Entries = new List<Entry>();

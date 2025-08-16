@@ -8,7 +8,9 @@ using System.Text;
 
 namespace CATHODE.Scripting
 {
-    /* A unique id assigned to CATHODE objects */
+    /// <summary>
+    /// A unique id assigned to CATHODE objects
+    /// </summary>
     [Serializable]
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct ShortGuid : IComparable<ShortGuid>
@@ -48,7 +50,9 @@ namespace CATHODE.Scripting
             val = BitConverter.ToUInt32(array, 0);
         }
 
-        /* Combines this ShortGuid with another */
+        /// <summary>
+        /// Combines this ShortGuid with another
+        /// </summary>
         public ShortGuid Combine(ShortGuid guid2)
         {
             if (guid2.AsUInt32 != 0)

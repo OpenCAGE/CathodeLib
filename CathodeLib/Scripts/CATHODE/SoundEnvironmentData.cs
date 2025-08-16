@@ -10,7 +10,9 @@ using System.Xml.Linq;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/SOUNDENVIRONMENTDATA.DAT */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/WORLD/SOUNDENVIRONMENTDATA.DAT
+    /// </summary>
     public class SoundEnvironmentData : CathodeFile
     {
         //This stores the reverbs that are used within the level. Similar to SoundLoadZones, these can be stored with spatial zones, but this feature is unused.

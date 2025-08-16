@@ -8,7 +8,9 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/CHARACTERACCESSORYSETS.BIN */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/WORLD/CHARACTERACCESSORYSETS.BIN
+    /// </summary>
     public class CharacterAccessorySets : CathodeFile
     {
         public List<CharacterAttributes> Entries = new List<CharacterAttributes>();

@@ -9,7 +9,9 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/RENDERABLE/LEVEL_SHADERS_DX11.PAK & LEVEL_SHADERS_DX11_BIN.PAK & LEVEL_SHADERS_DX11_IDX_REMAP.PAK */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/RENDERABLE/LEVEL_SHADERS_DX11.PAK & LEVEL_SHADERS_DX11_BIN.PAK & LEVEL_SHADERS_DX11_IDX_REMAP.PAK
+    /// </summary>
     public class Shaders : CathodeFile
     {
         public List<Shader> Entries = new List<Shader>();

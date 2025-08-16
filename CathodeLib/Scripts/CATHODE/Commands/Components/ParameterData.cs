@@ -11,7 +11,9 @@ using System.Numerics;
 
 namespace CATHODE.Scripting.Internal
 {
-    /* Data which can be used within a parameter */
+    /// <summary>
+    /// Data which can be used within a parameter
+    /// </summary>
     [Serializable]
     public class ParameterData : ICloneable
     {
@@ -281,7 +283,9 @@ namespace CATHODE.Scripting
         public List<ResourceReference> value = new List<ResourceReference>();
         public ShortGuid shortGUID; 
 
-        /* Add a new resource reference of type */
+        /// <summary>
+        /// Add a new resource reference of type
+        /// </summary>
         public ResourceReference AddResource(ResourceType type)
         {
             //We can only have one type of resource reference, so if it already exists, we just return the existing one.
@@ -303,7 +307,9 @@ namespace CATHODE.Scripting
             return rr;
         }
 
-        /* Find a resource reference of type */
+        /// <summary>
+        /// Find a resource reference of type
+        /// </summary>
         public ResourceReference GetResource(ResourceType type)
         {
             return value.FirstOrDefault(o => o.resource_type == type);

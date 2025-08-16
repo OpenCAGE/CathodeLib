@@ -5,7 +5,9 @@ using System.IO;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/REDS.BIN */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/WORLD/REDS.BIN
+    /// </summary>
     public class RenderableElements : CathodeFile
     {
         public List<Element> Entries = new List<Element>();

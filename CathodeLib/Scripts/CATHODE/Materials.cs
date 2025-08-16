@@ -7,7 +7,9 @@ using static CATHODE.Models;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/RENDERABLE/LEVEL_MODELS.MTL & LEVEL_MODELS.CST */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/RENDERABLE/LEVEL_MODELS.MTL & LEVEL_MODELS.CST
+    /// </summary>
     public class Materials : CathodeFile
     {
         public List<Material> Entries = new List<Material>();
@@ -186,16 +188,20 @@ namespace CATHODE
         #endregion
 
         #region HELPERS
-        /* Get the current index for a material (useful for cross-ref'ing with compiled binaries)
-         * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
+        /// <summary>
+        /// Get the current index for a material (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
         public int GetWriteIndex(Material material)
         {
             if (!_writeList.Contains(material)) return -1;
             return _writeList.IndexOf(material);
         }
 
-        /* Get a material by its current index (useful for cross-ref'ing with compiled binaries)
-         * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
+        /// <summary>
+        /// Get a material by its current index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
         public Material GetAtWriteIndex(int index)
         {
             if (_writeList.Count <= index) return null;

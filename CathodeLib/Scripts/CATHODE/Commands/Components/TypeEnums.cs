@@ -4,7 +4,9 @@ using System.Text;
 
 namespace CATHODE.Scripting
 {
-    /* Entity variants */
+    /// <summary>
+    /// Entity variants
+    /// </summary>
     public enum EntityVariant
     {
         VARIABLE,
@@ -14,7 +16,9 @@ namespace CATHODE.Scripting
         ALIAS,
     }
 
-    /* Parameter variants */
+    /// <summary>
+    /// Parameter variants
+    /// </summary>
     [Flags]
     public enum ParameterVariant
     {
@@ -29,14 +33,18 @@ namespace CATHODE.Scripting
         METHOD_PIN = 1 << 8
     }
 
-    /* Entity node pin direction */
+    /// <summary>
+    /// Entity node pin direction
+    /// </summary>
     public enum PinDirection
     {
         IN,
         OUT,
     }
 
-    /* Data types */
+    /// <summary>
+    /// Data types
+    /// </summary>
     public enum DataType : uint
     {
         BOOL = 2524318704,              //bool
@@ -60,7 +68,9 @@ namespace CATHODE.Scripting
         NONE = 2350126629,          //NOTE: Translates to a blank string (this typically means the datatype has got lost in the hierarchy chain)
     }
 
-    /* Object types */
+    /// <summary>
+    /// Object types
+    /// </summary>
     public enum ObjectType : uint
     {
         ENTITY = 2350126629,
@@ -69,7 +79,9 @@ namespace CATHODE.Scripting
         CAMERA = 1530210895,
     }
 
-    /* Function types */
+    /// <summary>
+    /// Function types
+    /// </summary>
     public enum FunctionType : uint
     {
         AccessTerminal = 839298434,
@@ -891,7 +903,9 @@ namespace CATHODE.Scripting
         ZoneLoaded = 2265919304,
     }
 
-    /* Resource reference types -> a LOT of these aren't used, but including them anyways for the sake of completeness (be careful using this enum!) */
+    /// <summary>
+    /// Resource reference types -> a LOT of these aren't used, but including them anyways for the sake of completeness (be careful using this enum!)
+    /// </summary>
     public enum ResourceType : uint
     {
         AIMED_ITEM_INSTANCE = 501311678,
@@ -941,7 +955,9 @@ namespace CATHODE.Scripting
         VENT_SYSTEM = 3212606002,
     }
 
-    /* Enums available within Cathode */
+    /// <summary>
+    /// Enums available within Cathode
+    /// </summary>
     public enum EnumType : uint
     {
         AGGRESSION_GAIN = 1357561808,
@@ -1063,7 +1079,9 @@ namespace CATHODE.Scripting
         WEAPON_TYPE = 885251982,
     }
 
-    /* Enum strings available within Cathode (these are cString type, but can be looked up using DATA) */
+    /// <summary>
+    /// Enum strings available within Cathode (these are cString type, but can be looked up using DATA)
+    /// </summary>
     public enum EnumStringType : uint
     {
         ACHIEVEMENT_ID = 3485949151,
@@ -1097,7 +1115,9 @@ namespace CATHODE.Scripting
         TUTORIAL_ENTRY_ID = 2135177174,
     }
 
-    /* Composite pin types (VariableEntity) */
+    /// <summary>
+    /// Composite pin types (VariableEntity)
+    /// </summary>
     public enum CompositePinType : uint
     {
         CompositeTargetPin = 4176414020,
@@ -1135,7 +1155,9 @@ namespace CATHODE.Scripting
 }
 namespace CATHODE.Scripting.Internal
 { 
-    /* Blocks of data in each compiled composite */
+    /// <summary>
+    /// Blocks of data in each compiled composite
+    /// </summary>
     public enum CompositeFileData
     {
         HEADER,                   //Defines the header of the composite, with global ID and string name
@@ -1154,7 +1176,9 @@ namespace CATHODE.Scripting.Internal
         NUMBER_OF_SCRIPT_BLOCKS,  //THIS IS NOT A DATA BLOCK: merely used as an easy way of sanity checking the number of blocks in-code!
     }
 
-    /* Types of custom table available for reading/writing various metadata */
+    /// <summary>
+    /// Types of custom table available for reading/writing various metadata
+    /// </summary>
     public enum CustomTableType
     {
         //NOTE: NEVER remove options from here, or re-order them.
@@ -1179,7 +1203,9 @@ namespace CATHODE.Scripting.Internal
         NUMBER_OF_END_TABLES, //USED FOR COUNTING ONLY
     }
 
-    /* Type of file the custom table is being written to */
+    /// <summary>
+    /// Type of file the custom table is being written to
+    /// </summary>
     public enum CustomTableFileType
     {
         COMMANDS_PAK,

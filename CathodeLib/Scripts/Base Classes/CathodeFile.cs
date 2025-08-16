@@ -43,13 +43,17 @@ namespace CathodeLib
         }
 
         #region EXTERNAL_FUNCS
-        /* Try and load the file, if it exists */
+        /// <summary>
+        /// Try and load the file, if it exists
+        /// </summary>
         protected bool Load()
         {
             return Load(File.Exists(_filepath) ? new MemoryStream(File.ReadAllBytes(_filepath)) : null);
         }
 
-        /* Load from MemoryStream */
+        /// <summary>
+        /// Load from MemoryStream
+        /// </summary>
         protected bool Load(MemoryStream stream)
         {
             OnLoadBegin?.Invoke(_filepath);
@@ -74,7 +78,9 @@ namespace CathodeLib
 #endif
         }
 
-        /* Save the file back to its original filepath */
+        /// <summary>
+        /// Save the file back to its original filepath
+        /// </summary>
         public bool Save()
         {
             OnSaveBegin?.Invoke(_filepath);
@@ -99,7 +105,9 @@ namespace CathodeLib
 #endif
         }
 
-        /* Save the file to a new path, and optionally remember it for future saves */
+        /// <summary>
+        /// Save the file to a new path, and optionally remember it for future saves
+        /// </summary>
         public bool Save(string path = "", bool updatePath = true)
         {
             string origFilepath = updatePath && path != "" ? path : _filepath;
@@ -111,14 +119,18 @@ namespace CathodeLib
         #endregion
 
         #region TO_OVERRIDE
-        /* Virtual function to override in inherited classes for loading the file */
+        /// <summary>
+        /// Virtual function to override in inherited classes for loading the file
+        /// </summary>
         protected virtual bool LoadInternal(MemoryStream stream)
         {
             Console.WriteLine("WARNING: This class does not implement loading functionality!");
             return false;
         }
 
-        /* Virtual function to override in inherited classes for saving the file */
+        /// <summary>
+        /// Virtual function to override in inherited classes for saving the file
+        /// </summary>
         protected virtual bool SaveInternal()
         {
             Console.WriteLine("WARNING: This class does not implement saving functionality!");

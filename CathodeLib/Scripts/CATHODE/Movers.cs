@@ -12,7 +12,9 @@ using System.Numerics;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/MODELS.MVR */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/WORLD/MODELS.MVR
+    /// </summary>
     public class Movers : CathodeFile
     {
         public List<MOVER_DESCRIPTOR> Entries = new List<MOVER_DESCRIPTOR>();
@@ -126,16 +128,20 @@ namespace CATHODE
         #endregion
 
         #region HELPERS
-        /* Get the current BIN index for a submesh (useful for cross-ref'ing with compiled binaries)
-         * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
+        /// <summary>
+        /// Get the current BIN index for a submesh (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
         public int GetWriteIndex(MOVER_DESCRIPTOR mover)
         {
             if (!_writeList.Contains(mover)) return -1;
             return _writeList.IndexOf(mover);
         }
 
-        /* Get a submesh by its current BIN index (useful for cross-ref'ing with compiled binaries)
-         * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
+        /// <summary>
+        /// Get a submesh by its current BIN index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
         public MOVER_DESCRIPTOR GetAtWriteIndex(int index)
         {
             if (_writeList.Count <= index) return null;

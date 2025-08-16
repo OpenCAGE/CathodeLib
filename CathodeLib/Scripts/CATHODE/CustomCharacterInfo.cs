@@ -6,7 +6,9 @@ using System.IO;
 
 namespace CATHODE
 {
-    /* DATA/CHR_INFO/CUSTOMCHARACTERINFO.BIN */
+    /// <summary>
+    /// DATA/CHR_INFO/CUSTOMCHARACTERINFO.BIN
+    /// </summary>
     public class CustomCharacterInfo : CathodeFile
     {
         public Dictionary<CharacterModel, Dictionary<CharacterGender, string>> Skeletons = new Dictionary<CharacterModel, Dictionary<CharacterGender, string>>();

@@ -11,7 +11,9 @@ using System.Numerics;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/ALPHALIGHT_LEVEL.BIN */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/WORLD/ALPHALIGHT_LEVEL.BIN
+    /// </summary>
     public class AlphaLightLevel : CathodeFile
     {
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;

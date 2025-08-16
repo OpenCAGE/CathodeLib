@@ -5,7 +5,9 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
-    /* For legacy Spartan: Total Warrior PAK1 files */
+    /// <summary>
+    /// For legacy Spartan: Total Warrior PAK1 files
+    /// </summary>
     public class PAK1 : CathodeFile
     {
         public List<File> Entries = new List<File>();

@@ -7,7 +7,9 @@ using System.IO;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/RENDERABLE/LEVEL_TEXTURES.*.PAK & LEVEL_TEXTURE_HEADERS.*.BIN */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/RENDERABLE/LEVEL_TEXTURES.*.PAK & LEVEL_TEXTURE_HEADERS.*.BIN
+    /// </summary>
     public class Textures : CathodeFile
     {
         public List<TEX4> Entries = new List<TEX4>();
@@ -229,16 +231,20 @@ namespace CATHODE
         #endregion
 
         #region HELPERS
-        /* Get the current index for a texture (useful for cross-ref'ing with compiled binaries)
-         * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
+        /// <summary>
+        /// Get the current index for a texture (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
         public int GetWriteIndex(TEX4 texture)
         {
             if (!_writeList.Contains(texture)) return -1;
             return _writeList.IndexOf(texture);
         }
 
-        /* Get a texture by its current index (useful for cross-ref'ing with compiled binaries)
-         * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
+        /// <summary>
+        /// Get a texture by its current index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
         public TEX4 GetAtWriteIndex(int index)
         {
             if (index < 0 || _writeList.Count <= index) return null;

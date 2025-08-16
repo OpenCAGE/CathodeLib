@@ -52,7 +52,9 @@ namespace CathodeLib
             public readonly CathodeEnumTable CathodeEnums;
         }
 
-        /* Write a CathodeLib data table to disk */
+        /// <summary>
+        /// Write a CathodeLib data table to disk
+        /// </summary>
         public static void WriteTable(string filepath, CustomTableType table, Table content)
         {
             //TODO: Perhaps we should write to a buffer, and then gzip the buffer, and then append that, instead?
@@ -154,7 +156,9 @@ namespace CathodeLib
             }
         }
 
-        /* Read a CathodeLib data table from disk or memory */
+        /// <summary>
+        /// Read a CathodeLib data table from disk or memory
+        /// </summary>
         public static Table ReadTable(string filepath, CustomTableType table)
         {
             if (!File.Exists(filepath))
@@ -1107,7 +1111,9 @@ namespace CathodeLib
             }
         }
 
-        /* Gets a pretty Composite name */
+        /// <summary>
+        /// Gets a pretty Composite name
+        /// </summary>
         public string GetFullPath(ShortGuid guid)
         {
             if (composite_paths.TryGetValue(guid, out string toReturn))
@@ -1115,7 +1121,9 @@ namespace CathodeLib
             return "";
         }
 
-        /* Gets a pretty Composite name, including trimming direct paths */
+        /// <summary>
+        /// Gets a pretty Composite name, including trimming direct paths
+        /// </summary>
         public string GetPrettyPath(ShortGuid guid)
         {
             string fullPath = GetFullPath(guid);

@@ -10,7 +10,9 @@ using System.Xml.Linq;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/SOUNDBANKDATA.DAT */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/WORLD/SOUNDBANKDATA.DAT
+    /// </summary>
     public class SoundBankData : CathodeFile
     {
         //NOTE: you can use Utilities.SoundHashedString to hash these strings and get the Wwise ID used in other places like SoundEventData

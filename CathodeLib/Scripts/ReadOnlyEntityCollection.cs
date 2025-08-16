@@ -6,7 +6,9 @@ using System.Text;
 
 namespace CathodeLib
 {
-    /* Custom read-only collections that throw errors on modification attempts */
+    /// <summary>
+    /// Custom read-only collections that throw errors on modification attempts
+    /// </summary>
     public class ReadOnlyEntityCollection<T> : IList<T>, IReadOnlyList<T>
     {
         private readonly List<T> _items;

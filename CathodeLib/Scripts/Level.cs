@@ -1,4 +1,4 @@
-﻿using CATHODE;
+using CATHODE;
 using CATHODE.EXPERIMENTAL;
 using CATHODE.LEGACY;
 using System;
@@ -17,7 +17,9 @@ namespace CathodeLib
         public AnimationStrings AnimationStrings_Debug;
     }
 
-    /* A helper class that holds all parse-able formats for a level, and saves them safely to update indexes across all */
+    /// <summary>
+    /// A helper class that holds all parse-able formats for a level, and saves them safely to update indexes across all
+    /// </summary>
     public class Level
     {
         public Textures GlobalTextures;
@@ -57,7 +59,9 @@ namespace CathodeLib
         }
         public List<State> StateResources = new List<State>();
 
-        /* Load a level in the game's "ENV/PRODUCTION" folder */
+        /// <summary>
+        /// Load a level in the game's "ENV/PRODUCTION" folder
+        /// </summary>
         public Level(string path, Global global)
         {
             string pathDATA = path.Replace('\\', '/').Split(new string[] { "/DATA/ENV/PRODUCTION" }, StringSplitOptions.None)[0] + "/DATA";
@@ -307,7 +311,9 @@ namespace CathodeLib
             Materials.Save();
         }
 
-        /* Get all levels available within the ENV folder. Pass the path to the folder that contains AI.exe. */
+        /// <summary>
+        /// Get all levels available within the ENV folder. Pass the path to the folder that contains AI.exe.
+        /// </summary>
         public static List<string> GetLevels(string gameDirectory, bool swapNostromoForPatch = false)
         {
             string[] galaxyBins = Directory.GetFiles(gameDirectory + "/DATA/ENV/PRODUCTION/", "GALAXY.DEFINITION_BIN", SearchOption.AllDirectories);

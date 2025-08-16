@@ -10,7 +10,9 @@ using System.Xml.Linq;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/SOUNDLOADZONES.DAT */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/WORLD/SOUNDLOADZONES.DAT
+    /// </summary>
     public class SoundLoadZones : CathodeFile
     {
         //This specifies all the sound banks that are loaded within the level. They can be specified via spatial zones, but this feature is never used.

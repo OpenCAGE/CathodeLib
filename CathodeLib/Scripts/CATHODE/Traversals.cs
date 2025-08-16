@@ -1,4 +1,4 @@
-﻿using CATHODE.Scripting;
+using CATHODE.Scripting;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
@@ -14,7 +14,9 @@ using System.Numerics;
 
 namespace CATHODE.EXPERIMENTAL
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/STATE_x/TRAVERSAL */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/WORLD/STATE_x/TRAVERSAL
+    /// </summary>
     public class Traversals : CathodeFile
     {
         //NOTE: Not bothering finishing reversing this one as it's not actually used.

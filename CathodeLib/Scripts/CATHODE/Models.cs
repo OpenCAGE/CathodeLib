@@ -11,7 +11,9 @@ using System.Numerics;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/RENDERABLE/LEVEL_MODELS.PAK & MODELS_LEVEL.BIN */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/RENDERABLE/LEVEL_MODELS.PAK & MODELS_LEVEL.BIN
+    /// </summary>
     public class Models : CathodeFile
     {
         public List<CS2> Entries = new List<CS2>();
@@ -29,7 +31,9 @@ namespace CATHODE
         }
 
         #region FILE_IO
-        /* Load the file */
+        /// <summary>
+        /// Load the file
+        /// </summary>
         override protected bool LoadInternal(MemoryStream stream)
         {
             //NOTE: Loading via byte[] or MemoryStream is not currently supported. Must be loaded via disk from a filepath!
@@ -228,7 +232,9 @@ namespace CATHODE
             return true;
         }
 
-        /* Save the file */
+        /// <summary>
+        /// Save the file
+        /// </summary>
         override protected bool SaveInternal()
         {
             int submeshCount = 0;
@@ -461,7 +467,9 @@ namespace CATHODE
         #endregion
 
         #region HELPERS
-        /* Find a model that contains a given submesh */
+        /// <summary>
+        /// Find a model that contains a given submesh
+        /// </summary>
         public CS2 FindModelForSubmesh(CS2.Component.LOD.Submesh submesh)
         {
             for (int i = 0; i < Entries.Count; i++)
@@ -471,7 +479,9 @@ namespace CATHODE
                             return Entries[i];
             return null;
         }
-        /* Find a component of a model that contains a submesh */
+        /// <summary>
+        /// Find a component of a model that contains a submesh
+        /// </summary>
         public CS2.Component FindModelComponentForSubmesh(CS2.Component.LOD.Submesh submesh)
         {
             for (int i = 0; i < Entries.Count; i++)
@@ -481,7 +491,9 @@ namespace CATHODE
                             return Entries[i].Components[z];
             return null;
         }
-        /* Find a LOD that contains a given submesh */
+        /// <summary>
+        /// Find a LOD that contains a given submesh
+        /// </summary>
         public CS2.Component.LOD FindModelLODForSubmesh(CS2.Component.LOD.Submesh submesh)
         {
             for (int i = 0; i < Entries.Count; i++)
@@ -492,8 +504,10 @@ namespace CATHODE
             return null;
         }
 
-        /* Get the current BIN index for a submesh (useful for cross-ref'ing with compiled binaries)
-         * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
+        /// <summary>
+        /// Get the current BIN index for a submesh (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
         public int GetWriteIndex(CS2.Component.LOD.Submesh submesh)
         {
             if (submesh == null) return -1;
@@ -507,8 +521,10 @@ namespace CATHODE
             return _writeList.IndexOf(mesh.LODs[0].Submeshes[0]);
         }
 
-        /* Get a submesh by its current BIN index (useful for cross-ref'ing with compiled binaries)
-         * Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk */
+        /// <summary>
+        /// Get a submesh by its current BIN index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
         public CS2.Component.LOD.Submesh GetAtWriteIndex(int index)
         {
             if (_writeList.Count <= index || index < 0) return null;

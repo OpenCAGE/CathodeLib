@@ -10,7 +10,9 @@ using System.Numerics;
 
 namespace CATHODE.EXPERIMENTAL
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/STATE_x/NAV_MESH */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/WORLD/STATE_x/NAV_MESH
+    /// </summary>
     public class NavigationMesh : CathodeFile
     {
         dtMeshHeader Header;

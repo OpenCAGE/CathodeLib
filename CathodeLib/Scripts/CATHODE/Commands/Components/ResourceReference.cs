@@ -9,7 +9,9 @@ using System.Numerics;
 
 namespace CATHODE.Scripting
 {
-    /* A reference to a game resource (E.G. a renderable element, a collision mapping, etc) */
+    /// <summary>
+    /// A reference to a game resource (E.G. a renderable element, a collision mapping, etc)
+    /// </summary>
     [Serializable]
     public class ResourceReference : ICloneable
     {

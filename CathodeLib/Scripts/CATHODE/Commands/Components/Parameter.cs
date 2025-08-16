@@ -5,7 +5,9 @@ using System.Text;
 
 namespace CATHODE.Scripting
 {
-    /* A parameter which consists of a name and data, with a variant for how it is used */
+    /// <summary>
+    /// A parameter which consists of a name and data, with a variant for how it is used
+    /// </summary>
     [Serializable]
     public class Parameter
     {

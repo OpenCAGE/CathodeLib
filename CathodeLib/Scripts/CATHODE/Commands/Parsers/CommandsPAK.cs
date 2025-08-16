@@ -1037,7 +1037,9 @@ namespace CATHODE.Scripting.Internal.Parsers
             }
         }
 
-        /* Read offset info & count, jump to the offset & return the count */
+        /// <summary>
+        /// Read offset info & count, jump to the offset & return the count
+        /// </summary>
         private static int JumpToOffset(BinaryReader reader)
         {
             int offset = reader.ReadInt32() * 4;

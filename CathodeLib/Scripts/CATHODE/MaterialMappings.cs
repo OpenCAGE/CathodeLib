@@ -7,7 +7,9 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/MATERIAL_MAPPINGS.PAK */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/WORLD/MATERIAL_MAPPINGS.PAK
+    /// </summary>
     public class MaterialMappings : CathodeFile
     {
         public List<Entry> Entries = new List<Entry>();

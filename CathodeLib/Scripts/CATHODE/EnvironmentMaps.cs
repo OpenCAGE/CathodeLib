@@ -6,7 +6,9 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/ENVIRONMENTMAP.BIN */
+    /// <summary>
+    /// DATA/ENV/PRODUCTION/x/WORLD/ENVIRONMENTMAP.BIN
+    /// </summary>
     public class EnvironmentMaps : CathodeFile
     {
         public List<Mapping> Entries = new List<Mapping>();

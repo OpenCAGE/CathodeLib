@@ -11,7 +11,9 @@ using CathodeLib;
 
 namespace CATHODE
 {
-    /* DATA/GLOBAL/ANIMATION.PAK -> ANIM_SYS/SKELE/DB.BIN */
+    /// <summary>
+    /// DATA/GLOBAL/ANIMATION.PAK -> ANIM_SYS/SKELE/DB.BIN
+    /// </summary>
     public class SkeleDB : CathodeFile
     {
         public Data Entries = new Data();

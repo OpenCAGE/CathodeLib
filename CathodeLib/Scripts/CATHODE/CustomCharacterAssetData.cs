@@ -10,7 +10,9 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
-    /* DATA/CHR_INFO/CUSTOMCHARACTERASSETDATA.BIN */
+    /// <summary>
+    /// DATA/CHR_INFO/CUSTOMCHARACTERASSETDATA.BIN
+    /// </summary>
     public class CustomCharacterAssetData : CathodeFile
     {
         public List<AssetDefinition> Entries = new List<AssetDefinition>();
