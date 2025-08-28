@@ -364,10 +364,9 @@ namespace CathodeLib
                 ShortGuid id = Utilities.Consume<ShortGuid>(reader);
                 string str = reader.ReadString();
                 if (!cache.ContainsKey(str))
-                {
                     cache.Add(str, id);
+                if (!cacheReversed.ContainsKey(id)) //NOTE: need to handle duplicates better - a warning perhaps?
                     cacheReversed.Add(id, str);
-                }
             }
         }
 
