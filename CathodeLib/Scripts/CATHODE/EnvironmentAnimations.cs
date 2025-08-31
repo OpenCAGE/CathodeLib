@@ -29,12 +29,15 @@ namespace CATHODE
         public EnvironmentAnimations(MemoryStream stream, AnimationStrings strings, string path = "") : base(stream, path)
         {
             _strings = strings;
-            _loaded = Load();
+            _loaded = Load(stream);
         }
         public EnvironmentAnimations(byte[] data, AnimationStrings strings, string path = "") : base(data, path)
         {
             _strings = strings;
-            _loaded = Load();
+            using (MemoryStream stream = new MemoryStream(data))
+            {
+                _loaded = Load(stream);
+            }
         }
 
         private AnimationStrings _strings;

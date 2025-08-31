@@ -16,6 +16,7 @@ namespace CATHODE
     /// </summary>
     public class AnimTreeDb : CathodeFile
     {
+        public string Set = "";
         public List<AnimationTree> Entries = new List<AnimationTree>();
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
 
@@ -24,15 +25,18 @@ namespace CATHODE
             _strings = strings;
             _loaded = Load();
         }
-        public AnimTreeDb(MemoryStream stream, AnimationStrings strings, string path = "") : base(stream, path)
+        public AnimTreeDb(MemoryStream stream, AnimationStrings strings, string path) : base(stream, path)
         {
             _strings = strings;
-            _loaded = Load();
+            _loaded = Load(stream);
         }
-        public AnimTreeDb(byte[] data, AnimationStrings strings, string path = "") : base(data, path)
+        public AnimTreeDb(byte[] data, AnimationStrings strings, string path) : base(data, path)
         {
             _strings = strings;
-            _loaded = Load();
+            using (MemoryStream stream = new MemoryStream(data))
+            {
+                _loaded = Load(stream);
+            }
         }
 
         private AnimationStrings _strings;
@@ -40,8 +44,10 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
-            if (_strings == null)
+            if (_strings == null || _filepath == null || _filepath == "")
                 return false;
+
+            Set = _strings.GetString(Convert.ToUInt32(Path.GetFileName(_filepath).Split('_')[0]));
 
             using (BinaryReader reader = new BinaryReader(stream))
             {
