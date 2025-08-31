@@ -76,7 +76,7 @@ namespace CATHODE
 
         #region ACCESSORS
         /// <summary>
-        /// Add a string to the DB
+        /// Add a string to the DB (generates an ID)
         /// </summary>
         public void AddString(string str)
         {
@@ -92,6 +92,27 @@ namespace CATHODE
         {
             uint id = Utilities.AnimationHashedString(str);
             Entries.Remove(id);
+        }
+
+        /// <summary>
+        /// Get the string value for a given ID (if it doesn't exist, returns the ID as a string)
+        /// </summary>
+        public string GetString(uint id)
+        {
+            if (Entries.TryGetValue(id, out string s))
+                return s;
+            return id.ToString(); //Warn?
+        }
+
+        /// <summary>
+        /// Get the ID for a given string, and caches it if it's new
+        /// </summary>
+        public uint GetID(string str)
+        {
+            uint id = Utilities.AnimationHashedString(str);
+            if (!Entries.ContainsKey(id))
+                Entries.Add(id, str);
+            return id;
         }
         #endregion
 
