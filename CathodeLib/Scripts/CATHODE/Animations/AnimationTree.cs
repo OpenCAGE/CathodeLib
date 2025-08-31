@@ -24,28 +24,28 @@ namespace CATHODE.Animations
 
         public List<AnimationNode> Nodes = new List<AnimationNode>();
 
-        public List<uint> BindingHashedNames = new List<uint>();
+        public List<string> BindingNames = new List<string>();
         public List<uint> ParameterTypes = new List<uint>();
         public List<uint> IndicesInTypeArrays = new List<uint>();
 
-        public List<uint> CallbackHashedNames = new List<uint>();
+        public List<string> CallbackNames = new List<string>();
 
-        public List<uint> MetadataListenerNames = new List<uint>();
-        public List<uint> MetadataEventNames = new List<uint>();
+        public List<string> MetadataListenerNames = new List<string>();
+        public List<string> MetadataEventNames = new List<string>();
         public List<float> MetadataListenerWeightThresholds = new List<float>();
         public List<float> MetadataListenerFilterTimes = new List<float>();
 
-        public List<uint> AutoFloatNames = new List<uint>();
+        public List<string> AutoFloatNames = new List<string>();
 
-        public List<uint> PropertyListenerNames = new List<uint>();
-        public List<uint> PropertyListenerPropertyNames = new List<uint>();
-        public List<uint> PropertyListenerLeafNames = new List<uint>();
+        public List<string> PropertyListenerNames = new List<string>();
+        public List<string> PropertyListenerPropertyNames = new List<string>();
+        public List<string> PropertyListenerLeafNames = new List<string>();
 
-        public List<uint> PropertyValueNames = new List<uint>();
+        public List<string> PropertyValueNames = new List<string>();
         public List<AnimationMetadataValue> PropertyValues = new List<AnimationMetadataValue>();
 
-        public List<uint> FloatInterpolatorSourceNames = new List<uint>();
-        public List<uint> FloatInterpolatorNames = new List<uint>();
+        public List<string> FloatInterpolatorSourceNames = new List<string>();
+        public List<string> FloatInterpolatorNames = new List<string>();
         public List<float> FloatInterpolatorStartValues = new List<float>();
         public List<float> FloatInterpolatorRates = new List<float>();
     }

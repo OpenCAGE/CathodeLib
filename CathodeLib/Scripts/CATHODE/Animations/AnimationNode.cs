@@ -14,7 +14,7 @@ namespace CATHODE.Animations
     public class LeafNode : AnimationNode
     {
         public bool HasCallback;
-        public uint HashedCallbackName;
+        public string CallbackName;
         public bool Looped;
         public bool Mirrored;
         public BoneMaskGroups MaskingControl;
@@ -31,11 +31,10 @@ namespace CATHODE.Animations
 
     public class SelectorNode : AnimationNode
     {
-        public List<uint> HashBindings = new List<uint>();
+        public List<string> Bindings = new List<string>();
         public List<uint> ValueBindings = new List<uint>();
         public float EaseTime;
-        public uint BindingParameterHash;
-        public uint NumChildren;
+        public string BindingParameterName;
         public List<bool> FootSyncOnSelect = new List<bool>();
         public bool ResetPlaybackOnChange;
 
@@ -47,11 +46,10 @@ namespace CATHODE.Animations
 
     public class EnumeratedSelectorNode : AnimationNode
     {
-        public uint NumChildren;
-        public List<uint> HashBindings = new List<uint>();
+        public List<string> Bindings = new List<string>();
         public List<uint> ValueBindings = new List<uint>();
         public float EaseTime;
-        public uint BindingParameterHash;
+        public string BindingParameterName;
         public List<bool> FootSyncOnSelect = new List<bool>();
         public bool ResetPlaybackOnChange;
 
@@ -63,10 +61,10 @@ namespace CATHODE.Animations
 
     public class ParametricNode : AnimationNode
     {
-        public List<uint> HashBindings = new List<uint>();
+        public List<string> Bindings = new List<string>();
         public List<float> ValueBindings = new List<float>();
-        public uint BindingParameterHash;
-        public uint NumChildren;
+
+        public string BindingParameterName;
         public float Min;
         public float Max = 1.0f;
         public uint ParameterUsage;
@@ -82,7 +80,8 @@ namespace CATHODE.Animations
 
     public class BlendSetNode : AnimationNode
     {
-        public uint BlendSet;
+        public uint[] BlendSet = new uint[1];
+
         public uint XParameter;
         public uint YParameter;
         public uint ZParameter;
@@ -96,16 +95,11 @@ namespace CATHODE.Animations
         }
     }
 
-    public class BlendSet4DNode : AnimationNode
+    public class BlendSet4DNode : BlendSetNode
     {
-        public uint[] BlendSet = new uint[2];
-        public uint XParameter;
-        public uint YParameter;
-        public uint ZParameter;
+        public new uint[] BlendSet = new uint[2];
+
         public uint WParameter;
-        public uint OverflowListener;
-        public bool LoopBlendSets;
-        public bool SyncBlendSets;
 
         public BlendSet4DNode()
         {
@@ -115,9 +109,10 @@ namespace CATHODE.Animations
 
     public class BilinearNode : AnimationNode
     {
-        public uint[] HashBindings = new uint[9];
-        public uint XParameterHash;
-        public uint YParameterHash;
+        public string[] Bindings = new string[9];
+
+        public string XParameter;
+        public string YParameter;
         public float ParameterMin;
         public float ParameterMax = 1.0f;
         public bool ParameterWrap;
@@ -129,15 +124,9 @@ namespace CATHODE.Animations
         }
     }
 
-    public class LoFiBilinearNode : AnimationNode
+    public class LoFiBilinearNode : BilinearNode
     {
-        public uint[] HashBindings = new uint[4];
-        public uint XParameterHash;
-        public uint YParameterHash;
-        public float ParameterMin;
-        public float ParameterMax = 1.0f;
-        public bool ParameterWrap;
-        public bool SyncDurations;
+        public new string[] Bindings = new string[4];
 
         public LoFiBilinearNode()
         {
@@ -147,8 +136,9 @@ namespace CATHODE.Animations
 
     public class AdditiveBlendNode : AnimationNode
     {
-        public uint BaseNodeHash;
-        public uint AdditiveNodeHash;
+        public string BaseNodeName;
+        public string AdditiveNodeName;
+
         public float AdditiveNodeWeight = 1.0f;
         public bool SyncAdditiveDurationToBase;
 
@@ -158,15 +148,12 @@ namespace CATHODE.Animations
         }
     }
 
-    public class ParametricAdditiveBlendNode : AnimationNode
+    public class ParametricAdditiveBlendNode : AdditiveBlendNode
     {
-        public uint BaseNodeHash;
-        public uint AdditiveNodeHash;
-        public float AdditiveNodeWeight = 1.0f;
-        public uint ParameterHash;
+        public string ParameterName;
+
         public float ParameterMin;
         public float ParameterMax = 1.0f;
-        public bool SyncAdditiveDurationToBase;
 
         public ParametricAdditiveBlendNode()
         {
@@ -176,12 +163,12 @@ namespace CATHODE.Animations
 
     public class RangedSelectorNode : AnimationNode
     {
-        public List<uint> HashBindings = new List<uint>();
+        public List<string> Bindings = new List<string>();
         public List<float> MinValueBindings = new List<float>();
         public List<float> MaxValueBindings = new List<float>();
+
         public float EaseTime;
-        public uint BindingParameterHash;
-        public uint NumChildren;
+        public string BindingParameterName;
         public List<bool> FootSyncOnSelect = new List<bool>();
         public bool ResetPlaybackOnChange;
 
@@ -193,7 +180,8 @@ namespace CATHODE.Animations
 
     public class FootSyncSelectorNode : AnimationNode
     {
-        public uint[] HashBindings = new uint[2];
+        public string[] Bindings = new string[2];
+
         public uint FootStrikeSelectionMethod;
         public bool GaitSyncTargetOnSelect;
 
@@ -219,7 +207,7 @@ namespace CATHODE.Animations
     public class IkNode : AnimationNode
     {
         public uint PoseLayer;
-        public uint IkEffectorHash;
+        public string IkEffectorName;
         public uint IkType;
         public uint IkTarget;
         public float EffectorFullyEffectiveRadius;
@@ -236,8 +224,8 @@ namespace CATHODE.Animations
 
     public class SphericalNode : AnimationNode
     {
-        public uint CoordHash;
-        public uint NumChildren;
+        public string Coord;
+
         public List<BlendTriIndices> Tris = new List<BlendTriIndices>();
         public uint NumTris;
         public bool SyncDurations;
@@ -263,7 +251,8 @@ namespace CATHODE.Animations
 
     public class WeightedNode : AnimationNode
     {
-        public uint ParameterHash;
+        public string ParameterName;
+
         public float ParameterMin;
         public float ParameterMax = 1.0f;
 
@@ -277,8 +266,10 @@ namespace CATHODE.Animations
     {
         public bool HasCallback;
         public float BlendTime;
-        public uint HashedCallbackName;
-        public uint RandomNodeCallbackName;
+
+        public string CallbackName;
+        public string RandomNodeCallbackName;
+
         public bool Looped;
         public bool NewSelectionOnLoop;
         public List<bool> Mirrored = new List<bool>();
@@ -286,13 +277,15 @@ namespace CATHODE.Animations
         public uint OptionalConvergeVector;
         public uint OptionalConvergeFloat;
         public uint NumberOfAnimSlots;
+
         public List<uint> LevelAnimIndices = new List<uint>();
-        public List<uint> HashedNames = new List<uint>();
+        public List<string> Names = new List<string>();
         public List<float> WeightsForCdf = new List<float>();
         public List<uint> LoopsBeforeReselection = new List<uint>();
         public List<float> NotifyTimeOffset = new List<float>();
         public List<float> StartTimeOffset = new List<float>();
         public List<float> EndTimeOffset = new List<float>();
+
         public bool ConvergeOrientation;
         public bool ConvergeTranslation;
 
