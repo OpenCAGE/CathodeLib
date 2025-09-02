@@ -130,31 +130,23 @@ namespace CATHODE.Animations
 
     public class SelectorNode : AnimationNode
     {
-        public List<string> Bindings = new List<string>();
-        public List<uint> ValueBindings = new List<uint>();
-        public float EaseTime;
+        public List<State> States = new List<State>();
+
+        public float EaseSelectionTime;
+        public bool ResetPlaybackOnChangeSelection;
+
         public ParameterNode BindingParameter;
-        public List<bool> FootSyncOnSelect = new List<bool>();
-        public bool ResetPlaybackOnChange;
 
         public SelectorNode()
         {
             Type = AnimationNodeType.ANIM_Selector;
         }
-    }
 
-    public class EnumeratedSelectorNode : AnimationNode
-    {
-        public List<string> Bindings = new List<string>();
-        public List<uint> ValueBindings = new List<uint>();
-        public float EaseTime;
-        public ParameterNode BindingParameter;
-        public List<bool> FootSyncOnSelect = new List<bool>();
-        public bool ResetPlaybackOnChange;
-
-        public EnumeratedSelectorNode()
+        public class State
         {
-            Type = AnimationNodeType.ANIM_Enumerated_Selector;
+            public LeafNode Node;
+            public uint Value;
+            public bool FootSyncOnSelect;
         }
     }
 

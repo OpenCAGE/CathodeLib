@@ -258,9 +258,15 @@ namespace CATHODE
                     {
                         kvp.Key.BindingParameter = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == AnimationNodeType.ANIM_Parameter && o.Name == kvp.Value);
                     }
-                    foreach (KeyValuePair<EnumeratedSelectorNode, string> kvp in _enSelLookups)
+                    foreach (KeyValuePair<SelectorNode, List<string>> kvp in _selectorBindingLookups)
                     {
-                        kvp.Key.BindingParameter = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == AnimationNodeType.ANIM_Parameter && o.Name == kvp.Value);
+                        if (kvp.Value.Count != kvp.Key.States.Count)
+                            throw new Exception("unexpected count");
+
+                        for (int x = 0; x < kvp.Key.States.Count; x++)
+                        {
+                            kvp.Key.States[x].Node = (LeafNode)treeDef.Nodes.FirstOrDefault(o => o.Type == AnimationNodeType.ANIM_Animation && o.Name == kvp.Value[x]);
+                        }
                     }
                     foreach (KeyValuePair<IkNode, string> kvp in _ikLookups)
                     {
@@ -276,7 +282,7 @@ namespace CATHODE
         Dictionary<LeafNode, string> _animLookups = new Dictionary<LeafNode, string>();
         Dictionary<WeightedNode, string> _weightedLookups = new Dictionary<WeightedNode, string>();
         Dictionary<SelectorNode, string> _selectorLookups = new Dictionary<SelectorNode, string>();
-        Dictionary<EnumeratedSelectorNode, string> _enSelLookups = new Dictionary<EnumeratedSelectorNode, string>();
+        Dictionary<SelectorNode, List<string>> _selectorBindingLookups = new Dictionary<SelectorNode, List<string>>();
         Dictionary<IkNode, string> _ikLookups = new Dictionary<IkNode, string>();
 
         private AnimationNode ReadNode(BinaryReader reader, AnimationTree tree)
@@ -310,35 +316,6 @@ namespace CATHODE
                         };
                         if (hasCallback)
                             _animLookups.Add((LeafNode)node, callback);
-                    }
-                    break;
-                case AnimationNodeType.ANIM_Selector:
-                    {
-                        uint childCount = reader.ReadUInt32();
-
-                        List<string> bindings = new List<string>();
-                        for (uint i = 0; i < childCount; i++)
-                            bindings.Add(_strings.GetString(reader.ReadUInt32()));
-                        List<uint> valueBindings = new List<uint>();
-                        for (uint i = 0; i < childCount; i++)
-                            valueBindings.Add(reader.ReadUInt32());
-                        List<bool> footSyncOnSelect = new List<bool>();
-                        for (uint i = 0; i < childCount; i++)
-                            footSyncOnSelect.Add(reader.ReadBoolean());
-
-                        uint paramName = reader.ReadUInt32();
-
-                        node = new SelectorNode
-                        {
-                            Bindings = bindings,
-                            ValueBindings = valueBindings,
-                            FootSyncOnSelect = footSyncOnSelect,
-                            BindingParameter = null,
-                            EaseTime = reader.ReadSingle(),
-                            ResetPlaybackOnChange = reader.ReadBoolean()
-                        };
-                        if (paramName != 0)
-                            _selectorLookups.Add((SelectorNode)node, _strings.GetString(paramName));
                     }
                     break;
                 case AnimationNodeType.ANIM_Parametric:
@@ -516,33 +493,36 @@ namespace CATHODE
                         };
                     }
                     break;
+                case AnimationNodeType.ANIM_Selector:
                 case AnimationNodeType.ANIM_Enumerated_Selector:
                     {
-                        uint childCount = reader.ReadUInt32();
-
-                        List<string> bindings = new List<string>();
-                        for (uint i = 0; i < childCount; i++)
-                            bindings.Add(_strings.GetString(reader.ReadUInt32()));
-                        List<uint> valueBindings = new List<uint>();
-                        for (uint i = 0; i < childCount; i++)
-                            valueBindings.Add(reader.ReadUInt32());
-                        List<bool> footSyncOnSelect = new List<bool>();
-                        for (uint i = 0; i < childCount; i++)
-                            footSyncOnSelect.Add(reader.ReadBoolean());
+                        uint stateCount = reader.ReadUInt32();
+                        List<string> stateNodes = new List<string>();
+                        for (uint i = 0; i < stateCount; i++)
+                            stateNodes.Add(_strings.GetString(reader.ReadUInt32()));
+                        List<uint> stateValues = new List<uint>();
+                        for (uint i = 0; i < stateCount; i++)
+                            stateValues.Add(reader.ReadUInt32());
+                        List<bool> stateFoots = new List<bool>();
+                        for (uint i = 0; i < stateCount; i++)
+                            stateFoots.Add(reader.ReadBoolean());
+                        List<SelectorNode.State> states = new List<SelectorNode.State>();
+                        for (int i = 0; i < stateCount; i++)
+                            states.Add(new SelectorNode.State() { Node = null, Value = stateValues[i], FootSyncOnSelect = stateFoots[i] });
 
                         uint paramName = reader.ReadUInt32();
-
-                        node = new EnumeratedSelectorNode
+                        node = new SelectorNode
                         {
-                            Bindings = bindings,
-                            ValueBindings = valueBindings,
-                            FootSyncOnSelect = footSyncOnSelect,
+                            Type = nodeType,
+                            States = states,
                             BindingParameter = null,
-                            EaseTime = reader.ReadSingle(),
-                            ResetPlaybackOnChange = reader.ReadBoolean()
+                            EaseSelectionTime = reader.ReadSingle(),
+                            ResetPlaybackOnChangeSelection = reader.ReadBoolean()
                         };
                         if (paramName != 0)
-                            _enSelLookups.Add((EnumeratedSelectorNode)node, _strings.GetString(paramName));
+                            _selectorLookups.Add((SelectorNode)node, _strings.GetString(paramName));
+                        if (stateNodes.Count != 0)
+                            _selectorBindingLookups.Add((SelectorNode)node, stateNodes);
                     }
                     break;
                 case AnimationNodeType.ANIM_Parametric_Additive_Blend:
@@ -873,18 +853,19 @@ namespace CATHODE
                     }
                     break;
                 case AnimationNodeType.ANIM_Selector:
+                case AnimationNodeType.ANIM_Enumerated_Selector:
                     {
                         SelectorNode data = (SelectorNode)node;
                         writer.Write(node.Children.Count);
-                        foreach (var hash in data.Bindings)
-                            writer.Write(_strings.GetID(hash));
-                        foreach (var value in data.ValueBindings)
-                            writer.Write(value);
-                        foreach (var footSync in data.FootSyncOnSelect)
-                            writer.Write(footSync);
+                        foreach (var state in data.States)
+                            writer.Write(state.Node == null ? 0 : _strings.GetID(state.Node.Name));
+                        foreach (var state in data.States)
+                            writer.Write(state.Value);
+                        foreach (var state in data.States)
+                            writer.Write(state.FootSyncOnSelect);
                         writer.Write(data.BindingParameter == null ? 0 : _strings.GetID(data.BindingParameter.Name));
-                        writer.Write(data.EaseTime);
-                        writer.Write(data.ResetPlaybackOnChange);
+                        writer.Write(data.EaseSelectionTime);
+                        writer.Write(data.ResetPlaybackOnChangeSelection);
                     }
                     break;
                 case AnimationNodeType.ANIM_Parametric:
@@ -991,21 +972,6 @@ namespace CATHODE
                         foreach (var footSync in data.FootSyncOnSelect)
                             writer.Write(footSync);
                         writer.Write(_strings.GetID(data.BindingParameterName));
-                        writer.Write(data.EaseTime);
-                        writer.Write(data.ResetPlaybackOnChange);
-                    }
-                    break;
-                case AnimationNodeType.ANIM_Enumerated_Selector:
-                    {
-                        EnumeratedSelectorNode data = (EnumeratedSelectorNode)node;
-                        writer.Write(node.Children.Count);
-                        foreach (var hash in data.Bindings)
-                            writer.Write(_strings.GetID(hash));
-                        foreach (var value in data.ValueBindings)
-                            writer.Write(value);
-                        foreach (var footSync in data.FootSyncOnSelect)
-                            writer.Write(footSync);
-                        writer.Write(data.BindingParameter == null ? 0 : _strings.GetID(data.BindingParameter.Name));
                         writer.Write(data.EaseTime);
                         writer.Write(data.ResetPlaybackOnChange);
                     }
