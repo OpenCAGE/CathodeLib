@@ -7,7 +7,7 @@ namespace CATHODE.Animations
     //Any types in the negative are not written to disk and only handled while processing
     public enum AnimationNodeType
     {
-        ANIM_Base = -1, //Base class
+        //ANIM_Base = -1, //Base class
         ANIM_IK = 15,
         ANIM_Bone_Mask = 14,
         ANIM_Animation = 0,

@@ -4,13 +4,26 @@ using System.Text;
 
 namespace CATHODE.Animations
 {
-    //todo: replace all the name lookups with node refs, add all nodes to the 'datanodes' array
+    //todo: replace all the name lookups with node refs
 
     public class AnimationNode
     {
         public AnimationNodeType Type;
         public string Name;
-        public List<AnimationNode> Children = new List<AnimationNode>();
+        public HashSet<AnimationNode> Children = new HashSet<AnimationNode>();
+
+        public override bool Equals(object obj)
+        {
+            return obj is AnimationNode node && Name == node.Name && Type == node.Type;
+        }
+
+        public override int GetHashCode()
+        {
+            int hashCode = -1979447941;
+            hashCode = hashCode * -1521134295 + Type.GetHashCode();
+            hashCode = hashCode * -1521134295 + EqualityComparer<string>.Default.GetHashCode(Name);
+            return hashCode;
+        }
     }
 
     public class AnimationTree : AnimationNode
@@ -29,7 +42,7 @@ namespace CATHODE.Animations
         public bool GaitSyncOnStart;
         public bool UseLinearBlend;
 
-        public List<AnimationNode> DataNodes = new List<AnimationNode>();
+        public HashSet<AnimationNode> Nodes = new HashSet<AnimationNode>();
 
         public AnimationTree()
         {
@@ -39,16 +52,15 @@ namespace CATHODE.Animations
 
     public class LeafNode : AnimationNode
     {
-        public bool HasCallback;
-        public string Callback;
+        public BoneMaskGroups MaskingControl;
+
+        public string AnimationName;
 
         public bool Looped;
         public bool Mirrored;
 
-        public BoneMaskGroups MaskingControl;
+        public AnimationNode Callback;
 
-        public string AnimationName;
-               
         public string OptionalContextParam;
         public string OptionalConvergeVector;
         public string OptionalConvergeFloat;
@@ -121,7 +133,7 @@ namespace CATHODE.Animations
         public List<string> Bindings = new List<string>();
         public List<uint> ValueBindings = new List<uint>();
         public float EaseTime;
-        public string BindingParameter;
+        public ParameterNode BindingParameter;
         public List<bool> FootSyncOnSelect = new List<bool>();
         public bool ResetPlaybackOnChange;
 
@@ -136,7 +148,7 @@ namespace CATHODE.Animations
         public List<string> Bindings = new List<string>();
         public List<uint> ValueBindings = new List<uint>();
         public float EaseTime;
-        public string BindingParameter;
+        public ParameterNode BindingParameter;
         public List<bool> FootSyncOnSelect = new List<bool>();
         public bool ResetPlaybackOnChange;
 
@@ -291,6 +303,7 @@ namespace CATHODE.Animations
     public class BoneMaskNode : AnimationNode
     {
         public uint MaskingControl;
+
         public bool MaskPreceding;
         public bool MaskFollowing;
         public bool MaskSelf;
@@ -303,13 +316,16 @@ namespace CATHODE.Animations
 
     public class IkNode : AnimationNode
     {
-        public uint PoseLayer;
-        public string IkEffectorName;
-        public uint IkType;
-        public uint IkTarget;
+        public ParameterNode IkEffector;
+
+        public uint PoseLayer; //todo: unsure on this
+        public string IkType;
+        public string Target;
+
         public float EffectorFullyEffectiveRadius;
         public float EffectorLeastEffectiveRadius;
         public float FalloffRate;
+
         public bool EnforceTranslation;
         public bool EnforceEndBoneRotation;
 
@@ -348,7 +364,7 @@ namespace CATHODE.Animations
 
     public class WeightedNode : AnimationNode
     {
-        public string ParameterName;
+        public ParameterNode Parameter;
 
         public float ParameterMin;
         public float ParameterMax = 1.0f;
@@ -364,7 +380,7 @@ namespace CATHODE.Animations
         public bool HasCallback;
         public float BlendTime;
 
-        public string CallbackName;
+        public string CallbackName; //todo - node ref
         public string RandomNodeCallbackName;
 
         public bool Looped;

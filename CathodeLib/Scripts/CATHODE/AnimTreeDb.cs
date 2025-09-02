@@ -113,10 +113,10 @@ namespace CATHODE
                     for (int x = 0; x < NumberOfBindings; x++)
                         bindingType.Add(reader.ReadUInt32());
                     for (int x = 0; x < NumberOfBindings; x++)
-                        treeDef.DataNodes.Add(new ParameterNode() { Name = bindingNames[x], ParameterType = bindingParamTypes[x], IndicesInTypeArray = bindingType[x] });
+                        treeDef.Nodes.Add(new ParameterNode() { Name = bindingNames[x], ParameterType = bindingParamTypes[x], IndicesInTypeArray = bindingType[x] });
 
                     for (int x = 0; x < NumberOfCallbacks; x++)
-                        treeDef.DataNodes.Add(new AnimationNode() { Type = AnimationNodeType.ANIM_Callback, Name = _strings.GetString(reader.ReadUInt32()) });
+                        treeDef.Nodes.Add(new AnimationNode() { Type = AnimationNodeType.ANIM_Callback, Name = _strings.GetString(reader.ReadUInt32()) });
 
                     List<string> metaListNames = new List<string>();
                     for (int x = 0; x < NumberOfMetadataListeners; x++)
@@ -131,11 +131,11 @@ namespace CATHODE
                     for (int x = 0; x < NumberOfMetadataListeners; x++)
                         metaListFilterTimes.Add(reader.ReadSingle());
                     for (int x = 0; x < NumberOfMetadataListeners; x++)
-                        treeDef.DataNodes.Add(new MetadataListenerNode() { Name = metaListNames[x], EventName = metaListEvents[x], WeightThreshold = metaListWeights[x], FilterTime = metaListFilterTimes[x] });
+                        treeDef.Nodes.Add(new MetadataListenerNode() { Name = metaListNames[x], EventName = metaListEvents[x], WeightThreshold = metaListWeights[x], FilterTime = metaListFilterTimes[x] });
 
                     uint NumberOfAutoFloatBindings = reader.ReadUInt32();
                     for (int x = 0; x < NumberOfAutoFloatBindings; x++)
-                        treeDef.DataNodes.Add(new AnimationNode() { Type = AnimationNodeType.ANIM_AutoFloatParameter, Name = _strings.GetString(reader.ReadUInt32()) });
+                        treeDef.Nodes.Add(new AnimationNode() { Type = AnimationNodeType.ANIM_AutoFloatParameter, Name = _strings.GetString(reader.ReadUInt32()) });
 
                     List<string> propListenerNames = new List<string>();
                     for (int x = 0; x < NumberOfPropertyListeners; x++)
@@ -147,7 +147,7 @@ namespace CATHODE
                     for (int x = 0; x < NumberOfPropertyListeners; x++)
                         propListenerLeafNodes.Add(_strings.GetString(reader.ReadUInt32()));
                     for (int x = 0; x < NumberOfPropertyListeners; x++)
-                        treeDef.DataNodes.Add(new PropertyListenerNode() { Name = propListenerNames[x], AnimProperty = propListenerPropNames[x], LeafNode = propListenerLeafNodes[x] });
+                        treeDef.Nodes.Add(new PropertyListenerNode() { Name = propListenerNames[x], AnimProperty = propListenerPropNames[x], LeafNode = propListenerLeafNodes[x] });
 
                     List<string> propertyNames = new List<string>();
                     for (int x = 0; x < NumberOfPropertyValues; x++)
@@ -213,7 +213,7 @@ namespace CATHODE
                         propertyValues.Add(metadataValue);
                     }
                     for (int x = 0; x < NumberOfPropertyValues; x++)
-                        treeDef.DataNodes.Add(new PropertyNode() { Name = propertyNames[x], Value = propertyValues[x] });
+                        treeDef.Nodes.Add(new PropertyNode() { Name = propertyNames[x], Value = propertyValues[x] });
 
                     uint NumberOfFloatInterpolators = reader.ReadUInt32();
                     List<string> floatInterpSources = new List<string>();
@@ -230,19 +230,41 @@ namespace CATHODE
                         floatInterpStartUPS.Add(reader.ReadSingle());
                     for (int x = 0; x < NumberOfFloatInterpolators; x++)
                     {
-                        ParameterNode floatInterpNodeOrig = (ParameterNode)treeDef.DataNodes.FirstOrDefault(o => o.Name == floatInterpNames[x]);
+                        ParameterNode floatInterpNodeOrig = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Name == floatInterpNames[x]);
                         FloatInterpolatorNode floatInterpNode = new FloatInterpolatorNode() { Name = floatInterpNodeOrig.Name, Children = floatInterpNodeOrig.Children, IndicesInTypeArray = floatInterpNodeOrig.IndicesInTypeArray, ParameterType = floatInterpNodeOrig.ParameterType, Type = AnimationNodeType.ANIM_FloatInterpolator };
                         floatInterpNode.SourceParameter = floatInterpSources[x];
                         floatInterpNode.InitialValue = floatInterpStartVals[x];
                         floatInterpNode.UnitsPerSecond = floatInterpStartUPS[x];
-                        treeDef.DataNodes.Add(floatInterpNode);
-                        treeDef.DataNodes.Remove(floatInterpNodeOrig);
+                        treeDef.Nodes.Add(floatInterpNode);
+                        treeDef.Nodes.Remove(floatInterpNodeOrig);
                     }
 
                     for (int x = 0; x < numChildren; x++)
                     {
-                        var node = ReadNode(reader);
-                        treeDef.Children.Add(node);
+                        var childNode = ReadNode(reader, treeDef);
+                        treeDef.Nodes.Add(childNode);
+                        treeDef.Children.Add(childNode);
+                    }
+
+                    foreach (KeyValuePair<LeafNode, string> kvp in _animLookups)
+                    {
+                        kvp.Key.Callback = treeDef.Nodes.FirstOrDefault(o => o.Type == AnimationNodeType.ANIM_Callback &&  o.Name == kvp.Value);
+                    }
+                    foreach (KeyValuePair<WeightedNode, string> kvp in _weightedLookups)
+                    {
+                        kvp.Key.Parameter = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == AnimationNodeType.ANIM_Parameter && o.Name == kvp.Value);
+                    }
+                    foreach (KeyValuePair<SelectorNode, string> kvp in _selectorLookups)
+                    {
+                        kvp.Key.BindingParameter = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == AnimationNodeType.ANIM_Parameter && o.Name == kvp.Value);
+                    }
+                    foreach (KeyValuePair<EnumeratedSelectorNode, string> kvp in _enSelLookups)
+                    {
+                        kvp.Key.BindingParameter = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == AnimationNodeType.ANIM_Parameter && o.Name == kvp.Value);
+                    }
+                    foreach (KeyValuePair<IkNode, string> kvp in _ikLookups)
+                    {
+                        kvp.Key.IkEffector = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == AnimationNodeType.ANIM_Parameter && o.Name == kvp.Value);
                     }
 
                     Entries.Add(treeDef);
@@ -251,7 +273,13 @@ namespace CATHODE
             return true;
         }
 
-        private AnimationNode ReadNode(BinaryReader reader)
+        Dictionary<LeafNode, string> _animLookups = new Dictionary<LeafNode, string>();
+        Dictionary<WeightedNode, string> _weightedLookups = new Dictionary<WeightedNode, string>();
+        Dictionary<SelectorNode, string> _selectorLookups = new Dictionary<SelectorNode, string>();
+        Dictionary<EnumeratedSelectorNode, string> _enSelLookups = new Dictionary<EnumeratedSelectorNode, string>();
+        Dictionary<IkNode, string> _ikLookups = new Dictionary<IkNode, string>();
+
+        private AnimationNode ReadNode(BinaryReader reader, AnimationTree tree)
         {
             AnimationNodeType nodeType = (AnimationNodeType)reader.ReadUInt32();
             string NodeName = _strings.GetString(reader.ReadUInt32());
@@ -262,10 +290,11 @@ namespace CATHODE
             {
                 case AnimationNodeType.ANIM_Animation:
                     {
+                        bool hasCallback = reader.ReadBoolean();
+                        string callback = _strings.GetString(reader.ReadUInt32());
                         node = new LeafNode
                         {
-                            HasCallback = reader.ReadBoolean(),
-                            Callback = _strings.GetString(reader.ReadUInt32()),
+                            Callback = null,
                             Looped = reader.ReadBoolean(),
                             Mirrored = reader.ReadBoolean(),
                             MaskingControl = (BoneMaskGroups)reader.ReadUInt32(),
@@ -279,6 +308,8 @@ namespace CATHODE
                             StartTimeOffset = reader.ReadSingle(),
                             EndTimeOffset = reader.ReadSingle()
                         };
+                        if (hasCallback)
+                            _animLookups.Add((LeafNode)node, callback);
                     }
                     break;
                 case AnimationNodeType.ANIM_Selector:
@@ -295,15 +326,19 @@ namespace CATHODE
                         for (uint i = 0; i < childCount; i++)
                             footSyncOnSelect.Add(reader.ReadBoolean());
 
+                        uint paramName = reader.ReadUInt32();
+
                         node = new SelectorNode
                         {
                             Bindings = bindings,
                             ValueBindings = valueBindings,
                             FootSyncOnSelect = footSyncOnSelect,
-                            BindingParameter = _strings.GetString(reader.ReadUInt32()),
+                            BindingParameter = null,
                             EaseTime = reader.ReadSingle(),
                             ResetPlaybackOnChange = reader.ReadBoolean()
                         };
+                        if (paramName != 0)
+                            _selectorLookups.Add((SelectorNode)node, _strings.GetString(paramName));
                     }
                     break;
                 case AnimationNodeType.ANIM_Parametric:
@@ -398,18 +433,22 @@ namespace CATHODE
                     break;
                 case AnimationNodeType.ANIM_IK:
                     {
+                        uint poseLayer = reader.ReadUInt32();
+                        uint ikEffector = reader.ReadUInt32();
                         node = new IkNode
                         {
-                            PoseLayer = reader.ReadUInt32(),
-                            IkEffectorName = _strings.GetString(reader.ReadUInt32()),
-                            IkType = reader.ReadUInt32(),
-                            IkTarget = reader.ReadUInt32(),
+                            PoseLayer = poseLayer,
+                            IkEffector = null,
+                            IkType = _strings.GetString(reader.ReadUInt32()),
+                            Target = _strings.GetString(reader.ReadUInt32()),
                             EffectorFullyEffectiveRadius = reader.ReadSingle(),
                             EffectorLeastEffectiveRadius = reader.ReadSingle(),
                             FalloffRate = reader.ReadUInt32(),
                             EnforceTranslation = reader.ReadByte() == 1,
                             EnforceEndBoneRotation = reader.ReadByte() == 1
                         };
+                        if (ikEffector != 0)
+                            _ikLookups.Add((IkNode)node, _strings.GetString(ikEffector));
                     }
                     break;
                 case AnimationNodeType.ANIM_Randomised_Animation:
@@ -491,15 +530,19 @@ namespace CATHODE
                         for (uint i = 0; i < childCount; i++)
                             footSyncOnSelect.Add(reader.ReadBoolean());
 
+                        uint paramName = reader.ReadUInt32();
+
                         node = new EnumeratedSelectorNode
                         {
                             Bindings = bindings,
                             ValueBindings = valueBindings,
                             FootSyncOnSelect = footSyncOnSelect,
-                            BindingParameter = _strings.GetString(reader.ReadUInt32()),
+                            BindingParameter = null,
                             EaseTime = reader.ReadSingle(),
                             ResetPlaybackOnChange = reader.ReadBoolean()
                         };
+                        if (paramName != 0)
+                            _enSelLookups.Add((EnumeratedSelectorNode)node, _strings.GetString(paramName));
                     }
                     break;
                 case AnimationNodeType.ANIM_Parametric_Additive_Blend:
@@ -630,12 +673,14 @@ namespace CATHODE
                     break;
                 case AnimationNodeType.ANIM_Weighted:
                     {
+                        uint paramName = reader.ReadUInt32();
                         node = new WeightedNode
                         {
-                            ParameterName = _strings.GetString(reader.ReadUInt32()),
+                            Parameter = null,
                             ParameterMin = reader.ReadSingle(),
                             ParameterMax = reader.ReadSingle()
                         };
+                        _weightedLookups.Add((WeightedNode)node, _strings.GetString(paramName));
                     }
                     break;
                 default:
@@ -645,7 +690,8 @@ namespace CATHODE
 
             for (int i = 0; i < numChildren; i++)
             {
-                var childNode = ReadNode(reader);
+                var childNode = ReadNode(reader, tree);
+                tree.Nodes.Add(childNode);
                 node.Children.Add(childNode);
             }
 
@@ -687,13 +733,14 @@ namespace CATHODE
                     writer.Write(tree.UseLinearBlend);
 
                     //note to self - these sorting methods are untested
-                    List<ParameterNode> parameterNodes = tree.DataNodes.FindAll(o => o is ParameterNode).Cast<ParameterNode>().ToList();
-                    List<AnimationNode> callbackNodes = tree.DataNodes.FindAll(o => o.Type == AnimationNodeType.ANIM_Callback).Cast<AnimationNode>().ToList();
-                    List<MetadataListenerNode> metaListenerNodes = tree.DataNodes.FindAll(o => o.Type == AnimationNodeType.ANIM_Metadata_Event_Listener).Cast<MetadataListenerNode>().ToList();
-                    List<AnimationNode> autoFloatNodes = tree.DataNodes.FindAll(o => o.Type == AnimationNodeType.ANIM_AutoFloatParameter).Cast<AnimationNode>().ToList();
-                    List<PropertyListenerNode> propListenerNodes = tree.DataNodes.FindAll(o => o.Type == AnimationNodeType.ANIM_Property_Listener).Cast<PropertyListenerNode>().ToList();
-                    List<PropertyNode> propNodes = tree.DataNodes.FindAll(o => o.Type == AnimationNodeType.ANIM_Property).Cast<PropertyNode>().ToList();
-                    List<FloatInterpolatorNode> floatInterpolatorNodes = tree.DataNodes.FindAll(o => o.Type == AnimationNodeType.ANIM_FloatInterpolator).Cast<FloatInterpolatorNode>().ToList();
+                    List<AnimationNode> nodes = tree.Nodes.ToList();
+                    List<ParameterNode> parameterNodes = nodes.FindAll(o => o is ParameterNode).Cast<ParameterNode>().ToList();
+                    List<AnimationNode> callbackNodes = nodes.FindAll(o => o.Type == AnimationNodeType.ANIM_Callback).Cast<AnimationNode>().ToList();
+                    List<MetadataListenerNode> metaListenerNodes = nodes.FindAll(o => o.Type == AnimationNodeType.ANIM_Metadata_Event_Listener).Cast<MetadataListenerNode>().ToList();
+                    List<AnimationNode> autoFloatNodes = nodes.FindAll(o => o.Type == AnimationNodeType.ANIM_AutoFloatParameter).Cast<AnimationNode>().ToList();
+                    List<PropertyListenerNode> propListenerNodes = nodes.FindAll(o => o.Type == AnimationNodeType.ANIM_Property_Listener).Cast<PropertyListenerNode>().ToList();
+                    List<PropertyNode> propNodes = nodes.FindAll(o => o.Type == AnimationNodeType.ANIM_Property).Cast<PropertyNode>().ToList();
+                    List<FloatInterpolatorNode> floatInterpolatorNodes = nodes.FindAll(o => o.Type == AnimationNodeType.ANIM_FloatInterpolator).Cast<FloatInterpolatorNode>().ToList();
 
                     writer.Write(parameterNodes.Count);
                     writer.Write(new byte[20]);
@@ -809,8 +856,8 @@ namespace CATHODE
                 case AnimationNodeType.ANIM_Animation:
                     {
                         LeafNode data = (LeafNode)node;
-                        writer.Write(data.HasCallback);
-                        writer.Write(_strings.GetID(data.Callback));
+                        writer.Write(data.Callback != null);
+                        writer.Write(data.Callback == null ? 0 : _strings.GetID(data.Callback.Name));
                         writer.Write(data.Looped);
                         writer.Write(data.Mirrored);
                         writer.Write((uint)data.MaskingControl);
@@ -835,7 +882,7 @@ namespace CATHODE
                             writer.Write(value);
                         foreach (var footSync in data.FootSyncOnSelect)
                             writer.Write(footSync);
-                        writer.Write(_strings.GetID(data.BindingParameter));
+                        writer.Write(data.BindingParameter == null ? 0 : _strings.GetID(data.BindingParameter.Name));
                         writer.Write(data.EaseTime);
                         writer.Write(data.ResetPlaybackOnChange);
                     }
@@ -958,7 +1005,7 @@ namespace CATHODE
                             writer.Write(value);
                         foreach (var footSync in data.FootSyncOnSelect)
                             writer.Write(footSync);
-                        writer.Write(_strings.GetID(data.BindingParameter));
+                        writer.Write(data.BindingParameter == null ? 0 : _strings.GetID(data.BindingParameter.Name));
                         writer.Write(data.EaseTime);
                         writer.Write(data.ResetPlaybackOnChange);
                     }
@@ -985,9 +1032,9 @@ namespace CATHODE
                     {
                         IkNode data = (IkNode)node;
                         writer.Write(data.PoseLayer);
-                        writer.Write(_strings.GetID(data.IkEffectorName));
+                        writer.Write(data.IkEffector == null ? 0 : _strings.GetID(data.IkEffector.Name));
                         writer.Write(data.IkType);
-                        writer.Write(data.IkTarget);
+                        writer.Write(data.Target);
                         writer.Write(data.EffectorFullyEffectiveRadius);
                         writer.Write(data.EffectorLeastEffectiveRadius);
                         writer.Write(data.FalloffRate);
@@ -1020,7 +1067,7 @@ namespace CATHODE
                 case AnimationNodeType.ANIM_Weighted:
                     {
                         WeightedNode data = (WeightedNode)node;
-                        writer.Write(_strings.GetID(data.ParameterName));
+                        writer.Write(data.Parameter == null ? 0 : _strings.GetID(data.Parameter.Name));
                         writer.Write(data.ParameterMin);
                         writer.Write(data.ParameterMax);
                     }
