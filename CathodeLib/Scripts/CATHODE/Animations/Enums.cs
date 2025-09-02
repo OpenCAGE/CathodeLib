@@ -4,27 +4,29 @@ using System.Text;
 
 namespace CATHODE.Animations
 {
-    public enum AnimationBlendNodeType
+    public enum AnimationNodeType
     {
-        LEAF_NODE,
-        RANDOMISED_LEAF_NODE,
-        SELECTOR_NODE,
-        PARAMETRIC_NODE,
-        BLEND_SET_NODE,
-        BLEND_SET_4D_NODE,
-        SEQUENCE_NODE,
-        BILINEAR_NODE,
-        LO_FI_BILINEAR_NODE,
-        ADDITIVE_BLEND_NODE,
-        PARAMETRIC_ADDITIVE_BLEND_NODE,
-        RANGED_SELECTOR_NODE,
-        ENUMERATED_SELECTOR_NODE,
-        FOOT_SYNC_SELECTOR_NODE,
-        BONE_MASK_NODE,
-        IK_NODE,
-        SPHERICAL_NODE,
-        WEIGHTED_NODE,
-        TOP_LEVEL_NODE,
+        ANIM_Animation = 0,
+        ANIM_Randomised_Animation = 1,
+        ANIM_Selector = 2,
+        ANIM_Parametric = 3,
+        ANIM_2DParametric = 4, //NOTE: this includes 1D/2D/3D. need to handle that better. they're just all written to the same object but obvs have less data (see anim_tre_definition.cpp line 799)
+        ANIM_1DParametric = 100,
+        ANIM_3DParametric = 101,
+        ANIM_4DParametric = 5,
+        ANIM_Bilinear_High_Fidelity = 7,
+        ANIM_Bilinear_Low_Fidelity,
+        ANIM_Additive_Blend,
+        ANIM_Parametric_Additive_Blend,
+        ANIM_Ranged_Selector,
+        ANIM_Enumerated_Selector,
+        ANIM_Foot_Sync_Selector,
+        ANIM_Bone_Mask,
+        ANIM_IK,
+        ANIM_Spherical,
+        ANIM_Weighted,
+        ANIM_Tree_Top_Level,
+
     }
 
     [Flags]
