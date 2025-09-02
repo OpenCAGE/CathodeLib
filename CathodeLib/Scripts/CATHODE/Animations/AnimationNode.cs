@@ -4,6 +4,8 @@ using System.Text;
 
 namespace CATHODE.Animations
 {
+    //todo: replace all the name lookups with node refs, add all nodes to the 'datanodes' array
+
     public class AnimationNode
     {
         public AnimationNodeType Type;
@@ -13,7 +15,7 @@ namespace CATHODE.Animations
 
     public class AnimationTree : AnimationNode
     {
-        public string SetName; //the anim set this tree is contained within
+        public string Set;
 
         public float TreeEaseInTime;
         public float MinInitialPlayspeed;
@@ -27,30 +29,7 @@ namespace CATHODE.Animations
         public bool GaitSyncOnStart;
         public bool UseLinearBlend;
 
-        public List<string> BindingNames = new List<string>();
-        public List<AnimTreeParameterType> ParameterTypes = new List<AnimTreeParameterType>();
-        public List<uint> IndicesInTypeArrays = new List<uint>(); //bool??
-
-        public List<string> CallbackNames = new List<string>();
-
-        public List<string> MetadataListenerNames = new List<string>();
-        public List<string> MetadataEventNames = new List<string>();
-        public List<float> MetadataListenerWeightThresholds = new List<float>();
-        public List<float> MetadataListenerFilterTimes = new List<float>();
-
-        public List<string> AutoFloatNames = new List<string>();
-
-        public List<string> PropertyListenerNames = new List<string>();
-        public List<string> PropertyListenerPropertyNames = new List<string>();
-        public List<string> PropertyListenerLeafNames = new List<string>();
-
-        public List<string> PropertyValueNames = new List<string>();
-        public List<AnimationMetadataValue> PropertyValues = new List<AnimationMetadataValue>();
-
-        public List<string> FloatInterpolatorSourceNames = new List<string>();
-        public List<string> FloatInterpolatorNames = new List<string>();
-        public List<float> FloatInterpolatorStartValues = new List<float>();
-        public List<float> FloatInterpolatorRates = new List<float>();
+        public List<AnimationNode> DataNodes = new List<AnimationNode>();
 
         public AnimationTree()
         {
@@ -61,19 +40,80 @@ namespace CATHODE.Animations
     public class LeafNode : AnimationNode
     {
         public bool HasCallback;
-        public string CallbackName;
+        public string Callback;
+
         public bool Looped;
         public bool Mirrored;
+
         public BoneMaskGroups MaskingControl;
-        public uint LevelAnimIndex;
-        public uint OptionalContextParam;
-        public uint OptionalConvergeVector;
-        public uint OptionalConvergeFloat;
+
+        public string AnimationName;
+               
+        public string OptionalContextParam;
+        public string OptionalConvergeVector;
+        public string OptionalConvergeFloat;
         public bool ConvergeOrientation;
         public bool ConvergeTranslation;
+
         public float NotifyTimeOffset;
         public float StartTimeOffset;
         public float EndTimeOffset;
+    }
+
+    public class MetadataListenerNode : AnimationNode
+    {
+        public string EventName;
+        public float WeightThreshold;
+        public float FilterTime;
+
+        public MetadataListenerNode()
+        {
+            Type = AnimationNodeType.ANIM_Metadata_Event_Listener;
+        }
+    }
+
+    public class ParameterNode : AnimationNode
+    {
+        public AnimTreeParameterType ParameterType;
+        public uint IndicesInTypeArray; //enum??
+
+        public ParameterNode()
+        {
+            Type = AnimationNodeType.ANIM_Parameter;
+        }
+    }
+
+    public class FloatInterpolatorNode : ParameterNode
+    {
+        public string SourceParameter;
+        public float InitialValue;
+        public float UnitsPerSecond;
+
+        public FloatInterpolatorNode()
+        {
+            Type = AnimationNodeType.ANIM_FloatInterpolator;
+        }
+    }
+
+    public class PropertyNode : AnimationNode
+    {
+        public AnimationMetadataValue Value;
+
+        public PropertyNode()
+        {
+            Type = AnimationNodeType.ANIM_Parameter;
+        }
+    }
+
+    public class PropertyListenerNode : AnimationNode
+    {
+        public string AnimProperty; // ANIMATION_PROPERTY enum value
+        public string LeafNode;
+
+        public PropertyListenerNode()
+        {
+            Type = AnimationNodeType.ANIM_Property_Listener;
+        }
     }
 
     public class SelectorNode : AnimationNode
@@ -81,7 +121,7 @@ namespace CATHODE.Animations
         public List<string> Bindings = new List<string>();
         public List<uint> ValueBindings = new List<uint>();
         public float EaseTime;
-        public string BindingParameterName;
+        public string BindingParameter;
         public List<bool> FootSyncOnSelect = new List<bool>();
         public bool ResetPlaybackOnChange;
 
@@ -96,7 +136,7 @@ namespace CATHODE.Animations
         public List<string> Bindings = new List<string>();
         public List<uint> ValueBindings = new List<uint>();
         public float EaseTime;
-        public string BindingParameterName;
+        public string BindingParameter;
         public List<bool> FootSyncOnSelect = new List<bool>();
         public bool ResetPlaybackOnChange;
 
@@ -111,11 +151,11 @@ namespace CATHODE.Animations
         public List<string> Bindings = new List<string>();
         public List<float> ValueBindings = new List<float>();
 
-        public string BindingParameterName;
+        public string BindingParameter;
         public float Min;
         public float Max = 1.0f;
-        public uint ParameterUsage;
-        public uint AutoBlendProperty;
+        public string ParameterUsage;
+        public string AutoBlendProperty;
         public bool SyncDurations;
         public bool UseAutoDerivedBlendValues;
 
@@ -125,29 +165,23 @@ namespace CATHODE.Animations
         }
     }
 
-    public class Parametric1DNode : AnimationNode
+    public class Parametric2DNode : AnimationNode
     {
-        public uint[] BlendSet = new uint[1];
+        public string[] BlendSet = new string[1];
 
         public string XParameter;
+        public string YParameter;
+
         public string OverflowListener;
         public bool LoopBlendSet;
         public bool SyncBlendSet;
-
-        public Parametric1DNode()
-        {
-            Type = AnimationNodeType.ANIM_1DParametric;
-        }
-    }
-    public class Parametric2DNode : Parametric1DNode
-    {
-        public string YParameter;
 
         public Parametric2DNode()
         {
             Type = AnimationNodeType.ANIM_2DParametric;
         }
     }
+
     public class Parametric3DNode : Parametric2DNode
     {
         public string ZParameter;
@@ -157,9 +191,10 @@ namespace CATHODE.Animations
             Type = AnimationNodeType.ANIM_3DParametric;
         }
     }
+
     public class Parametric4DNode : Parametric3DNode
     {
-        public new uint[] BlendSet = new uint[2];
+        public new string[] BlendSet = new string[2];
 
         public string WParameter;
 
@@ -198,8 +233,8 @@ namespace CATHODE.Animations
 
     public class AdditiveBlendNode : AnimationNode
     {
-        public string BaseNodeName;
-        public string AdditiveNodeName;
+        public string BaseNode;
+        public string AdditiveNode;
 
         public float AdditiveNodeWeight = 1.0f;
         public bool SyncAdditiveDurationToBase;
@@ -340,7 +375,7 @@ namespace CATHODE.Animations
         public uint OptionalConvergeFloat;
         public uint NumberOfAnimSlots;
 
-        public List<uint> LevelAnimIndices = new List<uint>();
+        public List<string> Animations = new List<string>();
         public List<string> Names = new List<string>();
         public List<float> WeightsForCdf = new List<float>();
         public List<uint> LoopsBeforeReselection = new List<uint>();

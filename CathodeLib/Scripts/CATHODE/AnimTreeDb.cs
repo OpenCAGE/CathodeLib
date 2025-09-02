@@ -4,6 +4,7 @@ using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -82,7 +83,7 @@ namespace CATHODE
                     AnimationTree treeDef = new AnimationTree
                     {
                         Name = _strings.Entries[reader.ReadUInt32()],
-                        SetName = _strings.Entries[reader.ReadUInt32()],
+                        Set = _strings.Entries[reader.ReadUInt32()],
                         TreeEaseInTime = reader.ReadSingle(),
                         MinInitialPlayspeed = reader.ReadSingle(),
                         MaxInitialPlayspeed = reader.ReadSingle(),
@@ -102,39 +103,57 @@ namespace CATHODE
                     uint NumberOfPropertyListeners = reader.ReadUInt32();
                     uint NumberOfPropertyValues = reader.ReadUInt32();
 
-                    for (uint x = 0; x < NumberOfBindings; x++)
-                        treeDef.BindingNames.Add(_strings.GetString(reader.ReadUInt32()));
-                    for (uint x = 0; x < NumberOfBindings; x++)
-                        treeDef.ParameterTypes.Add((AnimTreeParameterType)reader.ReadUInt32());
-                    for (uint x = 0; x < NumberOfBindings; x++)
-                        treeDef.IndicesInTypeArrays.Add(reader.ReadUInt32());
+                    List<string> bindingNames = new List<string>();
+                    for (int x = 0; x < NumberOfBindings; x++)
+                        bindingNames.Add(_strings.GetString(reader.ReadUInt32()));
+                    List<AnimTreeParameterType> bindingParamTypes = new List<AnimTreeParameterType>();
+                    for (int x = 0; x < NumberOfBindings; x++)
+                        bindingParamTypes.Add((AnimTreeParameterType)reader.ReadUInt32());
+                    List<uint> bindingType = new List<uint>();
+                    for (int x = 0; x < NumberOfBindings; x++)
+                        bindingType.Add(reader.ReadUInt32());
+                    for (int x = 0; x < NumberOfBindings; x++)
+                        treeDef.DataNodes.Add(new ParameterNode() { Name = bindingNames[x], ParameterType = bindingParamTypes[x], IndicesInTypeArray = bindingType[x] });
 
-                    for (uint x = 0; x < NumberOfCallbacks; x++)
-                        treeDef.CallbackNames.Add(_strings.GetString(reader.ReadUInt32()));
+                    for (int x = 0; x < NumberOfCallbacks; x++)
+                        treeDef.DataNodes.Add(new AnimationNode() { Type = AnimationNodeType.ANIM_Callback, Name = _strings.GetString(reader.ReadUInt32()) });
 
-                    for (uint x = 0; x < NumberOfMetadataListeners; x++)
-                        treeDef.MetadataListenerNames.Add(_strings.GetString(reader.ReadUInt32()));
-                    for (uint x = 0; x < NumberOfMetadataListeners; x++)
-                        treeDef.MetadataEventNames.Add(_strings.GetString(reader.ReadUInt32()));
-                    for (uint x = 0; x < NumberOfMetadataListeners; x++)
-                        treeDef.MetadataListenerWeightThresholds.Add(reader.ReadSingle());
-                    for (uint x = 0; x < NumberOfMetadataListeners; x++)
-                        treeDef.MetadataListenerFilterTimes.Add(reader.ReadSingle());
+                    List<string> metaListNames = new List<string>();
+                    for (int x = 0; x < NumberOfMetadataListeners; x++)
+                        metaListNames.Add(_strings.GetString(reader.ReadUInt32()));
+                    List<string> metaListEvents = new List<string>();
+                    for (int x = 0; x < NumberOfMetadataListeners; x++)
+                        metaListEvents.Add(_strings.GetString(reader.ReadUInt32()));
+                    List<float> metaListWeights = new List<float>();
+                    for (int x = 0; x < NumberOfMetadataListeners; x++)
+                        metaListWeights.Add(reader.ReadSingle());
+                    List<float> metaListFilterTimes = new List<float>();
+                    for (int x = 0; x < NumberOfMetadataListeners; x++)
+                        metaListFilterTimes.Add(reader.ReadSingle());
+                    for (int x = 0; x < NumberOfMetadataListeners; x++)
+                        treeDef.DataNodes.Add(new MetadataListenerNode() { Name = metaListNames[x], EventName = metaListEvents[x], WeightThreshold = metaListWeights[x], FilterTime = metaListFilterTimes[x] });
 
                     uint NumberOfAutoFloatBindings = reader.ReadUInt32();
-                    for (uint x = 0; x < NumberOfAutoFloatBindings; x++)
-                        treeDef.AutoFloatNames.Add(_strings.GetString(reader.ReadUInt32()));
+                    for (int x = 0; x < NumberOfAutoFloatBindings; x++)
+                        treeDef.DataNodes.Add(new AnimationNode() { Type = AnimationNodeType.ANIM_AutoFloatParameter, Name = _strings.GetString(reader.ReadUInt32()) });
 
-                    for (uint x = 0; x < NumberOfPropertyListeners; x++)
-                        treeDef.PropertyListenerNames.Add(_strings.GetString(reader.ReadUInt32()));
-                    for (uint x = 0; x < NumberOfPropertyListeners; x++)
-                        treeDef.PropertyListenerPropertyNames.Add(_strings.GetString(reader.ReadUInt32()));
-                    for (uint x = 0; x < NumberOfPropertyListeners; x++)
-                        treeDef.PropertyListenerLeafNames.Add(_strings.GetString(reader.ReadUInt32()));
+                    List<string> propListenerNames = new List<string>();
+                    for (int x = 0; x < NumberOfPropertyListeners; x++)
+                        propListenerNames.Add(_strings.GetString(reader.ReadUInt32()));
+                    List<string> propListenerPropNames = new List<string>();
+                    for (int x = 0; x < NumberOfPropertyListeners; x++)
+                        propListenerPropNames.Add(_strings.GetString(reader.ReadUInt32()));
+                    List<string> propListenerLeafNodes = new List<string>();
+                    for (int x = 0; x < NumberOfPropertyListeners; x++)
+                        propListenerLeafNodes.Add(_strings.GetString(reader.ReadUInt32()));
+                    for (int x = 0; x < NumberOfPropertyListeners; x++)
+                        treeDef.DataNodes.Add(new PropertyListenerNode() { Name = propListenerNames[x], AnimProperty = propListenerPropNames[x], LeafNode = propListenerLeafNodes[x] });
 
-                    for (uint x = 0; x < NumberOfPropertyValues; x++)
-                        treeDef.PropertyValueNames.Add(_strings.GetString(reader.ReadUInt32()));
-                    for (uint x = 0; x < NumberOfPropertyValues; x++)
+                    List<string> propertyNames = new List<string>();
+                    for (int x = 0; x < NumberOfPropertyValues; x++)
+                        propertyNames.Add(_strings.GetString(reader.ReadUInt32()));
+                    List<AnimationMetadataValue> propertyValues = new List<AnimationMetadataValue>();
+                    for (int x = 0; x < NumberOfPropertyValues; x++)
                     {
                         ulong valueUnion = reader.ReadUInt64();
                         uint valueType = reader.ReadUInt32();
@@ -191,18 +210,34 @@ namespace CATHODE
                         metadataValue.RequiresConvert = requiresConvert != 0;
                         metadataValue.CanMirror = canMirror != 0;
                         metadataValue.CanModulateByPlayspeed = canModulateByPlayspeed != 0;
-                        treeDef.PropertyValues.Add(metadataValue);
+                        propertyValues.Add(metadataValue);
                     }
+                    for (int x = 0; x < NumberOfPropertyValues; x++)
+                        treeDef.DataNodes.Add(new PropertyNode() { Name = propertyNames[x], Value = propertyValues[x] });
 
-                    uint NumberOfFloatInterpolatorBindings = reader.ReadUInt32();
-                    for (uint x = 0; x < NumberOfFloatInterpolatorBindings; x++)
-                        treeDef.FloatInterpolatorSourceNames.Add(_strings.GetString(reader.ReadUInt32()));
-                    for (uint x = 0; x < NumberOfFloatInterpolatorBindings; x++)
-                        treeDef.FloatInterpolatorNames.Add(_strings.GetString(reader.ReadUInt32()));
-                    for (uint x = 0; x < NumberOfFloatInterpolatorBindings; x++)
-                        treeDef.FloatInterpolatorStartValues.Add(reader.ReadSingle());
-                    for (uint x = 0; x < NumberOfFloatInterpolatorBindings; x++)
-                        treeDef.FloatInterpolatorRates.Add(reader.ReadSingle());
+                    uint NumberOfFloatInterpolators = reader.ReadUInt32();
+                    List<string> floatInterpSources = new List<string>();
+                    for (int x = 0; x < NumberOfFloatInterpolators; x++)
+                        floatInterpSources.Add(_strings.GetString(reader.ReadUInt32()));
+                    List<string> floatInterpNames = new List<string>();
+                    for (int x = 0; x < NumberOfFloatInterpolators; x++)
+                        floatInterpNames.Add(_strings.GetString(reader.ReadUInt32()));
+                    List<float> floatInterpStartVals = new List<float>();
+                    for (int x = 0; x < NumberOfFloatInterpolators; x++)
+                        floatInterpStartVals.Add(reader.ReadSingle());
+                    List<float> floatInterpStartUPS = new List<float>();
+                    for (int x = 0; x < NumberOfFloatInterpolators; x++)
+                        floatInterpStartUPS.Add(reader.ReadSingle());
+                    for (int x = 0; x < NumberOfFloatInterpolators; x++)
+                    {
+                        ParameterNode floatInterpNodeOrig = (ParameterNode)treeDef.DataNodes.FirstOrDefault(o => o.Name == floatInterpNames[x]);
+                        FloatInterpolatorNode floatInterpNode = new FloatInterpolatorNode() { Name = floatInterpNodeOrig.Name, Children = floatInterpNodeOrig.Children, IndicesInTypeArray = floatInterpNodeOrig.IndicesInTypeArray, ParameterType = floatInterpNodeOrig.ParameterType, Type = AnimationNodeType.ANIM_FloatInterpolator };
+                        floatInterpNode.SourceParameter = floatInterpSources[x];
+                        floatInterpNode.InitialValue = floatInterpStartVals[x];
+                        floatInterpNode.UnitsPerSecond = floatInterpStartUPS[x];
+                        treeDef.DataNodes.Add(floatInterpNode);
+                        treeDef.DataNodes.Remove(floatInterpNodeOrig);
+                    }
 
                     for (int x = 0; x < numChildren; x++)
                     {
@@ -230,14 +265,14 @@ namespace CATHODE
                         node = new LeafNode
                         {
                             HasCallback = reader.ReadBoolean(),
-                            CallbackName = _strings.GetString(reader.ReadUInt32()),
+                            Callback = _strings.GetString(reader.ReadUInt32()),
                             Looped = reader.ReadBoolean(),
                             Mirrored = reader.ReadBoolean(),
                             MaskingControl = (BoneMaskGroups)reader.ReadUInt32(),
-                            LevelAnimIndex = reader.ReadUInt32(),
-                            OptionalContextParam = reader.ReadUInt32(),
-                            OptionalConvergeVector = reader.ReadUInt32(),
-                            OptionalConvergeFloat = reader.ReadUInt32(),
+                            AnimationName = _strings.GetString(reader.ReadUInt32()),
+                            OptionalContextParam = _strings.GetString(reader.ReadUInt32()),
+                            OptionalConvergeVector = _strings.GetString(reader.ReadUInt32()),
+                            OptionalConvergeFloat = _strings.GetString(reader.ReadUInt32()),
                             ConvergeOrientation = reader.ReadBoolean(),
                             ConvergeTranslation = reader.ReadBoolean(),
                             NotifyTimeOffset = reader.ReadSingle(),
@@ -265,7 +300,7 @@ namespace CATHODE
                             Bindings = bindings,
                             ValueBindings = valueBindings,
                             FootSyncOnSelect = footSyncOnSelect,
-                            BindingParameterName = _strings.GetString(reader.ReadUInt32()),
+                            BindingParameter = _strings.GetString(reader.ReadUInt32()),
                             EaseTime = reader.ReadSingle(),
                             ResetPlaybackOnChange = reader.ReadBoolean()
                         };
@@ -286,11 +321,11 @@ namespace CATHODE
                         {
                             Bindings = bindings,
                             ValueBindings = valueBindings,
-                            BindingParameterName = _strings.GetString(reader.ReadUInt32()),
+                            BindingParameter = _strings.GetString(reader.ReadUInt32()),
                             Min = reader.ReadSingle(),
                             Max = reader.ReadSingle(),
-                            ParameterUsage = reader.ReadUInt32(),
-                            AutoBlendProperty = reader.ReadUInt32(),
+                            ParameterUsage = _strings.GetString(reader.ReadUInt32()),
+                            AutoBlendProperty = _strings.GetString(reader.ReadUInt32()),
                             SyncDurations = reader.ReadBoolean(),
                             UseAutoDerivedBlendValues = reader.ReadBoolean()
                         };
@@ -298,13 +333,13 @@ namespace CATHODE
                     break;
                 case AnimationNodeType.ANIM_2DParametric:
                     {
-                        uint BlendSet = reader.ReadUInt32();
+                        string BlendSet = _strings.GetString(reader.ReadUInt32());
                         uint XParameter = reader.ReadUInt32();
                         uint YParameter = reader.ReadUInt32();
                         uint ZParameter = reader.ReadUInt32();
                         node = new Parametric3DNode
                         {
-                            BlendSet = new uint[1] { BlendSet },
+                            BlendSet = new string[1] { BlendSet },
                             XParameter = _strings.GetString(XParameter),
                             YParameter = _strings.GetString(YParameter),
                             ZParameter = _strings.GetString(ZParameter),
@@ -312,15 +347,9 @@ namespace CATHODE
                             LoopBlendSet = reader.ReadBoolean(),
                             SyncBlendSet = reader.ReadBoolean()
                         };
-                        if (YParameter == 0)
+                        if (ZParameter == 0)
                         {
-                            Parametric1DNode node1D = (Parametric1DNode)node;
-                            node1D.Type = AnimationNodeType.ANIM_1DParametric;
-                            node = node1D;
-                        }
-                        else if (ZParameter == 0)
-                        {
-                            Parametric2DNode node2D = (Parametric2DNode)node;
+                            Parametric2DNode node2D = (Parametric2DNode)node; //todo: this doesnt actually change class from 3d like i expected
                             node2D.Type = AnimationNodeType.ANIM_2DParametric;
                             node = node2D;
                         }
@@ -328,9 +357,9 @@ namespace CATHODE
                     break;
                 case AnimationNodeType.ANIM_4DParametric:
                     {
-                        var blendSet = new uint[2];
+                        string[] blendSet = new string[2];
                         for (int i = 0; i < 2; i++)
-                            blendSet[i] = reader.ReadUInt32();
+                            blendSet[i] = _strings.GetString(reader.ReadUInt32());
 
                         node = new Parametric4DNode
                         {
@@ -349,8 +378,8 @@ namespace CATHODE
                     {
                         node = new AdditiveBlendNode
                         {
-                            BaseNodeName = _strings.GetString(reader.ReadUInt32()),
-                            AdditiveNodeName = _strings.GetString(reader.ReadUInt32()),
+                            BaseNode = _strings.GetString(reader.ReadUInt32()),
+                            AdditiveNode = _strings.GetString(reader.ReadUInt32()),
                             AdditiveNodeWeight = reader.ReadSingle(),
                             SyncAdditiveDurationToBase = reader.ReadBoolean()
                         };
@@ -401,9 +430,9 @@ namespace CATHODE
                         List<bool> mirrored = new List<bool>();
                         for (uint i = 0; i < numberOfAnimSlots; i++)
                             mirrored.Add(reader.ReadBoolean());
-                        List<uint> levelAnimIndices = new List<uint>();
+                        List<string> animNames = new List<string>();
                         for (uint i = 0; i < numberOfAnimSlots; i++)
-                            levelAnimIndices.Add(reader.ReadUInt32());
+                            animNames.Add(_strings.GetString(reader.ReadUInt32()));
                         List<string> hashedNames = new List<string>();
                         for (uint i = 0; i < numberOfAnimSlots; i++)
                             hashedNames.Add(_strings.GetString(reader.ReadUInt32()));
@@ -436,7 +465,7 @@ namespace CATHODE
                             OptionalConvergeVector = optionalConvergeVector,
                             OptionalConvergeFloat = optionalConvergeFloat,
                             NumberOfAnimSlots = numberOfAnimSlots,
-                            LevelAnimIndices = levelAnimIndices,
+                            Animations = animNames,
                             Names = hashedNames,
                             WeightsForCdf = weightsForCdf,
                             LoopsBeforeReselection = loopsBeforeReselection,
@@ -467,7 +496,7 @@ namespace CATHODE
                             Bindings = bindings,
                             ValueBindings = valueBindings,
                             FootSyncOnSelect = footSyncOnSelect,
-                            BindingParameterName = _strings.GetString(reader.ReadUInt32()),
+                            BindingParameter = _strings.GetString(reader.ReadUInt32()),
                             EaseTime = reader.ReadSingle(),
                             ResetPlaybackOnChange = reader.ReadBoolean()
                         };
@@ -477,8 +506,8 @@ namespace CATHODE
                     {
                         node = new ParametricAdditiveBlendNode
                         {
-                            BaseNodeName = _strings.GetString(reader.ReadUInt32()),
-                            AdditiveNodeName = _strings.GetString(reader.ReadUInt32()),
+                            BaseNode = _strings.GetString(reader.ReadUInt32()),
+                            AdditiveNode = _strings.GetString(reader.ReadUInt32()),
                             AdditiveNodeWeight = reader.ReadSingle(),
                             ParameterName = _strings.GetString(reader.ReadUInt32()),
                             ParameterMin = reader.ReadSingle(),
@@ -645,7 +674,7 @@ namespace CATHODE
                     writer.Write(66);
                     writer.Write(tree.Children.Count);
                     writer.Write(_strings.GetID(tree.Name));
-                    writer.Write(_strings.GetID(tree.SetName));
+                    writer.Write(_strings.GetID(tree.Set));
                     writer.Write(tree.TreeEaseInTime);
                     writer.Write(tree.MinInitialPlayspeed);
                     writer.Write(tree.MaxInitialPlayspeed);
@@ -657,70 +686,79 @@ namespace CATHODE
                     writer.Write(tree.GaitSyncOnStart);
                     writer.Write(tree.UseLinearBlend);
 
-                    writer.Write(tree.BindingNames.Count);
+                    //note to self - these sorting methods are untested
+                    List<ParameterNode> parameterNodes = tree.DataNodes.FindAll(o => o is ParameterNode).Cast<ParameterNode>().ToList();
+                    List<AnimationNode> callbackNodes = tree.DataNodes.FindAll(o => o.Type == AnimationNodeType.ANIM_Callback).Cast<AnimationNode>().ToList();
+                    List<MetadataListenerNode> metaListenerNodes = tree.DataNodes.FindAll(o => o.Type == AnimationNodeType.ANIM_Metadata_Event_Listener).Cast<MetadataListenerNode>().ToList();
+                    List<AnimationNode> autoFloatNodes = tree.DataNodes.FindAll(o => o.Type == AnimationNodeType.ANIM_AutoFloatParameter).Cast<AnimationNode>().ToList();
+                    List<PropertyListenerNode> propListenerNodes = tree.DataNodes.FindAll(o => o.Type == AnimationNodeType.ANIM_Property_Listener).Cast<PropertyListenerNode>().ToList();
+                    List<PropertyNode> propNodes = tree.DataNodes.FindAll(o => o.Type == AnimationNodeType.ANIM_Property).Cast<PropertyNode>().ToList();
+                    List<FloatInterpolatorNode> floatInterpolatorNodes = tree.DataNodes.FindAll(o => o.Type == AnimationNodeType.ANIM_FloatInterpolator).Cast<FloatInterpolatorNode>().ToList();
+
+                    writer.Write(parameterNodes.Count);
                     writer.Write(new byte[20]);
-                    writer.Write(tree.CallbackNames.Count);
-                    writer.Write(tree.MetadataListenerNames.Count);
-                    writer.Write(tree.PropertyListenerNames.Count);
-                    writer.Write(tree.PropertyValueNames.Count);
+                    writer.Write(callbackNodes.Count);
+                    writer.Write(metaListenerNodes.Count);
+                    writer.Write(propListenerNodes.Count);
+                    writer.Write(propNodes.Count);
 
-                    foreach (var name in tree.BindingNames)
-                        writer.Write(_strings.GetID(name));
-                    foreach (var type in tree.ParameterTypes)
-                        writer.Write((uint)type);
-                    foreach (var index in tree.IndicesInTypeArrays)
-                        writer.Write(index);
+                    foreach (var param in parameterNodes)
+                        writer.Write(_strings.GetID(param.Name));
+                    foreach (var param in parameterNodes)
+                        writer.Write((uint)param.ParameterType);
+                    foreach (var param in parameterNodes)
+                        writer.Write(param.IndicesInTypeArray);
 
-                    foreach (var name in tree.CallbackNames)
-                        writer.Write(_strings.GetID(name));
+                    foreach (var callback in callbackNodes)
+                        writer.Write(_strings.GetID(callback.Name));
 
-                    foreach (var name in tree.MetadataListenerNames)
-                        writer.Write(_strings.GetID(name));
-                    foreach (var name in tree.MetadataEventNames)
-                        writer.Write(_strings.GetID(name));
-                    foreach (var threshold in tree.MetadataListenerWeightThresholds)
-                        writer.Write(threshold);
-                    foreach (var time in tree.MetadataListenerFilterTimes)
-                        writer.Write(time);
+                    foreach (var name in metaListenerNodes)
+                        writer.Write(_strings.GetID(name.Name));
+                    foreach (var name in metaListenerNodes)
+                        writer.Write(_strings.GetID(name.EventName));
+                    foreach (var threshold in metaListenerNodes)
+                        writer.Write(threshold.WeightThreshold);
+                    foreach (var time in metaListenerNodes)
+                        writer.Write(time.FilterTime);
 
-                    writer.Write(tree.AutoFloatNames.Count);
-                    foreach (var name in tree.AutoFloatNames)
-                        writer.Write(_strings.GetID(name));
+                    writer.Write(autoFloatNodes.Count);
+                    foreach (var name in autoFloatNodes)
+                        writer.Write(_strings.GetID(name.Name));
 
-                    foreach (var name in tree.PropertyListenerNames)
-                        writer.Write(_strings.GetID(name));
-                    foreach (var name in tree.PropertyListenerPropertyNames)
-                        writer.Write(_strings.GetID(name));
-                    foreach (var name in tree.PropertyListenerLeafNames)
-                        writer.Write(_strings.GetID(name));
+                    foreach (var propListener in propListenerNodes)
+                        writer.Write(_strings.GetID(propListener.Name));
+                    foreach (var propListener in propListenerNodes)
+                        writer.Write(_strings.GetID(propListener.AnimProperty));
+                    foreach (var propListener in propListenerNodes)
+                        writer.Write(_strings.GetID(propListener.LeafNode));
 
-                    foreach (var name in tree.PropertyValueNames)
-                        writer.Write(_strings.GetID(name));
-                    foreach (var value in tree.PropertyValues)
+                    foreach (var prop in propNodes)
+                        writer.Write(_strings.GetID(prop.Name));
+                    foreach (var prop in propNodes)
                     {
                         ulong valueUnion = 0;
-                        switch (value.ValueType)
+                        switch (prop.Value.ValueType)
                         {
                             case AnimationMetadataValueType.UINT32:
-                                valueUnion = ((UIntMetadataValue)value).Value;
+                                valueUnion = ((UIntMetadataValue)prop.Value).Value;
                                 break;
                             case AnimationMetadataValueType.INT32:
-                                valueUnion = (ulong)((IntMetadataValue)value).Value;
+                                valueUnion = (ulong)((IntMetadataValue)prop.Value).Value;
                                 break;
                             case AnimationMetadataValueType.FLOAT32:
-                                valueUnion = BitConverter.ToUInt64(BitConverter.GetBytes(((FloatMetadataValue)value).Value), 0);
+                                valueUnion = BitConverter.ToUInt64(BitConverter.GetBytes(((FloatMetadataValue)prop.Value).Value), 0);
                                 break;
                             case AnimationMetadataValueType.BOOL:
-                                valueUnion = ((BoolMetadataValue)value).Value ? 1ul : 0ul;
+                                valueUnion = ((BoolMetadataValue)prop.Value).Value ? 1ul : 0ul;
                                 break;
                             case AnimationMetadataValueType.UINT64:
-                                valueUnion = ((ULongMetadataValue)value).Value;
+                                valueUnion = ((ULongMetadataValue)prop.Value).Value;
                                 break;
                             case AnimationMetadataValueType.INT64:
-                                valueUnion = (ulong)((LongMetadataValue)value).Value;
+                                valueUnion = (ulong)((LongMetadataValue)prop.Value).Value;
                                 break;
                             case AnimationMetadataValueType.FLOAT64:
-                                valueUnion = BitConverter.ToUInt64(BitConverter.GetBytes(((Float64MetadataValue)value).Value), 0);
+                                valueUnion = BitConverter.ToUInt64(BitConverter.GetBytes(((Float64MetadataValue)prop.Value).Value), 0);
                                 break;
                             case AnimationMetadataValueType.STRING:
                             case AnimationMetadataValueType.VECTOR:
@@ -736,23 +774,23 @@ namespace CATHODE
                         }
 
                         writer.Write(valueUnion);
-                        writer.Write((uint)value.ValueType);
-                        writer.Write(value.Flags);
-                        writer.Write((byte)(value.RequiresConvert ? 1 : 0));
-                        writer.Write((byte)(value.CanMirror ? 1 : 0));
-                        writer.Write((byte)(value.CanModulateByPlayspeed ? 1 : 0));
+                        writer.Write((uint)prop.Value.ValueType);
+                        writer.Write(prop.Value.Flags);
+                        writer.Write((byte)(prop.Value.RequiresConvert ? 1 : 0));
+                        writer.Write((byte)(prop.Value.CanMirror ? 1 : 0));
+                        writer.Write((byte)(prop.Value.CanModulateByPlayspeed ? 1 : 0));
                         writer.Write(new byte[15]);
                     }
 
-                    writer.Write(tree.FloatInterpolatorSourceNames.Count);
-                    foreach (var name in tree.FloatInterpolatorSourceNames)
-                        writer.Write(_strings.GetID(name));
-                    foreach (var name in tree.FloatInterpolatorNames)
-                        writer.Write(_strings.GetID(name));
-                    foreach (var value in tree.FloatInterpolatorStartValues)
-                        writer.Write(value);
-                    foreach (var rate in tree.FloatInterpolatorRates)
-                        writer.Write(rate);
+                    writer.Write(floatInterpolatorNodes.Count);
+                    foreach (var floatInterp in floatInterpolatorNodes)
+                        writer.Write(_strings.GetID(floatInterp.SourceParameter));
+                    foreach (var floatInterp in floatInterpolatorNodes)
+                        writer.Write(_strings.GetID(floatInterp.Name));
+                    foreach (var floatInterp in floatInterpolatorNodes)
+                        writer.Write(floatInterp.InitialValue);
+                    foreach (var floatInterp in floatInterpolatorNodes)
+                        writer.Write(floatInterp.UnitsPerSecond);
 
                     foreach (var node in tree.Children)
                         WriteNode(writer, node);
@@ -763,8 +801,7 @@ namespace CATHODE
 
         private void WriteNode(BinaryWriter writer, AnimationNode node)
         {
-            AnimationNodeType writeType = node.Type == AnimationNodeType.ANIM_1DParametric || node.Type == AnimationNodeType.ANIM_3DParametric ? AnimationNodeType.ANIM_2DParametric : node.Type;
-            writer.Write((uint)writeType);
+            writer.Write((uint)(node.Type == AnimationNodeType.ANIM_3DParametric ? AnimationNodeType.ANIM_2DParametric : node.Type));
             writer.Write(_strings.GetID(node.Name));
 
             switch (node.Type)
@@ -773,14 +810,14 @@ namespace CATHODE
                     {
                         LeafNode data = (LeafNode)node;
                         writer.Write(data.HasCallback);
-                        writer.Write(_strings.GetID(data.CallbackName));
+                        writer.Write(_strings.GetID(data.Callback));
                         writer.Write(data.Looped);
                         writer.Write(data.Mirrored);
                         writer.Write((uint)data.MaskingControl);
-                        writer.Write(data.LevelAnimIndex);
-                        writer.Write(data.OptionalContextParam);
-                        writer.Write(data.OptionalConvergeVector);
-                        writer.Write(data.OptionalConvergeFloat);
+                        writer.Write(_strings.GetID(data.AnimationName));
+                        writer.Write(_strings.GetID(data.OptionalContextParam));
+                        writer.Write(_strings.GetID(data.OptionalConvergeVector));
+                        writer.Write(_strings.GetID(data.OptionalConvergeFloat));
                         writer.Write(data.ConvergeOrientation);
                         writer.Write(data.ConvergeTranslation);
                         writer.Write(data.NotifyTimeOffset);
@@ -798,7 +835,7 @@ namespace CATHODE
                             writer.Write(value);
                         foreach (var footSync in data.FootSyncOnSelect)
                             writer.Write(footSync);
-                        writer.Write(_strings.GetID(data.BindingParameterName));
+                        writer.Write(_strings.GetID(data.BindingParameter));
                         writer.Write(data.EaseTime);
                         writer.Write(data.ResetPlaybackOnChange);
                     }
@@ -811,23 +848,22 @@ namespace CATHODE
                             writer.Write(_strings.GetID(hash));
                         foreach (var value in data.ValueBindings)
                             writer.Write(value);
-                        writer.Write(_strings.GetID(data.BindingParameterName));
+                        writer.Write(_strings.GetID(data.BindingParameter));
                         writer.Write(data.Min);
                         writer.Write(data.Max);
-                        writer.Write(data.ParameterUsage);
-                        writer.Write(data.AutoBlendProperty);
+                        writer.Write(_strings.GetID(data.ParameterUsage));
+                        writer.Write(_strings.GetID(data.AutoBlendProperty));
                         writer.Write(data.SyncDurations);
                         writer.Write(data.UseAutoDerivedBlendValues);
                     }
                     break;
-                case AnimationNodeType.ANIM_1DParametric:
                 case AnimationNodeType.ANIM_2DParametric:
                 case AnimationNodeType.ANIM_3DParametric:
                     {
-                        Parametric1DNode data = (Parametric1DNode)node;
-                        writer.Write(data.BlendSet[0]);
+                        Parametric2DNode data = (Parametric2DNode)node;
+                        writer.Write(_strings.GetID(data.BlendSet[0]));
                         writer.Write(_strings.GetID(data.XParameter));
-                        writer.Write(node.Type == AnimationNodeType.ANIM_2DParametric ? _strings.GetID(((Parametric2DNode)node).YParameter) : 0);
+                        writer.Write(_strings.GetID(data.YParameter));
                         writer.Write(node.Type == AnimationNodeType.ANIM_3DParametric ? _strings.GetID(((Parametric3DNode)node).ZParameter) : 0);
                         writer.Write(_strings.GetID(data.OverflowListener));
                         writer.Write(data.LoopBlendSet);
@@ -838,7 +874,7 @@ namespace CATHODE
                     {
                         Parametric4DNode data = (Parametric4DNode)node;
                         foreach (var blendSet in data.BlendSet)
-                            writer.Write(blendSet);
+                            writer.Write(_strings.GetID(blendSet));
                         writer.Write(_strings.GetID(data.XParameter));
                         writer.Write(_strings.GetID(data.YParameter));
                         writer.Write(_strings.GetID(data.ZParameter));
@@ -877,8 +913,8 @@ namespace CATHODE
                 case AnimationNodeType.ANIM_Additive_Blend:
                     {
                         AdditiveBlendNode data = (AdditiveBlendNode)node;
-                        writer.Write(_strings.GetID(data.BaseNodeName));
-                        writer.Write(_strings.GetID(data.AdditiveNodeName));
+                        writer.Write(_strings.GetID(data.BaseNode));
+                        writer.Write(_strings.GetID(data.AdditiveNode));
                         writer.Write(data.AdditiveNodeWeight);
                         writer.Write(data.SyncAdditiveDurationToBase);
                     }
@@ -886,8 +922,8 @@ namespace CATHODE
                 case AnimationNodeType.ANIM_Parametric_Additive_Blend:
                     {
                         ParametricAdditiveBlendNode data = (ParametricAdditiveBlendNode)node;
-                        writer.Write(_strings.GetID(data.BaseNodeName));
-                        writer.Write(_strings.GetID(data.AdditiveNodeName));
+                        writer.Write(_strings.GetID(data.BaseNode));
+                        writer.Write(_strings.GetID(data.AdditiveNode));
                         writer.Write(data.AdditiveNodeWeight);
                         writer.Write(_strings.GetID(data.ParameterName));
                         writer.Write(data.ParameterMin);
@@ -922,7 +958,7 @@ namespace CATHODE
                             writer.Write(value);
                         foreach (var footSync in data.FootSyncOnSelect)
                             writer.Write(footSync);
-                        writer.Write(_strings.GetID(data.BindingParameterName));
+                        writer.Write(_strings.GetID(data.BindingParameter));
                         writer.Write(data.EaseTime);
                         writer.Write(data.ResetPlaybackOnChange);
                     }
@@ -1006,8 +1042,8 @@ namespace CATHODE
                         writer.Write(data.NumberOfAnimSlots);
                         foreach (var mirrored in data.Mirrored)
                             writer.Write(mirrored);
-                        foreach (var index in data.LevelAnimIndices)
-                            writer.Write(index);
+                        foreach (var anim in data.Animations)
+                            writer.Write(_strings.GetID(anim));
                         foreach (var name in data.Names)
                             writer.Write(_strings.GetID(name));
                         foreach (var weight in data.WeightsForCdf)

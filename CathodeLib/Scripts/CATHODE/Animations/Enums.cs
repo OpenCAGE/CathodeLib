@@ -4,28 +4,37 @@ using System.Text;
 
 namespace CATHODE.Animations
 {
+    //Any types in the negative are not written to disk and only handled while processing
     public enum AnimationNodeType
     {
+        ANIM_Base = -1, //Base class
+        ANIM_IK = 15,
+        ANIM_Bone_Mask = 14,
         ANIM_Animation = 0,
         ANIM_Randomised_Animation = 1,
+        ANIM_AutoFloatParameter = -2,
+        ANIM_Parameter = -3,
+        ANIM_FloatInterpolator = -4,
+        ANIM_Property = -5,
+        ANIM_Callback = -6,
+        ANIM_Metadata_Event_Listener = -7,
         ANIM_Selector = 2,
+        ANIM_Enumerated_Selector = 12,
+        ANIM_Ranged_Selector = 11,
+        ANIM_Foot_Sync_Selector = 13,
         ANIM_Parametric = 3,
-        ANIM_1DParametric = 100,
         ANIM_2DParametric = 4,
-        ANIM_3DParametric = 101,
+        ANIM_3DParametric = -8,
         ANIM_4DParametric = 5,
         ANIM_Bilinear_High_Fidelity = 7,
         ANIM_Bilinear_Low_Fidelity = 8,
         ANIM_Additive_Blend = 9,
         ANIM_Parametric_Additive_Blend = 10,
-        ANIM_Ranged_Selector = 11,
-        ANIM_Enumerated_Selector = 12,
-        ANIM_Foot_Sync_Selector = 13,
-        ANIM_Bone_Mask = 14,
-        ANIM_IK = 15,
         ANIM_Spherical = 16,
+        ANIM_Tree_Top_Level = -9,
         ANIM_Weighted = 17,
-        ANIM_Tree_Top_Level = 102,
+        ANIM_Event_Callback = -10,
+        ANIM_Property_Listener = -11,
     }
 
     [Flags]
