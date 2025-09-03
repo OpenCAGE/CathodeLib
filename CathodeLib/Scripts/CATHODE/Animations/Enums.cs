@@ -5,7 +5,7 @@ using System.Text;
 namespace CATHODE.Animations
 {
     //Any types in the negative are not written to disk and only handled while processing
-    public enum AnimationNodeType
+    public enum NodeType
     {
         //ANIM_Base = -1, //Base class
         ANIM_IK = 15,
@@ -89,6 +89,18 @@ namespace CATHODE.Animations
         SINGLE_BONE,
     }
 
+    public enum PoseLayer
+    {
+        BASE_FULL_BODY_LAYER,
+        GENERAL_ADDITIVE_LAYER,
+        BREATHING_LAYER,
+        LOOK_AT_LAYER,
+        GUN_LAYER,
+        HAND_LAYER,
+        FACE_LAYER,
+        CINEMATIC_LAYER,
+    };
+
     public enum AnimTreeParameterType
     {
         CARD32,
@@ -98,14 +110,14 @@ namespace CATHODE.Animations
         VECTOR,
     }
 
-    public enum AnimationParameterBlendUsage
+    public enum ParameterBlendUsage
     {
         Clamp,
         LoopOver,
         ExtrapolateBlend
     }
 
-    public enum AnimationMetadataValueType
+    public enum MetadataValueType
     {
         UINT32,
         INT32,

@@ -8,13 +8,13 @@ namespace CATHODE.Animations
 {
     public abstract class AnimationMetadataValue
     {
-        public AnimationMetadataValueType ValueType { get; protected set; }
+        public MetadataValueType ValueType { get; protected set; }
         public bool RequiresConvert { get; set; }
         public bool CanMirror { get; set; }
         public bool CanModulateByPlayspeed { get; set; }
         public ushort Flags { get; set; }
 
-        protected AnimationMetadataValue(AnimationMetadataValueType valueType)
+        protected AnimationMetadataValue(MetadataValueType valueType)
         {
             ValueType = valueType;
             RequiresConvert = false;
@@ -28,11 +28,11 @@ namespace CATHODE.Animations
     {
         public uint Value { get; set; }
 
-        public UIntMetadataValue() : base(AnimationMetadataValueType.UINT32)
+        public UIntMetadataValue() : base(MetadataValueType.UINT32)
         {
             Value = 0;
         }
-        public UIntMetadataValue(uint value) : base(AnimationMetadataValueType.UINT32)
+        public UIntMetadataValue(uint value) : base(MetadataValueType.UINT32)
         {
             Value = value;
         }
@@ -42,11 +42,11 @@ namespace CATHODE.Animations
     {
         public int Value { get; set; }
 
-        public IntMetadataValue() : base(AnimationMetadataValueType.INT32)
+        public IntMetadataValue() : base(MetadataValueType.INT32)
         {
             Value = 0;
         }
-        public IntMetadataValue(int value) : base(AnimationMetadataValueType.INT32)
+        public IntMetadataValue(int value) : base(MetadataValueType.INT32)
         {
             Value = value;
         }
@@ -56,11 +56,11 @@ namespace CATHODE.Animations
     {
         public float Value { get; set; }
 
-        public FloatMetadataValue() : base(AnimationMetadataValueType.FLOAT32)
+        public FloatMetadataValue() : base(MetadataValueType.FLOAT32)
         {
             Value = 0.0f;
         }
-        public FloatMetadataValue(float value) : base(AnimationMetadataValueType.FLOAT32)
+        public FloatMetadataValue(float value) : base(MetadataValueType.FLOAT32)
         {
             Value = value;
         }
@@ -70,11 +70,11 @@ namespace CATHODE.Animations
     {
         public string Value { get; set; }
 
-        public StringMetadataValue() : base(AnimationMetadataValueType.STRING)
+        public StringMetadataValue() : base(MetadataValueType.STRING)
         {
             Value = string.Empty;
         }
-        public StringMetadataValue(string value) : base(AnimationMetadataValueType.STRING)
+        public StringMetadataValue(string value) : base(MetadataValueType.STRING)
         {
             Value = value ?? string.Empty;
         }
@@ -84,11 +84,11 @@ namespace CATHODE.Animations
     {
         public bool Value { get; set; }
 
-        public BoolMetadataValue() : base(AnimationMetadataValueType.BOOL)
+        public BoolMetadataValue() : base(MetadataValueType.BOOL)
         {
             Value = false;
         }
-        public BoolMetadataValue(bool value) : base(AnimationMetadataValueType.BOOL)
+        public BoolMetadataValue(bool value) : base(MetadataValueType.BOOL)
         {
             Value = value;
         }
@@ -98,11 +98,11 @@ namespace CATHODE.Animations
     {
         public Vector3 Value { get; set; }
 
-        public VectorMetadataValue() : base(AnimationMetadataValueType.VECTOR)
+        public VectorMetadataValue() : base(MetadataValueType.VECTOR)
         {
             Value = Vector3.Zero;
         }
-        public VectorMetadataValue(Vector3 value) : base(AnimationMetadataValueType.VECTOR)
+        public VectorMetadataValue(Vector3 value) : base(MetadataValueType.VECTOR)
         {
             Value = value;
         }
@@ -112,11 +112,11 @@ namespace CATHODE.Animations
     {
         public ulong Value { get; set; }
 
-        public ULongMetadataValue() : base(AnimationMetadataValueType.UINT64)
+        public ULongMetadataValue() : base(MetadataValueType.UINT64)
         {
             Value = 0;
         }
-        public ULongMetadataValue(ulong value) : base(AnimationMetadataValueType.UINT64)
+        public ULongMetadataValue(ulong value) : base(MetadataValueType.UINT64)
         {
             Value = value;
         }
@@ -126,11 +126,11 @@ namespace CATHODE.Animations
     {
         public long Value { get; set; }
 
-        public LongMetadataValue() : base(AnimationMetadataValueType.INT64)
+        public LongMetadataValue() : base(MetadataValueType.INT64)
         {
             Value = 0;
         }
-        public LongMetadataValue(long value) : base(AnimationMetadataValueType.INT64)
+        public LongMetadataValue(long value) : base(MetadataValueType.INT64)
         {
             Value = value;
         }
@@ -140,11 +140,11 @@ namespace CATHODE.Animations
     {
         public double Value { get; set; }
 
-        public Float64MetadataValue() : base(AnimationMetadataValueType.FLOAT64)
+        public Float64MetadataValue() : base(MetadataValueType.FLOAT64)
         {
             Value = 0.0;
         }
-        public Float64MetadataValue(double value) : base(AnimationMetadataValueType.FLOAT64)
+        public Float64MetadataValue(double value) : base(MetadataValueType.FLOAT64)
         {
             Value = value;
         }
@@ -154,11 +154,11 @@ namespace CATHODE.Animations
     {
         public string Value { get; set; }
 
-        public AudioMetadataValue() : base(AnimationMetadataValueType.AUDIO)
+        public AudioMetadataValue() : base(MetadataValueType.AUDIO)
         {
             Value = string.Empty;
         }
-        public AudioMetadataValue(string value) : base(AnimationMetadataValueType.AUDIO)
+        public AudioMetadataValue(string value) : base(MetadataValueType.AUDIO)
         {
             Value = value ?? string.Empty;
         }
@@ -168,11 +168,11 @@ namespace CATHODE.Animations
     {
         public string Value { get; set; }
 
-        public PropertyReferenceMetadataValue() : base(AnimationMetadataValueType.PROPERTY_REFERENCE)
+        public PropertyReferenceMetadataValue() : base(MetadataValueType.PROPERTY_REFERENCE)
         {
             Value = string.Empty;
         }
-        public PropertyReferenceMetadataValue(string value) : base(AnimationMetadataValueType.PROPERTY_REFERENCE)
+        public PropertyReferenceMetadataValue(string value) : base(MetadataValueType.PROPERTY_REFERENCE)
         {
             Value = value ?? string.Empty;
         }
@@ -182,11 +182,11 @@ namespace CATHODE.Animations
     {
         public string Value { get; set; }
 
-        public ScriptInterfaceMetadataValue() : base(AnimationMetadataValueType.SCRIPT_INTERFACE)
+        public ScriptInterfaceMetadataValue() : base(MetadataValueType.SCRIPT_INTERFACE)
         {
             Value = string.Empty;
         }
-        public ScriptInterfaceMetadataValue(string value) : base(AnimationMetadataValueType.SCRIPT_INTERFACE)
+        public ScriptInterfaceMetadataValue(string value) : base(MetadataValueType.SCRIPT_INTERFACE)
         {
             Value = value ?? string.Empty;
         }

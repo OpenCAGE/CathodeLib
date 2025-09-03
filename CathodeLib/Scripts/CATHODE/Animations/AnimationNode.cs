@@ -8,7 +8,7 @@ namespace CATHODE.Animations
 
     public class AnimationNode
     {
-        public AnimationNodeType Type;
+        public NodeType Type;
         public string Name;
         public HashSet<AnimationNode> Children = new HashSet<AnimationNode>();
 
@@ -46,7 +46,7 @@ namespace CATHODE.Animations
 
         public AnimationTree()
         {
-            Type = AnimationNodeType.ANIM_Tree_Top_Level;
+            Type = NodeType.ANIM_Tree_Top_Level;
         }
     }
 
@@ -80,7 +80,7 @@ namespace CATHODE.Animations
 
         public MetadataListenerNode()
         {
-            Type = AnimationNodeType.ANIM_Metadata_Event_Listener;
+            Type = NodeType.ANIM_Metadata_Event_Listener;
         }
     }
 
@@ -91,7 +91,7 @@ namespace CATHODE.Animations
 
         public ParameterNode()
         {
-            Type = AnimationNodeType.ANIM_Parameter;
+            Type = NodeType.ANIM_Parameter;
         }
     }
 
@@ -103,7 +103,7 @@ namespace CATHODE.Animations
 
         public FloatInterpolatorNode()
         {
-            Type = AnimationNodeType.ANIM_FloatInterpolator;
+            Type = NodeType.ANIM_FloatInterpolator;
         }
     }
 
@@ -113,7 +113,7 @@ namespace CATHODE.Animations
 
         public PropertyNode()
         {
-            Type = AnimationNodeType.ANIM_Parameter;
+            Type = NodeType.ANIM_Parameter;
         }
     }
 
@@ -124,7 +124,7 @@ namespace CATHODE.Animations
 
         public PropertyListenerNode()
         {
-            Type = AnimationNodeType.ANIM_Property_Listener;
+            Type = NodeType.ANIM_Property_Listener;
         }
     }
 
@@ -139,7 +139,7 @@ namespace CATHODE.Animations
 
         public SelectorNode()
         {
-            Type = AnimationNodeType.ANIM_Selector;
+            Type = NodeType.ANIM_Selector;
         }
 
         public class State
@@ -165,7 +165,7 @@ namespace CATHODE.Animations
 
         public ParametricNode()
         {
-            Type = AnimationNodeType.ANIM_Parametric;
+            Type = NodeType.ANIM_Parametric;
         }
     }
 
@@ -182,7 +182,7 @@ namespace CATHODE.Animations
 
         public Parametric2DNode()
         {
-            Type = AnimationNodeType.ANIM_2DParametric;
+            Type = NodeType.ANIM_2DParametric;
         }
     }
 
@@ -192,7 +192,7 @@ namespace CATHODE.Animations
 
         public Parametric3DNode()
         {
-            Type = AnimationNodeType.ANIM_3DParametric;
+            Type = NodeType.ANIM_3DParametric;
         }
     }
 
@@ -204,7 +204,7 @@ namespace CATHODE.Animations
 
         public Parametric4DNode()
         {
-            Type = AnimationNodeType.ANIM_4DParametric;
+            Type = NodeType.ANIM_4DParametric;
         }
     }
 
@@ -221,7 +221,7 @@ namespace CATHODE.Animations
 
         public BilinearHiFiNode()
         {
-            Type = AnimationNodeType.ANIM_Bilinear_High_Fidelity;
+            Type = NodeType.ANIM_Bilinear_High_Fidelity;
         }
     }
 
@@ -231,7 +231,7 @@ namespace CATHODE.Animations
 
         public LoFiBilinearNode()
         {
-            Type = AnimationNodeType.ANIM_Bilinear_Low_Fidelity;
+            Type = NodeType.ANIM_Bilinear_Low_Fidelity;
         }
     }
 
@@ -245,7 +245,7 @@ namespace CATHODE.Animations
 
         public AdditiveBlendNode()
         {
-            Type = AnimationNodeType.ANIM_Additive_Blend;
+            Type = NodeType.ANIM_Additive_Blend;
         }
     }
 
@@ -258,7 +258,7 @@ namespace CATHODE.Animations
 
         public ParametricAdditiveBlendNode()
         {
-            Type = AnimationNodeType.ANIM_Parametric_Additive_Blend;
+            Type = NodeType.ANIM_Parametric_Additive_Blend;
         }
     }
 
@@ -275,7 +275,7 @@ namespace CATHODE.Animations
 
         public RangedSelectorNode()
         {
-            Type = AnimationNodeType.ANIM_Ranged_Selector;
+            Type = NodeType.ANIM_Ranged_Selector;
         }
     }
 
@@ -288,13 +288,13 @@ namespace CATHODE.Animations
 
         public FootSyncSelectorNode()
         {
-            Type = AnimationNodeType.ANIM_Foot_Sync_Selector;
+            Type = NodeType.ANIM_Foot_Sync_Selector;
         }
     }
 
     public class BoneMaskNode : AnimationNode
     {
-        public uint MaskingControl;
+        public BoneMaskGroups MaskingControl;
 
         public bool MaskPreceding;
         public bool MaskFollowing;
@@ -302,7 +302,7 @@ namespace CATHODE.Animations
 
         public BoneMaskNode()
         {
-            Type = AnimationNodeType.ANIM_Bone_Mask;
+            Type = NodeType.ANIM_Bone_Mask;
         }
     }
 
@@ -310,9 +310,8 @@ namespace CATHODE.Animations
     {
         public ParameterNode IkEffector;
 
-        public uint PoseLayer; //todo: unsure on this
-        public string IkType;
-        public string Target;
+        public IkSolverType IkType;
+        public IkControlTarget Target;
 
         public float EffectorFullyEffectiveRadius;
         public float EffectorLeastEffectiveRadius;
@@ -321,23 +320,24 @@ namespace CATHODE.Animations
         public bool EnforceTranslation;
         public bool EnforceEndBoneRotation;
 
+        public PoseLayer PoseLayer;
+
         public IkNode()
         {
-            Type = AnimationNodeType.ANIM_IK;
+            Type = NodeType.ANIM_IK;
         }
     }
 
     public class SphericalNode : AnimationNode
     {
-        public string Coord;
+        public string Coord; //link to node?
 
         public List<BlendTriIndices> Tris = new List<BlendTriIndices>();
-        public uint NumTris;
         public bool SyncDurations;
 
         public SphericalNode()
         {
-            Type = AnimationNodeType.ANIM_Spherical;
+            Type = NodeType.ANIM_Spherical;
         }
 
         public class BlendTriIndices
@@ -363,7 +363,7 @@ namespace CATHODE.Animations
 
         public WeightedNode()
         {
-            Type = AnimationNodeType.ANIM_Weighted;
+            Type = NodeType.ANIM_Weighted;
         }
     }
 
@@ -396,7 +396,7 @@ namespace CATHODE.Animations
 
         public RandomisedLeafNode()
         {
-            Type = AnimationNodeType.ANIM_Randomised_Animation;
+            Type = NodeType.ANIM_Randomised_Animation;
         }
     }
 }
