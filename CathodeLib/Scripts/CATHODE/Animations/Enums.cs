@@ -135,7 +135,7 @@ namespace CATHODE.Animations
 
     public enum FootStrikeSelectionMethod
     {
-        NearestStrike = 0,
+        NearestStrike,
         NextStrike
     }
 }

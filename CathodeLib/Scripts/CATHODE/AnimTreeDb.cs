@@ -113,7 +113,7 @@ namespace CATHODE
                     for (int x = 0; x < NumberOfBindings; x++)
                         bindingType.Add(reader.ReadUInt32());
                     for (int x = 0; x < NumberOfBindings; x++)
-                        treeDef.Nodes.Add(new ParameterNode() { Name = bindingNames[x], ParameterType = bindingParamTypes[x], IndicesInTypeArray = bindingType[x] });
+                        treeDef.Nodes.Add(new ParameterNode() { Name = bindingNames[x], ParameterType = bindingParamTypes[x] });
 
                     for (int x = 0; x < NumberOfCallbacks; x++)
                         treeDef.Nodes.Add(new AnimationNode() { Type = NodeType.ANIM_Callback, Name = _strings.GetString(reader.ReadUInt32()) });
@@ -146,8 +146,13 @@ namespace CATHODE
                     List<string> propListenerLeafNodes = new List<string>();
                     for (int x = 0; x < NumberOfPropertyListeners; x++)
                         propListenerLeafNodes.Add(_strings.GetString(reader.ReadUInt32()));
+                    Dictionary<PropertyListenerNode, string> _propListLookup = new Dictionary<PropertyListenerNode, string>();
                     for (int x = 0; x < NumberOfPropertyListeners; x++)
-                        treeDef.Nodes.Add(new PropertyListenerNode() { Name = propListenerNames[x], AnimProperty = propListenerPropNames[x], LeafNode = propListenerLeafNodes[x] });
+                    {
+                        PropertyListenerNode node = new PropertyListenerNode() { Name = propListenerNames[x], AnimProperty = propListenerPropNames[x], LeafNode = null };
+                        treeDef.Nodes.Add(node);
+                        _propListLookup.Add(node, propListenerLeafNodes[x]);
+                    }
 
                     List<string> propertyNames = new List<string>();
                     for (int x = 0; x < NumberOfPropertyValues; x++)
@@ -231,8 +236,8 @@ namespace CATHODE
                     for (int x = 0; x < NumberOfFloatInterpolators; x++)
                     {
                         ParameterNode floatInterpNodeOrig = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Name == floatInterpNames[x]);
-                        FloatInterpolatorNode floatInterpNode = new FloatInterpolatorNode() { Name = floatInterpNodeOrig.Name, Children = floatInterpNodeOrig.Children, IndicesInTypeArray = floatInterpNodeOrig.IndicesInTypeArray, ParameterType = floatInterpNodeOrig.ParameterType, Type = NodeType.ANIM_FloatInterpolator };
-                        floatInterpNode.SourceParameter = floatInterpSources[x];
+                        FloatInterpolatorNode floatInterpNode = new FloatInterpolatorNode() { Name = floatInterpNodeOrig.Name, Children = floatInterpNodeOrig.Children, ParameterType = floatInterpNodeOrig.ParameterType, Type = NodeType.ANIM_FloatInterpolator };
+                        floatInterpNode.SourceParameter = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == floatInterpSources[x]);
                         floatInterpNode.InitialValue = floatInterpStartVals[x];
                         floatInterpNode.UnitsPerSecond = floatInterpStartUPS[x];
                         treeDef.Nodes.Add(floatInterpNode);
@@ -246,6 +251,7 @@ namespace CATHODE
                         treeDef.Children.Add(childNode);
                     }
 
+                    //todo; check if any of these lookups fail - they shouldn't
                     foreach (KeyValuePair<LeafNode, string> kvp in _animLookups)
                     {
                         kvp.Key.Callback = treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Callback &&  o.Name == kvp.Value);
@@ -272,6 +278,38 @@ namespace CATHODE
                     {
                         kvp.Key.IkEffector = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
                     }
+                    foreach (KeyValuePair<RandomisedLeafNode, string> kvp in _randAnimCallbackLookup)
+                    {
+                        kvp.Key.Callback = treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Callback && o.Name == kvp.Value);
+                    }
+                    foreach (KeyValuePair<RandomisedLeafNode, string> kvp in _randAnimRandCallbackLookup)
+                    {
+                        kvp.Key.RandomCallback = treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Callback && o.Name == kvp.Value);
+                    }
+                    foreach (KeyValuePair<ParametricAdditiveBlendNode, string> kvp in _paramAddBlendNodeParamLookup)
+                    {
+                        kvp.Key.Parameter = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
+                    }
+                    foreach (KeyValuePair<ParametricAdditiveBlendNode, string> kvp in _paramAddBlendNodeBaseLookup)
+                    {
+                        kvp.Key.BaseNode = treeDef.Nodes.FirstOrDefault(o => o.Name == kvp.Value); //what type
+                    }
+                    foreach (KeyValuePair<ParametricAdditiveBlendNode, string> kvp in _paramAddBlendNodeAdditiveLookup)
+                    {
+                        kvp.Key.AdditiveNode = treeDef.Nodes.FirstOrDefault(o => o.Name == kvp.Value); //what type
+                    }
+                    foreach (KeyValuePair<AdditiveBlendNode, string> kvp in _addBlendBaseLookup)
+                    {
+                        kvp.Key.AdditiveNode = treeDef.Nodes.FirstOrDefault(o => o.Name == kvp.Value); //what type
+                    }
+                    foreach (KeyValuePair<AdditiveBlendNode, string> kvp in _addBlendAddLookup)
+                    {
+                        kvp.Key.AdditiveNode = treeDef.Nodes.FirstOrDefault(o => o.Name == kvp.Value); //what type
+                    }
+                    foreach (KeyValuePair<PropertyListenerNode, string> kvp in _propListLookup)
+                    {
+                        kvp.Key.LeafNode = treeDef.Nodes.FirstOrDefault(o => o.Name == kvp.Value); //what type
+                    }
 
                     Entries.Add(treeDef);
                 }
@@ -284,6 +322,13 @@ namespace CATHODE
         Dictionary<SelectorNode, string> _selectorLookups = new Dictionary<SelectorNode, string>();
         Dictionary<SelectorNode, List<string>> _selectorBindingLookups = new Dictionary<SelectorNode, List<string>>();
         Dictionary<IkNode, string> _ikLookups = new Dictionary<IkNode, string>();
+        Dictionary<RandomisedLeafNode, string> _randAnimCallbackLookup = new Dictionary<RandomisedLeafNode, string>();
+        Dictionary<RandomisedLeafNode, string> _randAnimRandCallbackLookup = new Dictionary<RandomisedLeafNode, string>();
+        Dictionary<ParametricAdditiveBlendNode, string> _paramAddBlendNodeParamLookup = new Dictionary<ParametricAdditiveBlendNode, string>();
+        Dictionary<ParametricAdditiveBlendNode, string> _paramAddBlendNodeBaseLookup = new Dictionary<ParametricAdditiveBlendNode, string>();
+        Dictionary<ParametricAdditiveBlendNode, string> _paramAddBlendNodeAdditiveLookup = new Dictionary<ParametricAdditiveBlendNode, string>();
+        Dictionary<AdditiveBlendNode, string> _addBlendBaseLookup = new Dictionary<AdditiveBlendNode, string>();
+        Dictionary<AdditiveBlendNode, string> _addBlendAddLookup = new Dictionary<AdditiveBlendNode, string>();
 
         private AnimationNode ReadNode(BinaryReader reader, AnimationTree tree)
         {
@@ -388,13 +433,19 @@ namespace CATHODE
                     break;
                 case NodeType.ANIM_Additive_Blend:
                     {
+                        uint baseNode = reader.ReadUInt32();
+                        uint additveNode = reader.ReadUInt32();
                         node = new AdditiveBlendNode
                         {
-                            BaseNode = _strings.GetString(reader.ReadUInt32()),
-                            AdditiveNode = _strings.GetString(reader.ReadUInt32()),
+                            BaseNode = null,
+                            AdditiveNode = null,
                             AdditiveNodeWeight = reader.ReadSingle(),
                             SyncAdditiveDurationToBase = reader.ReadBoolean()
                         };
+                        if (baseNode != 0)
+                            _addBlendBaseLookup.Add((AdditiveBlendNode)node, _strings.GetString(baseNode));
+                        if (additveNode != 0)
+                            _addBlendAddLookup.Add((AdditiveBlendNode)node, _strings.GetString(additveNode));
                     }
                     break;
                 case NodeType.ANIM_Bone_Mask:
@@ -441,8 +492,8 @@ namespace CATHODE
                         uint randomNodeCallbackName = reader.ReadUInt32();
                         bool looped = reader.ReadBoolean();
                         bool newSelectionOnLoop = reader.ReadBoolean();
-                        uint numberOfAnimSlots = reader.ReadUInt32();
 
+                        uint numberOfAnimSlots = reader.ReadUInt32();
                         List<bool> mirrored = new List<bool>();
                         for (uint i = 0; i < numberOfAnimSlots; i++)
                             mirrored.Add(reader.ReadBoolean());
@@ -470,27 +521,40 @@ namespace CATHODE
 
                         node = new RandomisedLeafNode
                         {
-                            HasCallback = hasCallback,
                             BlendTime = blendTime,
-                            CallbackName = _strings.GetString(hashedCallbackName),
-                            RandomNodeCallbackName = _strings.GetString(randomNodeCallbackName),
-                            Looped = looped,
+                            Callback = null,
+                            RandomCallback = null,
+                            Looping = looped,
                             NewSelectionOnLoop = newSelectionOnLoop,
-                            Mirrored = mirrored,
-                            OptionalContextParam = optionalContextParam,
+                            OptionalAnimationContext = optionalContextParam,
                             OptionalConvergeVector = optionalConvergeVector,
                             OptionalConvergeFloat = optionalConvergeFloat,
-                            NumberOfAnimSlots = numberOfAnimSlots,
-                            Animations = animNames,
-                            Names = hashedNames,
-                            WeightsForCdf = weightsForCdf,
-                            LoopsBeforeReselection = loopsBeforeReselection,
-                            NotifyTimeOffset = notifyTimeOffset,
-                            StartTimeOffset = startTimeOffset,
-                            EndTimeOffset = endTimeOffset,
                             ConvergeOrientation = convergeOrientation,
                             ConvergeTranslation = convergeTranslation
                         };
+
+                        RandomisedLeafNode randomNode = (RandomisedLeafNode)node;
+                        for (int i = 0; i < numberOfAnimSlots; i++)
+                        {
+                            RandomisedLeafLeafNode leafNode = new RandomisedLeafLeafNode()
+                            {
+                                Mirrored = mirrored[i],
+                                AnimationName = animNames[i],
+                                Name = hashedNames[i],
+                                Weight = weightsForCdf[i],
+                                LoopsBeforeReselection = loopsBeforeReselection[i],
+                                NotifyTimeOffset = notifyTimeOffset[i],
+                                StartTimeOffset = startTimeOffset[i],
+                                EndTimeOffset = endTimeOffset[i]
+                            };
+                            randomNode.Children.Add(leafNode);
+                            tree.Nodes.Add(leafNode);
+                        }
+
+                        if (hashedCallbackName != 0)
+                            _randAnimCallbackLookup.Add((RandomisedLeafNode)node, _strings.GetString(hashedCallbackName));
+                        if (randomNodeCallbackName != 0)
+                            _randAnimRandCallbackLookup.Add((RandomisedLeafNode)node, _strings.GetString(randomNodeCallbackName));
                     }
                     break;
                 case NodeType.ANIM_Selector:
@@ -527,84 +591,27 @@ namespace CATHODE
                     break;
                 case NodeType.ANIM_Parametric_Additive_Blend:
                     {
+                        uint baseNode = reader.ReadUInt32();
+                        uint additiveNode = reader.ReadUInt32();
+                        float additiveNodeWeight = reader.ReadSingle();
+                        uint parameter = reader.ReadUInt32();
+
                         node = new ParametricAdditiveBlendNode
                         {
-                            BaseNode = _strings.GetString(reader.ReadUInt32()),
-                            AdditiveNode = _strings.GetString(reader.ReadUInt32()),
-                            AdditiveNodeWeight = reader.ReadSingle(),
-                            ParameterName = _strings.GetString(reader.ReadUInt32()),
+                            BaseNode = null,
+                            AdditiveNode = null,
+                            AdditiveNodeWeight = additiveNodeWeight,
+                            Parameter = null,
                             ParameterMin = reader.ReadSingle(),
                             ParameterMax = reader.ReadSingle(),
                             SyncAdditiveDurationToBase = reader.ReadBoolean()
                         };
-                    }
-                    break;
-                case NodeType.ANIM_Spherical:
-                    {
-                        uint childCount = reader.ReadUInt32();
-                        uint coordHash = reader.ReadUInt32();
-
-                        uint numTris = reader.ReadUInt32();
-                        List<SphericalNode.BlendTriIndices> tris = new List<SphericalNode.BlendTriIndices>();
-                        for (uint i = 0; i < numTris; i++)
-                        {
-                            tris.Add(new SphericalNode.BlendTriIndices
-                            {
-                                Index0 = reader.ReadUInt32(),
-                                Index1 = reader.ReadUInt32(),
-                                Index2 = reader.ReadUInt32(),
-                                X0 = reader.ReadSingle(),
-                                Y0 = reader.ReadSingle(),
-                                X1 = reader.ReadSingle(),
-                                Y1 = reader.ReadSingle(),
-                                X2 = reader.ReadSingle(),
-                                Y2 = reader.ReadSingle(),
-                            });
-                            reader.BaseStream.Position += 12;
-                        }
-
-                        node = new SphericalNode
-                        {
-                            Coord = _strings.GetString(coordHash),
-                            Tris = tris,
-                            SyncDurations = reader.ReadBoolean()
-                        };
-                    }
-                    break;
-                case NodeType.ANIM_Bilinear_Low_Fidelity:
-                    {
-                        string[] bindings = new string[4];
-                        for (int i = 0; i < 4; i++)
-                            bindings[i] = _strings.GetString(reader.ReadUInt32());
-
-                        node = new LoFiBilinearNode
-                        {
-                            Bindings = bindings,
-                            XParameter = _strings.GetString(reader.ReadUInt32()),
-                            YParameter = _strings.GetString(reader.ReadUInt32()),
-                            ParameterMin = reader.ReadSingle(),
-                            ParameterMax = reader.ReadSingle(),
-                            ParameterWrap = reader.ReadBoolean(),
-                            SyncDurations = reader.ReadBoolean()
-                        };
-                    }
-                    break;
-                case NodeType.ANIM_Bilinear_High_Fidelity:
-                    {
-                        string[] hashBindings = new string[9];
-                        for (int i = 0; i < 9; i++)
-                            hashBindings[i] = _strings.GetString(reader.ReadUInt32());
-
-                        node = new BilinearHiFiNode
-                        {
-                            Bindings = hashBindings,
-                            XParameter = _strings.GetString(reader.ReadUInt32()),
-                            YParameter = _strings.GetString(reader.ReadUInt32()),
-                            ParameterMin = reader.ReadSingle(),
-                            ParameterMax = reader.ReadSingle(),
-                            ParameterWrap = reader.ReadBoolean(),
-                            SyncDurations = reader.ReadBoolean()
-                        };
+                        if (baseNode != 0)
+                            _paramAddBlendNodeBaseLookup.Add((ParametricAdditiveBlendNode)node, _strings.GetString(baseNode));
+                        if (additiveNode != 0)
+                            _paramAddBlendNodeAdditiveLookup.Add((ParametricAdditiveBlendNode)node, _strings.GetString(additiveNode));
+                        if (parameter != 0)
+                            _paramAddBlendNodeParamLookup.Add((ParametricAdditiveBlendNode)node, _strings.GetString(parameter));
                     }
                     break;
                 case NodeType.ANIM_Ranged_Selector:
@@ -732,8 +739,14 @@ namespace CATHODE
                         writer.Write(_strings.GetID(param.Name));
                     foreach (var param in parameterNodes)
                         writer.Write((uint)param.ParameterType);
+
+                    //untested - seems correct
+                    int[] counts = new int[5];
                     foreach (var param in parameterNodes)
-                        writer.Write(param.IndicesInTypeArray);
+                    {
+                        writer.Write((uint)counts[(int)param.ParameterType]);
+                        counts[(int)param.ParameterType]++;
+                    }
 
                     foreach (var callback in callbackNodes)
                         writer.Write(_strings.GetID(callback.Name));
@@ -756,7 +769,7 @@ namespace CATHODE
                     foreach (var propListener in propListenerNodes)
                         writer.Write(_strings.GetID(propListener.AnimProperty));
                     foreach (var propListener in propListenerNodes)
-                        writer.Write(_strings.GetID(propListener.LeafNode));
+                        writer.Write(propListener.LeafNode == null ? 0 : _strings.GetID(propListener.LeafNode.Name));
 
                     foreach (var prop in propNodes)
                         writer.Write(_strings.GetID(prop.Name));
@@ -810,7 +823,7 @@ namespace CATHODE
 
                     writer.Write(floatInterpolatorNodes.Count);
                     foreach (var floatInterp in floatInterpolatorNodes)
-                        writer.Write(_strings.GetID(floatInterp.SourceParameter));
+                        writer.Write(floatInterp.SourceParameter == null ? 0 : _strings.GetID(floatInterp.SourceParameter.Name));
                     foreach (var floatInterp in floatInterpolatorNodes)
                         writer.Write(_strings.GetID(floatInterp.Name));
                     foreach (var floatInterp in floatInterpolatorNodes)
@@ -911,37 +924,11 @@ namespace CATHODE
                         writer.Write(data.SyncBlendSet);
                     }
                     break;
-                case NodeType.ANIM_Bilinear_High_Fidelity:
-                    {
-                        BilinearHiFiNode data = (BilinearHiFiNode)node;
-                        foreach (var hash in data.Bindings)
-                            writer.Write(_strings.GetID(hash));
-                        writer.Write(_strings.GetID(data.XParameter));
-                        writer.Write(_strings.GetID(data.YParameter));
-                        writer.Write(data.ParameterMin);
-                        writer.Write(data.ParameterMax);
-                        writer.Write(data.ParameterWrap);
-                        writer.Write(data.SyncDurations);
-                    }
-                    break;
-                case NodeType.ANIM_Bilinear_Low_Fidelity:
-                    {
-                        LoFiBilinearNode data = (LoFiBilinearNode)node;
-                        foreach (var hash in data.Bindings)
-                            writer.Write(_strings.GetID(hash));
-                        writer.Write(_strings.GetID(data.XParameter));
-                        writer.Write(_strings.GetID(data.YParameter));
-                        writer.Write(data.ParameterMin);
-                        writer.Write(data.ParameterMax);
-                        writer.Write(data.ParameterWrap);
-                        writer.Write(data.SyncDurations);
-                    }
-                    break;
                 case NodeType.ANIM_Additive_Blend:
                     {
                         AdditiveBlendNode data = (AdditiveBlendNode)node;
-                        writer.Write(_strings.GetID(data.BaseNode));
-                        writer.Write(_strings.GetID(data.AdditiveNode));
+                        writer.Write(data.BaseNode == null ? 0 : _strings.GetID(data.BaseNode.Name));
+                        writer.Write(data.AdditiveNode == null ? 0 : _strings.GetID(data.AdditiveNode.Name));
                         writer.Write(data.AdditiveNodeWeight);
                         writer.Write(data.SyncAdditiveDurationToBase);
                     }
@@ -949,10 +936,10 @@ namespace CATHODE
                 case NodeType.ANIM_Parametric_Additive_Blend:
                     {
                         ParametricAdditiveBlendNode data = (ParametricAdditiveBlendNode)node;
-                        writer.Write(_strings.GetID(data.BaseNode));
-                        writer.Write(_strings.GetID(data.AdditiveNode));
+                        writer.Write(data.BaseNode == null ? 0 : _strings.GetID(data.BaseNode.Name));
+                        writer.Write(data.AdditiveNode == null ? 0 : _strings.GetID(data.AdditiveNode.Name));
                         writer.Write(data.AdditiveNodeWeight);
-                        writer.Write(_strings.GetID(data.ParameterName));
+                        writer.Write(data.Parameter == null ? 0 : _strings.GetID(data.Parameter.Name));
                         writer.Write(data.ParameterMin);
                         writer.Write(data.ParameterMax);
                         writer.Write(data.SyncAdditiveDurationToBase);
@@ -1007,28 +994,6 @@ namespace CATHODE
                         writer.Write((byte)(data.EnforceEndBoneRotation ? 1 : 0));
                     }
                     break;
-                case NodeType.ANIM_Spherical:
-                    {
-                        SphericalNode data = (SphericalNode)node;
-                        writer.Write(node.Children.Count);
-                        writer.Write(_strings.GetID(data.Coord));
-                        writer.Write(data.Tris.Count);
-                        foreach (var tri in data.Tris)
-                        {
-                            writer.Write(tri.Index0);
-                            writer.Write(tri.Index1);
-                            writer.Write(tri.Index2);
-                            writer.Write(tri.X0);
-                            writer.Write(tri.Y0);
-                            writer.Write(tri.X1);
-                            writer.Write(tri.Y1);
-                            writer.Write(tri.X2);
-                            writer.Write(tri.Y2);
-                            writer.Write(new byte[12]);
-                        }
-                        writer.Write(data.SyncDurations);
-                    }
-                    break;
                 case NodeType.ANIM_Weighted:
                     {
                         WeightedNode data = (WeightedNode)node;
@@ -1040,34 +1005,36 @@ namespace CATHODE
                 case NodeType.ANIM_Randomised_Animation:
                     {
                         RandomisedLeafNode data = (RandomisedLeafNode)node;
-                        writer.Write(data.HasCallback);
+                        writer.Write(data.Callback != null);
                         writer.Write(data.BlendTime);
-                        writer.Write(data.OptionalContextParam);
+                        writer.Write(data.OptionalAnimationContext);
                         writer.Write(data.OptionalConvergeVector);
                         writer.Write(data.OptionalConvergeFloat);
                         writer.Write(data.ConvergeOrientation);
                         writer.Write(data.ConvergeTranslation);
-                        writer.Write(_strings.GetID(data.CallbackName));
-                        writer.Write(_strings.GetID(data.RandomNodeCallbackName));
-                        writer.Write(data.Looped);
+                        writer.Write(data.Callback == null ? 0 : _strings.GetID(data.Callback.Name));
+                        writer.Write(data.RandomCallback == null ? 0 : _strings.GetID(data.RandomCallback.Name));
+                        writer.Write(data.Looping);
                         writer.Write(data.NewSelectionOnLoop);
-                        writer.Write(data.NumberOfAnimSlots);
-                        foreach (var mirrored in data.Mirrored)
-                            writer.Write(mirrored);
-                        foreach (var anim in data.Animations)
-                            writer.Write(_strings.GetID(anim));
-                        foreach (var name in data.Names)
-                            writer.Write(_strings.GetID(name));
-                        foreach (var weight in data.WeightsForCdf)
-                            writer.Write(weight);
-                        foreach (var loops in data.LoopsBeforeReselection)
-                            writer.Write(loops);
-                        foreach (var offset in data.NotifyTimeOffset)
-                            writer.Write(offset);
-                        foreach (var offset in data.StartTimeOffset)
-                            writer.Write(offset);
-                        foreach (var offset in data.EndTimeOffset)
-                            writer.Write(offset);
+                        writer.Write(data.Children.Count);
+
+                        List<RandomisedLeafLeafNode> anims = data.Children.Cast<RandomisedLeafLeafNode>().ToList();
+                        foreach (var anim in anims)
+                            writer.Write(anim.Mirrored);
+                        foreach (var anim in anims)
+                            writer.Write(_strings.GetID(anim.AnimationName));
+                        foreach (var anim in anims)
+                            writer.Write(_strings.GetID(anim.Name));
+                        foreach (var anim in anims)
+                            writer.Write(anim.Weight);
+                        foreach (var anim in anims)
+                            writer.Write(anim.LoopsBeforeReselection);
+                        foreach (var anim in anims)
+                            writer.Write(anim.NotifyTimeOffset);
+                        foreach (var anim in anims)
+                            writer.Write(anim.StartTimeOffset);
+                        foreach (var anim in anims)
+                            writer.Write(anim.EndTimeOffset);
                     }
                     break;
             }

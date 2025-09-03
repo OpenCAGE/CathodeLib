@@ -4,13 +4,11 @@ using System.Text;
 
 namespace CATHODE.Animations
 {
-    //todo: replace all the name lookups with node refs
-
     public class AnimationNode
     {
         public NodeType Type;
         public string Name;
-        public HashSet<AnimationNode> Children = new HashSet<AnimationNode>();
+        public HashSet<AnimationNode> Children = new HashSet<AnimationNode>(); //todo - maybe we don't want children on all nodes, since they don't all support it
 
         public override bool Equals(object obj)
         {
@@ -26,6 +24,7 @@ namespace CATHODE.Animations
         }
     }
 
+    //done
     public class AnimationTree : AnimationNode
     {
         public string Set;
@@ -50,28 +49,49 @@ namespace CATHODE.Animations
         }
     }
 
-    public class LeafNode : AnimationNode
+    //done
+    public class BaseLeafNode : AnimationNode
     {
-        public BoneMaskGroups MaskingControl;
-
         public string AnimationName;
 
-        public bool Looped;
         public bool Mirrored;
-
-        public AnimationNode Callback;
-
-        public string OptionalContextParam;
-        public string OptionalConvergeVector;
-        public string OptionalConvergeFloat;
-        public bool ConvergeOrientation;
-        public bool ConvergeTranslation;
 
         public float NotifyTimeOffset;
         public float StartTimeOffset;
         public float EndTimeOffset;
+
+        public BaseLeafNode()
+        {
+            Type = NodeType.ANIM_Animation;
+        }
     }
 
+    public class LeafNode : BaseLeafNode
+    {
+        public BoneMaskGroups MaskingControl;
+
+        public bool Looped;
+
+        public AnimationNode Callback;
+
+        //unsure on these values - same as random leaf node
+        public string OptionalContextParam;
+        public string OptionalConvergeVector;
+        public string OptionalConvergeFloat;
+        // ^ are these ANIM_Parameters?
+
+        public bool ConvergeOrientation;
+        public bool ConvergeTranslation;
+    }
+
+    //done
+    public class RandomisedLeafLeafNode : BaseLeafNode
+    {
+        public float Weight;
+        public uint LoopsBeforeReselection;
+    }
+
+    //done
     public class MetadataListenerNode : AnimationNode
     {
         public string EventName;
@@ -84,10 +104,10 @@ namespace CATHODE.Animations
         }
     }
 
+    //done
     public class ParameterNode : AnimationNode
     {
         public AnimTreeParameterType ParameterType;
-        public uint IndicesInTypeArray; //enum??
 
         public ParameterNode()
         {
@@ -95,9 +115,11 @@ namespace CATHODE.Animations
         }
     }
 
+    //done
     public class FloatInterpolatorNode : ParameterNode
     {
-        public string SourceParameter;
+        public ParameterNode SourceParameter;
+
         public float InitialValue;
         public float UnitsPerSecond;
 
@@ -107,6 +129,7 @@ namespace CATHODE.Animations
         }
     }
 
+    //done
     public class PropertyNode : AnimationNode
     {
         public AnimationMetadataValue Value;
@@ -117,10 +140,11 @@ namespace CATHODE.Animations
         }
     }
 
+    //done
     public class PropertyListenerNode : AnimationNode
     {
-        public string AnimProperty; // ANIMATION_PROPERTY enum value
-        public string LeafNode;
+        public string AnimProperty;
+        public AnimationNode LeafNode;
 
         public PropertyListenerNode()
         {
@@ -128,6 +152,7 @@ namespace CATHODE.Animations
         }
     }
 
+    //done
     public class SelectorNode : AnimationNode
     {
         public List<State> States = new List<State>();
@@ -186,6 +211,7 @@ namespace CATHODE.Animations
         }
     }
 
+    //done
     public class Parametric3DNode : Parametric2DNode
     {
         public string ZParameter;
@@ -208,37 +234,11 @@ namespace CATHODE.Animations
         }
     }
 
-    public class BilinearHiFiNode : AnimationNode
-    {
-        public string[] Bindings = new string[9];
-
-        public string XParameter;
-        public string YParameter;
-        public float ParameterMin;
-        public float ParameterMax = 1.0f;
-        public bool ParameterWrap;
-        public bool SyncDurations;
-
-        public BilinearHiFiNode()
-        {
-            Type = NodeType.ANIM_Bilinear_High_Fidelity;
-        }
-    }
-
-    public class LoFiBilinearNode : BilinearHiFiNode
-    {
-        public new string[] Bindings = new string[4];
-
-        public LoFiBilinearNode()
-        {
-            Type = NodeType.ANIM_Bilinear_Low_Fidelity;
-        }
-    }
-
+    //done
     public class AdditiveBlendNode : AnimationNode
     {
-        public string BaseNode;
-        public string AdditiveNode;
+        public AnimationNode BaseNode;
+        public AnimationNode AdditiveNode;
 
         public float AdditiveNodeWeight = 1.0f;
         public bool SyncAdditiveDurationToBase;
@@ -249,9 +249,10 @@ namespace CATHODE.Animations
         }
     }
 
+    //done
     public class ParametricAdditiveBlendNode : AdditiveBlendNode
     {
-        public string ParameterName;
+        public ParameterNode Parameter;
 
         public float ParameterMin;
         public float ParameterMax = 1.0f;
@@ -292,6 +293,7 @@ namespace CATHODE.Animations
         }
     }
 
+    //done
     public class BoneMaskNode : AnimationNode
     {
         public BoneMaskGroups MaskingControl;
@@ -306,6 +308,7 @@ namespace CATHODE.Animations
         }
     }
 
+    //done
     public class IkNode : AnimationNode
     {
         public ParameterNode IkEffector;
@@ -328,32 +331,7 @@ namespace CATHODE.Animations
         }
     }
 
-    public class SphericalNode : AnimationNode
-    {
-        public string Coord; //link to node?
-
-        public List<BlendTriIndices> Tris = new List<BlendTriIndices>();
-        public bool SyncDurations;
-
-        public SphericalNode()
-        {
-            Type = NodeType.ANIM_Spherical;
-        }
-
-        public class BlendTriIndices
-        {
-            public uint Index0;
-            public uint Index1;
-            public uint Index2;
-            public float X0;
-            public float Y0;
-            public float X1;
-            public float Y1;
-            public float X2;
-            public float Y2;
-        }
-    }
-
+    //done
     public class WeightedNode : AnimationNode
     {
         public ParameterNode Parameter;
@@ -369,27 +347,19 @@ namespace CATHODE.Animations
 
     public class RandomisedLeafNode : AnimationNode
     {
-        public bool HasCallback;
-        public float BlendTime;
+        // note - this node's children are the animations that this selects
 
-        public string CallbackName; //todo - node ref
-        public string RandomNodeCallbackName;
-
-        public bool Looped;
+        public bool Looping;
         public bool NewSelectionOnLoop;
-        public List<bool> Mirrored = new List<bool>();
-        public uint OptionalContextParam;
+        public float BlendTime;
+        public AnimationNode Callback;
+        public AnimationNode RandomCallback;
+        
+        public uint OptionalAnimationContext;
+
+        //unsure on these values
         public uint OptionalConvergeVector;
         public uint OptionalConvergeFloat;
-        public uint NumberOfAnimSlots;
-
-        public List<string> Animations = new List<string>();
-        public List<string> Names = new List<string>();
-        public List<float> WeightsForCdf = new List<float>();
-        public List<uint> LoopsBeforeReselection = new List<uint>();
-        public List<float> NotifyTimeOffset = new List<float>();
-        public List<float> StartTimeOffset = new List<float>();
-        public List<float> EndTimeOffset = new List<float>();
 
         public bool ConvergeOrientation;
         public bool ConvergeTranslation;
