@@ -41,6 +41,7 @@ namespace CATHODE
         }
 
         private AnimationStrings _strings;
+        private NodeResolver _nodeResolver = new NodeResolver();
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
@@ -74,6 +75,9 @@ namespace CATHODE
                 int treeCount = reader.ReadInt32();
                 for (int i = 0; i < treeCount; i++)
                 {
+                    // Clear resolver for each new tree
+                    _nodeResolver.Clear();
+                    
                     uint treeVersion = reader.ReadUInt32();
                     if (treeVersion != 66)
                         throw new Exception("");
@@ -146,12 +150,11 @@ namespace CATHODE
                     List<string> propListenerLeafNodes = new List<string>();
                     for (int x = 0; x < NumberOfPropertyListeners; x++)
                         propListenerLeafNodes.Add(_strings.GetString(reader.ReadUInt32()));
-                    Dictionary<PropertyListenerNode, string> _propListLookup = new Dictionary<PropertyListenerNode, string>();
                     for (int x = 0; x < NumberOfPropertyListeners; x++)
                     {
                         PropertyListenerNode node = new PropertyListenerNode() { Name = propListenerNames[x], AnimProperty = propListenerPropNames[x], LeafNode = null };
                         treeDef.Nodes.Add(node);
-                        _propListLookup.Add(node, propListenerLeafNodes[x]);
+                        _nodeResolver.RegisterLookup(node, propListenerLeafNodes[x], (n, found) => n.LeafNode = found);
                     }
 
                     List<string> propertyNames = new List<string>();
@@ -254,137 +257,14 @@ namespace CATHODE
                         treeDef.Children.Add(childNode);
                     }
 
-                    //todo; check if any of these lookups fail - they shouldn't
-                    foreach (KeyValuePair<LeafNode, string> kvp in _animLookups)
-                    {
-                        kvp.Key.Callback = treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Callback &&  o.Name == kvp.Value);
-                    }
-                    foreach (KeyValuePair<WeightedNode, string> kvp in _weightedLookups)
-                    {
-                        kvp.Key.Parameter = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
-                    }
-                    foreach (KeyValuePair<SelectorNode, string> kvp in _selectorLookups)
-                    {
-                        kvp.Key.ParameterBinding = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
-                    }
-                    foreach (KeyValuePair<SelectorNode, List<string>> kvp in _selectorBindingLookups)
-                    {
-                        for (int x = 0; x < kvp.Value.Count; x++)
-                        {
-                            kvp.Key.States[x].Node = (LeafNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Animation && o.Name == kvp.Value[x]);
-                        }
-                    }
-                    foreach (KeyValuePair<IkNode, string> kvp in _ikLookups)
-                    {
-                        kvp.Key.IkEffector = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
-                    }
-                    foreach (KeyValuePair<RandomisedLeafNode, string> kvp in _randAnimCallbackLookup)
-                    {
-                        kvp.Key.Callback = treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Callback && o.Name == kvp.Value);
-                    }
-                    foreach (KeyValuePair<RandomisedLeafNode, string> kvp in _randAnimRandCallbackLookup)
-                    {
-                        kvp.Key.RandomCallback = treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Callback && o.Name == kvp.Value);
-                    }
-                    foreach (KeyValuePair<ParametricAdditiveBlendNode, string> kvp in _paramAddBlendNodeParamLookup)
-                    {
-                        kvp.Key.WeightControlParameter = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
-                    }
-                    foreach (KeyValuePair<ParametricAdditiveBlendNode, string> kvp in _paramAddBlendNodeBaseLookup)
-                    {
-                        kvp.Key.BaseNode = treeDef.Nodes.FirstOrDefault(o => o.Name == kvp.Value); //what type
-                    }
-                    foreach (KeyValuePair<ParametricAdditiveBlendNode, string> kvp in _paramAddBlendNodeAdditiveLookup)
-                    {
-                        kvp.Key.AdditiveNode = treeDef.Nodes.FirstOrDefault(o => o.Name == kvp.Value); //what type
-                    }
-                    foreach (KeyValuePair<AdditiveBlendNode, string> kvp in _addBlendBaseLookup)
-                    {
-                        kvp.Key.AdditiveNode = treeDef.Nodes.FirstOrDefault(o => o.Name == kvp.Value); //what type
-                    }
-                    foreach (KeyValuePair<AdditiveBlendNode, string> kvp in _addBlendAddLookup)
-                    {
-                        kvp.Key.AdditiveNode = treeDef.Nodes.FirstOrDefault(o => o.Name == kvp.Value); //what type
-                    }
-                    foreach (KeyValuePair<PropertyListenerNode, string> kvp in _propListLookup)
-                    {
-                        kvp.Key.LeafNode = treeDef.Nodes.FirstOrDefault(o => o.Name == kvp.Value); //what type
-                    }
-                    foreach (KeyValuePair<ParametricNode.State, string> kvp in _paramNodeStateLookup)
-                    {
-                        kvp.Key.Node = treeDef.Nodes.FirstOrDefault(o => o.Name == kvp.Value); //what type
-                    }
-                    foreach (KeyValuePair<RangedSelectorNode, string> kvp in _rangedSelectLookup)
-                    {
-                        kvp.Key.ParameterBinding = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
-                    }
-                    foreach (KeyValuePair<RangedSelectorNode.State, string> kvp in _rangedSelectStateLookup)
-                    {
-                        kvp.Key.Node = treeDef.Nodes.FirstOrDefault(o => o.Name == kvp.Value); //what type
-                    }
-                    foreach (KeyValuePair<FootSyncSelectorNode, string[]> kvp in _footChildrenLookup)
-                    {
-                        kvp.Key.LeftStrikeChild = (BaseLeafNode)treeDef.Nodes.FirstOrDefault(o => o is BaseLeafNode && o.Name == kvp.Value[0]);
-                        kvp.Key.RightStrikeChild = (BaseLeafNode)treeDef.Nodes.FirstOrDefault(o => o is BaseLeafNode && o.Name == kvp.Value[1]);
-                    }
-                    foreach (KeyValuePair<RandomisedLeafNode, string> kvp in _randAnimOptCallbackLookup)
-                    {
-                        kvp.Key.OptionalAnimationContext = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
-                    }
-                    foreach (KeyValuePair<ParametricNode, string> kvp in _paramNodeParamLookup)
-                    {
-                        kvp.Key.ParameterBinding = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
-                    }
-                    foreach (KeyValuePair<LeafNode, string> kvp in _animParamLookups)
-                    {
-                        kvp.Key.OptionalContextParam = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
-                    }
-                    foreach (KeyValuePair<LeafNode, string> kvp in _animVectorLookups)
-                    {
-                        kvp.Key.OptionalConvergeVector = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
-                    }
-                    foreach (KeyValuePair<LeafNode, string> kvp in _animFloatLookups)
-                    {
-                        kvp.Key.OptionalConvergeFloat = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
-                    }
-                    foreach (KeyValuePair<RandomisedLeafNode, string> kvp in _randAnimOptVectorLookup)
-                    {
-                        kvp.Key.OptionalConvergeVector = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
-                    }
-                    foreach (KeyValuePair<RandomisedLeafNode, string> kvp in _randAnimOptFloatLookup)
-                    {
-                        kvp.Key.OptionalConvergeFloat = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
-                    }
+                    // Resolve all deferred node lookups
+                    _nodeResolver.ResolveAll(treeDef.Nodes);
 
                     Entries.Add(treeDef);
                 }
             }
             return true;
         }
-
-        Dictionary<LeafNode, string> _animLookups = new Dictionary<LeafNode, string>();
-        Dictionary<LeafNode, string> _animParamLookups = new Dictionary<LeafNode, string>();
-        Dictionary<LeafNode, string> _animVectorLookups = new Dictionary<LeafNode, string>();
-        Dictionary<LeafNode, string> _animFloatLookups = new Dictionary<LeafNode, string>();
-        Dictionary<WeightedNode, string> _weightedLookups = new Dictionary<WeightedNode, string>();
-        Dictionary<SelectorNode, string> _selectorLookups = new Dictionary<SelectorNode, string>();
-        Dictionary<SelectorNode, List<string>> _selectorBindingLookups = new Dictionary<SelectorNode, List<string>>();
-        Dictionary<IkNode, string> _ikLookups = new Dictionary<IkNode, string>();
-        Dictionary<RandomisedLeafNode, string> _randAnimCallbackLookup = new Dictionary<RandomisedLeafNode, string>();
-        Dictionary<RandomisedLeafNode, string> _randAnimRandCallbackLookup = new Dictionary<RandomisedLeafNode, string>();
-        Dictionary<RandomisedLeafNode, string> _randAnimOptCallbackLookup = new Dictionary<RandomisedLeafNode, string>();
-        Dictionary<RandomisedLeafNode, string> _randAnimOptVectorLookup = new Dictionary<RandomisedLeafNode, string>();
-        Dictionary<RandomisedLeafNode, string> _randAnimOptFloatLookup = new Dictionary<RandomisedLeafNode, string>();
-        Dictionary<ParametricAdditiveBlendNode, string> _paramAddBlendNodeParamLookup = new Dictionary<ParametricAdditiveBlendNode, string>();
-        Dictionary<ParametricAdditiveBlendNode, string> _paramAddBlendNodeBaseLookup = new Dictionary<ParametricAdditiveBlendNode, string>();
-        Dictionary<ParametricAdditiveBlendNode, string> _paramAddBlendNodeAdditiveLookup = new Dictionary<ParametricAdditiveBlendNode, string>();
-        Dictionary<AdditiveBlendNode, string> _addBlendBaseLookup = new Dictionary<AdditiveBlendNode, string>();
-        Dictionary<AdditiveBlendNode, string> _addBlendAddLookup = new Dictionary<AdditiveBlendNode, string>();
-        Dictionary<ParametricNode, string> _paramNodeParamLookup = new Dictionary<ParametricNode, string>();
-        Dictionary<ParametricNode.State, string> _paramNodeStateLookup = new Dictionary<ParametricNode.State, string>();
-        Dictionary<RangedSelectorNode, string> _rangedSelectLookup = new Dictionary<RangedSelectorNode, string>();
-        Dictionary<RangedSelectorNode.State, string> _rangedSelectStateLookup = new Dictionary<RangedSelectorNode.State, string>();
-        Dictionary<FootSyncSelectorNode, string[]> _footChildrenLookup = new Dictionary<FootSyncSelectorNode, string[]>();
         
         private AnimationNode ReadNode(BinaryReader reader, AnimationTree tree)
         {
@@ -422,13 +302,13 @@ namespace CATHODE
                         };
 
                         if (hasCallback)
-                            _animLookups.Add((LeafNode)node, callback);
+                            _nodeResolver.RegisterLookup((LeafNode)node, callback, (n, found) => n.Callback = found, NodeType.ANIM_Callback);
                         if (optParam != 0)
-                            _animParamLookups.Add((LeafNode)node, _strings.GetString(optParam));
+                            _nodeResolver.RegisterLookup((LeafNode)node, _strings.GetString(optParam), (n, found) => n.OptionalContextParam = (ParameterNode)found, NodeType.ANIM_Parameter);
                         if (optVector != 0)
-                            _animVectorLookups.Add((LeafNode)node, _strings.GetString(optVector));
+                            _nodeResolver.RegisterLookup((LeafNode)node, _strings.GetString(optVector), (n, found) => n.OptionalConvergeVector = (ParameterNode)found, NodeType.ANIM_Parameter);
                         if (optFloat != 0)
-                            _animFloatLookups.Add((LeafNode)node, _strings.GetString(optFloat));
+                            _nodeResolver.RegisterLookup((LeafNode)node, _strings.GetString(optFloat), (n, found) => n.OptionalConvergeFloat = (ParameterNode)found, NodeType.ANIM_Parameter);
                     }
                     break;
                 case NodeType.ANIM_Parametric:
@@ -448,7 +328,7 @@ namespace CATHODE
                         {
                             ParameterMin = reader.ReadSingle(),
                             ParameterMax = reader.ReadSingle(),
-                            ParameterUsage = (ParameterBlendUsage)reader.ReadUInt32(), //todo - is this index or string?
+                            ParameterUsage = (ParameterBlendUsage)reader.ReadUInt32(), 
                             BlendProperty = _strings.GetString(reader.ReadUInt32()),
                             SyncDurations = reader.ReadBoolean(),
                             ExtractBlendPropertiesAutomatically = reader.ReadBoolean()
@@ -458,10 +338,10 @@ namespace CATHODE
                         for (int i = 0; i < bindings.Count; i++)
                         {
                             paramNode.States[i].Value = valueBindings[i];
-                            _paramNodeStateLookup.Add(paramNode.States[i], bindings[i]);
+                            _nodeResolver.RegisterStateLookup(paramNode.States[i], bindings[i], (state, found) => state.Node = found);
                         }
                         if (paramBind != 0)
-                            _paramNodeParamLookup.Add(paramNode, _strings.GetString(paramBind));
+                            _nodeResolver.RegisterLookup(paramNode, _strings.GetString(paramBind), (n, found) => n.ParameterBinding = (ParameterNode)found, NodeType.ANIM_Parameter);
                     }
                     break;
                 case NodeType.ANIM_2DParametric:
@@ -491,7 +371,14 @@ namespace CATHODE
                             };
                         }
 
-                        //todo: dictionary
+                        if (XParameter != 0)
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(XParameter), (n, found) => ((Parametric2DNode)n).ParameterBindingX = (ParameterNode)found, NodeType.ANIM_Parameter);
+                        if (YParameter != 0)
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(YParameter), (n, found) => ((Parametric2DNode)n).ParameterBindingY = (ParameterNode)found, NodeType.ANIM_Parameter);
+                        if (ZParameter != 0)
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(ZParameter), (n, found) => ((Parametric3DNode)n).ParameterBindingZ = (ParameterNode)found, NodeType.ANIM_Parameter);
+                        if (Callback != 0)
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(Callback), (n, found) => ((Parametric2DNode)n).OverflowCallback = found, NodeType.ANIM_Callback);
                     }
                     break;
                 case NodeType.ANIM_4DParametric:
@@ -512,7 +399,16 @@ namespace CATHODE
                             SyncBlendSet = reader.ReadBoolean()
                         };
 
-                        //todo: dictionary
+                        if (XParameter != 0)
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(XParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingX = (ParameterNode)found, NodeType.ANIM_Parameter);
+                        if (YParameter != 0)
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(YParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingY = (ParameterNode)found, NodeType.ANIM_Parameter);
+                        if (ZParameter != 0)
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(ZParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingZ = (ParameterNode)found, NodeType.ANIM_Parameter);
+                        if (WParameter != 0)
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(WParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingW = (ParameterNode)found, NodeType.ANIM_Parameter);
+                        if (Callback != 0)
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(Callback), (n, found) => ((Parametric4DNode)n).OverflowCallback = found, NodeType.ANIM_Callback);
                     }
                     break;
                 case NodeType.ANIM_Bone_Mask:
@@ -542,7 +438,7 @@ namespace CATHODE
                             EnforceEndBoneRotation = reader.ReadByte() == 1
                         };
                         if (ikEffector != 0)
-                            _ikLookups.Add((IkNode)node, _strings.GetString(ikEffector));
+                            _nodeResolver.RegisterLookup((IkNode)node, _strings.GetString(ikEffector), (n, found) => n.IkEffector = (ParameterNode)found, NodeType.ANIM_Parameter);
                     }
                     break;
                 case NodeType.ANIM_Randomised_Animation:
@@ -615,15 +511,15 @@ namespace CATHODE
                         }
 
                         if (hashedCallbackName != 0)
-                            _randAnimCallbackLookup.Add((RandomisedLeafNode)node, _strings.GetString(hashedCallbackName));
+                            _nodeResolver.RegisterLookup((RandomisedLeafNode)node, _strings.GetString(hashedCallbackName), (n, found) => n.Callback = found, NodeType.ANIM_Callback);
                         if (randomNodeCallbackName != 0)
-                            _randAnimRandCallbackLookup.Add((RandomisedLeafNode)node, _strings.GetString(randomNodeCallbackName));
+                            _nodeResolver.RegisterLookup((RandomisedLeafNode)node, _strings.GetString(randomNodeCallbackName), (n, found) => n.RandomCallback = found, NodeType.ANIM_Callback);
                         if (optionalContextParam != 0)
-                            _randAnimOptCallbackLookup.Add((RandomisedLeafNode)node, _strings.GetString(optionalContextParam));
+                            _nodeResolver.RegisterLookup((RandomisedLeafNode)node, _strings.GetString(optionalContextParam), (n, found) => n.OptionalAnimationContext = (ParameterNode)found, NodeType.ANIM_Parameter);
                         if (optionalConvergeVector != 0)
-                            _randAnimOptVectorLookup.Add((RandomisedLeafNode)node, _strings.GetString(optionalConvergeVector));
+                            _nodeResolver.RegisterLookup((RandomisedLeafNode)node, _strings.GetString(optionalConvergeVector), (n, found) => n.OptionalConvergeVector = (ParameterNode)found, NodeType.ANIM_Parameter);
                         if (optionalConvergeFloat != 0)
-                            _randAnimOptFloatLookup.Add((RandomisedLeafNode)node, _strings.GetString(optionalConvergeFloat));
+                            _nodeResolver.RegisterLookup((RandomisedLeafNode)node, _strings.GetString(optionalConvergeFloat), (n, found) => n.OptionalConvergeFloat = (ParameterNode)found, NodeType.ANIM_Parameter);
                     }
                     break;
                 case NodeType.ANIM_Selector:
@@ -639,22 +535,31 @@ namespace CATHODE
                         List<bool> stateFoots = new List<bool>();
                         for (uint i = 0; i < stateCount; i++)
                             stateFoots.Add(reader.ReadBoolean());
-                        SelectorNode.State[] states = new SelectorNode.State[16];
-                        for (int i = 0; i < stateCount; i++)
-                            states[i] = new SelectorNode.State() { Node = null, Value = stateValues[i], FootSyncOnSelect = stateFoots[i] };
 
                         uint paramName = reader.ReadUInt32();
                         node = new SelectorNode
                         {
                             Type = nodeType,
-                            States = states,
                             EaseSelectionTime = reader.ReadSingle(),
                             ResetPlaybackOnChangeSelection = reader.ReadBoolean()
                         };
+                        SelectorNode selector = (SelectorNode)node;
+                        for (int i = 0; i < stateCount; i++)
+                        {
+                            selector.States[i].Value = stateValues[i];
+                            selector.States[i].FootSyncOnSelect = stateFoots[i];
+                        }
+
                         if (paramName != 0)
-                            _selectorLookups.Add((SelectorNode)node, _strings.GetString(paramName));
+                            _nodeResolver.RegisterLookup(selector, _strings.GetString(paramName), (n, found) => n.ParameterBinding = (ParameterNode)found, NodeType.ANIM_Parameter);
                         if (stateNodes.Count != 0)
-                            _selectorBindingLookups.Add((SelectorNode)node, stateNodes);
+                        {
+                            for (int x = 0; x < stateNodes.Count; x++)
+                            {
+                                var stateIndex = x;
+                                _nodeResolver.RegisterLookup(selector, stateNodes[x], (n, found) => n.States[stateIndex].Node = (LeafNode)found, NodeType.ANIM_Animation);
+                            }
+                        }
                     }
                     break;
                 case NodeType.ANIM_Additive_Blend:
@@ -667,9 +572,9 @@ namespace CATHODE
                             SyncAdditiveDurationToBase = reader.ReadBoolean()
                         };
                         if (baseNode != 0)
-                            _addBlendBaseLookup.Add((AdditiveBlendNode)node, _strings.GetString(baseNode));
+                            _nodeResolver.RegisterLookup((AdditiveBlendNode)node, _strings.GetString(baseNode), (n, found) => n.BaseNode = found);
                         if (additveNode != 0)
-                            _addBlendAddLookup.Add((AdditiveBlendNode)node, _strings.GetString(additveNode));
+                            _nodeResolver.RegisterLookup((AdditiveBlendNode)node, _strings.GetString(additveNode), (n, found) => n.AdditiveNode = found);
                     }
                     break;
                 case NodeType.ANIM_Parametric_Additive_Blend:
@@ -687,11 +592,11 @@ namespace CATHODE
                             SyncAdditiveDurationToBase = reader.ReadBoolean()
                         };
                         if (baseNode != 0)
-                            _paramAddBlendNodeBaseLookup.Add((ParametricAdditiveBlendNode)node, _strings.GetString(baseNode));
+                            _nodeResolver.RegisterLookup((ParametricAdditiveBlendNode)node, _strings.GetString(baseNode), (n, found) => n.BaseNode = found);
                         if (additiveNode != 0)
-                            _paramAddBlendNodeAdditiveLookup.Add((ParametricAdditiveBlendNode)node, _strings.GetString(additiveNode));
+                            _nodeResolver.RegisterLookup((ParametricAdditiveBlendNode)node, _strings.GetString(additiveNode), (n, found) => n.AdditiveNode = found);
                         if (parameter != 0)
-                            _paramAddBlendNodeParamLookup.Add((ParametricAdditiveBlendNode)node, _strings.GetString(parameter));
+                            _nodeResolver.RegisterLookup((ParametricAdditiveBlendNode)node, _strings.GetString(parameter), (n, found) => n.WeightControlParameter = (ParameterNode)found, NodeType.ANIM_Parameter);
                     }
                     break;
                 case NodeType.ANIM_Ranged_Selector:
@@ -723,9 +628,9 @@ namespace CATHODE
                             rangedNode.States[i].Min = minValueBindings[i];
                             rangedNode.States[i].Max = maxValueBindings[i];
                             rangedNode.States[i].FootSyncOnSelect = footSyncOnSelect[i];
-                            _rangedSelectStateLookup.Add(rangedNode.States[i], bindings[i]);
+                            _nodeResolver.RegisterStateLookup(rangedNode.States[i], bindings[i], (state, found) => state.Node = found);
                         }
-                        _rangedSelectLookup.Add(rangedNode, parameterName);
+                        _nodeResolver.RegisterLookup(rangedNode, parameterName, (n, found) => n.ParameterBinding = (ParameterNode)found, NodeType.ANIM_Parameter);
                     }
                     break;
                 case NodeType.ANIM_Foot_Sync_Selector:
@@ -739,7 +644,10 @@ namespace CATHODE
                             StrikeSelectionMethod = (FootStrikeSelectionMethod)reader.ReadUInt32(),
                             GaitSyncTargetOnSelect = reader.ReadBoolean(),
                         };
-                        _footChildrenLookup.Add((FootSyncSelectorNode)node, bindings);
+                        _nodeResolver.RegisterLookupArray((FootSyncSelectorNode)node, bindings, (n, found) => {
+                            n.LeftStrikeChild = (BaseLeafNode)found[0];
+                            n.RightStrikeChild = (BaseLeafNode)found[1];
+                        });
                     }
                     break;
                 case NodeType.ANIM_Weighted:
@@ -750,7 +658,7 @@ namespace CATHODE
                             ParameterMin = reader.ReadSingle(),
                             ParameterMax = reader.ReadSingle()
                         };
-                        _weightedLookups.Add((WeightedNode)node, _strings.GetString(paramName));
+                        _nodeResolver.RegisterLookup((WeightedNode)node, _strings.GetString(paramName), (n, found) => n.Parameter = (ParameterNode)found, NodeType.ANIM_Parameter);
                     }
                     break;
                 default:
@@ -1123,5 +1031,86 @@ namespace CATHODE
             //    WriteNode(writer, child);
         }
         #endregion
+
+        private class NodeResolver
+        {
+            private HashSet<Action<HashSet<AnimationNode>>> _deferredLookups = new HashSet<Action<HashSet<AnimationNode>>>();
+
+            /// <summary>
+            /// Register a deferred lookup that will be resolved later
+            /// </summary>
+            public void RegisterLookup<T>(T target, string nodeName, Action<T, AnimationNode> setter, NodeType? nodeType = null) where T : class
+            {
+                _deferredLookups.Add(nodes =>
+                {
+                    var foundNode = nodeType.HasValue
+                        ? nodes.FirstOrDefault(o => o.Type == nodeType.Value && o.Name == nodeName)
+                        : nodes.FirstOrDefault(o => o.Name == nodeName);
+                    setter(target, foundNode);
+                });
+            }
+
+            /// <summary>
+            /// Register a deferred lookup for a list of node names
+            /// </summary>
+            public void RegisterLookupList<T>(T target, List<string> nodeNames, Action<T, List<AnimationNode>> setter, NodeType? nodeType = null) where T : class
+            {
+                _deferredLookups.Add(nodes =>
+                {
+                    var foundNodes = nodeType.HasValue
+                        ? nodeNames.Select(name => nodes.FirstOrDefault(o => o.Type == nodeType.Value && o.Name == name)).Where(o => o != null).ToList()
+                        : nodeNames.Select(name => nodes.FirstOrDefault(o => o.Name == name)).Where(o => o != null).ToList();
+                    setter(target, foundNodes);
+                });
+            }
+
+            /// <summary>
+            /// Register a deferred lookup for an array of node names
+            /// </summary>
+            public void RegisterLookupArray<T>(T target, string[] nodeNames, Action<T, AnimationNode[]> setter, NodeType? nodeType = null) where T : class
+            {
+                _deferredLookups.Add(nodes =>
+                {
+                    var foundNodes = nodeType.HasValue
+                        ? nodeNames.Select(name => nodes.FirstOrDefault(o => o.Type == nodeType.Value && o.Name == name)).Where(o => o != null).ToArray()
+                        : nodeNames.Select(name => nodes.FirstOrDefault(o => o.Name == name)).Where(o => o != null).ToArray();
+                    setter(target, foundNodes);
+                });
+            }
+
+            /// <summary>
+            /// Register a deferred lookup for a specific state object
+            /// </summary>
+            public void RegisterStateLookup<T>(T target, string nodeName, Action<T, AnimationNode> setter, NodeType? nodeType = null) where T : class
+            {
+                _deferredLookups.Add(nodes =>
+                {
+                    var foundNode = nodeType.HasValue
+                        ? nodes.FirstOrDefault(o => o.Type == nodeType.Value && o.Name == nodeName)
+                        : nodes.FirstOrDefault(o => o.Name == nodeName);
+                    setter(target, foundNode);
+                });
+            }
+
+            /// <summary>
+            /// Resolve all deferred lookups using the provided node list
+            /// </summary>
+            public void ResolveAll(HashSet<AnimationNode> nodes)
+            {
+                foreach (var lookup in _deferredLookups)
+                {
+                    lookup(nodes);
+                }
+                _deferredLookups.Clear();
+            }
+
+            /// <summary>
+            /// Clear all pending lookups
+            /// </summary>
+            public void Clear()
+            {
+                _deferredLookups.Clear();
+            }
+        }
     }
 }
