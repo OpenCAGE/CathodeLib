@@ -6,9 +6,8 @@ namespace CATHODE.Animations
 {
     public class AnimationNode
     {
-        public NodeType Type;
-        public string Name;
-        public HashSet<AnimationNode> Children = new HashSet<AnimationNode>(); //todo - maybe we don't want children on all nodes, since they don't all support it
+        public NodeType Type; // ANIM_Base
+        public string Name = "";
 
         public override bool Equals(object obj)
         {
@@ -24,24 +23,26 @@ namespace CATHODE.Animations
         }
     }
 
-    //done
     public class AnimationTree : AnimationNode
     {
-        public string Set;
+        public string Set = "";
 
-        public float TreeEaseInTime;
-        public float MinInitialPlayspeed;
-        public float MaxInitialPlayspeed;
+        public float TreeEaseInTime = 0.25f;
 
-        public bool NeverUseMotionExtraction;
-        public bool RemoveMotionExtractionOnPreceding;
-        public bool RemoveMotionExtractionOnEaseOut;
-        public bool AllowFootIkIfPrimary;
-        public bool AllowHipLeanIkIfPrimary;
-        public bool GaitSyncOnStart;
-        public bool UseLinearBlend;
+        public bool RemoveMotionExtractionOnEaseOut = false;
+        public bool RemoveMotionExtractionOnPreceding = false;
+        public bool NeverUseMotionExtraction = false;
 
-        public HashSet<AnimationNode> Nodes = new HashSet<AnimationNode>();
+        public bool AllowFootIkIfPrimary = true;
+        public bool AllowHipLeanIkIfPrimary = true;
+        public bool GaitSyncOnStart = false;
+        public bool UseLinearBlend = false;
+
+        public float MinInitialPlayspeed = 1.0f;
+        public float MaxInitialPlayspeed = 1.0f;
+
+        public HashSet<AnimationNode> Nodes = new HashSet<AnimationNode>(); //All nodes contained within this tree
+        public HashSet<AnimationNode> Children = new HashSet<AnimationNode>(); //Direct children of this top level node
 
         public AnimationTree()
         {
@@ -49,16 +50,16 @@ namespace CATHODE.Animations
         }
     }
 
-    //done
+    //perhaps we just want 'leaf node' again tho, with random leaf potentially having an internal anim object not node
     public class BaseLeafNode : AnimationNode
     {
-        public string AnimationName;
+        public string AnimationName = "";
 
-        public bool Mirrored;
+        public bool Mirrored = false;
 
-        public float NotifyTimeOffset;
-        public float StartTimeOffset;
-        public float EndTimeOffset;
+        public float NotifyTimeOffset = 0.3f;
+        public float StartTimeOffset = 0.0f;
+        public float EndTimeOffset = -1.0f;
 
         public BaseLeafNode()
         {
@@ -68,11 +69,9 @@ namespace CATHODE.Animations
 
     public class LeafNode : BaseLeafNode
     {
-        public BoneMaskGroups MaskingControl;
+        public bool Looping = false;
 
-        public bool Looped;
-
-        public AnimationNode Callback;
+        public AnimationNode Callback = null;
 
         //unsure on these values - same as random leaf node
         public string OptionalContextParam;
@@ -80,23 +79,23 @@ namespace CATHODE.Animations
         public string OptionalConvergeFloat;
         // ^ are these ANIM_Parameters?
 
-        public bool ConvergeOrientation;
-        public bool ConvergeTranslation;
+        public bool ConvergeOrientation = false;
+        public bool ConvergeTranslation = false;
+
+        public BoneMaskGroups Mask;
     }
 
-    //done
     public class RandomisedLeafLeafNode : BaseLeafNode
     {
-        public float Weight;
-        public uint LoopsBeforeReselection;
+        public float Weight = 1.0f;
+        public uint LoopsBeforeReselection = 0;
     }
 
-    //done
     public class MetadataListenerNode : AnimationNode
     {
-        public string EventName;
-        public float WeightThreshold;
-        public float FilterTime;
+        public string EventName = "";
+        public float WeightThreshold = 0.1f;
+        public float FilterTime = 0.1f;
 
         public MetadataListenerNode()
         {
@@ -104,10 +103,9 @@ namespace CATHODE.Animations
         }
     }
 
-    //done
     public class ParameterNode : AnimationNode
     {
-        public AnimTreeParameterType ParameterType;
+        public AnimTreeParameterType ParameterType = AnimTreeParameterType.FLOAT;
 
         public ParameterNode()
         {
@@ -115,13 +113,12 @@ namespace CATHODE.Animations
         }
     }
 
-    //done
     public class FloatInterpolatorNode : ParameterNode
     {
-        public ParameterNode SourceParameter;
+        public ParameterNode SourceParameter = null;
 
-        public float InitialValue;
-        public float UnitsPerSecond;
+        public float InitialValue = 0.0f;
+        public float UnitsPerSecond = 1.0f;
 
         public FloatInterpolatorNode()
         {
@@ -129,22 +126,20 @@ namespace CATHODE.Animations
         }
     }
 
-    //done
     public class PropertyNode : AnimationNode
     {
-        public AnimationMetadataValue Value;
+        public AnimationMetadataValue Value; //this can defo be simplified
 
         public PropertyNode()
         {
-            Type = NodeType.ANIM_Parameter;
+            Type = NodeType.ANIM_Property;
         }
     }
 
-    //done
     public class PropertyListenerNode : AnimationNode
     {
-        public string AnimProperty;
-        public AnimationNode LeafNode;
+        public string AnimProperty = "linear_velocity";
+        public AnimationNode LeafNode = null;
 
         public PropertyListenerNode()
         {
@@ -152,58 +147,67 @@ namespace CATHODE.Animations
         }
     }
 
-    //done
     public class SelectorNode : AnimationNode
     {
-        public List<State> States = new List<State>();
+        public ParameterNode ParameterBinding = null;
 
-        public float EaseSelectionTime;
-        public bool ResetPlaybackOnChangeSelection;
+        public bool ResetPlaybackOnChangeSelection = true;
+        public float EaseSelectionTime = 0.1f;
 
-        public ParameterNode BindingParameter;
+        public State[] States = new State[16];
 
         public SelectorNode()
         {
             Type = NodeType.ANIM_Selector;
+            for (uint i = 0; i < 16; i++)
+                States[i] = new State() { Value = i };
         }
 
         public class State
         {
-            public LeafNode Node;
+            public LeafNode Node = null;
             public uint Value;
-            public bool FootSyncOnSelect;
+            public bool FootSyncOnSelect = false;
         }
     }
 
     public class ParametricNode : AnimationNode
     {
-        public List<string> Bindings = new List<string>();
-        public List<float> ValueBindings = new List<float>();
+        public ParameterNode ParameterBinding = null; 
 
-        public string BindingParameter;
-        public float Min;
-        public float Max = 1.0f;
-        public string ParameterUsage;
-        public string AutoBlendProperty;
-        public bool SyncDurations;
-        public bool UseAutoDerivedBlendValues;
+        public float ParameterMin = 0.0f;
+        public float ParameterMax = 1000.0f;
+        public ParameterBlendUsage ParameterUsage = ParameterBlendUsage.Clamp;
+        public bool ExtractBlendPropertiesAutomatically = false;
+        public string BlendProperty = "linear_speed";
+        public bool SyncDurations = true;
+
+        public State[] States = new State[16];
 
         public ParametricNode()
         {
             Type = NodeType.ANIM_Parametric;
+            for (int i = 0; i < 16; i++)
+                States[i] = new State() { Value = i };
+        }
+
+        public class State
+        {
+            public AnimationNode Node = null;
+            public float Value;
         }
     }
 
     public class Parametric2DNode : AnimationNode
     {
-        public string[] BlendSet = new string[1];
+        public ParameterNode ParameterBindingX = null;
+        public ParameterNode ParameterBindingY = null;
 
-        public string XParameter;
-        public string YParameter;
+        public bool SyncBlendSet = true;
+        public bool LoopBlendSet = true;
 
-        public string OverflowListener;
-        public bool LoopBlendSet;
-        public bool SyncBlendSet;
+        public AnimationNode BlendSet = null; // is this right type?
+        public AnimationNode OverflowCallback = null;
 
         public Parametric2DNode()
         {
@@ -211,10 +215,9 @@ namespace CATHODE.Animations
         }
     }
 
-    //done
     public class Parametric3DNode : Parametric2DNode
     {
-        public string ZParameter;
+        public ParameterNode ParameterBindingZ = null;
 
         public Parametric3DNode()
         {
@@ -224,9 +227,9 @@ namespace CATHODE.Animations
 
     public class Parametric4DNode : Parametric3DNode
     {
-        public new string[] BlendSet = new string[2];
+        public ParameterNode ParameterBindingW = null;
 
-        public string WParameter;
+        public AnimationNode ExtraBlendSet = null; // is this right type?
 
         public Parametric4DNode()
         {
@@ -234,14 +237,13 @@ namespace CATHODE.Animations
         }
     }
 
-    //done
     public class AdditiveBlendNode : AnimationNode
     {
-        public AnimationNode BaseNode;
-        public AnimationNode AdditiveNode;
+        public AnimationNode BaseNode = null;
+        public AnimationNode AdditiveNode = null;
 
         public float AdditiveNodeWeight = 1.0f;
-        public bool SyncAdditiveDurationToBase;
+        public bool SyncAdditiveDurationToBase = false;
 
         public AdditiveBlendNode()
         {
@@ -249,12 +251,11 @@ namespace CATHODE.Animations
         }
     }
 
-    //done
     public class ParametricAdditiveBlendNode : AdditiveBlendNode
     {
-        public ParameterNode Parameter;
+        public ParameterNode WeightControlParameter = null;
 
-        public float ParameterMin;
+        public float ParameterMin = 0.0f;
         public float ParameterMax = 1.0f;
 
         public ParametricAdditiveBlendNode()
@@ -265,27 +266,36 @@ namespace CATHODE.Animations
 
     public class RangedSelectorNode : AnimationNode
     {
-        public List<string> Bindings = new List<string>();
-        public List<float> MinValueBindings = new List<float>();
-        public List<float> MaxValueBindings = new List<float>();
+        public ParameterNode ParameterBinding = null;
 
-        public float EaseTime;
-        public string BindingParameterName;
-        public List<bool> FootSyncOnSelect = new List<bool>();
-        public bool ResetPlaybackOnChange;
+        public bool ResetPlaybackOnChange = true;
+        public float EaseSelectionTime = 0.1f;
+
+        public State[] States = new State[8];
 
         public RangedSelectorNode()
         {
             Type = NodeType.ANIM_Ranged_Selector;
+            for (int i = 0; i < 8; i++)
+                States[i] = new State();
+        }
+
+        public class State
+        {
+            public AnimationNode Node = null;
+            public float Min = 0.0f;
+            public float Max = 0.0f;
+            public bool FootSyncOnSelect = false;
         }
     }
 
     public class FootSyncSelectorNode : AnimationNode
     {
-        public string[] Bindings = new string[2];
+        public BaseLeafNode LeftStrikeChild = null;
+        public BaseLeafNode RightStrikeChild = null;
 
-        public FootStrikeSelectionMethod FootStrikeSelectionMethod;
-        public bool GaitSyncTargetOnSelect;
+        public FootStrikeSelectionMethod StrikeSelectionMethod = FootStrikeSelectionMethod.NextStrike;
+        public bool GaitSyncTargetOnSelect = false;
 
         public FootSyncSelectorNode()
         {
@@ -293,14 +303,13 @@ namespace CATHODE.Animations
         }
     }
 
-    //done
     public class BoneMaskNode : AnimationNode
     {
-        public BoneMaskGroups MaskingControl;
+        public bool MaskPrecedingLayers = false;
+        public bool MaskSelf = false;
+        public bool MaskFollowingLayers = false;
 
-        public bool MaskPreceding;
-        public bool MaskFollowing;
-        public bool MaskSelf;
+        public BoneMaskGroups Mask = BoneMaskGroups.NONE;
 
         public BoneMaskNode()
         {
@@ -308,22 +317,21 @@ namespace CATHODE.Animations
         }
     }
 
-    //done
     public class IkNode : AnimationNode
     {
-        public ParameterNode IkEffector;
+        public ParameterNode IkEffector = null;
 
-        public IkSolverType IkType;
-        public IkControlTarget Target;
+        public IkSolverType IkType = IkSolverType.ANALYTICAL;
+        public IkControlTarget Target = IkControlTarget.LEFT_FOOT;
 
-        public float EffectorFullyEffectiveRadius;
-        public float EffectorLeastEffectiveRadius;
-        public float FalloffRate;
+        public float EffectorFullyEffectiveRadius = 0.1f;
+        public float EffectorLeastEffectiveRadius = 0.1f;
+        public float FalloffRate = 1.0f;
 
-        public bool EnforceTranslation;
-        public bool EnforceEndBoneRotation;
+        public bool EnforceTranslation = true;
+        public bool EnforceEndBoneRotation = false;
 
-        public PoseLayer PoseLayer;
+        public PoseLayer PoseLayer; //todo - where does this come from, what's the default
 
         public IkNode()
         {
@@ -331,12 +339,11 @@ namespace CATHODE.Animations
         }
     }
 
-    //done
     public class WeightedNode : AnimationNode
     {
-        public ParameterNode Parameter;
+        public ParameterNode Parameter = null;
 
-        public float ParameterMin;
+        public float ParameterMin = 0.0f;
         public float ParameterMax = 1.0f;
 
         public WeightedNode()
@@ -347,22 +354,22 @@ namespace CATHODE.Animations
 
     public class RandomisedLeafNode : AnimationNode
     {
-        // note - this node's children are the animations that this selects
+        public RandomisedLeafLeafNode[] AnimationPool = new RandomisedLeafLeafNode[8];
 
-        public bool Looping;
-        public bool NewSelectionOnLoop;
-        public float BlendTime;
-        public AnimationNode Callback;
-        public AnimationNode RandomCallback;
+        public bool Looping = false;
+        public bool NewSelectionOnLoop = false;
+        public float BlendTime = 0.3f;
+        public AnimationNode Callback = null;
+        public AnimationNode RandomCallback = null;
         
-        public uint OptionalAnimationContext;
+        public ParameterNode OptionalAnimationContext;
 
         //unsure on these values
         public uint OptionalConvergeVector;
         public uint OptionalConvergeFloat;
 
-        public bool ConvergeOrientation;
-        public bool ConvergeTranslation;
+        public bool ConvergeOrientation = false;
+        public bool ConvergeTranslation = false;
 
         public RandomisedLeafNode()
         {
