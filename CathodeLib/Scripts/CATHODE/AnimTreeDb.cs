@@ -556,8 +556,7 @@ namespace CATHODE
                         {
                             for (int x = 0; x < stateNodes.Count; x++)
                             {
-                                var stateIndex = x;
-                                _nodeResolver.RegisterLookup(selector, stateNodes[x], (n, found) => n.States[stateIndex].Node = (LeafNode)found, NodeType.ANIM_Animation);
+                                _nodeResolver.RegisterStateLookup(selector.States[x], stateNodes[x], (state, found) => state.Node = found);
                             }
                         }
                     }
@@ -666,12 +665,21 @@ namespace CATHODE
             }
             node.Name = NodeName;
 
+            if (node.Type == NodeType.ANIM_Weighted && numChildren > 1)
+            {
+                throw new Exception("unexpected");
+            }
+
             for (int i = 0; i < numChildren; i++)
             {
                 var childNode = ReadNode(reader, tree);
                 tree.Nodes.Add(childNode);
-                //todo: no longer adding to a 'children' array as our members should suffice.
-                // need to sanity check to make sure none are getting lost
+
+                if (node.Type == NodeType.ANIM_Weighted)
+                {
+                    WeightedNode weighted = (WeightedNode)node;
+                    weighted.Child = childNode;
+                }
             }
 
             return node;

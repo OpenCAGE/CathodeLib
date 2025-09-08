@@ -163,7 +163,7 @@ namespace CATHODE.Animations
 
         public class State
         {
-            public LeafNode Node = null;
+            public AnimationNode Node = null;
             public uint Value;
             public bool FootSyncOnSelect = false;
         }
@@ -343,6 +343,8 @@ namespace CATHODE.Animations
 
         public float ParameterMin = 0.0f;
         public float ParameterMax = 1.0f;
+
+        public AnimationNode Child = null;
 
         public WeightedNode()
         {
