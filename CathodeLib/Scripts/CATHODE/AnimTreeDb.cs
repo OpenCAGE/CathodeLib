@@ -335,6 +335,26 @@ namespace CATHODE
                     {
                         kvp.Key.ParameterBinding = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
                     }
+                    foreach (KeyValuePair<LeafNode, string> kvp in _animParamLookups)
+                    {
+                        kvp.Key.OptionalContextParam = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
+                    }
+                    foreach (KeyValuePair<LeafNode, string> kvp in _animVectorLookups)
+                    {
+                        kvp.Key.OptionalConvergeVector = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
+                    }
+                    foreach (KeyValuePair<LeafNode, string> kvp in _animFloatLookups)
+                    {
+                        kvp.Key.OptionalConvergeFloat = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
+                    }
+                    foreach (KeyValuePair<RandomisedLeafNode, string> kvp in _randAnimOptVectorLookup)
+                    {
+                        kvp.Key.OptionalConvergeVector = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
+                    }
+                    foreach (KeyValuePair<RandomisedLeafNode, string> kvp in _randAnimOptFloatLookup)
+                    {
+                        kvp.Key.OptionalConvergeFloat = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == kvp.Value);
+                    }
 
                     Entries.Add(treeDef);
                 }
@@ -343,6 +363,9 @@ namespace CATHODE
         }
 
         Dictionary<LeafNode, string> _animLookups = new Dictionary<LeafNode, string>();
+        Dictionary<LeafNode, string> _animParamLookups = new Dictionary<LeafNode, string>();
+        Dictionary<LeafNode, string> _animVectorLookups = new Dictionary<LeafNode, string>();
+        Dictionary<LeafNode, string> _animFloatLookups = new Dictionary<LeafNode, string>();
         Dictionary<WeightedNode, string> _weightedLookups = new Dictionary<WeightedNode, string>();
         Dictionary<SelectorNode, string> _selectorLookups = new Dictionary<SelectorNode, string>();
         Dictionary<SelectorNode, List<string>> _selectorBindingLookups = new Dictionary<SelectorNode, List<string>>();
@@ -350,6 +373,8 @@ namespace CATHODE
         Dictionary<RandomisedLeafNode, string> _randAnimCallbackLookup = new Dictionary<RandomisedLeafNode, string>();
         Dictionary<RandomisedLeafNode, string> _randAnimRandCallbackLookup = new Dictionary<RandomisedLeafNode, string>();
         Dictionary<RandomisedLeafNode, string> _randAnimOptCallbackLookup = new Dictionary<RandomisedLeafNode, string>();
+        Dictionary<RandomisedLeafNode, string> _randAnimOptVectorLookup = new Dictionary<RandomisedLeafNode, string>();
+        Dictionary<RandomisedLeafNode, string> _randAnimOptFloatLookup = new Dictionary<RandomisedLeafNode, string>();
         Dictionary<ParametricAdditiveBlendNode, string> _paramAddBlendNodeParamLookup = new Dictionary<ParametricAdditiveBlendNode, string>();
         Dictionary<ParametricAdditiveBlendNode, string> _paramAddBlendNodeBaseLookup = new Dictionary<ParametricAdditiveBlendNode, string>();
         Dictionary<ParametricAdditiveBlendNode, string> _paramAddBlendNodeAdditiveLookup = new Dictionary<ParametricAdditiveBlendNode, string>();
@@ -374,24 +399,36 @@ namespace CATHODE
                     {
                         bool hasCallback = reader.ReadBoolean();
                         string callback = _strings.GetString(reader.ReadUInt32());
+                        bool looping = reader.ReadBoolean();
+                        bool mirrored = reader.ReadBoolean();
+                        BoneMaskGroups mask = (BoneMaskGroups)reader.ReadUInt32();
+                        string animName = _strings.GetString(reader.ReadUInt32());
+                        uint optParam = reader.ReadUInt32();
+                        uint optVector = reader.ReadUInt32();
+                        uint optFloat = reader.ReadUInt32();
+
                         node = new LeafNode
                         {
                             Callback = null,
-                            Looping = reader.ReadBoolean(),
-                            Mirrored = reader.ReadBoolean(),
-                            Mask = (BoneMaskGroups)reader.ReadUInt32(),
-                            AnimationName = _strings.GetString(reader.ReadUInt32()),
-                            OptionalContextParam = _strings.GetString(reader.ReadUInt32()),
-                            OptionalConvergeVector = _strings.GetString(reader.ReadUInt32()),
-                            OptionalConvergeFloat = _strings.GetString(reader.ReadUInt32()),
+                            Looping = looping,
+                            Mirrored = mirrored,
+                            Mask = mask,
+                            AnimationName = animName,
                             ConvergeOrientation = reader.ReadBoolean(),
                             ConvergeTranslation = reader.ReadBoolean(),
                             NotifyTimeOffset = reader.ReadSingle(),
                             StartTimeOffset = reader.ReadSingle(),
                             EndTimeOffset = reader.ReadSingle()
                         };
+
                         if (hasCallback)
                             _animLookups.Add((LeafNode)node, callback);
+                        if (optParam != 0)
+                            _animParamLookups.Add((LeafNode)node, _strings.GetString(optParam));
+                        if (optVector != 0)
+                            _animVectorLookups.Add((LeafNode)node, _strings.GetString(optVector));
+                        if (optFloat != 0)
+                            _animFloatLookups.Add((LeafNode)node, _strings.GetString(optFloat));
                     }
                     break;
                 case NodeType.ANIM_Parametric:
@@ -555,8 +592,6 @@ namespace CATHODE
                             RandomCallback = null,
                             Looping = looped,
                             NewSelectionOnLoop = newSelectionOnLoop,
-                            OptionalConvergeVector = optionalConvergeVector,
-                            OptionalConvergeFloat = optionalConvergeFloat,
                             ConvergeOrientation = convergeOrientation,
                             ConvergeTranslation = convergeTranslation
                         };
@@ -585,6 +620,10 @@ namespace CATHODE
                             _randAnimRandCallbackLookup.Add((RandomisedLeafNode)node, _strings.GetString(randomNodeCallbackName));
                         if (optionalContextParam != 0)
                             _randAnimOptCallbackLookup.Add((RandomisedLeafNode)node, _strings.GetString(optionalContextParam));
+                        if (optionalConvergeVector != 0)
+                            _randAnimOptVectorLookup.Add((RandomisedLeafNode)node, _strings.GetString(optionalConvergeVector));
+                        if (optionalConvergeFloat != 0)
+                            _randAnimOptFloatLookup.Add((RandomisedLeafNode)node, _strings.GetString(optionalConvergeFloat));
                     }
                     break;
                 case NodeType.ANIM_Selector:
@@ -900,9 +939,9 @@ namespace CATHODE
                         writer.Write(data.Mirrored);
                         writer.Write((uint)data.Mask);
                         writer.Write(_strings.GetID(data.AnimationName));
-                        writer.Write(_strings.GetID(data.OptionalContextParam));
-                        writer.Write(_strings.GetID(data.OptionalConvergeVector));
-                        writer.Write(_strings.GetID(data.OptionalConvergeFloat));
+                        writer.Write(data.OptionalContextParam == null ? 0 : _strings.GetID(data.OptionalContextParam.Name));
+                        writer.Write(data.OptionalConvergeVector == null ? 0 : _strings.GetID(data.OptionalConvergeVector.Name));
+                        writer.Write(data.OptionalConvergeFloat == null ? 0 : _strings.GetID(data.OptionalConvergeFloat.Name));
                         writer.Write(data.ConvergeOrientation);
                         writer.Write(data.ConvergeTranslation);
                         writer.Write(data.NotifyTimeOffset);
@@ -1048,8 +1087,8 @@ namespace CATHODE
                         writer.Write(data.Callback != null);
                         writer.Write(data.BlendTime);
                         writer.Write(data.OptionalAnimationContext == null ? 0 : _strings.GetID(data.OptionalAnimationContext.Name));
-                        writer.Write(data.OptionalConvergeVector);
-                        writer.Write(data.OptionalConvergeFloat);
+                        writer.Write(data.OptionalConvergeVector == null ? 0 : _strings.GetID(data.OptionalConvergeVector.Name));
+                        writer.Write(data.OptionalConvergeFloat == null ? 0 : _strings.GetID(data.OptionalConvergeFloat.Name));
                         writer.Write(data.ConvergeOrientation);
                         writer.Write(data.ConvergeTranslation);
                         writer.Write(data.Callback == null ? 0 : _strings.GetID(data.Callback.Name));

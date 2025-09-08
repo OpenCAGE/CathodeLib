@@ -73,11 +73,9 @@ namespace CATHODE.Animations
 
         public AnimationNode Callback = null;
 
-        //unsure on these values - same as random leaf node
-        public string OptionalContextParam;
-        public string OptionalConvergeVector;
-        public string OptionalConvergeFloat;
-        // ^ are these ANIM_Parameters?
+        public ParameterNode OptionalContextParam;
+        public ParameterNode OptionalConvergeVector;
+        public ParameterNode OptionalConvergeFloat;
 
         public bool ConvergeOrientation = false;
         public bool ConvergeTranslation = false;
@@ -363,10 +361,8 @@ namespace CATHODE.Animations
         public AnimationNode RandomCallback = null;
         
         public ParameterNode OptionalAnimationContext;
-
-        //unsure on these values
-        public uint OptionalConvergeVector;
-        public uint OptionalConvergeFloat;
+        public ParameterNode OptionalConvergeVector;
+        public ParameterNode OptionalConvergeFloat;
 
         public bool ConvergeOrientation = false;
         public bool ConvergeTranslation = false;
