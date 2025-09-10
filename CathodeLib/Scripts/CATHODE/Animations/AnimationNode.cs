@@ -50,25 +50,11 @@ namespace CATHODE.Animations
         }
     }
 
-    //perhaps we just want 'leaf node' again tho, with random leaf potentially having an internal anim object not node
-    public class BaseLeafNode : AnimationNode
+    public class LeafNode : AnimationNode
     {
         public string AnimationName = "";
 
         public bool Mirrored = false;
-
-        public float NotifyTimeOffset = 0.3f;
-        public float StartTimeOffset = 0.0f;
-        public float EndTimeOffset = -1.0f;
-
-        public BaseLeafNode()
-        {
-            Type = NodeType.ANIM_Animation;
-        }
-    }
-
-    public class LeafNode : BaseLeafNode
-    {
         public bool Looping = false;
 
         public AnimationNode Callback = null;
@@ -81,12 +67,15 @@ namespace CATHODE.Animations
         public bool ConvergeTranslation = false;
 
         public BoneMaskGroups Mask;
-    }
 
-    public class RandomisedLeafLeafNode : BaseLeafNode
-    {
-        public float Weight = 1.0f;
-        public uint LoopsBeforeReselection = 0;
+        public float NotifyTimeOffset = 0.3f;
+        public float StartTimeOffset = 0.0f;
+        public float EndTimeOffset = -1.0f;
+
+        public LeafNode()
+        {
+            Type = NodeType.ANIM_Animation;
+        }
     }
 
     public class MetadataListenerNode : AnimationNode
@@ -204,7 +193,7 @@ namespace CATHODE.Animations
         public bool SyncBlendSet = true;
         public bool LoopBlendSet = true;
 
-        public AnimationNode BlendSet = null; // is this right type?
+        public AnimationNode BlendSet = null; // is this right type? i think it mgiht be string
         public AnimationNode OverflowCallback = null;
 
         public Parametric2DNode()
@@ -227,7 +216,7 @@ namespace CATHODE.Animations
     {
         public ParameterNode ParameterBindingW = null;
 
-        public AnimationNode ExtraBlendSet = null; // is this right type?
+        public AnimationNode ExtraBlendSet = null; // is this right type? i think it mgiht be string
 
         public Parametric4DNode()
         {
@@ -289,8 +278,8 @@ namespace CATHODE.Animations
 
     public class FootSyncSelectorNode : AnimationNode
     {
-        public BaseLeafNode LeftStrikeChild = null;
-        public BaseLeafNode RightStrikeChild = null;
+        public LeafNode LeftStrikeChild = null;
+        public LeafNode RightStrikeChild = null;
 
         public FootStrikeSelectionMethod StrikeSelectionMethod = FootStrikeSelectionMethod.NextStrike;
         public bool GaitSyncTargetOnSelect = false;
@@ -354,7 +343,7 @@ namespace CATHODE.Animations
 
     public class RandomisedLeafNode : AnimationNode
     {
-        public RandomisedLeafLeafNode[] AnimationPool = new RandomisedLeafLeafNode[8];
+        public Animation[] AnimationPool = new Animation[8];
 
         public bool Looping = false;
         public bool NewSelectionOnLoop = false;
@@ -372,6 +361,20 @@ namespace CATHODE.Animations
         public RandomisedLeafNode()
         {
             Type = NodeType.ANIM_Randomised_Animation;
+        }
+
+        public class Animation
+        {
+            public string AnimationName = "";
+
+            public bool Mirrored = false;
+
+            public float Weight = 1.0f;
+            public uint LoopsBeforeReselection = 0;
+
+            public float NotifyTimeOffset = 0.3f;
+            public float StartTimeOffset = 0.0f;
+            public float EndTimeOffset = -1.0f;
         }
     }
 }

@@ -304,11 +304,11 @@ namespace CATHODE
                         if (hasCallback)
                             _nodeResolver.RegisterLookup((LeafNode)node, callback, (n, found) => n.Callback = found, NodeType.ANIM_Callback);
                         if (optParam != 0)
-                            _nodeResolver.RegisterLookup((LeafNode)node, _strings.GetString(optParam), (n, found) => n.OptionalContextParam = (ParameterNode)found, NodeType.ANIM_Parameter);
+                            _nodeResolver.RegisterLookup((LeafNode)node, _strings.GetString(optParam), (n, found) => n.OptionalContextParam = found is ParameterNode ? (ParameterNode)found : null);
                         if (optVector != 0)
-                            _nodeResolver.RegisterLookup((LeafNode)node, _strings.GetString(optVector), (n, found) => n.OptionalConvergeVector = (ParameterNode)found, NodeType.ANIM_Parameter);
+                            _nodeResolver.RegisterLookup((LeafNode)node, _strings.GetString(optVector), (n, found) => n.OptionalConvergeVector = found is ParameterNode ? (ParameterNode)found : null);
                         if (optFloat != 0)
-                            _nodeResolver.RegisterLookup((LeafNode)node, _strings.GetString(optFloat), (n, found) => n.OptionalConvergeFloat = (ParameterNode)found, NodeType.ANIM_Parameter);
+                            _nodeResolver.RegisterLookup((LeafNode)node, _strings.GetString(optFloat), (n, found) => n.OptionalConvergeFloat = found is ParameterNode ? (ParameterNode)found : null);
                     }
                     break;
                 case NodeType.ANIM_Parametric:
@@ -341,7 +341,7 @@ namespace CATHODE
                             _nodeResolver.RegisterStateLookup(paramNode.States[i], bindings[i], (state, found) => state.Node = found);
                         }
                         if (paramBind != 0)
-                            _nodeResolver.RegisterLookup(paramNode, _strings.GetString(paramBind), (n, found) => n.ParameterBinding = (ParameterNode)found, NodeType.ANIM_Parameter);
+                            _nodeResolver.RegisterLookup(paramNode, _strings.GetString(paramBind), (n, found) => n.ParameterBinding = found is ParameterNode ? (ParameterNode)found : null);
                     }
                     break;
                 case NodeType.ANIM_2DParametric:
@@ -372,11 +372,11 @@ namespace CATHODE
                         }
 
                         if (XParameter != 0)
-                            _nodeResolver.RegisterLookup(node, _strings.GetString(XParameter), (n, found) => ((Parametric2DNode)n).ParameterBindingX = (ParameterNode)found, NodeType.ANIM_Parameter);
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(XParameter), (n, found) => ((Parametric2DNode)n).ParameterBindingX = found is ParameterNode ? (ParameterNode)found : null);
                         if (YParameter != 0)
-                            _nodeResolver.RegisterLookup(node, _strings.GetString(YParameter), (n, found) => ((Parametric2DNode)n).ParameterBindingY = (ParameterNode)found, NodeType.ANIM_Parameter);
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(YParameter), (n, found) => ((Parametric2DNode)n).ParameterBindingY = found is ParameterNode ? (ParameterNode)found : null);
                         if (ZParameter != 0)
-                            _nodeResolver.RegisterLookup(node, _strings.GetString(ZParameter), (n, found) => ((Parametric3DNode)n).ParameterBindingZ = (ParameterNode)found, NodeType.ANIM_Parameter);
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(ZParameter), (n, found) => ((Parametric3DNode)n).ParameterBindingZ = found is ParameterNode ? (ParameterNode)found : null);
                         if (Callback != 0)
                             _nodeResolver.RegisterLookup(node, _strings.GetString(Callback), (n, found) => ((Parametric2DNode)n).OverflowCallback = found, NodeType.ANIM_Callback);
                     }
@@ -400,13 +400,13 @@ namespace CATHODE
                         };
 
                         if (XParameter != 0)
-                            _nodeResolver.RegisterLookup(node, _strings.GetString(XParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingX = (ParameterNode)found, NodeType.ANIM_Parameter);
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(XParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingX = found is ParameterNode ? (ParameterNode)found : null);
                         if (YParameter != 0)
-                            _nodeResolver.RegisterLookup(node, _strings.GetString(YParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingY = (ParameterNode)found, NodeType.ANIM_Parameter);
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(YParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingY = found is ParameterNode ? (ParameterNode)found : null);
                         if (ZParameter != 0)
-                            _nodeResolver.RegisterLookup(node, _strings.GetString(ZParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingZ = (ParameterNode)found, NodeType.ANIM_Parameter);
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(ZParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingZ = found is ParameterNode ? (ParameterNode)found : null);
                         if (WParameter != 0)
-                            _nodeResolver.RegisterLookup(node, _strings.GetString(WParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingW = (ParameterNode)found, NodeType.ANIM_Parameter);
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(WParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingW = found is ParameterNode ? (ParameterNode)found : null);
                         if (Callback != 0)
                             _nodeResolver.RegisterLookup(node, _strings.GetString(Callback), (n, found) => ((Parametric4DNode)n).OverflowCallback = found, NodeType.ANIM_Callback);
                     }
@@ -438,7 +438,7 @@ namespace CATHODE
                             EnforceEndBoneRotation = reader.ReadByte() == 1
                         };
                         if (ikEffector != 0)
-                            _nodeResolver.RegisterLookup((IkNode)node, _strings.GetString(ikEffector), (n, found) => n.IkEffector = (ParameterNode)found, NodeType.ANIM_Parameter);
+                            _nodeResolver.RegisterLookup((IkNode)node, _strings.GetString(ikEffector), (n, found) => n.IkEffector = found is ParameterNode ? (ParameterNode)found : null);
                     }
                     break;
                 case NodeType.ANIM_Randomised_Animation:
@@ -495,19 +495,17 @@ namespace CATHODE
                         RandomisedLeafNode randomNode = (RandomisedLeafNode)node;
                         for (int i = 0; i < numberOfAnimSlots; i++)
                         {
-                            RandomisedLeafLeafNode leafNode = new RandomisedLeafLeafNode()
+                            RandomisedLeafNode.Animation anim = new RandomisedLeafNode.Animation()
                             {
                                 Mirrored = mirrored[i],
                                 AnimationName = animNames[i],
-                                Name = hashedNames[i],
                                 Weight = weightsForCdf[i],
                                 LoopsBeforeReselection = loopsBeforeReselection[i],
                                 NotifyTimeOffset = notifyTimeOffset[i],
                                 StartTimeOffset = startTimeOffset[i],
                                 EndTimeOffset = endTimeOffset[i]
                             };
-                            randomNode.AnimationPool[i] = leafNode;
-                            tree.Nodes.Add(leafNode);
+                            randomNode.AnimationPool[i] = anim;
                         }
 
                         if (hashedCallbackName != 0)
@@ -515,11 +513,11 @@ namespace CATHODE
                         if (randomNodeCallbackName != 0)
                             _nodeResolver.RegisterLookup((RandomisedLeafNode)node, _strings.GetString(randomNodeCallbackName), (n, found) => n.RandomCallback = found, NodeType.ANIM_Callback);
                         if (optionalContextParam != 0)
-                            _nodeResolver.RegisterLookup((RandomisedLeafNode)node, _strings.GetString(optionalContextParam), (n, found) => n.OptionalAnimationContext = (ParameterNode)found, NodeType.ANIM_Parameter);
+                            _nodeResolver.RegisterLookup((RandomisedLeafNode)node, _strings.GetString(optionalContextParam), (n, found) => n.OptionalAnimationContext = found is ParameterNode ? (ParameterNode)found : null);
                         if (optionalConvergeVector != 0)
-                            _nodeResolver.RegisterLookup((RandomisedLeafNode)node, _strings.GetString(optionalConvergeVector), (n, found) => n.OptionalConvergeVector = (ParameterNode)found, NodeType.ANIM_Parameter);
+                            _nodeResolver.RegisterLookup((RandomisedLeafNode)node, _strings.GetString(optionalConvergeVector), (n, found) => n.OptionalConvergeVector = found is ParameterNode ? (ParameterNode)found : null);
                         if (optionalConvergeFloat != 0)
-                            _nodeResolver.RegisterLookup((RandomisedLeafNode)node, _strings.GetString(optionalConvergeFloat), (n, found) => n.OptionalConvergeFloat = (ParameterNode)found, NodeType.ANIM_Parameter);
+                            _nodeResolver.RegisterLookup((RandomisedLeafNode)node, _strings.GetString(optionalConvergeFloat), (n, found) => n.OptionalConvergeFloat = found is ParameterNode ? (ParameterNode)found : null);
                     }
                     break;
                 case NodeType.ANIM_Selector:
@@ -551,7 +549,7 @@ namespace CATHODE
                         }
 
                         if (paramName != 0)
-                            _nodeResolver.RegisterLookup(selector, _strings.GetString(paramName), (n, found) => n.ParameterBinding = (ParameterNode)found, NodeType.ANIM_Parameter);
+                            _nodeResolver.RegisterLookup(selector, _strings.GetString(paramName), (n, found) => n.ParameterBinding = found is ParameterNode ? (ParameterNode)found : null);
                         if (stateNodes.Count != 0)
                         {
                             for (int x = 0; x < stateNodes.Count; x++)
@@ -595,7 +593,7 @@ namespace CATHODE
                         if (additiveNode != 0)
                             _nodeResolver.RegisterLookup((ParametricAdditiveBlendNode)node, _strings.GetString(additiveNode), (n, found) => n.AdditiveNode = found);
                         if (parameter != 0)
-                            _nodeResolver.RegisterLookup((ParametricAdditiveBlendNode)node, _strings.GetString(parameter), (n, found) => n.WeightControlParameter = (ParameterNode)found, NodeType.ANIM_Parameter);
+                            _nodeResolver.RegisterLookup((ParametricAdditiveBlendNode)node, _strings.GetString(parameter), (n, found) => n.WeightControlParameter = found is ParameterNode ? (ParameterNode)found : null);
                     }
                     break;
                 case NodeType.ANIM_Ranged_Selector:
@@ -629,7 +627,7 @@ namespace CATHODE
                             rangedNode.States[i].FootSyncOnSelect = footSyncOnSelect[i];
                             _nodeResolver.RegisterStateLookup(rangedNode.States[i], bindings[i], (state, found) => state.Node = found);
                         }
-                        _nodeResolver.RegisterLookup(rangedNode, parameterName, (n, found) => n.ParameterBinding = (ParameterNode)found, NodeType.ANIM_Parameter);
+                        _nodeResolver.RegisterLookup(rangedNode, parameterName, (n, found) => n.ParameterBinding = found is ParameterNode ? (ParameterNode)found : null);
                     }
                     break;
                 case NodeType.ANIM_Foot_Sync_Selector:
@@ -644,8 +642,8 @@ namespace CATHODE
                             GaitSyncTargetOnSelect = reader.ReadBoolean(),
                         };
                         _nodeResolver.RegisterLookupArray((FootSyncSelectorNode)node, bindings, (n, found) => {
-                            n.LeftStrikeChild = (BaseLeafNode)found[0];
-                            n.RightStrikeChild = (BaseLeafNode)found[1];
+                            n.LeftStrikeChild = (LeafNode)found[0];
+                            n.RightStrikeChild = (LeafNode)found[1];
                         });
                     }
                     break;
@@ -657,7 +655,7 @@ namespace CATHODE
                             ParameterMin = reader.ReadSingle(),
                             ParameterMax = reader.ReadSingle()
                         };
-                        _nodeResolver.RegisterLookup((WeightedNode)node, _strings.GetString(paramName), (n, found) => n.Parameter = (ParameterNode)found, NodeType.ANIM_Parameter);
+                        _nodeResolver.RegisterLookup((WeightedNode)node, _strings.GetString(paramName), (n, found) => n.Parameter = found is ParameterNode ? (ParameterNode)found : null);
                     }
                     break;
                 default:
@@ -1011,22 +1009,23 @@ namespace CATHODE
                         writer.Write(data.RandomCallback == null ? 0 : _strings.GetID(data.RandomCallback.Name));
                         writer.Write(data.Looping);
                         writer.Write(data.NewSelectionOnLoop);
-                        writer.Write(data.AnimationPool.Length);
-                        foreach (var anim in data.AnimationPool)
+                        RandomisedLeafNode.Animation[] anims = data.AnimationPool.Where(o => o.AnimationName != "").ToArray();
+                        writer.Write(anims.Length);
+                        foreach (var anim in anims)
                             writer.Write(anim.Mirrored);
-                        foreach (var anim in data.AnimationPool)
+                        foreach (var anim in anims)
                             writer.Write(_strings.GetID(anim.AnimationName));
-                        foreach (var anim in data.AnimationPool)
-                            writer.Write(_strings.GetID(anim.Name));
-                        foreach (var anim in data.AnimationPool)
+                        for (int i = 0; i < anims.Length; i++)
+                            writer.Write(_strings.GetID(data.Name + "#@_RAND@#_random_animation_file" + i));
+                        foreach (var anim in anims)
                             writer.Write(anim.Weight);
-                        foreach (var anim in data.AnimationPool)
+                        foreach (var anim in anims)
                             writer.Write(anim.LoopsBeforeReselection);
-                        foreach (var anim in data.AnimationPool)
+                        foreach (var anim in anims)
                             writer.Write(anim.NotifyTimeOffset);
-                        foreach (var anim in data.AnimationPool)
+                        foreach (var anim in anims)
                             writer.Write(anim.StartTimeOffset);
-                        foreach (var anim in data.AnimationPool)
+                        foreach (var anim in anims)
                             writer.Write(anim.EndTimeOffset);
                     }
                     break;
@@ -1127,16 +1126,6 @@ namespace CATHODE
                         WeightedNode weighted = (WeightedNode)node;
                         if (weighted.Child != null)
                             children.Add(weighted.Child);
-                    }
-                    break;
-                case NodeType.ANIM_Randomised_Animation:
-                    {
-                        RandomisedLeafNode random = (RandomisedLeafNode)node;
-                        foreach (var anim in random.AnimationPool)
-                        {
-                            if (anim != null)
-                                children.Add(anim);
-                        }
                     }
                     break;
             }
