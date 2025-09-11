@@ -204,7 +204,7 @@ namespace CATHODE
         /// </summary>
         public Material GetAtWriteIndex(int index)
         {
-            if (_writeList.Count <= index) return null;
+            if (_writeList.Count <= index || index < 0) return null;
             return _writeList[index];
         }
         #endregion
