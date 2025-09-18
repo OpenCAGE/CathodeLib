@@ -12,7 +12,7 @@ using UnityEngine;
 using System.Numerics;
 #endif
 
-namespace CATHODE.EXPERIMENTAL
+namespace CATHODE
 {
     /// <summary>
     /// DATA/ENV/PRODUCTION/x/WORLD/STATE_x/NAV_MESH
@@ -30,7 +30,7 @@ namespace CATHODE.EXPERIMENTAL
         public dtBVNode[] BoundingVolumeTree;
         public dtOffMeshConnection[] OffMeshConnections;
 
-        public static new Implementation Implementation = Implementation.LOAD;
+        public static new Implementation Implementation = Implementation.LOAD | Implementation.CREATE | Implementation.SAVE;
 
         public NavigationMesh(string path) : base(path) { }
         public NavigationMesh(MemoryStream stream, string path = "") : base(stream, path) { }
@@ -44,6 +44,7 @@ namespace CATHODE.EXPERIMENTAL
                 reader.BaseStream.Position += 8;
 
                 Header = Utilities.Consume<dtMeshHeader>(reader);
+
                 Vertices = Utilities.ConsumeArray<Vector3>(reader, Header.vertCount);
                 Polygons = Utilities.ConsumeArray<dtPoly>(reader, Header.polyCount);
                 Links = Utilities.ConsumeArray<dtLink>(reader, Header.maxLinkCount);
@@ -62,12 +63,22 @@ namespace CATHODE.EXPERIMENTAL
             {
                 writer.BaseStream.SetLength(0);
                 writer.Write(59);
-                writer.Write(0);
+                writer.Write(0); 
+                
+                Utilities.Write(writer, Header);
 
-                //write the stuff out
-
+                Utilities.Write(writer, Vertices);
+                Utilities.Write(writer, Polygons);
+                Utilities.Write(writer, Links);
+                Utilities.Write(writer, DetailMeshes);
+                Utilities.Write(writer, DetailVertices);
+                Utilities.Write(writer, DetailIndices);
+                Utilities.Write(writer, BoundingVolumeTree);
+                Utilities.Write(writer, OffMeshConnections);
+                
                 writer.BaseStream.Position = 4;
                 writer.Write((int)writer.BaseStream.Length - 8);
+                
                 return true;
             }
         }
