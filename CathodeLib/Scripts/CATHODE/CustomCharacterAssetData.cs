@@ -32,7 +32,7 @@ namespace CATHODE
                 for (int i = 0; i < count; i++)
                 {
                     AssetDefinition assetDef = new AssetDefinition();
-                    assetDef.AssetType = (CharacterAsset)reader.ReadInt32();
+                    assetDef.AssetType = (CUSTOM_CHARACTER_ASSETS)reader.ReadInt32();
                     Dictionary<ColourType, int> colourCounts = new Dictionary<ColourType, int>();
                     foreach (ColourType colour in Enum.GetValues(typeof(ColourType)))
                     {
@@ -86,7 +86,7 @@ namespace CATHODE
         #region STRUCTURES
         public class AssetDefinition
         {
-            public CharacterAsset AssetType;
+            public CUSTOM_CHARACTER_ASSETS AssetType;
             public Dictionary<ColourType, List<Vector3>> Tints = new Dictionary<ColourType, List<Vector3>>();
             public List<string> Decals = new List<string>();
         };

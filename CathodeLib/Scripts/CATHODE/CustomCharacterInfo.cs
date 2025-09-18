@@ -11,11 +11,11 @@ namespace CATHODE
     /// </summary>
     public class CustomCharacterInfo : CathodeFile
     {
-        public Dictionary<CharacterModel, Dictionary<CharacterGender, string>> Skeletons = new Dictionary<CharacterModel, Dictionary<CharacterGender, string>>();
-        public Dictionary<CharacterComponent, List<Accessory>> DefaultAccessories = new Dictionary<CharacterComponent, List<Accessory>>();
-        public Dictionary<CharacterAccessoryOverride, Dictionary<CharacterComponent, List<Accessory>>> AccessoryOverrides = new Dictionary<CharacterAccessoryOverride, Dictionary<CharacterComponent, List<Accessory>>>();
+        public Dictionary<CUSTOM_CHARACTER_MODEL, Dictionary<CUSTOM_CHARACTER_GENDER, string>> Skeletons = new Dictionary<CUSTOM_CHARACTER_MODEL, Dictionary<CUSTOM_CHARACTER_GENDER, string>>();
+        public Dictionary<CUSTOM_CHARACTER_COMPONENT, List<Accessory>> DefaultAccessories = new Dictionary<CUSTOM_CHARACTER_COMPONENT, List<Accessory>>();
+        public Dictionary<CUSTOM_CHARACTER_ACCESSORY_OVERRIDE, Dictionary<CUSTOM_CHARACTER_COMPONENT, List<Accessory>>> AccessoryOverrides = new Dictionary<CUSTOM_CHARACTER_ACCESSORY_OVERRIDE, Dictionary<CUSTOM_CHARACTER_COMPONENT, List<Accessory>>>();
         public List<CharacterDefinition> CharacterDefinitions = new List<CharacterDefinition>();
-        public Dictionary<CharacterPopulation, List<Preset>> Presets = new Dictionary<CharacterPopulation, List<Preset>>();
+        public Dictionary<CUSTOM_CHARACTER_POPULATION, List<Preset>> Presets = new Dictionary<CUSTOM_CHARACTER_POPULATION, List<Preset>>();
 
         public static new Implementation Implementation = Implementation.CREATE | Implementation.SAVE | Implementation.LOAD;
 
@@ -29,67 +29,67 @@ namespace CATHODE
             using (BinaryReader reader = new BinaryReader(stream))
             {
                 reader.BaseStream.Position = 4; //version
-                foreach (CharacterModel characterModel in Enum.GetValues(typeof(CharacterModel)))
+                foreach (CUSTOM_CHARACTER_MODEL CUSTOM_CHARACTER_MODEL in Enum.GetValues(typeof(CUSTOM_CHARACTER_MODEL)))
                 {
-                    Dictionary<CharacterGender, string> skeletons = new Dictionary<CharacterGender, string>();
-                    foreach (CharacterGender characterGender in Enum.GetValues(typeof(CharacterGender)))
+                    Dictionary<CUSTOM_CHARACTER_GENDER, string> skeletons = new Dictionary<CUSTOM_CHARACTER_GENDER, string>();
+                    foreach (CUSTOM_CHARACTER_GENDER CUSTOM_CHARACTER_GENDER in Enum.GetValues(typeof(CUSTOM_CHARACTER_GENDER)))
                     {
-                        skeletons.Add(characterGender, ReadString(reader));
+                        skeletons.Add(CUSTOM_CHARACTER_GENDER, ReadString(reader));
                     }
-                    Skeletons.Add(characterModel, skeletons);
+                    Skeletons.Add(CUSTOM_CHARACTER_MODEL, skeletons);
                 }
-                foreach (CharacterComponent characterComponent in Enum.GetValues(typeof(CharacterComponent)))
+                foreach (CUSTOM_CHARACTER_COMPONENT CUSTOM_CHARACTER_COMPONENT in Enum.GetValues(typeof(CUSTOM_CHARACTER_COMPONENT)))
                 {
-                    DefaultAccessories.Add(characterComponent, ReadAccessories(reader));
+                    DefaultAccessories.Add(CUSTOM_CHARACTER_COMPONENT, ReadAccessories(reader));
                 }
-                foreach (CharacterAccessoryOverride characterAccessoryOverride in Enum.GetValues(typeof(CharacterAccessoryOverride)))
+                foreach (CUSTOM_CHARACTER_ACCESSORY_OVERRIDE CUSTOM_CHARACTER_ACCESSORY_OVERRIDE in Enum.GetValues(typeof(CUSTOM_CHARACTER_ACCESSORY_OVERRIDE)))
                 {
-                    Dictionary<CharacterComponent, List<Accessory>> components = new Dictionary<CharacterComponent, List<Accessory>>();
-                    foreach (CharacterComponent characterComponent in Enum.GetValues(typeof(CharacterComponent)))
+                    Dictionary<CUSTOM_CHARACTER_COMPONENT, List<Accessory>> components = new Dictionary<CUSTOM_CHARACTER_COMPONENT, List<Accessory>>();
+                    foreach (CUSTOM_CHARACTER_COMPONENT CUSTOM_CHARACTER_COMPONENT in Enum.GetValues(typeof(CUSTOM_CHARACTER_COMPONENT)))
                     {
-                        components.Add(characterComponent, ReadAccessories(reader));
+                        components.Add(CUSTOM_CHARACTER_COMPONENT, ReadAccessories(reader));
                     }
-                    AccessoryOverrides.Add(characterAccessoryOverride, components);
+                    AccessoryOverrides.Add(CUSTOM_CHARACTER_ACCESSORY_OVERRIDE, components);
                 }
                 int definitionsCount = reader.ReadInt32();
                 for (int i = 0; i < definitionsCount; i++)
                 {
                     CharacterDefinition definition = new CharacterDefinition();
                     definition.Name = ReadString(reader);
-                    definition.VoiceActor = (VoiceActor)reader.ReadInt32();
-                    definition.AssetType = (CharacterAsset)reader.ReadInt32();
-                    definition.Model = (CharacterModel)reader.ReadInt32();
-                    definition.Gender = (CharacterGender)reader.ReadInt32();
-                    definition.Ethnicity = (CharacterEthnicity)reader.ReadInt32();
-                    definition.Build = (CharacterBuild)reader.ReadInt32();
-                    definition.Sleeve = (CharacterSleeve)reader.ReadInt32();
-                    definition.Sound = (FoleySound)reader.ReadInt32();
-                    foreach (CharacterComponent characterComponent in Enum.GetValues(typeof(CharacterComponent)))
+                    definition.DIALOGUE_VOICE_ACTOR = (DIALOGUE_VOICE_ACTOR)reader.ReadInt32();
+                    definition.AssetType = (CUSTOM_CHARACTER_ASSETS)reader.ReadInt32();
+                    definition.Model = (CUSTOM_CHARACTER_MODEL)reader.ReadInt32();
+                    definition.Gender = (CUSTOM_CHARACTER_GENDER)reader.ReadInt32();
+                    definition.Ethnicity = (CUSTOM_CHARACTER_ETHNICITY)reader.ReadInt32();
+                    definition.Build = (CUSTOM_CHARACTER_BUILD)reader.ReadInt32();
+                    definition.Sleeve = (CUSTOM_CHARACTER_SLEEVETYPE)reader.ReadInt32();
+                    definition.Sound = (CHARACTER_FOLEY_SOUND)reader.ReadInt32();
+                    foreach (CUSTOM_CHARACTER_COMPONENT CUSTOM_CHARACTER_COMPONENT in Enum.GetValues(typeof(CUSTOM_CHARACTER_COMPONENT)))
                     {
-                        definition.DefaultAccessories.Add(characterComponent, new Tuple<bool, List<Accessory>>(reader.ReadInt32() == 1, new List<Accessory>()));
+                        definition.DefaultAccessories.Add(CUSTOM_CHARACTER_COMPONENT, new Tuple<bool, List<Accessory>>(reader.ReadInt32() == 1, new List<Accessory>()));
                     }
-                    foreach (CharacterComponent characterComponent in Enum.GetValues(typeof(CharacterComponent)))
+                    foreach (CUSTOM_CHARACTER_COMPONENT CUSTOM_CHARACTER_COMPONENT in Enum.GetValues(typeof(CUSTOM_CHARACTER_COMPONENT)))
                     {
-                        definition.DefaultAccessories[characterComponent].Item2.AddRange(ReadAccessories(reader));
+                        definition.DefaultAccessories[CUSTOM_CHARACTER_COMPONENT].Item2.AddRange(ReadAccessories(reader));
                     }
                     int componentsCount = reader.ReadInt32();
                     for (int x = 0; x < componentsCount; x++)
                     {
                         CharacterDefinition.Component component = new CharacterDefinition.Component();
-                        component.Type = (CharacterComponent)reader.ReadInt32();
-                        component.Model = (CharacterModel)reader.ReadInt32();
-                        component.Gender = (CharacterGender)reader.ReadInt32();
-                        component.Ethnicity = (CharacterEthnicity)reader.ReadInt32();
-                        component.Build = (CharacterBuild)reader.ReadInt32();
-                        component.Sleeve = (CharacterSleeve)reader.ReadInt32();
-                        component.Sound = (FoleySound)reader.ReadInt32();
+                        component.Type = (CUSTOM_CHARACTER_COMPONENT)reader.ReadInt32();
+                        component.Model = (CUSTOM_CHARACTER_MODEL)reader.ReadInt32();
+                        component.Gender = (CUSTOM_CHARACTER_GENDER)reader.ReadInt32();
+                        component.Ethnicity = (CUSTOM_CHARACTER_ETHNICITY)reader.ReadInt32();
+                        component.Build = (CUSTOM_CHARACTER_BUILD)reader.ReadInt32();
+                        component.Sleeve = (CUSTOM_CHARACTER_SLEEVETYPE)reader.ReadInt32();
+                        component.Sound = (CHARACTER_FOLEY_SOUND)reader.ReadInt32();
                         component.ModelName = ReadString(reader);
                         component.Accessories = ReadAccessories(reader);
                         definition.Components.Add(component);
                     }
                     CharacterDefinitions.Add(definition);
                 }
-                foreach (CharacterPopulation characterPopulation in Enum.GetValues(typeof(CharacterPopulation)))
+                foreach (CUSTOM_CHARACTER_POPULATION CUSTOM_CHARACTER_POPULATION in Enum.GetValues(typeof(CUSTOM_CHARACTER_POPULATION)))
                 {
                     List<Preset> presets = new List<Preset>();
                     int presetCount = reader.ReadInt32();
@@ -98,10 +98,10 @@ namespace CATHODE
                         Preset preset = new Preset();
                         preset.Name = ReadString(reader);
                         preset.Frequency = reader.ReadSingle();
-                        preset.AssetType = (CharacterAsset)reader.ReadInt32();
+                        preset.AssetType = (CUSTOM_CHARACTER_ASSETS)reader.ReadInt32();
                         presets.Add(preset);
                     }
-                    Presets.Add(characterPopulation, presets);
+                    Presets.Add(CUSTOM_CHARACTER_POPULATION, presets);
                 }
             }
             return true;
@@ -112,29 +112,29 @@ namespace CATHODE
             using (BinaryWriter writer = new BinaryWriter(File.Open(_filepath, FileMode.Create)))
             {
                 writer.Write(20);
-                foreach (CharacterModel characterModel in Enum.GetValues(typeof(CharacterModel)))
+                foreach (CUSTOM_CHARACTER_MODEL CUSTOM_CHARACTER_MODEL in Enum.GetValues(typeof(CUSTOM_CHARACTER_MODEL)))
                 {
-                    foreach (CharacterGender characterGender in Enum.GetValues(typeof(CharacterGender)))
+                    foreach (CUSTOM_CHARACTER_GENDER CUSTOM_CHARACTER_GENDER in Enum.GetValues(typeof(CUSTOM_CHARACTER_GENDER)))
                     {
-                        WriteString(writer, Skeletons[characterModel][characterGender]);
+                        WriteString(writer, Skeletons[CUSTOM_CHARACTER_MODEL][CUSTOM_CHARACTER_GENDER]);
                     }
                 }
-                foreach (CharacterComponent characterComponent in Enum.GetValues(typeof(CharacterComponent)))
+                foreach (CUSTOM_CHARACTER_COMPONENT CUSTOM_CHARACTER_COMPONENT in Enum.GetValues(typeof(CUSTOM_CHARACTER_COMPONENT)))
                 {
-                    WriteAccessories(writer, DefaultAccessories[characterComponent]);
+                    WriteAccessories(writer, DefaultAccessories[CUSTOM_CHARACTER_COMPONENT]);
                 }
-                foreach (CharacterAccessoryOverride characterAccessoryOverride in Enum.GetValues(typeof(CharacterAccessoryOverride)))
+                foreach (CUSTOM_CHARACTER_ACCESSORY_OVERRIDE CUSTOM_CHARACTER_ACCESSORY_OVERRIDE in Enum.GetValues(typeof(CUSTOM_CHARACTER_ACCESSORY_OVERRIDE)))
                 {
-                    foreach (CharacterComponent characterComponent in Enum.GetValues(typeof(CharacterComponent)))
+                    foreach (CUSTOM_CHARACTER_COMPONENT CUSTOM_CHARACTER_COMPONENT in Enum.GetValues(typeof(CUSTOM_CHARACTER_COMPONENT)))
                     {
-                        WriteAccessories(writer, AccessoryOverrides[characterAccessoryOverride][characterComponent]);
+                        WriteAccessories(writer, AccessoryOverrides[CUSTOM_CHARACTER_ACCESSORY_OVERRIDE][CUSTOM_CHARACTER_COMPONENT]);
                     }
                 }
                 writer.Write(CharacterDefinitions.Count);
                 foreach (CharacterDefinition definition in CharacterDefinitions)
                 {
                     WriteString(writer, definition.Name);
-                    writer.Write((int)definition.VoiceActor);
+                    writer.Write((int)definition.DIALOGUE_VOICE_ACTOR);
                     writer.Write((int)definition.AssetType);
                     writer.Write((int)definition.Model);
                     writer.Write((int)definition.Gender);
@@ -142,13 +142,13 @@ namespace CATHODE
                     writer.Write((int)definition.Build);
                     writer.Write((int)definition.Sleeve);
                     writer.Write((int)definition.Sound);
-                    foreach (CharacterComponent characterComponent in Enum.GetValues(typeof(CharacterComponent)))
+                    foreach (CUSTOM_CHARACTER_COMPONENT CUSTOM_CHARACTER_COMPONENT in Enum.GetValues(typeof(CUSTOM_CHARACTER_COMPONENT)))
                     {
-                        writer.Write(definition.DefaultAccessories[characterComponent].Item1 ? 1 : 0);
+                        writer.Write(definition.DefaultAccessories[CUSTOM_CHARACTER_COMPONENT].Item1 ? 1 : 0);
                     }
-                    foreach (CharacterComponent characterComponent in Enum.GetValues(typeof(CharacterComponent)))
+                    foreach (CUSTOM_CHARACTER_COMPONENT CUSTOM_CHARACTER_COMPONENT in Enum.GetValues(typeof(CUSTOM_CHARACTER_COMPONENT)))
                     {
-                        List<Accessory> accessories = definition.DefaultAccessories[characterComponent].Item2;
+                        List<Accessory> accessories = definition.DefaultAccessories[CUSTOM_CHARACTER_COMPONENT].Item2;
                         WriteAccessories(writer, accessories);
                     }
                     writer.Write(definition.Components.Count);
@@ -165,9 +165,9 @@ namespace CATHODE
                         WriteAccessories(writer, component.Accessories);
                     }
                 }
-                foreach (CharacterPopulation characterPopulation in Enum.GetValues(typeof(CharacterPopulation)))
+                foreach (CUSTOM_CHARACTER_POPULATION CUSTOM_CHARACTER_POPULATION in Enum.GetValues(typeof(CUSTOM_CHARACTER_POPULATION)))
                 {
-                    List<Preset> presets = Presets[characterPopulation];
+                    List<Preset> presets = Presets[CUSTOM_CHARACTER_POPULATION];
                     writer.Write(presets.Count);
                     foreach (Preset preset in presets)
                     {
@@ -225,26 +225,26 @@ namespace CATHODE
         public class CharacterDefinition
         {
             public string Name;
-            public VoiceActor VoiceActor;
-            public CharacterAsset AssetType;
-            public CharacterModel Model;
-            public CharacterGender Gender;
-            public CharacterEthnicity Ethnicity;
-            public CharacterBuild Build;
-            public CharacterSleeve Sleeve;
-            public FoleySound Sound;
-            public Dictionary<CharacterComponent, Tuple<bool, List<Accessory>>> DefaultAccessories = new Dictionary<CharacterComponent, Tuple<bool, List<Accessory>>>();
+            public DIALOGUE_VOICE_ACTOR DIALOGUE_VOICE_ACTOR;
+            public CUSTOM_CHARACTER_ASSETS AssetType;
+            public CUSTOM_CHARACTER_MODEL Model;
+            public CUSTOM_CHARACTER_GENDER Gender;
+            public CUSTOM_CHARACTER_ETHNICITY Ethnicity;
+            public CUSTOM_CHARACTER_BUILD Build;
+            public CUSTOM_CHARACTER_SLEEVETYPE Sleeve;
+            public CHARACTER_FOLEY_SOUND Sound;
+            public Dictionary<CUSTOM_CHARACTER_COMPONENT, Tuple<bool, List<Accessory>>> DefaultAccessories = new Dictionary<CUSTOM_CHARACTER_COMPONENT, Tuple<bool, List<Accessory>>>();
             public List<Component> Components = new List<Component>();
 
             public class Component
             {
-                public CharacterComponent Type;
-                public CharacterModel Model;
-                public CharacterGender Gender;
-                public CharacterEthnicity Ethnicity;
-                public CharacterBuild Build;
-                public CharacterSleeve Sleeve;
-                public FoleySound Sound;
+                public CUSTOM_CHARACTER_COMPONENT Type;
+                public CUSTOM_CHARACTER_MODEL Model;
+                public CUSTOM_CHARACTER_GENDER Gender;
+                public CUSTOM_CHARACTER_ETHNICITY Ethnicity;
+                public CUSTOM_CHARACTER_BUILD Build;
+                public CUSTOM_CHARACTER_SLEEVETYPE Sleeve;
+                public CHARACTER_FOLEY_SOUND Sound;
                 public string ModelName;
                 public List<Accessory> Accessories = new List<Accessory>();
             }
@@ -259,7 +259,7 @@ namespace CATHODE
         {
             public string Name;
             public float Frequency;
-            public CharacterAsset AssetType;
+            public CUSTOM_CHARACTER_ASSETS AssetType;
         }
         #endregion
     }
