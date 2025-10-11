@@ -1,4 +1,5 @@
-﻿using CATHODE.Scripting;
+﻿using CATHODE.Animations;
+using CATHODE.Scripting;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
@@ -23,7 +24,7 @@ namespace CATHODE
         
         public string Character { get; set; }
         
-        public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE | Implementation.CREATE;
+        public static new Implementation Implementation = Implementation.LOAD | Implementation.CREATE;
 
         public AnimClipDB(string path, AnimationStrings strings) : base(path)
         {
@@ -58,11 +59,13 @@ namespace CATHODE
                 Character = _strings.GetString(reader.ReadUInt32()); //note - the name of the file is this hashed string, followed by _ANIM_CLIP_DB.BIN
                 reader.BaseStream.Position += 4;
 
+                //anim_db.cpp line 4482
+
                 Animations = ReadAnimationHashTable(reader);
 
-                BlendSets = ReadHashTable(reader, (r, n) =>
+                BlendSets = HashTable.Read(reader, (r, n) =>
                     new Tuple<string, string>(n, _strings.GetString(r.ReadUInt32()))
-                );
+                , _strings);
 
                 List<Tuple<string, uint>> contextNames = ReadStringHashTable(reader);
                 for (int i = 0; i < contextNames.Count; i++)
@@ -70,9 +73,9 @@ namespace CATHODE
                     Context context = new Context();
                     context.Name = contextNames.FirstOrDefault(o => o.Item2 == i)?.Item1; //sometimes this is null - when it's null, the index of the string seems to be a hash?
                     context.Animations = ReadAnimationHashTable(reader);
-                    context.BlendSets = ReadHashTable(reader, (r, n) =>
+                    context.BlendSets = HashTable.Read(reader, (r, n) =>
                         new Tuple<string, string>(n, _strings.GetString(r.ReadUInt32()))
-                    );
+                    , _strings);
                     Contexts.Add(context);
                 }
 
@@ -81,47 +84,21 @@ namespace CATHODE
             }
         }
 
-        private List<T> ReadHashTable<T>(BinaryReader reader, Func<BinaryReader, string, T> itemReader)
-        {
-            var result = new List<T>();
-            
-            int hashTableSize = reader.ReadInt32();
-            int usedSize = reader.ReadInt32();
-
-            if (hashTableSize != usedSize)
-                throw new Exception("Unexpected");
-
-            string[] names = new string[hashTableSize];
-            for (int i = 0; i < hashTableSize; i++)
-            {
-                uint hash = reader.ReadUInt32();
-                int index = reader.ReadInt32();
-                names[index] = _strings.GetString(hash);
-            }
-
-            for (int i = 0; i < hashTableSize; i++)
-            {
-                result.Add(itemReader(reader, names[i]));
-            }
-
-            return result;
-        }
-
         private List<AnimClip> ReadAnimationHashTable(BinaryReader reader)
         {
-            return ReadHashTable(reader, (r, n) => new AnimClip
+            return HashTable.Read(reader, (r, n) => new AnimClip
             {
                 Name = n,
                 Path = _strings.GetString(r.ReadUInt32()),
                 MetadataInstance = r.ReadInt32() //what does this map to
-            });
+            }, _strings);
         }
 
         private List<Tuple<string, uint>> ReadStringHashTable(BinaryReader reader)
         {
-            return ReadHashTable(reader, (r, n) => 
+            return HashTable.Read(reader, (r, n) => 
                 new Tuple<string, uint>(n, r.ReadUInt32())
-            );
+            , _strings);
         }
 
         override protected bool SaveInternal()

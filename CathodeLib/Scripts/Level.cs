@@ -57,7 +57,7 @@ namespace CathodeLib
             public NavigationMesh NavMesh;
             public Traversals Traversals;
         }
-        public List<State> StateResources = new List<State>();
+        public List<State> StateResources = new List<State>(); //State 0 loaded by default
 
         /// <summary>
         /// Load a level in the game's "ENV/PRODUCTION" folder
