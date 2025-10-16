@@ -96,64 +96,39 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            int engineConstantsOffset = 0;
-            List<int> mat_engineConstantOffset = new List<int>();
-            List<int> mat_engineConstantCount = new List<int>();
-            int vertexConstantsOffset = 0;
-            List<int> mat_vertexConstantsOffset = new List<int>();
-            List<int> mat_vertexConstantsCount = new List<int>();
-            int pixelConstantsOffset = 0;
-            List<int> mat_pixelConstantsOffset = new List<int>();
-            List<int> mat_pixelConstantsCount = new List<int>();
-            int hullConstantsOffset = 0;
-            List<int> mat_hullConstantsOffset = new List<int>();
-            List<int> mat_hullConstantsCount = new List<int>();
-            int domainConstantsOffset = 0;
-            List<int> mat_domainConstantsOffset = new List<int>();
-            List<int> mat_domainConstantsCount = new List<int>();
+            //Write constants
+            int[] offsets = new int[5];
+            List<int>[] matOffsets = new List<int>[5];
+            List<int>[] matCounts = new List<int>[5];
+            for (int i = 0; i < 5; i++)
+            {
+                matOffsets[i] = new List<int>();
+                matCounts[i] = new List<int>();
+            }
             using (BinaryWriter writerCST = new BinaryWriter(File.OpenWrite(_filepathCST)))
             {
                 writerCST.BaseStream.SetLength(0);
-
-                engineConstantsOffset = (int)writerCST.BaseStream.Position;
-                for (int i = 0; i < Entries.Count; i++)
+                for (int i = 0; i < 5; i++)
                 {
-                    mat_engineConstantOffset.Add(Entries[i].EngineConstants.Count == 0 ? 0 : ((int)writerCST.BaseStream.Position - engineConstantsOffset) / 4);
-                    mat_engineConstantCount.Add(Entries[i].EngineConstants.Count);
-                    for (int x = 0; x < Entries[i].EngineConstants.Count; x++)
-                        writerCST.Write(Entries[i].EngineConstants[x]);
-                }
-                vertexConstantsOffset = (int)writerCST.BaseStream.Position;
-                for (int i = 0; i < Entries.Count; i++)
-                {
-                    mat_vertexConstantsOffset.Add(Entries[i].VertexShaderConstants.Count == 0 ? 0 : ((int)writerCST.BaseStream.Position - vertexConstantsOffset) / 4);
-                    mat_vertexConstantsCount.Add(Entries[i].VertexShaderConstants.Count);
-                    for (int x = 0; x < Entries[i].VertexShaderConstants.Count; x++)
-                        writerCST.Write(Entries[i].VertexShaderConstants[x]);
-                }
-                pixelConstantsOffset = (int)writerCST.BaseStream.Position;
-                for (int i = 0; i < Entries.Count; i++)
-                {
-                    mat_pixelConstantsOffset.Add(Entries[i].PixelShaderConstants.Count == 0 ? 0 : ((int)writerCST.BaseStream.Position - pixelConstantsOffset) / 4);
-                    mat_pixelConstantsCount.Add(Entries[i].PixelShaderConstants.Count);
-                    for (int x = 0; x < Entries[i].PixelShaderConstants.Count; x++)
-                        writerCST.Write(Entries[i].PixelShaderConstants[x]);
-                }
-                hullConstantsOffset = (int)writerCST.BaseStream.Position;
-                for (int i = 0; i < Entries.Count; i++)
-                {
-                    mat_hullConstantsOffset.Add(Entries[i].HullShaderConstants.Count == 0 ? 0 : ((int)writerCST.BaseStream.Position - hullConstantsOffset) / 4);
-                    mat_hullConstantsCount.Add(Entries[i].HullShaderConstants.Count);
-                    for (int x = 0; x < Entries[i].HullShaderConstants.Count; x++)
-                        writerCST.Write(Entries[i].HullShaderConstants[x]);
-                }
-                domainConstantsOffset = (int)writerCST.BaseStream.Position;
-                for (int i = 0; i < Entries.Count; i++)
-                {
-                    mat_domainConstantsOffset.Add(Entries[i].DomainShaderConstants.Count == 0 ? 0 : ((int)writerCST.BaseStream.Position - domainConstantsOffset) / 4);
-                    mat_domainConstantsCount.Add(Entries[i].DomainShaderConstants.Count);
-                    for (int x = 0; x < Entries[i].DomainShaderConstants.Count; x++)
-                        writerCST.Write(Entries[i].DomainShaderConstants[x]);
+                    offsets[i] = (int)writerCST.BaseStream.Position;
+                    
+                    for (int x = 0; x < Entries.Count; x++)
+                    {
+                        List<float> constants = null;
+                        switch (i)
+                        {
+                            case 0: constants = Entries[x].EngineConstants; break;
+                            case 1: constants = Entries[x].VertexShaderConstants; break;
+                            case 2: constants = Entries[x].PixelShaderConstants; break;
+                            case 3: constants = Entries[x].HullShaderConstants; break;
+                            case 4: constants = Entries[x].DomainShaderConstants; break;
+                        }
+                        matOffsets[i].Add(constants.Count == 0 ? 0 : ((int)writerCST.BaseStream.Position - offsets[i]) / 4);
+                        matCounts[i].Add(constants.Count);
+                        
+                        for (int z = 0; z < constants.Count; z++)
+                            writerCST.Write(constants[z]);
+                    }
                 }
             }
 
@@ -166,11 +141,11 @@ namespace CATHODE
                 writer.Write(0); //placeholder file length (-4)
                 writer.Write(40);
                 writer.Write(0); //placeholder material offset
-                writer.Write(engineConstantsOffset);
-                writer.Write(vertexConstantsOffset);
-                writer.Write(pixelConstantsOffset);
-                writer.Write(hullConstantsOffset);
-                writer.Write(domainConstantsOffset);
+                writer.Write(offsets[0]);
+                writer.Write(offsets[1]);
+                writer.Write(offsets[2]);
+                writer.Write(offsets[3]);
+                writer.Write(offsets[4]);
                 writer.Write(44);
                 writer.Write(0); //placeholder material name size
                 writer.Write((Int16)Entries.Count);
@@ -207,17 +182,10 @@ namespace CATHODE
                     writer.Write(isGlobal ? 1 : 0);
                     writer.Write(i);
 
-                    writer.Write(mat_engineConstantOffset[i]);
-                    writer.Write(mat_vertexConstantsOffset[i]);
-                    writer.Write(mat_pixelConstantsOffset[i]);
-                    writer.Write(mat_hullConstantsOffset[i]);
-                    writer.Write(mat_domainConstantsOffset[i]);
-                    writer.Write((byte)mat_engineConstantCount[i]);
-                    writer.Write((byte)mat_vertexConstantsCount[i]);
-                    writer.Write((byte)mat_pixelConstantsCount[i]);
-                    writer.Write((byte)mat_hullConstantsCount[i]);
-                    writer.Write((byte)mat_domainConstantsCount[i]);
-
+                    for (int x = 0; x < 5; x++)
+                        writer.Write(matOffsets[x][i]);
+                    for (int x = 0; x < 5; x++)
+                        writer.Write((byte)matCounts[x][i]);
                     writer.Write(new byte[7]);
                     writer.Write(nameOffset);
                     nameOffset += Entries[i].Name.Length + 1;
