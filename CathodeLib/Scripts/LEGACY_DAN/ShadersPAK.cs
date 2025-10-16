@@ -55,7 +55,7 @@ namespace CATHODE.LEGACY
 
         private MaterialPropertyIndex GetMaterialPropertyIndexes(Materials.Material InMaterial)
         {
-            ShaderEntry Shader = Shaders[InMaterial.ShaderIndex];
+            ShaderEntry Shader = Shaders[InMaterial.ShaderID];
 
             MaterialPropertyIndex toReturn = new MaterialPropertyIndex();
 
@@ -178,7 +178,7 @@ namespace CATHODE.LEGACY
 
         public ShaderMaterialMetadata GetMaterialMetadataFromShader(Materials.Material InMaterial)
         {
-            ShaderEntry Shader = Shaders[InMaterial.ShaderIndex];
+            ShaderEntry Shader = Shaders[InMaterial.ShaderID];
             ShaderMaterialMetadata metadata = new ShaderMaterialMetadata();
             metadata.shaderCategory = (ShaderCategory)Shader.Header2.ShaderCategory;
             switch (metadata.shaderCategory)
@@ -423,7 +423,7 @@ namespace CATHODE.LEGACY
 
                 int PairIndex = Shader.TextureLinks[i];
                 // NOTE: PairIndex == 255 means no index.
-                if (PairIndex < InMaterial.TextureReferences.Length)
+                if (PairIndex < InMaterial.TextureReferences.Count)
                 {
                     metadata.textures[i].TextureInfo = InMaterial.TextureReferences[PairIndex];
                 }
@@ -443,7 +443,7 @@ namespace CATHODE.LEGACY
         public class MaterialTextureContext
         {
             public ShaderSlot Type = ShaderSlot.NONE;
-            public Materials.Material.Texture TextureInfo = null;
+            public TexturePtr TextureInfo = null;
         }
 
         public class MaterialPropertyIndex

@@ -243,16 +243,16 @@ namespace CathodeLib
             List<Textures.TEX4> materialTextures = new List<Textures.TEX4>();
             for (int i = 0; i < Materials.Entries.Count; i++)
             {
-                for (int x = 0; x < Materials.Entries[i].TextureReferences.Length; x++)
+                for (int x = 0; x < Materials.Entries[i].TextureReferences.Count; x++)
                 {
                     if (Materials.Entries[i].TextureReferences[x] == null) continue;
-                    switch (Materials.Entries[i].TextureReferences[x].Source)
+                    switch (Materials.Entries[i].TextureReferences[x].Location)
                     {
-                        case Materials.Material.Texture.TextureSource.LEVEL:
-                            materialTextures.Add(Textures.GetAtWriteIndex(Materials.Entries[i].TextureReferences[x].BinIndex));
+                        case TexturePtr.Source.LEVEL:
+                            materialTextures.Add(Textures.GetAtWriteIndex(Materials.Entries[i].TextureReferences[x].Index));
                             break;
-                        case Materials.Material.Texture.TextureSource.GLOBAL:
-                            materialTextures.Add(GlobalTextures.GetAtWriteIndex(Materials.Entries[i].TextureReferences[x].BinIndex));
+                        case TexturePtr.Source.GLOBAL:
+                            materialTextures.Add(GlobalTextures.GetAtWriteIndex(Materials.Entries[i].TextureReferences[x].Index));
                             break;
                     }
                 }
@@ -293,16 +293,16 @@ namespace CathodeLib
             y = 0;
             for (int i = 0; i < Materials.Entries.Count; i++)
             {
-                for (int x = 0; x < Materials.Entries[i].TextureReferences.Length; x++)
+                for (int x = 0; x < Materials.Entries[i].TextureReferences.Count; x++)
                 {
                     if (Materials.Entries[i].TextureReferences[x] == null) continue;
-                    switch (Materials.Entries[i].TextureReferences[x].Source)
+                    switch (Materials.Entries[i].TextureReferences[x].Location)
                     {
-                        case Materials.Material.Texture.TextureSource.LEVEL:
-                            Materials.Entries[i].TextureReferences[x].BinIndex = Textures.GetWriteIndex(materialTextures[y]);
+                        case TexturePtr.Source.LEVEL:
+                            Materials.Entries[i].TextureReferences[x].Index = Textures.GetWriteIndex(materialTextures[y]);
                             break;
-                        case Materials.Material.Texture.TextureSource.GLOBAL:
-                            Materials.Entries[i].TextureReferences[x].BinIndex = GlobalTextures.GetWriteIndex(materialTextures[y]);
+                        case TexturePtr.Source.GLOBAL:
+                            Materials.Entries[i].TextureReferences[x].Index = GlobalTextures.GetWriteIndex(materialTextures[y]);
                             break;
                     }
                     y++;
