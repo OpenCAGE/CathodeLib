@@ -21,8 +21,6 @@ namespace CATHODE
 
         private List<Material> _writeList = new List<Material>();
 
-        private string _filepathCST;
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
@@ -30,10 +28,10 @@ namespace CATHODE
             if (_filepath == "")
                 return false;
 
-            _filepathCST = _filepath.Substring(0, _filepath.Length - 3) + "CST";
-            if (!File.Exists(_filepathCST)) return false;
+            string filepathCST = _filepath.Substring(0, _filepath.Length - 3) + "CST";
+            if (!File.Exists(filepathCST)) return false;
 
-            using (BinaryReader readerCST = new BinaryReader(File.OpenRead(_filepathCST)))
+            using (BinaryReader readerCST = new BinaryReader(File.OpenRead(filepathCST)))
             using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
             {
                 reader.BaseStream.Position += 8;
@@ -105,7 +103,7 @@ namespace CATHODE
                 matOffsets[i] = new List<int>();
                 matCounts[i] = new List<int>();
             }
-            using (BinaryWriter writerCST = new BinaryWriter(File.OpenWrite(_filepathCST)))
+            using (BinaryWriter writerCST = new BinaryWriter(File.OpenWrite(_filepath.Substring(0, _filepath.Length - 3) + "CST")))
             {
                 writerCST.BaseStream.SetLength(0);
                 for (int i = 0; i < 5; i++)

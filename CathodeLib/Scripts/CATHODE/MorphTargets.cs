@@ -34,7 +34,20 @@ namespace CATHODE
                 {
                     Entries.Add(new Entry { Name = reader.ReadChars(reader.ReadInt32()).ToString() });
                 }
-                // todo: there are more counts here
+
+                //TODO: need to actually save this data so we can rewrite it 
+                int animSetCount = reader.ReadInt32();
+                for (int i = 0; i < animSetCount; i++)
+                {
+                    int morphCount = reader.ReadInt32();
+                    for (int x = 0; x < morphCount; x++)
+                    {
+                        int morphNameID = reader.ReadInt32();
+                        int vertCount = reader.ReadInt32();
+                        for (int z = 0; z < vertCount * 8; z++) //8 is the size of the vertex
+                            reader.ReadByte();
+                    }
+                }
             }
             return true;
         }
