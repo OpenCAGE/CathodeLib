@@ -75,8 +75,8 @@ namespace CATHODE
 
                         AlienVBF.Element element = new AlienVBF.Element();
                         element.Offset = bin.ReadInt32(); // NOTE: Offset within data structure, generally not important.
-                        element.VariableType = (VBFE_InputType)bin.ReadInt32(); //(int)
-                        element.ShaderSlot = (VBFE_InputSlot)bin.ReadInt32(); //(int)
+                        element.Type = (VertexFormatType)bin.ReadInt32(); //(int)
+                        element.Usage = (VertexFormatUsage)bin.ReadInt32(); //(int)
                         element.VariantIndex = bin.ReadInt32(); // NOTE: Variant index such as UVs: (UV0, UV1, UV2...)
                         bin.BaseStream.Position += 4;
 
@@ -280,8 +280,8 @@ namespace CATHODE
                         {
                             bin.Write((x == vertexFormats[i].Elements.Count - 1) ? 255 : x);
                             bin.Write((Int32)vertexFormats[i].Elements[x][y].Offset);
-                            bin.Write((Int32)vertexFormats[i].Elements[x][y].VariableType);
-                            bin.Write((Int32)vertexFormats[i].Elements[x][y].ShaderSlot);
+                            bin.Write((Int32)vertexFormats[i].Elements[x][y].Type);
+                            bin.Write((Int32)vertexFormats[i].Elements[x][y].Usage);
                             bin.Write((Int32)vertexFormats[i].Elements[x][y].VariantIndex);
                             bin.Write((Int32)2);
                         }
@@ -538,27 +538,27 @@ namespace CATHODE
             public class Element : IComparable<Element>
             {
                 public Element() {}
-                public Element(VBFE_InputType type, VBFE_InputSlot slot = VBFE_InputSlot.VERTEX, int index = 0)
+                public Element(VertexFormatType type, VertexFormatUsage slot = VertexFormatUsage.POSITION, int index = 0)
                 {
-                    VariableType = type;
-                    ShaderSlot = slot;
+                    Type = type;
+                    Usage = slot;
                     VariantIndex = index;
                 }
 
                 public int Offset; // TODO: we should REALLY just calculate this at write-time as it's pointless data after read actions
 
-                public VBFE_InputType VariableType; //(int)
-                public VBFE_InputSlot ShaderSlot; //(int)
+                public VertexFormatType Type; //(int)
+                public VertexFormatUsage Usage; //(int)
                 public int VariantIndex; // NOTE: Variant index such as UVs: (UV0, UV1, UV2...)
 
                 public int CompareTo(Element other)
                 {
                     if (other == null) return 1;
 
-                    int result = VariableType.CompareTo(other.VariableType);
+                    int result = Type.CompareTo(other.Type);
                     if (result != 0) return result;
 
-                    result = ShaderSlot.CompareTo(other.ShaderSlot);
+                    result = Usage.CompareTo(other.Usage);
                     if (result != 0) return result;
 
                     return VariantIndex.CompareTo(other.VariantIndex);
@@ -615,29 +615,34 @@ namespace CATHODE
             }
         }
 
-        public enum VBFE_InputType
+        public enum VertexFormatType
         {
-            VECTOR3 = 0x03,
-            AlienVertexInputType_Unknown0_ = 0x04, //TODO: check this
-            INT32 = 0x05,
-            VECTOR4_BYTE = 0x06,
-            VECTOR4_BYTE_DIV255 = 0x09,
-            VECTOR2_INT16_DIV2048 = 0x0A,
-            VECTOR4_INT16_DIVMAX = 0x0B,
-            VECTOR4_BYTE_NORM = 0x0F,
-            INDICIES_U16 = 0x13,
+            FLOAT1 = 1,
+            FLOAT2 = 2,
+            FLOAT3 = 3,
+            FLOAT4 = 4,
+            COLOUR = 5,
+            UBYTE4 = 6,
+            SHORT2 = 7,
+            SHORT4 = 8,
+            UBYTE4N = 9,
+            SHORT2N = 10,
+            SHORT4N = 11,
+            USHORT2N = 12,
+            USHORT4N = 13,
+            DEC3N = 15,
         };
 
-        public enum VBFE_InputSlot
+        public enum VertexFormatUsage
         {
-            VERTEX = 0x01,
-            BONE_WEIGHTS = 0x02,
-            BONE_INDICES = 0x03,
-            NORMAL = 0x04,
-            UV = 0x06,
-            TANGENT = 0x07,
-            BITANGENT = 0x08, 
-            COLOUR = 0x0A, // TODO: is this actually vertex colour?
+            POSITION = 1,
+            BLENDWEIGHT = 2,
+            BLENDINDICES = 3,
+            NORMAL = 4,
+            TEXCOORD = 6,
+            TANGENT = 7,
+            BINORMAL = 8, 
+            COLOR = 10,
         };
 
         public class CS2
