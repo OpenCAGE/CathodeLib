@@ -1,3 +1,4 @@
+using CATHODE.Scripting;
 using CathodeLib;
 using System.Collections.Generic;
 using System.IO;
@@ -63,11 +64,58 @@ namespace CATHODE
         }
         #endregion
 
+        #region HELPERS
+        /// <summary>
+        /// Returns the environment map script entity for the given mover index.
+        /// </summary>
+        public FunctionEntity GetEnvironmentMapForMover(int moverIndex, Commands commands)
+        {
+            Mapping m = Entries.FirstOrDefault(e => e.MoverIndex == moverIndex);
+            if (m != null)
+            {
+                foreach (Composite c in commands.Entries)
+                {
+                    foreach (FunctionEntity e in c.GetFunctionEntitiesOfType(FunctionType.EnvironmentMap))
+                    {
+                        Parameter p = e.GetParameter("environmentmap_index");
+                        if (p?.content == null || p.content.dataType != DataType.INTEGER)
+                            continue;
+                        if (((cInteger)p.content).value == m.EnvMapIndex)
+                            return e;
+                    }
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Returns the texture index used by the given environment map entity.
+        /// </summary>
+        public int GetTextureIndexForEnvironmentMap(FunctionEntity envMap)
+        {
+            Parameter p = envMap.GetParameter("Texture_Index");
+            if (p?.content == null || p.content.dataType != DataType.INTEGER)
+                return -1;
+            return ((cInteger)p.content).value;
+        }
+
+        /// <summary>
+        /// Returns all mover indices that use the given environment map entity.
+        /// </summary>
+        public List<int> GetMoverIndexesForEnvironmentMap(FunctionEntity envMap)
+        {
+            Parameter p = envMap.GetParameter("environmentmap_index");
+            if (p?.content == null || p.content.dataType != DataType.INTEGER)
+                return null;
+            return Entries.Where(e => e.EnvMapIndex == ((cInteger)p.content).value).Select(e => e.MoverIndex).ToList();
+        }
+        #endregion
+
         #region STRUCTURES
         public class Mapping
         {
-            public int EnvMapIndex; //The EnvironmentMap entity "environmentmap_index" parameter value to look for within Commands
-            public int MoverIndex; //Index of the mover in the MODELS.MVR file to apply the env map to
+            public int EnvMapIndex;
+            public int MoverIndex;
         };
         #endregion
     }
