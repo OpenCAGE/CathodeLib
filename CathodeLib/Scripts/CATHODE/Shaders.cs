@@ -119,6 +119,7 @@ namespace CATHODE
                     shader.ParameterRemaps = new List<int>[5];
                     for (int x = 0; x < 5; x++)
                     {
+                        shader.ParameterRemaps[x] = new List<int>();
                         for (int z = 0; z < parameterRemapCount[x]; z++)
                         {
                             shader.ParameterRemaps[x].Add(reader.ReadByte());
@@ -152,8 +153,6 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            return false;
-
             string filepathBIN = _filepath.Substring(0, _filepath.Length - 4) + "_BIN.PAK";
             string filepathIDX = _filepath.Substring(0, _filepath.Length - 4) + "_IDX_REMAP.PAK";
 
@@ -230,49 +229,43 @@ namespace CATHODE
                 {
                     writer.Write(0x7725BBA4);
                     writer.Write(0x00010024);
-                    /*
-                    writer.Write((Int16)Entries[i].Unknown3.Count);
-                    for (int z = 0; z < 5; z++)
-                        writer.Write(Entries[i].CSTLinks[z].Length);
-                    writer.Write((Int16)Entries[i].TextureLinks.Length);
-                    Utilities.WriteString(Entries[i].m_ubershader_idx.ToString(), writer);
-                    writer.Write(new byte[40 - Entries[i].m_ubershader_idx.ToString().Length]);
-                    writer.Write((Int16)Entries[i].m_ubershader_idx);
-                    for (int z = 0; z < 20; z++)
-                        writer.Write((byte)Entries[i].Flags[z]);
-                    writer.Write(Entries[i].Unknown1);
-                    writer.Write((Int16)Entries[i].Unknown2.Count);
-                    for (int z = 0; z < Entries[i].Unknown2.Count; z++)
+
+                    writer.Write((Int16)Entries[i].Samplers.Count);
+                    for (int x = 0; x < 5; x++)
+                        writer.Write(Entries[i].ParameterRemaps[x].Count);
+                    writer.Write((Int16)Entries[i].SamplerRemaps.Count);
+
+                    Utilities.WriteString(Entries[i].Ubershader.ToString(), writer);
+                    writer.Write(new byte[40 - Entries[i].Ubershader.ToString().Length]);
+                    writer.Write((Int16)Entries[i].Ubershader);
+                    writer.Write(Entries[i].UbershaderFeatureFlags);
+                    writer.Write(Entries[i].UbershaderRequirementFlags);
+                    writer.Write((byte)Entries[i].RequiredShaderModel);
+                    writer.Write((Int16)Entries[i].CycleCount);
+                    writer.Write((byte)Entries[i].RegisterCount);
+                    writer.Write(Entries[i].PermutationHash);
+                    Entries[i].RenderStates.Write(writer);
+
+                    for (int x = 0; x < Entries[i].Samplers.Count; x++)
                     {
-                        writer.Write((Int16)Entries[i].Unknown2[z].unk1);
-                        writer.Write(Entries[i].Unknown2[z].unk2);
+                        Entries[i].Samplers[x].Write(writer);
                     }
-                    for (int z = 0; z < Entries[i].Unknown3.Count; z++)
+                    for (int x = 0; x < Entries[i].Samplers.Count; x++)
                     {
-                        writer.Write((byte)Entries[i].Unknown3[z].unk1);
-                        writer.Write((byte)Entries[i].Unknown3[z].unk2);
-                        for (int p = 0; p < 16; p++)
-                            writer.Write((Int16)Entries[i].Unknown3[z].unk3[p]);
-                        writer.Write(Entries[i].Unknown3[z].unk4);
-                        writer.Write((Int16)Entries[i].Unknown3[z].unk5);
-                        writer.Write(Entries[i].Unknown3[z].unk6);
+                        writer.Write((byte)Entries[i].SamplerStageBindings[x]);
                     }
-                    for (int z = 0; z < Entries[i].Unknown3.Count; z++)
+                    for (int x = 0; x < 5; x++)
                     {
-                        writer.Write((byte)Entries[i].Unknown3[z].unk7);
-                    }
-                    for (int z = 0; z < 5; z++)
-                    {
-                        for (int p = 0; p < Entries[i].CSTLinks[z].Length; p++)
+                        for (int z = 0; z < Entries[i].ParameterRemaps[x].Count; z++)
                         {
-                            writer.Write((byte)Entries[i].CSTLinks[z][p]);
+                            writer.Write((byte)Entries[i].ParameterRemaps[x][z]);
                         }
                     }
-                    for (int z = 0; z < Entries[i].TextureLinks.Length; z++)
+                    for (int x = 0; x < Entries[i].SamplerRemaps.Count; x++)
                     {
-                        writer.Write((byte)Entries[i].TextureLinks[z]);
+                        writer.Write((byte)Entries[i].SamplerRemaps[x]);
                     }
-                    */
+
                     writer.Write(Entries[i].VertexShader == null ? -1 : VertexShaders.IndexOf(Entries[i].VertexShader));
                     writer.Write(Entries[i].PixelShader == null ? -1 : PixelShaders.IndexOf(Entries[i].PixelShader));
                     writer.Write(Entries[i].HullShader == null ? -1 : HullShaders.IndexOf(Entries[i].HullShader));
@@ -344,6 +337,17 @@ namespace CATHODE
                 Index = reader.ReadByte();
                 for (int x = 0; x < count; x++)
                     Entries.Add(new Entry { StateId = reader.ReadInt16(), Value = reader.ReadInt32() });
+            }
+
+            public void Write(BinaryWriter writer)
+            {
+                writer.Write((byte)Entries.Count);
+                writer.Write((byte)Index);
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    writer.Write((Int16)Entries[i].StateId);
+                    writer.Write(Entries[i].Value);
+                }
             }
 
             public class Entry
