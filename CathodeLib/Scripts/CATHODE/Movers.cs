@@ -107,9 +107,15 @@ namespace CATHODE
                     writer.Write((int)Entries[i].cull_flags);
                     Utilities.Write<EntityHandle>(writer, Entries[i].entity);
                     writer.Write(Entries[i].environment_map_index);
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                    writer.Write((byte)Entries[i].emissive_tint.x);
+                    writer.Write((byte)Entries[i].emissive_tint.y);
+                    writer.Write((byte)Entries[i].emissive_tint.z);
+#else
                     writer.Write((byte)Entries[i].emissive_tint.X);
                     writer.Write((byte)Entries[i].emissive_tint.Y);
                     writer.Write((byte)Entries[i].emissive_tint.Z);
+#endif
                     writer.Write((byte)Entries[i].emissive_flags);
                     writer.Write(Entries[i].emissive_intensity_multiplier);
                     writer.Write(Entries[i].emissive_radiosity_multiplier);

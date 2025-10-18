@@ -748,12 +748,21 @@ namespace CATHODE.Scripting.Internal.Parsers
                                 {
                                     bufferWriter.Write((int)keyframe.mode);
                                     bufferWriter.Write(keyframe.time);
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                                    bufferWriter.Write(keyframe.value.x);
+                                    bufferWriter.Write(keyframe.value.y);
+                                    bufferWriter.Write(keyframe.tan_in.x);
+                                    bufferWriter.Write(keyframe.tan_in.y);
+                                    bufferWriter.Write(keyframe.tan_out.x);
+                                    bufferWriter.Write(keyframe.tan_out.y);
+#else
                                     bufferWriter.Write(keyframe.value.X);
                                     bufferWriter.Write(keyframe.value.Y);
                                     bufferWriter.Write(keyframe.tan_in.X);
                                     bufferWriter.Write(keyframe.tan_in.Y);
                                     bufferWriter.Write(keyframe.tan_out.X);
                                     bufferWriter.Write(keyframe.tan_out.Y);
+#endif
                                 }
                                 bufferWriter.Write(new byte[32]);
                                 commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_FLOAT_TRACK | (uint)(32 * (floatTrack.keyframes.Count + 1)), offset));
@@ -835,12 +844,21 @@ namespace CATHODE.Scripting.Internal.Parsers
                             {
                                 case DataType.TRANSFORM:
                                     cTransform t = (cTransform)paramEntry.content;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                                    bufferWriter.Write(t.position.x);
+                                    bufferWriter.Write(t.position.y);
+                                    bufferWriter.Write(t.position.z);
+                                    bufferWriter.Write(t.rotation.y);
+                                    bufferWriter.Write(t.rotation.x);
+                                    bufferWriter.Write(t.rotation.z);
+#else
                                     bufferWriter.Write(t.position.X);
                                     bufferWriter.Write(t.position.Y);
                                     bufferWriter.Write(t.position.Z);
                                     bufferWriter.Write(t.rotation.Y);
                                     bufferWriter.Write(t.rotation.X);
                                     bufferWriter.Write(t.rotation.Z);
+#endif
                                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_POSITION | 24, offset));
                                     break;
                                 case DataType.INTEGER:
@@ -870,9 +888,15 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     break;
                                 case DataType.VECTOR:
                                     cVector3 v = (cVector3)paramEntry.content;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                                    bufferWriter.Write(v.value.x);
+                                    bufferWriter.Write(v.value.y);
+                                    bufferWriter.Write(v.value.z);
+#else
                                     bufferWriter.Write(v.value.X);
                                     bufferWriter.Write(v.value.Y);
                                     bufferWriter.Write(v.value.Z);
+#endif
                                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_VECTOR | 12, offset));
                                     break;
                                 case DataType.ENUM:
@@ -885,12 +909,21 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     cSpline s = (cSpline)paramEntry.content;
                                     foreach (var point in s.splinePoints)
                                     {
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                                        bufferWriter.Write(point.position.x);
+                                        bufferWriter.Write(point.position.y);
+                                        bufferWriter.Write(point.position.z);
+                                        bufferWriter.Write(point.rotation.y);
+                                        bufferWriter.Write(point.rotation.x);
+                                        bufferWriter.Write(point.rotation.z);
+#else
                                         bufferWriter.Write(point.position.X);
                                         bufferWriter.Write(point.position.Y);
                                         bufferWriter.Write(point.position.Z);
                                         bufferWriter.Write(point.rotation.Y);
                                         bufferWriter.Write(point.rotation.X);
                                         bufferWriter.Write(point.rotation.Z);
+#endif
                                     }
                                     bufferWriter.Write(-1.0f); bufferWriter.Write(-1.0f); bufferWriter.Write(-1.0f);
                                     bufferWriter.Write(-1.0f); bufferWriter.Write(-1.0f); bufferWriter.Write(-1.0f);
@@ -1020,12 +1053,21 @@ namespace CATHODE.Scripting.Internal.Parsers
             }
 
             offset = (int)writer.BaseStream.Position;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+            writer.Write(resource.position.x);
+            writer.Write(resource.position.y);
+            writer.Write(resource.position.z);
+            writer.Write(resource.rotation.x);
+            writer.Write(resource.rotation.y);
+            writer.Write(resource.rotation.z);
+#else
             writer.Write(resource.position.X);
             writer.Write(resource.position.Y);
             writer.Write(resource.position.Z);
             writer.Write(resource.rotation.X);
             writer.Write(resource.rotation.Y);
             writer.Write(resource.rotation.Z);
+#endif
             commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_POSITION | 24, offset));
         }
 

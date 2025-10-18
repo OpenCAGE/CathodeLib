@@ -1,4 +1,4 @@
-﻿using CathodeLib;
+using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -32,7 +32,11 @@ namespace CATHODE
             {
                 reader.BaseStream.Position += 8;
                 Resolution = new Vector2(reader.ReadInt32(), reader.ReadInt32());
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                ImageData = reader.ReadBytes((int)Resolution.x * (int)Resolution.y * 8);
+#else
                 ImageData = reader.ReadBytes((int)Resolution.X * (int)Resolution.Y * 8);
+#endif
             }
             return true;
         }
@@ -44,8 +48,13 @@ namespace CATHODE
                 writer.BaseStream.SetLength(0);
                 Utilities.WriteString("alph", writer);
                 writer.Write(0);
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                writer.Write(Resolution.x);
+                writer.Write(Resolution.y);
+#else
                 writer.Write(Resolution.X);
                 writer.Write(Resolution.Y);
+#endif
                 writer.Write(ImageData);
             }
             return true;

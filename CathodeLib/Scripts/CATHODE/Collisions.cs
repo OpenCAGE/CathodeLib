@@ -5,13 +5,13 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
+using System.Runtime.InteropServices.ComTypes;
+using System.Runtime.InteropServices;
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
 using System.Numerics;
-using System.Runtime.InteropServices.ComTypes;
-using System.Runtime.InteropServices;
 #endif
 
 namespace CATHODE
@@ -148,9 +148,15 @@ namespace CATHODE
                         Weights = new byte[4]
                     };
 
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                    vertWrite.Position[0] = (short)(vert.Position.x * 32767.0f);
+                    vertWrite.Position[1] = (short)(vert.Position.y * 32767.0f);
+                    vertWrite.Position[2] = (short)(vert.Position.z * 32767.0f);
+#else
                     vertWrite.Position[0] = (short)(vert.Position.X * 32767.0f);
                     vertWrite.Position[1] = (short)(vert.Position.Y * 32767.0f);
                     vertWrite.Position[2] = (short)(vert.Position.Z * 32767.0f);
+#endif
                     for (int i = 0; i < 4; i++) vertWrite.Indices[i] = vert.BoneIndices[i];
                     for (int i = 0; i < 4; i++) vertWrite.Weights[i] = (byte)(vert.BoneWeights[i] * 255.0f);
 

@@ -22,7 +22,7 @@ namespace CathodeLib
             public VanillaData()
             {
 #if UNITY_EDITOR || UNITY_STANDALONE
-                byte[] content = File.ReadAllBytes(Application.streamingAssetsPath + "/info.dat");
+                byte[] content = File.ReadAllBytes(UnityEngine.Application.streamingAssetsPath + "/info.dat");
 #else
                 byte[] content = CathodeLib.Properties.Resources.info;
                 if (File.Exists("LocalDB\\info.dat"))
