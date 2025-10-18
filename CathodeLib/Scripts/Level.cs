@@ -236,7 +236,7 @@ namespace CathodeLib
                 for (int p = 0; p < Models.Entries[i].Components.Count; p++)
                     for (int x = 0; x < Models.Entries[i].Components[p].LODs.Count; x++)
                         for (int z = 0; z < Models.Entries[i].Components[p].LODs[x].Submeshes.Count; z++)
-                            modelMaterials.Add(Materials.GetAtWriteIndex(Models.Entries[i].Components[p].LODs[x].Submeshes[z].MaterialLibraryIndex));
+                            modelMaterials.Add(Materials.GetAtWriteIndex(Models.Entries[i].Components[p].LODs[x].Submeshes[z].MaterialIndex));
             Models.Save();
 
             //Get material links as actual objects
@@ -281,7 +281,7 @@ namespace CathodeLib
                     {
                         for (int z = 0; z < Models.Entries[i].Components[p].LODs[x].Submeshes.Count; z++)
                         {
-                            Models.Entries[i].Components[p].LODs[x].Submeshes[z].MaterialLibraryIndex = Materials.GetWriteIndex(modelMaterials[y]);
+                            Models.Entries[i].Components[p].LODs[x].Submeshes[z].MaterialIndex = Materials.GetWriteIndex(modelMaterials[y]);
                             y++;
                         }
                     }

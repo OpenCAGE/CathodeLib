@@ -74,14 +74,15 @@ namespace CATHODE
 
                     reader.BaseStream.Position += 11;
                     material.Name = materialNames[i]; 
-                    material.ShaderID = reader.ReadInt32(); //fx_shader_id
+                    material.ShaderIndex = reader.ReadInt32();
                     reader.BaseStream.Position += 128;
                     int lightFlags = reader.ReadInt32();
                     if (lightFlags != 0) material.OfflineLightFeatures = new LightFlags(lightFlags);
                     reader.BaseStream.Position += 54;
-                    material.PhysicalMaterialIndex = reader.ReadByte(); //255 i assume means none -> this is an index into the Havok physics materials database (at path data/material_data/materials.xml/bml).
-                    material.EnvironmentMapIndex = reader.ReadByte(); //255 means 'any' -> this is an index into our TextureReferences array. it's optionally overridden per renderable instance by MVR.
+                    material.PhysicalMaterialIndex = reader.ReadByte(); 
+                    material.EnvironmentMapIndex = reader.ReadByte(); 
                     material.Priority = reader.ReadByte();
+
 
                     reader.BaseStream.Position += 11;
 
@@ -187,7 +188,7 @@ namespace CATHODE
                     writer.Write(new byte[7]);
                     writer.Write(nameOffset);
                     nameOffset += Entries[i].Name.Length + 1;
-                    writer.Write(Entries[i].ShaderID);
+                    writer.Write(Entries[i].ShaderIndex);
                     writer.Write(new byte[128]);
                     if (Entries[i].OfflineLightFeatures != null) 
                         Entries[i].OfflineLightFeatures.Write(writer);
@@ -262,12 +263,13 @@ namespace CATHODE
             public List<float> HullShaderConstants = new List<float>();
             public List<float> DomainShaderConstants = new List<float>();
 
-            public int ShaderID;
             public LightFlags OfflineLightFeatures = null; //Null if we have none (not a light material)
 
-            public int PhysicalMaterialIndex;
-            public int EnvironmentMapIndex;
-            public int Priority;
+            public int ShaderIndex; //Index into shader pak
+            public int PhysicalMaterialIndex; //255 i assume means none -> this is an index into the Havok physics materials database (at path data/material_data/materials.xml/bml).
+            public int EnvironmentMapIndex; //255 means 'any' -> this is an index into our TextureReferences array. it's optionally overridden per renderable instance by MVR.
+
+            public int Priority; 
 
             public override string ToString()
             {

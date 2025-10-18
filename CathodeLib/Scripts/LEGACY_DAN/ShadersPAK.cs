@@ -55,7 +55,7 @@ namespace CATHODE.LEGACY
 
         private MaterialPropertyIndex GetMaterialPropertyIndexes(Materials.Material InMaterial)
         {
-            ShaderEntry Shader = Shaders[InMaterial.ShaderID];
+            ShaderEntry Shader = Shaders[InMaterial.ShaderIndex];
 
             MaterialPropertyIndex toReturn = new MaterialPropertyIndex();
 
@@ -178,7 +178,7 @@ namespace CATHODE.LEGACY
 
         public ShaderMaterialMetadata GetMaterialMetadataFromShader(Materials.Material InMaterial)
         {
-            ShaderEntry Shader = Shaders[InMaterial.ShaderID];
+            ShaderEntry Shader = Shaders[InMaterial.ShaderIndex];
             ShaderMaterialMetadata metadata = new ShaderMaterialMetadata();
             metadata.shaderCategory = (ShaderCategory)Shader.Header2.ShaderCategory;
             switch (metadata.shaderCategory)
