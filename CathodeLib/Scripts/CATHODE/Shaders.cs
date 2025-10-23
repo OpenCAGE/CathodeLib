@@ -106,30 +106,22 @@ namespace CATHODE
                     shader.PermutationHash = reader.ReadInt32();
                     shader.RenderStates = new StateBlock(reader);
 
-                    shader.Samplers = new List<StateBlock>();
                     for (int x = 0; x < samplerCount; x++)
-                    {
                         shader.Samplers.Add(new StateBlock(reader));
-                    }
-                    shader.SamplerStageBindings = new List<int>();
                     for (int x = 0; x < samplerCount; x++)
-                    {
                         shader.SamplerStageBindings.Add(reader.ReadByte());
-                    }
-                    shader.ParameterRemaps = new List<int>[5];
-                    for (int x = 0; x < 5; x++)
-                    {
-                        shader.ParameterRemaps[x] = new List<int>();
-                        for (int z = 0; z < parameterRemapCount[x]; z++)
-                        {
-                            shader.ParameterRemaps[x].Add(reader.ReadByte());
-                        }
-                    }
-                    shader.SamplerRemaps = new List<int>();
+                    for (int x = 0; x < parameterRemapCount[0]; x++)
+                        shader.EngineParameterRemaps.Add(reader.ReadByte());
+                    for (int x = 0; x < parameterRemapCount[1]; x++)
+                        shader.VertexShaderParameterRemaps.Add(reader.ReadByte());
+                    for (int x = 0; x < parameterRemapCount[2]; x++)
+                        shader.PixelShaderParameterRemaps.Add(reader.ReadByte());
+                    for (int x = 0; x < parameterRemapCount[3]; x++)
+                        shader.HullShaderParameterRemaps.Add(reader.ReadByte());
+                    for (int x = 0; x < parameterRemapCount[4]; x++)
+                        shader.DomainShaderParameterRemaps.Add(reader.ReadByte());
                     for (int x = 0; x < samplerRemapCount; x++)
-                    {
                         shader.SamplerRemaps.Add(reader.ReadByte());
-                    }
 
                     int vertexShaderIdx = reader.ReadInt32();
                     shader.VertexShader = vertexShaderIdx == -1 ? null : VertexShaders[vertexShaderIdx];
@@ -231,8 +223,11 @@ namespace CATHODE
                     writer.Write(0x00010024);
 
                     writer.Write((Int16)Entries[i].Samplers.Count);
-                    for (int x = 0; x < 5; x++)
-                        writer.Write(Entries[i].ParameterRemaps[x].Count);
+                    writer.Write(Entries[i].EngineParameterRemaps.Count);
+                    writer.Write(Entries[i].VertexShaderParameterRemaps.Count);
+                    writer.Write(Entries[i].PixelShaderParameterRemaps.Count);
+                    writer.Write(Entries[i].HullShaderParameterRemaps.Count);
+                    writer.Write(Entries[i].DomainShaderParameterRemaps.Count);
                     writer.Write((Int16)Entries[i].SamplerRemaps.Count);
 
                     Utilities.WriteString(Entries[i].Ubershader.ToString(), writer);
@@ -247,24 +242,21 @@ namespace CATHODE
                     Entries[i].RenderStates.Write(writer);
 
                     for (int x = 0; x < Entries[i].Samplers.Count; x++)
-                    {
                         Entries[i].Samplers[x].Write(writer);
-                    }
                     for (int x = 0; x < Entries[i].Samplers.Count; x++)
-                    {
                         writer.Write((byte)Entries[i].SamplerStageBindings[x]);
-                    }
-                    for (int x = 0; x < 5; x++)
-                    {
-                        for (int z = 0; z < Entries[i].ParameterRemaps[x].Count; z++)
-                        {
-                            writer.Write((byte)Entries[i].ParameterRemaps[x][z]);
-                        }
-                    }
+                    for (int x = 0; x < Entries[i].EngineParameterRemaps.Count; x++)
+                        writer.Write((byte)Entries[i].EngineParameterRemaps[x]);
+                    for (int x = 0; x < Entries[i].VertexShaderParameterRemaps.Count; x++)
+                        writer.Write((byte)Entries[i].VertexShaderParameterRemaps[x]);
+                    for (int x = 0; x < Entries[i].PixelShaderParameterRemaps.Count; x++)
+                        writer.Write((byte)Entries[i].PixelShaderParameterRemaps[x]);
+                    for (int x = 0; x < Entries[i].HullShaderParameterRemaps.Count; x++)
+                        writer.Write((byte)Entries[i].HullShaderParameterRemaps[x]);
+                    for (int x = 0; x < Entries[i].DomainShaderParameterRemaps.Count; x++)
+                        writer.Write((byte)Entries[i].DomainShaderParameterRemaps[x]);
                     for (int x = 0; x < Entries[i].SamplerRemaps.Count; x++)
-                    {
                         writer.Write((byte)Entries[i].SamplerRemaps[x]);
-                    }
 
                     writer.Write(Entries[i].VertexShader == null ? -1 : VertexShaders.IndexOf(Entries[i].VertexShader));
                     writer.Write(Entries[i].PixelShader == null ? -1 : PixelShaders.IndexOf(Entries[i].PixelShader));
@@ -298,10 +290,15 @@ namespace CATHODE
             public int RegisterCount;
             public int PermutationHash;
 
-            public List<StateBlock> Samplers;
-            public List<int> SamplerStageBindings;
-            public List<int> SamplerRemaps;
-            public List<int>[] ParameterRemaps; // Count of 5
+            public List<StateBlock> Samplers = new List<StateBlock>();
+            public List<int> SamplerStageBindings = new List<int>();
+            public List<int> SamplerRemaps = new List<int>();
+
+            public List<int> EngineParameterRemaps = new List<int>();
+            public List<int> VertexShaderParameterRemaps = new List<int>();
+            public List<int> PixelShaderParameterRemaps = new List<int>();
+            public List<int> HullShaderParameterRemaps = new List<int>();
+            public List<int> DomainShaderParameterRemaps = new List<int>();
 
             public StateBlock RenderStates;
 
