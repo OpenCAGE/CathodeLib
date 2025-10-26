@@ -25,13 +25,6 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
-            int minUnk1 = 0;
-            int minUnk2 = 0;
-            int minColIn = 0;
-
-            List<int> flags = new List<int>();
-            Dictionary<string, List<string>> dictest = new Dictionary<string, List<string>>();
-
             using (BinaryReader reader = new BinaryReader(stream))
             {
                 //The way this works:
@@ -57,15 +50,12 @@ namespace CATHODE
                     Entries.Add(entry);
                 }
             }
-
-
             return true;
         }
 
         override protected bool SaveInternal()
         {
             //composite_instance_id defo has something to do with the ordering as all the zeros are first
-
 
             //Entries = Entries.OrderBy(o => o.entity.entity_id.ToUInt32() + o.id.ToUInt32()).ThenBy(o => o.entity.composite_instance_id.ToUInt32()).ThenBy(o => o.zone_id.ToUInt32()).ToList();
 
