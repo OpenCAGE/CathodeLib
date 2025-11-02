@@ -56,39 +56,31 @@ namespace CATHODE
                 int vbfCount = bin.ReadInt32();
 
                 //Read vertex buffer formats
-                List<AlienVBF> vertexFormats = new List<AlienVBF>(vbfCount);
-                for (int EntryIndex = 0; EntryIndex < vbfCount; ++EntryIndex)
+                List<VertexFormat> vertexFormats = new List<VertexFormat>(vbfCount);
+                for (int i = 0; i < vbfCount; ++i)
                 {
-                    long startPos = bin.BaseStream.Position;
-                    int count = 1;
-                    while (bin.ReadByte() != 0xFF)
+                    VertexFormat vertexFormat = new VertexFormat();
+                    while (true)
                     {
-                        bin.BaseStream.Position += 23;
-                        count++;
-                    }
-                    bin.BaseStream.Position = startPos;
-
-                    AlienVBF vertexFormat = new AlienVBF();
-                    for (int i = 0; i < count; i++)
-                    {
-                        int ArrayIndex = bin.ReadInt32();
-
-                        AlienVBF.Element element = new AlienVBF.Element();
-                        element.Offset = bin.ReadInt32(); // NOTE: Offset within data structure, generally not important.
-                        element.Type = (VertexFormatType)bin.ReadInt32(); //(int)
-                        element.Usage = (VertexFormatUsage)bin.ReadInt32(); //(int)
-                        element.VariantIndex = bin.ReadInt32(); // NOTE: Variant index such as UVs: (UV0, UV1, UV2...)
+                        int Index = bin.ReadInt32();
                         bin.BaseStream.Position += 4;
 
-                        if (ArrayIndex == 0xFF)
+                        VertexFormat.Attribute attribute = new VertexFormat.Attribute();
+                        attribute.Type = (VertexFormat.Type)bin.ReadInt32();
+                        attribute.Usage = (VertexFormat.Usage)bin.ReadInt32();
+                        attribute.Index = bin.ReadInt32();
+                        bin.BaseStream.Position += 4;
+
+                        //This is always last, used to define indices
+                        if (Index == 0xFF)
                         {
-                            vertexFormat.Elements.Add(new List<AlienVBF.Element>() { element });
-                            continue;
+                            vertexFormat.Attributes.Add(new List<VertexFormat.Attribute>() { attribute });
+                            break;
                         }
 
-                        while (vertexFormat.Elements.Count - 1 < ArrayIndex) 
-                            vertexFormat.Elements.Add(new List<AlienVBF.Element>());
-                        vertexFormat.Elements[ArrayIndex].Add(element);
+                        while (vertexFormat.Attributes.Count - 1 < Index)
+                            vertexFormat.Attributes.Add(new List<VertexFormat.Attribute>());
+                        vertexFormat.Attributes[Index].Add(attribute);
                     }
                     vertexFormats.Add(vertexFormat);
                 }
@@ -117,13 +109,13 @@ namespace CATHODE
                     submesh.MaxBounds = Utilities.Consume<Vector3>(bin);
                     submesh.MaxLODRange = bin.ReadSingle();
 
-                    int childModelIndex = bin.ReadInt32(); 
+                    int childModelIndex = bin.ReadInt32();
                     int childLODIndex = bin.ReadInt32();
                     if (childLODIndex != -1) LODs.Add(childLODIndex);
                     submesh.MaterialIndex = bin.ReadInt32();
 
-                    submesh.RenderFlags = (CS2.Component.LOD.RenderingFlag)bin.ReadUInt32(); 
-                    submesh.CollisionProxyIndex = bin.ReadInt32(); 
+                    submesh.RenderFlags = (CS2.Component.LOD.RenderingFlag)bin.ReadUInt32();
+                    submesh.CollisionProxyIndex = bin.ReadInt32();
                     bin.BaseStream.Position += 4;
                     submesh.WeightedCollisionIndex = bin.ReadInt32();
                     int boneArrayOffset = bin.ReadInt32();
@@ -175,7 +167,7 @@ namespace CATHODE
                     pak.BaseStream.Position += 4; //length again 
                     int offset = BigEndianUtils.ReadInt32(pak);
                     int sort = BigEndianUtils.ReadInt32(pak);
-                    pak.BaseStream.Position += 8; 
+                    pak.BaseStream.Position += 8;
                     int binIndex = BigEndianUtils.ReadInt32(pak);
                     pak.BaseStream.Position += 12;
 
@@ -241,7 +233,7 @@ namespace CATHODE
                     for (int x = 0; x < Entries[i].Components[z].LODs.Count; x++)
                         submeshCount += Entries[i].Components[z].LODs[x].Submeshes.Count;
 
-            List<AlienVBF> vertexFormats = new List<AlienVBF>();
+            List<VertexFormat> vertexFormats = new List<VertexFormat>();
             for (int i = 0; i < Entries.Count; i++)
             {
                 for (int z = 0; z < Entries[i].Components.Count; z++)
@@ -274,16 +266,46 @@ namespace CATHODE
                 //Write vertex buffers
                 for (int i = 0; i < vertexFormats.Count; i++)
                 {
-                    for (int x = 0; x < vertexFormats[i].Elements.Count; x++)
+                    for (int x = 0; x < vertexFormats[i].Attributes.Count; x++)
                     {
-                        for (int y = 0; y < vertexFormats[i].Elements[x].Count; y++)
+                        int offset = 0;
+                        for (int y = 0; y < vertexFormats[i].Attributes[x].Count; y++)
                         {
-                            bin.Write((x == vertexFormats[i].Elements.Count - 1) ? 255 : x);
-                            bin.Write((Int32)vertexFormats[i].Elements[x][y].Offset);
-                            bin.Write((Int32)vertexFormats[i].Elements[x][y].Type);
-                            bin.Write((Int32)vertexFormats[i].Elements[x][y].Usage);
-                            bin.Write((Int32)vertexFormats[i].Elements[x][y].VariantIndex);
+                            bin.Write((x == vertexFormats[i].Attributes.Count - 1) ? 255 : x);
+                            bin.Write(offset);
+                            bin.Write((Int32)vertexFormats[i].Attributes[x][y].Type);
+                            bin.Write((Int32)vertexFormats[i].Attributes[x][y].Usage);
+                            bin.Write((Int32)vertexFormats[i].Attributes[x][y].Index);
                             bin.Write((Int32)2);
+
+                            switch (vertexFormats[i].Attributes[x][y].Type)
+                            {
+                                case VertexFormat.Type.FP32_1:
+                                case VertexFormat.Type.Color:
+                                case VertexFormat.Type.U8_4:
+                                case VertexFormat.Type.S16_2:
+                                case VertexFormat.Type.U8_4N:
+                                case VertexFormat.Type.S16_2N:
+                                case VertexFormat.Type.U16_2N:
+                                case VertexFormat.Type.UDec3:
+                                case VertexFormat.Type.Dec3N:
+                                case VertexFormat.Type.FP16_2:
+                                    offset += 4;
+                                    break;
+                                case VertexFormat.Type.FP32_2:
+                                case VertexFormat.Type.S16_4:
+                                case VertexFormat.Type.S16_4N:
+                                case VertexFormat.Type.U16_4N:
+                                case VertexFormat.Type.FP16_4:
+                                    offset += 8;
+                                    break;
+                                case VertexFormat.Type.FP32_3:
+                                    offset += 12;
+                                    break;
+                                case VertexFormat.Type.FP32_4:
+                                    offset += 16;
+                                    break;
+                            }
                         }
                     }
                 }
@@ -531,27 +553,25 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class AlienVBF : IComparable<AlienVBF>
+        public class VertexFormat : IComparable<VertexFormat>
         {
-            public List<List<Element>> Elements = new List<List<Element>>(); 
+            public List<List<Attribute>> Attributes = new List<List<Attribute>>();
 
-            public class Element : IComparable<Element>
+            public class Attribute : IComparable<Attribute>
             {
-                public Element() {}
-                public Element(VertexFormatType type, VertexFormatUsage slot = VertexFormatUsage.POSITION, int index = 0)
+                public Attribute() { }
+                public Attribute(Type type, Usage slot = Usage.Position, int index = 0)
                 {
                     Type = type;
                     Usage = slot;
-                    VariantIndex = index;
+                    Index = index;
                 }
 
-                public int Offset; // TODO: we should REALLY just calculate this at write-time as it's pointless data after read actions
+                public Type Type;
+                public Usage Usage;
+                public int Index;
 
-                public VertexFormatType Type; //(int)
-                public VertexFormatUsage Usage; //(int)
-                public int VariantIndex; // NOTE: Variant index such as UVs: (UV0, UV1, UV2...)
-
-                public int CompareTo(Element other)
+                public int CompareTo(Attribute other)
                 {
                     if (other == null) return 1;
 
@@ -561,47 +581,89 @@ namespace CATHODE
                     result = Usage.CompareTo(other.Usage);
                     if (result != 0) return result;
 
-                    return VariantIndex.CompareTo(other.VariantIndex);
+                    return Index.CompareTo(other.Index);
                 }
-            }; 
-            
+            };
+
+            public enum Type
+            {
+                Unknown,
+                FP32_1,
+                FP32_2,
+                FP32_3,
+                FP32_4,
+                Color,
+                U8_4,
+                S16_2,
+                S16_4,
+                U8_4N,
+                S16_2N,
+                S16_4N,
+                U16_2N,
+                U16_4N,
+                UDec3,
+                Dec3N,
+                FP16_2,
+                FP16_4,
+                S8_4N,
+                Unused,
+            };
+
+            public enum Usage
+            {
+                Unknown,
+                Position,
+                BlendWeight,
+                BlendIndices,
+                Normal,
+                PSize,
+                TexCoord,
+                Tangent,
+                Binormal,
+                TessFactor,
+                Color,
+                Fog,
+                Depth,
+                Sample,
+            };
+
             public override bool Equals(object obj)
             {
-                if (!(obj is AlienVBF)) return false;
-                if ((AlienVBF)obj == null) return this == null;
-                if (this == null) return (AlienVBF)obj == null;
-                return ((AlienVBF)obj).CompareTo(this) == 0;
+                if (!(obj is VertexFormat)) return false;
+                if ((VertexFormat)obj == null) return this == null;
+                if (this == null) return (VertexFormat)obj == null;
+                return ((VertexFormat)obj).CompareTo(this) == 0;
             }
-            public static bool operator ==(AlienVBF x, AlienVBF y)
+            public static bool operator ==(VertexFormat x, VertexFormat y)
             {
                 return x.Equals(y);
             }
-            public static bool operator !=(AlienVBF x, AlienVBF y)
+            public static bool operator !=(VertexFormat x, VertexFormat y)
             {
                 return !x.Equals(y);
             }
 
             public override int GetHashCode()
             {
-                return 1573927372 + EqualityComparer<List<List<Element>>>.Default.GetHashCode(Elements);
+                return 1573927372 + EqualityComparer<List<List<Attribute>>>.Default.GetHashCode(Attributes);
             }
 
-            public int CompareTo(AlienVBF other)
+            public int CompareTo(VertexFormat other)
             {
                 if (other == null) return 1;
 
-                int result = Elements.Count.CompareTo(other.Elements.Count);
+                int result = Attributes.Count.CompareTo(other.Attributes.Count);
                 if (result != 0) return result;
 
-                for (int i = 0; i < Elements.Count; i++)
+                for (int i = 0; i < Attributes.Count; i++)
                 {
-                    result = CompareElementLists(Elements[i], other.Elements[i]);
+                    result = CompareElementLists(Attributes[i], other.Attributes[i]);
                     if (result != 0) return result;
                 }
                 return 0;
             }
 
-            private static int CompareElementLists(List<Element> list1, List<Element> list2)
+            private static int CompareElementLists(List<Attribute> list1, List<Attribute> list2)
             {
                 int result = list1.Count.CompareTo(list2.Count);
                 if (result != 0) return result;
@@ -614,36 +676,6 @@ namespace CATHODE
                 return 0;
             }
         }
-
-        public enum VertexFormatType
-        {
-            FLOAT1 = 1,
-            FLOAT2 = 2,
-            FLOAT3 = 3,
-            FLOAT4 = 4,
-            COLOUR = 5,
-            UBYTE4 = 6,
-            SHORT2 = 7,
-            SHORT4 = 8,
-            UBYTE4N = 9,
-            SHORT2N = 10,
-            SHORT4N = 11,
-            USHORT2N = 12,
-            USHORT4N = 13,
-            DEC3N = 15,
-        };
-
-        public enum VertexFormatUsage
-        {
-            POSITION = 1,
-            BLENDWEIGHT = 2,
-            BLENDINDICES = 3,
-            NORMAL = 4,
-            TEXCOORD = 6,
-            TANGENT = 7,
-            BINORMAL = 8, 
-            COLOR = 10,
-        };
 
         public class CS2
         {
@@ -689,7 +721,7 @@ namespace CATHODE
                         IS_LOD = 1 << 2,
                         TOP_LOD_OVERRIDE = 1 << 3,
                         IS_LOD_SUB_MESH = 1 << 4,
-                        IS_BALLISTIC_LOD = 1 << 5, 
+                        IS_BALLISTIC_LOD = 1 << 5,
                         IS_SHADOW_LOD = 1 << 6,
                         HAS_SHADOW_LOD = 1 << 7,
                         NEVER_LOADED = 1 << 8,
@@ -704,7 +736,7 @@ namespace CATHODE
                         IS_SHADOW_CASTING = 1 << 14,
                         HAS_SHADOW_CASTING = 1 << 15,
 
-                        INTERACTIONS_ONLY = 1 << 16, 
+                        INTERACTIONS_ONLY = 1 << 16,
                         NO_INTERACTIONS = 1 << 17, // when not interacting the game swaps to a noclip FP model
 
                         IS_REFLECTION_LOD = 1 << 18,
@@ -718,8 +750,8 @@ namespace CATHODE
 
                     public class Submesh
                     {
-                        public Vector3 MinBounds = new Vector3(-1,-1,-1);
-                        public Vector3 MaxBounds = new Vector3(1,1,1);   
+                        public Vector3 MinBounds = new Vector3(-1, -1, -1);
+                        public Vector3 MaxBounds = new Vector3(1, 1, 1);
 
                         public float MinLODRange = 0;
                         public float MaxLODRange = 10000;
@@ -731,8 +763,8 @@ namespace CATHODE
                         public int WeightedCollisionIndex = -1; // Index in COLLISION.BIN
                         public int MorphAnimSet = -1; // Index in MORPH_TARGET_DB.BIN
 
-                        public AlienVBF VertexFormatFull;
-                        public AlienVBF VertexFormatPartial;
+                        public VertexFormat VertexFormatFull;
+                        public VertexFormat VertexFormatPartial;
 
                         public int VertexScale = 1;
                         public int VertexCount = 0;
