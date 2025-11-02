@@ -97,6 +97,52 @@ namespace CATHODE.ShaderTypes
                 return null;
             }
         }
+
+        /// <summary>
+        /// Gets the parameter type for a specific shader parameter using the GetParameterType method on the shader class.
+        /// </summary>
+        public static UberShaderParameterType? GetParameterType(SHADER_LIST shaderType, string parameterName)
+        {
+            string shaderTypeName = shaderType.ToString();
+
+            try
+            {
+                Type shaderTypeClass = Assembly.GetType($"CATHODE.ShaderTypes.{shaderTypeName}");
+                
+                if (shaderTypeClass == null)
+                    shaderTypeClass = Assembly.GetTypes().FirstOrDefault(t => t.Namespace == "CATHODE.ShaderTypes" && t.Name == shaderTypeName);
+
+                if (shaderTypeClass == null)
+                    return null;
+
+                Type parametersEnumType = shaderTypeClass.GetNestedType("PARAMETERS", BindingFlags.Public | BindingFlags.Static);
+                if (parametersEnumType == null || !parametersEnumType.IsEnum)
+                    return null;
+
+                if (!Enum.IsDefined(parametersEnumType, parameterName))
+                    return null;
+
+                object parameterEnumValue = Enum.Parse(parametersEnumType, parameterName);
+
+                MethodInfo getParameterTypeMethod = shaderTypeClass.GetMethod("GetParameterType", BindingFlags.Public | BindingFlags.Static);
+                if (getParameterTypeMethod == null)
+                    return null;
+
+                ParameterInfo[] parameters = getParameterTypeMethod.GetParameters();
+                if (parameters.Length != 1 || parameters[0].ParameterType != parametersEnumType)
+                    return null;
+
+                object result = getParameterTypeMethod.Invoke(null, new[] { parameterEnumValue });
+                if (result is UberShaderParameterType parameterType)
+                    return parameterType;
+
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
     }
 
     public enum ShaderIndexType
