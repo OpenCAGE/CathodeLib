@@ -1,3 +1,5 @@
+using System;
+
 namespace CATHODE.ShaderTypes
 {
     public enum SHADER_LIST
@@ -129,6 +131,20 @@ namespace CATHODE.ShaderTypes
         VISOR = 54,
     };
 
+    public enum UberShaderParameterType
+    {
+        Float = 0,
+        Half,
+        Float2,
+        Half2,
+        Float3,
+        Half3,
+        Float4,
+        Half4,
+        Int,
+        Num
+    };
+
     public static class CA_RADIOSITY_INDIRECT
     {
         public enum FEATURES
@@ -141,6 +157,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -155,6 +175,10 @@ namespace CATHODE.ShaderTypes
         public enum PARAMETERS
         {
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_RADIOSITY_INDIRECT_BLUR
@@ -167,6 +191,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -181,6 +209,10 @@ namespace CATHODE.ShaderTypes
         public enum PARAMETERS
         {
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_RADIOSITY_OBJECT_PROBE_INTERP
@@ -193,6 +225,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -209,6 +245,10 @@ namespace CATHODE.ShaderTypes
         public enum PARAMETERS
         {
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_RADIOSITY_DIRECT_SURFACE
@@ -222,6 +262,10 @@ namespace CATHODE.ShaderTypes
         public enum PARAMETERS
         {
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_RADIOSITY_DIRECT_STRIP
@@ -234,6 +278,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -253,6 +301,10 @@ namespace CATHODE.ShaderTypes
         public enum PARAMETERS
         {
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_RADIOSITY_UNMANGLE
@@ -265,6 +317,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -279,6 +335,10 @@ namespace CATHODE.ShaderTypes
         public enum PARAMETERS
         {
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_RADIOSITY_DOOR_TRANSFER
@@ -291,6 +351,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -468,6 +532,203 @@ namespace CATHODE.ShaderTypes
             PARALLAX_POSITION = 93,
             AMBIENT_LIGHTING_COLOUR = 94,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.DRAW_PASS:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.ASPECT_RATIO:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FADE_AT_DISTANCE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARTICLE_COUNT:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.SYSTEM_EXPIRY_TIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SIZE_START_MIN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SIZE_START_MAX:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SIZE_END_MIN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SIZE_END_MAX:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHA_IN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHA_OUT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.MASK_AMOUNT_MIN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.MASK_AMOUNT_MAX:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.MASK_AMOUNT_MIDPOINT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARTICLE_EXPIRY_TIME_MIN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARTICLE_EXPIRY_TIME_MAX:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.COLOUR_SCALE_MIN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.COLOUR_SCALE_MAX:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.WIND_X:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.WIND_Y:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.WIND_Z:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHA_REF_VALUE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.CAMERA_RELATIVE_POS_X:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.CAMERA_RELATIVE_POS_Y:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.CAMERA_RELATIVE_POS_Z:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPHERE_PROJECTION_RADIUS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DISTORTION_STRENGTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PIVOT_X:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PIVOT_Y:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPAWN_RATE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPAWN_RATE_VAR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPAWN_NUMBER:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.LIFETIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIFETIME_VAR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.WORLD_TO_LOCAL_BLEND_START:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.WORLD_TO_LOCAL_BLEND_END:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.WORLD_TO_LOCAL_MAX_DIST:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.CELL_MAX_DIST:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SEED:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.SPEED_START_MIN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPEED_START_MAX:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPEED_MID_MIN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPEED_MID_MAX:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPEED_END_MIN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPEED_END_MAX:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LAUNCH_DECELERATE_SPEED_START_MIN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LAUNCH_DECELERATE_SPEED_START_MAX:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LAUNCH_DECELERATE_DEC_RATE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.EMISSION_AREA_X:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.EMISSION_AREA_Y:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.EMISSION_AREA_Z:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.GRAVITY_STRENGTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.GRAVITY_MAX_STRENGTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.COLOUR_TINT_START:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.COLOUR_TINT_END:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.COLOUR_TINT_MID:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.COLOUR_MIDPOINT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPREAD_MIN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPREAD:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ROTATION_MIN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ROTATION_MAX:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ROTATION_BASE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ROTATION_VAR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ROTATION_IN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ROTATION_OUT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ROTATION_DAMP:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FADE_NEAR_CAMERA_MAX_DIST:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FADE_NEAR_CAMERA_THRESHOLD:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.TEXTURE_ANIMATION_FRAMES:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.NUM_ROWS:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.TEXTURE_ANIMATION_LOOP_COUNT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SOFTNESS_EDGE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SOFTNESS_ALPHA_THICKNESS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SOFTNESS_ALPHA_DEPTH_MODIFIER:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.REVERSE_SOFTNESS_EDGE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PIVOT_OFFSET_MIN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PIVOT_OFFSET_MAX:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.TURBULENCE_FREQUENCY_MIN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.TURBULENCE_FREQUENCY_MAX:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.TURBULENCE_AMOUNT_MIN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.TURBULENCE_AMOUNT_MAX:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_TOTALTIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_RANGE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_BEGINSTART:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_BEGINSTOP:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_ENDSTART:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_ENDSTOP:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DEPTH_FADE_AXIS_DIST:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DEPTH_FADE_AXIS_PERCENT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.CYCLE_TIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_TEX_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_WARP_STRENGTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARALLAX_POSITION:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.AMBIENT_LIGHTING_COLOUR:
+                    return UberShaderParameterType.Float4;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_RIBBON
@@ -579,6 +840,127 @@ namespace CATHODE.ShaderTypes
             SOFTNESS_ALPHA_DEPTH_MODIFIER = 55,
             AMBIENT_LIGHTING_COLOUR = 56,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.MASK_AMOUNT_MIN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.MASK_AMOUNT_MAX:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.MASK_AMOUNT_MIDPOINT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DRAW_PASS:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.SYSTEM_EXPIRY_TIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIFETIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SMOOTHED:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.WORLD_TO_LOCAL_BLEND_START:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.WORLD_TO_LOCAL_BLEND_END:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.WORLD_TO_LOCAL_MAX_DIST:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SEED:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.UV_REPEAT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.UV_SCROLLSPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.U2_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.V2_REPEAT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.V2_SCROLLSPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.BASE_LOCKED:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.SPAWN_RATE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.TRAIL_SPAWN_RATE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.TRAIL_DELAY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.MAX_TRAILS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DENSITY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ABS_FADE_IN_0:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ABS_FADE_IN_1:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.GRAVITY_STRENGTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.GRAVITY_MAX_STRENGTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DRAG_STRENGTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.WIND_X:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.WIND_Y:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.WIND_Z:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPEED_START_MIN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPEED_START_MAX:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.WIDTH_START:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.WIDTH_MID:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.WIDTH_END:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.WIDTH_IN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.WIDTH_OUT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.COLOUR_SCALE_START:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.COLOUR_SCALE_MID:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.COLOUR_SCALE_END:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.COLOUR_TINT_START:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.COLOUR_TINT_MID:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.COLOUR_TINT_END:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.FADE_IN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FADE_OUT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SIDE_FADE_START:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SIDE_FADE_END:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIST_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPREAD_MIN:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPREAD:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.EMISSION_AREA_X:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.EMISSION_AREA_Y:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.EMISSION_AREA_Z:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SOFTNESS_EDGE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SOFTNESS_ALPHA_THICKNESS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SOFTNESS_ALPHA_DEPTH_MODIFIER:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.AMBIENT_LIGHTING_COLOUR:
+                    return UberShaderParameterType.Float4;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_DAMAGE_RENDER_LOCATIONS
@@ -591,6 +973,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -607,6 +993,10 @@ namespace CATHODE.ShaderTypes
         public enum PARAMETERS
         {
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_DAMAGE_RENDER_DAMAGE
@@ -622,6 +1012,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -773,6 +1167,131 @@ namespace CATHODE.ShaderTypes
             DISPLACEMENT_FACTOR = 57,
             DISPLACEMENT_MAP_UV_SCALE = 58,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.SIZE_CULLING_THRESHOLD:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FORCE_PRIORITY_LEVEL:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.SHIFT_PRIORITY_LEVEL:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.FRESNEL_INTENSITY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PLANAR_REFLECTIVE_OVERBRIGHT_SCALAR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SEPARATE_ALPHA_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.SECONDARY_DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SECONDARY_DIFFUSE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_TINT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_TINT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.GLASS_DENSITY:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.GLASS_LIGHTNESS:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.GLASS_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.DIFFUSE_ROUGHNESS_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVIRONMENT_EMISSIVE_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVIRONMENT_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.AO_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.AMBIENT_OCCLUSION_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.VERT_AO_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.EMISSIVE_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.EMISSIVE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.DUST_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DUST_FALLOFF:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SSR_AMOUNT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.FUR_RIM_LIGHTING_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.PARALLAX_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARALLAX_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARALLAX_BIAS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.OPACITY_MODIFIER_VALUE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ALPHABLEND_NOISE_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ALPHABLEND_NOISE_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPARKLE_UV_SCALE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPARKLE_NORMAL_BIAS:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPARKLE_MULTIPLIER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPARKLE_FADE_START:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPARKLE_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPARKLE_THRESHOLD:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIRT_BLEND_MULT_SPEC_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIRT_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIRT_AO_AMOUNT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.WET_LEVEL:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.WETNESS_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.CUSTOM_TINT_COLOUR:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.TESSELLATION_FACTOR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.MIN_TESSELLATION_DISTANCE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.TESSELLATION_RANGE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SHAPE_FACTOR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DISPLACEMENT_FACTOR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DISPLACEMENT_MAP_UV_SCALE:
+                    return UberShaderParameterType.Float;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_SHADOWCASTER
@@ -785,6 +1304,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -936,6 +1459,131 @@ namespace CATHODE.ShaderTypes
             COLOUR_END = 57,
             COLOUR_LERP_POWER = 58,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.SIZE_CULLING_THRESHOLD:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FORCE_PRIORITY_LEVEL:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.SHIFT_PRIORITY_LEVEL:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.FRESNEL_INTENSITY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIRT_BLEND_MULT_SPEC_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIRT_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIRT_AO_AMOUNT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ALPHABLEND_NOISE_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ALPHABLEND_NOISE_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SEPARATE_ALPHA_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.SECONDARY_DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SECONDARY_DIFFUSE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_TINT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_TINT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.GLASS_DENSITY:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.GLASS_LIGHTNESS:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.GLASS_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.DIFFUSE_ROUGHNESS_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVIRONMENT_EMISSIVE_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVIRONMENT_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.AO_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.AMBIENT_OCCLUSION_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.VERT_AO_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.EMISSIVE_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.EMISSIVE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.DUST_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DUST_FALLOFF:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SSR_AMOUNT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.FUR_RIM_LIGHTING_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.PARALLAX_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARALLAX_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARALLAX_BIAS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.OPACITY_MODIFIER_VALUE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.TESSELLATION_FACTOR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.MIN_TESSELLATION_DISTANCE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.TESSELLATION_RANGE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SHAPE_FACTOR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DISPLACEMENT_FACTOR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DISPLACEMENT_MAP_UV_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FADE_TOTALTIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_TOTALTIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_RANGE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_BEGINSTART:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_BEGINSTOP:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_ENDSTART:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_ENDSTOP:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.COLOUR_START:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.COLOUR_END:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.COLOUR_LERP_POWER:
+                    return UberShaderParameterType.Float;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_CHARACTER
@@ -1074,6 +1722,113 @@ namespace CATHODE.ShaderTypes
             ANGULAR_OPACITY_RAMP_MIN = 48,
             ANGULAR_OPACITY_RAMP_MAX = 49,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.DRAW_PASS:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.SIZE_CULLING_THRESHOLD:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FORCE_PRIORITY_LEVEL:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.SHIFT_PRIORITY_LEVEL:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.FRESNEL_INTENSITY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DETAIL_FADE_START:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DETAIL_FADE_END:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.IS_CUSTOM_CHARACTER_DECAL:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.CUSTOM_CHARACTER_TINT_PRIORITY:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.DIRT_BLEND_MULT_SPEC_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIRT_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIRT_AO_AMOUNT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ALPHABLEND_NOISE_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ALPHABLEND_NOISE_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SEPARATE_ALPHA_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.SECONDARY_DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SECONDARY_DIFFUSE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_TINT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_TINT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.GLASS_DENSITY:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.GLASS_LIGHTNESS:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.GLASS_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.DIFFUSE_ROUGHNESS_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVIRONMENT_EMISSIVE_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVIRONMENT_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.AO_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.AMBIENT_OCCLUSION_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.VERT_AO_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.EMISSIVE_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.EMISSIVE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.DUST_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DUST_FALLOFF:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SSR_AMOUNT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.FUR_RIM_LIGHTING_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.PARALLAX_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARALLAX_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARALLAX_BIAS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.OPACITY_MODIFIER_VALUE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ANGULAR_OPACITY_RAMP_MIN:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ANGULAR_OPACITY_RAMP_MAX:
+                    return UberShaderParameterType.Half;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_SKIN
@@ -1149,6 +1904,69 @@ namespace CATHODE.ShaderTypes
             ALPHABLEND_NOISE_UV_MULT = 50,
             ALPHABLEND_NOISE_POWER = 51,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.DRAW_PASS:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.TRANSMITTANCE_SCALE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SUBSURFACE_SCALE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.BUMP_SCATTERING_AMOUNT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.SECONDARY_DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIFFUSE_ROUGHNESS_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.NORMAL_MAP_STRENGTH_DIFFUSE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.NORMAL_MAP_STRENGTH_SPEC:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_NORMAL_MAP_STRENGTH_DIFFUSE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_NORMAL_MAP_STRENGTH_DIFFUSE_NEXTGEN:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_NORMAL_MAP_STRENGTH_SPEC:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPEC_NORMAL_MASKING_MIN:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPEC_NORMAL_MASKING_MAX:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_TINT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVIRONMENT_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SSR_AMOUNT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIRT_BLEND_MULT_SPEC_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIRT_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIRT_AO_AMOUNT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ALPHABLEND_NOISE_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ALPHABLEND_NOISE_POWER:
+                    return UberShaderParameterType.Half;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_HAIR
@@ -1189,6 +2007,33 @@ namespace CATHODE.ShaderTypes
             SPECULAR_UV_MULT = 7,
             NORMAL_UV_MULT = 8,
             NORMAL_MAP_STRENGTH_DIFFUSE = 9,
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.DRAW_PASS:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.DIFFUSE_CONTRAST:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ENVIRONMENT_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_TINT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.NORMAL_MAP_STRENGTH_DIFFUSE:
+                    return UberShaderParameterType.Half;
+            }
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -1233,6 +2078,41 @@ namespace CATHODE.ShaderTypes
             ENVIRONMENT_MAP_MULT = 12,
             SSR_AMOUNT = 13,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.DRAW_PASS:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.IRIS_SIZE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.IRIS_DEPTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.IRIS_EDGE_SOFTNESS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.CORNEA_IOR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PUPIL_DILATION:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SCATTERING_INTENSITY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_TINT_R:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.DIFFUSE_TINT_G:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.DIFFUSE_TINT_B:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.NORMAL_MAP_STRENGTH_SPEC:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVIRONMENT_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SSR_AMOUNT:
+                    return UberShaderParameterType.Half;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_SKIN_OCCLUSION
@@ -1254,6 +2134,21 @@ namespace CATHODE.ShaderTypes
             DIFFUSE_UV_MULT = 2,
             DIFFUSE_TINT = 3,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.DRAW_PASS:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.DEPTH_BIAS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_TINT:
+                    return UberShaderParameterType.Half4;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_VELOCITY
@@ -1272,6 +2167,10 @@ namespace CATHODE.ShaderTypes
         public enum PARAMETERS
         {
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_LIGHTPROBE
@@ -1285,6 +2184,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -1312,6 +2215,10 @@ namespace CATHODE.ShaderTypes
         public enum PARAMETERS
         {
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_DEFERRED_DEPTH
@@ -1329,6 +2236,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -1348,6 +2259,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -1435,6 +2350,77 @@ namespace CATHODE.ShaderTypes
             COLOUR_END = 30,
             COLOUR_LERP_POWER = 31,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.FADE_TOTALTIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPECULAR_POWER:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPECULAR_LEVEL:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.GLOW_COLOUR:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.DRAW_PASS:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.NORMAL_MAP_EASE_DURATION:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.NORMAL_MAP_MULTIPLY_START:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.NORMAL_MAP_MULTIPLY_END:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARALLAX_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARALLAX_EASE_DURATION:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.BURNTHROUGH_THRESHOLD:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.BURNTHROUGH_DEPTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFX_SPEED_0:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFX_TILE_0:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFX_SPEED_1:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFX_TILE_1:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFX_DURATION:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_TOTALTIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_RANGE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_BEGINSTART:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_BEGINSTOP:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_ENDSTART:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_ENDSTOP:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_CLAMP_REFERENCE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFX2_DURATION:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ENVIRONMENT_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.MAXFRESNEL:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.MINFRESNEL:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.FRESNELPOWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.COLOUR_START:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.COLOUR_END:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.COLOUR_LERP_POWER:
+                    return UberShaderParameterType.Float;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_FOGPLANE
@@ -1486,6 +2472,53 @@ namespace CATHODE.ShaderTypes
             SPEED_1 = 18,
             SCALE_1 = 19,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.HALF_DIMENSIONS:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.DISTANCE_FADE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ANGLE_FADE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.START_DISTANCE_FADE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SOFTNESS_EDGE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.THICKNESS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FRESNEL_POWER:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.HEIGHT_MAX_DENSITY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DEPTH_INTERSECT_INITIAL_COLOUR:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.DEPTH_INTERSECT_INITIAL_ALPHA:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DEPTH_INTERSECT_MIDPOINT_COLOUR:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.DEPTH_INTERSECT_MIDPOINT_ALPHA:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DEPTH_INTERSECT_MIDPOINT_DEPTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DEPTH_INTERSECT_END_COLOUR:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.DEPTH_INTERSECT_END_ALPHA:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DEPTH_INTERSECT_END_DEPTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPEED_0:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SCALE_0:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPEED_1:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SCALE_1:
+                    return UberShaderParameterType.Float;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_FOGSPHERE
@@ -1513,6 +2546,10 @@ namespace CATHODE.ShaderTypes
         public enum PARAMETERS
         {
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_DEBUG
@@ -1526,6 +2563,15 @@ namespace CATHODE.ShaderTypes
         public enum PARAMETERS
         {
             COLOUR_TINT = 0,
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.COLOUR_TINT:
+                    return UberShaderParameterType.Float4;
+            }
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -1552,6 +2598,31 @@ namespace CATHODE.ShaderTypes
             ANGLE_UV_MULT = 6,
             FADE_INITIAL = 7,
             FADE_BACK_IN = 8,
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.SPEED_0:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPEED_1:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.COLOUR_TINT:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.THICKNESS_START:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.THICKNESS_END:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LENGTH_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ANGLE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FADE_INITIAL:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FADE_BACK_IN:
+                    return UberShaderParameterType.Float;
+            }
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -1597,6 +2668,59 @@ namespace CATHODE.ShaderTypes
             OVERLAY_ALPHA_SCALAR = 21,
             LOW_RES_FRAME_CONTRIBUTION = 22,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.FRAMEBUFFER_SCALAR_OFFSET:
+                    return UberShaderParameterType.Half2;
+                case PARAMETERS.DISTORTION_RANGES:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.CHROMATIC_ABERRATION_SCALAR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LUT_CORRECTION_BLEND:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.MOTION_BLUR_CONTRIBUTION:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.FULL_SCREEN_BLUR_CONTRIBUTION:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.COLOUR_MATRIX0:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.COLOUR_MATRIX1:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.COLOUR_MATRIX2:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.FILM_GRAIN_RANGE_PARAMS:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.FILM_GRAIN_INTENSITY_PARAMS:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.FILM_GRAIN_SCALE_PARAMS:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.VIGNETTE_PARAMS:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.VIGNETTE_CHROMATIC_ABERRATION_SCALAR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.RADIAL_DISTORT_PARAM:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.RADIAL_DISTORT_CONSTRAINT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.RADIAL_DISTORT_SCALAR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.OVERLAY_THRESHOLD_VALUE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.OVERLAY_THRESHOLD_START:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.OVERLAY_THRESHOLD_STOP:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.OVERLAY_THRESHOLD_RANGE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.OVERLAY_ALPHA_SCALAR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.LOW_RES_FRAME_CONTRIBUTION:
+                    return UberShaderParameterType.Half;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_MOTION_BLUR_HI_SPEC
@@ -1609,6 +2733,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -1654,6 +2782,29 @@ namespace CATHODE.ShaderTypes
             DUST_BLOOM_INTENSITY_SCALAR = 6,
             DUST_THRESHOLD = 7,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.FLARE_OFFSETS:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.FLARE_INTENSITY:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.FLARE_ATTENUATION:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.DUST_MAX_REFLECTED_BLOOM_INTENSITY:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.DUST_MAX_BLOOM_INTENSITY:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.DUST_REFLECTED_BLOOM_INTENSITY_SCALAR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DUST_BLOOM_INTENSITY_SCALAR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DUST_THRESHOLD:
+                    return UberShaderParameterType.Float;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_LENS_FLARE
@@ -1666,6 +2817,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -1707,6 +2862,45 @@ namespace CATHODE.ShaderTypes
             LIQUIFLOW_COLOUR_THICK = 13,
             LIQUIFLOW_COLOUR_THIN = 14,
             ENVIRONMENT_MAP_MULT = 15,
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.LIQUIFLOW_LINE_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_SMALL_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_LARGE_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_SMALL_DISTORTION_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_SMALL_DISTORTION_AMOUNT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_LARGE_DISTORTION_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_LARGE_DISTORTION_AMOUNT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_DRIP_SPEED_VERTICAL:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_DRIP_SPEED_HORIZONTAL:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_DRIP_DISTORTION_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_DRIP_DISTORTION_AMOUNT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_TRANSPARENCY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_REFLECTION_AMOUNT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_COLOUR_THICK:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.LIQUIFLOW_COLOUR_THIN:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.ENVIRONMENT_MAP_MULT:
+                    return UberShaderParameterType.Float;
+            }
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -1751,6 +2945,47 @@ namespace CATHODE.ShaderTypes
             LIQUIFLOW_COLOUR_THIN = 15,
             ENVIRONMENT_MAP_MULT = 16,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.DRAW_PASS:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.LIQUIFLOW_LINE_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_SMALL_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_LARGE_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_SMALL_DISTORTION_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_SMALL_DISTORTION_AMOUNT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_LARGE_DISTORTION_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_LARGE_DISTORTION_AMOUNT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_DRIP_SPEED_VERTICAL:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_DRIP_SPEED_HORIZONTAL:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_DRIP_DISTORTION_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_DRIP_DISTORTION_AMOUNT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_TRANSPARENCY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_REFLECTION_AMOUNT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIQUIFLOW_COLOUR_THICK:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.LIQUIFLOW_COLOUR_THIN:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.ENVIRONMENT_MAP_MULT:
+                    return UberShaderParameterType.Float;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_OCCLUSION_TEST
@@ -1763,6 +2998,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -1778,6 +3017,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -1831,6 +3074,59 @@ namespace CATHODE.ShaderTypes
             COLOUR_END = 21,
             COLOUR_LERP_POWER = 22,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.REFRACTFACTOR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DISTANCEFACTOR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SECONDARY_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SECONDARY_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SECONDARY_REFRACTFACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DISTORTION_RANGES:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.MIN_OCCLUSION_DISTANCE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.CYCLE_TIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_TEX_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_WARP_STRENGTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FADE_TOTALTIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_TOTALTIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_RANGE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_BEGINSTART:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_BEGINSTOP:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_ENDSTART:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_ENDSTOP:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.COLOUR_START:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.COLOUR_END:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.COLOUR_LERP_POWER:
+                    return UberShaderParameterType.Float;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_SIMPLE_REFRACTION
@@ -1866,6 +3162,39 @@ namespace CATHODE.ShaderTypes
             FLOW_TEX_SCALE = 11,
             FLOW_WARP_STRENGTH = 12,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.REFRACTFACTOR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DISTANCEFACTOR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SECONDARY_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SECONDARY_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SECONDARY_REFRACTFACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DISTORTION_RANGES:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.MIN_OCCLUSION_DISTANCE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.CYCLE_TIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_TEX_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_WARP_STRENGTH:
+                    return UberShaderParameterType.Float;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_DISTORTION_OVERLAY
@@ -1888,6 +3217,29 @@ namespace CATHODE.ShaderTypes
             ALPHATHRESHOLD_ENDSTART = 6,
             ALPHATHRESHOLD_ENDSTOP = 7,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.BLEND_SCALAR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.TIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_TOTALTIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_RANGE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_BEGINSTART:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_BEGINSTOP:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_ENDSTART:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHATHRESHOLD_ENDSTOP:
+                    return UberShaderParameterType.Float;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_SKYDOME
@@ -1901,6 +3253,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -1918,6 +3274,10 @@ namespace CATHODE.ShaderTypes
         public enum PARAMETERS
         {
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_ALPHALIGHT_CLEAR
@@ -1932,6 +3292,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -1951,6 +3315,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -2034,6 +3402,77 @@ namespace CATHODE.ShaderTypes
             SPARKLE_POWER = 30,
             SPARKLE_THRESHOLD = 31,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.SIZE_CULLING_THRESHOLD:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FORCE_PRIORITY_LEVEL:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.SHIFT_PRIORITY_LEVEL:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.FRESNEL_INTENSITY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_TINT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.EMISSIVE_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.EMISSIVE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.PARALLAX_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARALLAX_BIAS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FROST_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.FROST_FALLOFF:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVIRONMENT_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.MAXFRESNEL:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.MINFRESNEL:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.FRESNELPOWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DEPTH_COLOUR:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.DIFFUSE_ROUGHNESS_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.RIM_LIGHTING_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.RIM_LIGHTING_COLOUR:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.WRAP_NORMALS_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPARKLE_UV_SCALE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPARKLE_NORMAL_BIAS:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPARKLE_MULTIPLIER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPARKLE_FADE_START:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPARKLE_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPARKLE_THRESHOLD:
+                    return UberShaderParameterType.Half;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_EFFECT_OVERLAY
@@ -2071,6 +3510,47 @@ namespace CATHODE.ShaderTypes
             FALLOFF = 14,
             HALF_DIMENSIONS = 15,
             ENVMAP_PERCENT_EMISSIVE = 16,
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.COLOUR_TINT:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.COLOUR_TINT_OUTER:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.INTENSITY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.OPACITY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SURFACE_WRAP:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ROUGHNESS_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPARKLE_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.METAL_STYLE_REFLECTIONS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SHININESS_OPACITY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FADE_TOTALTIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.TILING_ZY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.TILING_ZX:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.TILING_XY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.RADIUS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FALLOFF:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.HALF_DIMENSIONS:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.ENVMAP_PERCENT_EMISSIVE:
+                    return UberShaderParameterType.Float;
+            }
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -2133,6 +3613,61 @@ namespace CATHODE.ShaderTypes
             LIGHTMAP_UV_MULT = 22,
             LIGHTMAP_SCALE = 23,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.FORCE_PRIORITY_LEVEL:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.SHIFT_PRIORITY_LEVEL:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.FRESNEL_INTENSITY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.SECONDARY_DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SECONDARY_DIFFUSE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_TINT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_GLOSS:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_TINT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_GLOSS:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.PARALLAX_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARALLAX_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARALLAX_BIAS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ALPHABLEND_NOISE_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVIRONMENT_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVIRONMENT_LIGHTING_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIFFUSE_AMBIENT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.LIGHTMAP_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIGHTMAP_SCALE:
+                    return UberShaderParameterType.Half;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_NONINTERACTIVE_WATER
@@ -2191,6 +3726,73 @@ namespace CATHODE.ShaderTypes
             ALPHA_PERTURBATION_STRENGTH = 28,
             ALPHALIGHT_MULT = 29,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.SHININESS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DEPTH_FOG_INITIAL_COLOUR:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.DEPTH_FOG_INITIAL_ALPHA:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DEPTH_FOG_MIDPOINT_COLOUR:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.DEPTH_FOG_MIDPOINT_ALPHA:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DEPTH_FOG_MIDPOINT_DEPTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DEPTH_FOG_END_COLOUR:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.DEPTH_FOG_END_ALPHA:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DEPTH_FOG_END_DEPTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SECONDARY_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SECONDARY_NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.CYCLE_TIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_TEX_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_WARP_STRENGTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FRESNEL_POWER:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.MIN_FRESNEL:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.MAX_FRESNEL:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ENVIRONMENT_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVMAP_SIZE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVMAP_BOXPROJ_BB_X:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVMAP_BOXPROJ_BB_Y:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVMAP_BOXPROJ_BB_Z:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.REFLECTION_PERTURBATION_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ALPHA_PERTURBATION_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ALPHALIGHT_MULT:
+                    return UberShaderParameterType.Half;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_SIMPLEWATER
@@ -2244,6 +3846,69 @@ namespace CATHODE.ShaderTypes
             ENVMAP_BOXPROJ_BB_X = 25,
             ENVMAP_BOXPROJ_BB_Y = 26,
             ENVMAP_BOXPROJ_BB_Z = 27,
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.SHININESS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DEPTH_FOG_INITIAL_COLOUR:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.DEPTH_FOG_INITIAL_ALPHA:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DEPTH_FOG_MIDPOINT_COLOUR:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.DEPTH_FOG_MIDPOINT_ALPHA:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DEPTH_FOG_MIDPOINT_DEPTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DEPTH_FOG_END_COLOUR:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.DEPTH_FOG_END_ALPHA:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DEPTH_FOG_END_DEPTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.REFLECTION_PERTURBATION_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SECONDARY_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SECONDARY_NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.CYCLE_TIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_TEX_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_WARP_STRENGTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FRESNEL_POWER:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.MIN_FRESNEL:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.MAX_FRESNEL:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ENVIRONMENT_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVMAP_SIZE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVMAP_BOXPROJ_BB_X:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVMAP_BOXPROJ_BB_Y:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVMAP_BOXPROJ_BB_Z:
+                    return UberShaderParameterType.Half;
+            }
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -2306,6 +3971,63 @@ namespace CATHODE.ShaderTypes
             SHADOW_HUE = 23,
             GLOBAL_TINT_VALUE = 24,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.ATMOSPHERE_RIM_TRANSPARENCY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.OVERBRIGHT_SCALAR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DETAIL_TEX_SCALAR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ATMOSPHERE_NORMAL_MAP_SCALAR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ATMOSPHERE_NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.TERRAIN_MAP_UV_SCALE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.TERRAIN_MAP_SPECULAR_LEVEL:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.TERRAIN_MAP_SPECULAR_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.TERRAIN_NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SCROLL_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DETAIL_SCROLL_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.CYCLE_TIME:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_TEX_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FLOW_WARP_STRENGTH:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ATMOSPHERE_RIM_FRESNEL:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ATMOSPHERE_RIM_COLOUR:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.ATMOSPHERE_RIM_BRIGHTNESS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.HORIZON_BOOSTER:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.UNLIT_ATMOSPHERE_RIM_COLOUR:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.UNLIT_ATMOSPHERE_RIM_BRIGHTNESS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIGHT_WRAP_ANGLE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.PENUMBRA_FALLOFF_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SHADOW_HUE:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.GLOBAL_TINT_VALUE:
+                    return UberShaderParameterType.Half4;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_GALAXY
@@ -2321,6 +4043,10 @@ namespace CATHODE.ShaderTypes
         public enum PARAMETERS
         {
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_DIRECTIONAL_DEFERRED
@@ -2333,6 +4059,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -2456,6 +4186,101 @@ namespace CATHODE.ShaderTypes
             PARALLAX_SCALE = 41,
             PARALLAX_BIAS = 42,
             OPACITY_MODIFIER_VALUE = 43,
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.SIZE_CULLING_THRESHOLD:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FORCE_PRIORITY_LEVEL:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.SHIFT_PRIORITY_LEVEL:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.FRESNEL_INTENSITY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.LIGHTMAP_INTENSITY_SCALE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIRT_BLEND_MULT_SPEC_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIRT_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIRT_AO_AMOUNT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ALPHABLEND_NOISE_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ALPHABLEND_NOISE_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SEPARATE_ALPHA_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.SECONDARY_DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SECONDARY_DIFFUSE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_TINT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_TINT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.GLASS_DENSITY:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.GLASS_LIGHTNESS:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.GLASS_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.DIFFUSE_ROUGHNESS_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVIRONMENT_EMISSIVE_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVIRONMENT_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.AO_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.AMBIENT_OCCLUSION_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.VERT_AO_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.EMISSIVE_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.EMISSIVE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.DUST_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DUST_FALLOFF:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SSR_AMOUNT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.FUR_RIM_LIGHTING_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.PARALLAX_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARALLAX_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARALLAX_BIAS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.OPACITY_MODIFIER_VALUE:
+                    return UberShaderParameterType.Half;
+            }
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -2581,6 +4406,111 @@ namespace CATHODE.ShaderTypes
             PARALLAX_BIAS = 47,
             OPACITY_MODIFIER_VALUE = 48,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.SIZE_CULLING_THRESHOLD:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FORCE_PRIORITY_LEVEL:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.SHIFT_PRIORITY_LEVEL:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.FRESNEL_INTENSITY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.MAX_SINE_AMPLITUDE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ANIMATION_SPEED:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.MOTION_DIRECTION_X:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.MOTION_DIRECTION_Y:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.MOTION_DIRECTION_Z:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.TURBULENCE_AMPLITUDE:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIRT_BLEND_MULT_SPEC_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIRT_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIRT_AO_AMOUNT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ALPHABLEND_NOISE_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ALPHABLEND_NOISE_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SEPARATE_ALPHA_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.SECONDARY_DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SECONDARY_DIFFUSE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_TINT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_TINT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SECONDARY_SPECULAR_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.GLASS_DENSITY:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.GLASS_LIGHTNESS:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.GLASS_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.DIFFUSE_ROUGHNESS_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVIRONMENT_EMISSIVE_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVIRONMENT_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.AO_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.AMBIENT_OCCLUSION_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.VERT_AO_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.EMISSIVE_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.EMISSIVE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.DUST_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DUST_FALLOFF:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SSR_AMOUNT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.FUR_RIM_LIGHTING_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.PARALLAX_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARALLAX_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.PARALLAX_BIAS:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.OPACITY_MODIFIER_VALUE:
+                    return UberShaderParameterType.Half;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_LOW_LOD_CHARACTER
@@ -2650,6 +4580,53 @@ namespace CATHODE.ShaderTypes
             ENVIRONMENT_EMISSIVE_FACTOR = 18,
             ENVIRONMENT_MAP_MULT = 19,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.DRAW_PASS:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.SIZE_CULLING_THRESHOLD:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.FORCE_PRIORITY_LEVEL:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.SHIFT_PRIORITY_LEVEL:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.FRESNEL_INTENSITY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_UV_MULT:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DIFFUSE_TINT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.NORMAL_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.NORMAL_MAP_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_TINT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SPECULAR_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIFFUSE_ROUGHNESS_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.IS_CUSTOM_CHARACTER_DECAL:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.CUSTOM_PRIMARY_TINT_COLOUR_CONSTANT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.CUSTOM_SECONDARY_TINT_COLOUR_CONSTANT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.CUSTOM_TERTIARY_TINT_COLOUR_CONSTANT:
+                    return UberShaderParameterType.Half4;
+                case PARAMETERS.SSR_AMOUNT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVIRONMENT_EMISSIVE_FACTOR:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.ENVIRONMENT_MAP_MULT:
+                    return UberShaderParameterType.Half;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_LIGHT_DECAL
@@ -2666,6 +4643,10 @@ namespace CATHODE.ShaderTypes
         public enum PARAMETERS
         {
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_VOLUME_LIGHT
@@ -2681,6 +4662,10 @@ namespace CATHODE.ShaderTypes
         }
         public enum PARAMETERS
         {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -2700,6 +4685,25 @@ namespace CATHODE.ShaderTypes
             CAUSTIC_HALF_DIMENSIONS = 3,
             CAUSTIC_SPEED = 4,
             CAUSTIC_WRAP_DIRECTION = 5,
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.CAUSTIC_TEXTURE_SCALE:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.CAUSTIC_INTENSITY:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.CAUSTIC_SURFACE_WRAP:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.CAUSTIC_HALF_DIMENSIONS:
+                    return UberShaderParameterType.Float3;
+                case PARAMETERS.CAUSTIC_SPEED:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.CAUSTIC_WRAP_DIRECTION:
+                    return UberShaderParameterType.Float3;
+            }
+            throw new Exception("Unsupported parameter type.");
         }
     }
 
@@ -2750,6 +4754,47 @@ namespace CATHODE.ShaderTypes
             REFRACTFACTOR = 15,
             DISTANCEFACTOR = 16,
         }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.DRAW_PASS:
+                    return UberShaderParameterType.Int;
+                case PARAMETERS.GLASS_SPEC_POWER:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.ENVIRONMENT_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.SSR_SCALE_X:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SSR_SCALE_Y:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SSR_OFFSET_X:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.SSR_OFFSET_Y:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.NORMAL_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.NORMAL_MAPPING_STRENGTH:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.MASKING_MAP_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.FACE_INTENSITY_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.BREATH_INTENSITY_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.BREATH_COLOUR:
+                    return UberShaderParameterType.Half3;
+                case PARAMETERS.DIRT_BLEND_MULT_SPEC_POWER:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.DIRT_UV_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.REFRACTFACTOR:
+                    return UberShaderParameterType.Float;
+                case PARAMETERS.DISTANCEFACTOR:
+                    return UberShaderParameterType.Float;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
     }
 
     public static class CA_CAMERA_MAP
@@ -2770,6 +4815,42 @@ namespace CATHODE.ShaderTypes
             PROJECTION_MATRIX_ROW2 = 3,
             PROJECTION_MATRIX_ROW3 = 4,
             SHIFT_PRIORITY_LEVEL = 9,
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            switch (parameter)
+            {
+                case PARAMETERS.LIGHT_MULT:
+                    return UberShaderParameterType.Half;
+                case PARAMETERS.PROJECTION_MATRIX_ROW0:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.PROJECTION_MATRIX_ROW1:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.PROJECTION_MATRIX_ROW2:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.PROJECTION_MATRIX_ROW3:
+                    return UberShaderParameterType.Float4;
+                case PARAMETERS.SHIFT_PRIORITY_LEVEL:
+                    return UberShaderParameterType.Int;
+            }
+            throw new Exception("Unsupported parameter type.");
+        }
+    }
+
+    public static class COUNT
+    {
+        public enum FEATURES
+        {
+        }
+        public enum SAMPLERS
+        {
+        }
+        public enum PARAMETERS
+        {
+        }
+        public static UberShaderParameterType GetParameterType(PARAMETERS parameter)
+        {
+            throw new Exception("Unsupported parameter type.");
         }
     }
 }
