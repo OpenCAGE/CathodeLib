@@ -17,6 +17,8 @@ namespace CATHODE
             NONE = -1,  //Texture is located nowhere
         }
 
+        public TexturePtr() { }
+
         public TexturePtr(BinaryReader reader)
         {
             Index = reader.ReadInt16();
