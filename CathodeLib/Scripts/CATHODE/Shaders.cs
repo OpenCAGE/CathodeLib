@@ -8,6 +8,8 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
+using static CATHODE.RenderableElements;
 
 namespace CATHODE
 {
@@ -17,6 +19,8 @@ namespace CATHODE
     public class Shaders : CathodeFile
     {
         public List<Shader> Entries = new List<Shader>();
+
+        private List<Shader> _writeList = new List<Shader>();
 
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public Shaders(string path) : base(path) { }
@@ -141,6 +145,7 @@ namespace CATHODE
                 }
             }
 
+            _writeList.AddRange(Entries);
             return true;
         }
 
@@ -214,66 +219,102 @@ namespace CATHODE
             Utilities.WritePAK(filepathIDX, FileIdentifiers.SHADER_DATA, content);
 
             //Write out metadata
-            content = new List<Utilities.PAKContent>();
-            for (int i = 0; i < Entries.Count; i++)
+            byte[][] shaderBuffers = new byte[Entries.Count][];
+            Parallel.For(0, Entries.Count, i =>
             {
-                MemoryStream data = new MemoryStream();
-                using (BinaryWriter writer = new BinaryWriter(data))
-                {
-                    writer.Write(0x7725BBA4);
-                    writer.Write(0x00010024);
-
-                    writer.Write((Int16)Entries[i].Samplers.Count);
-                    writer.Write(Entries[i].EngineParameterRemaps.Count);
-                    writer.Write(Entries[i].VertexShaderParameterRemaps.Count);
-                    writer.Write(Entries[i].PixelShaderParameterRemaps.Count);
-                    writer.Write(Entries[i].HullShaderParameterRemaps.Count);
-                    writer.Write(Entries[i].DomainShaderParameterRemaps.Count);
-                    writer.Write((Int16)Entries[i].SamplerRemaps.Count);
-
-                    Utilities.WriteString(Entries[i].Ubershader.ToString(), writer);
-                    writer.Write(new byte[40 - Entries[i].Ubershader.ToString().Length]);
-                    writer.Write((Int16)Entries[i].Ubershader);
-                    writer.Write(Entries[i].UbershaderFeatureFlags);
-                    writer.Write(Entries[i].UbershaderRequirementFlags);
-                    writer.Write((byte)Entries[i].RequiredShaderModel);
-                    writer.Write((Int16)Entries[i].CycleCount);
-                    writer.Write((byte)Entries[i].RegisterCount);
-                    writer.Write(Entries[i].PermutationHash);
-                    Entries[i].RenderStates.Write(writer);
-
-                    for (int x = 0; x < Entries[i].Samplers.Count; x++)
-                        Entries[i].Samplers[x].Write(writer);
-                    for (int x = 0; x < Entries[i].Samplers.Count; x++)
-                        writer.Write((byte)Entries[i].SamplerStageBindings[x]);
-                    for (int x = 0; x < Entries[i].EngineParameterRemaps.Count; x++)
-                        writer.Write((byte)Entries[i].EngineParameterRemaps[x]);
-                    for (int x = 0; x < Entries[i].VertexShaderParameterRemaps.Count; x++)
-                        writer.Write((byte)Entries[i].VertexShaderParameterRemaps[x]);
-                    for (int x = 0; x < Entries[i].PixelShaderParameterRemaps.Count; x++)
-                        writer.Write((byte)Entries[i].PixelShaderParameterRemaps[x]);
-                    for (int x = 0; x < Entries[i].HullShaderParameterRemaps.Count; x++)
-                        writer.Write((byte)Entries[i].HullShaderParameterRemaps[x]);
-                    for (int x = 0; x < Entries[i].DomainShaderParameterRemaps.Count; x++)
-                        writer.Write((byte)Entries[i].DomainShaderParameterRemaps[x]);
-                    for (int x = 0; x < Entries[i].SamplerRemaps.Count; x++)
-                        writer.Write((byte)Entries[i].SamplerRemaps[x]);
-
-                    writer.Write(Entries[i].VertexShader == null ? -1 : VertexShaders.IndexOf(Entries[i].VertexShader));
-                    writer.Write(Entries[i].PixelShader == null ? -1 : PixelShaders.IndexOf(Entries[i].PixelShader));
-                    writer.Write(Entries[i].HullShader == null ? -1 : HullShaders.IndexOf(Entries[i].HullShader));
-                    writer.Write(Entries[i].DomainShader == null ? -1 : DomainShaders.IndexOf(Entries[i].DomainShader));
-                    writer.Write(Entries[i].GeometryShader == null ? -1 : GeometryShaders.IndexOf(Entries[i].GeometryShader));
-                    writer.Write(Entries[i].ComputeShader == null ? -1 : ComputeShaders.IndexOf(Entries[i].ComputeShader));
-                }
+                shaderBuffers[i] = SerializeShaderMetadata(Entries[i], i, VertexShaders, PixelShaders, HullShaders, DomainShaders, GeometryShaders, ComputeShaders);
+            });
+            content = new List<Utilities.PAKContent>();
+            for (int i = 0; i < shaderBuffers.Length; i++)
+            {
                 content.Add(new Utilities.PAKContent()
                 {
                     BinIndex = i,
-                    Data = data.ToArray()
+                    Data = shaderBuffers[i]
                 });
             }
             Utilities.WritePAK(_filepath, FileIdentifiers.SHADER_DATA, content);
+
+            _writeList.Clear();
+            _writeList.AddRange(Entries);
             return true;
+        }
+
+        private byte[] SerializeShaderMetadata(Shader shader, int index, List<byte[]> vertexShaders, List<byte[]> pixelShaders, List<byte[]> hullShaders, List<byte[]> domainShaders, List<byte[]> geometryShaders, List<byte[]> computeShaders)
+        {
+            using (MemoryStream data = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(data))
+            {
+                writer.Write(0x7725BBA4);
+                writer.Write(0x00010024);
+
+                writer.Write((Int16)shader.Samplers.Count);
+                writer.Write(shader.EngineParameterRemaps.Count);
+                writer.Write(shader.VertexShaderParameterRemaps.Count);
+                writer.Write(shader.PixelShaderParameterRemaps.Count);
+                writer.Write(shader.HullShaderParameterRemaps.Count);
+                writer.Write(shader.DomainShaderParameterRemaps.Count);
+                writer.Write((Int16)shader.SamplerRemaps.Count);
+
+                Utilities.WriteString(shader.Ubershader.ToString(), writer);
+                writer.Write(new byte[40 - shader.Ubershader.ToString().Length]);
+                writer.Write((Int16)shader.Ubershader);
+                writer.Write(shader.UbershaderFeatureFlags);
+                writer.Write(shader.UbershaderRequirementFlags);
+                writer.Write((byte)shader.RequiredShaderModel);
+                writer.Write((Int16)shader.CycleCount);
+                writer.Write((byte)shader.RegisterCount);
+                writer.Write(shader.PermutationHash);
+                shader.RenderStates.Write(writer);
+
+                for (int x = 0; x < shader.Samplers.Count; x++)
+                    shader.Samplers[x].Write(writer);
+                for (int x = 0; x < shader.Samplers.Count; x++)
+                    writer.Write((byte)shader.SamplerStageBindings[x]);
+                for (int x = 0; x < shader.EngineParameterRemaps.Count; x++)
+                    writer.Write((byte)shader.EngineParameterRemaps[x]);
+                for (int x = 0; x < shader.VertexShaderParameterRemaps.Count; x++)
+                    writer.Write((byte)shader.VertexShaderParameterRemaps[x]);
+                for (int x = 0; x < shader.PixelShaderParameterRemaps.Count; x++)
+                    writer.Write((byte)shader.PixelShaderParameterRemaps[x]);
+                for (int x = 0; x < shader.HullShaderParameterRemaps.Count; x++)
+                    writer.Write((byte)shader.HullShaderParameterRemaps[x]);
+                for (int x = 0; x < shader.DomainShaderParameterRemaps.Count; x++)
+                    writer.Write((byte)shader.DomainShaderParameterRemaps[x]);
+                for (int x = 0; x < shader.SamplerRemaps.Count; x++)
+                    writer.Write((byte)shader.SamplerRemaps[x]);
+
+                writer.Write(shader.VertexShader == null ? -1 : vertexShaders.IndexOf(shader.VertexShader));
+                writer.Write(shader.PixelShader == null ? -1 : pixelShaders.IndexOf(shader.PixelShader));
+                writer.Write(shader.HullShader == null ? -1 : hullShaders.IndexOf(shader.HullShader));
+                writer.Write(shader.DomainShader == null ? -1 : domainShaders.IndexOf(shader.DomainShader));
+                writer.Write(shader.GeometryShader == null ? -1 : geometryShaders.IndexOf(shader.GeometryShader));
+                writer.Write(shader.ComputeShader == null ? -1 : computeShaders.IndexOf(shader.ComputeShader));
+
+                return data.ToArray();
+            }
+        }
+        #endregion
+
+        #region HELPERS
+        /// <summary>
+        /// Get the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public int GetWriteIndex(Shader shader)
+        {
+            if (!_writeList.Contains(shader)) return -1;
+            return _writeList.IndexOf(shader);
+        }
+
+        /// <summary>
+        /// Get the object at the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public Shader GetAtWriteIndex(int index)
+        {
+            if (_writeList.Count <= index || index < 0) return null;
+            return _writeList[index];
         }
         #endregion
 

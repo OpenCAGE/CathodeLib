@@ -5,7 +5,10 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using static CATHODE.Models;
+using static CATHODE.TexturePtr;
+using static CATHODE.Textures.TEX4;
 
 namespace CATHODE
 {
@@ -17,7 +20,19 @@ namespace CATHODE
         public List<Material> Entries = new List<Material>();
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE | Implementation.CREATE;
 
-        public Materials(string path) : base(path) { }
+        protected override bool HandlesLoadingManually => true;
+        private Textures _globalTextures;
+        private Textures _levelTextures;
+        private Shaders _shaders;
+
+        public Materials(string path, Textures globalTextures, Textures levelTextures, Shaders shaders) : base(path)
+        {
+            _globalTextures = globalTextures;
+            _levelTextures = levelTextures;
+            _shaders = shaders;
+
+            _loaded = Load();
+        }
 
         private List<Material> _writeList = new List<Material>();
 
@@ -57,7 +72,7 @@ namespace CATHODE
                     Material material = new Material();
                     for (int x = 0; x < 12; x++)
                     {
-                        TexturePtr texRef = new TexturePtr(reader);
+                        TexturePtr texRef = new TexturePtr(reader, _globalTextures, _levelTextures);
                         if (texRef.Location == TexturePtr.Source.NONE)
                             continue;
                         material.TextureReferences.Add(texRef);
@@ -74,7 +89,7 @@ namespace CATHODE
 
                     reader.BaseStream.Position += 11;
                     material.Name = materialNames[i]; 
-                    material.ShaderIndex = reader.ReadInt32();
+                    material.Shader = _shaders.GetAtWriteIndex(reader.ReadInt32());
                     reader.BaseStream.Position += 128;
                     int lightFlags = reader.ReadInt32();
                     if (lightFlags != 0) material.OfflineLightFeatures = new LightFlags(lightFlags);
@@ -160,50 +175,27 @@ namespace CATHODE
 
                 bool isGlobal = Path.GetFileName(_filepath).ToLower() == "global_models.mtl";
 
-                //Write material data
-                int materialOffset = (int)writer.BaseStream.Position;
+                //Calculate name offsets
+                int[] nameOffsets = new int[Entries.Count];
                 int nameOffset = 0;
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    for (int x = 0; x < 12; x++)
-                    {
-                        TexturePtr tex = x >= Entries[i].TextureReferences.Count ? null : Entries[i].TextureReferences[x];
-                        if (tex == null || tex.Location == TexturePtr.Source.NONE)
-                        {
-                            writer.Write((Int16)(-1));
-                            writer.Write((Int16)(-1));
-                            continue;
-                        }
-                        writer.Write((Int16)tex.Index);
-                        writer.Write((Int16)tex.Location);
-                    }
-
-                    writer.Write(isGlobal ? 1 : 0);
-                    writer.Write(i);
-
-                    for (int x = 0; x < 5; x++)
-                        writer.Write(matOffsets[x][i]);
-                    for (int x = 0; x < 5; x++)
-                        writer.Write((byte)matCounts[x][i]);
-                    writer.Write(new byte[7]);
-                    writer.Write(nameOffset);
+                    nameOffsets[i] = nameOffset;
                     nameOffset += Entries[i].Name.Length + 1;
-                    writer.Write(Entries[i].ShaderIndex);
-                    writer.Write(new byte[128]);
-                    if (Entries[i].OfflineLightFeatures != null) 
-                        Entries[i].OfflineLightFeatures.Write(writer);
-                    else 
-                        writer.Write(0);
-                    writer.Write(new byte[49]);
-                    writer.Write((byte)(Entries[i].TextureReferences.Count > 12 ? 12 : Entries[i].TextureReferences.Count));
-                    writer.Write(new byte[2]);
-                    writer.Write((short)-1);
-                    writer.Write((byte)Entries[i].PhysicalMaterialIndex);
-                    writer.Write((byte)Entries[i].EnvironmentMapIndex);
-                    writer.Write((byte)Entries[i].Priority);
+                }
 
-                    writer.Write(new byte[11]);
+                //Serialize all material entries
+                byte[][] materialBuffers = new byte[Entries.Count][];
+                Parallel.For(0, Entries.Count, i =>
+                {
+                    materialBuffers[i] = SerializeMaterial(Entries[i], i, isGlobal, matOffsets, matCounts, nameOffsets[i]);
+                });
 
+                //Write material data
+                int materialOffset = (int)writer.BaseStream.Position;
+                for (int i = 0; i < materialBuffers.Length; i++)
+                {
+                    writer.Write(materialBuffers[i]);
                     _writeList.Add(Entries[i]);
                 }
 
@@ -216,6 +208,52 @@ namespace CATHODE
                 writer.Write(namesLength);
             }
             return true;
+        }
+
+        private byte[] SerializeMaterial(Material material, int index, bool isGlobal, List<int>[] matOffsets, List<int>[] matCounts, int nameOffset)
+        {
+            using (MemoryStream stream = new MemoryStream(296))
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                for (int x = 0; x < 12; x++)
+                {
+                    TexturePtr tex = x >= material.TextureReferences.Count ? null : material.TextureReferences[x];
+                    if (tex == null || tex.Location == TexturePtr.Source.NONE)
+                    {
+                        writer.Write((Int16)(-1));
+                        writer.Write((Int16)(-1));
+                        continue;
+                    }
+                    writer.Write((Int16)(tex.Location == Source.LEVEL ? _levelTextures.GetWriteIndex(tex.Texture) : _globalTextures.GetWriteIndex(tex.Texture)));
+                    writer.Write((Int16)tex.Location);
+                }
+
+                writer.Write(isGlobal ? 1 : 0);
+                writer.Write(index);
+
+                for (int x = 0; x < 5; x++)
+                    writer.Write(matOffsets[x][index]);
+                for (int x = 0; x < 5; x++)
+                    writer.Write((byte)matCounts[x][index]);
+                writer.Write(new byte[7]);
+                writer.Write(nameOffset);
+                writer.Write(_shaders.GetWriteIndex(material.Shader));
+                writer.Write(new byte[128]);
+                if (material.OfflineLightFeatures != null)
+                    material.OfflineLightFeatures.Write(writer);
+                else
+                    writer.Write(0);
+                writer.Write(new byte[49]);
+                writer.Write((byte)(material.TextureReferences.Count > 12 ? 12 : material.TextureReferences.Count));
+                writer.Write(new byte[2]);
+                writer.Write((short)-1);
+                writer.Write((byte)material.PhysicalMaterialIndex);
+                writer.Write((byte)material.EnvironmentMapIndex);
+                writer.Write((byte)material.Priority);
+                writer.Write(new byte[11]);
+
+                return stream.ToArray();
+            }
         }
         #endregion
 
@@ -265,7 +303,7 @@ namespace CATHODE
 
             public LightFlags OfflineLightFeatures = null; //Null if we have none (not a light material)
 
-            public int ShaderIndex; //Index into shader pak
+            public Shaders.Shader Shader; //Index into shader pak
             public int PhysicalMaterialIndex; //255 i assume means none -> this is an index into the Havok physics materials database (at path data/material_data/materials.xml/bml).
             public int EnvironmentMapIndex; //255 means 'any' -> this is an index into our TextureReferences array. it's optionally overridden per renderable instance by MVR.
 

@@ -21,24 +21,35 @@ namespace CathodeLib
 
         public static Implementation Implementation = Implementation.NONE;
 
+        /// <summary>
+        /// Override this property to return true if the derived class handles loading manually in its constructor
+        /// </summary>
+        protected virtual bool HandlesLoadingManually => false;
+
         public CathodeFile(string filepath)
         {
             _filepath = filepath;
-            _loaded = Load();
+
+            if (!HandlesLoadingManually)
+                _loaded = Load();
         }
 
         public CathodeFile(MemoryStream stream, string virtualPath = "")
         {
             _filepath = virtualPath;
-            _loaded = Load(stream);
+            if (!HandlesLoadingManually)
+                _loaded = Load(stream);
         }
 
         public CathodeFile(byte[] data, string virtualPath = "")
         {
             _filepath = virtualPath;
-            using (var stream = new MemoryStream(data))
+            if (!HandlesLoadingManually)
             {
-                _loaded = Load(stream);
+                using (var stream = new MemoryStream(data))
+                {
+                    _loaded = Load(stream);
+                }
             }
         }
 

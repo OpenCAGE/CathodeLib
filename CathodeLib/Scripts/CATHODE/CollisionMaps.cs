@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 
 namespace CATHODE
 {
@@ -18,9 +19,15 @@ namespace CATHODE
         public List<Entry> Entries = new List<Entry>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
-        public CollisionMaps(string path) : base(path) { }
-        public CollisionMaps(MemoryStream stream, string path = "") : base(stream, path) { }
-        public CollisionMaps(byte[] data, string path = "") : base(data, path) { }
+        protected override bool HandlesLoadingManually => true;
+        private Materials _materials;
+
+        public CollisionMaps(string path, Materials materials) : base(path)
+        {
+            _materials = materials;
+
+            _loaded = Load();
+        }
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
@@ -42,7 +49,7 @@ namespace CATHODE
                     entry.Index = reader.ReadInt32();
                     entry.ID = Utilities.Consume<ShortGuid>(reader);
                     entry.Entity = Utilities.Consume<EntityHandle>(reader);
-                    entry.MaterialIndex = reader.ReadInt32();
+                    entry.Material = _materials.GetAtWriteIndex(reader.ReadInt32());
                     entry.CollisionProxyIndex = reader.ReadInt16();
                     entry.MappingIndex = reader.ReadInt16();
                     entry.ZoneID = Utilities.Consume<ShortGuid>(reader);
@@ -59,26 +66,39 @@ namespace CATHODE
 
             //Entries = Entries.OrderBy(o => o.entity.entity_id.ToUInt32() + o.id.ToUInt32()).ThenBy(o => o.entity.composite_instance_id.ToUInt32()).ThenBy(o => o.zone_id.ToUInt32()).ToList();
 
+            byte[][] entryBuffers = new byte[Entries.Count][];
+            Parallel.For(0, Entries.Count, i =>
+            {
+                entryBuffers[i] = SerializeEntry(Entries[i]);
+            });
+
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
                 writer.Write((Entries.Count) * 48);
                 writer.Write(Entries.Count);
-
-                for (int i = 0; i < Entries.Count; i++)
-                {
-                    writer.Write((int)Entries[i].Flags);
-                    writer.Write(Entries[i].Index);
-                    Utilities.Write<ShortGuid>(writer, Entries[i].ID);
-                    Utilities.Write<EntityHandle>(writer, Entries[i].Entity);
-                    writer.Write((Int32)Entries[i].MaterialIndex);
-                    writer.Write((Int16)Entries[i].CollisionProxyIndex);
-                    writer.Write((Int16)Entries[i].MappingIndex);
-                    Utilities.Write<ShortGuid>(writer, Entries[i].ZoneID);
-                    writer.Write(new byte[16]);
-                }
+                for (int i = 0; i < entryBuffers.Length; i++)
+                    writer.Write(entryBuffers[i]);
             }
             return true;
+        }
+
+        private byte[] SerializeEntry(Entry entry)
+        {
+            using (MemoryStream stream = new MemoryStream(48)) 
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                writer.Write((int)entry.Flags);
+                writer.Write(entry.Index);
+                Utilities.Write<ShortGuid>(writer, entry.ID);
+                Utilities.Write<EntityHandle>(writer, entry.Entity);
+                writer.Write(_materials.GetWriteIndex(entry.Material));
+                writer.Write((Int16)entry.CollisionProxyIndex);
+                writer.Write((Int16)entry.MappingIndex);
+                Utilities.Write<ShortGuid>(writer, entry.ZoneID);
+                writer.Write(new byte[16]);
+                return stream.ToArray();
+            }
         }
         #endregion
 
@@ -90,11 +110,11 @@ namespace CATHODE
             public ShortGuid ZoneID = ShortGuid.Invalid; //this maps the entity to a zone ID. interestingly, this seems to be the point of truth for the zone rendering
 
             public int CollisionProxyIndex = -1; // Index in COLLISION.HKX
-            public int MaterialIndex = -1; // Index in LEVEL_MODELS.MTL
+            public Materials.Material Material = null; // Index in LEVEL_MODELS.MTL
 
             public CollisionFlags Flags = 0;
             public int Index = -1; //Compound shape index for static and ballistic collision 
-            public int MappingIndex = -1;
+            public int MappingIndex = -1; //is this material_mapping.pak? this would explain the usage of it.
 
             public static bool operator ==(Entry x, Entry y)
             {

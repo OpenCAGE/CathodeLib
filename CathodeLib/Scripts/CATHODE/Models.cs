@@ -1,8 +1,10 @@
+using CATHODE.Scripting;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #else
@@ -19,7 +21,19 @@ namespace CATHODE
         public List<CS2> Entries = new List<CS2>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
-        public Models(string path) : base(path) { }
+        protected override bool HandlesLoadingManually => true;
+        private Materials _materials;
+        private Collisions _collisions;
+        private MorphTargets _morphTargets;
+
+        public Models(string path, Materials materials, Collisions weightedCollisions, MorphTargets morphTargets) : base (path)
+        {
+            _materials = materials;
+            _collisions = weightedCollisions;
+            _morphTargets = morphTargets;
+
+            _loaded = Load();
+        }
 
         private List<CS2.Component.LOD.Submesh> _writeList = new List<CS2.Component.LOD.Submesh>();
         private string _filepathBIN;
@@ -112,19 +126,19 @@ namespace CATHODE
                     int childModelIndex = bin.ReadInt32();
                     int childLODIndex = bin.ReadInt32();
                     if (childLODIndex != -1) LODs.Add(childLODIndex);
-                    submesh.MaterialIndex = bin.ReadInt32();
+                    submesh.Material = _materials.GetAtWriteIndex(bin.ReadInt32());
 
                     submesh.RenderFlags = (CS2.Component.LOD.RenderingFlag)bin.ReadUInt32();
                     submesh.CollisionProxyIndex = bin.ReadInt32();
                     bin.BaseStream.Position += 4;
-                    submesh.WeightedCollisionIndex = bin.ReadInt32();
+                    submesh.WeightedCollision = _collisions.GetAtWriteIndex(bin.ReadInt32());
                     int boneArrayOffset = bin.ReadInt32();
 
                     submesh.VertexFormatFull = vertexFormats[bin.ReadUInt16()];
                     submesh.VertexFormatPartial = vertexFormats[bin.ReadUInt16()];
                     bin.BaseStream.Position += 2;
                     submesh.VertexScale = bin.ReadUInt16();
-                    submesh.MorphAnimSet = bin.ReadInt16();
+                    submesh.MorphAnimSet = _morphTargets.GetAtWriteIndex(bin.ReadInt16());
 
                     submesh.VertexCount = bin.ReadUInt16();
                     submesh.IndexCount = bin.ReadUInt16();
@@ -342,8 +356,8 @@ namespace CATHODE
                 bin.Write(stringLength);
                 bin.BaseStream.Position += stringLength;
 
-                //Write model metadata
-                int boneOffset = 0;
+                //Get all submeshes to write
+                List<(CS2 entry, CS2.Component component, CS2.Component.LOD lod, CS2.Component.LOD.Submesh submesh, int entryIndex, int componentIndex, int lodIndex, int submeshIndex)> submeshList = new List<(CS2, CS2.Component, CS2.Component.LOD, CS2.Component.LOD.Submesh, int, int, int, int)>();
                 for (int i = 0; i < Entries.Count; i++)
                 {
                     for (int z = 0; z < Entries[i].Components.Count; z++)
@@ -352,56 +366,54 @@ namespace CATHODE
                         {
                             for (int y = 0; y < Entries[i].Components[z].LODs[x].Submeshes.Count; y++)
                             {
-                                CS2.Component.LOD.Submesh mesh = Entries[i].Components[z].LODs[x].Submeshes[y];
-
-                                bin.Write((Int32)stringOffsets[Entries[i].Name]);
-                                bin.Write(new byte[4]);
-                                bin.Write((Int32)stringOffsets[Entries[i].Components[z].LODs[x].Name]);
-                                bin.Write(new byte[4]);
-                                Utilities.Write<Vector3>(bin, mesh.MinBounds);
-                                bin.Write((float)mesh.MinLODRange);
-                                Utilities.Write<Vector3>(bin, mesh.MaxBounds);
-                                bin.Write((float)mesh.MaxLODRange);
-                                bin.Write(Entries[i].Components[z].LODs[x].Submeshes.Count - 1 == y ? -1 : _writeList.Count + 1);
-                                bin.Write(y == 0 && Entries[i].Components[z].LODs.Count - 1 != x ? _writeList.Count + Entries[i].Components[z].LODs[x].Submeshes.Count : -1);
-                                bin.Write((Int32)mesh.MaterialIndex);
-                                bin.Write((Int32)mesh.RenderFlags);
-                                bin.Write((Int32)mesh.CollisionProxyIndex);
-                                bin.Write((Int32)mesh.Data.Length);
-                                bin.Write((Int32)mesh.WeightedCollisionIndex);
-                                bin.Write((Int32)boneOffset);
-                                bin.Write((Int16)vertexFormats.IndexOf(mesh.VertexFormatFull));
-                                bin.Write((Int16)vertexFormats.IndexOf(mesh.VertexFormatPartial));
-                                bin.Write((Int16)vertexFormats.IndexOf(mesh.VertexFormatFull));
-                                bin.Write((Int16)mesh.VertexScale);
-                                bin.Write((Int16)mesh.MorphAnimSet);
-                                bin.Write((Int16)mesh.VertexCount);
-                                bin.Write((Int16)mesh.IndexCount);
-                                bin.Write((Int16)mesh.Bones.Count);
-
-                                boneOffset += mesh.Bones.Count;
-                                _writeList.Add(mesh);
+                                submeshList.Add((Entries[i], Entries[i].Components[z], Entries[i].Components[z].LODs[x], Entries[i].Components[z].LODs[x].Submeshes[y], i, z, x, y));
                             }
                         }
                     }
                 }
 
-                //Bone data
-                bin.Write(boneOffset);
-                for (int i = 0; i < Entries.Count; i++)
+                //Write model data
+                byte[][] metadataBuffers = new byte[submeshList.Count][];
+                Parallel.For(0, submeshList.Count, idx =>
                 {
-                    for (int z = 0; z < Entries[i].Components.Count; z++)
-                    {
-                        for (int x = 0; x < Entries[i].Components[z].LODs.Count; x++)
-                        {
-                            for (int y = 0; y < Entries[i].Components[z].LODs[x].Submeshes.Count; y++)
-                            {
-                                if (Entries[i].Components[z].LODs[x].Submeshes[y].Bones.Count == 0) continue;
-                                for (int p = 0; p < Entries[i].Components[z].LODs[x].Submeshes[y].Bones.Count; p++)
-                                    bin.Write((byte)Entries[i].Components[z].LODs[x].Submeshes[y].Bones[p]);
-                            }
-                        }
-                    }
+                    var (entry, component, lod, mesh, entryIdx, componentIdx, lodIdx, submeshIdx) = submeshList[idx];
+                    metadataBuffers[idx] = SerializeSubmeshMetadata(mesh, entry, lod, stringOffsets, vertexFormats, submeshList, idx);
+                });
+                int boneOffset = 0;
+                for (int idx = 0; idx < submeshList.Count; idx++)
+                {
+                    var (entry, component, lod, mesh, entryIdx, componentIdx, lodIdx, submeshIdx) = submeshList[idx];
+                    
+                    byte[] buffer = metadataBuffers[idx];
+                    
+                    int nextSubmeshIndex = (submeshIdx < lod.Submeshes.Count - 1) ? _writeList.Count + 1 : -1;
+                    byte[] nextSubmeshBytes = BitConverter.GetBytes(nextSubmeshIndex);
+                    Array.Copy(nextSubmeshBytes, 0, buffer, 48, 4);
+                    
+                    int nextLODIndex = (submeshIdx == 0 && lodIdx < component.LODs.Count - 1) ? _writeList.Count + lod.Submeshes.Count : -1;
+                    byte[] nextLODBytes = BitConverter.GetBytes(nextLODIndex);
+                    Array.Copy(nextLODBytes, 0, buffer, 52, 4);
+                    
+                    byte[] boneOffsetBytes = BitConverter.GetBytes(boneOffset);
+                    Array.Copy(boneOffsetBytes, 0, buffer, 76, 4);
+                    
+                    bin.Write(buffer);
+                    boneOffset += mesh.Bones.Count;
+                    _writeList.Add(mesh);
+                }
+
+                //Write bone data
+                byte[][] boneBuffers = new byte[submeshList.Count][];
+                Parallel.For(0, submeshList.Count, idx =>
+                {
+                    var (entry, component, lod, mesh, entryIdx, componentIdx, lodIdx, submeshIdx) = submeshList[idx];
+                    boneBuffers[idx] = SerializeBoneData(mesh);
+                });
+                bin.Write(boneOffset);
+                for (int idx = 0; idx < boneBuffers.Length; idx++)
+                {
+                    if (boneBuffers[idx] != null && boneBuffers[idx].Length > 0)
+                        bin.Write(boneBuffers[idx]);
                 }
             }
 
@@ -411,42 +423,33 @@ namespace CATHODE
                 for (int i = 0; i < Entries.Count; i++)
                     componentCount += Entries[i].Components.Count;
 
-                //Write model content
+                //Get all components
+                List<(CS2 entry, CS2.Component component, int entryIndex, int componentIndex)> componentList = new List<(CS2, CS2.Component, int, int)>();
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    for (int p = 0; p < Entries[i].Components.Count; p++)
+                    {
+                        componentList.Add((Entries[i], Entries[i].Components[p], i, p));
+                    }
+                }
+
+                //Write components
+                (byte[] buffer, int length)[] componentBuffers = new (byte[], int)[componentList.Count];
+                Parallel.For(0, componentList.Count, idx =>
+                {
+                    var (entry, component, entryIdx, componentIdx) = componentList[idx];
+                    componentBuffers[idx] = SerializeComponentContent(entry, component, componentList, idx);
+                });
                 int contentOffset = 32 + (componentCount * 48);
                 pak.BaseStream.SetLength(contentOffset);
                 pak.BaseStream.Position = contentOffset;
                 List<int> offsets = new List<int>();
                 List<int> lengths = new List<int>();
-                for (int i = 0; i < Entries.Count; i++)
+                for (int idx = 0; idx < componentBuffers.Length; idx++)
                 {
-                    for (int p = 0; p < Entries[i].Components.Count; p++)
-                    {
-                        offsets.Add((int)pak.BaseStream.Position - contentOffset);
-
-                        int countOfAllSubmeshes = 0;
-                        for (int x = 0; x < Entries[i].Components[p].LODs.Count; x++)
-                            countOfAllSubmeshes += Entries[i].Components[p].LODs[x].Submeshes.Count;
-
-                        pak.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndex(Entries[i].Components[p].LODs[0].Submeshes[0])));
-                        pak.Write(BigEndianUtils.FlipEndian((Int32)countOfAllSubmeshes));
-                        pak.Write(new byte[16]);
-                        List<byte> content = new List<byte>();
-                        for (int y = 0; y < Entries[i].Components[p].LODs.Count; y++)
-                        {
-                            for (int z = 0; z < Entries[i].Components[p].LODs[y].Submeshes.Count; z++)
-                            {
-                                pak.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndex(Entries[i].Components[p].LODs[y].Submeshes[z])));
-                                pak.Write(BigEndianUtils.FlipEndian((Int32)(24 + (countOfAllSubmeshes * 16) + content.Count + 8)));
-                                pak.Write(BigEndianUtils.FlipEndian((Int32)Entries[i].Components[p].LODs[y].Submeshes[z].Data.Length));
-                                pak.Write(new byte[4]);
-                                content.AddRange(Entries[i].Components[p].LODs[y].Submeshes[z].Data);
-                            }
-                        }
-                        pak.Write(new byte[8]);
-                        pak.Write(content.ToArray());
-
-                        lengths.Add((int)pak.BaseStream.Position - contentOffset - offsets[offsets.Count - 1]);
-                    }
+                    offsets.Add((int)pak.BaseStream.Position - contentOffset);
+                    pak.Write(componentBuffers[idx].buffer);
+                    lengths.Add(componentBuffers[idx].length);
                 }
 
                 //Write model headers
@@ -483,6 +486,86 @@ namespace CATHODE
                 pak.Write(BigEndianUtils.FlipEndian((Int32)1));
             }
             return true;
+        }
+
+        private byte[] SerializeSubmeshMetadata(CS2.Component.LOD.Submesh mesh, CS2 entry, CS2.Component.LOD lod, Dictionary<string, int> stringOffsets, List<VertexFormat> vertexFormats, List<(CS2 entry, CS2.Component component, CS2.Component.LOD lod, CS2.Component.LOD.Submesh submesh, int entryIndex, int componentIndex, int lodIndex, int submeshIndex)> submeshList, int idx)
+        {
+            using (MemoryStream stream = new MemoryStream(80))
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                var (currentEntry, currentComponent, currentLod, currentMesh, entryIdx, componentIdx, lodIdx, submeshIdx) = submeshList[idx];
+                
+                writer.Write((Int32)stringOffsets[entry.Name]);
+                writer.Write(new byte[4]);
+                writer.Write((Int32)stringOffsets[lod.Name]);
+                writer.Write(new byte[4]);
+                Utilities.Write<Vector3>(writer, mesh.MinBounds);
+                writer.Write((float)mesh.MinLODRange);
+                Utilities.Write<Vector3>(writer, mesh.MaxBounds);
+                writer.Write((float)mesh.MaxLODRange);
+                
+                writer.Write((Int32)0); //Placeholder for next submesh index
+                writer.Write((Int32)0); //Placeholder for next LOD index
+                
+                writer.Write(_materials.GetWriteIndex(mesh.Material));
+                writer.Write((Int32)mesh.RenderFlags);
+                writer.Write((Int32)mesh.CollisionProxyIndex);
+                writer.Write((Int32)mesh.Data.Length);
+                writer.Write(_collisions.GetWriteIndex(mesh.WeightedCollision));
+                writer.Write((Int32)0); //boneOffset placeholder
+                writer.Write((Int16)vertexFormats.IndexOf(mesh.VertexFormatFull));
+                writer.Write((Int16)vertexFormats.IndexOf(mesh.VertexFormatPartial));
+                writer.Write((Int16)vertexFormats.IndexOf(mesh.VertexFormatFull));
+                writer.Write((Int16)mesh.VertexScale);
+                writer.Write((Int16)_morphTargets.GetWriteIndex(mesh.MorphAnimSet));
+                writer.Write((Int16)mesh.VertexCount);
+                writer.Write((Int16)mesh.IndexCount);
+                writer.Write((Int16)mesh.Bones.Count);
+
+                return stream.ToArray();
+            }
+        }
+
+        private byte[] SerializeBoneData(CS2.Component.LOD.Submesh mesh)
+        {
+            if (mesh.Bones.Count == 0) return null;
+            byte[] boneData = new byte[mesh.Bones.Count];
+            for (int p = 0; p < mesh.Bones.Count; p++)
+                boneData[p] = (byte)mesh.Bones[p];
+            return boneData;
+        }
+
+        private (byte[] buffer, int length) SerializeComponentContent(CS2 entry, CS2.Component component, List<(CS2 entry, CS2.Component component, int entryIndex, int componentIndex)> componentList, int idx)
+        {
+            using (MemoryStream stream = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                int countOfAllSubmeshes = 0;
+                for (int x = 0; x < component.LODs.Count; x++)
+                    countOfAllSubmeshes += component.LODs[x].Submeshes.Count;
+
+                writer.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndex(component.LODs[0].Submeshes[0])));
+                writer.Write(BigEndianUtils.FlipEndian((Int32)countOfAllSubmeshes));
+                writer.Write(new byte[16]);
+                
+                List<byte> content = new List<byte>();
+                for (int y = 0; y < component.LODs.Count; y++)
+                {
+                    for (int z = 0; z < component.LODs[y].Submeshes.Count; z++)
+                    {
+                        writer.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndex(component.LODs[y].Submeshes[z])));
+                        writer.Write(BigEndianUtils.FlipEndian((Int32)(24 + (countOfAllSubmeshes * 16) + content.Count + 8)));
+                        writer.Write(BigEndianUtils.FlipEndian((Int32)component.LODs[y].Submeshes[z].Data.Length));
+                        writer.Write(new byte[4]);
+                        content.AddRange(component.LODs[y].Submeshes[z].Data);
+                    }
+                }
+                writer.Write(new byte[8]);
+                writer.Write(content.ToArray());
+
+                byte[] buffer = stream.ToArray();
+                return (buffer, buffer.Length);
+            }
         }
         #endregion
 
@@ -758,10 +841,10 @@ namespace CATHODE
 
                         public RenderingFlag RenderFlags;
 
-                        public int MaterialIndex = -1; // Index in MODELS.MTL
+                        public Materials.Material Material = null; // Index in MODELS.MTL
                         public int CollisionProxyIndex = -1; // Index in COLLISION.HKX
-                        public int WeightedCollisionIndex = -1; // Index in COLLISION.BIN
-                        public int MorphAnimSet = -1; // Index in MORPH_TARGET_DB.BIN
+                        public Collisions.WeightedCollision WeightedCollision = null; // Index in COLLISION.BIN
+                        public MorphTargets.Entry MorphAnimSet = null; // Index in MORPH_TARGET_DB.BIN
 
                         public VertexFormat VertexFormatFull;
                         public VertexFormat VertexFormatPartial;

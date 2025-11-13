@@ -7,6 +7,8 @@ using System.Linq;
 using System.Xml.Linq;
 using System.Runtime.InteropServices.ComTypes;
 using System.Runtime.InteropServices;
+using static CATHODE.Movers;
+
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
@@ -27,6 +29,8 @@ namespace CATHODE
         public Collisions(string path) : base(path) { }
         public Collisions(MemoryStream stream, string path = "") : base(stream, path) { }
         public Collisions(byte[] data, string path = "") : base(data, path) { }
+
+        private List<WeightedCollision> _writeList = new List<WeightedCollision>();
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
@@ -97,6 +101,7 @@ namespace CATHODE
                     }
                 }
             }
+            _writeList.AddRange(Entries);
             return true;
         }
 
@@ -187,7 +192,31 @@ namespace CATHODE
                 vertexData.ForEach(v => Utilities.Write(writer, v));
                 indexData.ForEach(i => writer.Write(i));
             }
+            _writeList.Clear();
+            _writeList.AddRange(Entries);
             return true;
+        }
+        #endregion
+
+        #region HELPERS
+        /// <summary>
+        /// Get the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public int GetWriteIndex(WeightedCollision collision)
+        {
+            if (!_writeList.Contains(collision)) return -1;
+            return _writeList.IndexOf(collision);
+        }
+
+        /// <summary>
+        /// Get the object at the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public WeightedCollision GetAtWriteIndex(int index)
+        {
+            if (_writeList.Count <= index || index < 0) return null;
+            return _writeList[index];
         }
         #endregion
 

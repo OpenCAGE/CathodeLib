@@ -7,7 +7,7 @@ namespace CATHODE
 {
     public class TexturePtr
     {
-        public int Index = -1;
+        public Textures.TEX4 Texture = null;
         public Source Location = Source.NONE;
 
         public enum Source
@@ -19,21 +19,22 @@ namespace CATHODE
 
         public TexturePtr() { }
 
-        public TexturePtr(BinaryReader reader)
+        public TexturePtr(BinaryReader reader, Textures texturesGlobal, Textures texturesLevel)
         {
-            Index = reader.ReadInt16();
+            int index = reader.ReadInt16();
             int source = reader.ReadInt16();
             if (source == -1)
             {
-                Index = -1;
+                Texture = null;
                 return;
             }
             Location = (Source)source;
+            Texture = Location == Source.LEVEL ? texturesLevel.GetAtWriteIndex(index) : texturesGlobal.GetAtWriteIndex(index);
         }
 
-        public void Write(BinaryWriter writer)
+        public void Write(BinaryWriter writer, Textures texturesGlobal, Textures texturesLevel)
         {
-            writer.Write((Int16)Index);
+            writer.Write((Int16)(Location == Source.LEVEL ? texturesLevel.GetWriteIndex(Texture) : texturesGlobal.GetWriteIndex(Texture)));
             writer.Write((Int16)Location);
         }
     };

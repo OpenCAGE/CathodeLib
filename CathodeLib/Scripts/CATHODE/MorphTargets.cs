@@ -7,6 +7,7 @@ using System.Linq;
 using UnityEngine;
 #else
 using System.Numerics;
+using static CATHODE.Collisions;
 #endif
 
 namespace CATHODE
@@ -22,6 +23,8 @@ namespace CATHODE
         public MorphTargets(string path) : base(path) { }
         public MorphTargets(MemoryStream stream, string path = "") : base(stream, path) { }
         public MorphTargets(byte[] data, string path = "") : base(data, path) { }
+
+        private List<Entry> _writeList = new List<Entry>();
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
@@ -49,6 +52,7 @@ namespace CATHODE
                     }
                 }
             }
+            _writeList.AddRange(Entries);
             return true;
         }
 
@@ -69,7 +73,31 @@ namespace CATHODE
                     Utilities.WriteString(Entries[i].Name, writer);
                 }
             }
+            _writeList.Clear();
+            _writeList.AddRange(Entries);
             return true;
+        }
+        #endregion
+
+        #region HELPERS
+        /// <summary>
+        /// Get the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public int GetWriteIndex(Entry morphTarget)
+        {
+            if (!_writeList.Contains(morphTarget)) return -1;
+            return _writeList.IndexOf(morphTarget);
+        }
+
+        /// <summary>
+        /// Get the object at the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public Entry GetAtWriteIndex(int index)
+        {
+            if (_writeList.Count <= index || index < 0) return null;
+            return _writeList[index];
         }
         #endregion
 
