@@ -13,6 +13,8 @@ namespace CathodeLib
 {
     public class Global
     {
+        public Textures Textures;
+
         public AnimationStrings AnimationStrings;
         public AnimationStrings AnimationStrings_Debug;
     }
@@ -22,25 +24,27 @@ namespace CathodeLib
     /// </summary>
     public class Level
     {
-        public Textures GlobalTextures;
-
         public Models Models;
-        public Textures Textures;
         public Materials Materials;
         public Shaders Shaders;
+        public Textures Textures;
+        public RadiosityInstanceMap RadInstanceMap;
 
-        public RenderableElements RenderableElements;
-        public Movers Movers;
-        public Commands Commands;
-        public Resources Resources;
-        public PhysicsMaps PhysicsMaps;
-        public EnvironmentMaps EnvironmentMaps;
-        public CollisionMaps CollisionMaps;
-        public EnvironmentAnimations EnvironmentAnimations;
-        public MaterialMappings MaterialMappings;
-        public PathBarrierResources PathBarrierResources;
-        public Lights Lights;
+        public AlphaLightLevel AlphaLight;
+        public CharacterAccessorySets AccessorySets;
         public Collisions WeightedCollisions;
+        public CollisionMaps CollisionMaps;
+        public Commands Commands;
+        public EnvironmentAnimations EnvironmentAnimations;
+        public EnvironmentMaps EnvironmentMaps;
+        public Lights Lights;
+        public MaterialMappings MaterialMappings;
+        public Movers Movers;
+        public MorphTargets MorphTargetDB;
+        public PathBarrierResources PathBarrierResources;
+        public PhysicsMaps PhysicsMaps;
+        public RenderableElements RenderableElements;
+        public Resources Resources;
         public SoundNodeNetwork SoundNodeNetwork;
         public SoundBankData SoundBankData;
         public SoundDialogueLookups SoundDialogueLookups;
@@ -48,8 +52,6 @@ namespace CathodeLib
         public SoundEventData SoundEventData;
         public SoundFlashModels SoundFlashModels;
         public SoundLoadZones SoundLoadZones;
-
-        public Dictionary<string, Dictionary<string, TextDB>> Strings;
 
         public class State
         {
@@ -59,57 +61,66 @@ namespace CathodeLib
         }
         public List<State> StateResources = new List<State>(); //State 0 loaded by default
 
+        public Dictionary<string, Dictionary<string, TextDB>> Strings;
+
+        private Global Global;
+
         /// <summary>
         /// Load a level in the game's "ENV" folder
         /// </summary>
         public Level(string path, Global global)
         {
-            string pathDATA = path.Replace('\\', '/').Split(new string[] { "/DATA/ENV" }, StringSplitOptions.None)[0] + "/DATA";
-            string levelName = Directory.GetParent(path).Name;
-            string pathGlobal = pathDATA + "/ENV/GLOBAL/WORLD";
-
-            /* GLOBAL */
-            GlobalTextures = new Textures(pathGlobal + "/GLOBAL_TEXTURES.ALL.PAK");
-            //TODO: We don't load GLOBAL_MODELS since it just contains vertex buffers. We should load this to learn about all the vertex formats tho!
+            if (global.Textures == null)
+                throw new Exception("Missing Global Textures");
+            if (global.AnimationStrings_Debug == null)
+                throw new Exception("Missing Global Animation Strings");
+            Global = global;
 
             /* RENDERABLE */
+            //DAMAGE/*
+            //GALAXY/*
             Models = new Models(path + "/RENDERABLE/LEVEL_MODELS.PAK");
-            Textures = new Textures(path + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK");
             Materials = new Materials(path + "/RENDERABLE/LEVEL_MODELS.MTL");
             Shaders = new Shaders(path + "/RENDERABLE/LEVEL_SHADERS_DX11.PAK");
-            //Shaders = new ShadersPAK(path + "/RENDERABLE/LEVEL_SHADERS_DX11.PAK");
-            //ShadersIDX = new IDXRemap(path + "/RENDERABLE/LEVEL_SHADERS_DX11_REMAP.PAK");
-
-            // RENDERABLE TODO:
-            //  - SHADERS
+            Textures = new Textures(path + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK");
+            RadInstanceMap = new RadiosityInstanceMap(path + "/RENDERABLE/RADIOSITY_INSTANCE_MAP.TXT");
+            //RADIOSITY_RUNTIME.BIN
 
             /* WORLD */
-            RenderableElements = new RenderableElements(path + "/WORLD/REDS.BIN");
-            Movers = new Movers(path + "/WORLD/MODELS.MVR");
-            Commands = new Commands(path + "/WORLD/COMMANDS.PAK");
-            Resources = new Resources(path + "/WORLD/RESOURCES.BIN");
-            //PhysicsMaps = new PhysicsMaps(path + "/WORLD/PHYSICS.MAP");
-            EnvironmentMaps = new EnvironmentMaps(path + "/WORLD/ENVIRONMENTMAP.BIN");
-            //CollisionMaps = new CollisionMaps(path + "/WORLD/COLLISION.MAP");
-            EnvironmentAnimations = new EnvironmentAnimations(path + "/WORLD/ENVIRONMENT_ANIMATION.DAT", global.AnimationStrings_Debug);
-            //MaterialMappings = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK");
-            //PathBarrierResources = new PathBarrierResources(path + "/WORLD/PATH_BARRIER_RESOURCES");
-            Lights = new Lights(path + "/WORLD/LIGHTS.BIN");
+            AlphaLight = new AlphaLightLevel(path + "/WORLD/ALPHALIGHT_LEVEL.BIN");
+            //BEHAVIOR_TREE.DB
+            AccessorySets = new CharacterAccessorySets(path + "/WORLD/CHARACTERACCESSORYSETS.BIN");
             WeightedCollisions = new Collisions(path + "/WORLD/COLLISION.BIN");
-            //SoundNodeNetwork = new SoundNodeNetwork(path + "/WORLD/SNDNODENETWORK.DAT");
-            //SoundBankData = new SoundBankData(path + "/WORLD/SOUNDBANKDATA.DAT");
-            //SoundDialogueLookups = new SoundDialogueLookups(path + "/WORLD/SOUNDDIALOGUELOOKUPS.DAT");
-            //SoundEnvironmentData = new SoundEnvironmentData(path + "/WORLD/SOUNDENVIRONMENTDATA.DAT");
-            //SoundEventData = new SoundEventData(path + "/WORLD/SOUNDEVENTDATA.DAT");
-            //SoundFlashModels = new SoundFlashModels(path + "/WORLD/SOUNDFLASHMODELS.DAT");
-            //SoundLoadZones = new SoundLoadZones(path + "/WORLD/SOUNDLOADZONES.DAT");
+            //COLLISION.HKX
+            //COLLISION.HKX64
+            CollisionMaps = new CollisionMaps(path + "/WORLD/COLLISION.MAP");
+            Commands = new Commands(path + "/WORLD/COMMANDS" + (File.Exists(path + "/WORLD/COMMANDS.PAK") ? ".PAK" : ".BIN"));
+            //CUTSCENE_DIRECTOR_DATA.BIN
+            EnvironmentAnimations = new EnvironmentAnimations(path + "/WORLD/ENVIRONMENT_ANIMATION.DAT", global.AnimationStrings_Debug);
+            EnvironmentMaps = new EnvironmentMaps(path + "/WORLD/ENVIRONMENTMAP.BIN");
+            //EXCLUSIVE_MASTER_RESOURCE_INDICES (loaded below)
+            //LEVEL.STR
+            Lights = new Lights(path + "/WORLD/LIGHTS.BIN");
+            MaterialMappings = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK");
+            Movers = new Movers(path + "/WORLD/MODELS.MVR");
+            MorphTargetDB = new MorphTargets(path + "/WORLD/MORPH_TARGET_DB.BIN");
+            //OCCLUDER_TRIANGLE_BVH.BIN
+            PathBarrierResources = new PathBarrierResources(path + "/WORLD/PATH_BARRIER_RESOURCES");
+            //PHYSICS.HKX
+            //PHYSICS.HKX64
+            PhysicsMaps = new PhysicsMaps(path + "/WORLD/PHYSICS.MAP");
+            //RADIOSITY_COLLISION_MAPPING.BIN
+            RenderableElements = new RenderableElements(path + "/WORLD/REDS.BIN");
+            Resources = new Resources(path + "/WORLD/RESOURCES.BIN");
+            SoundNodeNetwork = new SoundNodeNetwork(path + "/WORLD/SNDNODENETWORK.DAT");
+            SoundBankData = new SoundBankData(path + "/WORLD/SOUNDBANKDATA.DAT");
+            SoundDialogueLookups = new SoundDialogueLookups(path + "/WORLD/SOUNDDIALOGUELOOKUPS.DAT");
+            SoundEnvironmentData = new SoundEnvironmentData(path + "/WORLD/SOUNDENVIRONMENTDATA.DAT");
+            SoundEventData = new SoundEventData(path + "/WORLD/SOUNDEVENTDATA.DAT");
+            SoundFlashModels = new SoundFlashModels(path + "/WORLD/SOUNDFLASHMODELS.DAT");
+            SoundLoadZones = new SoundLoadZones(path + "/WORLD/SOUNDLOADZONES.DAT");
 
-            // WORLD TODO: 
-            //  - ALPHALIGHT_LEVEL.BIN
-            //  - OCCLUDER_TRIANGLE_BVH.BIN
-            //  - SND NETWORK FILES
-
-            /* WORLD STATE RESOURCES */
+            /* WORLD STATES */
             int stateCount = 1; // we always implicitly have one state (the default state: state zero)
             using (BinaryReader reader = new BinaryReader(File.OpenRead(path + "/WORLD/EXCLUSIVE_MASTER_RESOURCE_INDICES")))
             {
@@ -127,17 +138,17 @@ namespace CathodeLib
                 string statePath = path + "/WORLD/STATE_" + i + "/";
 
                 State state = new State() { Index = i };
+                //ASSAULT_POSITIONS
+                //COVER
+                //CRAWL_SPACE_SPOTTING_POSITIONS
                 state.NavMesh = new NavigationMesh(statePath + "NAV_MESH");
+                //SPOTTING_POSITIONS
                 state.Traversals = new Traversals(statePath + "TRAVERSAL");
-
-                // WORLD STATE RESOURCES TODO:
-                //  - ASSAULT_POSITIONS
-                //  - COVER
-                //  - CRAWL_SPACE_SPOTTING_POSITIONS
-                //  - SPOTTING_POSITIONS
             }
 
             /* TEXT */
+            string pathDATA = path.Replace('\\', '/').Split(new string[] { "/DATA/ENV" }, StringSplitOptions.None)[0] + "/DATA";
+            string levelName = Directory.GetParent(path).Name;
             XmlNodeList textDBsGlobal = new BML(pathDATA + "/LEVEL_TEXT_DATABASES.BML").Content.SelectNodes("//level_text_databases/level");
             List<string> globalDBs = new List<string>();
             for (int i = 0; i < textDBsGlobal.Count; i++)
@@ -185,11 +196,10 @@ namespace CathodeLib
                 lightMovers.Add(Movers.GetAtWriteIndex(Lights.Entries[i].MoverIndex));
             */
             List<Movers.MOVER_DESCRIPTOR> envMapMovers = new List<Movers.MOVER_DESCRIPTOR>();
-            Parallel.For(0, EnvironmentMaps.Entries.Count, i =>
+            for (int i = 0; i < EnvironmentMaps.Entries.Count; i++)
             {
-                lock (envMapMovers)
-                    envMapMovers.Add(Movers.GetAtWriteIndex(EnvironmentMaps.Entries[i].MoverIndex));
-            });
+                envMapMovers.Add(Movers.GetAtWriteIndex(EnvironmentMaps.Entries[i].MoverIndex));
+            }
             Movers.Save();
 
             /*
@@ -206,13 +216,12 @@ namespace CathodeLib
 
             //Update mover indexes for envmap refs
             List<EnvironmentMaps.Mapping> envMaps = new List<EnvironmentMaps.Mapping>();
-            Parallel.For(0, EnvironmentMaps.Entries.Count, i =>
+            for (int i = 0; i < EnvironmentMaps.Entries.Count; i++)
             {
                 EnvironmentMaps.Entries[i].MoverIndex = Movers.GetWriteIndex(envMapMovers[i]);
                 if (EnvironmentMaps.Entries[i].MoverIndex != -1)
-                    lock (envMaps)
-                        envMaps.Add(EnvironmentMaps.Entries[i]);
-            });
+                    envMaps.Add(EnvironmentMaps.Entries[i]);
+            }
             EnvironmentMaps.Entries = envMaps;
             EnvironmentMaps.Save();
 
@@ -222,13 +231,11 @@ namespace CathodeLib
             //Get REDS links as actual objects
             List<Models.CS2.Component.LOD.Submesh> redsModels = new List<Models.CS2.Component.LOD.Submesh>();
             List<Materials.Material> redsMaterials = new List<Materials.Material>();
-            Parallel.For(0, RenderableElements.Entries.Count, i =>
+            for (int i = 0; i < RenderableElements.Entries.Count; i++)
             {
-                lock (redsModels)
-                    redsModels.Add(Models.GetAtWriteIndex(RenderableElements.Entries[i].ModelIndex));
-                lock (redsMaterials)
-                    redsMaterials.Add(Materials.GetAtWriteIndex(RenderableElements.Entries[i].MaterialIndex));
-            });
+                redsModels.Add(Models.GetAtWriteIndex(RenderableElements.Entries[i].ModelIndex));
+                redsMaterials.Add(Materials.GetAtWriteIndex(RenderableElements.Entries[i].MaterialIndex));
+            }
 
             //Get model links as actual objects
             List<Materials.Material> modelMaterials = new List<Materials.Material>();
@@ -252,14 +259,14 @@ namespace CathodeLib
                             materialTextures.Add(Textures.GetAtWriteIndex(Materials.Entries[i].TextureReferences[x].Index));
                             break;
                         case TexturePtr.Source.GLOBAL:
-                            materialTextures.Add(GlobalTextures.GetAtWriteIndex(Materials.Entries[i].TextureReferences[x].Index));
+                            materialTextures.Add(Global.Textures.GetAtWriteIndex(Materials.Entries[i].TextureReferences[x].Index));
                             break;
                     }
                 }
             }
             Materials.Save();
             Textures.Save();
-            GlobalTextures.Save();
+            Global.Textures.Save();
 
             //Update the REDS links
             for (int i = 0; i < RenderableElements.Entries.Count; i++)
@@ -302,7 +309,7 @@ namespace CathodeLib
                             Materials.Entries[i].TextureReferences[x].Index = Textures.GetWriteIndex(materialTextures[y]);
                             break;
                         case TexturePtr.Source.GLOBAL:
-                            Materials.Entries[i].TextureReferences[x].Index = GlobalTextures.GetWriteIndex(materialTextures[y]);
+                            Materials.Entries[i].TextureReferences[x].Index = Global.Textures.GetWriteIndex(materialTextures[y]);
                             break;
                     }
                     y++;
