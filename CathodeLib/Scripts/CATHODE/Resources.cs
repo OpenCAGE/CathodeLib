@@ -1,11 +1,12 @@
-﻿using System;
+﻿using CATHODE.Scripting;
+using CathodeLib;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
-using CATHODE.Scripting;
-using CathodeLib;
+using static CATHODE.Movers;
 using static CATHODE.Resources;
 
 namespace CATHODE
@@ -21,6 +22,8 @@ namespace CATHODE
         public Resources(string path) : base(path) { }
         public Resources(MemoryStream stream, string path = "") : base(stream, path) { }
         public Resources(byte[] data, string path = "") : base(data, path) { }
+
+        private List<Resource> _writeList = new List<Resource>(); 
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
@@ -42,6 +45,7 @@ namespace CATHODE
                 }
                 Entries = entries.ToList();
             }
+            _writeList.AddRange(Entries);
             return true;
         }
 
@@ -64,9 +68,32 @@ namespace CATHODE
                     writer.Write(Entries.IndexOf(orderedEntries[i]));
                 }
             }
+            _writeList.Clear();
+            _writeList.AddRange(Entries);
             return true;
         }
         #endregion
+
+        #region HELPERS
+        /// <summary>
+        /// Get the current BIN index for a submesh (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public int GetWriteIndex(Resource resource)
+        {
+            if (!_writeList.Contains(resource)) return -1;
+            return _writeList.IndexOf(resource);
+        }
+
+        /// <summary>
+        /// Get a submesh by its current BIN index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public Resource GetAtWriteIndex(int index)
+        {
+            if (_writeList.Count <= index || index < 0) return null;
+            return _writeList[index];
+        }
 
         public void AddUniqueResource(ShortGuid composite_instance_id, ShortGuid resource_id)
         {
@@ -79,6 +106,7 @@ namespace CATHODE
                 resource_id = resource_id
             });
         }
+        #endregion
 
         #region STRUCTURES
         public class Resource

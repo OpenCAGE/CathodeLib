@@ -6,6 +6,8 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using static CATHODE.Models;
+using static CATHODE.TexturePtr;
+using static CATHODE.Textures.TEX4;
 
 namespace CATHODE
 {
@@ -17,7 +19,19 @@ namespace CATHODE
         public List<Material> Entries = new List<Material>();
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE | Implementation.CREATE;
 
-        public Materials(string path) : base(path) { }
+        protected override bool HandlesLoadingManually => true;
+        private Textures _globalTextures;
+        private Textures _levelTextures;
+        private Shaders _shaders;
+
+        public Materials(string path, Textures globalTextures, Textures levelTextures, Shaders shaders) : base(path)
+        {
+            _globalTextures = globalTextures;
+            _levelTextures = levelTextures;
+            _shaders = shaders;
+
+            _loaded = Load();
+        }
 
         private List<Material> _writeList = new List<Material>();
 
@@ -57,7 +71,7 @@ namespace CATHODE
                     Material material = new Material();
                     for (int x = 0; x < 12; x++)
                     {
-                        TexturePtr texRef = new TexturePtr(reader);
+                        TexturePtr texRef = new TexturePtr(reader, _globalTextures, _levelTextures);
                         if (texRef.Location == TexturePtr.Source.NONE)
                             continue;
                         material.TextureReferences.Add(texRef);
@@ -74,7 +88,7 @@ namespace CATHODE
 
                     reader.BaseStream.Position += 11;
                     material.Name = materialNames[i]; 
-                    material.ShaderIndex = reader.ReadInt32();
+                    material.Shader = _shaders.GetAtWriteIndex(reader.ReadInt32());
                     reader.BaseStream.Position += 128;
                     int lightFlags = reader.ReadInt32();
                     if (lightFlags != 0) material.OfflineLightFeatures = new LightFlags(lightFlags);
@@ -174,7 +188,7 @@ namespace CATHODE
                             writer.Write((Int16)(-1));
                             continue;
                         }
-                        writer.Write((Int16)tex.Index);
+                        writer.Write((Int16)(tex.Location == Source.LEVEL ? _levelTextures.GetWriteIndex(tex.Texture) : _globalTextures.GetWriteIndex(tex.Texture)));
                         writer.Write((Int16)tex.Location);
                     }
 
@@ -188,7 +202,7 @@ namespace CATHODE
                     writer.Write(new byte[7]);
                     writer.Write(nameOffset);
                     nameOffset += Entries[i].Name.Length + 1;
-                    writer.Write(Entries[i].ShaderIndex);
+                    writer.Write(_shaders.GetWriteIndex(Entries[i].Shader));
                     writer.Write(new byte[128]);
                     if (Entries[i].OfflineLightFeatures != null) 
                         Entries[i].OfflineLightFeatures.Write(writer);
@@ -265,7 +279,7 @@ namespace CATHODE
 
             public LightFlags OfflineLightFeatures = null; //Null if we have none (not a light material)
 
-            public int ShaderIndex; //Index into shader pak
+            public Shaders.Shader Shader; //Index into shader pak
             public int PhysicalMaterialIndex; //255 i assume means none -> this is an index into the Havok physics materials database (at path data/material_data/materials.xml/bml).
             public int EnvironmentMapIndex; //255 means 'any' -> this is an index into our TextureReferences array. it's optionally overridden per renderable instance by MVR.
 

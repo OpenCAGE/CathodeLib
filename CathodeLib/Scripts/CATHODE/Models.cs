@@ -1,3 +1,4 @@
+using CATHODE.Scripting;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
@@ -19,7 +20,19 @@ namespace CATHODE
         public List<CS2> Entries = new List<CS2>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
-        public Models(string path) : base(path) { }
+        protected override bool HandlesLoadingManually => true;
+        private Materials _materials;
+        private Collisions _collisions;
+        private MorphTargets _morphTargets;
+
+        public Models(string path, Materials materials, Collisions weightedCollisions, MorphTargets morphTargets) : base (path)
+        {
+            _materials = materials;
+            _collisions = weightedCollisions;
+            _morphTargets = morphTargets;
+
+            _loaded = Load();
+        }
 
         private List<CS2.Component.LOD.Submesh> _writeList = new List<CS2.Component.LOD.Submesh>();
         private string _filepathBIN;
@@ -112,19 +125,19 @@ namespace CATHODE
                     int childModelIndex = bin.ReadInt32();
                     int childLODIndex = bin.ReadInt32();
                     if (childLODIndex != -1) LODs.Add(childLODIndex);
-                    submesh.MaterialIndex = bin.ReadInt32();
+                    submesh.Material = _materials.GetAtWriteIndex(bin.ReadInt32());
 
                     submesh.RenderFlags = (CS2.Component.LOD.RenderingFlag)bin.ReadUInt32();
                     submesh.CollisionProxyIndex = bin.ReadInt32();
                     bin.BaseStream.Position += 4;
-                    submesh.WeightedCollisionIndex = bin.ReadInt32();
+                    submesh.WeightedCollision = _collisions.GetAtWriteIndex(bin.ReadInt32());
                     int boneArrayOffset = bin.ReadInt32();
 
                     submesh.VertexFormatFull = vertexFormats[bin.ReadUInt16()];
                     submesh.VertexFormatPartial = vertexFormats[bin.ReadUInt16()];
                     bin.BaseStream.Position += 2;
                     submesh.VertexScale = bin.ReadUInt16();
-                    submesh.MorphAnimSet = bin.ReadInt16();
+                    submesh.MorphAnimSet = _morphTargets.GetAtWriteIndex(bin.ReadInt16());
 
                     submesh.VertexCount = bin.ReadUInt16();
                     submesh.IndexCount = bin.ReadUInt16();
@@ -364,17 +377,17 @@ namespace CATHODE
                                 bin.Write((float)mesh.MaxLODRange);
                                 bin.Write(Entries[i].Components[z].LODs[x].Submeshes.Count - 1 == y ? -1 : _writeList.Count + 1);
                                 bin.Write(y == 0 && Entries[i].Components[z].LODs.Count - 1 != x ? _writeList.Count + Entries[i].Components[z].LODs[x].Submeshes.Count : -1);
-                                bin.Write((Int32)mesh.MaterialIndex);
+                                bin.Write(_materials.GetWriteIndex(mesh.Material));
                                 bin.Write((Int32)mesh.RenderFlags);
                                 bin.Write((Int32)mesh.CollisionProxyIndex);
                                 bin.Write((Int32)mesh.Data.Length);
-                                bin.Write((Int32)mesh.WeightedCollisionIndex);
+                                bin.Write(_collisions.GetWriteIndex(mesh.WeightedCollision));
                                 bin.Write((Int32)boneOffset);
                                 bin.Write((Int16)vertexFormats.IndexOf(mesh.VertexFormatFull));
                                 bin.Write((Int16)vertexFormats.IndexOf(mesh.VertexFormatPartial));
                                 bin.Write((Int16)vertexFormats.IndexOf(mesh.VertexFormatFull));
                                 bin.Write((Int16)mesh.VertexScale);
-                                bin.Write((Int16)mesh.MorphAnimSet);
+                                bin.Write((Int16)_morphTargets.GetWriteIndex(mesh.MorphAnimSet));
                                 bin.Write((Int16)mesh.VertexCount);
                                 bin.Write((Int16)mesh.IndexCount);
                                 bin.Write((Int16)mesh.Bones.Count);
@@ -758,10 +771,10 @@ namespace CATHODE
 
                         public RenderingFlag RenderFlags;
 
-                        public int MaterialIndex = -1; // Index in MODELS.MTL
+                        public Materials.Material Material = null; // Index in MODELS.MTL
                         public int CollisionProxyIndex = -1; // Index in COLLISION.HKX
-                        public int WeightedCollisionIndex = -1; // Index in COLLISION.BIN
-                        public int MorphAnimSet = -1; // Index in MORPH_TARGET_DB.BIN
+                        public Collisions.WeightedCollision WeightedCollision = null; // Index in COLLISION.BIN
+                        public MorphTargets.Entry MorphAnimSet = null; // Index in MORPH_TARGET_DB.BIN
 
                         public VertexFormat VertexFormatFull;
                         public VertexFormat VertexFormatPartial;

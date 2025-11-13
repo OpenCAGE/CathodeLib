@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using static CATHODE.RenderableElements;
 
 namespace CATHODE
 {
@@ -17,6 +18,8 @@ namespace CATHODE
     public class Shaders : CathodeFile
     {
         public List<Shader> Entries = new List<Shader>();
+
+        private List<Shader> _writeList = new List<Shader>();
 
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public Shaders(string path) : base(path) { }
@@ -141,6 +144,7 @@ namespace CATHODE
                 }
             }
 
+            _writeList.AddRange(Entries);
             return true;
         }
 
@@ -273,7 +277,32 @@ namespace CATHODE
                 });
             }
             Utilities.WritePAK(_filepath, FileIdentifiers.SHADER_DATA, content);
+
+            _writeList.Clear();
+            _writeList.AddRange(Entries);
             return true;
+        }
+        #endregion
+
+        #region HELPERS
+        /// <summary>
+        /// Get the current BIN index for a submesh (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public int GetWriteIndex(Shader shader)
+        {
+            if (!_writeList.Contains(shader)) return -1;
+            return _writeList.IndexOf(shader);
+        }
+
+        /// <summary>
+        /// Get a submesh by its current BIN index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public Shader GetAtWriteIndex(int index)
+        {
+            if (_writeList.Count <= index || index < 0) return null;
+            return _writeList[index];
         }
         #endregion
 

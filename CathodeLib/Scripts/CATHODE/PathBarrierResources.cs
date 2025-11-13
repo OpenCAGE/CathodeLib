@@ -14,9 +14,15 @@ namespace CATHODE
         public List<Entry> Entries = new List<Entry>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
-        public PathBarrierResources(string path) : base(path) { }
-        public PathBarrierResources(MemoryStream stream, string path = "") : base(stream, path) { }
-        public PathBarrierResources(byte[] data, string path = "") : base(data, path) { }
+        protected override bool HandlesLoadingManually => true;
+        private Resources _resources;
+
+        public PathBarrierResources(string path, Resources resources) : base(path)
+        {
+            _resources = resources;
+
+            _loaded = Load();
+        }
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
@@ -28,7 +34,7 @@ namespace CATHODE
                 for (int i = 0; i < entryCount; i++)
                 {
                     Entry entry = new Entry();
-                    entry.resourcesBinIndex = reader.ReadInt32();
+                    entry.Resource = _resources.GetAtWriteIndex(reader.ReadInt32());
                     int index = reader.ReadInt16();
                     if (index != i+1) throw new Exception();
                     entry.unk1 = reader.ReadInt16();
@@ -48,7 +54,7 @@ namespace CATHODE
                 reader.Write(Entries.Count);
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    reader.Write((Int32)Entries[i].resourcesBinIndex);
+                    reader.Write(_resources.GetWriteIndex(Entries[i].Resource));
                     reader.Write((Int32)(i + 1));
                     reader.Write((Int16)Entries[i].unk1); 
                     reader.Write((Int16)Entries[i].unk2);
@@ -61,7 +67,7 @@ namespace CATHODE
         #region STRUCTURES
         public class Entry
         {
-            public int resourcesBinIndex;
+            public Resources.Resource Resource;
             public int unk1; //todo: perhaps this is a ShortGuid instance thing?
             public int unk2;
         }

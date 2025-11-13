@@ -15,9 +15,15 @@ namespace CATHODE
         public List<Mapping> Entries = new List<Mapping>();
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE | Implementation.CREATE;
 
-        public EnvironmentMaps(string path) : base(path) { }
-        public EnvironmentMaps(MemoryStream stream, string path = "") : base(stream, path) { }
-        public EnvironmentMaps(byte[] data, string path = "") : base(data, path) { }
+        protected override bool HandlesLoadingManually => true;
+        private Movers _movers;
+
+        public EnvironmentMaps(string path, Movers movers) : base(path)
+        {
+            _movers = movers;
+
+            _loaded = Load();
+        }
 
         /// <summary>
         /// This is the number of environment maps in the level. We should never reference an index higher than this.
@@ -34,7 +40,7 @@ namespace CATHODE
                 for (int i = 0; i < entryCount; i++)
                 {
                     Mapping entry = new Mapping();
-                    entry.MoverIndex = reader.ReadInt32();
+                    entry.Mover = _movers.GetAtWriteIndex(reader.ReadInt32());
                     entry.EnvMapIndex = reader.ReadInt32();
                     Entries.Add(entry);
                 }
@@ -45,7 +51,7 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            List<Mapping> orderedEntries = Entries.OrderBy(o => o.MoverIndex).ToList();
+            List<Mapping> orderedEntries = Entries.OrderBy(o => _movers.GetWriteIndex(o.Mover)).ToList();
 
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
@@ -55,7 +61,7 @@ namespace CATHODE
                 writer.Write(Entries.Count);
                 for (int i = 0; i < orderedEntries.Count; i++)
                 {
-                    writer.Write(orderedEntries[i].MoverIndex);
+                    writer.Write(_movers.GetWriteIndex(orderedEntries[i].Mover));
                     writer.Write(orderedEntries[i].EnvMapIndex);
                 }
                 writer.Write(EnvironmentMapCount);
@@ -70,7 +76,7 @@ namespace CATHODE
         /// </summary>
         public FunctionEntity GetEnvironmentMapForMover(int moverIndex, Commands commands)
         {
-            Mapping m = Entries.FirstOrDefault(e => e.MoverIndex == moverIndex);
+            Mapping m = Entries.FirstOrDefault(e => _movers.GetWriteIndex(e.Mover) == moverIndex);
             if (m != null)
             {
                 foreach (Composite c in commands.Entries)
@@ -107,7 +113,7 @@ namespace CATHODE
             Parameter p = envMap.GetParameter("environmentmap_index");
             if (p?.content == null || p.content.dataType != DataType.INTEGER)
                 return null;
-            return Entries.Where(e => e.EnvMapIndex == ((cInteger)p.content).value).Select(e => e.MoverIndex).ToList();
+            return Entries.Where(e => e.EnvMapIndex == ((cInteger)p.content).value).Select(e => _movers.GetWriteIndex(e.Mover)).ToList();
         }
         #endregion
 
@@ -115,7 +121,7 @@ namespace CATHODE
         public class Mapping
         {
             public int EnvMapIndex;
-            public int MoverIndex;
+            public Movers.MOVER_DESCRIPTOR Mover;
         };
         #endregion
     }

@@ -20,11 +20,21 @@ namespace CATHODE
         public List<MOVER_DESCRIPTOR> Entries = new List<MOVER_DESCRIPTOR>();
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
 
-        public Movers(string path) : base(path) { }
-        public Movers(MemoryStream stream, string path = "") : base(stream, path) { }
-        public Movers(byte[] data, string path = "") : base(data, path) { }
+        protected override bool HandlesLoadingManually => true;
+        private RenderableElements _reds;
+        private Resources _resources;
+        private Materials _materials;
 
-        private List<MOVER_DESCRIPTOR> _writeList = new List<MOVER_DESCRIPTOR>(); //todo: deprecate this
+        public Movers(string path, RenderableElements reds, Resources resources, Materials materials) : base(path)
+        {
+            _reds = reds;
+            _resources = resources;
+            _materials = materials;
+
+            _loaded = Load();
+        }
+
+        private List<MOVER_DESCRIPTOR> _writeList = new List<MOVER_DESCRIPTOR>(); 
 
         ~Movers()
         {
@@ -49,9 +59,14 @@ namespace CATHODE
                     mvr.transform = Utilities.Consume<Matrix4x4>(reader);
                     mvr.gpu_constants = Utilities.ConsumeArray<float>(reader, 24);
                     mvr.render_constants = Utilities.ConsumeArray<float>(reader, 21);
-                    mvr.renderable_element_index = reader.ReadInt32();
-                    mvr.renderable_element_count = reader.ReadInt32();
-                    mvr.resource_index = reader.ReadInt32();
+                    int redsIndex = reader.ReadInt32();
+                    int redsCount = reader.ReadInt32();
+                    if (redsIndex != -1)
+                    {
+                        for (int x = 0; x < redsCount; x++)
+                            mvr.renderable_elements.Add(_reds.GetAtWriteIndex(redsIndex + x));
+                    }
+                    mvr.resource = _resources.GetAtWriteIndex(reader.ReadInt32());
                     reader.BaseStream.Position += 12;
                     mvr.cull_flags = (CullFlag)reader.ReadInt32();
                     mvr.entity = Utilities.Consume<EntityHandle>(reader);
@@ -63,7 +78,7 @@ namespace CATHODE
                     mvr.primary_zone_id = Utilities.Consume<ShortGuid>(reader);
                     mvr.secondary_zone_id = Utilities.Consume<ShortGuid>(reader);
                     mvr.lighting_master_id = reader.ReadInt32();
-                    mvr.material_mapping_index = reader.ReadInt16();
+                    mvr.material_mapping = _materials.GetAtWriteIndex(reader.ReadInt16());
                     mvr.flags = Utilities.Consume<MoverFlag>(reader);
                     reader.BaseStream.Position += 8;
                     Entries.Add(mvr);
@@ -100,9 +115,17 @@ namespace CATHODE
                         writer.Write(Entries[i].gpu_constants[x]);
                     for (int x = 0; x < 21; x++)
                         writer.Write(Entries[i].render_constants[x]);
-                    writer.Write(Entries[i].renderable_element_index);
-                    writer.Write(Entries[i].renderable_element_count);
-                    writer.Write(Entries[i].resource_index);
+                    if (Entries[i].renderable_elements.Count == 0)
+                    {
+                        writer.Write(-1);
+                        writer.Write(-1);
+                    }
+                    else
+                    {
+                        writer.Write(_reds.GetWriteIndex(Entries[i].renderable_elements[0]));
+                        writer.Write(Entries[i].renderable_elements.Count);
+                    }
+                    writer.Write(_resources.GetWriteIndex(Entries[i].resource));
                     writer.Write(new byte[12]);
                     writer.Write((int)Entries[i].cull_flags);
                     Utilities.Write<EntityHandle>(writer, Entries[i].entity);
@@ -122,7 +145,7 @@ namespace CATHODE
                     Utilities.Write<ShortGuid>(writer, Entries[i].primary_zone_id);
                     Utilities.Write<ShortGuid>(writer, Entries[i].secondary_zone_id);
                     writer.Write(Entries[i].lighting_master_id);
-                    writer.Write(Entries[i].material_mapping_index);
+                    writer.Write((Int16)_materials.GetWriteIndex(Entries[i].material_mapping));
                     Utilities.Write<MoverFlag>(writer, Entries[i].flags);
                     writer.Write(new byte[8]);
                 }
@@ -223,10 +246,9 @@ namespace CATHODE
             public float[] gpu_constants; 
             public float[] render_constants;
 
-            public int renderable_element_index; //reds.bin index
-            public int renderable_element_count; //reds.bin count
+            public List<RenderableElements.Element> renderable_elements = new List<RenderableElements.Element>(); 
 
-            public int resource_index = 0; //Resources.bin index value
+            public Resources.Resource resource = null; //Resources.bin index value
 
             public CullFlag cull_flags = CullFlag.DEFAULT;
 
@@ -241,7 +263,7 @@ namespace CATHODE
             public ShortGuid primary_zone_id; //zero is "unzoned"
             public ShortGuid secondary_zone_id; //zero is "unzoned"
             public int lighting_master_id = 0;
-            public short material_mapping_index;
+            public Materials.Material material_mapping; //is this defo Material not MaterialMappings.PAK?
 
             public MoverFlag flags;
 
