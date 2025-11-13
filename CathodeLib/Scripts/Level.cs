@@ -188,7 +188,7 @@ namespace CathodeLib
             Models.Save();
             RenderableElements.Save();
             Resources.Save();
-            PathBarrierResources.Save();
+            //PathBarrierResources.Save();
             Movers.Save();
             EnvironmentMaps.Save();
 
