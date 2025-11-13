@@ -195,17 +195,19 @@ namespace CathodeLib
             RadInstanceMap.Save();
             AlphaLight.Save();
             AccessorySets.Save();
-            Commands.Save();
+            Commands.Save(); //NOTE: Not remapping indexes within commands!
             EnvironmentAnimations.Save();
             Lights.Save();
             MaterialMappings.Save();
             PhysicsMaps.Save();
-            //SoundNodeNetwork.Save();
-            //SoundBankData.Save();
-            //SoundDialogueLookups.Save();
-            //SoundEnvironmentData.Save();
-            //SoundEventData.Save();
-            //SoundLoadZones.Save();
+            SoundNodeNetwork.Save();
+            SoundBankData.Save();
+            SoundDialogueLookups.Save();
+            SoundEnvironmentData.Save();
+            SoundEventData.Save();
+            SoundLoadZones.Save();
+
+            //TODO: save states
         }
 
         /// <summary>

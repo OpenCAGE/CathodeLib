@@ -15,9 +15,7 @@ namespace CATHODE
     /// </summary>
     public class SoundBankData : CathodeFile
     {
-        //NOTE: you can use Utilities.SoundHashedString to hash these strings and get the Wwise ID used in other places like SoundEventData
-
-        public List<string> Entries = new List<string>();
+        public List<SoundBank> Entries = new List<SoundBank>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
         public SoundBankData(string path) : base(path) { }
@@ -36,8 +34,12 @@ namespace CATHODE
                     int length = reader.ReadInt32();
                     string name = "";
                     for (int x = 0; x < length; x++) name += reader.ReadChar();
-                    Entries.Add(name);
-                    reader.BaseStream.Position += 2;
+
+                    SoundBank soundbank = new SoundBank();
+                    soundbank.Name = name;
+                    soundbank.Localised = reader.ReadBoolean();
+                    soundbank.UsesRSX = reader.ReadBoolean();
+                    Entries.Add(soundbank);
                 }
             }
             return true;
@@ -52,12 +54,22 @@ namespace CATHODE
                 writer.Write(Entries.Count);
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    writer.Write(Entries[i].Length);
-                    Utilities.WriteString(Entries[i], writer);
-                    writer.Write((Int16)0);
+                    writer.Write(Entries[i].Name.Length);
+                    Utilities.WriteString(Entries[i].Name, writer);
+                    writer.Write(Entries[i].Localised);
+                    writer.Write(Entries[i].UsesRSX);
                 }
             }
             return true;
+        }
+        #endregion
+
+        #region STRUCTURES
+        public class SoundBank
+        {
+            public string Name;
+            public bool Localised;
+            public bool UsesRSX;
         }
         #endregion
     }
