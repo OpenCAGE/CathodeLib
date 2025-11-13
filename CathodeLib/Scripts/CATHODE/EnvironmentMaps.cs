@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 
 namespace CATHODE
 {
@@ -53,20 +54,34 @@ namespace CATHODE
         {
             List<Mapping> orderedEntries = Entries.OrderBy(o => _movers.GetWriteIndex(o.Mover)).ToList();
 
+            byte[][] entryBuffers = new byte[orderedEntries.Count][];
+            Parallel.For(0, orderedEntries.Count, i =>
+            {
+                entryBuffers[i] = SerializeMapping(orderedEntries[i]);
+            });
+
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
                 Utilities.WriteString("envm", writer);
                 writer.Write(1);
                 writer.Write(Entries.Count);
-                for (int i = 0; i < orderedEntries.Count; i++)
-                {
-                    writer.Write(_movers.GetWriteIndex(orderedEntries[i].Mover));
-                    writer.Write(orderedEntries[i].EnvMapIndex);
-                }
+                for (int i = 0; i < entryBuffers.Length; i++)
+                    writer.Write(entryBuffers[i]);
                 writer.Write(EnvironmentMapCount);
             }
             return true;
+        }
+
+        private byte[] SerializeMapping(Mapping mapping)
+        {
+            using (MemoryStream stream = new MemoryStream(8)) 
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                writer.Write(_movers.GetWriteIndex(mapping.Mover));
+                writer.Write(mapping.EnvMapIndex);
+                return stream.ToArray();
+            }
         }
         #endregion
 

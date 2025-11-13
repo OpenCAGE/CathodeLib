@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
+using System.Threading.Tasks;
 using static CATHODE.Movers;
 using static CATHODE.Resources;
 
@@ -53,6 +54,11 @@ namespace CATHODE
         {
             List<Resource> orderedEntries = Entries.OrderBy(o => o.composite_instance_id).ThenBy(o => o.resource_id).ToList();
 
+            byte[][] entryBuffers = new byte[orderedEntries.Count][];
+            Parallel.For(0, orderedEntries.Count, i =>
+            {
+                entryBuffers[i] = SerializeResourceEntry(orderedEntries[i]);
+            });
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
@@ -60,17 +66,24 @@ namespace CATHODE
                 writer.Write((Int32)1);
                 writer.Write(orderedEntries.Count);
                 writer.Write((Int32)0);
-
-                for (int i = 0; i < orderedEntries.Count; i++)
-                {
-                    Utilities.Write(writer, orderedEntries[i].composite_instance_id);
-                    Utilities.Write(writer, orderedEntries[i].resource_id);
-                    writer.Write(Entries.IndexOf(orderedEntries[i]));
-                }
+                for (int i = 0; i < entryBuffers.Length; i++)
+                    writer.Write(entryBuffers[i]);
             }
             _writeList.Clear();
             _writeList.AddRange(Entries);
             return true;
+        }
+
+        private byte[] SerializeResourceEntry(Resource resource)
+        {
+            using (MemoryStream stream = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                Utilities.Write(writer, resource.composite_instance_id);
+                Utilities.Write(writer, resource.resource_id);
+                writer.Write(Entries.IndexOf(resource));
+                return stream.ToArray();
+            }
         }
         #endregion
 

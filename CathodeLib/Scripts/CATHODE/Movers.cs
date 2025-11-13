@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System;
+using System.Threading.Tasks;
 using CATHODE.Scripting;
 using CathodeLib;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
@@ -96,6 +97,11 @@ namespace CATHODE
                 if (!Entries[i].flags.stationary)
                     non_stationary++;
 
+            byte[][] entryBuffers = new byte[Entries.Count][];
+            Parallel.For(0, Entries.Count, i =>
+            {
+                entryBuffers[i] = SerializeEntry(Entries[i]);
+            });
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
@@ -107,52 +113,60 @@ namespace CATHODE
                 writer.Write(0); 
                 writer.Write(0); 
                 writer.Write(0);
-
-                for (int i = 0; i < Entries.Count; i++)
-                {
-                    Utilities.Write<Matrix4x4>(writer, Entries[i].transform);
-                    for (int x = 0; x < 24; x++)
-                        writer.Write(Entries[i].gpu_constants[x]);
-                    for (int x = 0; x < 21; x++)
-                        writer.Write(Entries[i].render_constants[x]);
-                    if (Entries[i].renderable_elements.Count == 0)
-                    {
-                        writer.Write(-1);
-                        writer.Write(-1);
-                    }
-                    else
-                    {
-                        writer.Write(_reds.GetWriteIndex(Entries[i].renderable_elements[0]));
-                        writer.Write(Entries[i].renderable_elements.Count);
-                    }
-                    writer.Write(_resources.GetWriteIndex(Entries[i].resource));
-                    writer.Write(new byte[12]);
-                    writer.Write((int)Entries[i].cull_flags);
-                    Utilities.Write<EntityHandle>(writer, Entries[i].entity);
-                    writer.Write(Entries[i].environment_map_index);
-#if UNITY_EDITOR || UNITY_STANDALONE_WIN
-                    writer.Write((byte)Entries[i].emissive_tint.x);
-                    writer.Write((byte)Entries[i].emissive_tint.y);
-                    writer.Write((byte)Entries[i].emissive_tint.z);
-#else
-                    writer.Write((byte)Entries[i].emissive_tint.X);
-                    writer.Write((byte)Entries[i].emissive_tint.Y);
-                    writer.Write((byte)Entries[i].emissive_tint.Z);
-#endif
-                    writer.Write((byte)Entries[i].emissive_flags);
-                    writer.Write(Entries[i].emissive_intensity_multiplier);
-                    writer.Write(Entries[i].emissive_radiosity_multiplier);
-                    Utilities.Write<ShortGuid>(writer, Entries[i].primary_zone_id);
-                    Utilities.Write<ShortGuid>(writer, Entries[i].secondary_zone_id);
-                    writer.Write(Entries[i].lighting_master_id);
-                    writer.Write((Int16)_materials.GetWriteIndex(Entries[i].material_mapping));
-                    Utilities.Write<MoverFlag>(writer, Entries[i].flags);
-                    writer.Write(new byte[8]);
-                }
+                for (int i = 0; i < entryBuffers.Length; i++)
+                    writer.Write(entryBuffers[i]);
             }
             _writeList.Clear();
             _writeList.AddRange(Entries);
             return true;
+        }
+
+        private byte[] SerializeEntry(MOVER_DESCRIPTOR entry)
+        {
+            using (MemoryStream stream = new MemoryStream(320))
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                Utilities.Write<Matrix4x4>(writer, entry.transform);
+                for (int x = 0; x < 24; x++)
+                    writer.Write(entry.gpu_constants[x]);
+                for (int x = 0; x < 21; x++)
+                    writer.Write(entry.render_constants[x]);
+                if (entry.renderable_elements.Count == 0)
+                {
+                    writer.Write(-1);
+                    writer.Write(-1);
+                }
+                else
+                {
+                    writer.Write(_reds.GetWriteIndex(entry.renderable_elements[0]));
+                    writer.Write(entry.renderable_elements.Count);
+                }
+                writer.Write(_resources.GetWriteIndex(entry.resource));
+                writer.Write(new byte[12]);
+                writer.Write((int)entry.cull_flags);
+                Utilities.Write<EntityHandle>(writer, entry.entity);
+                writer.Write(entry.environment_map_index);
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                writer.Write((byte)entry.emissive_tint.x);
+                writer.Write((byte)entry.emissive_tint.y);
+                writer.Write((byte)entry.emissive_tint.z);
+#else
+                writer.Write((byte)entry.emissive_tint.X);
+                writer.Write((byte)entry.emissive_tint.Y);
+                writer.Write((byte)entry.emissive_tint.Z);
+#endif
+                writer.Write((byte)entry.emissive_flags);
+                writer.Write(entry.emissive_intensity_multiplier);
+                writer.Write(entry.emissive_radiosity_multiplier);
+                Utilities.Write<ShortGuid>(writer, entry.primary_zone_id);
+                Utilities.Write<ShortGuid>(writer, entry.secondary_zone_id);
+                writer.Write(entry.lighting_master_id);
+                writer.Write((Int16)_materials.GetWriteIndex(entry.material_mapping));
+                Utilities.Write<MoverFlag>(writer, entry.flags);
+                writer.Write(new byte[8]);
+
+                return stream.ToArray();
+            }
         }
         #endregion
 

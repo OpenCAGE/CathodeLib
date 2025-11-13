@@ -4,6 +4,7 @@ using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace CATHODE
 {
@@ -132,25 +133,16 @@ namespace CATHODE
                 }
                 Utilities.Align(bin, 8);
                 int headerListBegin = (int)bin.BaseStream.Position - 12;
-                int entryCount = 0;
-                for (int i = 0; i < Entries.Count; i++)
+                
+                byte[][] headerBuffers = new byte[Entries.Count][];
+                Parallel.For(0, Entries.Count, i =>
                 {
-                    Utilities.WriteString("tex4", bin);
-                    bin.Write((Int32)Entries[i].Format);
-                    bin.Write(Entries[i].TextureStreamed.Content == null ? 0 : Entries[i].TextureStreamed.Content.Length);
-                    bin.Write(Entries[i].TexturePersistent.Content == null ? 0 : Entries[i].TexturePersistent.Content.Length);
-                    bin.Write((Int16)Entries[i].TexturePersistent.Width);
-                    bin.Write((Int16)Entries[i].TexturePersistent.Height);
-                    bin.Write((Int16)Entries[i].TexturePersistent.Depth);
-                    bin.Write((Int16)Entries[i].TextureStreamed.Width);
-                    bin.Write((Int16)Entries[i].TextureStreamed.Height);
-                    bin.Write((Int16)Entries[i].TextureStreamed.Depth);
-                    bin.Write((Int16)Entries[i].TexturePersistent.MipLevels);
-                    bin.Write((Int16)Entries[i].TextureStreamed.MipLevels);
-                    bin.Write((Int32)Entries[i].StateFlags);
-                    bin.Write((Int32)Entries[i].UsageFlags);
-                    bin.Write((Int32)filenameOffsets[i]);
-                    bin.Write(new byte[4]);
+                    headerBuffers[i] = SerializeTextureHeader(Entries[i], filenameOffsets[i]);
+                });
+                int entryCount = 0;
+                for (int i = 0; i < headerBuffers.Length; i++)
+                {
+                    bin.Write(headerBuffers[i]);
                     entryCount++;
                     _writeList.Add(Entries[i]);
                 }
@@ -193,8 +185,8 @@ namespace CATHODE
                     }
                 }
 
-                //Write texture headers
-                pak.BaseStream.Position = 32;
+                //Get all textures
+                List<(TEX4.Texture tex, int entryIndex, int sort, int offsetIndex)> textureList = new List<(TEX4.Texture, int, int, int)>();
                 int y = 0;
                 for (int sort = 0; sort < 2; sort++)
                 {
@@ -203,19 +195,23 @@ namespace CATHODE
                         TEX4.Texture tex = (sort == 0) ? Entries[i].TexturePersistent : Entries[i].TextureStreamed;
                         if (tex.Content != null)
                         {
-                            pak.Write(new byte[8]);
-                            pak.Write(BigEndianUtils.FlipEndian(tex.Content.Length));
-                            pak.Write(BigEndianUtils.FlipEndian(tex.Content.Length));
-                            pak.Write(BigEndianUtils.FlipEndian((Int32)offsets[y]));
-                            pak.Write(BigEndianUtils.FlipEndian(sort));
-                            pak.Write(BigEndianUtils.FlipEndian(256));
-                            pak.Write(new byte[4]);
-                            pak.Write(BigEndianUtils.FlipEndian((Int16)(sort == 0 ? 32768 : 0)));
-                            pak.Write(BigEndianUtils.FlipEndian((Int16)i));
-                            pak.Write(new byte[12]);
+                            textureList.Add((tex, i, sort, y));
                         }
                         y++;
                     }
+                }
+                
+                //Write textures
+                byte[][] pakHeaderBuffers = new byte[textureList.Count][];
+                Parallel.For(0, textureList.Count, idx =>
+                {
+                    var (tex, entryIdx, sort, offsetIdx) = textureList[idx];
+                    pakHeaderBuffers[idx] = SerializePakTextureHeader(tex, entryIdx, sort, offsets[offsetIdx]);
+                });
+                pak.BaseStream.Position = 32;
+                for (int idx = 0; idx < pakHeaderBuffers.Length; idx++)
+                {
+                    pak.Write(pakHeaderBuffers[idx]);
                 }
 
                 //Write main header
@@ -227,6 +223,50 @@ namespace CATHODE
                 pak.Write(BigEndianUtils.FlipEndian(writeCount));
             }
             return true;
+        }
+
+        private byte[] SerializeTextureHeader(TEX4 entry, int filenameOffset)
+        {
+            using (MemoryStream stream = new MemoryStream(48))
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                Utilities.WriteString("tex4", writer);
+                writer.Write((Int32)entry.Format);
+                writer.Write(entry.TextureStreamed.Content == null ? 0 : entry.TextureStreamed.Content.Length);
+                writer.Write(entry.TexturePersistent.Content == null ? 0 : entry.TexturePersistent.Content.Length);
+                writer.Write((Int16)entry.TexturePersistent.Width);
+                writer.Write((Int16)entry.TexturePersistent.Height);
+                writer.Write((Int16)entry.TexturePersistent.Depth);
+                writer.Write((Int16)entry.TextureStreamed.Width);
+                writer.Write((Int16)entry.TextureStreamed.Height);
+                writer.Write((Int16)entry.TextureStreamed.Depth);
+                writer.Write((Int16)entry.TexturePersistent.MipLevels);
+                writer.Write((Int16)entry.TextureStreamed.MipLevels);
+                writer.Write((Int32)entry.StateFlags);
+                writer.Write((Int32)entry.UsageFlags);
+                writer.Write((Int32)filenameOffset);
+                writer.Write(new byte[4]);
+                return stream.ToArray();
+            }
+        }
+
+        private byte[] SerializePakTextureHeader(TEX4.Texture tex, int entryIndex, int sort, int offset)
+        {
+            using (MemoryStream stream = new MemoryStream(48))
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                writer.Write(new byte[8]);
+                writer.Write(BigEndianUtils.FlipEndian(tex.Content.Length));
+                writer.Write(BigEndianUtils.FlipEndian(tex.Content.Length));
+                writer.Write(BigEndianUtils.FlipEndian((Int32)offset));
+                writer.Write(BigEndianUtils.FlipEndian(sort));
+                writer.Write(BigEndianUtils.FlipEndian(256));
+                writer.Write(new byte[4]);
+                writer.Write(BigEndianUtils.FlipEndian((Int16)(sort == 0 ? 32768 : 0)));
+                writer.Write(BigEndianUtils.FlipEndian((Int16)entryIndex));
+                writer.Write(new byte[12]);
+                return stream.ToArray();
+            }
         }
         #endregion
 

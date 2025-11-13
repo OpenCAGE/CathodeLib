@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace CATHODE
 {
@@ -46,19 +47,32 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            using (BinaryWriter reader = new BinaryWriter(File.OpenWrite(_filepath)))
+            byte[][] entryBuffers = new byte[Entries.Count][];
+            Parallel.For(0, Entries.Count, i =>
             {
-                reader.BaseStream.SetLength(0);
-                reader.Write((Int32)59);
-                reader.Write(Entries.Count);
-                for (int i = 0; i < Entries.Count; i++)
-                {
-                    reader.Write(_resources.GetWriteIndex(Entries[i].Resource));
-                    reader.Write((Int16)Entries[i].area_id);
-                    reader.Write((int)Entries[i].allowed_character_classes); 
-                }
+                entryBuffers[i] = SerializeEntry(Entries[i]);
+            });
+            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
+            {
+                writer.BaseStream.SetLength(0);
+                writer.Write((Int32)59);
+                writer.Write(Entries.Count);
+                for (int i = 0; i < entryBuffers.Length; i++)
+                    writer.Write(entryBuffers[i]);
             }
             return true;
+        }
+
+        private byte[] SerializeEntry(NAV_MESH_BARRIER_RESOURCE entry)
+        {
+            using (MemoryStream stream = new MemoryStream(10)) 
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                writer.Write(_resources.GetWriteIndex(entry.Resource));
+                writer.Write((Int16)entry.area_id);
+                writer.Write((int)entry.allowed_character_classes);
+                return stream.ToArray();
+            }
         }
         #endregion
 

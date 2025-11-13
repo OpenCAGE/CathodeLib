@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 
 namespace CATHODE
 {
@@ -65,26 +66,39 @@ namespace CATHODE
 
             //Entries = Entries.OrderBy(o => o.entity.entity_id.ToUInt32() + o.id.ToUInt32()).ThenBy(o => o.entity.composite_instance_id.ToUInt32()).ThenBy(o => o.zone_id.ToUInt32()).ToList();
 
+            byte[][] entryBuffers = new byte[Entries.Count][];
+            Parallel.For(0, Entries.Count, i =>
+            {
+                entryBuffers[i] = SerializeEntry(Entries[i]);
+            });
+
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
                 writer.Write((Entries.Count) * 48);
                 writer.Write(Entries.Count);
-
-                for (int i = 0; i < Entries.Count; i++)
-                {
-                    writer.Write((int)Entries[i].Flags);
-                    writer.Write(Entries[i].Index);
-                    Utilities.Write<ShortGuid>(writer, Entries[i].ID);
-                    Utilities.Write<EntityHandle>(writer, Entries[i].Entity);
-                    writer.Write(_materials.GetWriteIndex(Entries[i].Material));
-                    writer.Write((Int16)Entries[i].CollisionProxyIndex);
-                    writer.Write((Int16)Entries[i].MappingIndex);
-                    Utilities.Write<ShortGuid>(writer, Entries[i].ZoneID);
-                    writer.Write(new byte[16]);
-                }
+                for (int i = 0; i < entryBuffers.Length; i++)
+                    writer.Write(entryBuffers[i]);
             }
             return true;
+        }
+
+        private byte[] SerializeEntry(Entry entry)
+        {
+            using (MemoryStream stream = new MemoryStream(48)) 
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                writer.Write((int)entry.Flags);
+                writer.Write(entry.Index);
+                Utilities.Write<ShortGuid>(writer, entry.ID);
+                Utilities.Write<EntityHandle>(writer, entry.Entity);
+                writer.Write(_materials.GetWriteIndex(entry.Material));
+                writer.Write((Int16)entry.CollisionProxyIndex);
+                writer.Write((Int16)entry.MappingIndex);
+                Utilities.Write<ShortGuid>(writer, entry.ZoneID);
+                writer.Write(new byte[16]);
+                return stream.ToArray();
+            }
         }
         #endregion
 

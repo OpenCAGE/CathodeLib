@@ -77,34 +77,42 @@ namespace CathodeLib
                 throw new Exception("Missing Global Animation Strings");
             Global = global;
 
-            Textures = new Textures(path + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK");
-            SoundFlashModels = new SoundFlashModels(path + "/WORLD/SOUNDFLASHMODELS.DAT", Global.Textures, Textures);
-            Shaders = new Shaders(path + "/RENDERABLE/LEVEL_SHADERS_DX11.PAK");
+            Parallel.Invoke(
+                () => Textures = new Textures(path + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK"),
+                () => Shaders = new Shaders(path + "/RENDERABLE/LEVEL_SHADERS_DX11.PAK"),
+                () => WeightedCollisions = new Collisions(path + "/WORLD/COLLISION.BIN"),
+                () => MorphTargetDB = new MorphTargets(path + "/WORLD/MORPH_TARGET_DB.BIN"),
+                () => Resources = new Resources(path + "/WORLD/RESOURCES.BIN")
+            );
+
             Materials = new Materials(path + "/RENDERABLE/LEVEL_MODELS.MTL", Global.Textures, Textures, Shaders);
-            CollisionMaps = new CollisionMaps(path + "/WORLD/COLLISION.MAP", Materials);
-            WeightedCollisions = new Collisions(path + "/WORLD/COLLISION.BIN");
-            MorphTargetDB = new MorphTargets(path + "/WORLD/MORPH_TARGET_DB.BIN");
             Models = new Models(path + "/RENDERABLE/LEVEL_MODELS.PAK", Materials, WeightedCollisions, MorphTargetDB);
             RenderableElements = new RenderableElements(path + "/WORLD/REDS.BIN", Models, Materials);
-            Resources = new Resources(path + "/WORLD/RESOURCES.BIN");
-            PathBarrierResources = new PathBarrierResources(path + "/WORLD/PATH_BARRIER_RESOURCES", Resources);
             Movers = new Movers(path + "/WORLD/MODELS.MVR", RenderableElements, Resources, Materials);
-            EnvironmentMaps = new EnvironmentMaps(path + "/WORLD/ENVIRONMENTMAP.BIN", Movers);
 
-            RadInstanceMap = new RadiosityInstanceMap(path + "/RENDERABLE/RADIOSITY_INSTANCE_MAP.TXT");
-            AlphaLight = new AlphaLightLevel(path + "/WORLD/ALPHALIGHT_LEVEL.BIN");
-            AccessorySets = new CharacterAccessorySets(path + "/WORLD/CHARACTERACCESSORYSETS.BIN");
-            Commands = new Commands(path + "/WORLD/COMMANDS" + (File.Exists(path + "/WORLD/COMMANDS.PAK") ? ".PAK" : ".BIN")); //todo - this also references indexes!
-            EnvironmentAnimations = new EnvironmentAnimations(path + "/WORLD/ENVIRONMENT_ANIMATION.DAT", global.AnimationStrings_Debug);
-            Lights = new Lights(path + "/WORLD/LIGHTS.BIN");
-            MaterialMappings = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK");
-            PhysicsMaps = new PhysicsMaps(path + "/WORLD/PHYSICS.MAP");
-            SoundNodeNetwork = new SoundNodeNetwork(path + "/WORLD/SNDNODENETWORK.DAT");
-            SoundBankData = new SoundBankData(path + "/WORLD/SOUNDBANKDATA.DAT");
-            SoundDialogueLookups = new SoundDialogueLookups(path + "/WORLD/SOUNDDIALOGUELOOKUPS.DAT");
-            SoundEnvironmentData = new SoundEnvironmentData(path + "/WORLD/SOUNDENVIRONMENTDATA.DAT");
-            SoundEventData = new SoundEventData(path + "/WORLD/SOUNDEVENTDATA.DAT");
-            SoundLoadZones = new SoundLoadZones(path + "/WORLD/SOUNDLOADZONES.DAT");
+            Parallel.Invoke(
+                () => EnvironmentMaps = new EnvironmentMaps(path + "/WORLD/ENVIRONMENTMAP.BIN", Movers),
+                () => PathBarrierResources = new PathBarrierResources(path + "/WORLD/PATH_BARRIER_RESOURCES", Resources),
+                () => SoundFlashModels = new SoundFlashModels(path + "/WORLD/SOUNDFLASHMODELS.DAT", Global.Textures, Textures),
+                () => CollisionMaps = new CollisionMaps(path + "/WORLD/COLLISION.MAP", Materials)
+            );
+
+            Parallel.Invoke(
+                () => RadInstanceMap = new RadiosityInstanceMap(path + "/RENDERABLE/RADIOSITY_INSTANCE_MAP.TXT"),
+                () => AlphaLight = new AlphaLightLevel(path + "/WORLD/ALPHALIGHT_LEVEL.BIN"),
+                () => AccessorySets = new CharacterAccessorySets(path + "/WORLD/CHARACTERACCESSORYSETS.BIN"),
+                () => Commands = new Commands(path + "/WORLD/COMMANDS" + (File.Exists(path + "/WORLD/COMMANDS.PAK") ? ".PAK" : ".BIN")), //todo - this also references indexes!
+                () => EnvironmentAnimations = new EnvironmentAnimations(path + "/WORLD/ENVIRONMENT_ANIMATION.DAT", global.AnimationStrings_Debug),
+                () => Lights = new Lights(path + "/WORLD/LIGHTS.BIN"),
+                () => MaterialMappings = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK"),
+                () => PhysicsMaps = new PhysicsMaps(path + "/WORLD/PHYSICS.MAP"),
+                () => SoundNodeNetwork = new SoundNodeNetwork(path + "/WORLD/SNDNODENETWORK.DAT"),
+                () => SoundBankData = new SoundBankData(path + "/WORLD/SOUNDBANKDATA.DAT"),
+                () => SoundDialogueLookups = new SoundDialogueLookups(path + "/WORLD/SOUNDDIALOGUELOOKUPS.DAT"),
+                () => SoundEnvironmentData = new SoundEnvironmentData(path + "/WORLD/SOUNDENVIRONMENTDATA.DAT"),
+                () => SoundEventData = new SoundEventData(path + "/WORLD/SOUNDEVENTDATA.DAT"),
+                () => SoundLoadZones = new SoundLoadZones(path + "/WORLD/SOUNDLOADZONES.DAT")
+            );
 
             //RENDERABLE/DAMAGE/*
             //RENDERABLE/GALAXY/*
@@ -178,34 +186,43 @@ namespace CathodeLib
         /* Save all modifications to the level - this currently assumes we aren't editing GLOBAL data */
         public void Save()
         {
-            Textures.Save();
-            SoundFlashModels.Save();
-            Shaders.Save();
-            Materials.Save();
-            CollisionMaps.Save();
-            WeightedCollisions.Save();
-            MorphTargetDB.Save();
-            Models.Save();
-            RenderableElements.Save();
-            Resources.Save();
-            PathBarrierResources.Save();
-            Movers.Save();
-            EnvironmentMaps.Save();
+            Parallel.Invoke(
+                () => Textures.Save(),
+                () => Shaders.Save(),
+                () => WeightedCollisions.Save(),
+                () => MorphTargetDB.Save()
+            );
 
-            RadInstanceMap.Save();
-            AlphaLight.Save();
-            AccessorySets.Save();
-            Commands.Save(); //NOTE: Not remapping indexes within commands!
-            EnvironmentAnimations.Save();
-            Lights.Save();
-            MaterialMappings.Save();
-            PhysicsMaps.Save();
-            SoundNodeNetwork.Save();
-            SoundBankData.Save();
-            SoundDialogueLookups.Save();
-            SoundEnvironmentData.Save();
-            SoundEventData.Save();
-            SoundLoadZones.Save();
+            Materials.Save();
+
+            Parallel.Invoke(
+                () => Models.Save(),
+                () => Resources.Save()
+            );
+
+            RenderableElements.Save();
+            Movers.Save();
+
+            Parallel.Invoke(
+                () => EnvironmentMaps?.Save(),
+                () => PathBarrierResources?.Save(),
+                () => SoundFlashModels?.Save(),
+                () => CollisionMaps?.Save(),
+                () => RadInstanceMap?.Save(),
+                () => AlphaLight?.Save(),
+                () => AccessorySets?.Save(),
+                () => Commands?.Save(), //NOTE: Not remapping indexes within commands!
+                () => EnvironmentAnimations?.Save(),
+                () => Lights?.Save(),
+                () => MaterialMappings?.Save(),
+                () => PhysicsMaps?.Save(),
+                () => SoundNodeNetwork?.Save(),
+                () => SoundBankData?.Save(),
+                () => SoundDialogueLookups?.Save(),
+                () => SoundEnvironmentData?.Save(),
+                () => SoundEventData?.Save(),
+                () => SoundLoadZones?.Save()
+            );
 
             //TODO: save states
         }

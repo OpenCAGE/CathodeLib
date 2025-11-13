@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using static CATHODE.Resources;
 
 namespace CATHODE
@@ -56,25 +57,38 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
+            byte[][] entryBuffers = new byte[Entries.Count][];
+            Parallel.For(0, Entries.Count, i =>
+            {
+                entryBuffers[i] = SerializeElement(Entries[i]);
+            });
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
                 writer.Write(Entries.Count);
-                for (int i = 0; i < Entries.Count; i++)
-                {
-                    writer.Write((int)Entries[i].ModelLocation);
-                    writer.Write(_models.GetWriteIndex(Entries[i].Model));
-                    writer.Write(Entries[i].ModelSubplatformDependent);
-                    writer.Write((int)Entries[i].MaterialLocation);
-                    writer.Write(_materials.GetWriteIndex(Entries[i].Material));
-                    writer.Write(Entries[i].MaterialSubplatformDependent);
-                    writer.Write(Entries[i].LODIndex);
-                    writer.Write((byte)Entries[i].LODCount);
-                }
+                for (int i = 0; i < entryBuffers.Length; i++)
+                    writer.Write(entryBuffers[i]);
             }
             _writeList.Clear();
             _writeList.AddRange(Entries);
             return true;
+        }
+
+        private byte[] SerializeElement(Element element)
+        {
+            using (MemoryStream stream = new MemoryStream(32)) 
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                writer.Write((int)element.ModelLocation);
+                writer.Write(_models.GetWriteIndex(element.Model));
+                writer.Write(element.ModelSubplatformDependent);
+                writer.Write((int)element.MaterialLocation);
+                writer.Write(_materials.GetWriteIndex(element.Material));
+                writer.Write(element.MaterialSubplatformDependent);
+                writer.Write(element.LODIndex);
+                writer.Write((byte)element.LODCount);
+                return stream.ToArray();
+            }
         }
         #endregion
 
