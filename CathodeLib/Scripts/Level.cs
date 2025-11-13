@@ -187,18 +187,18 @@ namespace CathodeLib
             MorphTargetDB.Save();
             Models.Save();
             RenderableElements.Save();
-            //Resources.Save();
+            Resources.Save();
             PathBarrierResources.Save();
             Movers.Save();
-            //EnvironmentMaps.Save();
+            EnvironmentMaps.Save();
 
-            //RadInstanceMap.Save();
-            //AlphaLight.Save();
+            RadInstanceMap.Save();
+            AlphaLight.Save();
             AccessorySets.Save();
             Commands.Save();
             EnvironmentAnimations.Save();
-            //Lights.Save();
-            //MaterialMappings.Save();
+            Lights.Save();
+            MaterialMappings.Save();
             PhysicsMaps.Save();
             SoundNodeNetwork.Save();
             SoundBankData.Save();
