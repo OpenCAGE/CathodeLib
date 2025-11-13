@@ -81,7 +81,7 @@ namespace CATHODE
 
         #region HELPERS
         /// <summary>
-        /// Get the current BIN index for a submesh (useful for cross-ref'ing with compiled binaries)
+        /// Get the write index (useful for cross-ref'ing with compiled binaries)
         /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>
         public int GetWriteIndex(Entry morphTarget)
@@ -91,7 +91,7 @@ namespace CATHODE
         }
 
         /// <summary>
-        /// Get a submesh by its current BIN index (useful for cross-ref'ing with compiled binaries)
+        /// Get the object at the write index (useful for cross-ref'ing with compiled binaries)
         /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>
         public Entry GetAtWriteIndex(int index)
