@@ -188,7 +188,7 @@ namespace CathodeLib
             Models.Save();
             RenderableElements.Save();
             Resources.Save();
-            //PathBarrierResources.Save();
+            PathBarrierResources.Save();
             Movers.Save();
             EnvironmentMaps.Save();
 
@@ -200,12 +200,12 @@ namespace CathodeLib
             Lights.Save();
             MaterialMappings.Save();
             PhysicsMaps.Save();
-            SoundNodeNetwork.Save();
-            SoundBankData.Save();
-            SoundDialogueLookups.Save();
-            SoundEnvironmentData.Save();
-            SoundEventData.Save();
-            SoundLoadZones.Save();
+            //SoundNodeNetwork.Save();
+            //SoundBankData.Save();
+            //SoundDialogueLookups.Save();
+            //SoundEnvironmentData.Save();
+            //SoundEventData.Save();
+            //SoundLoadZones.Save();
         }
 
         /// <summary>
