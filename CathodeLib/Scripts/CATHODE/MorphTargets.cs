@@ -12,7 +12,7 @@ using System.Numerics;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/MORPH_TARGET_DB.BIN
+    /// DATA/ENV/x/WORLD/MORPH_TARGET_DB.BIN
     /// </summary>
     public class MorphTargets : CathodeFile
     {

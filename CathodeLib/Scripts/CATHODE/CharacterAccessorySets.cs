@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/CHARACTERACCESSORYSETS.BIN
+    /// DATA/ENV/x/WORLD/CHARACTERACCESSORYSETS.BIN
     /// </summary>
     public class CharacterAccessorySets : CathodeFile
     {

@@ -11,7 +11,7 @@ using System.Xml.Linq;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/SOUNDENVIRONMENTDATA.DAT
+    /// DATA/ENV/x/WORLD/SOUNDENVIRONMENTDATA.DAT
     /// </summary>
     public class SoundEnvironmentData : CathodeFile
     {

@@ -11,7 +11,7 @@ using static CATHODE.Resources;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/RESOURCES.BIN
+    /// DATA/ENV/x/WORLD/RESOURCES.BIN
     /// </summary>
     public class Resources : CathodeFile
     {

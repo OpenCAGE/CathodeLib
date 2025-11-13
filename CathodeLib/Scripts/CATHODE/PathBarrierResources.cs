@@ -7,7 +7,7 @@ using System.Text;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/PATH_BARRIER_RESOURCES
+    /// DATA/ENV/x/WORLD/PATH_BARRIER_RESOURCES
     /// </summary>
     public class PathBarrierResources : CathodeFile
     {

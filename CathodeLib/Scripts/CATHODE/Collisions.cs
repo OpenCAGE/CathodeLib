@@ -17,7 +17,7 @@ using System.Numerics;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/COLLISION.BIN
+    /// DATA/ENV/x/WORLD/COLLISION.BIN
     /// </summary>
     public class Collisions : CathodeFile
     {

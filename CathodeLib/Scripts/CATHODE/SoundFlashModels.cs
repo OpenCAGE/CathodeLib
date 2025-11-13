@@ -6,7 +6,7 @@ using System.IO;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/SOUNDFLASHMODELS.DAT
+    /// DATA/ENV/x/WORLD/SOUNDFLASHMODELS.DAT
     /// </summary>
     public class SoundFlashModels : CathodeFile
     {

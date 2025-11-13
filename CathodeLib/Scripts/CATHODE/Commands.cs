@@ -20,7 +20,7 @@ using System.Numerics;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/COMMANDS.PAK
+    /// DATA/ENV/x/WORLD/COMMANDS.PAK
     /// </summary>
     public class Commands : CathodeFile
     {

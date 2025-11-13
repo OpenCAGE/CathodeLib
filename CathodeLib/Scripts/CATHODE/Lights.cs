@@ -12,7 +12,7 @@ using System.Numerics;
 namespace CATHODE.EXPERIMENTAL
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/LIGHTS.BIN
+    /// DATA/ENV/x/WORLD/LIGHTS.BIN
     /// </summary>
     public class Lights : CathodeFile
     {

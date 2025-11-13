@@ -15,7 +15,7 @@ using System.Numerics;
 namespace CATHODE.EXPERIMENTAL
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/STATE_x/TRAVERSAL
+    /// DATA/ENV/x/WORLD/STATE_x/TRAVERSAL
     /// </summary>
     public class Traversals : CathodeFile
     {

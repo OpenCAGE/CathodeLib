@@ -15,7 +15,7 @@ namespace CATHODE
     //This file defines additional info for entities with DYNAMIC_PHYSICS_SYSTEM resources.
 
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/PHYSICS.MAP
+    /// DATA/ENV/x/WORLD/PHYSICS.MAP
     /// </summary>
     public class PhysicsMaps : CathodeFile
     {

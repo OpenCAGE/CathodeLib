@@ -14,7 +14,7 @@ using System.Numerics;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/RENDERABLE/RADIOSITY_INSTANCE_MAP.TXT
+    /// DATA/ENV/x/RENDERABLE/RADIOSITY_INSTANCE_MAP.TXT
     /// </summary>
     public class RadiosityInstanceMap : CathodeFile
     {

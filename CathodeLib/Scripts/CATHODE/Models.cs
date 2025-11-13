@@ -12,7 +12,7 @@ using System.Numerics;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/RENDERABLE/LEVEL_MODELS.PAK & MODELS_LEVEL.BIN
+    /// DATA/ENV/x/RENDERABLE/LEVEL_MODELS.PAK & MODELS_LEVEL.BIN
     /// </summary>
     public class Models : CathodeFile
     {

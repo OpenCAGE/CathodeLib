@@ -10,7 +10,7 @@ using static CATHODE.Models;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/RENDERABLE/LEVEL_MODELS.MTL & LEVEL_MODELS.CST
+    /// DATA/ENV/x/RENDERABLE/LEVEL_MODELS.MTL & LEVEL_MODELS.CST
     /// </summary>
     public class Materials : CathodeFile
     {

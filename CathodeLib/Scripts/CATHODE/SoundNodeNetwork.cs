@@ -12,7 +12,7 @@ using System.Xml.Linq;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/SNDNODENETWORK.DAT
+    /// DATA/ENV/x/WORLD/SNDNODENETWORK.DAT
     /// </summary>
     public class SoundNodeNetwork : CathodeFile
     {

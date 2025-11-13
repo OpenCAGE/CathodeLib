@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/ENVIRONMENTMAP.BIN
+    /// DATA/ENV/x/WORLD/ENVIRONMENTMAP.BIN
     /// </summary>
     public class EnvironmentMaps : CathodeFile
     {

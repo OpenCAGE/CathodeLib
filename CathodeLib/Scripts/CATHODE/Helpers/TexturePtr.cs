@@ -13,7 +13,7 @@ namespace CATHODE
         public enum Source
         {
             GLOBAL = 2, //Texture comes from ENV/GLOBAL
-            LEVEL = 0,  //Texture comes from the level (in ENV/PRODUCTION)
+            LEVEL = 0,  //Texture comes from the level
             NONE = -1,  //Texture is located nowhere
         }
 

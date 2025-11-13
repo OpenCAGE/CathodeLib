@@ -14,7 +14,7 @@ using System.Numerics;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/ENVIRONMENT_ANIMATION.DAT
+    /// DATA/ENV/x/WORLD/ENVIRONMENT_ANIMATION.DAT
     /// </summary>
     public class EnvironmentAnimations : CathodeFile
     {

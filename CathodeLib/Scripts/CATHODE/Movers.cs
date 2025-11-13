@@ -13,7 +13,7 @@ using System.Numerics;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/MODELS.MVR
+    /// DATA/ENV/x/WORLD/MODELS.MVR
     /// </summary>
     public class Movers : CathodeFile
     {

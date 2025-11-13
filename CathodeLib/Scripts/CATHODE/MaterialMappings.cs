@@ -1,4 +1,4 @@
-﻿using CATHODE.Scripting;
+using CATHODE.Scripting;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/MATERIAL_MAPPINGS.PAK
+    /// DATA/ENV/x/WORLD/MATERIAL_MAPPINGS.PAK
     /// </summary>
     public class MaterialMappings : CathodeFile
     {
@@ -22,7 +22,8 @@ namespace CATHODE
         //This is always the start of the mapping filepath - remove it for ease when adding new ones
         private const string _path = "n:/content/build/library/_material_libraries_/mappings/";
 
-        //NOTE: REDS is written by remapping the materials via these defs, from the original model values
+        //NOTE: REDS/MVR is written by remapping the materials via these defs, from the original model values off Commands data.
+        //      But it's not only used offline. At runtime it's used to remap Havok physics materials -> how?
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)

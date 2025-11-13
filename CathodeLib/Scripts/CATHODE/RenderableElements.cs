@@ -1,4 +1,4 @@
-﻿using CathodeLib;
+using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -6,7 +6,7 @@ using System.IO;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/REDS.BIN
+    /// DATA/ENV/x/WORLD/REDS.BIN
     /// </summary>
     public class RenderableElements : CathodeFile
     {

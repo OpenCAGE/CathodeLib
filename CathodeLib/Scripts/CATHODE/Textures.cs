@@ -8,7 +8,7 @@ using System.IO;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/RENDERABLE/LEVEL_TEXTURES.*.PAK & LEVEL_TEXTURE_HEADERS.*.BIN
+    /// DATA/ENV/x/RENDERABLE/LEVEL_TEXTURES.*.PAK & LEVEL_TEXTURE_HEADERS.*.BIN
     /// </summary>
     public class Textures : CathodeFile
     {

@@ -60,11 +60,11 @@ namespace CathodeLib
         public List<State> StateResources = new List<State>(); //State 0 loaded by default
 
         /// <summary>
-        /// Load a level in the game's "ENV/PRODUCTION" folder
+        /// Load a level in the game's "ENV" folder
         /// </summary>
         public Level(string path, Global global)
         {
-            string pathDATA = path.Replace('\\', '/').Split(new string[] { "/DATA/ENV/PRODUCTION" }, StringSplitOptions.None)[0] + "/DATA";
+            string pathDATA = path.Replace('\\', '/').Split(new string[] { "/DATA/ENV" }, StringSplitOptions.None)[0] + "/DATA";
             string levelName = Directory.GetParent(path).Name;
             string pathGlobal = pathDATA + "/ENV/GLOBAL/WORLD";
 
@@ -316,7 +316,7 @@ namespace CathodeLib
         /// </summary>
         public static List<string> GetLevels(string gameDirectory, bool swapNostromoForPatch = false)
         {
-            string[] galaxyBins = Directory.GetFiles(gameDirectory + "/DATA/ENV/PRODUCTION/", "GALAXY.DEFINITION_BIN", SearchOption.AllDirectories);
+            string[] galaxyBins = Directory.GetFiles(gameDirectory + "/DATA/ENV/", "GALAXY.DEFINITION_BIN", SearchOption.AllDirectories);
             List<string> mapList = new List<string>();
             for (int i = 0; i < galaxyBins.Length; i++)
             {
@@ -329,7 +329,7 @@ namespace CathodeLib
                 if (!File.Exists(mapPath + "/RENDERABLE/LEVEL_MODELS.PAK")) continue;
                 if (!File.Exists(mapPath + "/RENDERABLE/MODELS_LEVEL.BIN")) continue;
 
-                string[] split = galaxyBins[i].Replace("\\", "/").Split(new[] { "/DATA/ENV/PRODUCTION/" }, StringSplitOptions.None);
+                string[] split = galaxyBins[i].Replace("\\", "/").Split(new[] { "/DATA/ENV/" }, StringSplitOptions.None);
                 string file = split[split.Length - 1];
                 int length = file.Length - extraLength;
                 if (length <= 0) continue;

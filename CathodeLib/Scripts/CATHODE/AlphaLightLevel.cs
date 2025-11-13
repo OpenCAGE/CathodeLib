@@ -12,7 +12,7 @@ using System.Numerics;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/ALPHALIGHT_LEVEL.BIN
+    /// DATA/ENV/x/WORLD/ALPHALIGHT_LEVEL.BIN
     /// </summary>
     public class AlphaLightLevel : CathodeFile
     {

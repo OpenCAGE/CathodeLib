@@ -15,7 +15,7 @@ using System.Numerics;
 namespace CATHODE
 {
     /// <summary>
-    /// DATA/ENV/PRODUCTION/x/WORLD/STATE_x/NAV_MESH
+    /// DATA/ENV/x/WORLD/STATE_x/NAV_MESH
     /// </summary>
     public class NavigationMesh : CathodeFile
     {
