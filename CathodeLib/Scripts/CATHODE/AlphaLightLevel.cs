@@ -49,11 +49,11 @@ namespace CATHODE
                 Utilities.WriteString("alph", writer);
                 writer.Write(0);
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
-                writer.Write(Resolution.x);
-                writer.Write(Resolution.y);
+                writer.Write((int)Resolution.x);
+                writer.Write((int)Resolution.y);
 #else
-                writer.Write(Resolution.X);
-                writer.Write(Resolution.Y);
+                writer.Write((int)Resolution.X);
+                writer.Write((int)Resolution.Y);
 #endif
                 writer.Write(ImageData);
             }

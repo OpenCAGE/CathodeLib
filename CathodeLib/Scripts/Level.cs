@@ -209,7 +209,7 @@ namespace CathodeLib
                 () => SoundFlashModels?.Save(),
                 () => CollisionMaps?.Save(),
                 () => RadInstanceMap?.Save(),
-                //() => AlphaLight?.Save(),
+                () => AlphaLight?.Save(),
                 () => AccessorySets?.Save(),
                 () => Commands?.Save(), //NOTE: Not remapping indexes within commands!
                 () => EnvironmentAnimations?.Save(),
