@@ -1,4 +1,5 @@
-﻿using CathodeLib;
+﻿using CATHODE.Enums;
+using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -11,7 +12,7 @@ namespace CATHODE
     /// </summary>
     public class PathBarrierResources : CathodeFile
     {
-        public List<Entry> Entries = new List<Entry>();
+        public List<NAV_MESH_BARRIER_RESOURCE> Entries = new List<NAV_MESH_BARRIER_RESOURCE>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
         protected override bool HandlesLoadingManually => true;
@@ -33,12 +34,10 @@ namespace CATHODE
                 int entryCount = reader.ReadInt32();
                 for (int i = 0; i < entryCount; i++)
                 {
-                    Entry entry = new Entry();
+                    NAV_MESH_BARRIER_RESOURCE entry = new NAV_MESH_BARRIER_RESOURCE();
                     entry.Resource = _resources.GetAtWriteIndex(reader.ReadInt32());
-                    int index = reader.ReadInt16();
-                    if (index != i+1) throw new Exception();
-                    entry.unk1 = reader.ReadInt16();
-                    entry.unk2 = reader.ReadInt16();
+                    entry.area_id = reader.ReadInt16();
+                    entry.allowed_character_classes = (NAVIGATION_CHARACTER_CLASS_COMBINATION)reader.ReadInt32();
                     Entries.Add(entry);
                 }
             }
@@ -55,9 +54,8 @@ namespace CATHODE
                 for (int i = 0; i < Entries.Count; i++)
                 {
                     reader.Write(_resources.GetWriteIndex(Entries[i].Resource));
-                    reader.Write((Int32)(i + 1));
-                    reader.Write((Int16)Entries[i].unk1); 
-                    reader.Write((Int16)Entries[i].unk2);
+                    reader.Write((Int16)Entries[i].area_id);
+                    reader.Write((int)Entries[i].allowed_character_classes); 
                 }
             }
             return true;
@@ -65,11 +63,12 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class Entry
+        public class NAV_MESH_BARRIER_RESOURCE
         {
             public Resources.Resource Resource;
-            public int unk1; //todo: perhaps this is a ShortGuid instance thing?
-            public int unk2;
+
+            public int area_id; //dt_area_id_t
+            public NAVIGATION_CHARACTER_CLASS_COMBINATION allowed_character_classes;
         }
         #endregion
     }
