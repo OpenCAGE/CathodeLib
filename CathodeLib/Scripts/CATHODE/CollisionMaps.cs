@@ -16,15 +16,17 @@ namespace CATHODE
     /// </summary>
     public class CollisionMaps : CathodeFile
     {
-        public List<Entry> Entries = new List<Entry>();
+        public List<COLLISION_MAPPING> Entries = new List<COLLISION_MAPPING>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
         protected override bool HandlesLoadingManually => true;
         private Materials _materials;
+        private MaterialMappings _materialMaps;
 
-        public CollisionMaps(string path, Materials materials) : base(path)
+        public CollisionMaps(string path, Materials materials, MaterialMappings materialMaps) : base(path)
         {
             _materials = materials;
+            _materialMaps = materialMaps;
 
             _loaded = Load();
         }
@@ -44,14 +46,14 @@ namespace CATHODE
                 int entryCount = reader.ReadInt32();
                 for (int i = 0; i < entryCount; i++)
                 {
-                    Entry entry = new Entry();
+                    COLLISION_MAPPING entry = new COLLISION_MAPPING();
                     entry.Flags = (CollisionFlags)reader.ReadInt32();
                     entry.Index = reader.ReadInt32();
-                    entry.ID = Utilities.Consume<ShortGuid>(reader);
+                    entry.ResourceGUID = Utilities.Consume<ShortGuid>(reader);
                     entry.Entity = Utilities.Consume<EntityHandle>(reader);
                     entry.Material = _materials.GetAtWriteIndex(reader.ReadInt32());
                     entry.CollisionProxyIndex = reader.ReadInt16();
-                    entry.MappingIndex = reader.ReadInt16();
+                    entry.MaterialMapping = _materialMaps.GetAtWriteIndex(reader.ReadInt16());
                     entry.ZoneID = Utilities.Consume<ShortGuid>(reader);
                     reader.BaseStream.Position += 16;
                     Entries.Add(entry);
@@ -83,18 +85,18 @@ namespace CATHODE
             return true;
         }
 
-        private byte[] SerializeEntry(Entry entry)
+        private byte[] SerializeEntry(COLLISION_MAPPING entry)
         {
             using (MemoryStream stream = new MemoryStream(48)) 
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 writer.Write((int)entry.Flags);
                 writer.Write(entry.Index);
-                Utilities.Write<ShortGuid>(writer, entry.ID);
+                Utilities.Write<ShortGuid>(writer, entry.ResourceGUID);
                 Utilities.Write<EntityHandle>(writer, entry.Entity);
                 writer.Write(_materials.GetWriteIndex(entry.Material));
                 writer.Write((Int16)entry.CollisionProxyIndex);
-                writer.Write((Int16)entry.MappingIndex);
+                writer.Write((Int16)_materialMaps.GetWriteIndex(entry.MaterialMapping));
                 Utilities.Write<ShortGuid>(writer, entry.ZoneID);
                 writer.Write(new byte[16]);
                 return stream.ToArray();
@@ -103,37 +105,39 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class Entry
+        public class COLLISION_MAPPING
         {
-            public ShortGuid ID = ShortGuid.Invalid; //This is the name of the entity hashed via ShortGuid
-            public EntityHandle Entity = new EntityHandle();
-            public ShortGuid ZoneID = ShortGuid.Invalid; //this maps the entity to a zone ID. interestingly, this seems to be the point of truth for the zone rendering
-
-            public int CollisionProxyIndex = -1; // Index in COLLISION.HKX
-            public Materials.Material Material = null; // Index in LEVEL_MODELS.MTL
-
             public CollisionFlags Flags = 0;
             public int Index = -1; //Compound shape index for static and ballistic collision 
-            public int MappingIndex = -1; //is this material_mapping.pak? this would explain the usage of it.
 
-            public static bool operator ==(Entry x, Entry y)
+            public ShortGuid ResourceGUID = ShortGuid.Invalid; //This is the name of the entity hashed via ShortGuid
+            public EntityHandle Entity = new EntityHandle();
+
+            public Materials.Material Material = null;
+
+            public int CollisionProxyIndex = -1; // Index in COLLISION.HKX (hkpStaticCompoundShape)
+            public MaterialMappings.MaterialMapping MaterialMapping = null; //This remaps the material to the physics material for Havok
+
+            public ShortGuid ZoneID = ShortGuid.Invalid; //this maps the entity to a zone ID. interestingly, this seems to be the point of truth for the zone rendering
+
+            public static bool operator ==(COLLISION_MAPPING x, COLLISION_MAPPING y)
             {
                 if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
                 if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
-                if (x.ID != y.ID) return false;
+                if (x.ResourceGUID != y.ResourceGUID) return false;
                 if (x.ZoneID != y.ZoneID) return false;
                 if (x.Entity != y.Entity) return false;
                 return true;
             }
-            public static bool operator !=(Entry x, Entry y)
+            public static bool operator !=(COLLISION_MAPPING x, COLLISION_MAPPING y)
             {
                 return !(x == y);
             }
 
             public override bool Equals(object obj)
             {
-                return obj is Entry entry &&
-                       EqualityComparer<ShortGuid>.Default.Equals(ID, entry.ID) &&
+                return obj is COLLISION_MAPPING entry &&
+                       EqualityComparer<ShortGuid>.Default.Equals(ResourceGUID, entry.ResourceGUID) &&
                        EqualityComparer<EntityHandle>.Default.Equals(Entity, entry.Entity) &&
                        EqualityComparer<ShortGuid>.Default.Equals(ZoneID, entry.ZoneID);
             }
@@ -141,7 +145,7 @@ namespace CATHODE
             public override int GetHashCode()
             {
                 int hashCode = 1001543423;
-                hashCode = hashCode * -1521134295 + ID.GetHashCode();
+                hashCode = hashCode * -1521134295 + ResourceGUID.GetHashCode();
                 hashCode = hashCode * -1521134295 + EqualityComparer<EntityHandle>.Default.GetHashCode(Entity);
                 hashCode = hashCode * -1521134295 + ZoneID.GetHashCode();
                 return hashCode;

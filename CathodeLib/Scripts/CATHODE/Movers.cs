@@ -79,7 +79,7 @@ namespace CATHODE
                     mvr.primary_zone_id = Utilities.Consume<ShortGuid>(reader);
                     mvr.secondary_zone_id = Utilities.Consume<ShortGuid>(reader);
                     mvr.lighting_master_id = reader.ReadInt32();
-                    mvr.material_mapping = _materials.GetAtWriteIndex(reader.ReadInt16());
+                    reader.BaseStream.Position += 2;
                     mvr.flags = Utilities.Consume<MoverFlag>(reader);
                     reader.BaseStream.Position += 8;
                     Entries.Add(mvr);
@@ -161,7 +161,7 @@ namespace CATHODE
                 Utilities.Write<ShortGuid>(writer, entry.primary_zone_id);
                 Utilities.Write<ShortGuid>(writer, entry.secondary_zone_id);
                 writer.Write(entry.lighting_master_id);
-                writer.Write((Int16)_materials.GetWriteIndex(entry.material_mapping));
+                writer.Write((Int16)(-1)); //todo - sanity check this is actually -1 not 0
                 Utilities.Write<MoverFlag>(writer, entry.flags);
                 writer.Write(new byte[8]);
 
@@ -277,7 +277,6 @@ namespace CATHODE
             public ShortGuid primary_zone_id; //zero is "unzoned"
             public ShortGuid secondary_zone_id; //zero is "unzoned"
             public int lighting_master_id = 0;
-            public Materials.Material material_mapping; //is this defo Material not MaterialMappings.PAK?
 
             public MoverFlag flags;
 

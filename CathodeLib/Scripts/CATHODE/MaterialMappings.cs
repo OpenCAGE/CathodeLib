@@ -1,9 +1,7 @@
 using CATHODE.Scripting;
 using CathodeLib;
-using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
@@ -12,7 +10,7 @@ namespace CATHODE
     /// </summary>
     public class MaterialMappings : CathodeFile
     {
-        public List<Entry> Entries = new List<Entry>();
+        public List<MaterialMapping> Entries = new List<MaterialMapping>();
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
 
         public MaterialMappings(string path) : base(path) { }
@@ -23,7 +21,9 @@ namespace CATHODE
         private const string _path = "n:/content/build/library/_material_libraries_/mappings/";
 
         //NOTE: REDS/MVR is written by remapping the materials via these defs, from the original model values off Commands data.
-        //      But it's not only used offline. At runtime it's used to remap Havok physics materials -> how?
+        //      But it's not only used offline. At runtime it's used to remap Havok physics materials.
+
+        private List<MaterialMapping> _writeList = new List<MaterialMapping>();
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
@@ -35,7 +35,7 @@ namespace CATHODE
 
                 for (int x = 0; x < entryCount; x++)
                 {
-                    Entry entry = new Entry();
+                    MaterialMapping entry = new MaterialMapping();
                     reader.BaseStream.Position += 4; //shortguid hash of filename (useful?)
                     int count = reader.ReadInt32();
                     reader.BaseStream.Position += 4; //this is to->from id count, stored last, but always empty
@@ -44,7 +44,7 @@ namespace CATHODE
                     entry.Name = entry.Name.Substring(_path.Length, entry.Name.Length - 4 - _path.Length);
                     for (int p = 0; p < count; p++)
                     {
-                        Entry.Mapping mapping = new Entry.Mapping();
+                        MaterialMapping.Mapping mapping = new MaterialMapping.Mapping();
                         strLength = reader.ReadInt32();
                         mapping.from = Utilities.ReadString(reader.ReadBytes(strLength));
                         strLength = reader.ReadInt32();
@@ -54,6 +54,7 @@ namespace CATHODE
                     Entries.Add(entry);
                 }
             }
+            _writeList.AddRange(Entries);
             return true;
         }
 
@@ -65,7 +66,7 @@ namespace CATHODE
                 writer.Write(new byte[4] { 0xAE, 0xB0, 0xEB, 0xDE });
                 writer.Write(4);
                 writer.Write(Entries.Count);
-                foreach (Entry entry in Entries)
+                foreach (MaterialMapping entry in Entries)
                 {
                     string fullPath = _path + entry.Name + ".xml";
                     Utilities.Write(writer, ShortGuidUtils.Generate(fullPath, false));
@@ -73,7 +74,7 @@ namespace CATHODE
                     writer.Write(0);
                     writer.Write(fullPath.Length);
                     Utilities.WriteString(fullPath, writer);
-                    foreach (Entry.Mapping mapping in entry.Mappings)
+                    foreach (MaterialMapping.Mapping mapping in entry.Mappings)
                     {
                         writer.Write(mapping.from.Length);
                         Utilities.WriteString(mapping.from, writer);
@@ -82,12 +83,36 @@ namespace CATHODE
                     }
                 }
             }
+            _writeList.Clear();
+            _writeList.AddRange(Entries);
             return true;
         }
         #endregion
 
+        #region HELPERS
+        /// <summary>
+        /// Get the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public int GetWriteIndex(MaterialMapping map)
+        {
+            if (!_writeList.Contains(map)) return -1;
+            return _writeList.IndexOf(map);
+        }
+
+        /// <summary>
+        /// Get the object at the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public MaterialMapping GetAtWriteIndex(int index)
+        {
+            if (_writeList.Count <= index || index < 0) return null;
+            return _writeList[index];
+        }
+        #endregion
+
         #region STRUCTURES
-        public class Entry
+        public class MaterialMapping
         {
             public string Name;
             public List<Mapping> Mappings = new List<Mapping>();
