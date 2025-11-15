@@ -11,7 +11,7 @@ namespace CATHODE
     public class MaterialMappings : CathodeFile
     {
         public List<MaterialMapping> Entries = new List<MaterialMapping>();
-        public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
+        public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE | Implementation.CREATE;
 
         public MaterialMappings(string path) : base(path) { }
         public MaterialMappings(MemoryStream stream, string path = "") : base(stream, path) { }

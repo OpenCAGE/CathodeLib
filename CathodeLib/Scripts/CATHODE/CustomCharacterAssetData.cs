@@ -1,4 +1,4 @@
-﻿using CATHODE.Enums;
+using CATHODE.Enums;
 using CATHODE.Scripting;
 using CathodeLib;
 using System;
@@ -16,7 +16,7 @@ namespace CATHODE
     public class CustomCharacterAssetData : CathodeFile
     {
         public List<AssetDefinition> Entries = new List<AssetDefinition>();
-        public static new Implementation Implementation = Implementation.NONE;
+        public static new Implementation Implementation = Implementation.CREATE | Implementation.SAVE | Implementation.LOAD;
 
         public CustomCharacterAssetData(string path) : base(path) { }
         public CustomCharacterAssetData(MemoryStream stream, string path = "") : base(stream, path) { }

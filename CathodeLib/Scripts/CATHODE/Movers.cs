@@ -5,7 +5,6 @@ using System;
 using System.Threading.Tasks;
 using CATHODE.Scripting;
 using CathodeLib;
-using static CATHODE.RenderableElements;
 using CathodeLib.ObjectExtensions;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
@@ -26,13 +25,11 @@ namespace CATHODE
         protected override bool HandlesLoadingManually => true;
         private RenderableElements _reds;
         private Resources _resources;
-        private Materials _materials;
 
-        public Movers(string path, RenderableElements reds, Resources resources, Materials materials) : base(path)
+        public Movers(string path, RenderableElements reds, Resources resources) : base(path)
         {
             _reds = reds;
             _resources = resources;
-            _materials = materials;
 
             _loaded = Load();
         }

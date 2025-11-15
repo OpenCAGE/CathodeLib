@@ -891,7 +891,7 @@ namespace CATHODE
                         public Materials.Material Material = null; // Index in MODELS.MTL
                         public int CollisionProxyIndex = -1; // Index in COLLISION.HKX
                         public Collisions.WeightedCollision WeightedCollision = null; // Index in COLLISION.BIN
-                        public MorphTargets.Entry MorphAnimSet = null; // Index in MORPH_TARGET_DB.BIN
+                        public MorphTargets.MorphTarget MorphAnimSet = null; // Index in MORPH_TARGET_DB.BIN
 
                         public VertexFormat VertexFormatFull;
                         public VertexFormat VertexFormatPartial;

@@ -7,8 +7,6 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml;
-using static CATHODE.Resources;
-using static CATHODE.Textures.TEX4;
 
 namespace CathodeLib
 {
@@ -93,7 +91,7 @@ namespace CathodeLib
             Materials = new Materials(path + "/RENDERABLE/LEVEL_MODELS.MTL", Global.Textures, Textures, Shaders);
             Models = new Models(path + "/RENDERABLE/LEVEL_MODELS.PAK", Materials, WeightedCollisions, MorphTargetDB);
             RenderableElements = new RenderableElements(path + "/WORLD/REDS.BIN", Models, Materials);
-            Movers = new Movers(path + "/WORLD/MODELS.MVR", RenderableElements, Resources, Materials);
+            Movers = new Movers(path + "/WORLD/MODELS.MVR", RenderableElements, Resources);
 
             Parallel.Invoke(
                 () => EnvironmentMaps = new EnvironmentMaps(path + "/WORLD/ENVIRONMENTMAP.BIN", Movers),
