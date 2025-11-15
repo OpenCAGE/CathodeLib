@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
+using static CATHODE.Resources;
+
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -15,7 +17,7 @@ namespace CATHODE.Scripting.Internal.Parsers
 {
     public static class CommandsPAK
     {
-        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries)
+        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, PhysicsMaps physMaps, RenderableElements reds)
         {
             byte[] content = stream.ToArray(); //NOTE: this gives us quite a memory overhead, which should probably be changed.
             using (BinaryReader reader = new BinaryReader(stream))
@@ -240,16 +242,24 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             switch (resource.resource_type)
                                             {
                                                 case ResourceType.RENDERABLE_INSTANCE:
-                                                    resource.index = reader_parallel.ReadInt32();
-                                                    resource.count = reader_parallel.ReadInt32();
+                                                    int redsIndex = reader_parallel.ReadInt32();
+                                                    int redsCount = reader_parallel.ReadInt32();
+                                                    for (int z = 0; z < redsCount; z++)
+                                                        resource.RenderableInstance.Add(reds.GetAtWriteIndex(redsIndex + z));
                                                     break;
                                                 case ResourceType.COLLISION_MAPPING:
-                                                    resource.index = reader_parallel.ReadInt32();
+                                                    int colIndex = reader_parallel.ReadInt32();
+                                                    resource.CollisionMapping = colMaps.GetAtWriteIndex(colIndex);
                                                     resource.entityID = new ShortGuid(reader_parallel);
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
+                                                    int animModelIndex = reader_parallel.ReadInt32();
+                                                    resource.AnimatedModel = envAnims.GetAtWriteIndex(animModelIndex);
+                                                    reader_parallel.BaseStream.Position += 4;
+                                                    break;
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                    resource.index = reader_parallel.ReadInt32();
+                                                    int physSystemIndex = reader_parallel.ReadInt32();
+                                                    resource.DynamicPhysicsSystem = physMaps.GetAtWriteIndex(physSystemIndex);
                                                     reader_parallel.BaseStream.Position += 4;
                                                     break;
                                                 default:
@@ -472,7 +482,7 @@ namespace CATHODE.Scripting.Internal.Parsers
             }
         }
 
-        public static void Write(ShortGuid[] EntryPoints, List<Composite> Entries, out byte[] content)
+        public static void Write(ShortGuid[] EntryPoints, List<Composite> Entries, out byte[] content, EnvironmentAnimations envAnims, CollisionMaps colMaps, PhysicsMaps physMaps, RenderableElements reds)
         {
             ShortGuid SHORTGUID_resource = ShortGuidUtils.Generate("resource");
 
@@ -805,16 +815,19 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             switch (resourceReferences[i][p].resource_type)
                                             {
                                                 case ResourceType.RENDERABLE_INSTANCE:
-                                                    writer.Write(resourceReferences[i][p].index);
-                                                    writer.Write(resourceReferences[i][p].count);
+                                                    writer.Write(resourceReferences[i][p].RenderableInstance.Count == 0 ? -1 : reds.GetWriteIndex(resourceReferences[i][p].RenderableInstance[0]));
+                                                    writer.Write(resourceReferences[i][p].RenderableInstance.Count);
                                                     break;
                                                 case ResourceType.COLLISION_MAPPING:
-                                                    writer.Write(resourceReferences[i][p].index);
+                                                    writer.Write(colMaps.GetWriteIndex(resourceReferences[i][p].CollisionMapping));
                                                     writer.Write(resourceReferences[i][p].entityID.AsUInt32);
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
+                                                    writer.Write(envAnims.GetWriteIndex(resourceReferences[i][p].AnimatedModel));
+                                                    writer.Write(-1);
+                                                    break;
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                    writer.Write(resourceReferences[i][p].index);
+                                                    writer.Write(physMaps.GetWriteIndex(resourceReferences[i][p].DynamicPhysicsSystem));
                                                     writer.Write(-1);
                                                     break;
                                                 case ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE:

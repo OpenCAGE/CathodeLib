@@ -32,7 +32,7 @@ namespace CATHODE.Scripting.Internal.Parsers
             RESOURCE_GUID = ShortGuidUtils.Generate("resource");
         }
 
-        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries)
+        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, PhysicsMaps physMaps, RenderableElements reds)
         {
 #if COMPILE_NAME_LIST
             EntityNames.Clear();
@@ -454,16 +454,23 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     switch (resource.resource_type)
                                     {
                                         case ResourceType.RENDERABLE_INSTANCE:
-                                            resource.index = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
-                                            resource.count = Utilities.Consume<int>(reader, command_entries[i + 5].Item2);
+                                            int redsIndex = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
+                                            int redsCount = Utilities.Consume<int>(reader, command_entries[i + 5].Item2);
+                                            for (int z = 0; z < redsCount; z++)
+                                                resource.RenderableInstance.Add(reds.GetAtWriteIndex(redsIndex + z));
                                             break;
                                         case ResourceType.COLLISION_MAPPING:
-                                            resource.index = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
+                                            int colIndex = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
+                                            resource.CollisionMapping = colMaps.GetAtWriteIndex(colIndex);
                                             resource.entityID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 5].Item2);
                                             break;
                                         case ResourceType.ANIMATED_MODEL:
+                                            int animModelIndex = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
+                                            resource.AnimatedModel = envAnims.GetAtWriteIndex(animModelIndex);
+                                            break;
                                         case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                            resource.index = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
+                                            int physSystemIndex = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
+                                            resource.DynamicPhysicsSystem = physMaps.GetAtWriteIndex(physSystemIndex);
                                             break;
                                     }
                                     if (cache.Item2.TryGetValue(resource.resource_id, out Entity ent))
@@ -515,7 +522,7 @@ namespace CATHODE.Scripting.Internal.Parsers
             EntryPoints[2] = Entries.FirstOrDefault(o => o.name.ToUpper() == "PAUSEMENU").shortGUID;
         }
 
-        public static void Write(ShortGuid[] EntryPoints, List<Composite> Entries, out byte[] content)
+        public static void Write(ShortGuid[] EntryPoints, List<Composite> Entries, out byte[] content, EnvironmentAnimations envAnims, CollisionMaps colMaps, PhysicsMaps physMaps, RenderableElements reds)
         {
             List<Tuple<uint, int>> commands = new List<Tuple<uint, int>>();
             using (MemoryStream buffer = new MemoryStream())
@@ -812,7 +819,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                     {
                         foreach (var resource in func.resources)
                         {
-                            AddResourceCommand(commands, bufferWriter, composite, resource);
+                            AddResourceCommand(commands, bufferWriter, composite, resource, envAnims, colMaps, physMaps, reds);
                         }
                     }
 
@@ -884,7 +891,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     Utilities.Write<ShortGuid>(bufferWriter, r.shortGUID);
                                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
                                     for (int x = 0; x < r.value.Count; x++)
-                                        AddResourceCommand(commands, bufferWriter, composite, r.value[x]);
+                                        AddResourceCommand(commands, bufferWriter, composite, r.value[x], envAnims, colMaps, physMaps, reds);
                                     break;
                                 case DataType.VECTOR:
                                     cVector3 v = (cVector3)paramEntry.content;
@@ -995,7 +1002,7 @@ namespace CATHODE.Scripting.Internal.Parsers
             }
         }
 
-        private static void AddResourceCommand(List<Tuple<uint, int>> commands, BinaryWriter writer, Composite composite, ResourceReference resource)
+        private static void AddResourceCommand(List<Tuple<uint, int>> commands, BinaryWriter writer, Composite composite, ResourceReference resource, EnvironmentAnimations envAnims, CollisionMaps colMaps, PhysicsMaps physMaps, RenderableElements reds)
         {
             int offset = (int)writer.BaseStream.Position;
             commands.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_RESOURCE | CommandTypes.COMMAND_ADD), offset));
@@ -1015,16 +1022,16 @@ namespace CATHODE.Scripting.Internal.Parsers
             {
                 case ResourceType.RENDERABLE_INSTANCE:
                     offset = (int)writer.BaseStream.Position;
-                    writer.Write(resource.index);
+                    writer.Write(resource.RenderableInstance.Count == 0 ? -1 : reds.GetWriteIndex(resource.RenderableInstance[0]));
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
 
                     offset = (int)writer.BaseStream.Position;
-                    writer.Write(resource.count);
+                    writer.Write(resource.RenderableInstance.Count);
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
                     break;
                 case ResourceType.COLLISION_MAPPING:
                     offset = (int)writer.BaseStream.Position;
-                    writer.Write(resource.index);
+                    writer.Write(colMaps.GetWriteIndex(resource.CollisionMapping));
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
 
                     offset = (int)writer.BaseStream.Position;
@@ -1032,9 +1039,17 @@ namespace CATHODE.Scripting.Internal.Parsers
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
                     break;
                 case ResourceType.ANIMATED_MODEL:
+                    offset = (int)writer.BaseStream.Position;
+                    writer.Write(envAnims.GetWriteIndex(resource.AnimatedModel));
+                    commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+
+                    offset = (int)writer.BaseStream.Position;
+                    writer.Write(0);
+                    commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+                    break;
                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
                     offset = (int)writer.BaseStream.Position;
-                    writer.Write(resource.index);
+                    writer.Write(physMaps.GetWriteIndex(resource.DynamicPhysicsSystem));
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
 
                     offset = (int)writer.BaseStream.Position;

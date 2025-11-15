@@ -1,11 +1,13 @@
 ﻿using CATHODE.Scripting;
 using CathodeLib;
+using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using static CATHODE.Movers;
 
 namespace CATHODE
 {
@@ -22,6 +24,8 @@ namespace CATHODE
         protected override bool HandlesLoadingManually => true;
         private Materials _materials;
         private MaterialMappings _materialMaps;
+
+        private List<COLLISION_MAPPING> _writeList = new List<COLLISION_MAPPING>();
 
         public CollisionMaps(string path, Materials materials, MaterialMappings materialMaps) : base(path)
         {
@@ -59,6 +63,7 @@ namespace CATHODE
                     Entries.Add(entry);
                 }
             }
+            _writeList.AddRange(Entries);
             return true;
         }
 
@@ -82,6 +87,8 @@ namespace CATHODE
                 for (int i = 0; i < entryBuffers.Length; i++)
                     writer.Write(entryBuffers[i]);
             }
+            _writeList.Clear();
+            _writeList.AddRange(Entries);
             return true;
         }
 
@@ -101,6 +108,47 @@ namespace CATHODE
                 writer.Write(new byte[16]);
                 return stream.ToArray();
             }
+        }
+        #endregion
+
+        #region HELPERS
+        /// <summary>
+        /// Get the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public int GetWriteIndex(COLLISION_MAPPING colMap)
+        {
+            if (!_writeList.Contains(colMap)) return -1;
+            return _writeList.IndexOf(colMap);
+        }
+
+        /// <summary>
+        /// Get the object at the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public COLLISION_MAPPING GetAtWriteIndex(int index)
+        {
+            if (_writeList.Count <= index || index < 0) return null;
+            return _writeList[index];
+        }
+
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects.
+        /// </summary>
+        public COLLISION_MAPPING AddEntry(COLLISION_MAPPING colMap)
+        {
+            if (colMap == null)
+                return null;
+
+            COLLISION_MAPPING newColMap = colMap.Copy();
+
+            _materials.AddEntry(newColMap.Material);
+            _materialMaps.AddEntry(newColMap.MaterialMapping);
+
+            //todo: set zone to global?
+
+            Entries.Add(newColMap);
+            return newColMap;
         }
         #endregion
 

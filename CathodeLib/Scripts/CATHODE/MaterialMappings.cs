@@ -1,7 +1,9 @@
 using CATHODE.Scripting;
 using CathodeLib;
+using CathodeLib.ObjectExtensions;
 using System.Collections.Generic;
 using System.IO;
+using static CATHODE.CollisionMaps;
 
 namespace CATHODE
 {
@@ -108,6 +110,19 @@ namespace CATHODE
         {
             if (_writeList.Count <= index || index < 0) return null;
             return _writeList[index];
+        }
+
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects.
+        /// </summary>
+        public MaterialMapping AddEntry(MaterialMapping matMap)
+        {
+            if (matMap == null)
+                return null;
+
+            MaterialMapping newMatMap = matMap.Copy();
+            Entries.Add(newMatMap);
+            return newMatMap;
         }
         #endregion
 

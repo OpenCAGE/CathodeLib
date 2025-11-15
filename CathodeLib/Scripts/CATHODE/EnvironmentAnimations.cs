@@ -5,6 +5,10 @@ using CATHODE.Scripting;
 using CathodeLib;
 using System;
 using System.Linq;
+using static CATHODE.CollisionMaps;
+using CathodeLib.ObjectExtensions;
+
+
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -39,6 +43,8 @@ namespace CATHODE
                 _loaded = Load(stream);
             }
         }
+
+        private List<EnvironmentAnimation> _writeList = new List<EnvironmentAnimation>();
 
         private AnimationStrings _strings;
 
@@ -109,6 +115,7 @@ namespace CATHODE
                     Entries.Add(anim);
                 }
             }
+            _writeList.AddRange(Entries);
             return true;
         }
 
@@ -196,11 +203,46 @@ namespace CATHODE
                     writer.Write(Entries[i].unk1);
                 }
             }
+            _writeList.Clear();
+            _writeList.AddRange(Entries);
             return true;
         }
-#endregion
+        #endregion
 
         #region HELPERS
+        /// <summary>
+        /// Get the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public int GetWriteIndex(EnvironmentAnimation envAnim)
+        {
+            if (!_writeList.Contains(envAnim)) return -1;
+            return _writeList.IndexOf(envAnim);
+        }
+
+        /// <summary>
+        /// Get the object at the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public EnvironmentAnimation GetAtWriteIndex(int index)
+        {
+            if (_writeList.Count <= index || index < 0) return null;
+            return _writeList[index];
+        }
+
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects.
+        /// </summary>
+        public EnvironmentAnimation AddEntry(EnvironmentAnimation envAnim)
+        {
+            if (envAnim == null)
+                return null;
+
+            EnvironmentAnimation newEnvAnim = envAnim.Copy();
+            Entries.Add(newEnvAnim);
+            return newEnvAnim;
+        }
+
         private List<T> PopulateArray<T>(BinaryReader reader, T[] array)
         {
             List<T> arr = new List<T>();
@@ -266,11 +308,6 @@ namespace CATHODE
                 [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
                 public byte[] Unknown_;
             };
-        }
-
-        public class SkinnedEnvironmentAnimation : EnvironmentAnimation
-        {
-
         }
         #endregion
     }

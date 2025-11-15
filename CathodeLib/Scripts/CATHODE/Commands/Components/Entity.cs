@@ -446,14 +446,6 @@ namespace CATHODE.Scripting
             {
                 rr = new ResourceReference(type);
                 rr.resource_id = type == ResourceType.DYNAMIC_PHYSICS_SYSTEM ? ShortGuidUtils.Generate("DYNAMIC_PHYSICS_SYSTEM") : shortGUID;
-                switch (rr.resource_type)
-                {
-                    case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                    case ResourceType.RENDERABLE_INSTANCE:
-                    case ResourceType.ANIMATED_MODEL:
-                        rr.index = 0;
-                        break;
-                }
                 resources.Add(rr);
             }
             return rr;

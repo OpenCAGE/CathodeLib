@@ -27,17 +27,22 @@ namespace CATHODE
         public List<Composite> Entries = new List<Composite>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
-        public Commands(string path) : base(path)
+        protected override bool HandlesLoadingManually => true;
+        private EnvironmentAnimations _envAnims;
+        private CollisionMaps _colMaps;
+        private PhysicsMaps _physMaps;
+        private RenderableElements _reds;
+
+        public Commands(string path, EnvironmentAnimations envAnims, CollisionMaps colMaps, PhysicsMaps physMaps, RenderableElements reds) : base(path)
         {
+            _envAnims = envAnims;
+            _colMaps = colMaps;
+            _physMaps = physMaps;
+            _reds = reds;
+
             Utils = new CommandsUtils(this);
-        }
-        public Commands(MemoryStream stream, string path = "") : base(stream, path)
-        {
-            Utils = new CommandsUtils(this);
-        }
-        public Commands(byte[] data, string path = "") : base(data, path)
-        {
-            Utils = new CommandsUtils(this);
+
+            _loaded = Load();
         }
 
         ~Commands()
@@ -71,10 +76,10 @@ namespace CATHODE
             switch (Path.GetExtension(_filepath).ToUpper())
             {
                 case ".PAK":
-                    CommandsPAK.Read(stream, out _entryPoints, out Entries);
+                    CommandsPAK.Read(stream, out _entryPoints, out Entries, _envAnims, _colMaps, _physMaps, _reds);
                     break;
                 case ".BIN":
-                    CommandsBIN.Read(stream, out _entryPoints, out Entries);
+                    CommandsBIN.Read(stream, out _entryPoints, out Entries, _envAnims, _colMaps, _physMaps, _reds);
                     break;
                 default:
                     return false;
@@ -171,7 +176,8 @@ namespace CATHODE
                                     dps_index = new Parameter("system_index", new cInteger(0));
                                     function.parameters.Add(dps_index);
                                 }
-                                function.AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).index = ((cInteger)dps_index.content).value;
+                                //TODO!!!!
+                                //function.AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).index = ((cInteger)dps_index.content).value;
                                 break;
 
                             case FunctionType.EnvironmentModelReference:
@@ -202,10 +208,10 @@ namespace CATHODE
             switch (Path.GetExtension(_filepath).ToUpper())
             {
                 case ".PAK":
-                    CommandsPAK.Write(_entryPoints, Entries, out content);
+                    CommandsPAK.Write(_entryPoints, Entries, out content, _envAnims, _colMaps, _physMaps, _reds);
                     break;
                 case ".BIN":
-                    CommandsBIN.Write(_entryPoints, Entries, out content);
+                    CommandsBIN.Write(_entryPoints, Entries, out content, _envAnims, _colMaps, _physMaps, _reds);
                     break;
                 default:
                     return false;

@@ -14,7 +14,7 @@ using System.Text;
 
 namespace CathodeLib
 {
-    public class Utilities
+    public static class Utilities
     {
         /// <summary>
         /// Read a single templated object
@@ -228,6 +228,40 @@ namespace CathodeLib
                 hash = hash & 0xFFFFFFFF;
             }
             return hash;
+        }
+
+        /// <summary>
+        /// Convert a model component to a renderable element using its default materials
+        /// </summary>
+        public static List<RenderableElements.Element> ToRenderableElements(this Models.CS2.Component model)
+        {
+            List<RenderableElements.Element> reds = new List<RenderableElements.Element>();
+            List<RenderableElements.Element> lod = new List<RenderableElements.Element>();
+            for (int i = model.LODs.Count - 1; i >= 0; --i)
+            {
+                for (int x = 0; x < model.LODs[i].Submeshes.Count; x++)
+                {
+                    RenderableElements.Element element = new RenderableElements.Element()
+                    {
+                        Model = model.LODs[i].Submeshes[x],
+                        Material = model.LODs[i].Submeshes[x].Material,
+                    };
+                    if (x == 0)
+                    {
+                        element.LODs.AddRange(lod);
+                        lod.Clear();
+                    }
+                    if (i != 0)
+                    {
+                        lod.Add(element);
+                    }
+                    else
+                    {
+                        reds.Add(element);
+                    }
+                }
+            }
+            return reds;
         }
 
         /// <summary>
