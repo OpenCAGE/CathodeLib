@@ -1,5 +1,7 @@
 ﻿using CATHODE.Scripting;
 using CathodeLib;
+using CathodeLib.ObjectExtensions;
+using CathodeLib.Properties;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -108,16 +110,27 @@ namespace CATHODE
             return _writeList[index];
         }
 
-        public void AddUniqueResource(ShortGuid composite_instance_id, ShortGuid resource_id)
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects.
+        /// </summary>
+        public Resource AddEntry(Resource resource)
         {
-            if (Entries.FirstOrDefault(o => o.composite_instance_id == composite_instance_id && o.resource_id == resource_id) != null)
-                return;
+            return AddUniqueResource(resource.composite_instance_id, resource.resource_id);
+        }
 
-            Entries.Add(new Resource()
+        public Resource AddUniqueResource(ShortGuid composite_instance_id, ShortGuid resource_id)
+        {
+            Resource resource = Entries.FirstOrDefault(o => o.composite_instance_id == composite_instance_id && o.resource_id == resource_id);
+            if (resource != null)
+                return resource;
+
+            resource = new Resource()
             {
                 composite_instance_id = composite_instance_id,
                 resource_id = resource_id
-            });
+            };
+            Entries.Add(resource);
+            return resource;
         }
         #endregion
 

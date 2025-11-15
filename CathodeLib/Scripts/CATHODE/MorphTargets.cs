@@ -1,4 +1,5 @@
-﻿using CathodeLib;
+using CathodeLib;
+using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -98,6 +99,16 @@ namespace CATHODE
         {
             if (_writeList.Count <= index || index < 0) return null;
             return _writeList[index];
+        }
+
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects.
+        /// </summary>
+        public Entry AddEntry(Entry morphTarget)
+        {
+            Entry newMorphTarget = morphTarget.Copy();
+            Entries.Add(newMorphTarget);
+            return newMorphTarget;
         }
         #endregion
 

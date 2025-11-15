@@ -1,5 +1,6 @@
 using CATHODE.Scripting;
 using CathodeLib;
+using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -36,6 +37,7 @@ namespace CATHODE
         {
             using (BinaryReader reader = new BinaryReader(stream))
             {
+                List<Tuple<int, byte>> lods = new List<Tuple<int, byte>>();
                 int entryCount = reader.ReadInt32();
                 for (int i = 0; i < entryCount; i++)
                 {
@@ -46,10 +48,12 @@ namespace CATHODE
                     element.MaterialLocation = (PakLocation)reader.ReadInt32();
                     element.Material = _materials.GetAtWriteIndex(reader.ReadInt32());
                     element.MaterialSubplatformDependent = reader.ReadBoolean();
-                    element.LODIndex = reader.ReadInt32();
-                    element.LODCount = reader.ReadByte();
+                    lods.Add(new Tuple<int, byte>(reader.ReadInt32(), reader.ReadByte()));
                     Entries.Add(element);
                 }
+                for (int i = 0; i < entryCount; i++)
+                    for (int x = 0; x < lods[i].Item2; x++)
+                        Entries[i].LODs.Add(Entries[lods[i].Item1 + x]);
             }
             _writeList.AddRange(Entries);
             return true;
@@ -85,8 +89,8 @@ namespace CATHODE
                 writer.Write((int)element.MaterialLocation);
                 writer.Write(_materials.GetWriteIndex(element.Material));
                 writer.Write(element.MaterialSubplatformDependent);
-                writer.Write(element.LODIndex);
-                writer.Write((byte)element.LODCount);
+                writer.Write(element.LODs.Count == 0 ? -1 : Entries.IndexOf(element.LODs[0]));
+                writer.Write((byte)element.LODs.Count);
                 return stream.ToArray();
             }
         }
@@ -112,6 +116,33 @@ namespace CATHODE
             if (_writeList.Count <= index || index < 0) return null;
             return _writeList[index];
         }
+
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects.
+        /// </summary>
+        public Element AddEntry(Element element)
+        {
+            Element newElement = element.Copy();
+
+            if (newElement.ModelLocation == PakLocation.GLOBAL || newElement.MaterialLocation == PakLocation.GLOBAL)
+                throw new Exception("Unexpected model/material location - GLOBAL is unsupported.");
+
+            if (newElement.Model != null)
+            {
+                newElement.Model = _models.AddEntry(newElement.Model); 
+            }
+            if (newElement.Material != null)
+            {
+                newElement.Material = _materials.AddEntry(newElement.Material);
+            }
+            for (int i = 0; i < newElement.LODs.Count; i++)
+            {
+                newElement.LODs[i] = AddEntry(newElement.LODs[i]);
+            }
+
+            Entries.Add(newElement);
+            return newElement;
+        }
         #endregion
 
         #region STRUCTURES
@@ -125,8 +156,8 @@ namespace CATHODE
             public Materials.Material Material = null;
             public bool MaterialSubplatformDependent = false;
 
-            public int LODIndex = -1; //This is the index of the REDS entry that we use for our LOD model/material
-            public int LODCount = 0; //This is the number of entries sequentially from the LODIndex to use for the LOD from REDS
+            public List<Element> LODs = new List<Element>();
+
         }
         #endregion
     }

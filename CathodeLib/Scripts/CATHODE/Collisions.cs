@@ -8,6 +8,8 @@ using System.Xml.Linq;
 using System.Runtime.InteropServices.ComTypes;
 using System.Runtime.InteropServices;
 using static CATHODE.Movers;
+using static CATHODE.Models;
+using CathodeLib.ObjectExtensions;
 
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
@@ -217,6 +219,16 @@ namespace CATHODE
         {
             if (_writeList.Count <= index || index < 0) return null;
             return _writeList[index];
+        }
+
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects.
+        /// </summary>
+        public WeightedCollision AddEntry(WeightedCollision collision)
+        {
+            WeightedCollision newCollision = collision.Copy();
+            Entries.Add(newCollision);
+            return newCollision;
         }
         #endregion
 

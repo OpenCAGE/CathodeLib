@@ -179,8 +179,8 @@ namespace CathodeLib
             Strings = new Dictionary<string, Dictionary<string, TextDB>>();
             foreach (string textDB in textList)
             {
-                string lang = Path.GetFileName(Path.GetDirectoryName(textDB));
-                string db = Path.GetFileNameWithoutExtension(textDB);
+                string lang = Path.GetFileName(Path.GetDirectoryName(textDB)).ToUpper();
+                string db = Path.GetFileNameWithoutExtension(textDB).ToUpper();
                 if (!globalDBs.Contains(db) && !levelDBs.Contains(db)) continue;
                 if (!Strings.ContainsKey(lang)) Strings.Add(lang, new Dictionary<string, TextDB>());
                 if (Strings[lang].ContainsKey(db)) continue;

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using CathodeLib.ObjectExtensions;
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #else
@@ -123,7 +124,7 @@ namespace CATHODE
                     submesh.MaxBounds = Utilities.Consume<Vector3>(bin);
                     submesh.MaxLODRange = bin.ReadSingle();
 
-                    int childModelIndex = bin.ReadInt32();
+                    int childModelIndex = bin.ReadInt32(); //todo - need to use a ref for this and probably store it. might mean we can avoid the CS2 structure?
                     int childLODIndex = bin.ReadInt32();
                     if (childLODIndex != -1) LODs.Add(childLODIndex);
                     submesh.Material = _materials.GetAtWriteIndex(bin.ReadInt32());
@@ -632,6 +633,52 @@ namespace CATHODE
         {
             if (_writeList.Count <= index || index < 0) return null;
             return _writeList[index];
+        }
+
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects.
+        /// </summary>
+        public CS2.Component.LOD.Submesh AddEntry(CS2.Component.LOD.Submesh model)
+        {
+            //todo - add in a way of checking if an entry contains all the same content, then return that ref. will need to check all children.
+
+            //CS2 newModel = model.Copy();
+            //foreach (CS2.Component component in newModel.Components)
+            //{
+            //    foreach (CS2.Component.LOD lod in component.LODs)
+            //    {
+            //        foreach (CS2.Component.LOD.Submesh submesh in lod.Submeshes)
+            //        {
+            //            submesh.Material = _materials.AddEntry(submesh.Material);
+            //            submesh.WeightedCollision = _collisions.AddEntry(submesh.WeightedCollision);
+            //            submesh.MorphAnimSet = _morphTargets.AddEntry(submesh.MorphAnimSet); 
+            //        }
+            //    }
+            //}
+
+            //TEMP! Generating a temp CS2 to hold the submesh. Need to handle this better.
+            CS2.Component.LOD.Submesh newModel = model.Copy();
+            newModel.Material = _materials.AddEntry(newModel.Material);
+            newModel.WeightedCollision = _collisions.AddEntry(newModel.WeightedCollision);
+            newModel.MorphAnimSet = _morphTargets.AddEntry(newModel.MorphAnimSet);
+            Entries.Add(new CS2()
+            {
+                Name = "Temporary Mesh",
+                Components = new List<CS2.Component>()
+                {
+                     new CS2.Component()
+                     {
+                          LODs = new List<CS2.Component.LOD>()
+                          {
+                              new CS2.Component.LOD("Temporary Submesh")
+                              {
+                                   Submeshes = new List<CS2.Component.LOD.Submesh>() { newModel }
+                              }
+                          }
+                     }
+                }
+            });
+            return newModel;
         }
         #endregion
 

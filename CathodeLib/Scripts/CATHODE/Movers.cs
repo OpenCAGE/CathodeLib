@@ -5,6 +5,8 @@ using System;
 using System.Threading.Tasks;
 using CATHODE.Scripting;
 using CathodeLib;
+using static CATHODE.RenderableElements;
+using CathodeLib.ObjectExtensions;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -189,6 +191,32 @@ namespace CATHODE
         {
             if (_writeList.Count <= index || index < 0) return null;
             return _writeList[index];
+        }
+
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects.
+        /// </summary>
+        public MOVER_DESCRIPTOR AddEntry(MOVER_DESCRIPTOR mover)
+        {
+            MOVER_DESCRIPTOR newMover = mover.Copy();
+
+            for (int i = 0; i < newMover.renderable_elements.Count; i++)
+            {
+                newMover.renderable_elements[i] = _reds.AddEntry(newMover.renderable_elements[i]);
+            }
+            if (newMover.resource != null)
+            {
+                newMover.resource = _resources.AddEntry(newMover.resource);
+            }
+
+            //todo: do something with entity reference
+
+            //todo: env map index
+
+            //todo: set zone to global?
+
+            Entries.Add(newMover);
+            return newMover;
         }
         #endregion
 

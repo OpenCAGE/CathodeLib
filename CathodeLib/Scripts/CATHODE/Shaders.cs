@@ -1,5 +1,6 @@
 using CATHODE.ShaderTypes;
 using CathodeLib;
+using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
@@ -10,6 +11,8 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using static CATHODE.RenderableElements;
+using static CATHODE.Shaders;
+using static CATHODE.TexturePtr;
 
 namespace CATHODE
 {
@@ -315,6 +318,16 @@ namespace CATHODE
         {
             if (_writeList.Count <= index || index < 0) return null;
             return _writeList[index];
+        }
+
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects.
+        /// </summary>
+        public Shader AddEntry(Shader shader)
+        {
+            Shader newShader = shader.Copy();
+            Entries.Add(newShader);
+            return shader;
         }
         #endregion
 

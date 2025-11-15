@@ -1,10 +1,13 @@
 //#define APPEND_DDS
 
 using CathodeLib;
+using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
+using static CATHODE.Models;
+using static CATHODE.Shaders;
 
 namespace CATHODE
 {
@@ -289,6 +292,16 @@ namespace CATHODE
         {
             if (index < 0 || _writeList.Count <= index) return null;
             return _writeList[index];
+        }
+
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects.
+        /// </summary>
+        public TEX4 AddEntry(TEX4 texture)
+        {
+            TEX4 newTexture = texture.Copy();
+            Entries.Add(newTexture);
+            return newTexture;
         }
         #endregion
 

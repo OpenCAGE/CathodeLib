@@ -1,4 +1,5 @@
 using CathodeLib;
+using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -7,6 +8,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using static CATHODE.Models;
+using static CATHODE.Movers;
 using static CATHODE.TexturePtr;
 using static CATHODE.Textures.TEX4;
 
@@ -276,6 +278,31 @@ namespace CATHODE
         {
             if (_writeList.Count <= index || index < 0) return null;
             return _writeList[index];
+        }
+
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects.
+        /// </summary>
+        public Material AddEntry(Material material)
+        {
+            Material newMaterial = material.Copy();
+
+            for (int i = 0; i < newMaterial.TextureReferences.Count; i++)
+            {
+                //We don't need to add global textures again, since other levels will be pointing to the same.
+                if (newMaterial.TextureReferences[i].Location == Source.GLOBAL)
+                    continue;
+
+                newMaterial.TextureReferences[i].Texture = _levelTextures.AddEntry(newMaterial.TextureReferences[i].Texture);
+            }
+            if (newMaterial.Shader != null)
+            {
+                newMaterial.Shader = _shaders.AddEntry(newMaterial.Shader);
+            }
+            newMaterial.EnvironmentMapIndex = 255; //TEMP! should remap
+
+            Entries.Add(newMaterial);
+            return material;
         }
 
         private List<float> ReadCSTData(int offset, int count, BinaryReader reader)
