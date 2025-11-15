@@ -640,6 +640,9 @@ namespace CATHODE
         /// </summary>
         public CS2.Component.LOD.Submesh AddEntry(CS2.Component.LOD.Submesh model)
         {
+            if (model == null)
+                return null;
+
             //todo - add in a way of checking if an entry contains all the same content, then return that ref. will need to check all children.
 
             //CS2 newModel = model.Copy();

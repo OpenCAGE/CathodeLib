@@ -299,6 +299,9 @@ namespace CATHODE
         /// </summary>
         public TEX4 AddEntry(TEX4 texture)
         {
+            if (texture == null)
+                return null;
+
             TEX4 newTexture = texture.Copy();
             Entries.Add(newTexture);
             return newTexture;

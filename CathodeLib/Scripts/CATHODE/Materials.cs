@@ -285,6 +285,9 @@ namespace CATHODE
         /// </summary>
         public Material AddEntry(Material material)
         {
+            if (material == null)
+                return null;
+
             Material newMaterial = material.Copy();
 
             for (int i = 0; i < newMaterial.TextureReferences.Count; i++)

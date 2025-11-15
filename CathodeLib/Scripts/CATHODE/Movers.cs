@@ -195,6 +195,9 @@ namespace CATHODE
         /// </summary>
         public MOVER_DESCRIPTOR AddEntry(MOVER_DESCRIPTOR mover)
         {
+            if (mover == null)
+                return null;
+
             MOVER_DESCRIPTOR newMover = mover.Copy();
 
             for (int i = 0; i < newMover.renderable_elements.Count; i++)

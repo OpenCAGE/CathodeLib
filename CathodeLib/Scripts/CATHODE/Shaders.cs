@@ -325,6 +325,9 @@ namespace CATHODE
         /// </summary>
         public Shader AddEntry(Shader shader)
         {
+            if (shader == null)
+                return null;
+
             Shader newShader = shader.Copy();
             Entries.Add(newShader);
             return shader;

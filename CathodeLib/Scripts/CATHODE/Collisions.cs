@@ -226,6 +226,9 @@ namespace CATHODE
         /// </summary>
         public WeightedCollision AddEntry(WeightedCollision collision)
         {
+            if (collision == null)
+                return null;
+
             WeightedCollision newCollision = collision.Copy();
             Entries.Add(newCollision);
             return newCollision;

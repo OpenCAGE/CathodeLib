@@ -1,4 +1,4 @@
-﻿using CATHODE.Scripting;
+using CATHODE.Scripting;
 using CathodeLib;
 using CathodeLib.ObjectExtensions;
 using CathodeLib.Properties;
@@ -115,6 +115,8 @@ namespace CATHODE
         /// </summary>
         public Resource AddEntry(Resource resource)
         {
+            if (resource == null)
+                return null;
             return AddUniqueResource(resource.composite_instance_id, resource.resource_id);
         }
 

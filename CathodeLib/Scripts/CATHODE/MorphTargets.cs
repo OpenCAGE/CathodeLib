@@ -134,6 +134,9 @@ namespace CATHODE
         /// </summary>
         public MorphTarget AddEntry(MorphTarget morphTarget)
         {
+            if (morphTarget == null)
+                return null;
+
             MorphTarget newMorphTarget = morphTarget.Copy();
             Entries.Add(newMorphTarget);
             return newMorphTarget;

@@ -122,6 +122,9 @@ namespace CATHODE
         /// </summary>
         public Element AddEntry(Element element)
         {
+            if (element == null)
+                return null;
+
             Element newElement = element.Copy();
 
             if (newElement.ModelLocation == PakLocation.GLOBAL || newElement.MaterialLocation == PakLocation.GLOBAL)
