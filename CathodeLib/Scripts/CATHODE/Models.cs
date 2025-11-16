@@ -207,24 +207,24 @@ namespace CATHODE
                         int submeshCount = BigEndianUtils.ReadInt32(reader);
 
                         reader.BaseStream.Position += 16;
-                        Dictionary<int, int[]> entryOffsets = new Dictionary<int, int[]>(); //bin index, [start,length]
+                        List<Tuple<int, int[]>> entryOffsets = new List<Tuple<int, int[]>>(); //bin index, [start,length]
                         for (int x = 0; x < submeshCount; x++)
                         {
-                            entryOffsets.Add(BigEndianUtils.ReadInt32(reader), new int[2] { BigEndianUtils.ReadInt32(reader), BigEndianUtils.ReadInt32(reader) });
+                            entryOffsets.Add(new Tuple<int, int[]>(BigEndianUtils.ReadInt32(reader), new int[2] { BigEndianUtils.ReadInt32(reader), BigEndianUtils.ReadInt32(reader) }));
                             reader.BaseStream.Position += 4;
                         }
                         reader.BaseStream.Position += 8;
 
                         int lodIndex = component.LODs.Count - 1;
-                        foreach (KeyValuePair<int, int[]> offsetData in entryOffsets)
+                        foreach (Tuple<int, int[]> offsetData in entryOffsets)
                         {
-                            CS2.Component.LOD.Submesh submesh = _writeList[offsetData.Key];
-                            reader.BaseStream.Position = offsetData.Value[0];
-                            submesh.Data = reader.ReadBytes(offsetData.Value[1]);
+                            CS2.Component.LOD.Submesh submesh = _writeList[offsetData.Item1];
+                            reader.BaseStream.Position = offsetData.Item2[0];
+                            submesh.Data = reader.ReadBytes(offsetData.Item2[1]);
 
-                            if (LODs.Contains(offsetData.Key) || lodIndex == -1)
+                            if (LODs.Contains(offsetData.Item1) || lodIndex == -1)
                             {
-                                component.LODs.Add(new CS2.Component.LOD(meshNameList[offsetData.Key]));
+                                component.LODs.Add(new CS2.Component.LOD(meshNameList[offsetData.Item1]));
                                 lodIndex++;
                             }
                             component.LODs[lodIndex].Submeshes.Add(submesh);
