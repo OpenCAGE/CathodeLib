@@ -150,7 +150,7 @@ namespace CATHODE
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
-        public List<Element> AddEntry(List<Element> elements)
+        public List<Element> AddEntry(List<Element> elements, Models sourceModels)
         {
             if (elements == null)
                 return null;
@@ -163,7 +163,9 @@ namespace CATHODE
                 if (newElement.ModelLocation == PakLocation.GLOBAL || newElement.MaterialLocation == PakLocation.GLOBAL)
                     throw new Exception("Unexpected model/material location - GLOBAL is unsupported.");
 
-                newElement.Model = _models.AddEntry(newElement.Model);
+                var cs2O = sourceModels.FindModelForSubmesh(elements[i].Model);
+                Models.CS2 cs2 = _models.AddEntry(cs2O); //We add the WHOLE cs2, if it doesn't exist, even though we only point to a submesh of it
+                //newElement.Model = cs2.GetSubmesh(newElement.Model);
                 newElement.Material = _materials.AddEntry(newElement.Material);
 
                 newElements.Add(newElement);
@@ -173,7 +175,7 @@ namespace CATHODE
             //Add LODs after so they're also sequential 
             for (int i = 0; i < elements.Count; i++)
             {
-                newElements[i].LODs = AddEntry(newElements[i].LODs);
+                newElements[i].LODs = AddEntry(newElements[i].LODs, sourceModels);
             }
 
             return newElements;

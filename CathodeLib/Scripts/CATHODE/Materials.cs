@@ -344,7 +344,10 @@ namespace CATHODE
                 if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
                 if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
                 if (x.Name != y.Name) return false;
-                if (!ListsEqual(x.TextureReferences, y.TextureReferences)) return false;
+
+                if (x.TextureReferences?.Count != y.TextureReferences?.Count) return false;
+                for (int i = 0; i < x.TextureReferences.Count; i++)
+                    if (x.TextureReferences[i] != y.TextureReferences[i]) return false;
                 if (!ListsEqual(x.EngineConstants, y.EngineConstants)) return false;
                 if (!ListsEqual(x.VertexShaderConstants, y.VertexShaderConstants)) return false;
                 if (!ListsEqual(x.PixelShaderConstants, y.PixelShaderConstants)) return false;
@@ -355,7 +358,7 @@ namespace CATHODE
                     if (x.OfflineLightFeatures == null || y.OfflineLightFeatures == null) return false;
                     if (x.OfflineLightFeatures != y.OfflineLightFeatures) return false;
                 }
-                if (!ReferenceEquals(x.Shader, y.Shader)) return false;
+                if (x.Shader != y.Shader) return false;
                 if (x.PhysicalMaterialIndex != y.PhysicalMaterialIndex) return false;
                 if (x.EnvironmentMapIndex != y.EnvironmentMapIndex) return false;
                 if (x.Priority != y.Priority) return false;
@@ -395,15 +398,12 @@ namespace CATHODE
                 return hashCode;
             }
 
-            private static bool ListsEqual<T>(List<T> x, List<T> y)
+            private static bool ListsEqual(List<float> x, List<float> y)
             {
-                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
-                if (ReferenceEquals(y, null)) return false;
-                if (x.Count != y.Count) return false;
+                if (x?.Count != y?.Count) return false;
                 for (int i = 0; i < x.Count; i++)
-                {
-                    if (!EqualityComparer<T>.Default.Equals(x[i], y[i])) return false;
-                }
+                    if (x[i] != y[i])
+                        return false;
                 return true;
             }
 

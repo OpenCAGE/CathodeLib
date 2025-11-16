@@ -172,9 +172,14 @@ namespace CATHODE
             {
                 if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
                 if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+                if (x.Flags != y.Flags) return false;
+                if (x.Index != y.Index) return false;
                 if (x.ResourceGUID != y.ResourceGUID) return false;
-                if (x.ZoneID != y.ZoneID) return false;
                 if (x.Entity != y.Entity) return false;
+                if (x.Material != y.Material) return false;
+                if (x.CollisionProxyIndex != y.CollisionProxyIndex) return false;
+                if (x.MaterialMapping != y.MaterialMapping) return false;
+                if (x.ZoneID != y.ZoneID) return false;
                 return true;
             }
             public static bool operator !=(COLLISION_MAPPING x, COLLISION_MAPPING y)
@@ -189,19 +194,24 @@ namespace CATHODE
 
             public override bool Equals(object obj)
             {
-                return obj is COLLISION_MAPPING entry &&
-                       EqualityComparer<ShortGuid>.Default.Equals(ResourceGUID, entry.ResourceGUID) &&
-                       EqualityComparer<EntityHandle>.Default.Equals(Entity, entry.Entity) &&
-                       EqualityComparer<ShortGuid>.Default.Equals(ZoneID, entry.ZoneID);
+                return obj is COLLISION_MAPPING entry && this == entry;
             }
 
             public override int GetHashCode()
             {
-                int hashCode = 1001543423;
-                hashCode = hashCode * -1521134295 + ResourceGUID.GetHashCode();
-                hashCode = hashCode * -1521134295 + EqualityComparer<EntityHandle>.Default.GetHashCode(Entity);
-                hashCode = hashCode * -1521134295 + ZoneID.GetHashCode();
-                return hashCode;
+                unchecked
+                {
+                    int hashCode = 1001543423;
+                    hashCode = hashCode * -1521134295 + Flags.GetHashCode();
+                    hashCode = hashCode * -1521134295 + Index.GetHashCode();
+                    hashCode = hashCode * -1521134295 + ResourceGUID.GetHashCode();
+                    hashCode = hashCode * -1521134295 + (Entity?.GetHashCode() ?? 0);
+                    hashCode = hashCode * -1521134295 + (Material?.GetHashCode() ?? 0);
+                    hashCode = hashCode * -1521134295 + CollisionProxyIndex.GetHashCode();
+                    hashCode = hashCode * -1521134295 + (MaterialMapping?.GetHashCode() ?? 0);
+                    hashCode = hashCode * -1521134295 + ZoneID.GetHashCode();
+                    return hashCode;
+                }
             }
         };
 

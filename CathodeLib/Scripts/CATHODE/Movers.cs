@@ -189,14 +189,14 @@ namespace CATHODE
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
-        public MOVER_DESCRIPTOR AddEntry(MOVER_DESCRIPTOR mover)
+        public MOVER_DESCRIPTOR AddEntry(MOVER_DESCRIPTOR mover, Models models)
         {
             if (mover == null)
                 return null;
 
             MOVER_DESCRIPTOR newMover = mover.Copy();
 
-            newMover.renderable_elements = _reds.AddEntry(newMover.renderable_elements);
+            newMover.renderable_elements = _reds.AddEntry(newMover.renderable_elements, models);
             newMover.resource = _resources.AddEntry(newMover.resource);
 
             //todo: do something with entity reference
@@ -271,12 +271,12 @@ namespace CATHODE
             private short flags;
         }
 
-        public class MOVER_DESCRIPTOR
+        public class MOVER_DESCRIPTOR : IEquatable<MOVER_DESCRIPTOR>
         {
             public Matrix4x4 transform;
 
             public float[] gpu_constants; 
-            public float[] render_constants;
+            public float[] render_constants; // see struct MODEL_PARAMS, etc
 
             public List<RenderableElements.Element> renderable_elements = new List<RenderableElements.Element>(); 
 
@@ -297,6 +297,181 @@ namespace CATHODE
             public int lighting_master_id = 0;
 
             public MoverFlag flags;
+
+            public static bool operator ==(MOVER_DESCRIPTOR x, MOVER_DESCRIPTOR y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return false;
+                return x.Equals(y);
+            }
+
+            public static bool operator !=(MOVER_DESCRIPTOR x, MOVER_DESCRIPTOR y)
+            {
+                return !(x == y);
+            }
+
+            public bool Equals(MOVER_DESCRIPTOR other)
+            {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+
+                // Compare Matrix4x4
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                for (int i = 0; i < 16; i++)
+                {
+                    if (Math.Abs(transform[i] - other.transform[i]) > float.Epsilon)
+                        return false;
+                }
+#else
+                if (transform != other.transform) return false;
+#endif
+
+                // Compare gpu_constants array (24 elements)
+                if (gpu_constants == null && other.gpu_constants != null) return false;
+                if (gpu_constants != null && other.gpu_constants == null) return false;
+                if (gpu_constants != null && other.gpu_constants != null)
+                {
+                    if (gpu_constants.Length != other.gpu_constants.Length) return false;
+                    for (int i = 0; i < gpu_constants.Length; i++)
+                    {
+                        if (Math.Abs(gpu_constants[i] - other.gpu_constants[i]) > float.Epsilon)
+                            return false;
+                    }
+                }
+
+                // Compare render_constants array (21 elements)
+                if (render_constants == null && other.render_constants != null) return false;
+                if (render_constants != null && other.render_constants == null) return false;
+                if (render_constants != null && other.render_constants != null)
+                {
+                    if (render_constants.Length != other.render_constants.Length) return false;
+                    for (int i = 0; i < render_constants.Length; i++)
+                    {
+                        if (Math.Abs(render_constants[i] - other.render_constants[i]) > float.Epsilon)
+                            return false;
+                    }
+                }
+
+                // Compare renderable_elements list
+                if (renderable_elements == null && other.renderable_elements != null) return false;
+                if (renderable_elements != null && other.renderable_elements == null) return false;
+                if (renderable_elements != null && other.renderable_elements != null)
+                {
+                    if (renderable_elements.Count != other.renderable_elements.Count) return false;
+                    for (int i = 0; i < renderable_elements.Count; i++)
+                    {
+                        if (renderable_elements[i] != other.renderable_elements[i]) return false;
+                    }
+                }
+
+                // Compare resource
+                if (resource == null && other.resource != null) return false;
+                if (resource != null && other.resource == null) return false;
+                if (resource != null && other.resource != null)
+                {
+                    if (resource.composite_instance_id != other.resource.composite_instance_id) return false;
+                    if (resource.resource_id != other.resource.resource_id) return false;
+                }
+
+                if (cull_flags != other.cull_flags) return false;
+
+                // Compare entity
+                if (entity != other.entity) return false;
+
+                if (environment_map_index != other.environment_map_index) return false;
+
+                // Compare emissive_tint
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                if (emissive_tint != other.emissive_tint) return false;
+#else
+                if (emissive_tint != other.emissive_tint) return false;
+#endif
+
+                if (emissive_flags != other.emissive_flags) return false;
+                if (Math.Abs(emissive_intensity_multiplier - other.emissive_intensity_multiplier) > float.Epsilon) return false;
+                if (Math.Abs(emissive_radiosity_multiplier - other.emissive_radiosity_multiplier) > float.Epsilon) return false;
+
+                if (primary_zone_id != other.primary_zone_id) return false;
+                if (secondary_zone_id != other.secondary_zone_id) return false;
+                if (lighting_master_id != other.lighting_master_id) return false;
+
+                // Compare MoverFlag struct
+                if (flags.requires_script != other.flags.requires_script) return false;
+                if (flags.visible != other.flags.visible) return false;
+                if (flags.stationary != other.flags.stationary) return false;
+
+                return true;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as MOVER_DESCRIPTOR);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = 17;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                    for (int i = 0; i < 16; i++)
+                    {
+                        hash = hash * 23 + transform[i].GetHashCode();
+                    }
+#else
+                    hash = hash * 23 + transform.GetHashCode();
+#endif
+                    if (gpu_constants != null)
+                    {
+                        for (int i = 0; i < gpu_constants.Length; i++)
+                        {
+                            hash = hash * 23 + gpu_constants[i].GetHashCode();
+                        }
+                    }
+                    if (render_constants != null)
+                    {
+                        for (int i = 0; i < render_constants.Length; i++)
+                        {
+                            hash = hash * 23 + render_constants[i].GetHashCode();
+                        }
+                    }
+                    if (renderable_elements != null)
+                    {
+                        hash = hash * 23 + renderable_elements.Count.GetHashCode();
+                        foreach (var element in renderable_elements)
+                        {
+                            hash = hash * 23 + (element?.GetHashCode() ?? 0);
+                        }
+                    }
+                    if (resource != null)
+                    {
+                        hash = hash * 23 + resource.composite_instance_id.GetHashCode();
+                        hash = hash * 23 + resource.resource_id.GetHashCode();
+                    }
+                    hash = hash * 23 + cull_flags.GetHashCode();
+                    hash = hash * 23 + (entity?.GetHashCode() ?? 0);
+                    hash = hash * 23 + environment_map_index.GetHashCode();
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                    hash = hash * 23 + emissive_tint.x.GetHashCode();
+                    hash = hash * 23 + emissive_tint.y.GetHashCode();
+                    hash = hash * 23 + emissive_tint.z.GetHashCode();
+#else
+                    hash = hash * 23 + emissive_tint.X.GetHashCode();
+                    hash = hash * 23 + emissive_tint.Y.GetHashCode();
+                    hash = hash * 23 + emissive_tint.Z.GetHashCode();
+#endif
+                    hash = hash * 23 + emissive_flags.GetHashCode();
+                    hash = hash * 23 + emissive_intensity_multiplier.GetHashCode();
+                    hash = hash * 23 + emissive_radiosity_multiplier.GetHashCode();
+                    hash = hash * 23 + primary_zone_id.GetHashCode();
+                    hash = hash * 23 + secondary_zone_id.GetHashCode();
+                    hash = hash * 23 + lighting_master_id.GetHashCode();
+                    hash = hash * 23 + flags.requires_script.GetHashCode();
+                    hash = hash * 23 + flags.visible.GetHashCode();
+                    hash = hash * 23 + flags.stationary.GetHashCode();
+                    return hash;
+                }
+            }
 
             ~MOVER_DESCRIPTOR()
             {

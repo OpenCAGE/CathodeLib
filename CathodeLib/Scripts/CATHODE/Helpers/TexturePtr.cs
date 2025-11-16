@@ -42,7 +42,7 @@ namespace CATHODE
         {
             if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
             if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
-            if (!ReferenceEquals(x.Texture, y.Texture)) return false;
+            if (x.Texture != y.Texture) return false;
             if (x.Location != y.Location) return false;
             return true;
         }

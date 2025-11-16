@@ -336,7 +336,7 @@ namespace CATHODE
 
         #region STRUCTURES
 
-        public class Shader
+        public class Shader : IEquatable<Shader>
         {
             public SHADER_LIST Ubershader;
             public SHADER_MODEL RequiredShaderModel;
@@ -367,6 +367,160 @@ namespace CATHODE
             public byte[] GeometryShader;
             public byte[] ComputeShader;
 
+            public static bool operator ==(Shader x, Shader y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return false;
+                return x.Equals(y);
+            }
+
+            public static bool operator !=(Shader x, Shader y)
+            {
+                return !(x == y);
+            }
+
+            public bool Equals(Shader other)
+            {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+
+                if (Ubershader != other.Ubershader) return false;
+                if (RequiredShaderModel != other.RequiredShaderModel) return false;
+                if (UbershaderFeatureFlags != other.UbershaderFeatureFlags) return false;
+                if (UbershaderRequirementFlags != other.UbershaderRequirementFlags) return false;
+                if (CycleCount != other.CycleCount) return false;
+                if (RegisterCount != other.RegisterCount) return false;
+                if (PermutationHash != other.PermutationHash) return false;
+
+                // Compare Samplers list
+                if (Samplers.Count != other.Samplers.Count) return false;
+                for (int i = 0; i < Samplers.Count; i++)
+                {
+                    if (!Samplers[i].Equals(other.Samplers[i])) return false;
+                }
+
+                // Compare integer lists
+                if (!ListsEqual(SamplerStageBindings, other.SamplerStageBindings)) return false;
+                if (!ListsEqual(SamplerRemaps, other.SamplerRemaps)) return false;
+                if (!ListsEqual(EngineParameterRemaps, other.EngineParameterRemaps)) return false;
+                if (!ListsEqual(VertexShaderParameterRemaps, other.VertexShaderParameterRemaps)) return false;
+                if (!ListsEqual(PixelShaderParameterRemaps, other.PixelShaderParameterRemaps)) return false;
+                if (!ListsEqual(HullShaderParameterRemaps, other.HullShaderParameterRemaps)) return false;
+                if (!ListsEqual(DomainShaderParameterRemaps, other.DomainShaderParameterRemaps)) return false;
+
+                // Compare RenderStates
+                if (RenderStates == null && other.RenderStates != null) return false;
+                if (RenderStates != null && other.RenderStates == null) return false;
+                if (RenderStates != null && other.RenderStates != null)
+                {
+                    if (!RenderStates.Equals(other.RenderStates)) return false;
+                }
+
+                // Compare shader byte arrays
+                if (!ByteArraysEqual(VertexShader, other.VertexShader)) return false;
+                if (!ByteArraysEqual(PixelShader, other.PixelShader)) return false;
+                if (!ByteArraysEqual(HullShader, other.HullShader)) return false;
+                if (!ByteArraysEqual(DomainShader, other.DomainShader)) return false;
+                if (!ByteArraysEqual(GeometryShader, other.GeometryShader)) return false;
+                if (!ByteArraysEqual(ComputeShader, other.ComputeShader)) return false;
+
+                return true;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as Shader);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = 17;
+                    hash = hash * 23 + Ubershader.GetHashCode();
+                    hash = hash * 23 + RequiredShaderModel.GetHashCode();
+                    hash = hash * 23 + UbershaderFeatureFlags.GetHashCode();
+                    hash = hash * 23 + UbershaderRequirementFlags.GetHashCode();
+                    hash = hash * 23 + CycleCount.GetHashCode();
+                    hash = hash * 23 + RegisterCount.GetHashCode();
+                    hash = hash * 23 + PermutationHash.GetHashCode();
+                    hash = hash * 23 + Samplers.Count.GetHashCode();
+                    foreach (var sampler in Samplers)
+                    {
+                        hash = hash * 23 + (sampler?.GetHashCode() ?? 0);
+                    }
+                    hash = hash * 23 + (RenderStates?.GetHashCode() ?? 0);
+                    hash = hash * 23 + GetListHashCode(SamplerStageBindings);
+                    hash = hash * 23 + GetListHashCode(SamplerRemaps);
+                    hash = hash * 23 + GetListHashCode(EngineParameterRemaps);
+                    hash = hash * 23 + GetListHashCode(VertexShaderParameterRemaps);
+                    hash = hash * 23 + GetListHashCode(PixelShaderParameterRemaps);
+                    hash = hash * 23 + GetListHashCode(HullShaderParameterRemaps);
+                    hash = hash * 23 + GetListHashCode(DomainShaderParameterRemaps);
+                    hash = hash * 23 + GetByteArrayHashCode(VertexShader);
+                    hash = hash * 23 + GetByteArrayHashCode(PixelShader);
+                    hash = hash * 23 + GetByteArrayHashCode(HullShader);
+                    hash = hash * 23 + GetByteArrayHashCode(DomainShader);
+                    hash = hash * 23 + GetByteArrayHashCode(GeometryShader);
+                    hash = hash * 23 + GetByteArrayHashCode(ComputeShader);
+                    return hash;
+                }
+            }
+
+            private static bool ListsEqual(List<int> x, List<int> y)
+            {
+                if (x == null && y == null) return true;
+                if (x == null || y == null) return false;
+                if (x.Count != y.Count) return false;
+                for (int i = 0; i < x.Count; i++)
+                {
+                    if (x[i] != y[i]) return false;
+                }
+                return true;
+            }
+
+            private static bool ByteArraysEqual(byte[] x, byte[] y)
+            {
+                if (x == null && y == null) return true;
+                if (x == null || y == null) return false;
+                if (x.Length != y.Length) return false;
+                for (int i = 0; i < x.Length; i++)
+                {
+                    if (x[i] != y[i]) return false;
+                }
+                return true;
+            }
+
+            private static int GetListHashCode(List<int> list)
+            {
+                if (list == null) return 0;
+                unchecked
+                {
+                    int hash = 17;
+                    hash = hash * 23 + list.Count.GetHashCode();
+                    foreach (var item in list)
+                    {
+                        hash = hash * 23 + item.GetHashCode();
+                    }
+                    return hash;
+                }
+            }
+
+            private static int GetByteArrayHashCode(byte[] array)
+            {
+                if (array == null) return 0;
+                unchecked
+                {
+                    int hash = 17;
+                    hash = hash * 23 + array.Length.GetHashCode();
+                    for (int i = 0; i < array.Length && i < 16; i++) // Limit to first 16 bytes for hash
+                    {
+                        hash = hash * 23 + array[i].GetHashCode();
+                    }
+                    return hash;
+                }
+            }
+
             ~Shader()
             {
                 VertexShader = null;
@@ -378,13 +532,61 @@ namespace CATHODE
             }
         }
 
-        public class StateBlock
+        public class StateBlock : IEquatable<StateBlock>
         {
             public int Index;
             public List<Entry> Entries = new List<Entry>();
 
             public StateBlock() { }
             public StateBlock(BinaryReader reader) => Read(reader);
+
+            public static bool operator ==(StateBlock x, StateBlock y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return false;
+                return x.Equals(y);
+            }
+
+            public static bool operator !=(StateBlock x, StateBlock y)
+            {
+                return !(x == y);
+            }
+
+            public bool Equals(StateBlock other)
+            {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+
+                if (Index != other.Index) return false;
+                if (Entries.Count != other.Entries.Count) return false;
+
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    if (!Entries[i].Equals(other.Entries[i])) return false;
+                }
+
+                return true;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as StateBlock);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = 17;
+                    hash = hash * 23 + Index.GetHashCode();
+                    hash = hash * 23 + Entries.Count.GetHashCode();
+                    foreach (var entry in Entries)
+                    {
+                        hash = hash * 23 + (entry?.GetHashCode() ?? 0);
+                    }
+                    return hash;
+                }
+            }
 
             public void Read(BinaryReader reader)
             {
@@ -405,10 +607,49 @@ namespace CATHODE
                 }
             }
 
-            public class Entry
+            public class Entry : IEquatable<Entry>
             {
                 public int StateId; //this is RenderState or SamplerState depending on state use
-                public int Value; 
+                public int Value; //see convert_to_state_description
+
+                public static bool operator ==(Entry x, Entry y)
+                {
+                    if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                    if (ReferenceEquals(y, null)) return false;
+                    return x.Equals(y);
+                }
+
+                public static bool operator !=(Entry x, Entry y)
+                {
+                    return !(x == y);
+                }
+
+                public bool Equals(Entry other)
+                {
+                    if (other == null) return false;
+                    if (ReferenceEquals(this, other)) return true;
+
+                    if (StateId != other.StateId) return false;
+                    if (Value != other.Value) return false;
+
+                    return true;
+                }
+
+                public override bool Equals(object obj)
+                {
+                    return Equals(obj as Entry);
+                }
+
+                public override int GetHashCode()
+                {
+                    unchecked
+                    {
+                        int hash = 17;
+                        hash = hash * 23 + StateId.GetHashCode();
+                        hash = hash * 23 + Value.GetHashCode();
+                        return hash;
+                    }
+                }
             }
         }
 

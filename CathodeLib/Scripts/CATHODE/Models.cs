@@ -233,7 +233,6 @@ namespace CATHODE
                     pak.BaseStream.Position = offsetToReturnTo;
                 }
             }
-
             return true;
         }
 
@@ -639,51 +638,24 @@ namespace CATHODE
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
         /// 
-        private static int TempMeshCount = 0;
-        public CS2.Component.LOD.Submesh AddEntry(CS2.Component.LOD.Submesh model)
+        public CS2 AddEntry(CS2 model)
         {
             if (model == null)
                 return null;
 
-            //todo - add in a way of checking if an entry contains all the same content, then return that ref. will need to check all children.
-
-            //CS2 newModel = model.Copy();
-            //foreach (CS2.Component component in newModel.Components)
-            //{
-            //    foreach (CS2.Component.LOD lod in component.LODs)
-            //    {
-            //        foreach (CS2.Component.LOD.Submesh submesh in lod.Submeshes)
-            //        {
-            //            submesh.Material = _materials.AddEntry(submesh.Material);
-            //            submesh.WeightedCollision = _collisions.AddEntry(submesh.WeightedCollision);
-            //            submesh.MorphAnimSet = _morphTargets.AddEntry(submesh.MorphAnimSet); 
-            //        }
-            //    }
-            //}
-
-            //TEMP! Generating a temp CS2 to hold the submesh. Need to handle this better.
-            CS2.Component.LOD.Submesh newModel = model.Copy();
-            newModel.Material = _materials.AddEntry(newModel.Material);
-            newModel.WeightedCollision = _collisions.AddEntry(newModel.WeightedCollision);
-            newModel.MorphAnimSet = _morphTargets.AddEntry(newModel.MorphAnimSet);
-            Entries.Add(new CS2()
+            CS2 newModel = model.Copy();
+            foreach (CS2.Component component in newModel.Components)
             {
-                Name = "Temporary Mesh " + TempMeshCount,
-                Components = new List<CS2.Component>()
+                foreach (CS2.Component.LOD lod in component.LODs)
                 {
-                     new CS2.Component()
-                     {
-                          LODs = new List<CS2.Component.LOD>()
-                          {
-                              new CS2.Component.LOD("Submesh")
-                              {
-                                   Submeshes = new List<CS2.Component.LOD.Submesh>() { newModel }
-                              }
-                          }
-                     }
+                    foreach (CS2.Component.LOD.Submesh submesh in lod.Submeshes)
+                    {
+                        submesh.Material = _materials.AddEntry(submesh.Material);
+                        submesh.WeightedCollision = _collisions.AddEntry(submesh.WeightedCollision);
+                        submesh.MorphAnimSet = _morphTargets.AddEntry(submesh.MorphAnimSet); 
+                    }
                 }
-            });
-            TempMeshCount++;
+            }
             return newModel;
         }
         #endregion
@@ -693,7 +665,7 @@ namespace CATHODE
         {
             public List<List<Attribute>> Attributes = new List<List<Attribute>>();
 
-            public class Attribute : IComparable<Attribute>
+            public class Attribute : IComparable<Attribute>, IEquatable<Attribute>
             {
                 public Attribute() { }
                 public Attribute(Type type, Usage slot = Usage.Position, int index = 0)
@@ -706,6 +678,40 @@ namespace CATHODE
                 public Type Type;
                 public Usage Usage;
                 public int Index;
+
+                public static bool operator ==(Attribute x, Attribute y)
+                {
+                    if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                    if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+                    if (x.Type != y.Type) return false;
+                    if (x.Usage != y.Usage) return false;
+                    if (x.Index != y.Index) return false;
+                    return true;
+                }
+
+                public static bool operator !=(Attribute x, Attribute y)
+                {
+                    return !(x == y);
+                }
+
+                public bool Equals(Attribute other)
+                {
+                    return this == other;
+                }
+
+                public override bool Equals(object obj)
+                {
+                    return obj is Attribute attr && this == attr;
+                }
+
+                public override int GetHashCode()
+                {
+                    int hashCode = -1234567890;
+                    hashCode = hashCode * -1521134295 + Type.GetHashCode();
+                    hashCode = hashCode * -1521134295 + Usage.GetHashCode();
+                    hashCode = hashCode * -1521134295 + Index.GetHashCode();
+                    return hashCode;
+                }
 
                 public int CompareTo(Attribute other)
                 {
@@ -813,26 +819,128 @@ namespace CATHODE
             }
         }
 
-        public class CS2
+        public class CS2 : IEquatable<CS2>
         {
             public string Name;
             public List<Component> Components = new List<Component>();
+
+            public CS2.Component.LOD.Submesh GetSubmesh(CS2.Component.LOD.Submesh submesh)
+            {
+                for (int i = 0; i < Components.Count; i++)
+                {
+                    for (int x = 0; x < Components[i].LODs.Count; x++)
+                    {
+                        for (int z = 0; z < Components[i].LODs[x].Submeshes.Count; z++)
+                        {
+                            if (Components[i].LODs[x].Submeshes[z] == submesh)
+                                return Components[i].LODs[x].Submeshes[z];
+                        }
+                    }
+                }
+                return null;
+            }
+
+            public static bool operator ==(CS2 x, CS2 y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+                if (x.Name != y.Name) return false;
+                if (!ListsEqual(x.Components, y.Components)) return false;
+                return true;
+            }
+
+            public static bool operator !=(CS2 x, CS2 y)
+            {
+                return !(x == y);
+            }
+
+            public bool Equals(CS2 other)
+            {
+                return this == other;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is CS2 cs2 && this == cs2;
+            }
+
+            public override int GetHashCode()
+            {
+                int hashCode = -1234567890;
+                hashCode = hashCode * -1521134295 + (Name?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + (Components?.GetHashCode() ?? 0);
+                return hashCode;
+            }
+
+            private static bool ListsEqual(List<Component> x, List<Component> y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return false;
+                if (x.Count != y.Count) return false;
+                for (int i = 0; i < x.Count; i++)
+                {
+                    if (x[i] != y[i]) return false;
+                }
+                return true;
+            }
 
             ~CS2()
             {
                 Components.Clear();
             }
 
-            public class Component
+            public class Component : IEquatable<Component>
             {
                 public List<LOD> LODs = new List<LOD>();
+
+                public static bool operator ==(Component x, Component y)
+                {
+                    if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                    if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+                    if (!ListsEqual(x.LODs, y.LODs)) return false;
+                    return true;
+                }
+
+                public static bool operator !=(Component x, Component y)
+                {
+                    return !(x == y);
+                }
+
+                public bool Equals(Component other)
+                {
+                    return this == other;
+                }
+
+                public override bool Equals(object obj)
+                {
+                    return obj is Component component && this == component;
+                }
+
+                public override int GetHashCode()
+                {
+                    int hashCode = -1234567890;
+                    hashCode = hashCode * -1521134295 + (LODs?.GetHashCode() ?? 0);
+                    return hashCode;
+                }
+
+                private static bool ListsEqual(List<LOD> x, List<LOD> y)
+                {
+                    if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                    if (ReferenceEquals(y, null)) return false;
+                    if (x.Count != y.Count) return false;
+                    for (int i = 0; i < x.Count; i++)
+                    {
+                        if (x[i] != y[i]) return false;
+                    }
+                    return true;
+                }
 
                 ~Component()
                 {
                     LODs.Clear();
                 }
 
-                public class LOD
+                public class LOD : IEquatable<LOD>
                 {
                     public LOD(string name)
                     {
@@ -841,6 +949,50 @@ namespace CATHODE
 
                     public string Name;
                     public List<Submesh> Submeshes = new List<Submesh>();
+
+                    public static bool operator ==(LOD x, LOD y)
+                    {
+                        if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                        if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+                        if (x.Name != y.Name) return false;
+                        if (!ListsEqual(x.Submeshes, y.Submeshes)) return false;
+                        return true;
+                    }
+
+                    public static bool operator !=(LOD x, LOD y)
+                    {
+                        return !(x == y);
+                    }
+
+                    public bool Equals(LOD other)
+                    {
+                        return this == other;
+                    }
+
+                    public override bool Equals(object obj)
+                    {
+                        return obj is LOD lod && this == lod;
+                    }
+
+                    public override int GetHashCode()
+                    {
+                        int hashCode = -1234567890;
+                        hashCode = hashCode * -1521134295 + (Name?.GetHashCode() ?? 0);
+                        hashCode = hashCode * -1521134295 + (Submeshes?.GetHashCode() ?? 0);
+                        return hashCode;
+                    }
+
+                    private static bool ListsEqual(List<Submesh> x, List<Submesh> y)
+                    {
+                        if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                        if (ReferenceEquals(y, null)) return false;
+                        if (x.Count != y.Count) return false;
+                        for (int i = 0; i < x.Count; i++)
+                        {
+                            if (x[i] != y[i]) return false;
+                        }
+                        return true;
+                    }
 
                     ~LOD()
                     {
@@ -914,6 +1066,7 @@ namespace CATHODE
                         {
                             if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
                             if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+                            if (ReferenceEquals(x, y)) return true;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
                             if (x.MinBounds != y.MinBounds) return false;
                             if (x.MaxBounds != y.MaxBounds) return false;
@@ -924,10 +1077,10 @@ namespace CATHODE
                             if (x.MinLODRange != y.MinLODRange) return false;
                             if (x.MaxLODRange != y.MaxLODRange) return false;
                             if (x.RenderFlags != y.RenderFlags) return false;
-                            if (!ReferenceEquals(x.Material, y.Material)) return false;
+                            if (x.Material != y.Material) return false;
                             if (x.CollisionProxyIndex != y.CollisionProxyIndex) return false;
-                            if (!ReferenceEquals(x.WeightedCollision, y.WeightedCollision)) return false;
-                            if (!ReferenceEquals(x.MorphAnimSet, y.MorphAnimSet)) return false;
+                            if (x.WeightedCollision != y.WeightedCollision) return false;
+                            if (x.MorphAnimSet != y.MorphAnimSet) return false;
                             if (x.VertexFormatFull != y.VertexFormatFull) return false;
                             if (x.VertexFormatPartial != y.VertexFormatPartial) return false;
                             if (x.VertexScale != y.VertexScale) return false;

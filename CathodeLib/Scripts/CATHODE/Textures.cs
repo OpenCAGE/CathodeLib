@@ -309,7 +309,7 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class TEX4
+        public class TEX4 : IEquatable<TEX4>
         {
             public string Name = "";
 
@@ -320,13 +320,60 @@ namespace CATHODE
             public Texture TexturePersistent = new Texture(); // A lower res version of the texture kept loaded forever
             public Texture TextureStreamed = new Texture();   // A higher res version of the texture which is streamed when required (not all have this)
 
+            public static bool operator ==(TEX4 x, TEX4 y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return false;
+                return x.Equals(y);
+            }
+
+            public static bool operator !=(TEX4 x, TEX4 y)
+            {
+                return !(x == y);
+            }
+
+            public bool Equals(TEX4 other)
+            {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+
+                if (Name != other.Name) return false;
+                if (Format != other.Format) return false;
+                if (StateFlags != other.StateFlags) return false;
+                if (UsageFlags != other.UsageFlags) return false;
+                if (!TexturePersistent.Equals(other.TexturePersistent)) return false;
+                if (!TextureStreamed.Equals(other.TextureStreamed)) return false;
+
+                return true;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as TEX4);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = 17;
+                    hash = hash * 23 + (Name?.GetHashCode() ?? 0);
+                    hash = hash * 23 + Format.GetHashCode();
+                    hash = hash * 23 + StateFlags.GetHashCode();
+                    hash = hash * 23 + UsageFlags.GetHashCode();
+                    hash = hash * 23 + (TexturePersistent?.GetHashCode() ?? 0);
+                    hash = hash * 23 + (TextureStreamed?.GetHashCode() ?? 0);
+                    return hash;
+                }
+            }
+
             ~TEX4()
             {
                 TexturePersistent = null;
                 TextureStreamed = null;
             }
 
-            public class Texture
+            public class Texture : IEquatable<Texture>
             {
                 public Int16 Width = 0;
                 public Int16 Height = 0;
@@ -335,6 +382,69 @@ namespace CATHODE
                 public Int16 MipLevels = 0;
 
                 public byte[] Content = null;
+
+                public static bool operator ==(Texture x, Texture y)
+                {
+                    if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                    if (ReferenceEquals(y, null)) return false;
+                    return x.Equals(y);
+                }
+
+                public static bool operator !=(Texture x, Texture y)
+                {
+                    return !(x == y);
+                }
+
+                public bool Equals(Texture other)
+                {
+                    if (other == null) return false;
+                    if (ReferenceEquals(this, other)) return true;
+
+                    if (Width != other.Width) return false;
+                    if (Height != other.Height) return false;
+                    if (Depth != other.Depth) return false;
+                    if (MipLevels != other.MipLevels) return false;
+
+                    // Compare Content byte arrays
+                    if (Content == null && other.Content != null) return false;
+                    if (Content != null && other.Content == null) return false;
+                    if (Content != null && other.Content != null)
+                    {
+                        if (Content.Length != other.Content.Length) return false;
+                        for (int i = 0; i < Content.Length; i++)
+                        {
+                            if (Content[i] != other.Content[i]) return false;
+                        }
+                    }
+
+                    return true;
+                }
+
+                public override bool Equals(object obj)
+                {
+                    return Equals(obj as Texture);
+                }
+
+                public override int GetHashCode()
+                {
+                    unchecked
+                    {
+                        int hash = 17;
+                        hash = hash * 23 + Width.GetHashCode();
+                        hash = hash * 23 + Height.GetHashCode();
+                        hash = hash * 23 + Depth.GetHashCode();
+                        hash = hash * 23 + MipLevels.GetHashCode();
+                        if (Content != null)
+                        {
+                            hash = hash * 23 + Content.Length.GetHashCode();
+                            for (int i = 0; i < Content.Length && i < 16; i++) // Limit to first 16 bytes for hash
+                            {
+                                hash = hash * 23 + Content[i].GetHashCode();
+                            }
+                        }
+                        return hash;
+                    }
+                }
 
                 ~Texture()
                 {
