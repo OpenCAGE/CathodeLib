@@ -111,12 +111,19 @@ namespace CATHODE
                 if (Entries[i] != element[0])
                     continue;
 
-                for (int x = 1; x < element.Count; x++)
+                if (element.Count == 1)
                 {
-                    if (Entries[i] != element[x])
-                        break;
-                    if (x == element.Count - 1)
-                        return i;
+                    return i;
+                }
+                else
+                {
+                    for (int x = 1; x < element.Count; x++)
+                    {
+                        if (Entries[i + x] != element[x])
+                            break;
+                        if (x == element.Count - 1)
+                            return i;
+                    }
                 }
             }
             return -1;

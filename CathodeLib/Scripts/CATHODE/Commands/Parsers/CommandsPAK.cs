@@ -1,4 +1,4 @@
-﻿using CathodeLib;
+using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -242,23 +242,19 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             switch (resource.resource_type)
                                             {
                                                 case ResourceType.RENDERABLE_INSTANCE:
-                                                    int redsIndex = reader_parallel.ReadInt32();
-                                                    int redsCount = reader_parallel.ReadInt32();
-                                                    resource.RenderableInstance = reds.GetAtWriteIndex(redsIndex, redsCount);
+                                                    resource.RenderableInstance = reds.GetAtWriteIndex(reader_parallel.ReadInt32(), reader_parallel.ReadInt32());
                                                     break;
                                                 case ResourceType.COLLISION_MAPPING:
-                                                    int colIndex = reader_parallel.ReadInt32();
-                                                    resource.CollisionMapping = colMaps.GetAtWriteIndex(colIndex);
+                                                    resource.CollisionMapping = colMaps.GetAtWriteIndex(reader_parallel.ReadInt32());
                                                     resource.entityID = new ShortGuid(reader_parallel);
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
-                                                    int animModelIndex = reader_parallel.ReadInt32();
-                                                    resource.AnimatedModel = envAnims.GetAtWriteIndex(animModelIndex);
+                                                    resource.AnimatedModel = envAnims.GetAtWriteIndex(reader_parallel.ReadInt32());
                                                     reader_parallel.BaseStream.Position += 4;
                                                     break;
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                    int physSystemIndex = reader_parallel.ReadInt32();
-                                                    resource.DynamicPhysicsSystem = physMaps.GetAtWriteIndex(physSystemIndex);
+                                                    resource.index = reader_parallel.ReadInt32();
+                                                    //resource.DynamicPhysicsSystem = physMaps.GetAtWriteIndex(reader_parallel.ReadInt32());
                                                     reader_parallel.BaseStream.Position += 4;
                                                     break;
                                                 default:
@@ -815,21 +811,20 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             {
                                                 case ResourceType.RENDERABLE_INSTANCE:
                                                     int redsIndex = reds.GetWriteIndex(resourceReferences[i][p].RenderableInstance);
-                                                    writer.Write(redsIndex == -1 ? 0 : redsIndex);
-                                                    writer.Write(resourceReferences[i][p].RenderableInstance.Count);
+                                                    writer.Write(redsIndex);
+                                                    writer.Write(redsIndex == -1 ? 0 : resourceReferences[i][p].RenderableInstance.Count);
                                                     break;
                                                 case ResourceType.COLLISION_MAPPING:
                                                     writer.Write(colMaps.GetWriteIndex(resourceReferences[i][p].CollisionMapping));
                                                     writer.Write(resourceReferences[i][p].entityID.AsUInt32);
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
-                                                    int animIndex = envAnims.GetWriteIndex(resourceReferences[i][p].AnimatedModel);
-                                                    writer.Write(animIndex == -1 ? 0 : animIndex);
+                                                    writer.Write(envAnims.GetWriteIndex(resourceReferences[i][p].AnimatedModel));
                                                     writer.Write(-1);
                                                     break;
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                    int physIndex = physMaps.GetWriteIndex(resourceReferences[i][p].DynamicPhysicsSystem);
-                                                    writer.Write(physIndex == 0 ? 0 : physIndex);
+                                                    //TODO: the indexes here go OUTSIDE the range of our file. what are they for? they also don't match the system index on the objects
+                                                    writer.Write(resourceReferences[i][p].index);// physMaps.GetWriteIndex(resourceReferences[i][p].DynamicPhysicsSystem));
                                                     writer.Write(-1);
                                                     break;
                                                 case ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE:

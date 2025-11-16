@@ -454,22 +454,18 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     switch (resource.resource_type)
                                     {
                                         case ResourceType.RENDERABLE_INSTANCE:
-                                            int redsIndex = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
-                                            int redsCount = Utilities.Consume<int>(reader, command_entries[i + 5].Item2);
-                                            resource.RenderableInstance = reds.GetAtWriteIndex(redsIndex, redsCount);
+                                            resource.RenderableInstance = reds.GetAtWriteIndex(Utilities.Consume<int>(reader, command_entries[i + 4].Item2), Utilities.Consume<int>(reader, command_entries[i + 5].Item2));
                                             break;
                                         case ResourceType.COLLISION_MAPPING:
-                                            int colIndex = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
-                                            resource.CollisionMapping = colMaps.GetAtWriteIndex(colIndex);
+                                            resource.CollisionMapping = colMaps.GetAtWriteIndex(Utilities.Consume<int>(reader, command_entries[i + 4].Item2));
                                             resource.entityID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 5].Item2);
                                             break;
                                         case ResourceType.ANIMATED_MODEL:
-                                            int animModelIndex = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
-                                            resource.AnimatedModel = envAnims.GetAtWriteIndex(animModelIndex);
+                                            resource.AnimatedModel = envAnims.GetAtWriteIndex(Utilities.Consume<int>(reader, command_entries[i + 4].Item2));
                                             break;
                                         case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                            int physSystemIndex = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
-                                            resource.DynamicPhysicsSystem = physMaps.GetAtWriteIndex(physSystemIndex);
+                                            resource.index = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
+                                            //resource.DynamicPhysicsSystem = physMaps.GetAtWriteIndex(Utilities.Consume<int>(reader, command_entries[i + 4].Item2));
                                             break;
                                     }
                                     if (cache.Item2.TryGetValue(resource.resource_id, out Entity ent))
@@ -1049,7 +1045,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                     break;
                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
                     offset = (int)writer.BaseStream.Position;
-                    writer.Write(physMaps.GetWriteIndex(resource.DynamicPhysicsSystem));
+                    writer.Write(resource.index);
+                    //writer.Write(physMaps.GetWriteIndex(resource.DynamicPhysicsSystem));
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
 
                     offset = (int)writer.BaseStream.Position;
