@@ -661,6 +661,7 @@ namespace CATHODE
             if (existing != null)
                 return existing;
 
+            Entries.Add(model);
             return newModel;
         }
         #endregion
