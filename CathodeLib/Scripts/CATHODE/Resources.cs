@@ -1,7 +1,6 @@
 using CATHODE.Scripting;
 using CathodeLib;
 using CathodeLib.ObjectExtensions;
-using CathodeLib.Properties;
 using System;
 using System.Collections.Generic;
 using System.IO;
