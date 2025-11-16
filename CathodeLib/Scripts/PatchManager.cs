@@ -275,10 +275,10 @@ namespace CathodeLib
         }
 
         /* Patch the game binary to allow us to launch directly to a map */
-        public static bool PatchLaunchMode(Platform platform, string pathToAI, string MapName = "Frontend")
+        public static bool PatchLaunchMode(Platform platform, string pathToAI, string MapName = "Production/Frontend")
         {
             //This is the level the benchmark function loads into - we can overwrite it to change
-            byte[] mapStringByteArray = { 0x54, 0x45, 0x43, 0x48, 0x5F, 0x52, 0x4E, 0x44, 0x5F, 0x48, 0x5A, 0x44, 0x4C, 0x41, 0x42, 0x00, 0x00, 0x65, 0x6E, 0x67, 0x69, 0x6E, 0x65, 0x5F, 0x73, 0x65, 0x74, 0x74, 0x69, 0x6E, 0x67, 0x73 };
+            byte[] mapStringByteArray = { 0x50, 0x72, 0x6F, 0x64, 0x75, 0x63, 0x74, 0x69, 0x6F, 0x6E, 0x2F, 0x54, 0x45, 0x43, 0x48, 0x5F, 0x52, 0x4E, 0x44, 0x5F, 0x48, 0x5A, 0x44, 0x4C, 0x41, 0x42, 0x00, 0x00, 0x65, 0x6E, 0x67, 0x69, 0x6E, 0x65, 0x5F, 0x73, 0x65, 0x74, 0x74, 0x69, 0x6E, 0x67, 0x73 };
 
             //These are the original/edited setters in the benchmark function to enable benchmark mode - if we're just loading a level, we want to change them
             List<PatchBytes> benchmarkPatches = new List<PatchBytes>();
@@ -336,13 +336,13 @@ namespace CathodeLib
                     switch (platform)
                     {
                         case Platform.STEAM:
-                            writer.BaseStream.Position = 15676275;
+                            writer.BaseStream.Position = 15676264;
                             break;
                         case Platform.EPIC_GAMES_STORE:
-                            writer.BaseStream.Position = 15773411;
+                            writer.BaseStream.Position = 15773400;
                             break;
                         case Platform.GOG:
-                            writer.BaseStream.Position = 15773451;
+                            writer.BaseStream.Position = 15773440;
                             break;
                     }
                     if (writer.BaseStream.Position != 0)
