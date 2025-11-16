@@ -101,50 +101,73 @@ namespace CATHODE
         /// Get the current write index (useful for cross-ref'ing with compiled binaries)
         /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>
-        public int GetWriteIndex(Element element)
+        public int GetWriteIndex(List<Element> element)
         {
-            if (!_writeList.Contains(element)) return -1;
-            return _writeList.IndexOf(element);
+            if (element == null || element.Count == 0)
+                return -1;
+
+            for (int i = 0; i < Entries.Count; i++)
+            {
+                if (Entries[i] != element[0])
+                    continue;
+
+                for (int x = 1; x < element.Count; x++)
+                {
+                    if (Entries[i] != element[x])
+                        break;
+                    if (x == element.Count - 1)
+                        return i;
+                }
+            }
+            return -1;
         }
 
         /// <summary>
         /// Get the object at the write index (useful for cross-ref'ing with compiled binaries)
         /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>
-        public Element GetAtWriteIndex(int index)
+        public List<Element> GetAtWriteIndex(int index, int count)
         {
-            if (_writeList.Count <= index || index < 0) return null;
-            return _writeList[index];
+            if (_writeList.Count <= index + count || index < 0) 
+                return new List<Element>();
+
+            List<Element> elements = new List<Element>();
+            for (int i = 0; i < count; i++)
+                elements.Add(_writeList[index + i]);
+            return elements;
         }
 
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
-        public Element AddEntry(Element element)
+        public List<Element> AddEntry(List<Element> elements)
         {
-            if (element == null)
+            if (elements == null)
                 return null;
 
-            Element newElement = element.Copy();
+            List<Element> newElements = new List<Element>();
+            for (int i = 0; i < elements.Count; i++)
+            {
+                Element newElement = elements[i].Copy();
 
-            if (newElement.ModelLocation == PakLocation.GLOBAL || newElement.MaterialLocation == PakLocation.GLOBAL)
-                throw new Exception("Unexpected model/material location - GLOBAL is unsupported.");
+                if (newElement.ModelLocation == PakLocation.GLOBAL || newElement.MaterialLocation == PakLocation.GLOBAL)
+                    throw new Exception("Unexpected model/material location - GLOBAL is unsupported.");
 
-            if (newElement.Model != null)
-            {
-                newElement.Model = _models.AddEntry(newElement.Model); 
-            }
-            if (newElement.Material != null)
-            {
-                newElement.Material = _materials.AddEntry(newElement.Material);
-            }
-            for (int i = 0; i < newElement.LODs.Count; i++)
-            {
-                newElement.LODs[i] = AddEntry(newElement.LODs[i]);
+                if (newElement.Model != null)
+                    newElement.Model = _models.AddEntry(newElement.Model);
+                if (newElement.Material != null)
+                    newElement.Material = _materials.AddEntry(newElement.Material);
+
+                Entries.Add(newElement);
             }
 
-            Entries.Add(newElement);
-            return newElement;
+            //Add LODs after so they're also sequential 
+            for (int i = 0; i < elements.Count; i++)
+            {
+                newElements[i].LODs = AddEntry(newElements[i].LODs);
+            }
+
+            return newElements;
         }
         #endregion
 

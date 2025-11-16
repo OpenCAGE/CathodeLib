@@ -1,6 +1,7 @@
 using CATHODE.Scripting;
 using CathodeLib;
 using CathodeLib.ObjectExtensions;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using static CATHODE.CollisionMaps;

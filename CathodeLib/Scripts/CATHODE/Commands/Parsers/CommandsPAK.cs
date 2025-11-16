@@ -244,8 +244,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                 case ResourceType.RENDERABLE_INSTANCE:
                                                     int redsIndex = reader_parallel.ReadInt32();
                                                     int redsCount = reader_parallel.ReadInt32();
-                                                    for (int z = 0; z < redsCount; z++)
-                                                        resource.RenderableInstance.Add(reds.GetAtWriteIndex(redsIndex + z));
+                                                    resource.RenderableInstance = reds.GetAtWriteIndex(redsIndex, redsCount);
                                                     break;
                                                 case ResourceType.COLLISION_MAPPING:
                                                     int colIndex = reader_parallel.ReadInt32();
@@ -815,7 +814,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             switch (resourceReferences[i][p].resource_type)
                                             {
                                                 case ResourceType.RENDERABLE_INSTANCE:
-                                                    int redsIndex = resourceReferences[i][p].RenderableInstance.Count == 0 ? -1 : reds.GetWriteIndex(resourceReferences[i][p].RenderableInstance[0]);
+                                                    int redsIndex = reds.GetWriteIndex(resourceReferences[i][p].RenderableInstance);
                                                     writer.Write(redsIndex == -1 ? 0 : redsIndex);
                                                     writer.Write(resourceReferences[i][p].RenderableInstance.Count);
                                                     break;

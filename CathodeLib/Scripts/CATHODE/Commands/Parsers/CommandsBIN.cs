@@ -456,8 +456,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         case ResourceType.RENDERABLE_INSTANCE:
                                             int redsIndex = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
                                             int redsCount = Utilities.Consume<int>(reader, command_entries[i + 5].Item2);
-                                            for (int z = 0; z < redsCount; z++)
-                                                resource.RenderableInstance.Add(reds.GetAtWriteIndex(redsIndex + z));
+                                            resource.RenderableInstance = reds.GetAtWriteIndex(redsIndex, redsCount);
                                             break;
                                         case ResourceType.COLLISION_MAPPING:
                                             int colIndex = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
@@ -1018,11 +1017,12 @@ namespace CATHODE.Scripting.Internal.Parsers
             writer.Write((uint)resource.resource_type);
             commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
 
+            //todo: not doing the same 'min of zero' thing i'm doing in the pak parser - am i right doing it there?
             switch (resource.resource_type)
             {
                 case ResourceType.RENDERABLE_INSTANCE:
                     offset = (int)writer.BaseStream.Position;
-                    writer.Write(resource.RenderableInstance.Count == 0 ? -1 : reds.GetWriteIndex(resource.RenderableInstance[0]));
+                    writer.Write(reds.GetWriteIndex(resource.RenderableInstance));
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
 
                     offset = (int)writer.BaseStream.Position;

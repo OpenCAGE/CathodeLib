@@ -61,11 +61,7 @@ namespace CATHODE
                     mvr.render_constants = Utilities.ConsumeArray<float>(reader, 21);
                     int redsIndex = reader.ReadInt32();
                     int redsCount = reader.ReadInt32();
-                    if (redsIndex != -1)
-                    {
-                        for (int x = 0; x < redsCount; x++)
-                            mvr.renderable_elements.Add(_reds.GetAtWriteIndex(redsIndex + x));
-                    }
+                    mvr.renderable_elements = _reds.GetAtWriteIndex(redsIndex, redsCount);
                     mvr.resource = _resources.GetAtWriteIndex(reader.ReadInt32());
                     reader.BaseStream.Position += 12;
                     mvr.cull_flags = (CullFlag)reader.ReadInt32();
@@ -137,7 +133,7 @@ namespace CATHODE
                 }
                 else
                 {
-                    writer.Write(_reds.GetWriteIndex(entry.renderable_elements[0]));
+                    writer.Write(_reds.GetWriteIndex(entry.renderable_elements));
                     writer.Write(entry.renderable_elements.Count);
                 }
                 writer.Write(_resources.GetWriteIndex(entry.resource));
@@ -200,14 +196,8 @@ namespace CATHODE
 
             MOVER_DESCRIPTOR newMover = mover.Copy();
 
-            for (int i = 0; i < newMover.renderable_elements.Count; i++)
-            {
-                newMover.renderable_elements[i] = _reds.AddEntry(newMover.renderable_elements[i]);
-            }
-            if (newMover.resource != null)
-            {
-                newMover.resource = _resources.AddEntry(newMover.resource);
-            }
+            newMover.renderable_elements = _reds.AddEntry(newMover.renderable_elements);
+            newMover.resource = _resources.AddEntry(newMover.resource);
 
             //todo: do something with entity reference
 
