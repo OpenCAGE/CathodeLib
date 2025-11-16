@@ -147,6 +147,10 @@ namespace CATHODE
 
             //todo: set zone to global?
 
+            var existing = Entries.FirstOrDefault(o => o == newColMap);
+            if (existing != null)
+                return existing;
+
             Entries.Add(newColMap);
             return newColMap;
         }

@@ -5,6 +5,7 @@ using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using static CATHODE.Models;
 using static CATHODE.Shaders;
@@ -301,6 +302,10 @@ namespace CATHODE
         {
             if (texture == null)
                 return null;
+
+            var existing = Entries.FirstOrDefault(o => o == texture);
+            if (existing != null)
+                return existing;
 
             TEX4 newTexture = texture.Copy();
             Entries.Add(newTexture);

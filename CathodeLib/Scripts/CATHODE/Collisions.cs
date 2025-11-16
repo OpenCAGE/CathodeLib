@@ -229,6 +229,10 @@ namespace CATHODE
             if (collision == null)
                 return null;
 
+            var existing = Entries.FirstOrDefault(o => o == collision);
+            if (existing != null)
+                return existing;
+
             WeightedCollision newCollision = collision.Copy();
             Entries.Add(newCollision);
             return newCollision;

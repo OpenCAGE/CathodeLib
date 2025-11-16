@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using CATHODE.Scripting;
 using CathodeLib;
 using CathodeLib.ObjectExtensions;
+using System.Linq;
+
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -204,6 +206,10 @@ namespace CATHODE
             //todo: env map index
 
             //todo: set zone to global?
+
+            var existing = Entries.FirstOrDefault(o => o == newMover);
+            if (existing != null)
+                return existing;
 
             Entries.Add(newMover);
             return newMover;

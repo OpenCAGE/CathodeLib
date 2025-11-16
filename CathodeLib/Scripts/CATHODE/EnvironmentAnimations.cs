@@ -238,6 +238,10 @@ namespace CATHODE
             if (envAnim == null)
                 return null;
 
+            var existing = Entries.FirstOrDefault(o => o == envAnim);
+            if (existing != null)
+                return existing;
+
             EnvironmentAnimation newEnvAnim = envAnim.Copy();
             Entries.Add(newEnvAnim);
             return newEnvAnim;

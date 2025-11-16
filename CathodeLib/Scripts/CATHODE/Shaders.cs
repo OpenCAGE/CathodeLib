@@ -328,6 +328,10 @@ namespace CATHODE
             if (shader == null)
                 return null;
 
+            var existing = Entries.FirstOrDefault(o => o == shader);
+            if (existing != null)
+                return existing;
+
             Shader newShader = shader.Copy();
             Entries.Add(newShader);
             return newShader;

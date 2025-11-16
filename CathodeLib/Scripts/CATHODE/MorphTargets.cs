@@ -137,6 +137,10 @@ namespace CATHODE
             if (morphTarget == null)
                 return null;
 
+            var existing = Entries.FirstOrDefault(o => o == morphTarget);
+            if (existing != null)
+                return existing;
+
             MorphTarget newMorphTarget = morphTarget.Copy();
             Entries.Add(newMorphTarget);
             return newMorphTarget;

@@ -298,11 +298,12 @@ namespace CATHODE
 
                 newMaterial.TextureReferences[i].Texture = _levelTextures.AddEntry(newMaterial.TextureReferences[i].Texture);
             }
-            if (newMaterial.Shader != null)
-            {
-                newMaterial.Shader = _shaders.AddEntry(newMaterial.Shader);
-            }
-            newMaterial.EnvironmentMapIndex = 255; //TEMP! should remap
+            newMaterial.Shader = _shaders.AddEntry(newMaterial.Shader);
+            //newMaterial.EnvironmentMapIndex = 255; //TEMP! should remap
+
+            var existing = Entries.FirstOrDefault(o => o == newMaterial);
+            if (existing != null)
+                return existing;
 
             Entries.Add(newMaterial);
             return newMaterial;

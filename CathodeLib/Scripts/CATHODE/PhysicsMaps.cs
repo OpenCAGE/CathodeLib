@@ -6,6 +6,8 @@ using System;
 using static CATHODE.EnvironmentAnimations;
 using CathodeLib.ObjectExtensions;
 using static CATHODE.CollisionMaps;
+using System.Linq;
+
 
 
 
@@ -169,6 +171,10 @@ namespace CATHODE
         {
             if (physMap == null)
                 return null;
+
+            var existing = Entries.FirstOrDefault(o => o == physMap);
+            if (existing != null)
+                return existing;
 
             Entry newPhysMap = physMap.Copy();
             Entries.Add(newPhysMap);

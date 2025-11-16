@@ -656,6 +656,11 @@ namespace CATHODE
                     }
                 }
             }
+
+            var existing = Entries.FirstOrDefault(o => o == newModel);
+            if (existing != null)
+                return existing;
+
             return newModel;
         }
         #endregion
@@ -833,7 +838,9 @@ namespace CATHODE
                         for (int z = 0; z < Components[i].LODs[x].Submeshes.Count; z++)
                         {
                             if (Components[i].LODs[x].Submeshes[z] == submesh)
+                            {
                                 return Components[i].LODs[x].Submeshes[z];
+                            }
                         }
                     }
                 }

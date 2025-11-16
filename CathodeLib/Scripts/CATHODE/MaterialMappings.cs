@@ -4,6 +4,7 @@ using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using static CATHODE.CollisionMaps;
 
 namespace CATHODE
@@ -120,6 +121,10 @@ namespace CATHODE
         {
             if (matMap == null)
                 return null;
+
+            var existing = Entries.FirstOrDefault(o => o == matMap);
+            if (existing != null)
+                return existing;
 
             MaterialMapping newMatMap = matMap.Copy();
             Entries.Add(newMatMap);
