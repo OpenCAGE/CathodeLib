@@ -638,6 +638,8 @@ namespace CATHODE
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
+        /// 
+        private static int TempMeshCount = 0;
         public CS2.Component.LOD.Submesh AddEntry(CS2.Component.LOD.Submesh model)
         {
             if (model == null)
@@ -666,14 +668,14 @@ namespace CATHODE
             newModel.MorphAnimSet = _morphTargets.AddEntry(newModel.MorphAnimSet);
             Entries.Add(new CS2()
             {
-                Name = "Temporary Mesh",
+                Name = "Temporary Mesh " + TempMeshCount,
                 Components = new List<CS2.Component>()
                 {
                      new CS2.Component()
                      {
                           LODs = new List<CS2.Component.LOD>()
                           {
-                              new CS2.Component.LOD("Temporary Submesh")
+                              new CS2.Component.LOD("Submesh")
                               {
                                    Submeshes = new List<CS2.Component.LOD.Submesh>() { newModel }
                               }
@@ -681,6 +683,7 @@ namespace CATHODE
                      }
                 }
             });
+            TempMeshCount++;
             return newModel;
         }
         #endregion

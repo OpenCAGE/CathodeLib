@@ -249,7 +249,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     resource.entityID = new ShortGuid(reader_parallel);
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
-                                                    resource.AnimatedModel = envAnims.GetAtWriteIndex(reader_parallel.ReadInt32());
+                                                    int animModelIndex = reader_parallel.ReadInt32();
+                                                    resource.AnimatedModel = envAnims.Entries.FirstOrDefault(o => o.ResourceIndex == animModelIndex); //TODO: why is this not write index? we should probs order by this on read
                                                     reader_parallel.BaseStream.Position += 4;
                                                     break;
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
@@ -819,7 +820,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     writer.Write(resourceReferences[i][p].entityID.AsUInt32);
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
-                                                    writer.Write(envAnims.GetWriteIndex(resourceReferences[i][p].AnimatedModel));
+                                                    //writer.Write(envAnims.GetWriteIndex(resourceReferences[i][p].AnimatedModel));
+                                                    writer.Write(resourceReferences[i][p].AnimatedModel.ResourceIndex);
                                                     writer.Write(-1);
                                                     break;
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:

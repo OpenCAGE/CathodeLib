@@ -305,7 +305,7 @@ namespace CATHODE
             newMaterial.EnvironmentMapIndex = 255; //TEMP! should remap
 
             Entries.Add(newMaterial);
-            return material;
+            return newMaterial;
         }
 
         private List<float> ReadCSTData(int offset, int count, BinaryReader reader)

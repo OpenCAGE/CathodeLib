@@ -163,11 +163,10 @@ namespace CATHODE
                 if (newElement.ModelLocation == PakLocation.GLOBAL || newElement.MaterialLocation == PakLocation.GLOBAL)
                     throw new Exception("Unexpected model/material location - GLOBAL is unsupported.");
 
-                if (newElement.Model != null)
-                    newElement.Model = _models.AddEntry(newElement.Model);
-                if (newElement.Material != null)
-                    newElement.Material = _materials.AddEntry(newElement.Material);
+                newElement.Model = _models.AddEntry(newElement.Model);
+                newElement.Material = _materials.AddEntry(newElement.Material);
 
+                newElements.Add(newElement);
                 Entries.Add(newElement);
             }
 
@@ -194,6 +193,7 @@ namespace CATHODE
 
             public List<Element> LODs = new List<Element>();
 
+            //see RenderableElementCache::process_renderable_element_descriptors_for_movers
             public static bool operator ==(Element x, Element y)
             {
                 if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);

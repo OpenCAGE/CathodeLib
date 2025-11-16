@@ -461,7 +461,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             resource.entityID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 5].Item2);
                                             break;
                                         case ResourceType.ANIMATED_MODEL:
-                                            resource.AnimatedModel = envAnims.GetAtWriteIndex(Utilities.Consume<int>(reader, command_entries[i + 4].Item2));
+                                            int animModelIndex = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
+                                            resource.AnimatedModel = envAnims.Entries.FirstOrDefault(o => o.ResourceIndex == animModelIndex);
                                             break;
                                         case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
                                             resource.index = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
@@ -1036,7 +1037,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                     break;
                 case ResourceType.ANIMATED_MODEL:
                     offset = (int)writer.BaseStream.Position;
-                    writer.Write(envAnims.GetWriteIndex(resource.AnimatedModel));
+                    //writer.Write(envAnims.GetWriteIndex(resource.AnimatedModel));
+                    writer.Write(resource.AnimatedModel.ResourceIndex);
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
 
                     offset = (int)writer.BaseStream.Position;

@@ -330,7 +330,7 @@ namespace CATHODE
 
             Shader newShader = shader.Copy();
             Entries.Add(newShader);
-            return shader;
+            return newShader;
         }
         #endregion
 

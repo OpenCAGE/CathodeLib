@@ -142,8 +142,8 @@ namespace CATHODE
 
             COLLISION_MAPPING newColMap = colMap.Copy();
 
-            _materials.AddEntry(newColMap.Material);
-            _materialMaps.AddEntry(newColMap.MaterialMapping);
+            newColMap.Material = _materials.AddEntry(newColMap.Material);
+            newColMap.MaterialMapping = _materialMaps.AddEntry(newColMap.MaterialMapping);
 
             //todo: set zone to global?
 
