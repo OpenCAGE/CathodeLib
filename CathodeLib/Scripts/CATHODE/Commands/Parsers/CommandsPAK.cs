@@ -242,11 +242,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             switch (resource.resource_type)
                                             {
                                                 case ResourceType.RENDERABLE_INSTANCE:
-                                                    //TEMP TEST
-                                                    resource.index = reader_parallel.ReadInt32();
-                                                    resource.count = reader_parallel.ReadInt32();
-                                                    reader_parallel.BaseStream.Position -= 8;
-                                                    resource.RenderableInstance = reds.GetAtWriteIndex(resource.index, resource.count);
+                                                    resource.RenderableInstance = reds.GetAtWriteIndex(reader_parallel.ReadInt32(), reader_parallel.ReadInt32());
                                                     break;
                                                 case ResourceType.COLLISION_MAPPING:
                                                     resource.CollisionMapping = colMaps.GetAtWriteIndex(reader_parallel.ReadInt32());
@@ -814,39 +810,9 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             switch (resourceReferences[i][p].resource_type)
                                             {
                                                 case ResourceType.RENDERABLE_INSTANCE:
-                                                    writer.Write(resourceReferences[i][p].index); 
-                                                    writer.Write(resourceReferences[i][p].count);
-                                                    //int redsIndex = reds.GetWriteIndex(resourceReferences[i][p].RenderableInstance, resourceReferences[i][p].index);
-                                                    //
-                                                    //if (resourceReferences[i][p].index == 24578)
-                                                    //{
-                                                    //    Console.WriteLine("Correcting dodgy entry!");
-                                                    //    redsIndex = resourceReferences[i][p].index;
-                                                    //    resourceReferences[i][p].RenderableInstance.Add(null);
-                                                    //    resourceReferences[i][p].RenderableInstance.Add(null);
-                                                    //}
-                                                    //
-                                                    //writer.Write(redsIndex == -1 ? 0 : redsIndex);
-                                                    //writer.Write(redsIndex == -1 ? 0 : resourceReferences[i][p].RenderableInstance.Count);
-                                                    //
-                                                    //if (resourceReferences[i][p].index != redsIndex)
-                                                    //{
-                                                    //    Console.WriteLine("---------------\n" +
-                                                    //        "Orig Index: " + resourceReferences[i][p].index + "\n" +
-                                                    //        "New Index: " + redsIndex + "\n" +
-                                                    //        "Orig Count: " + resourceReferences[i][p].count + "\n" +
-                                                    //        "New Count:" + resourceReferences[i][p].RenderableInstance.Count);
-                                                    //
-                                                    //    List<RenderableElements.Element> oldOne = reds.GetAtWriteIndex(resourceReferences[i][p].index, resourceReferences[i][p].count);
-                                                    //    List<RenderableElements.Element> newOne = reds.GetAtWriteIndex(redsIndex, resourceReferences[i][p].RenderableInstance.Count);
-                                                    //
-                                                    //    string sdfsdf = "";
-                                                    //}
-                                                    //if (resourceReferences[i][p].count != resourceReferences[i][p].RenderableInstance.Count)
-                                                    //{
-                                                    //    string gsdfgsd = "";
-                                                    //}
-
+                                                    int redsIndex = reds.GetWriteIndex(resourceReferences[i][p].RenderableInstance, resourceReferences[i][p].index);
+                                                    writer.Write(redsIndex == -1 ? 0 : redsIndex);
+                                                    writer.Write(redsIndex == -1 ? 0 : resourceReferences[i][p].RenderableInstance.Count);
                                                     break;
                                                 case ResourceType.COLLISION_MAPPING:
                                                     writer.Write(colMaps.GetWriteIndex(resourceReferences[i][p].CollisionMapping));

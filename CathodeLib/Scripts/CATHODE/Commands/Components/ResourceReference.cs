@@ -83,7 +83,6 @@ namespace CATHODE.Scripting
         public ResourceType resource_type;
 
         public int index = 0; // THIS IS TEMP! I'm struggling to look up the DynamicPhysicsSystem object, so just saving the old index for now. Need to look into that.
-        public int count = 0;
 
         public EnvironmentAnimations.EnvironmentAnimation AnimatedModel = null; //ANIMATED_MODEL
         public CollisionMaps.COLLISION_MAPPING CollisionMapping = null; //COLLISION_MAPPING

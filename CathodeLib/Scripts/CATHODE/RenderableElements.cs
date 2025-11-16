@@ -138,7 +138,7 @@ namespace CATHODE
         /// </summary>
         public List<Element> GetAtWriteIndex(int index, int count)
         {
-            if (_writeList.Count <= index + count || index < 0) 
+            if (_writeList.Count < index + count || index < 0) 
                 return new List<Element>();
 
             List<Element> elements = new List<Element>();
