@@ -101,12 +101,15 @@ namespace CATHODE
         /// Get the current write index (useful for cross-ref'ing with compiled binaries)
         /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>
-        public int GetWriteIndex(List<Element> element)
+        public int GetWriteIndex(List<Element> element, int greaterThan = 0)
         {
             if (element == null || element.Count == 0)
                 return -1;
 
-            for (int i = 0; i < Entries.Count; i++)
+            if (greaterThan >= Entries.Count)
+                return -1;
+
+            for (int i = greaterThan; i < Entries.Count; i++)
             {
                 if (Entries[i] != element[0])
                     continue;
