@@ -37,5 +37,32 @@ namespace CATHODE
             writer.Write((Int16)(Location == Source.LEVEL ? texturesLevel.GetWriteIndex(Texture) : texturesGlobal.GetWriteIndex(Texture)));
             writer.Write((Int16)Location);
         }
+
+        public static bool operator ==(TexturePtr x, TexturePtr y)
+        {
+            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+            if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+            if (!ReferenceEquals(x.Texture, y.Texture)) return false;
+            if (x.Location != y.Location) return false;
+            return true;
+        }
+
+        public static bool operator !=(TexturePtr x, TexturePtr y)
+        {
+            return !(x == y);
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is TexturePtr ptr && this == ptr;
+        }
+
+        public override int GetHashCode()
+        {
+            int hashCode = -1234567890;
+            hashCode = hashCode * -1521134295 + (Texture?.GetHashCode() ?? 0);
+            hashCode = hashCode * -1521134295 + Location.GetHashCode();
+            return hashCode;
+        }
     };
 }

@@ -132,10 +132,76 @@ namespace CATHODE
             public string Name;
             public List<Mapping> Mappings = new List<Mapping>();
 
+            public static bool operator ==(MaterialMapping x, MaterialMapping y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+                if (x.Name != y.Name) return false;
+                if (!ListsEqual(x.Mappings, y.Mappings)) return false;
+                return true;
+            }
+
+            public static bool operator !=(MaterialMapping x, MaterialMapping y)
+            {
+                return !(x == y);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is MaterialMapping mapping && this == mapping;
+            }
+
+            public override int GetHashCode()
+            {
+                int hashCode = -1234567890;
+                hashCode = hashCode * -1521134295 + (Name?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + (Mappings?.GetHashCode() ?? 0);
+                return hashCode;
+            }
+
+            private static bool ListsEqual(List<Mapping> x, List<Mapping> y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return false;
+                if (x.Count != y.Count) return false;
+                for (int i = 0; i < x.Count; i++)
+                {
+                    if (x[i] != y[i]) return false;
+                }
+                return true;
+            }
+
             public class Mapping
             {
                 public string from;
                 public string to;
+
+                public static bool operator ==(Mapping x, Mapping y)
+                {
+                    if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                    if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+                    if (x.from != y.from) return false;
+                    if (x.to != y.to) return false;
+                    return true;
+                }
+
+                public static bool operator !=(Mapping x, Mapping y)
+                {
+                    return !(x == y);
+                }
+
+                public override bool Equals(object obj)
+                {
+                    return obj is Mapping mapping && this == mapping;
+                }
+
+                public override int GetHashCode()
+                {
+                    int hashCode = -1234567890;
+                    hashCode = hashCode * -1521134295 + (from?.GetHashCode() ?? 0);
+                    hashCode = hashCode * -1521134295 + (to?.GetHashCode() ?? 0);
+                    return hashCode;
+                }
 
                 public override string ToString()
                 {

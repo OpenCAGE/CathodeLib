@@ -339,6 +339,69 @@ namespace CATHODE
 
             public int Priority; 
 
+            public static bool operator ==(Material x, Material y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+                if (x.Name != y.Name) return false;
+                if (!ListsEqual(x.TextureReferences, y.TextureReferences)) return false;
+                if (!ListsEqual(x.EngineConstants, y.EngineConstants)) return false;
+                if (!ListsEqual(x.VertexShaderConstants, y.VertexShaderConstants)) return false;
+                if (!ListsEqual(x.PixelShaderConstants, y.PixelShaderConstants)) return false;
+                if (!ListsEqual(x.HullShaderConstants, y.HullShaderConstants)) return false;
+                if (!ListsEqual(x.DomainShaderConstants, y.DomainShaderConstants)) return false;
+                if (!ReferenceEquals(x.OfflineLightFeatures, y.OfflineLightFeatures))
+                {
+                    if (x.OfflineLightFeatures == null || y.OfflineLightFeatures == null) return false;
+                    if (x.OfflineLightFeatures != y.OfflineLightFeatures) return false;
+                }
+                if (!ReferenceEquals(x.Shader, y.Shader)) return false;
+                if (x.PhysicalMaterialIndex != y.PhysicalMaterialIndex) return false;
+                if (x.EnvironmentMapIndex != y.EnvironmentMapIndex) return false;
+                if (x.Priority != y.Priority) return false;
+                return true;
+            }
+
+            public static bool operator !=(Material x, Material y)
+            {
+                return !(x == y);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is Material material && this == material;
+            }
+
+            public override int GetHashCode()
+            {
+                int hashCode = -1234567890;
+                hashCode = hashCode * -1521134295 + (Name?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + (TextureReferences?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + (EngineConstants?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + (VertexShaderConstants?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + (PixelShaderConstants?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + (HullShaderConstants?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + (DomainShaderConstants?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + (OfflineLightFeatures?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + (Shader?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + PhysicalMaterialIndex.GetHashCode();
+                hashCode = hashCode * -1521134295 + EnvironmentMapIndex.GetHashCode();
+                hashCode = hashCode * -1521134295 + Priority.GetHashCode();
+                return hashCode;
+            }
+
+            private static bool ListsEqual<T>(List<T> x, List<T> y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return false;
+                if (x.Count != y.Count) return false;
+                for (int i = 0; i < x.Count; i++)
+                {
+                    if (!EqualityComparer<T>.Default.Equals(x[i], y[i])) return false;
+                }
+                return true;
+            }
+
             public override string ToString()
             {
                 return Name;
@@ -455,6 +518,28 @@ namespace CATHODE
                 int mask = 1 << (position + 8);
                 if (value) flags |= mask;
                 else flags &= ~mask;
+            }
+
+            public static bool operator ==(LightFlags x, LightFlags y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+                return x.flags == y.flags;
+            }
+
+            public static bool operator !=(LightFlags x, LightFlags y)
+            {
+                return !(x == y);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is LightFlags flags && this == flags;
+            }
+
+            public override int GetHashCode()
+            {
+                return flags.GetHashCode();
             }
 
             private int flags = 0;

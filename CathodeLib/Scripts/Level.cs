@@ -85,8 +85,7 @@ namespace CathodeLib
                 () => WeightedCollisions = new Collisions(path + "/WORLD/COLLISION.BIN"),
                 () => MorphTargetDB = new MorphTargets(path + "/WORLD/MORPH_TARGET_DB.BIN"),
                 () => Resources = new Resources(path + "/WORLD/RESOURCES.BIN"),
-                () => MaterialMaps = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK"),
-                () => PhysicsMaps = new PhysicsMaps(path + "/WORLD/PHYSICS.MAP")
+                () => MaterialMaps = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK")
             );
 
             Materials = new Materials(path + "/RENDERABLE/LEVEL_MODELS.MTL", Global.Textures, Textures, Shaders);
@@ -98,17 +97,17 @@ namespace CathodeLib
                 () => EnvironmentMaps = new EnvironmentMaps(path + "/WORLD/ENVIRONMENTMAP.BIN", Movers),
                 () => PathBarrierResources = new PathBarrierResources(path + "/WORLD/PATH_BARRIER_RESOURCES", Resources),
                 () => SoundFlashModels = new SoundFlashModels(path + "/WORLD/SOUNDFLASHMODELS.DAT", Global.Textures, Textures),
-                () => CollisionMaps = new CollisionMaps(path + "/WORLD/COLLISION.MAP", Materials, MaterialMaps),
-                () => EnvironmentAnimations = new EnvironmentAnimations(path + "/WORLD/ENVIRONMENT_ANIMATION.DAT", global.AnimationStrings_Debug)
+                () => CollisionMaps = new CollisionMaps(path + "/WORLD/COLLISION.MAP", Materials, MaterialMaps)
             );
 
             Parallel.Invoke(
-                () => Commands = new Commands(path + "/WORLD/COMMANDS" + (File.Exists(path + "/WORLD/COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, PhysicsMaps, RenderableElements),
                 () => RadInstanceMap = new RadiosityInstanceMap(path + "/RENDERABLE/RADIOSITY_INSTANCE_MAP.TXT"),
                 () => AlphaLight = new AlphaLightLevel(path + "/WORLD/ALPHALIGHT_LEVEL.BIN"),
                 () => AccessorySets = new CharacterAccessorySets(path + "/WORLD/CHARACTERACCESSORYSETS.BIN"),
+                () => EnvironmentAnimations = new EnvironmentAnimations(path + "/WORLD/ENVIRONMENT_ANIMATION.DAT", global.AnimationStrings_Debug),
                 () => Lights = new Lights(path + "/WORLD/LIGHTS.BIN"),
                 () => MaterialMappings = new MaterialMappings(path + "/WORLD/MATERIAL_MAPPINGS.PAK"),
+                () => PhysicsMaps = new PhysicsMaps(path + "/WORLD/PHYSICS.MAP"),
                 () => SoundNodeNetwork = new SoundNodeNetwork(path + "/WORLD/SNDNODENETWORK.DAT"),
                 () => SoundBankData = new SoundBankData(path + "/WORLD/SOUNDBANKDATA.DAT"),
                 () => SoundDialogueLookups = new SoundDialogueLookups(path + "/WORLD/SOUNDDIALOGUELOOKUPS.DAT"),
@@ -116,6 +115,8 @@ namespace CathodeLib
                 () => SoundEventData = new SoundEventData(path + "/WORLD/SOUNDEVENTDATA.DAT"),
                 () => SoundLoadZones = new SoundLoadZones(path + "/WORLD/SOUNDLOADZONES.DAT")
             );
+
+            Commands = new Commands(path + "/WORLD/COMMANDS" + (File.Exists(path + "/WORLD/COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, PhysicsMaps, RenderableElements);
 
             //RENDERABLE/DAMAGE/*
             //RENDERABLE/GALAXY/*
@@ -196,32 +197,31 @@ namespace CathodeLib
                 () => Shaders.Save(),
                 () => WeightedCollisions.Save(),
                 () => MorphTargetDB.Save(),
-                () => MaterialMaps.Save(),
-                () => PhysicsMaps.Save()
+                () => MaterialMaps.Save()
             );
 
             Materials.Save();
 
             Parallel.Invoke(
                 () => Models.Save(),
-                () => Resources.Save(),
-                () => CollisionMaps.Save(),
-                () => EnvironmentAnimations.Save()
+                () => Resources.Save()
             );
 
             RenderableElements.Save();
             Movers.Save();
 
             Parallel.Invoke(
-                () => Commands.Save(),
                 () => EnvironmentMaps.Save(),
                 () => PathBarrierResources.Save(),
                 () => SoundFlashModels.Save(),
+                () => CollisionMaps.Save(),
                 () => RadInstanceMap.Save(),
                 () => AlphaLight.Save(),
                 () => AccessorySets.Save(),
+                () => EnvironmentAnimations.Save(),
                 () => Lights.Save(),
                 () => MaterialMappings.Save(),
+                () => PhysicsMaps.Save(),
                 () => SoundNodeNetwork.Save(),
                 () => SoundBankData.Save(),
                 () => SoundDialogueLookups.Save(),
@@ -229,6 +229,8 @@ namespace CathodeLib
                 () => SoundEventData.Save(),
                 () => SoundLoadZones.Save()
             );
+
+            Commands.Save();
 
             //TODO: save states
 

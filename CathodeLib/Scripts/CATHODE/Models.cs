@@ -907,6 +907,90 @@ namespace CATHODE
 
                         public byte[] Data = new byte[0];
 
+                        public static bool operator ==(Submesh x, Submesh y)
+                        {
+                            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                            if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                            if (x.MinBounds != y.MinBounds) return false;
+                            if (x.MaxBounds != y.MaxBounds) return false;
+#else
+                            if (x.MinBounds.X != y.MinBounds.X || x.MinBounds.Y != y.MinBounds.Y || x.MinBounds.Z != y.MinBounds.Z) return false;
+                            if (x.MaxBounds.X != y.MaxBounds.X || x.MaxBounds.Y != y.MaxBounds.Y || x.MaxBounds.Z != y.MaxBounds.Z) return false;
+#endif
+                            if (x.MinLODRange != y.MinLODRange) return false;
+                            if (x.MaxLODRange != y.MaxLODRange) return false;
+                            if (x.RenderFlags != y.RenderFlags) return false;
+                            if (!ReferenceEquals(x.Material, y.Material)) return false;
+                            if (x.CollisionProxyIndex != y.CollisionProxyIndex) return false;
+                            if (!ReferenceEquals(x.WeightedCollision, y.WeightedCollision)) return false;
+                            if (!ReferenceEquals(x.MorphAnimSet, y.MorphAnimSet)) return false;
+                            if (x.VertexFormatFull != y.VertexFormatFull) return false;
+                            if (x.VertexFormatPartial != y.VertexFormatPartial) return false;
+                            if (x.VertexScale != y.VertexScale) return false;
+                            if (x.VertexCount != y.VertexCount) return false;
+                            if (x.IndexCount != y.IndexCount) return false;
+                            if (!ListsEqual(x.Bones, y.Bones)) return false;
+                            if (!ArraysEqual(x.Data, y.Data)) return false;
+                            return true;
+                        }
+
+                        public static bool operator !=(Submesh x, Submesh y)
+                        {
+                            return !(x == y);
+                        }
+
+                        public override bool Equals(object obj)
+                        {
+                            return obj is Submesh submesh && this == submesh;
+                        }
+
+                        public override int GetHashCode()
+                        {
+                            int hashCode = -1234567890;
+                            hashCode = hashCode * -1521134295 + MinBounds.GetHashCode();
+                            hashCode = hashCode * -1521134295 + MaxBounds.GetHashCode();
+                            hashCode = hashCode * -1521134295 + MinLODRange.GetHashCode();
+                            hashCode = hashCode * -1521134295 + MaxLODRange.GetHashCode();
+                            hashCode = hashCode * -1521134295 + RenderFlags.GetHashCode();
+                            hashCode = hashCode * -1521134295 + (Material?.GetHashCode() ?? 0);
+                            hashCode = hashCode * -1521134295 + CollisionProxyIndex.GetHashCode();
+                            hashCode = hashCode * -1521134295 + (WeightedCollision?.GetHashCode() ?? 0);
+                            hashCode = hashCode * -1521134295 + (MorphAnimSet?.GetHashCode() ?? 0);
+                            hashCode = hashCode * -1521134295 + VertexFormatFull.GetHashCode();
+                            hashCode = hashCode * -1521134295 + VertexFormatPartial.GetHashCode();
+                            hashCode = hashCode * -1521134295 + VertexScale.GetHashCode();
+                            hashCode = hashCode * -1521134295 + VertexCount.GetHashCode();
+                            hashCode = hashCode * -1521134295 + IndexCount.GetHashCode();
+                            hashCode = hashCode * -1521134295 + (Bones?.GetHashCode() ?? 0);
+                            hashCode = hashCode * -1521134295 + (Data?.GetHashCode() ?? 0);
+                            return hashCode;
+                        }
+
+                        private static bool ListsEqual(List<int> x, List<int> y)
+                        {
+                            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                            if (ReferenceEquals(y, null)) return false;
+                            if (x.Count != y.Count) return false;
+                            for (int i = 0; i < x.Count; i++)
+                            {
+                                if (x[i] != y[i]) return false;
+                            }
+                            return true;
+                        }
+
+                        private static bool ArraysEqual(byte[] x, byte[] y)
+                        {
+                            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                            if (ReferenceEquals(y, null)) return false;
+                            if (x.Length != y.Length) return false;
+                            for (int i = 0; i < x.Length; i++)
+                            {
+                                if (x[i] != y[i]) return false;
+                            }
+                            return true;
+                        }
+
                         ~Submesh()
                         {
                             Bones.Clear();

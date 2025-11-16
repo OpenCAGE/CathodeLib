@@ -161,6 +161,54 @@ namespace CATHODE
 
             public List<Element> LODs = new List<Element>();
 
+            public static bool operator ==(Element x, Element y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+                if (x.ModelLocation != y.ModelLocation) return false;
+                if (!ReferenceEquals(x.Model, y.Model)) return false;
+                if (x.ModelSubplatformDependent != y.ModelSubplatformDependent) return false;
+                if (x.MaterialLocation != y.MaterialLocation) return false;
+                if (!ReferenceEquals(x.Material, y.Material)) return false;
+                if (x.MaterialSubplatformDependent != y.MaterialSubplatformDependent) return false;
+                if (!ListsEqual(x.LODs, y.LODs)) return false;
+                return true;
+            }
+
+            public static bool operator !=(Element x, Element y)
+            {
+                return !(x == y);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is Element element && this == element;
+            }
+
+            public override int GetHashCode()
+            {
+                int hashCode = -1234567890;
+                hashCode = hashCode * -1521134295 + ModelLocation.GetHashCode();
+                hashCode = hashCode * -1521134295 + (Model?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + ModelSubplatformDependent.GetHashCode();
+                hashCode = hashCode * -1521134295 + MaterialLocation.GetHashCode();
+                hashCode = hashCode * -1521134295 + (Material?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + MaterialSubplatformDependent.GetHashCode();
+                hashCode = hashCode * -1521134295 + (LODs?.GetHashCode() ?? 0);
+                return hashCode;
+            }
+
+            private static bool ListsEqual(List<Element> x, List<Element> y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return false;
+                if (x.Count != y.Count) return false;
+                for (int i = 0; i < x.Count; i++)
+                {
+                    if (x[i] != y[i]) return false;
+                }
+                return true;
+            }
         }
         #endregion
     }

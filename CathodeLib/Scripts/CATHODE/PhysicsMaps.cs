@@ -195,6 +195,46 @@ namespace CATHODE
             //This is the worldspace position of the composite instance
             public Vector3 Position;
             public Quaternion Rotation;
+
+            public static bool operator ==(Entry x, Entry y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+                if (x.physics_system_index != y.physics_system_index) return false;
+                if (x.resource_type != y.resource_type) return false;
+                if (x.composite_instance_id != y.composite_instance_id) return false;
+                if (x.entity != y.entity) return false;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                if (x.Position != y.Position) return false;
+                if (x.Rotation != y.Rotation) return false;
+#else
+                if (x.Position.X != y.Position.X || x.Position.Y != y.Position.Y || x.Position.Z != y.Position.Z) return false;
+                if (x.Rotation.X != y.Rotation.X || x.Rotation.Y != y.Rotation.Y || x.Rotation.Z != y.Rotation.Z || x.Rotation.W != y.Rotation.W) return false;
+#endif
+                return true;
+            }
+
+            public static bool operator !=(Entry x, Entry y)
+            {
+                return !(x == y);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is Entry entry && this == entry;
+            }
+
+            public override int GetHashCode()
+            {
+                int hashCode = -1234567890;
+                hashCode = hashCode * -1521134295 + physics_system_index.GetHashCode();
+                hashCode = hashCode * -1521134295 + resource_type.GetHashCode();
+                hashCode = hashCode * -1521134295 + composite_instance_id.GetHashCode();
+                hashCode = hashCode * -1521134295 + EqualityComparer<EntityHandle>.Default.GetHashCode(entity);
+                hashCode = hashCode * -1521134295 + Position.GetHashCode();
+                hashCode = hashCode * -1521134295 + Rotation.GetHashCode();
+                return hashCode;
+            }
         };
         #endregion
     }

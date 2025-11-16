@@ -815,7 +815,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             switch (resourceReferences[i][p].resource_type)
                                             {
                                                 case ResourceType.RENDERABLE_INSTANCE:
-                                                    writer.Write(resourceReferences[i][p].RenderableInstance.Count == 0 ? -1 : reds.GetWriteIndex(resourceReferences[i][p].RenderableInstance[0]));
+                                                    int redsIndex = resourceReferences[i][p].RenderableInstance.Count == 0 ? -1 : reds.GetWriteIndex(resourceReferences[i][p].RenderableInstance[0]);
+                                                    writer.Write(redsIndex == -1 ? 0 : redsIndex);
                                                     writer.Write(resourceReferences[i][p].RenderableInstance.Count);
                                                     break;
                                                 case ResourceType.COLLISION_MAPPING:
@@ -823,11 +824,13 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     writer.Write(resourceReferences[i][p].entityID.AsUInt32);
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
-                                                    writer.Write(envAnims.GetWriteIndex(resourceReferences[i][p].AnimatedModel));
+                                                    int animIndex = envAnims.GetWriteIndex(resourceReferences[i][p].AnimatedModel);
+                                                    writer.Write(animIndex == -1 ? 0 : animIndex);
                                                     writer.Write(-1);
                                                     break;
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                    writer.Write(physMaps.GetWriteIndex(resourceReferences[i][p].DynamicPhysicsSystem));
+                                                    int physIndex = physMaps.GetWriteIndex(resourceReferences[i][p].DynamicPhysicsSystem);
+                                                    writer.Write(physIndex == 0 ? 0 : physIndex);
                                                     writer.Write(-1);
                                                     break;
                                                 case ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
