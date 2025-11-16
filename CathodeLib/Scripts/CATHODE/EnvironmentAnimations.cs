@@ -271,7 +271,7 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class EnvironmentAnimation
+        public class EnvironmentAnimation : IEquatable<EnvironmentAnimation>
         {
             public string SkeletonName; //we write this using AnimationHashedString
             public int ResourceIndex; //This matches the ANIMATED_MODEL resource reference
@@ -318,6 +318,11 @@ namespace CATHODE
                 return !(x == y);
             }
 
+            public bool Equals(EnvironmentAnimation other)
+            {
+                return this == other;
+            }
+
             public override bool Equals(object obj)
             {
                 return obj is EnvironmentAnimation anim && this == anim;
@@ -350,7 +355,7 @@ namespace CATHODE
             }
 
             [StructLayout(LayoutKind.Sequential, Pack = 1)]
-            public struct Info
+            public struct Info : IEquatable<Info>
             {
                 public ShortGuid ID; //id is only found in this file
                 public Vector3 P;
@@ -375,6 +380,11 @@ namespace CATHODE
                 public static bool operator !=(Info x, Info y)
                 {
                     return !(x == y);
+                }
+
+                public bool Equals(Info other)
+                {
+                    return this == other;
                 }
 
                 public override bool Equals(object obj)

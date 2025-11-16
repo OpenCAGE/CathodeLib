@@ -5,7 +5,7 @@ using System.Text;
 
 namespace CATHODE
 {
-    public class TexturePtr
+    public class TexturePtr : IEquatable<TexturePtr>
     {
         public Textures.TEX4 Texture = null;
         public Source Location = Source.NONE;
@@ -50,6 +50,11 @@ namespace CATHODE
         public static bool operator !=(TexturePtr x, TexturePtr y)
         {
             return !(x == y);
+        }
+
+        public bool Equals(TexturePtr other)
+        {
+            return this == other;
         }
 
         public override bool Equals(object obj)

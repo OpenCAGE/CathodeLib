@@ -319,7 +319,7 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class Material
+        public class Material : IEquatable<Material>
         {
             public string Name;
 
@@ -367,6 +367,11 @@ namespace CATHODE
                 return !(x == y);
             }
 
+            public bool Equals(Material other)
+            {
+                return this == other;
+            }
+
             public override bool Equals(object obj)
             {
                 return obj is Material material && this == material;
@@ -408,7 +413,7 @@ namespace CATHODE
             }
         }
 
-        public class LightFlags
+        public class LightFlags : IEquatable<LightFlags>
         {
             //Light type
             public LightType Type
@@ -530,6 +535,11 @@ namespace CATHODE
             public static bool operator !=(LightFlags x, LightFlags y)
             {
                 return !(x == y);
+            }
+
+            public bool Equals(LightFlags other)
+            {
+                return this == other;
             }
 
             public override bool Equals(object obj)

@@ -149,7 +149,7 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class Element
+        public class Element : IEquatable<Element>
         {
             public PakLocation ModelLocation = PakLocation.LEVEL;
             public Models.CS2.Component.LOD.Submesh Model = null;
@@ -178,6 +178,11 @@ namespace CATHODE
             public static bool operator !=(Element x, Element y)
             {
                 return !(x == y);
+            }
+
+            public bool Equals(Element other)
+            {
+                return this == other;
             }
 
             public override bool Equals(object obj)

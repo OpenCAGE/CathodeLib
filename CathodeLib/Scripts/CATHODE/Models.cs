@@ -881,7 +881,7 @@ namespace CATHODE
                         IS_GLOBAL_PACK = 1 << (27 + PakLocation.GLOBAL)
                     };
 
-                    public class Submesh
+                    public class Submesh : IEquatable<Submesh>
                     {
                         public Vector3 MinBounds = new Vector3(-1, -1, -1);
                         public Vector3 MaxBounds = new Vector3(1, 1, 1);
@@ -938,6 +938,11 @@ namespace CATHODE
                         public static bool operator !=(Submesh x, Submesh y)
                         {
                             return !(x == y);
+                        }
+
+                        public bool Equals(Submesh other)
+                        {
+                            return this == other;
                         }
 
                         public override bool Equals(object obj)

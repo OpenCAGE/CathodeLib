@@ -153,7 +153,7 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class COLLISION_MAPPING
+        public class COLLISION_MAPPING : IEquatable<COLLISION_MAPPING>
         {
             public CollisionFlags Flags = 0;
             public int Index = -1; //Compound shape index for static and ballistic collision 
@@ -180,6 +180,11 @@ namespace CATHODE
             public static bool operator !=(COLLISION_MAPPING x, COLLISION_MAPPING y)
             {
                 return !(x == y);
+            }
+
+            public bool Equals(COLLISION_MAPPING other)
+            {
+                return this == other;
             }
 
             public override bool Equals(object obj)

@@ -177,7 +177,7 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class Entry
+        public class Entry : IEquatable<Entry>
         {
             //Should match system_index on the PhysicsSystem entity.
             public int physics_system_index; // the proxy index for the system to clone
@@ -217,6 +217,11 @@ namespace CATHODE
             public static bool operator !=(Entry x, Entry y)
             {
                 return !(x == y);
+            }
+
+            public bool Equals(Entry other)
+            {
+                return this == other;
             }
 
             public override bool Equals(object obj)

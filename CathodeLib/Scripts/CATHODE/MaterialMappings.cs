@@ -127,7 +127,7 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class MaterialMapping
+        public class MaterialMapping : IEquatable<MaterialMapping>
         {
             public string Name;
             public List<Mapping> Mappings = new List<Mapping>();
@@ -144,6 +144,11 @@ namespace CATHODE
             public static bool operator !=(MaterialMapping x, MaterialMapping y)
             {
                 return !(x == y);
+            }
+
+            public bool Equals(MaterialMapping other)
+            {
+                return this == other;
             }
 
             public override bool Equals(object obj)
@@ -171,7 +176,7 @@ namespace CATHODE
                 return true;
             }
 
-            public class Mapping
+            public class Mapping : IEquatable<Mapping>
             {
                 public string from;
                 public string to;
@@ -188,6 +193,11 @@ namespace CATHODE
                 public static bool operator !=(Mapping x, Mapping y)
                 {
                     return !(x == y);
+                }
+
+                public bool Equals(Mapping other)
+                {
+                    return this == other;
                 }
 
                 public override bool Equals(object obj)
