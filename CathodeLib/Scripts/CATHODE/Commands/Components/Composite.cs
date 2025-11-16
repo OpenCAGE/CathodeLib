@@ -113,12 +113,14 @@ namespace CATHODE.Scripting
                     func = new FunctionEntity(function);
                     break;
             }
-            functions_dictionary.Add(func.shortGUID, func);
-            return func;
+            return AddFunction(func);
         }
         public FunctionEntity AddFunction(Composite composite)
         {
-            FunctionEntity func = new FunctionEntity(composite);
+            return AddFunction(new FunctionEntity(composite));
+        }
+        public FunctionEntity AddFunction(FunctionEntity func)
+        {
             functions_dictionary.Add(func.shortGUID, func);
             return func;
         }
@@ -128,7 +130,10 @@ namespace CATHODE.Scripting
         /// </summary>
         public VariableEntity AddVariable(string parameter, DataType type)
         {
-            VariableEntity vari = new VariableEntity(parameter, type);
+            return AddVariable(new VariableEntity(parameter, type));
+        }
+        public VariableEntity AddVariable(VariableEntity vari)
+        {
             variables_dictionary.Add(vari.shortGUID, vari);
             return vari;
         }
@@ -145,6 +150,10 @@ namespace CATHODE.Scripting
             if (pointedEnt?.variant != EntityVariant.FUNCTION)
                 return null; //Proxies must point to a FunctionEntity!
             proxy.function = ((FunctionEntity)pointedEnt).function;
+            return AddProxy(proxy);
+        }
+        public ProxyEntity AddProxy(ProxyEntity proxy)
+        {
             proxies_dictionary.Add(proxy.shortGUID, proxy);
             return proxy;
         }
@@ -154,7 +163,10 @@ namespace CATHODE.Scripting
         /// </summary>
         public AliasEntity AddAlias(ShortGuid[] hierarchy)
         {
-            AliasEntity alias = new AliasEntity(hierarchy);
+            return AddAlias(new AliasEntity(hierarchy));
+        }
+        public AliasEntity AddAlias(AliasEntity alias)
+        {
             aliases_dictionary.Add(alias.shortGUID, alias);
             return alias;
         }
