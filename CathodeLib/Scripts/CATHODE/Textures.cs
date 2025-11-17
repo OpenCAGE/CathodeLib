@@ -47,6 +47,8 @@ namespace CATHODE
                 if ((FileIdentifiers)bin.ReadInt32() != FileIdentifiers.TEXTURE_DATA)
                     return false;
                 int entryCount = bin.ReadInt32();
+                if (entryCount == 0)
+                    return true;
                 int headerListBegin = bin.ReadInt32();
 
                 //Read all file names from BIN and create texture entry
