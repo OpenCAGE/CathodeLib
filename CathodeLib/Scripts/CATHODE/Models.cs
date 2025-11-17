@@ -37,7 +37,6 @@ namespace CATHODE
         }
 
         private List<CS2.Component.LOD.Submesh> _writeList = new List<CS2.Component.LOD.Submesh>();
-        private string _filepathBIN;
 
         ~Models()
         {
@@ -55,14 +54,14 @@ namespace CATHODE
             if (_filepath == "")
                 return false;
 
-            _filepathBIN = _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "MODELS_" + Path.GetFileName(_filepath).Substring(0, Path.GetFileName(_filepath).Length - 11) + ".BIN";
-
-            if (!File.Exists(_filepathBIN)) return false;
+            string filepathBIN = GetBinPath();
+            if (!File.Exists(filepathBIN)) 
+                return false;
 
             List<string> filenameList = new List<string>();
             List<string> meshNameList = new List<string>();
             List<int> LODs = new List<int>();
-            using (BinaryReader bin = new BinaryReader(File.OpenRead(_filepathBIN)))
+            using (BinaryReader bin = new BinaryReader(File.OpenRead(filepathBIN)))
             {
                 bin.BaseStream.Position += 4; //Magic
                 int modelCount = bin.ReadInt32();
@@ -265,7 +264,7 @@ namespace CATHODE
                 }
             }
 
-            using (BinaryWriter bin = new BinaryWriter(File.OpenWrite(_filepathBIN)))
+            using (BinaryWriter bin = new BinaryWriter(File.OpenWrite(GetBinPath())))
             {
                 bin.BaseStream.SetLength(0);
                 _writeList.Clear();
@@ -566,6 +565,11 @@ namespace CATHODE
                 byte[] buffer = stream.ToArray();
                 return (buffer, buffer.Length);
             }
+        }
+
+        private string GetBinPath()
+        {
+            return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "MODELS_" + Path.GetFileName(_filepath).Substring(0, Path.GetFileName(_filepath).Length - 11) + ".BIN";
         }
         #endregion
 

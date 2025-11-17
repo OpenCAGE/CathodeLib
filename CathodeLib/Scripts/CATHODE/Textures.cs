@@ -23,7 +23,6 @@ namespace CATHODE
         public Textures(string path) : base(path) { }
 
         public List<TEX4> _writeList = new List<TEX4>();
-        private string _filepathBIN;
 
         ~Textures()
         {
@@ -38,14 +37,11 @@ namespace CATHODE
             if (_filepath == "")
                 return false;
 
-            if (Path.GetFileName(_filepath).Substring(0, 5).ToUpper() != "LEVEL")
-                _filepathBIN = _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "GLOBAL_TEXTURES_HEADERS.ALL.BIN";
-            else
-                _filepathBIN = _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "LEVEL_TEXTURE_HEADERS.ALL.BIN";
+            string filepathBIN = GetBinPath();
+            if (!File.Exists(filepathBIN)) 
+                return false;
 
-            if (!File.Exists(_filepathBIN)) return false;
-
-            using (BinaryReader bin = new BinaryReader(File.OpenRead(_filepathBIN)))
+            using (BinaryReader bin = new BinaryReader(File.OpenRead(filepathBIN)))
             {
                 //Read the header info from the BIN
                 if ((FileIdentifiers)bin.ReadInt32() != FileIdentifiers.TEXTURE_DATA)
@@ -125,7 +121,7 @@ namespace CATHODE
         {
             //Write BIN file
             _writeList.Clear();
-            using (BinaryWriter bin = new BinaryWriter(File.OpenWrite(_filepathBIN)))
+            using (BinaryWriter bin = new BinaryWriter(File.OpenWrite(GetBinPath())))
             {
                 bin.BaseStream.SetLength(0);
                 bin.Write(new byte[12]);
@@ -271,6 +267,14 @@ namespace CATHODE
                 writer.Write(new byte[12]);
                 return stream.ToArray();
             }
+        }
+
+        private string GetBinPath()
+        {
+            if (Path.GetFileName(_filepath).Substring(0, 5).ToUpper() != "LEVEL")
+                return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "GLOBAL_TEXTURES_HEADERS.ALL.BIN";
+            else
+                return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "LEVEL_TEXTURE_HEADERS.ALL.BIN";
         }
         #endregion
 
