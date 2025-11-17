@@ -129,9 +129,9 @@ namespace CATHODE
                 for (int i = 0; i < Entries.Count; i++)
                 {
                     filenameOffsets.Add((int)bin.BaseStream.Position - 12);
-                    Utilities.WriteString(Entries[i].Name, bin, true); 
+                    Utilities.WriteString(Entries[i].Name, bin, true);
                 }
-                Utilities.Align(bin, 8);
+                Utilities.Align(bin, 16);
                 int headerListBegin = (int)bin.BaseStream.Position - 12;
                 
                 byte[][] headerBuffers = new byte[Entries.Count][];
@@ -256,8 +256,8 @@ namespace CATHODE
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 writer.Write(new byte[8]);
-                writer.Write(BigEndianUtils.FlipEndian(tex.Content.Length));
-                writer.Write(BigEndianUtils.FlipEndian(tex.Content.Length));
+                writer.Write(BigEndianUtils.FlipEndian(tex.Content == null ? 0 : tex.Content.Length));
+                writer.Write(BigEndianUtils.FlipEndian(tex.Content == null ? 0 : tex.Content.Length));
                 writer.Write(BigEndianUtils.FlipEndian((Int32)offset));
                 writer.Write(BigEndianUtils.FlipEndian(sort));
                 writer.Write(BigEndianUtils.FlipEndian(256));
