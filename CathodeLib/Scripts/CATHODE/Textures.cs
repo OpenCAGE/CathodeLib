@@ -480,6 +480,10 @@ namespace CATHODE
             BC7,
             R16F,
             AUTO,
+
+            ASTC4X4,   //ASTC is only supported by the Feral Interactive mobile ports!
+            ASTC8X8,   //ASTC is only supported by the Feral Interactive mobile ports!
+            ASTC12X12, //ASTC is only supported by the Feral Interactive mobile ports!
         }
 
         [Flags]
