@@ -93,7 +93,7 @@ namespace CATHODE
                 if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.ASSET_FILE) return false;
                 if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.TEXTURE_DATA) return false;
                 int entryCount = BigEndianUtils.ReadInt32(pak);
-                pak.BaseStream.Position += 16; //Skip count actual (since doesn't matter) and unused
+                pak.BaseStream.Position += 16;
 
                 int endOfHeaders = 32 + (entryCount * 48);
                 for (int i = 0; i < entryCount; i++)
@@ -223,6 +223,9 @@ namespace CATHODE
                 pak.Write(BigEndianUtils.FlipEndian((int)FileIdentifiers.TEXTURE_DATA));
                 pak.Write(BigEndianUtils.FlipEndian(writeCount));
                 pak.Write(BigEndianUtils.FlipEndian(writeCount));
+                pak.Write(BigEndianUtils.FlipEndian(1));
+                pak.Write(BigEndianUtils.FlipEndian(1));
+                pak.Write(BigEndianUtils.FlipEndian(1));
             }
             return true;
         }
