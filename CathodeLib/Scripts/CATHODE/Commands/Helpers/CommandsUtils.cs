@@ -9,9 +9,6 @@ using System.Windows.Input;
 using static CathodeLib.CompositeModificationInfoTable;
 using System.IO;
 
-
-
-
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -46,6 +43,22 @@ namespace CATHODE.Scripting
 
             if (_commands.Loaded)
                 LoadInfo(_commands.Filepath);
+        }
+
+        ~CommandsUtils()
+        {
+            if (_commands == null)
+                return;
+
+            _commands.OnLoadSuccess -= LoadInfo;
+            _commands.OnSaveSuccess -= SaveInfo;
+
+            _compPurges?.purged?.Clear();
+            _entityNames?.names?.Clear();
+            _modificationInfo?.modification_info?.Clear();
+            _pinInfo?.composite_pin_infos?.Clear();
+                
+            _commands = null;
         }
 
         #region Generic Utility Functions
