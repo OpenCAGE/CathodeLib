@@ -265,6 +265,16 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// Load a Level by passing AI.exe's folder, and the name of the level in ENV (e.g. Production/Frontend)
+        /// </summary>
+        public static Level LoadLevel(string pathToAI, string level)
+        {
+            PAK2 animPAK = new PAK2(pathToAI + "\\DATA\\GLOBAL\\ANIMATION.PAK");
+            Global global = new Global(pathToAI + "\\DATA\\ENV\\GLOBAL\\", animPAK);
+            return new Level(pathToAI + "\\DATA\\ENV\\" + level, global);
+        }
+
+        /// <summary>
         /// Read a PAK
         /// </summary>
         public static List<PAKContent> ReadPAK(string path, FileIdentifiers type)

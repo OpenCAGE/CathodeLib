@@ -16,6 +16,13 @@ namespace CathodeLib
 
         public AnimationStrings AnimationStrings;
         public AnimationStrings AnimationStrings_Debug;
+
+        public Global(string path, PAK2 animPAK)
+        {
+            Textures = new Textures(path + "\\WORLD\\GLOBAL_TEXTURES.ALL.PAK");
+            AnimationStrings = new AnimationStrings(animPAK.Entries.FirstOrDefault(o => o.Filename.Contains("ANIM_STRING_DB.BIN")).Content);
+            AnimationStrings_Debug = new AnimationStrings(animPAK.Entries.FirstOrDefault(o => o.Filename.Contains("ANIM_STRING_DB_DEBUG.BIN")).Content);
+        }
     }
 
     /// <summary>
@@ -84,12 +91,15 @@ namespace CathodeLib
         /// <summary>
         /// Load a level in the game's "ENV" folder
         /// </summary>
-        public Level(string path, Global global)
+        public Level(string path, Global global, bool loadImmediately = true)
         {
             _path = path;
             _global = global;
 
             Name = _path.ToUpper().Replace("\\", "/").Split(new string[] { "DATA/ENV/" }, StringSplitOptions.None)[1].TrimEnd('/');
+
+            if (loadImmediately)
+                Load();
         }
 
         public void Load()
