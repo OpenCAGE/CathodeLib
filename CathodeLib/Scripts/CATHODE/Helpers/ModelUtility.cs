@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -13,7 +13,7 @@ using UnityEngine;
 
 namespace CathodeLib
 {
-    public class Mesh
+    public class Mesh : IEquatable<Mesh>
     {
         public List<UInt16> Indices = new List<UInt16>();
         public List<Vector3> Vertices = new List<Vector3>();
@@ -25,6 +25,126 @@ namespace CathodeLib
 
         public List<Vector4> BoneIndexes = new List<Vector4>();
         public List<Vector4> BoneWeights = new List<Vector4>();
+
+        public static bool operator ==(Mesh x, Mesh y)
+        {
+            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+            if (ReferenceEquals(y, null)) return false;
+            if (ReferenceEquals(x, y)) return true;
+            if (!ListsEqual(x.Indices, y.Indices)) return false;
+            if (!ListsEqual(x.Vertices, y.Vertices)) return false;
+            if (!ListsEqual(x.Normals, y.Normals)) return false;
+            if (!ListsEqual(x.BiNormals, y.BiNormals)) return false;
+            if (!ListsEqual(x.Tangents, y.Tangents)) return false;
+            if (!ListsEqual(x.Colours, y.Colours)) return false;
+            if (!UVArraysEqual(x.UVs, y.UVs)) return false;
+            if (!ListsEqual(x.BoneIndexes, y.BoneIndexes)) return false;
+            if (!ListsEqual(x.BoneWeights, y.BoneWeights)) return false;
+            return true;
+        }
+
+        public static bool operator !=(Mesh x, Mesh y)
+        {
+            return !(x == y);
+        }
+
+        public bool Equals(Mesh other)
+        {
+            return this == other;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is Mesh mesh && this.Equals(mesh);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = 17;
+                hash = hash * 23 + (Indices?.Count ?? 0);
+                foreach (var index in Indices ?? new List<UInt16>())
+                {
+                    hash = hash * 23 + index.GetHashCode();
+                }
+                hash = hash * 23 + (Vertices?.Count ?? 0);
+                foreach (var vertex in Vertices ?? new List<Vector3>())
+                {
+                    hash = hash * 23 + vertex.GetHashCode();
+                }
+                hash = hash * 23 + (Normals?.Count ?? 0);
+                foreach (var normal in Normals ?? new List<Vector3>())
+                {
+                    hash = hash * 23 + normal.GetHashCode();
+                }
+                hash = hash * 23 + (BiNormals?.Count ?? 0);
+                foreach (var binormal in BiNormals ?? new List<Vector4>())
+                {
+                    hash = hash * 23 + binormal.GetHashCode();
+                }
+                hash = hash * 23 + (Tangents?.Count ?? 0);
+                foreach (var tangent in Tangents ?? new List<Vector4>())
+                {
+                    hash = hash * 23 + tangent.GetHashCode();
+                }
+                hash = hash * 23 + (Colours?.Count ?? 0);
+                foreach (var colour in Colours ?? new List<Color>())
+                {
+                    hash = hash * 23 + colour.GetHashCode();
+                }
+                hash = hash * 23 + (UVs?.Length ?? 0);
+                if (UVs != null)
+                {
+                    for (int i = 0; i < UVs.Length; i++)
+                    {
+                        hash = hash * 23 + (UVs[i]?.Count ?? 0);
+                        if (UVs[i] != null)
+                        {
+                            foreach (var uv in UVs[i])
+                            {
+                                hash = hash * 23 + uv.GetHashCode();
+                            }
+                        }
+                    }
+                }
+                hash = hash * 23 + (BoneIndexes?.Count ?? 0);
+                foreach (var boneIndex in BoneIndexes ?? new List<Vector4>())
+                {
+                    hash = hash * 23 + boneIndex.GetHashCode();
+                }
+                hash = hash * 23 + (BoneWeights?.Count ?? 0);
+                foreach (var boneWeight in BoneWeights ?? new List<Vector4>())
+                {
+                    hash = hash * 23 + boneWeight.GetHashCode();
+                }
+                return hash;
+            }
+        }
+
+        private static bool ListsEqual<T>(List<T> x, List<T> y)
+        {
+            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+            if (ReferenceEquals(y, null)) return false;
+            if (x.Count != y.Count) return false;
+            for (int i = 0; i < x.Count; i++)
+            {
+                if (!EqualityComparer<T>.Default.Equals(x[i], y[i])) return false;
+            }
+            return true;
+        }
+
+        private static bool UVArraysEqual(List<Vector2>[] x, List<Vector2>[] y)
+        {
+            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+            if (ReferenceEquals(y, null)) return false;
+            if (x.Length != y.Length) return false;
+            for (int i = 0; i < x.Length; i++)
+            {
+                if (!ListsEqual(x[i], y[i])) return false;
+            }
+            return true;
+        }
     }
 
     public static class ModelUtility
