@@ -221,11 +221,8 @@ namespace CathodeLib
         /// </summary>
         public static void ToSubmeshData(this Mesh mesh, Models.CS2.Component.LOD.Submesh submesh)
         {
-            if (mesh == null || submesh == null || submesh.VertexFormatFull == null)
-            {
-                submesh.Data = new byte[0];
+            if (mesh == null || submesh?.VertexFormatFull == null)
                 return;
-            }
 
             submesh.VertexCount = mesh.Vertices.Count;
             submesh.IndexCount = mesh.Indices.Count;
