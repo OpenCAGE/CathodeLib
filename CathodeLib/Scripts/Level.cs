@@ -282,6 +282,7 @@ namespace CathodeLib
         public void ImportFromGlobal()
         {
             //NOTE: REDS supports referencing models/materials in GLOBAL, but never seems to, so not bothering with that
+            //      However, some levels, E.G. Torrens, fail to render after doing this and then clearing global, so something is still pointing there somewhere
 
             //Import global textures referenced by materials
             for (int i = 0; i < Materials.Entries.Count; i++)
