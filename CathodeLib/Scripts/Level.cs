@@ -277,6 +277,26 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// Imports resources to the level from Global, making it easier to share around
+        /// </summary>
+        public void ImportFromGlobal()
+        {
+            //NOTE: REDS supports referencing models/materials in GLOBAL, but never seems to, so not bothering with that
+
+            //Import global textures referenced by materials
+            for (int i = 0; i < Materials.Entries.Count; i++)
+            {
+                Materials.Material material = Materials.Entries[i];
+                for (int x = 0; x < material.TextureReferences.Count; x++)
+                    material.TextureReferences[x]?.RemapToLevel(this);
+            }
+
+            //Import global textures referenced by sound flash models
+            for (int i = 0; i < SoundFlashModels.Entries.Count; i++)
+                SoundFlashModels.Entries[i].Texture?.RemapToLevel(this);
+        }
+
+        /// <summary>
         /// Get all levels available within the ENV folder. Pass the path to the folder that contains AI.exe.
         /// </summary>
         public static List<string> GetLevels(string gameDirectory, bool swapNostromoForPatch = false)

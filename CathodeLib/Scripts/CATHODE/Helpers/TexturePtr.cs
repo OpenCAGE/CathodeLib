@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CathodeLib;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -36,6 +37,23 @@ namespace CATHODE
         {
             writer.Write((Int16)(Location == Source.LEVEL ? texturesLevel.GetWriteIndex(Texture) : texturesGlobal.GetWriteIndex(Texture)));
             writer.Write((Int16)Location);
+        }
+
+        public void RemapToLevel(Level level)
+        {
+            if (Location != TexturePtr.Source.GLOBAL || Texture == null)
+                return;
+
+            Textures.TEX4 globalTexture = Texture;
+
+            globalTexture.UsageFlags &= ~Textures.TextureUsageFlag.IS_GLOBAL_PACK;
+            globalTexture.UsageFlags |= Textures.TextureUsageFlag.IS_LEVEL_PACK;
+
+            Texture = level.Textures.ImportEntry(globalTexture);
+            Location = Source.LEVEL;
+
+            globalTexture.UsageFlags |= Textures.TextureUsageFlag.IS_GLOBAL_PACK;
+            globalTexture.UsageFlags &= ~Textures.TextureUsageFlag.IS_LEVEL_PACK;
         }
 
         public static bool operator ==(TexturePtr x, TexturePtr y)
