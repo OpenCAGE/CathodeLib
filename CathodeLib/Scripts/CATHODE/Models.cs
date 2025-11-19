@@ -642,7 +642,7 @@ namespace CATHODE
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
         /// 
-        public CS2 AddEntry(CS2 model)
+        public CS2 ImportEntry(CS2 model)
         {
             if (model == null)
                 return null;
@@ -654,9 +654,9 @@ namespace CATHODE
                 {
                     foreach (CS2.Component.LOD.Submesh submesh in lod.Submeshes)
                     {
-                        submesh.Material = _materials.AddEntry(submesh.Material);
-                        submesh.WeightedCollision = _collisions.AddEntry(submesh.WeightedCollision);
-                        submesh.MorphAnimSet = _morphTargets.AddEntry(submesh.MorphAnimSet); 
+                        submesh.Material = _materials.ImportEntry(submesh.Material);
+                        submesh.WeightedCollision = _collisions.ImportEntry(submesh.WeightedCollision);
+                        submesh.MorphAnimSet = _morphTargets.ImportEntry(submesh.MorphAnimSet); 
                     }
                 }
             }

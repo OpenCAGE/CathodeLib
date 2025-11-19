@@ -233,7 +233,7 @@ namespace CATHODE
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
-        public EnvironmentAnimation AddEntry(EnvironmentAnimation envAnim)
+        public EnvironmentAnimation ImportEntry(EnvironmentAnimation envAnim)
         {
             if (envAnim == null)
                 return null;

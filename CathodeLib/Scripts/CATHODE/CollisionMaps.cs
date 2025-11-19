@@ -135,15 +135,15 @@ namespace CATHODE
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
-        public COLLISION_MAPPING AddEntry(COLLISION_MAPPING colMap)
+        public COLLISION_MAPPING ImportEntry(COLLISION_MAPPING colMap)
         {
             if (colMap == null)
                 return null;
 
             COLLISION_MAPPING newColMap = colMap.Copy();
 
-            newColMap.Material = _materials.AddEntry(newColMap.Material);
-            newColMap.MaterialMapping = _materialMaps.AddEntry(newColMap.MaterialMapping);
+            newColMap.Material = _materials.ImportEntry(newColMap.Material);
+            newColMap.MaterialMapping = _materialMaps.ImportEntry(newColMap.MaterialMapping);
 
             //todo: set zone to global?
 

@@ -283,7 +283,7 @@ namespace CATHODE
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
-        public Material AddEntry(Material material)
+        public Material ImportEntry(Material material)
         {
             if (material == null)
                 return null;
@@ -296,9 +296,9 @@ namespace CATHODE
                 if (newMaterial.TextureReferences[i].Location == Source.GLOBAL)
                     continue;
 
-                newMaterial.TextureReferences[i].Texture = _levelTextures.AddEntry(newMaterial.TextureReferences[i].Texture);
+                newMaterial.TextureReferences[i].Texture = _levelTextures.ImportEntry(newMaterial.TextureReferences[i].Texture);
             }
-            newMaterial.Shader = _shaders.AddEntry(newMaterial.Shader);
+            newMaterial.Shader = _shaders.ImportEntry(newMaterial.Shader);
             //newMaterial.EnvironmentMapIndex = 255; //TEMP! should remap
 
             var existing = Entries.FirstOrDefault(o => o == newMaterial);

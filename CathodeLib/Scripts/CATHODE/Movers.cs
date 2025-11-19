@@ -191,15 +191,15 @@ namespace CATHODE
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
-        public MOVER_DESCRIPTOR AddEntry(MOVER_DESCRIPTOR mover, Models models)
+        public MOVER_DESCRIPTOR ImportEntry(MOVER_DESCRIPTOR mover, Models models)
         {
             if (mover == null)
                 return null;
 
             MOVER_DESCRIPTOR newMover = mover.Copy();
 
-            newMover.renderable_elements = _reds.AddEntry(newMover.renderable_elements, models);
-            newMover.resource = _resources.AddEntry(newMover.resource);
+            newMover.renderable_elements = _reds.ImportEntry(newMover.renderable_elements, models);
+            newMover.resource = _resources.ImportEntry(newMover.resource);
 
             //todo: do something with entity reference
 

@@ -89,7 +89,7 @@ namespace CathodeLib
         private string _path;
 
         /// <summary>
-        /// Load a level in the game's "ENV" folder
+        /// A container for data related to a level in the game's "ENV" folder
         /// </summary>
         public Level(string path, Global global, bool loadImmediately = true)
         {
@@ -102,6 +102,9 @@ namespace CathodeLib
                 Load();
         }
 
+        /// <summary>
+        /// Load all data for the level
+        /// </summary>
         public void Load()
         {
             if (_global?.Textures == null)
@@ -219,7 +222,9 @@ namespace CathodeLib
             OnLoadTick?.Invoke();
         }
 
-        /* Save all modifications to the level - this currently assumes we aren't editing GLOBAL data */
+        /// <summary>
+        /// Save all data for the level
+        /// </summary>
         public void Save()
         {
             //TODO: if we haven't pulled GLOBAL texture data into our texture pak, do so, and update sources.

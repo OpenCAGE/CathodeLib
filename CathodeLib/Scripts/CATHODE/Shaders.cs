@@ -10,9 +10,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
-using static CATHODE.RenderableElements;
-using static CATHODE.Shaders;
-using static CATHODE.TexturePtr;
 
 namespace CATHODE
 {
@@ -323,7 +320,7 @@ namespace CATHODE
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
-        public Shader AddEntry(Shader shader)
+        public Shader ImportEntry(Shader shader)
         {
             if (shader == null)
                 return null;

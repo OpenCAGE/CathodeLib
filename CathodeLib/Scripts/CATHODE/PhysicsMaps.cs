@@ -167,7 +167,7 @@ namespace CATHODE
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
-        public Entry AddEntry(Entry physMap)
+        public Entry ImportEntry(Entry physMap)
         {
             if (physMap == null)
                 return null;

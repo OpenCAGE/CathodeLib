@@ -224,7 +224,7 @@ namespace CATHODE
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
-        public WeightedCollision AddEntry(WeightedCollision collision)
+        public WeightedCollision ImportEntry(WeightedCollision collision)
         {
             if (collision == null)
                 return null;

@@ -134,7 +134,7 @@ namespace CATHODE
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
-        public MorphTarget AddEntry(MorphTarget morphTarget)
+        public MorphTarget ImportEntry(MorphTarget morphTarget)
         {
             if (morphTarget == null)
                 return null;

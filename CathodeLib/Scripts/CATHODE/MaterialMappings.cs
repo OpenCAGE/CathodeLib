@@ -117,7 +117,7 @@ namespace CATHODE
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
-        public MaterialMapping AddEntry(MaterialMapping matMap)
+        public MaterialMapping ImportEntry(MaterialMapping matMap)
         {
             if (matMap == null)
                 return null;

@@ -307,7 +307,7 @@ namespace CATHODE
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
-        public TEX4 AddEntry(TEX4 texture)
+        public TEX4 ImportEntry(TEX4 texture)
         {
             if (texture == null)
                 return null;

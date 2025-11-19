@@ -112,7 +112,7 @@ namespace CATHODE
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
-        public Resource AddEntry(Resource resource)
+        public Resource ImportEntry(Resource resource)
         {
             if (resource == null)
                 return null;
