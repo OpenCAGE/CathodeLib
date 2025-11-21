@@ -174,8 +174,20 @@ namespace CATHODE
                                     dps_index = new Parameter("system_index", new cInteger(0));
                                     function.parameters.Add(dps_index);
                                 }
-                                //TODO!!!!
-                                //function.AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM).index = ((cInteger)dps_index.content).value;
+                                ResourceReference physSystem = function.AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
+                                physSystem.PhysicsSystemIndex = ((cInteger)dps_index.content).value;
+                                Parameter position = function.GetParameter("position");
+                                if (position?.content?.dataType == DataType.TRANSFORM)
+                                {
+                                    cTransform transform = (cTransform)position.content;
+                                    physSystem.position = transform.position;
+                                    physSystem.rotation = transform.rotation;
+                                }
+                                else
+                                {
+                                    physSystem.position = new Vector3(0, 0, 0);
+                                    physSystem.rotation = new Vector3(0, 0, 0);
+                                }
                                 break;
 
                             case FunctionType.EnvironmentModelReference:
