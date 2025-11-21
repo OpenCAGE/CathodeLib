@@ -1,17 +1,19 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
-using System.Numerics;
 using System.Text;
 using System.Windows;
 using CATHODE;
+using Microsoft.SqlServer.Server;
+
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #else
+using System.Numerics;
+using System.Drawing;
 #endif
 
-namespace CathodeLib
+namespace CathodeLib.ModelUtility
 {
     public class Mesh : IEquatable<Mesh>
     {
@@ -180,7 +182,11 @@ namespace CathodeLib
                             switch (attr.Usage)
                             {
                                 case Models.VertexFormat.Usage.Position:
+#if UNITY_EDITOR || UNITY_STANDALONE
+                                    mesh.Vertices.Add(v * submesh.VertexScale);
+#else
                                     mesh.Vertices.Add(new Vector3(v.X * submesh.VertexScale, v.Y * submesh.VertexScale, v.Z * submesh.VertexScale));
+#endif
                                     break;
                                 case Models.VertexFormat.Usage.BlendWeight:
                                     mesh.BoneWeights.Add(v);
@@ -189,14 +195,22 @@ namespace CathodeLib
                                     mesh.BoneIndexes.Add(v);
                                     break;
                                 case Models.VertexFormat.Usage.Normal:
+#if UNITY_EDITOR || UNITY_STANDALONE
+                                    mesh.Normals.Add(v);
+#else
                                     mesh.Normals.Add(new Vector3(v.X, v.Y, v.Z));
+#endif
                                     break;
                                 case Models.VertexFormat.Usage.TexCoord:
                                     if (attr.Index >= mesh.UVs.Length)
                                         Array.Resize(ref mesh.UVs, attr.Index + 1);
                                     if (mesh.UVs[attr.Index] == null)
                                         mesh.UVs[attr.Index] = new List<Vector2>();
+#if UNITY_EDITOR || UNITY_STANDALONE
+                                    mesh.UVs[attr.Index].Add(v * 16.0f);
+#else
                                     mesh.UVs[attr.Index].Add(new Vector2(v.X * 16.0f, v.Y * 16.0f)); // TODO: is Z/W used?
+#endif
                                     break;
                                 case Models.VertexFormat.Usage.Tangent:
                                     mesh.Tangents.Add(v);
@@ -205,7 +219,11 @@ namespace CathodeLib
                                     mesh.BiNormals.Add(v);
                                     break;
                                 case Models.VertexFormat.Usage.Color:
+#if UNITY_EDITOR || UNITY_STANDALONE
+                                    mesh.Colours.Add(v);
+#else
                                     mesh.Colours.Add(Color.FromArgb((int)(v.W * 255.0f), (int)(v.X * 255.0f), (int)(v.Y * 255.0f), (int)(v.Z * 255.0f))); // TODO: is this correct?
+#endif
                                     break;
                             }
                         }
@@ -304,7 +322,11 @@ namespace CathodeLib
                     if (vertexIndex < mesh.Vertices.Count)
                     {
                         Vector3 pos = mesh.Vertices[vertexIndex];
+#if UNITY_EDITOR || UNITY_STANDALONE
+                        return new Vector4(pos.x / vertexScale, pos.y / vertexScale, pos.z / vertexScale, 0);
+#else
                         return new Vector4(pos.X / vertexScale, pos.Y / vertexScale, pos.Z / vertexScale, 0);
+#endif
                     }
                     return new Vector4(0, 0, 0, 0);
                 case Models.VertexFormat.Usage.BlendWeight:
@@ -319,14 +341,22 @@ namespace CathodeLib
                     if (vertexIndex < mesh.Normals.Count)
                     {
                         Vector3 normal = mesh.Normals[vertexIndex];
+#if UNITY_EDITOR || UNITY_STANDALONE
+                        return new Vector4(normal.x, normal.y, normal.z, 0);
+#else
                         return new Vector4(normal.X, normal.Y, normal.Z, 0);
+#endif
                     }
                     return new Vector4(0, 0, 0, 0);
                 case Models.VertexFormat.Usage.TexCoord:
                     if (attr.Index < mesh.UVs.Length && mesh.UVs[attr.Index] != null && vertexIndex < mesh.UVs[attr.Index].Count)
                     {
                         Vector2 uv = mesh.UVs[attr.Index][vertexIndex];
+#if UNITY_EDITOR || UNITY_STANDALONE
+                        return new Vector4(uv.x / 16.0f, uv.y / 16.0f, 0, 0);
+#else
                         return new Vector4(uv.X / 16.0f, uv.Y / 16.0f, 0, 0);
+#endif
                     }
                     return new Vector4(0, 0, 0, 0);
                 case Models.VertexFormat.Usage.Tangent:
@@ -341,7 +371,11 @@ namespace CathodeLib
                     if (vertexIndex < mesh.Colours.Count)
                     {
                         Color c = mesh.Colours[vertexIndex];
+#if UNITY_EDITOR || UNITY_STANDALONE
+                        return new Vector4(c.r / 255.0f, c.g / 255.0f, c.b / 255.0f, c.a / 255.0f);
+#else
                         return new Vector4(c.R / 255.0f, c.G / 255.0f, c.B / 255.0f, c.A / 255.0f);
+#endif
                     }
                     return new Vector4(0, 0, 0, 0);
                 default:
@@ -354,73 +388,155 @@ namespace CathodeLib
             switch (type)
             {
                 case Models.VertexFormat.Type.FP32_1:
+#if UNITY_EDITOR || UNITY_STANDALONE
+                    writer.Write(v.x);
+#else
                     writer.Write(v.X);
+#endif
                     break;
                 case Models.VertexFormat.Type.FP32_2:
+#if UNITY_EDITOR || UNITY_STANDALONE
+                    writer.Write(v.x);
+                    writer.Write(v.y);
+#else
                     writer.Write(v.X);
                     writer.Write(v.Y);
+#endif
                     break;
                 case Models.VertexFormat.Type.FP32_3:
+#if UNITY_EDITOR || UNITY_STANDALONE
+                    writer.Write(v.x);
+                    writer.Write(v.y);
+                    writer.Write(v.z);
+#else
                     writer.Write(v.X);
                     writer.Write(v.Y);
                     writer.Write(v.Z);
+#endif
                     break;
                 case Models.VertexFormat.Type.FP32_4:
+#if UNITY_EDITOR || UNITY_STANDALONE
+                    writer.Write(v.x);
+                    writer.Write(v.y);
+                    writer.Write(v.z);
+                    writer.Write(v.w);
+#else
                     writer.Write(v.X);
                     writer.Write(v.Y);
                     writer.Write(v.Z);
                     writer.Write(v.W);
+#endif
                     break;
                 case Models.VertexFormat.Type.Color:
+#if UNITY_EDITOR || UNITY_STANDALONE
+                    uint data = ((uint)(v.x * 255.0f) << 24) | ((uint)(v.y * 255.0f) << 16) | ((uint)(v.z * 255.0f) << 8) | (uint)(v.w * 255.0f);
+#else
                     uint data = ((uint)(v.X * 255.0f) << 24) | ((uint)(v.Y * 255.0f) << 16) | ((uint)(v.Z * 255.0f) << 8) | (uint)(v.W * 255.0f);
+#endif
                     writer.Write(data);
                     break;
                 case Models.VertexFormat.Type.U8_4:
+#if UNITY_EDITOR || UNITY_STANDALONE
+                    writer.Write((byte)v.x);
+                    writer.Write((byte)v.y);
+                    writer.Write((byte)v.z);
+                    writer.Write((byte)v.w);
+#else
                     writer.Write((byte)v.X);
                     writer.Write((byte)v.Y);
                     writer.Write((byte)v.Z);
                     writer.Write((byte)v.W);
+#endif
                     break;
                 case Models.VertexFormat.Type.S16_2:
+#if UNITY_EDITOR || UNITY_STANDALONE
+                    writer.Write((Int16)v.x);
+                    writer.Write((Int16)v.y);
+#else
                     writer.Write((Int16)v.X);
                     writer.Write((Int16)v.Y);
+#endif
                     break;
                 case Models.VertexFormat.Type.S16_4:
+#if UNITY_EDITOR || UNITY_STANDALONE
+                    writer.Write((Int16)v.x);
+                    writer.Write((Int16)v.y);
+                    writer.Write((Int16)v.z);
+                    writer.Write((Int16)v.w);
+#else
                     writer.Write((Int16)v.X);
                     writer.Write((Int16)v.Y);
                     writer.Write((Int16)v.Z);
                     writer.Write((Int16)v.W);
+#endif
                     break;
                 case Models.VertexFormat.Type.U8_4N:
+#if UNITY_EDITOR || UNITY_STANDALONE
+                    writer.Write((byte)(v.x * 255.0f));
+                    writer.Write((byte)(v.y * 255.0f));
+                    writer.Write((byte)(v.z * 255.0f));
+                    writer.Write((byte)(v.w * 255.0f));
+#else
                     writer.Write((byte)(v.X * 255.0f));
                     writer.Write((byte)(v.Y * 255.0f));
                     writer.Write((byte)(v.Z * 255.0f));
                     writer.Write((byte)(v.W * 255.0f));
+#endif
                     break;
                 case Models.VertexFormat.Type.S16_2N:
+#if UNITY_EDITOR || UNITY_STANDALONE
+                    writer.Write((Int16)(v.x * Int16.MaxValue));
+                    writer.Write((Int16)(v.y * Int16.MaxValue));
+#else
                     writer.Write((Int16)(v.X * Int16.MaxValue));
                     writer.Write((Int16)(v.Y * Int16.MaxValue));
+#endif
                     break;
                 case Models.VertexFormat.Type.S16_4N:
+#if UNITY_EDITOR || UNITY_STANDALONE
+                    writer.Write((Int16)(v.x * Int16.MaxValue));
+                    writer.Write((Int16)(v.y * Int16.MaxValue));
+                    writer.Write((Int16)(v.z * Int16.MaxValue));
+                    writer.Write((Int16)(v.w * Int16.MaxValue));
+#else
                     writer.Write((Int16)(v.X * Int16.MaxValue));
                     writer.Write((Int16)(v.Y * Int16.MaxValue));
                     writer.Write((Int16)(v.Z * Int16.MaxValue));
                     writer.Write((Int16)(v.W * Int16.MaxValue));
+#endif
                     break;
                 case Models.VertexFormat.Type.U16_2N:
+#if UNITY_EDITOR || UNITY_STANDALONE
+                    writer.Write((UInt16)(v.x * UInt16.MaxValue));
+                    writer.Write((UInt16)(v.y * UInt16.MaxValue));
+#else
                     writer.Write((UInt16)(v.X * UInt16.MaxValue));
                     writer.Write((UInt16)(v.Y * UInt16.MaxValue));
+#endif
                     break;
                 case Models.VertexFormat.Type.U16_4N:
+#if UNITY_EDITOR || UNITY_STANDALONE
+                    writer.Write((UInt16)(v.x * UInt16.MaxValue));
+                    writer.Write((UInt16)(v.y * UInt16.MaxValue));
+                    writer.Write((UInt16)(v.z * UInt16.MaxValue));
+                    writer.Write((UInt16)(v.w * UInt16.MaxValue));
+#else
                     writer.Write((UInt16)(v.X * UInt16.MaxValue));
                     writer.Write((UInt16)(v.Y * UInt16.MaxValue));
                     writer.Write((UInt16)(v.Z * UInt16.MaxValue));
                     writer.Write((UInt16)(v.W * UInt16.MaxValue));
+#endif
                     break;
                 case Models.VertexFormat.Type.Dec3N:
+#if UNITY_EDITOR || UNITY_STANDALONE
+                    short sx = (short)(Math.Max(-511, Math.Min(511, v.x * 511.0f)));
+                    short sy = (short)(Math.Max(-511, Math.Min(511, v.y * 511.0f)));
+                    short sz = (short)(Math.Max(-511, Math.Min(511, v.z * 511.0f)));
+#else
                     short sx = (short)(Math.Max(-511, Math.Min(511, v.X * 511.0f)));
                     short sy = (short)(Math.Max(-511, Math.Min(511, v.Y * 511.0f)));
                     short sz = (short)(Math.Max(-511, Math.Min(511, v.Z * 511.0f)));
+#endif
                     if (sx < 0) sx += 1024;
                     if (sy < 0) sy += 1024;
                     if (sz < 0) sz += 1024;
