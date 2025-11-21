@@ -1,10 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
-using System.Windows;
 using CATHODE;
-using Microsoft.SqlServer.Server;
 
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
@@ -13,9 +10,9 @@ using System.Numerics;
 using System.Drawing;
 #endif
 
-namespace CathodeLib.ModelUtility
+namespace CathodeLib
 {
-    public class Mesh : IEquatable<Mesh>
+    public class cMesh : IEquatable<cMesh>
     {
         public List<UInt16> Indices = new List<UInt16>();
         public List<Vector3> Vertices = new List<Vector3>();
@@ -28,7 +25,7 @@ namespace CathodeLib.ModelUtility
         public List<Vector4> BoneIndexes = new List<Vector4>();
         public List<Vector4> BoneWeights = new List<Vector4>();
 
-        public static bool operator ==(Mesh x, Mesh y)
+        public static bool operator ==(cMesh x, cMesh y)
         {
             if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
             if (ReferenceEquals(y, null)) return false;
@@ -45,19 +42,19 @@ namespace CathodeLib.ModelUtility
             return true;
         }
 
-        public static bool operator !=(Mesh x, Mesh y)
+        public static bool operator !=(cMesh x, cMesh y)
         {
             return !(x == y);
         }
 
-        public bool Equals(Mesh other)
+        public bool Equals(cMesh other)
         {
             return this == other;
         }
 
         public override bool Equals(object obj)
         {
-            return obj is Mesh mesh && this.Equals(mesh);
+            return obj is cMesh mesh && this.Equals(mesh);
         }
 
         public override int GetHashCode()
@@ -154,9 +151,9 @@ namespace CathodeLib.ModelUtility
         /// <summary>
         /// Convert a CS2 submesh to a Mesh object with easier to handle data
         /// </summary>
-        public static Mesh ToMesh(this Models.CS2.Component.LOD.Submesh submesh)
+        public static cMesh ToMesh(this Models.CS2.Component.LOD.Submesh submesh)
         {
-            Mesh mesh = new Mesh();
+            cMesh mesh = new cMesh();
 
             if (submesh == null || submesh.Data.Length == 0)
                 return mesh;
@@ -237,7 +234,7 @@ namespace CathodeLib.ModelUtility
         /// <summary>
         /// Convert a Mesh object to CS2 submesh data and update the relevant submesh parameters to match
         /// </summary>
-        public static void ToSubmeshData(this Mesh mesh, Models.CS2.Component.LOD.Submesh submesh)
+        public static void ToSubmeshData(this cMesh mesh, Models.CS2.Component.LOD.Submesh submesh)
         {
             if (mesh == null || submesh?.VertexFormatFull == null)
                 return;
@@ -314,7 +311,7 @@ namespace CathodeLib.ModelUtility
             throw new Exception("Unsupported VertexFormatType");
         }
 
-        private static Vector4 GetVertexDataForAttribute(Mesh mesh, Models.VertexFormat.Attribute attr, int vertexIndex, int vertexScale)
+        private static Vector4 GetVertexDataForAttribute(cMesh mesh, Models.VertexFormat.Attribute attr, int vertexIndex, int vertexScale)
         {
             switch (attr.Usage)
             {
