@@ -108,7 +108,7 @@ namespace CATHODE
                     shader.RequiredShaderModel = (SHADER_MODEL)reader.ReadByte();
                     shader.CycleCount = reader.ReadInt16();
                     shader.RegisterCount = reader.ReadByte();
-                    shader.PermutationHash = reader.ReadInt32();
+                    shader.PermutationHash = reader.ReadUInt32();
                     shader.RenderStates = new StateBlock(reader);
 
                     for (int x = 0; x < samplerCount; x++)
@@ -347,7 +347,7 @@ namespace CATHODE
 
             public int CycleCount;
             public int RegisterCount;
-            public int PermutationHash;
+            public uint PermutationHash;
 
             public List<StateBlock> Samplers = new List<StateBlock>();
             public List<int> SamplerStageBindings = new List<int>();
