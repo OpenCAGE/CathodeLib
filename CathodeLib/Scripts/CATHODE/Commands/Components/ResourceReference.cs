@@ -82,11 +82,10 @@ namespace CATHODE.Scripting
         public ShortGuid resource_id; //this can be translated to a string sometimes, like DYNAMIC_PHYSICS_SYSTEM
         public ResourceType resource_type;
 
-        public int index = 0; // THIS IS TEMP! I'm struggling to look up the DynamicPhysicsSystem object, so just saving the old index for now. Need to look into that.
+        public int PhysicsSystemIndex = 0; //DYNAMIC_PHYSICS_SYSTEM: maps to the Havok index
 
         public EnvironmentAnimations.EnvironmentAnimation AnimatedModel = null; //ANIMATED_MODEL
         public CollisionMaps.COLLISION_MAPPING CollisionMapping = null; //COLLISION_MAPPING
-        public PhysicsMaps.Entry DynamicPhysicsSystem = null; //DYNAMIC_PHYSICS_SYSTEM
         //EXCLUSIVE_MASTER_STATE_RESOURCE
         //NAV_MESH_BARRIER_RESOURCE
         public List<RenderableElements.Element> RenderableInstance = new List<RenderableElements.Element>(); //RENDERABLE_INSTANCE

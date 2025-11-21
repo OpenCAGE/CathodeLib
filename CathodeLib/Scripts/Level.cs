@@ -149,7 +149,7 @@ namespace CathodeLib
                 () => { SoundLoadZones = new SoundLoadZones(_path + "/WORLD/SOUNDLOADZONES.DAT"); OnLoadTick?.Invoke(); }
             );
 
-            Commands = new Commands(_path + "/WORLD/COMMANDS" + (File.Exists(_path + "/WORLD/COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, PhysicsMaps, RenderableElements); OnLoadTick?.Invoke();
+            Commands = new Commands(_path + "/WORLD/COMMANDS" + (File.Exists(_path + "/WORLD/COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements); OnLoadTick?.Invoke();
 
             //RENDERABLE/DAMAGE/*
             //RENDERABLE/GALAXY/*

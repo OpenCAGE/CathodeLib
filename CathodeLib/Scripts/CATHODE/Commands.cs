@@ -30,14 +30,12 @@ namespace CATHODE
         protected override bool HandlesLoadingManually => true;
         private EnvironmentAnimations _envAnims;
         private CollisionMaps _colMaps;
-        private PhysicsMaps _physMaps;
         private RenderableElements _reds;
 
-        public Commands(string path, EnvironmentAnimations envAnims, CollisionMaps colMaps, PhysicsMaps physMaps, RenderableElements reds) : base(path)
+        public Commands(string path, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds) : base(path)
         {
             _envAnims = envAnims;
             _colMaps = colMaps;
-            _physMaps = physMaps;
             _reds = reds;
 
             Utils = new CommandsUtils(this);
@@ -76,10 +74,10 @@ namespace CATHODE
             switch (Path.GetExtension(_filepath).ToUpper())
             {
                 case ".PAK":
-                    CommandsPAK.Read(stream, out _entryPoints, out Entries, _envAnims, _colMaps, _physMaps, _reds);
+                    CommandsPAK.Read(stream, out _entryPoints, out Entries, _envAnims, _colMaps, _reds);
                     break;
                 case ".BIN":
-                    CommandsBIN.Read(stream, out _entryPoints, out Entries, _envAnims, _colMaps, _physMaps, _reds);
+                    CommandsBIN.Read(stream, out _entryPoints, out Entries, _envAnims, _colMaps, _reds);
                     break;
                 default:
                     return false;
@@ -208,10 +206,10 @@ namespace CATHODE
             switch (Path.GetExtension(_filepath).ToUpper())
             {
                 case ".PAK":
-                    CommandsPAK.Write(_entryPoints, Entries, out content, _envAnims, _colMaps, _physMaps, _reds);
+                    CommandsPAK.Write(_entryPoints, Entries, out content, _envAnims, _colMaps, _reds);
                     break;
                 case ".BIN":
-                    CommandsBIN.Write(_entryPoints, Entries, out content, _envAnims, _colMaps, _physMaps, _reds);
+                    CommandsBIN.Write(_entryPoints, Entries, out content, _envAnims, _colMaps, _reds);
                     break;
                 default:
                     return false;

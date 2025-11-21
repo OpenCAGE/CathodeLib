@@ -17,7 +17,7 @@ namespace CATHODE.Scripting.Internal.Parsers
 {
     public static class CommandsPAK
     {
-        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, PhysicsMaps physMaps, RenderableElements reds)
+        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
         {
             byte[] content = stream.ToArray(); //NOTE: this gives us quite a memory overhead, which should probably be changed.
             using (BinaryReader reader = new BinaryReader(stream))
@@ -255,8 +255,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     reader_parallel.BaseStream.Position += 4;
                                                     break;
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                    resource.index = reader_parallel.ReadInt32();
-                                                    //resource.DynamicPhysicsSystem = physMaps.GetAtWriteIndex(reader_parallel.ReadInt32());
+                                                    resource.PhysicsSystemIndex = reader_parallel.ReadInt32();
                                                     reader_parallel.BaseStream.Position += 4;
                                                     break;
                                                 default:
@@ -479,7 +478,7 @@ namespace CATHODE.Scripting.Internal.Parsers
             }
         }
 
-        public static void Write(ShortGuid[] EntryPoints, List<Composite> Entries, out byte[] content, EnvironmentAnimations envAnims, CollisionMaps colMaps, PhysicsMaps physMaps, RenderableElements reds)
+        public static void Write(ShortGuid[] EntryPoints, List<Composite> Entries, out byte[] content, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
         {
             ShortGuid SHORTGUID_resource = ShortGuidUtils.Generate("resource");
 
@@ -812,7 +811,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             switch (resourceReferences[i][p].resource_type)
                                             {
                                                 case ResourceType.RENDERABLE_INSTANCE:
-                                                    int redsIndex = reds.GetWriteIndex(resourceReferences[i][p].RenderableInstance, resourceReferences[i][p].index);
+                                                    int redsIndex = reds.GetWriteIndex(resourceReferences[i][p].RenderableInstance, resourceReferences[i][p].PhysicsSystemIndex);
                                                     writer.Write(redsIndex == -1 ? 0 : redsIndex);
                                                     writer.Write(redsIndex == -1 ? 0 : resourceReferences[i][p].RenderableInstance.Count);
                                                     break;
@@ -826,9 +825,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     writer.Write(-1);
                                                     break;
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                    //TODO: the indexes here go OUTSIDE the range of our file. what are they for? they also don't match the system index on the objects
-                                                    writer.Write(resourceReferences[i][p].index);
-                                                    //writer.Write(physMaps.GetWriteIndex(resourceReferences[i][p].DynamicPhysicsSystem));
+                                                    writer.Write(resourceReferences[i][p].PhysicsSystemIndex);
                                                     writer.Write(-1);
                                                     break;
                                                 case ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
