@@ -448,7 +448,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     ResourceReference resource = new ResourceReference();
                                     reader.BaseStream.Position = command_entries[i + 6].Item2;
                                     resource.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                                    resource.rotation = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                                    float __x, __y, __z; __y = reader.ReadSingle(); __x = reader.ReadSingle(); __z = reader.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
+                                    resource.rotation = new Vector3(__x, __y, __z);
                                     resource.resource_id = Utilities.Consume<ShortGuid>(reader, command_entries[i + 2].Item2);
                                     resource.resource_type = (ResourceType)Utilities.Consume<uint>(reader, command_entries[i + 3].Item2);
                                     switch (resource.resource_type)
@@ -1071,15 +1072,15 @@ namespace CATHODE.Scripting.Internal.Parsers
             writer.Write(resource.position.x);
             writer.Write(resource.position.y);
             writer.Write(resource.position.z);
-            writer.Write(resource.rotation.x);
             writer.Write(resource.rotation.y);
+            writer.Write(resource.rotation.x);
             writer.Write(resource.rotation.z);
 #else
             writer.Write(resource.position.X);
             writer.Write(resource.position.Y);
             writer.Write(resource.position.Z);
-            writer.Write(resource.rotation.X);
             writer.Write(resource.rotation.Y);
+            writer.Write(resource.rotation.X);
             writer.Write(resource.rotation.Z);
 #endif
             commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_POSITION | 24, offset));

@@ -236,7 +236,8 @@ namespace CATHODE.Scripting.Internal.Parsers
 
                                             ResourceReference resource = new ResourceReference();
                                             resource.position = new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle());
-                                            resource.rotation = new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle());
+                                            float __x, __y, __z; __y = reader_parallel.ReadSingle(); __x = reader_parallel.ReadSingle(); __z = reader_parallel.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
+                                            resource.rotation = new Vector3(__x, __y, __z);
                                             resource.resource_id = new ShortGuid(reader_parallel);
                                             resource.resource_type = (ResourceType)reader_parallel.ReadUInt32();
                                             switch (resource.resource_type)
@@ -795,15 +796,15 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             writer.Write(resourceReferences[i][p].position.x);
                                             writer.Write(resourceReferences[i][p].position.y);
                                             writer.Write(resourceReferences[i][p].position.z);
-                                            writer.Write(resourceReferences[i][p].rotation.x);
                                             writer.Write(resourceReferences[i][p].rotation.y);
+                                            writer.Write(resourceReferences[i][p].rotation.x);
                                             writer.Write(resourceReferences[i][p].rotation.z);
 #else
                                             writer.Write(resourceReferences[i][p].position.X);
                                             writer.Write(resourceReferences[i][p].position.Y);
                                             writer.Write(resourceReferences[i][p].position.Z);
-                                            writer.Write(resourceReferences[i][p].rotation.X);
                                             writer.Write(resourceReferences[i][p].rotation.Y);
+                                            writer.Write(resourceReferences[i][p].rotation.X);
                                             writer.Write(resourceReferences[i][p].rotation.Z);
 #endif
                                             writer.Write(resourceReferences[i][p].resource_id.AsUInt32); //Sometimes this is the entity ID that uses the resource, other times it's the "resource" parameter ID link
