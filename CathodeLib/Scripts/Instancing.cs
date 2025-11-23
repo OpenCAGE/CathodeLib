@@ -1,4 +1,4 @@
-﻿using CATHODE;
+using CATHODE;
 using CATHODE.Enums;
 using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
@@ -321,6 +321,8 @@ namespace CathodeLib
                                 case FunctionType.ApplyRelativeTransform:
                                     break;
                                 case FunctionType.AreaHitMonitor:
+                                    if (typeof(T) == typeof(float))
+                                        return (T)(object)Floats.Get("SphereRadius");
                                     break;
                                 case FunctionType.AssetSpawner:
                                     break;
@@ -1336,10 +1338,16 @@ namespace CathodeLib
                                 case FunctionType.GetTranslation:
                                     break;
                                 case FunctionType.GetX:
+                                    if (typeof(T) == typeof(float))
+                                        return (T)(object)Vectors.Get("Input").X;
                                     break;
                                 case FunctionType.GetY:
+                                    if (typeof(T) == typeof(float))
+                                        return (T)(object)Vectors.Get("Input").Y;
                                     break;
                                 case FunctionType.GetZ:
+                                    if (typeof(T) == typeof(float))
+                                        return (T)(object)Vectors.Get("Input").Z;
                                     break;
                                 case FunctionType.GlobalEvent:
                                     break;
@@ -1992,6 +2000,14 @@ namespace CathodeLib
                                 case FunctionType.PopupMessage:
                                     break;
                                 case FunctionType.PositionDistance:
+                                    if (typeof(T) == typeof(float))
+                                    {
+                                        //NOTE: this is actually TRANSFORM, but i convert TRANSFORM to position VECTOR above
+                                        Vector3 to = Vectors.Get("LHS");
+                                        Vector3 from = Vectors.Get("RHS");
+                                        Vector3 res = to - from;
+                                        return (T)(object)(float)Math.Sqrt(res.X * res.X + res.Y * res.Y + res.Z * res.Z);
+                                    }
                                     break;
                                 case FunctionType.PositionMarker:
                                     break;
@@ -2072,7 +2088,9 @@ namespace CathodeLib
                                 case FunctionType.ScalarProduct:
                                     if (typeof(T) == typeof(float))
                                     {
-
+                                        Vector3 lhs = Vectors.Get("LHS");
+                                        Vector3 rhs = Vectors.Get("RHS");
+                                        return (T)(object)(float)(lhs.X * rhs.X + lhs.Y * rhs.Y + lhs.Z * rhs.Z);
                                     }
                                     break;
                                 case FunctionType.ScreenEffectEventMonitor:
@@ -2432,6 +2450,8 @@ namespace CathodeLib
                                 case FunctionType.VariableFlashScreenColour:
                                     break;
                                 case FunctionType.VariableFloat:
+                                    if (typeof(T) == typeof(float))
+                                        return (T)(object)Floats.Get("initial_value");
                                     break;
                                 case FunctionType.VariableHackingConfig:
                                     break;
@@ -2457,8 +2477,22 @@ namespace CathodeLib
                                 case FunctionType.VectorAdd:
                                     break;
                                 case FunctionType.VectorDirection:
+                                    if (typeof(T) == typeof(float))
+                                    {
+                                        Vector3 to = Vectors.Get("To");
+                                        Vector3 from = Vectors.Get("From");
+                                        Vector3 res = to - from;
+                                        return (T)(object)(float)Math.Atan2(res.X, res.Z);
+                                    }
                                     break;
                                 case FunctionType.VectorDistance:
+                                    if (typeof(T) == typeof(float))
+                                    {
+                                        Vector3 to = Vectors.Get("To");
+                                        Vector3 from = Vectors.Get("From");
+                                        Vector3 res = to-from;
+                                        return (T)(object)(float)Math.Sqrt(res.X * res.X + res.Y * res.Y + res.Z * res.Z);
+                                    }
                                     break;
                                 case FunctionType.VectorLinearInterpolateSpeed:
                                     break;
@@ -2498,6 +2532,11 @@ namespace CathodeLib
                                 case FunctionType.VectorSubtract:
                                     break;
                                 case FunctionType.VectorYaw:
+                                    if (typeof(T) == typeof(float))
+                                    {
+                                        Vector3 res = Vectors.Get("Vector");
+                                        return (T)(object)(float)Math.Atan2(res.X, res.Z);
+                                    }
                                     break;
                                 case FunctionType.VideoCapture:
                                     break;
