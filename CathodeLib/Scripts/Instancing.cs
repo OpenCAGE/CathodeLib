@@ -49,11 +49,29 @@ namespace CathodeLib
             }
         }
 
+        public class Transform
+        {
+            public Vector3 Position = new Vector3();
+            public Vector3 Rotation = new Vector3();
+
+            public Matrix4x4 AsMatrix()
+            {
+                Quaternion rotation = Quaternion.CreateFromYawPitchRoll(
+                    Rotation.Y * (float)Math.PI / 180.0f,
+                    Rotation.X * (float)Math.PI / 180.0f,
+                    Rotation.Z * (float)Math.PI / 180.0f 
+                );
+                
+                return Matrix4x4.CreateFromQuaternion(rotation) * Matrix4x4.CreateTranslation(Position);
+            }
+        }
+
         public Parameters<bool> Bools = new Parameters<bool>();
         public Parameters<int> Integers = new Parameters<int>();
         public Parameters<float> Floats = new Parameters<float>();
         public Parameters<int> EnumIndexes = new Parameters<int>();
         public Parameters<Vector3> Vectors = new Parameters<Vector3>();
+        public Parameters<Transform> Transforms = new Parameters<Transform>();
 
         public Level Level;
         public Entity Entity;
@@ -228,6 +246,27 @@ namespace CathodeLib
                             Vectors.Values.Add(guid.ToString(), value);
                         }
                         break;
+                    case DataType.TRANSFORM:
+                        {
+                            Transform value = new Transform();
+                            Parameter p = entity.GetParameter(guid);
+                            switch (p?.content?.dataType)
+                            {
+                                case DataType.VECTOR:
+                                    value = new Transform() { Position = ((cVector3)p.content).value };
+                                    break;
+                                case DataType.TRANSFORM:
+                                    cTransform t = (cTransform)p.content;
+                                    value = new Transform() { Position = t.position, Rotation = t.rotation };
+                                    break;
+                                default:
+                                    cTransform tD = (cTransform)Level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid);
+                                    value = new Transform() { Position = tD.position, Rotation = tD.rotation };
+                                    break;
+                            }
+                            Transforms.Values.Add(guid.ToString(), value);
+                        }
+                        break;
                 }
 
             }
@@ -268,6 +307,9 @@ namespace CathodeLib
                         break;
                     case DataType.VECTOR:
                         Vectors.Links.Add(guid.ToString(), linksParsed);
+                        break;
+                    case DataType.TRANSFORM:
+                        Transforms.Links.Add(guid.ToString(), linksParsed);
                         break;
                 }
             }
@@ -1330,12 +1372,16 @@ namespace CathodeLib
                                 case FunctionType.GetPointOnSpline:
                                     break;
                                 case FunctionType.GetRotation:
+                                    if (typeof(T) == typeof(Vector3))
+                                        return (T)(object)Transforms.Get("Input").Rotation;
                                     break;
                                 case FunctionType.GetSelectedCharacterId:
                                     break;
                                 case FunctionType.GetSplineLength:
                                     break;
                                 case FunctionType.GetTranslation:
+                                    if (typeof(T) == typeof(Vector3))
+                                        return (T)(object)Transforms.Get("Input").Position;
                                     break;
                                 case FunctionType.GetX:
                                     if (typeof(T) == typeof(float))
@@ -2002,9 +2048,8 @@ namespace CathodeLib
                                 case FunctionType.PositionDistance:
                                     if (typeof(T) == typeof(float))
                                     {
-                                        //NOTE: this is actually TRANSFORM, but i convert TRANSFORM to position VECTOR above
-                                        Vector3 to = Vectors.Get("LHS");
-                                        Vector3 from = Vectors.Get("RHS");
+                                        Vector3 to = Transforms.Get("LHS").Position;
+                                        Vector3 from = Transforms.Get("RHS").Position;
                                         Vector3 res = to - from;
                                         return (T)(object)(float)Math.Sqrt(res.X * res.X + res.Y * res.Y + res.Z * res.Z);
                                     }
@@ -2124,6 +2169,8 @@ namespace CathodeLib
                                         return (T)(object)Bools.Get("Input");
                                     break;
                                 case FunctionType.SetColour:
+                                    if (typeof(T) == typeof(Vector3))
+                                        return (T)(object)Vectors.Get("Colour");
                                     break;
                                 case FunctionType.SetEnum:
                                     break;
@@ -2172,8 +2219,12 @@ namespace CathodeLib
                                 case FunctionType.SetupGCDistribution:
                                     break;
                                 case FunctionType.SetVector:
+                                    if (typeof(T) == typeof(Vector3))
+                                        return (T)(object)new Vector3(Floats.Get("x"), Floats.Get("y"), Floats.Get("z"));
                                     break;
                                 case FunctionType.SetVector2:
+                                    if (typeof(T) == typeof(Vector3))
+                                        return (T)(object)Vectors.Get("Input");
                                     break;
                                 case FunctionType.SharpnessSettings:
                                     break;
@@ -2438,6 +2489,8 @@ namespace CathodeLib
                                         return (T)(object)Bools.Get("initial_value");
                                     break;
                                 case FunctionType.VariableColour:
+                                    if (typeof(T) == typeof(Vector3))
+                                        return (T)(object)Vectors.Get("initial_colour");
                                     break;
                                 case FunctionType.VariableEnum:
                                     if (typeof(T) == typeof(int))
@@ -2448,6 +2501,8 @@ namespace CathodeLib
                                 case FunctionType.VariableFilterObject:
                                     break;
                                 case FunctionType.VariableFlashScreenColour:
+                                    if (typeof(T) == typeof(Vector3))
+                                        return (T)(object)Vectors.Get("initial_colour");
                                     break;
                                 case FunctionType.VariableFloat:
                                     if (typeof(T) == typeof(float))
@@ -2471,10 +2526,16 @@ namespace CathodeLib
                                 case FunctionType.VariableTriggerObject:
                                     break;
                                 case FunctionType.VariableVector:
+                                    if (typeof(T) == typeof(Vector3))
+                                        return (T)(object)new Vector3(Floats.Get("initial_x"), Floats.Get("initial_y"), Floats.Get("initial_z"));
                                     break;
                                 case FunctionType.VariableVector2:
+                                    if (typeof(T) == typeof(Vector3))
+                                        return (T)(object)Vectors.Get("initial_value");
                                     break;
                                 case FunctionType.VectorAdd:
+                                    if (typeof(T) == typeof(Vector3))
+                                        return (T)(object)(Vector3)(Vectors.Get("LHS") + Vectors.Get("RHS"));
                                     break;
                                 case FunctionType.VectorDirection:
                                     if (typeof(T) == typeof(float))
@@ -2495,10 +2556,26 @@ namespace CathodeLib
                                     }
                                     break;
                                 case FunctionType.VectorLinearInterpolateSpeed:
+                                    if (typeof(T) == typeof(Vector3))
+                                        return (T)(object)Vectors.Get("Initial_Value");
                                     break;
                                 case FunctionType.VectorLinearInterpolateTimed:
+                                    if (typeof(T) == typeof(Vector3))
+                                        return (T)(object)Vectors.Get("Initial_Value");
                                     break;
                                 case FunctionType.VectorLinearProportion:
+                                    if (typeof(T) == typeof(Vector3))
+                                    {
+                                        Vector3 min = Vectors.Get("Initial_Value");
+                                        Vector3 max = Vectors.Get("Target_Value");
+                                        float proportion = Floats.Get("Proportion");
+
+                                        return (T)(object)new Vector3(
+                                            min.X + (max.X - min.X) * proportion,
+                                            min.Y + (max.Y - min.Y) * proportion,
+                                            min.Z + (max.Z - min.Z) * proportion
+                                        );
+                                    }
                                     break;
                                 case FunctionType.VectorMath:
                                     break;
@@ -2510,26 +2587,111 @@ namespace CathodeLib
                                     }
                                     break;
                                 case FunctionType.VectorMultiply:
+                                    if (typeof(T) == typeof(Vector3))
+                                    {
+                                        Vector3 lhs = Vectors.Get("LHS");
+                                        Vector3 rhs = Vectors.Get("RHS");
+                                        return (T)(object)new Vector3(lhs.X * rhs.X, lhs.Y * rhs.Y, lhs.Z * rhs.Z);
+                                    }
                                     break;
                                 case FunctionType.VectorMultiplyByPos:
                                     break;
                                 case FunctionType.VectorNormalise:
+                                    if (typeof(T) == typeof(Vector3))
+                                    {
+                                        Vector3 input = Vectors.Get("Input");
+                                        float modulusSquared = input.X * input.X + input.Y * input.Y + input.Z * input.Z;
+                                        if (modulusSquared < 0.00001f)
+                                            return (T)(object)new Vector3(0, 0, 0);
+                                        float length = 1.0f / (float)Math.Sqrt(modulusSquared);
+                                        return (T)(object)new Vector3(input.X * length, input.Y * length, input.Z * length);
+                                    }
                                     break;
                                 case FunctionType.VectorProduct:
+                                    if (typeof(T) == typeof(Vector3))
+                                    {
+                                        Vector3 lhs = Vectors.Get("LHS");
+                                        Vector3 rhs = Vectors.Get("RHS");
+                                        return (T)(object)new Vector3(
+                                            lhs.Y * rhs.Z - lhs.Z * rhs.Y,
+                                            lhs.Z * rhs.X - lhs.X * rhs.Z,
+                                            lhs.X * rhs.Y - lhs.Y * rhs.X
+                                        );
+                                    }
                                     break;
                                 case FunctionType.VectorReflect:
+                                    if (typeof(T) == typeof(Vector3))
+                                    {
+                                        Vector3 input = Vectors.Get("Input");
+                                        if (input.X == 0 && input.Y == 0 && input.Z == 0)
+                                            return (T)(object)new Vector3(0, 0, 0);
+                                        Vector3 normal = Vectors.Get("Normal");
+                                        if (input.X == 0 && input.Y == 0 && input.Z == 0)
+                                            return (T)(object)new Vector3(0, 0, 0);
+
+                                        float inputDot = input.X * normal.X + input.Y * normal.Y + input.Z * normal.Z;
+                                        return (T)(object)(input - (normal * (inputDot * 2.0f)));
+                                    }
                                     break;
                                 case FunctionType.VectorRotateByPos:
+                                    if (typeof(T) == typeof(Vector3))
+                                    {
+                                        Vector3 vect = Vectors.Get("Vector");
+                                        Transform mx = Transforms.Get("WorldPos");
+                                        mx.Position = new Vector3(0, 0, 0);
+                                        Vector4 result = Vector4.Transform(new Vector4(vect.X, vect.Y, vect.Z, 0), mx.AsMatrix());
+                                        return (T)(object)new Vector3(result.X, result.Y, result.Z);
+                                    }
                                     break;
                                 case FunctionType.VectorRotatePitch:
+                                    if (typeof(T) == typeof(Vector3))
+                                    {
+                                        Vector3 res = Vectors.Get("Vector");
+                                        float pitch = Floats.Get("Pitch");
+                                        float cosTheta = (float)Math.Cos(pitch);
+                                        float sinTheta = (float)Math.Sin(pitch);
+                                        return (T)(object)new Vector3(
+                                            res.X * cosTheta + res.Z * sinTheta,
+                                            res.Y,
+                                            res.X * -sinTheta + res.Z * cosTheta
+                                        );
+                                    }
                                     break;
                                 case FunctionType.VectorRotateRoll:
+                                    if (typeof(T) == typeof(Vector3))
+                                    {
+                                        Vector3 res = Vectors.Get("Vector");
+                                        float roll = Floats.Get("Roll");
+                                        float cosTheta = (float)Math.Cos(roll);
+                                        float sinTheta = (float)Math.Sin(roll);
+                                        return (T)(object)new Vector3(
+                                            res.X * cosTheta - res.Y * sinTheta,
+                                            res.X * sinTheta + res.Y * cosTheta,
+                                            res.Z
+                                        );
+                                    }
                                     break;
                                 case FunctionType.VectorRotateYaw:
+                                    if (typeof(T) == typeof(Vector3))
+                                    {
+                                        Vector3 res = Vectors.Get("Vector");
+                                        float yaw = Floats.Get("Yaw");
+                                        float cosTheta = (float)Math.Cos(yaw);
+                                        float sinTheta = (float)Math.Sin(yaw);
+                                        return (T)(object)new Vector3(
+                                            res.X * cosTheta + res.Z * sinTheta,
+                                            res.Y,
+                                            res.X * -sinTheta + res.Z * cosTheta
+                                        );
+                                    }
                                     break;
                                 case FunctionType.VectorScale:
+                                    if (typeof(T) == typeof(Vector3))
+                                        return (T)(object)(Vector3)(Vectors.Get("LHS") * Vectors.Get("RHS"));
                                     break;
                                 case FunctionType.VectorSubtract:
+                                    if (typeof(T) == typeof(Vector3))
+                                        return (T)(object)(Vector3)(Vectors.Get("LHS") - Vectors.Get("RHS"));
                                     break;
                                 case FunctionType.VectorYaw:
                                     if (typeof(T) == typeof(float))
@@ -2609,6 +2771,8 @@ namespace CathodeLib
                 return (T)(object)0;
             if (typeof(T) == typeof(float))
                 return (T)(object)0.0f;
+            if (typeof(T) == typeof(Vector3))
+                return (T)(object)new Vector3(0,0,0);
 
             return (T)(object)null;
         }
