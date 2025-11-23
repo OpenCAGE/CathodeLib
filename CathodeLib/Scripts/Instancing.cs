@@ -2867,7 +2867,7 @@ namespace CathodeLib
                 case EntityVariant.VARIABLE:
                     {
                         VariableEntity var = (VariableEntity)Entity;
-                        switch (p.dataType)
+                        switch (var.type)
                         {
                             case DataType.BOOL:
                                 bool b = Bools.Get(var.name.ToString()); 
