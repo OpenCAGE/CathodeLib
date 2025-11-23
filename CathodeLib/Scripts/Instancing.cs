@@ -224,7 +224,7 @@ namespace CathodeLib
                                     value = ((cEnum)Level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid)).enumIndex;
                                     break;
                             }
-                            Integers.Values.Add(guid.ToString(), value);
+                            EnumIndexes.Values.Add(guid.ToString(), value);
                         }
                         break;
                     case DataType.VECTOR:
@@ -2761,7 +2761,68 @@ namespace CathodeLib
                     break;
 
                 case EntityVariant.VARIABLE:
-
+                    {
+                        VariableEntity var = (VariableEntity)Entity;
+                        switch (p.dataType)
+                        {
+                            case DataType.BOOL:
+                                bool b = Bools.Get(var.name.ToString()); 
+                                if (typeof(T) == typeof(int))
+                                    return (T)(object)(b ? 1 : 0);
+                                if (typeof(T) == typeof(float))
+                                    return (T)(object)(float)(b ? 1.0f : 0.0f);
+                                if (typeof(T) == typeof(bool))
+                                    return (T)(object)b;
+                                if (typeof(T) == typeof(string))
+                                    return (T)(object)(string)(b ? "TRUE" : "FALSE");
+                                break;
+                            case DataType.INTEGER:
+                                int i = Integers.Get(var.name.ToString());
+                                if (typeof(T) == typeof(int))
+                                    return (T)(object)i;
+                                if (typeof(T) == typeof(float))
+                                    return (T)(object)(float)i;
+                                if (typeof(T) == typeof(bool))
+                                    return (T)(object)(i == 1);
+                                if (typeof(T) == typeof(string))
+                                    return (T)(object)i.ToString();
+                                break;
+                            case DataType.FLOAT:
+                                float f = Floats.Get(var.name.ToString());
+                                if (typeof(T) == typeof(int))
+                                    return (T)(object)(int)f;
+                                if (typeof(T) == typeof(float))
+                                    return (T)(object)f;
+                                if (typeof(T) == typeof(bool))
+                                    return (T)(object)(f == 1.0f);
+                                if (typeof(T) == typeof(string))
+                                    return (T)(object)f.ToString();
+                                break;
+                            case DataType.ENUM:
+                                int e = EnumIndexes.Get(var.name.ToString());
+                                if (typeof(T) == typeof(int))
+                                    return (T)(object)e;
+                                if (typeof(T) == typeof(float))
+                                    return (T)(object)(float)e;
+                                if (typeof(T) == typeof(bool))
+                                    return (T)(object)(e == 1);
+                                break;
+                            case DataType.VECTOR:
+                                Vector3 v = Vectors.Get(var.name.ToString());
+                                if (typeof(T) == typeof(Vector3))
+                                    return (T)(object)v;
+                                if (typeof(T) == typeof(Transform))
+                                    return (T)(object)new Transform() { Position = v };
+                                break;
+                            case DataType.TRANSFORM:
+                                Transform t = Transforms.Get(var.name.ToString());
+                                if (typeof(T) == typeof(Vector3))
+                                    return (T)(object)t.Position;
+                                if (typeof(T) == typeof(Transform))
+                                    return (T)(object)t;
+                                break;
+                        }
+                    }
                     break;
             }
 
@@ -2773,6 +2834,8 @@ namespace CathodeLib
                 return (T)(object)0.0f;
             if (typeof(T) == typeof(Vector3))
                 return (T)(object)new Vector3(0,0,0);
+            if (typeof(T) == typeof(Transform)) // note - not implemented transform logic for FunctionEntity types yet
+                return (T)(object)new Transform();
 
             return (T)(object)null;
         }
