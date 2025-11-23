@@ -62,6 +62,10 @@ namespace CATHODE.Scripting
                    EqualityComparer<Vector3>.Default.Equals(rotation, reference.rotation) &&
                    EqualityComparer<ShortGuid>.Default.Equals(resource_id, reference.resource_id) &&
                    resource_type == reference.resource_type &&
+                   PhysicsSystemIndex == reference.PhysicsSystemIndex &&
+                   AnimatedModel == reference.AnimatedModel &&
+                   CollisionMapping == reference.CollisionMapping &&
+                   RenderableInstance == reference.RenderableInstance &&
                    EqualityComparer<ShortGuid>.Default.Equals(entityID, reference.entityID);
         }
 
