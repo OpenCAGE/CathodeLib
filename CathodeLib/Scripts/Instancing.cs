@@ -21,6 +21,11 @@ namespace CathodeLib
             //Any links to other entities that set parameter values
             public Dictionary<string, List<Tuple<string, InstancedEntity>>> Links = new Dictionary<string, List<Tuple<string, InstancedEntity>>>();
 
+            public bool Has(string name)
+            {
+                return Values.ContainsKey(name);
+            }
+
             public T Get(string name)
             {
                 //Check links first, these override the values
@@ -63,6 +68,23 @@ namespace CathodeLib
                 );
                 
                 return Matrix4x4.CreateFromQuaternion(rotation) * Matrix4x4.CreateTranslation(Position);
+            }
+
+            public static Transform operator *(Transform lhs, Transform rhs)
+            {
+                Matrix4x4 lhsMatrix = lhs.AsMatrix();
+                Matrix4x4 rhsMatrix = rhs.AsMatrix();
+                
+                Matrix4x4 resultMatrix = lhsMatrix * rhsMatrix;
+                Matrix4x4.Decompose(resultMatrix, out Vector3 scale, out Quaternion rotation, out Vector3 position);
+                
+                (decimal yaw, decimal pitch, decimal roll) = rotation.ToYawPitchRoll();
+                
+                return new Transform()
+                {
+                    Position = position,
+                    Rotation = new Vector3((float)pitch, (float)yaw, (float)roll)
+                };
             }
         }
 
@@ -365,6 +387,8 @@ namespace CathodeLib
                                 case FunctionType.AreaHitMonitor:
                                     if (typeof(T) == typeof(float))
                                         return (T)(object)Floats.Get("SphereRadius");
+                                    if (typeof(T) == typeof(Transform))
+                                        return (T)(object)Transforms.Get("SpherePos");
                                     break;
                                 case FunctionType.AssetSpawner:
                                     break;
@@ -425,6 +449,7 @@ namespace CathodeLib
                                 case FunctionType.CamPeek:
                                     break;
                                 case FunctionType.Character:
+                                    // --
                                     break;
                                 case FunctionType.CharacterAttachmentNode:
                                     break;
@@ -549,6 +574,8 @@ namespace CathodeLib
                                 case FunctionType.CMD_HolsterWeapon:
                                     break;
                                 case FunctionType.CMD_Idle:
+                                    if (typeof(T) == typeof(Transform))
+                                        return (T)(object)Transforms.Get("target_to_face");
                                     break;
                                 case FunctionType.CMD_LaunchMeleeAttack:
                                     break;
@@ -882,6 +909,8 @@ namespace CathodeLib
                                 case FunctionType.ExclusiveMaster:
                                     break;
                                 case FunctionType.Explosion_AINotifier:
+                                    if (typeof(T) == typeof(Transform))
+                                        return (T)(object)new Transform() { Position = Vectors.Get("ExplosionPos") };
                                     break;
                                 case FunctionType.ExternalVariableBool:
                                     if (typeof(T) == typeof(bool))
@@ -1346,8 +1375,12 @@ namespace CathodeLib
                                 case FunctionType.GetCurrentCameraFov:
                                     break;
                                 case FunctionType.GetCurrentCameraPos:
+                                    if (typeof(T) == typeof(Transform))
+                                        return (T)(object)new Transform();
                                     break;
                                 case FunctionType.GetCurrentCameraTarget:
+                                    if (typeof(T) == typeof(Transform))
+                                        return (T)(object)new Transform();
                                     break;
                                 case FunctionType.GetCurrentPlaylistLevelIndex:
                                     break;
@@ -1400,6 +1433,10 @@ namespace CathodeLib
                                 case FunctionType.GlobalEventMonitor:
                                     break;
                                 case FunctionType.GlobalPosition:
+                                    if (typeof(T) == typeof(Transform))
+                                    {
+                                        return (T)(object)new Transform();
+                                    }
                                     break;
                                 case FunctionType.GoToFrontend:
                                     break;
@@ -1734,6 +1771,8 @@ namespace CathodeLib
                                 case FunctionType.Master:
                                     break;
                                 case FunctionType.MELEE_WEAPON:
+                                    if (typeof(T) == typeof(Transform))
+                                        return (T)(object)Transforms.Get("position_input");
                                     break;
                                 case FunctionType.Minigames:
                                     break;
@@ -1752,10 +1791,14 @@ namespace CathodeLib
                                 case FunctionType.MotionTrackerMonitor:
                                     break;
                                 case FunctionType.MotionTrackerPing:
+                                    if (typeof(T) == typeof(Transform))
+                                        return (T)(object)Transforms.Get("FakePosition");
                                     break;
                                 case FunctionType.MoveAlongSpline:
                                     break;
                                 case FunctionType.MoveInTime:
+                                    if (typeof(T) == typeof(Transform))
+                                        return (T)(object)Transforms.Get("start_position");
                                     break;
                                 case FunctionType.MoviePlayer:
                                     break;
@@ -1824,6 +1867,12 @@ namespace CathodeLib
                                 case FunctionType.NPC_FakeSense:
                                     break;
                                 case FunctionType.NPC_FollowOffset:
+                                    if (typeof(T) == typeof(Transform))
+                                    {
+                                        Transform pos = Transforms.Get("target_to_follow");
+                                        Transform offset = new Transform() { Position = Vectors.Get("offset") };
+                                        return (T)(object)(pos * offset);
+                                    }
                                     break;
                                 case FunctionType.NPC_ForceCombatTarget:
                                     break;
@@ -1848,6 +1897,8 @@ namespace CathodeLib
                                         return (T)(object)EnumIndexes.Get("Context_Type");
                                     if (typeof(T) == typeof(float))
                                         return (T)(object)Floats.Get("Radius");
+                                    if (typeof(T) == typeof(Transform))
+                                        return (T)(object)Transforms.Get("ConvergePos");
                                     break;
                                 case FunctionType.NPC_multi_behaviour_monitor:
                                     break;
@@ -2040,6 +2091,11 @@ namespace CathodeLib
                                 case FunctionType.PlayForMinDuration:
                                     break;
                                 case FunctionType.PointAt:
+                                    if (typeof(T) == typeof(Transform))
+                                    {
+                                        //todo - might need to calculate the rotation here
+                                        return (T)(object)Transforms.Get("origin");
+                                    }
                                     break;
                                 case FunctionType.PointTracker:
                                     break;
@@ -2121,8 +2177,12 @@ namespace CathodeLib
                                 case FunctionType.RibbonEmitterReference:
                                     break;
                                 case FunctionType.RotateAtSpeed:
+                                    if (typeof(T) == typeof(Transform))
+                                        return (T)(object)Transforms.Get("start_pos");
                                     break;
                                 case FunctionType.RotateInTime:
+                                    if (typeof(T) == typeof(Transform))
+                                        return (T)(object)Transforms.Get("start_pos");
                                     break;
                                 case FunctionType.RTT_MoviePlayer:
                                     break;
@@ -2193,6 +2253,11 @@ namespace CathodeLib
                                         return (T)(object)Integers.Get("Input");
                                     break;
                                 case FunctionType.SetLocationAndOrientation:
+                                    if (typeof(T) == typeof(Transform))
+                                    {
+                                        //todo - might need to calculate this
+                                        return (T)(object)new Transform();
+                                    }
                                     break;
                                 case FunctionType.SetMotionTrackerRange:
                                     break;
@@ -2207,6 +2272,13 @@ namespace CathodeLib
                                 case FunctionType.SetPlayerHasKeycard:
                                     break;
                                 case FunctionType.SetPosition:
+                                    if (typeof(T) == typeof(Transform))
+                                    {
+                                        List<InstancedEntity> inputs = Transforms.GetLinks("Input");
+                                        if (inputs.Count > 0)
+                                            return (T)(object)inputs[0].GetAs<Transform>();
+                                        return (T)(object)new Transform() { Position = Vectors.Get("Translation"), Rotation = Vectors.Get("Rotation") };
+                                    }
                                     break;
                                 case FunctionType.SetPrimaryObjective:
                                     break;
@@ -2239,8 +2311,18 @@ namespace CathodeLib
                                 case FunctionType.SmokeCylinderAttachmentInterface:
                                     break;
                                 case FunctionType.SmoothMove:
+                                    if (typeof(T) == typeof(Transform))
+                                        return (T)(object)Transforms.Get("start_position");
                                     break;
                                 case FunctionType.Sound:
+                                    if (typeof(T) == typeof(Transform))
+                                    {
+                                        //NOTE: This won't work. attached_sound_object is a type reference, not a transform
+                                        List<InstancedEntity> inputs = Transforms.GetLinks("attached_sound_object");
+                                        if (inputs.Count == 0)
+                                            return (T)(object)new Transform();
+                                        return (T)(object)inputs[0].GetAs<Transform>();
+                                    }
                                     break;
                                 case FunctionType.SoundBarrier:
                                     break;
@@ -2283,6 +2365,10 @@ namespace CathodeLib
                                 case FunctionType.SpaceSuitVisor:
                                     break;
                                 case FunctionType.SpaceTransform:
+                                    if (typeof(T) == typeof(Transform))
+                                    {
+                                        return (T)(object)new Transform();
+                                    }
                                     break;
                                 case FunctionType.SpawnGroup:
                                     break;
@@ -2475,6 +2561,10 @@ namespace CathodeLib
                                 case FunctionType.UnlockMapDetail:
                                     break;
                                 case FunctionType.UpdateGlobalPosition:
+                                    if (typeof(T) == typeof(Transform))
+                                    {
+                                        return (T)(object)new Transform();
+                                    }
                                     break;
                                 case FunctionType.UpdateLeaderBoardDisplay:
                                     break;
@@ -2517,11 +2607,19 @@ namespace CathodeLib
                                 case FunctionType.VariableObject:
                                     break;
                                 case FunctionType.VariablePosition:
+                                    if (typeof(T) == typeof(Transform))
+                                        return (T)(object)new Transform(); // seems this is never set?
                                     break;
                                 case FunctionType.VariableString:
                                     //TODO - if implementing strings, the int call returns the anim hash as int
+                                    //if (typeof(T) == typeof(int))
+                                    //    return (T)(object)Utilities.AnimationHashedString(Strings.Get("initial_value"));
                                     break;
                                 case FunctionType.VariableThePlayer:
+                                    if (typeof(T) == typeof(Transform))
+                                    {
+                                        return (T)(object)new Transform();
+                                    }
                                     break;
                                 case FunctionType.VariableTriggerObject:
                                     break;
@@ -2595,6 +2693,12 @@ namespace CathodeLib
                                     }
                                     break;
                                 case FunctionType.VectorMultiplyByPos:
+                                    if (typeof(T) == typeof(Transform))
+                                    {
+                                        Transform vect = new Transform() { Position = Vectors.Get("Vector") };
+                                        Transform mx = Transforms.Get("WorldPos");
+                                        return (T)(object)(vect * mx).Position;
+                                    }
                                     break;
                                 case FunctionType.VectorNormalise:
                                     if (typeof(T) == typeof(Vector3))
@@ -2834,8 +2938,13 @@ namespace CathodeLib
                 return (T)(object)0.0f;
             if (typeof(T) == typeof(Vector3))
                 return (T)(object)new Vector3(0,0,0);
-            if (typeof(T) == typeof(Transform)) // note - not implemented transform logic for FunctionEntity types yet
-                return (T)(object)new Transform();
+            if (typeof(T) == typeof(Transform))
+            {
+                if (Transforms.Has("position"))
+                    return (T)(object)Transforms.Get("position");
+                else
+                    return (T)(object)new Transform();
+            }
 
             return (T)(object)null;
         }
