@@ -5,19 +5,20 @@ using CATHODE.Scripting.Internal;
 using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text;
 
 namespace CathodeLib
 {
-    public class InstancedEntity
+    public class InstancedEntity : IComparable<InstancedEntity>
     {
-        public class Parameters<T>
-        { 
+        public class Parameters<T> : IComparable<Parameters<T>>
+        {
             //Values set on the entity itself at initialisation time
             public Dictionary<string, T> Values = new Dictionary<string, T>();
-            
+
             //Any links to other entities that set parameter values
             public Dictionary<string, List<Tuple<string, InstancedEntity>>> Links = new Dictionary<string, List<Tuple<string, InstancedEntity>>>();
 
@@ -53,6 +54,14 @@ namespace CathodeLib
                 return entities;
             }
 
+            public void AddLinks(string name, List<Tuple<string, InstancedEntity>> links)
+            {
+                if (Links.ContainsKey(name))
+                    Links[name].AddRange(links);
+                else
+                    Links.Add(name, links);
+            }
+
             //For VariableEntities -> we want to override the default values and add links for matching variable names on the entity that instanced the composite they're contained in
             public void PopulateVariableParentInfo(Parameters<T> compInstParams, string varName)
             {
@@ -70,9 +79,171 @@ namespace CathodeLib
                     Links[varName].AddRange(compInstParams.Links[varName]); //todo - probs want to insert first?
                 }
             }
+
+            //Any entity can have an Alias override the values on it, kinda similar to the above 
+            public void PopulateAliasInfo(Parameters<T> aliasParams)
+            {
+                foreach (KeyValuePair<string, T> value in aliasParams.Values)
+                {
+                    if (!Values.ContainsKey(value.Key))
+                        Values.Add(value.Key, value.Value);
+                    else
+                        Values[value.Key] = value.Value;
+                }
+                foreach (KeyValuePair<string, List<Tuple<string, InstancedEntity>>> value in aliasParams.Links)
+                {
+                    AddLinks(value.Key, value.Value);
+                }
+            }
+
+            public override bool Equals(object obj)
+            {
+                if (obj is Parameters<T> other)
+                {
+                    if (Values.Count != other.Values.Count) return false;
+                    foreach (var kvp in Values)
+                    {
+                        if (!other.Values.TryGetValue(kvp.Key, out T otherValue) || !Equals(kvp.Value, otherValue))
+                            return false;
+                    }
+
+                    if (Links.Count != other.Links.Count) return false;
+                    foreach (var kvp in Links)
+                    {
+                        if (!other.Links.TryGetValue(kvp.Key, out List<Tuple<string, InstancedEntity>> otherLinks))
+                            return false;
+                        if (kvp.Value.Count != otherLinks.Count) return false;
+                        for (int i = 0; i < kvp.Value.Count; i++)
+                        {
+                            if (kvp.Value[i].Item1 != otherLinks[i].Item1 ||
+                                kvp.Value[i].Item2 != otherLinks[i].Item2)
+                                return false;
+                        }
+                    }
+
+                    return true;
+                }
+                return false;
+            }
+
+            public override int GetHashCode()
+            {
+                int hashCode = -1757656154;
+                foreach (var kvp in Values)
+                {
+                    hashCode = hashCode * -1521134295 + kvp.Key.GetHashCode();
+                    hashCode = hashCode * -1521134295 + (kvp.Value?.GetHashCode() ?? 0);
+                }
+                foreach (var kvp in Links)
+                {
+                    hashCode = hashCode * -1521134295 + kvp.Key.GetHashCode();
+                    hashCode = hashCode * -1521134295 + kvp.Value.Count.GetHashCode();
+                    foreach (var link in kvp.Value)
+                    {
+                        hashCode = hashCode * -1521134295 + link.Item1.GetHashCode();
+                        hashCode = hashCode * -1521134295 + (link.Item2?.GetHashCode() ?? 0);
+                    }
+                }
+                return hashCode;
+            }
+
+            public static bool operator ==(Parameters<T> x, Parameters<T> y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return false;
+                return x.Equals(y);
+            }
+
+            public static bool operator !=(Parameters<T> x, Parameters<T> y)
+            {
+                return !(x == y);
+            }
+
+            public int CompareTo(Parameters<T> other)
+            {
+                if (other == null) return 1;
+                if (ReferenceEquals(this, other)) return 0;
+
+                int valuesCompare = CompareDictionaries(Values, other.Values);
+                if (valuesCompare != 0) return valuesCompare;
+                return CompareLinksDictionaries(Links, other.Links);
+            }
+
+            private int CompareDictionaries(Dictionary<string, T> dict1, Dictionary<string, T> dict2)
+            {
+                int countCompare = dict1.Count.CompareTo(dict2.Count);
+                if (countCompare != 0) return countCompare;
+
+                var keys1 = new List<string>(dict1.Keys);
+                var keys2 = new List<string>(dict2.Keys);
+                keys1.Sort();
+                keys2.Sort();
+                for (int i = 0; i < keys1.Count; i++)
+                {
+                    int keyCompare = string.Compare(keys1[i], keys2[i], StringComparison.Ordinal);
+                    if (keyCompare != 0) return keyCompare;
+
+                    T val1 = dict1[keys1[i]];
+                    T val2 = dict2[keys2[i]];
+                    int valCompare = CompareValues(val1, val2);
+                    if (valCompare != 0) return valCompare;
+                }
+                return 0;
+            }
+
+            private int CompareLinksDictionaries(Dictionary<string, List<Tuple<string, InstancedEntity>>> dict1, Dictionary<string, List<Tuple<string, InstancedEntity>>> dict2)
+            {
+                int countCompare = dict1.Count.CompareTo(dict2.Count);
+                if (countCompare != 0) return countCompare;
+
+                var keys1 = new List<string>(dict1.Keys);
+                var keys2 = new List<string>(dict2.Keys);
+                keys1.Sort();
+                keys2.Sort();
+
+                for (int i = 0; i < keys1.Count; i++)
+                {
+                    int keyCompare = string.Compare(keys1[i], keys2[i], StringComparison.Ordinal);
+                    if (keyCompare != 0) return keyCompare;
+
+                    var list1 = dict1[keys1[i]];
+                    var list2 = dict2[keys2[i]];
+                    int listCountCompare = list1.Count.CompareTo(list2.Count);
+                    if (listCountCompare != 0) return listCountCompare;
+
+                    for (int j = 0; j < list1.Count; j++)
+                    {
+                        int item1Compare = string.Compare(list1[j].Item1, list2[j].Item1, StringComparison.Ordinal);
+                        if (item1Compare != 0) return item1Compare;
+
+                        int item2Compare = list1[j].Item2?.CompareTo(list2[j].Item2) ?? (list2[j].Item2 == null ? 0 : -1);
+                        if (item2Compare != 0) return item2Compare;
+                    }
+                }
+
+                return 0;
+            }
+
+            private int CompareValues(T val1, T val2)
+            {
+                if (val1 == null && val2 == null) return 0;
+                if (val1 == null) return -1;
+                if (val2 == null) return 1;
+
+                if (val1 is IComparable<T> comparable1)
+                {
+                    return comparable1.CompareTo(val2);
+                }
+                if (val1 is IComparable comparable2)
+                {
+                    return comparable2.CompareTo(val2);
+                }
+                if (Equals(val1, val2)) return 0;
+                return val1.GetHashCode().CompareTo(val2.GetHashCode());
+            }
         }
 
-        public class Transform
+        public class Transform : IComparable<Transform>
         {
             public Vector3 Position = new Vector3();
             public Vector3 Rotation = new Vector3();
@@ -82,9 +253,9 @@ namespace CathodeLib
                 Quaternion rotation = Quaternion.CreateFromYawPitchRoll(
                     Rotation.Y * (float)Math.PI / 180.0f,
                     Rotation.X * (float)Math.PI / 180.0f,
-                    Rotation.Z * (float)Math.PI / 180.0f 
+                    Rotation.Z * (float)Math.PI / 180.0f
                 );
-                
+
                 return Matrix4x4.CreateFromQuaternion(rotation) * Matrix4x4.CreateTranslation(Position);
             }
 
@@ -92,17 +263,81 @@ namespace CathodeLib
             {
                 Matrix4x4 lhsMatrix = lhs.AsMatrix();
                 Matrix4x4 rhsMatrix = rhs.AsMatrix();
-                
+
                 Matrix4x4 resultMatrix = lhsMatrix * rhsMatrix;
                 Matrix4x4.Decompose(resultMatrix, out Vector3 scale, out Quaternion rotation, out Vector3 position);
-                
+
                 (decimal yaw, decimal pitch, decimal roll) = rotation.ToYawPitchRoll();
-                
+
                 return new Transform()
                 {
                     Position = position,
                     Rotation = new Vector3((float)pitch, (float)yaw, (float)roll)
                 };
+            }
+
+            public override bool Equals(object obj)
+            {
+                if (obj is Transform other)
+                {
+                    return this.Position.X == other.Position.X &&
+                           this.Position.Y == other.Position.Y &&
+                           this.Position.Z == other.Position.Z &&
+                           this.Rotation.X == other.Rotation.X &&
+                           this.Rotation.Y == other.Rotation.Y &&
+                           this.Rotation.Z == other.Rotation.Z;
+                }
+                return false;
+            }
+
+            public override int GetHashCode()
+            {
+                int hashCode = -1757656154;
+                hashCode = hashCode * -1521134295 + Position.X.GetHashCode();
+                hashCode = hashCode * -1521134295 + Position.Y.GetHashCode();
+                hashCode = hashCode * -1521134295 + Position.Z.GetHashCode();
+                hashCode = hashCode * -1521134295 + Rotation.X.GetHashCode();
+                hashCode = hashCode * -1521134295 + Rotation.Y.GetHashCode();
+                hashCode = hashCode * -1521134295 + Rotation.Z.GetHashCode();
+                return hashCode;
+            }
+
+            public static bool operator ==(Transform x, Transform y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return false;
+                return x.Position.X == y.Position.X &&
+                       x.Position.Y == y.Position.Y &&
+                       x.Position.Z == y.Position.Z &&
+                       x.Rotation.X == y.Rotation.X &&
+                       x.Rotation.Y == y.Rotation.Y &&
+                       x.Rotation.Z == y.Rotation.Z;
+            }
+
+            public static bool operator !=(Transform x, Transform y)
+            {
+                return !(x == y);
+            }
+
+            public int CompareTo(Transform other)
+            {
+                if (other == null) return 1;
+                if (ReferenceEquals(this, other)) return 0;
+
+                int posCompare = CompareVector3(Position, other.Position);
+                if (posCompare != 0) return posCompare;
+                return CompareVector3(Rotation, other.Rotation);
+            }
+
+            private int CompareVector3(Vector3 a, Vector3 b)
+            {
+                int xCompare = a.X.CompareTo(b.X);
+                if (xCompare != 0) return xCompare;
+
+                int yCompare = a.Y.CompareTo(b.Y);
+                if (yCompare != 0) return yCompare;
+
+                return a.Z.CompareTo(b.Z);
             }
         }
 
@@ -340,23 +575,22 @@ namespace CathodeLib
                 switch (datatype)
                 {
                     case DataType.BOOL:
-                        Bools.Links.Add(guid.ToString(), linksParsed);
+                        Bools.AddLinks(guid.ToString(), linksParsed);
                         break;
                     case DataType.INTEGER:
-                        Integers.Links.Add(guid.ToString(), linksParsed);
+                        Integers.AddLinks(guid.ToString(), linksParsed);
                         break;
                     case DataType.FLOAT:
-                        if (!Floats.Links.ContainsKey(guid.ToString())) //todo - deprecate this when the hashset above is fixed
-                            Floats.Links.Add(guid.ToString(), linksParsed);
+                        Floats.AddLinks(guid.ToString(), linksParsed);
                         break;
                     case DataType.ENUM:
-                        EnumIndexes.Links.Add(guid.ToString(), linksParsed);
+                        EnumIndexes.AddLinks(guid.ToString(), linksParsed);
                         break;
                     case DataType.VECTOR:
-                        Vectors.Links.Add(guid.ToString(), linksParsed);
+                        Vectors.AddLinks(guid.ToString(), linksParsed);
                         break;
                     case DataType.TRANSFORM:
-                        Transforms.Links.Add(guid.ToString(), linksParsed);
+                        Transforms.AddLinks(guid.ToString(), linksParsed);
                         break;
                 }
             }
@@ -377,6 +611,16 @@ namespace CathodeLib
                     Transforms.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Transforms, varName);
                 }
             }
+        }
+
+        public void ApplyAlias(InstancedAlias alias)
+        {
+            Bools.PopulateAliasInfo(alias.InstancedInfo.Bools);
+            Integers.PopulateAliasInfo(alias.InstancedInfo.Integers);
+            Floats.PopulateAliasInfo(alias.InstancedInfo.Floats);
+            EnumIndexes.PopulateAliasInfo(alias.InstancedInfo.EnumIndexes);
+            Vectors.PopulateAliasInfo(alias.InstancedInfo.Vectors);
+            Transforms.PopulateAliasInfo(alias.InstancedInfo.Transforms);
         }
 
         public T GetAs<T>(string name = "reference")
@@ -402,7 +646,7 @@ namespace CathodeLib
                         switch (var.type)
                         {
                             case DataType.BOOL:
-                                bool b = Bools.Get(var.name.ToString()); 
+                                bool b = Bools.Get(var.name.ToString());
                                 if (typeof(T) == typeof(int))
                                     return (T)(object)(b ? 1 : 0);
                                 if (typeof(T) == typeof(float))
@@ -460,17 +704,24 @@ namespace CathodeLib
                         }
                     }
                     break;
+
+                case EntityVariant.ALIAS:
+                    throw new Exception("unexpected");
+
+                case EntityVariant.PROXY:
+                    //resolve the proxy and forward
+                    break;
             }
 
             if (typeof(T) == typeof(bool))
                 return (T)(object)false;
-            else if(typeof(T) == typeof(int))
+            else if (typeof(T) == typeof(int))
                 return (T)(object)0;
-            else if(typeof(T) == typeof(float))
+            else if (typeof(T) == typeof(float))
                 return (T)(object)0.0f;
-            else if(typeof(T) == typeof(Vector3))
-                return (T)(object)new Vector3(0,0,0);
-            else if(typeof(T) == typeof(Transform))
+            else if (typeof(T) == typeof(Vector3))
+                return (T)(object)new Vector3(0, 0, 0);
+            else if (typeof(T) == typeof(Transform))
             {
                 if (Transforms.Has("position"))
                     return (T)(object)Transforms.Get("position");
@@ -3031,11 +3282,11 @@ namespace CathodeLib
                     return (T)(object)false;
                 else if (typeof(T) == typeof(int))
                     return (T)(object)0;
-                else if(typeof(T) == typeof(float))
+                else if (typeof(T) == typeof(float))
                     return (T)(object)0.0f;
-                else if(typeof(T) == typeof(Vector3))
+                else if (typeof(T) == typeof(Vector3))
                     return (T)(object)new Vector3(0, 0, 0);
-                else if(typeof(T) == typeof(Transform))
+                else if (typeof(T) == typeof(Transform))
                 {
                     if (Transforms.Has("position"))
                         return (T)(object)Transforms.Get("position");
@@ -3048,12 +3299,92 @@ namespace CathodeLib
                 }
             }
         }
+
+        public override bool Equals(object obj)
+        {
+            if (obj is InstancedEntity other)
+            {
+                return this.Path == other.Path;
+            }
+            return false;
+        }
+
+        public override int GetHashCode()
+        {
+            return Path?.GetHashCode() ?? 0;
+        }
+
+        public static bool operator ==(InstancedEntity x, InstancedEntity y)
+        {
+            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+            if (ReferenceEquals(y, null)) return false;
+            return x.Path == y.Path;
+        }
+
+        public static bool operator !=(InstancedEntity x, InstancedEntity y)
+        {
+            return !(x == y);
+        }
+
+        public int CompareTo(InstancedEntity other)
+        {
+            if (other == null) return 1;
+            if (ReferenceEquals(this, other)) return 0;
+
+            uint thisPathValue = Path?.ToUInt32() ?? 0;
+            uint otherPathValue = other.Path?.ToUInt32() ?? 0;
+            if (thisPathValue > otherPathValue)
+                return 1;
+            else if (thisPathValue < otherPathValue)
+                return -1;
+            return 0;
+        }
     }
 
-    public class InstancedComposite
+    public class InstancedAlias
+    {
+        public List<ShortGuid> ActivePath = new List<ShortGuid>();
+        public InstancedEntity InstancedInfo;
+    }
+
+    public class InstancedComposite : IComparable<InstancedComposite>
     {
         public ShortGuid InstanceID;
         public List<InstancedEntity> Entities = new List<InstancedEntity>();
+
+        public override bool Equals(object obj)
+        {
+            if (obj is InstancedComposite other)
+            {
+                return this.InstanceID == other.InstanceID;
+            }
+            return false;
+        }
+
+        public override int GetHashCode()
+        {
+            return InstanceID.GetHashCode();
+        }
+
+        public static bool operator ==(InstancedComposite x, InstancedComposite y)
+        {
+            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+            if (ReferenceEquals(y, null)) return false;
+            return x.InstanceID == y.InstanceID;
+        }
+
+        public static bool operator !=(InstancedComposite x, InstancedComposite y)
+        {
+            return !(x == y);
+        }
+
+        public int CompareTo(InstancedComposite other)
+        {
+            if (other == null) return 1;
+            if (ReferenceEquals(this, other)) return 0;
+
+            return InstanceID.CompareTo(other.InstanceID);
+        }
     }
 
     public static class InstanceWriter
@@ -3065,7 +3396,7 @@ namespace CathodeLib
 
         public static void DoStuff(Level level)
         {
-            GenerateInstances(level, level.Commands.EntryPoints[0], new EntityPath(), Root, null, null);
+            GenerateInstances(level, level.Commands.EntryPoints[0], new EntityPath(), Root, null, null, new List<InstancedAlias>());
 
             level.PhysicsMaps.Entries.Clear();
             WritePhysicsMaps(level, Root);
@@ -3074,8 +3405,10 @@ namespace CathodeLib
             string gsdfsd = "";
         }
 
-        private static void GenerateInstances(Level level, Composite composite, EntityPath path, InstancedComposite compositeInstance, InstancedComposite parentCompositeInstance, InstancedEntity parentCompositeInstanceEntity)
+        private static void GenerateInstances(Level level, Composite composite, EntityPath path, InstancedComposite compositeInstance, InstancedComposite parentCompositeInstance, InstancedEntity parentCompositeInstanceEntity, List<InstancedAlias> aliases)
         {
+            List<InstancedAlias> localAliases = new List<InstancedAlias>(aliases);
+
             //First, create all 'instanced entity' objects - these populate their default bool values on creation
             foreach (Entity entity in composite.GetEntities())
             {
@@ -3087,18 +3420,53 @@ namespace CathodeLib
                 newInstance.ParentCompositeInstance = parentCompositeInstance;
                 newInstance.ThisCompositeInstance = compositeInstance;
                 compositeInstance.Entities.Add(newInstance);
+
+                //Keep track of aliases
+                if (entity.variant == EntityVariant.ALIAS)
+                {
+                    InstancedAlias alias = new InstancedAlias() { ActivePath = ((AliasEntity)entity).alias.path.ToList(), InstancedInfo = newInstance };
+                    localAliases.Add(alias);
+                }
             }
 
-            //Next, hook up the instanced entity references in cases where they provide boolean parameter data 
+            //Now, split all the aliases up by the first part of their path so that we can apply them
+            Dictionary<ShortGuid, List<InstancedAlias>> trackedAliases = new Dictionary<ShortGuid, List<InstancedAlias>>();
+            foreach (InstancedAlias alias in localAliases)
+            {
+                if (alias.ActivePath.Count == 0)
+                    continue;
+
+                ShortGuid currentStep = alias.ActivePath[0];
+                alias.ActivePath.RemoveAt(0);
+
+                if (alias.ActivePath.Count == 0 || alias.ActivePath[0] == ShortGuid.Invalid)
+                {
+                    //We've arrived at the entity within this composite, apply the data out
+                    InstancedEntity toApply = compositeInstance.Entities.FirstOrDefault(o => o.Entity.shortGUID == currentStep);
+                    if (toApply != null)
+                    {
+                        toApply.ApplyAlias(alias);
+                    }
+                }
+                else
+                {
+                    //Otherwise, just keep a track of the alias with its newly updated path to use further down
+                    if (!trackedAliases.ContainsKey(currentStep))
+                        trackedAliases.Add(currentStep, new List<InstancedAlias>());
+                    trackedAliases[currentStep].Add(alias);
+                }
+            }
+
+            //Next, hook up the instanced entity links as references
             foreach (InstancedEntity entity in compositeInstance.Entities)
             {
                 entity.PopulateLinks(compositeInstance.Entities);
             }
 
+            //TODO: proxies!
+
             AllEntities.AddRange(compositeInstance.Entities);
             AllComposites.Add(compositeInstance);
-
-            //TODO: need to modify the ParameterValues depending on aliases - also need to track them down the hierarchy
 
             //Now, traverse down in to any child composites, and rinse and repeat
             foreach (FunctionEntity function in composite.functions)
@@ -3110,13 +3478,17 @@ namespace CathodeLib
                 if (child == null)
                     continue;
 
+                List<InstancedAlias> childAliases;
+                if (!trackedAliases.TryGetValue(function.shortGUID, out childAliases))
+                    childAliases = new List<InstancedAlias>();
+
                 EntityPath newPath = path.Copy();
                 newPath.AddNextStep(function);
                 InstancedComposite newInstance = new InstancedComposite();
                 newInstance.InstanceID = newPath.GenerateCompositeInstanceID();
                 InstancedEntity instancedEnt = compositeInstance.Entities.FirstOrDefault(o => o.Entity == function);
                 instancedEnt.ChildCompositeInstance = newInstance;
-                GenerateInstances(level, child, newPath, newInstance, compositeInstance, instancedEnt);
+                GenerateInstances(level, child, newPath, newInstance, compositeInstance, instancedEnt, childAliases);
             }
         }
 
