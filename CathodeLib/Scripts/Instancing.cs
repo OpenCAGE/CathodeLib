@@ -374,11 +374,29 @@ namespace CathodeLib
             Path = path;
             Composite = composite;
 
-            //NOTE: GetAllParameters does not check for duplicates, so do that now - need to fix that.
-            // An example of another issue is {UI_ReactionGame} - the child UI_Attached should not add another 'success' entry
             var parameters = Level.Commands.Utils.GetAllParameters(entity, composite);
-            foreach (var entry in parameters)
-                _parameters.Add(entry);
+            switch (entity.variant)
+            {
+                //For aliases, only factor in the parameters and links that are actually set, since these are OVERRIDES
+                case EntityVariant.ALIAS:
+                    foreach (Parameter p in entity.parameters) 
+                    {
+                        if (p.content == null)
+                            continue;
+                        _parameters.Add(parameters.FirstOrDefault(o => o.Item1 == p.name));
+                    }
+                    //TODO: also need to factor in parent links somehow
+                    foreach (EntityConnector c in entity.childLinks)
+                        _parameters.Add(parameters.FirstOrDefault(o => o.Item1 == c.thisParamID));
+                    break;
+                //For others, get all default values, as well as ones that are set
+                default:
+                    //NOTE: GetAllParameters does not check for duplicates, so do that now - need to fix that.
+                    // An example of another issue is {UI_ReactionGame} - the child UI_Attached should not add another 'success' entry
+                    foreach (var entry in parameters)
+                        _parameters.Add(entry);
+                    break;
+            }
 
             //Get all boolean values on this entity
             foreach ((ShortGuid guid, ParameterVariant variant, DataType datatype) in _parameters)
@@ -3429,6 +3447,12 @@ namespace CathodeLib
                 }
             }
 
+            //Next, hook up the instanced entity links as references
+            foreach (InstancedEntity entity in compositeInstance.Entities)
+            {
+                entity.PopulateLinks(compositeInstance.Entities);
+            }
+
             //Now, split all the aliases up by the first part of their path so that we can apply them
             Dictionary<ShortGuid, List<InstancedAlias>> trackedAliases = new Dictionary<ShortGuid, List<InstancedAlias>>();
             foreach (InstancedAlias alias in localAliases)
@@ -3455,12 +3479,6 @@ namespace CathodeLib
                         trackedAliases.Add(currentStep, new List<InstancedAlias>());
                     trackedAliases[currentStep].Add(alias);
                 }
-            }
-
-            //Next, hook up the instanced entity links as references
-            foreach (InstancedEntity entity in compositeInstance.Entities)
-            {
-                entity.PopulateLinks(compositeInstance.Entities);
             }
 
             //TODO: proxies!
