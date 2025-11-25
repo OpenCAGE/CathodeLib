@@ -385,13 +385,13 @@ namespace CathodeLib
                 o.Item2 == ParameterVariant.TARGET_PIN ||
                 o.Item2 == ParameterVariant.METHOD_FUNCTION ||
                 o.Item2 == ParameterVariant.METHOD_PIN
-                //TODO: remove "output pin" as well? or perhaps we should impleement the logic for these?
+            //TODO: remove "output pin" as well? or perhaps we should impleement the logic for these?
             );
             switch (entity.variant)
             {
                 //For aliases, only factor in the parameters and links that are actually set, since these are OVERRIDES
                 case EntityVariant.ALIAS:
-                    foreach (Parameter p in entity.parameters) 
+                    foreach (Parameter p in entity.parameters)
                     {
                         if (p.content == null)
                             continue;
@@ -740,7 +740,7 @@ namespace CathodeLib
                     throw new Exception("unexpected");
 
                 case EntityVariant.PROXY:
-                    //resolve the proxy and forward
+                    //resolve the proxy and forward (?)
                     break;
             }
 
@@ -789,308 +789,17 @@ namespace CathodeLib
             {
                 switch (type)
                 {
-                    case FunctionType.AccessTerminal:
-                        break;
-                    case FunctionType.AchievementMonitor:
-                        break;
-                    case FunctionType.AchievementStat:
-                        break;
-                    case FunctionType.AchievementUniqueCounter:
-                        break;
-                    case FunctionType.AddExitObjective:
-                        break;
-                    case FunctionType.AddItemsToGCPool:
-                        break;
-                    case FunctionType.AddToInventory:
-                        break;
-                    case FunctionType.AILightCurveSettings:
-                        break;
-                    case FunctionType.AIMED_ITEM:
-                        break;
-                    case FunctionType.AIMED_WEAPON:
-                        break;
-                    case FunctionType.ALLIANCE_ResetAll:
-                        break;
-                    case FunctionType.ALLIANCE_SetDisposition:
-                        break;
-                    case FunctionType.AllocateGCItemFromPoolBySubset:
-                        break;
-                    case FunctionType.AllocateGCItemsFromPool:
-                        break;
-                    case FunctionType.AllPlayersReady:
-                        break;
-                    case FunctionType.AnimatedModelAttachmentNode:
-                        break;
-                    case FunctionType.AnimationMask:
-                        break;
-                    case FunctionType.ApplyRelativeTransform:
-                        break;
-                    case FunctionType.AreaHitMonitor:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)Floats.Get("SphereRadius");
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("SpherePos");
-                        break;
-                    case FunctionType.AssetSpawner:
-                        break;
-                    case FunctionType.AttachmentInterface:
-                        break;
-                    case FunctionType.Benchmark:
-                        break;
-                    case FunctionType.BindObjectsMultiplexer:
-                        break;
-                    case FunctionType.BlendLowResFrame:
-                        break;
-                    case FunctionType.BloomSettings:
-                        break;
-                    case FunctionType.BoneAttachedCamera:
-                        break;
-                    case FunctionType.BooleanLogicInterface:
-                        break;
-                    case FunctionType.BooleanLogicOperation:
-                        break;
-                    case FunctionType.Box:
-                        if (typeof(T) == typeof(int))
-                        {
-
-                        }
-                        break;
-                    case FunctionType.BroadcastTrigger:
-                        break;
-                    case FunctionType.BulletChamber:
-                        break;
-                    case FunctionType.ButtonMashPrompt:
-                        break;
-                    case FunctionType.CAGEAnimation:
-                        break;
-                    case FunctionType.CameraAimAssistant:
-                        break;
-                    case FunctionType.CameraBehaviorInterface:
-                        break;
-                    case FunctionType.CameraCollisionBox:
-                        if (typeof(T) == typeof(int))
-                        {
-
-                        }
-                        break;
-                    case FunctionType.CameraDofController:
-                        break;
-                    case FunctionType.CameraFinder:
-                        break;
-                    case FunctionType.CameraPath:
-                        break;
-                    case FunctionType.CameraPathDriven:
-                        break;
-                    case FunctionType.CameraPlayAnimation:
-                        break;
-                    case FunctionType.CameraResource:
-                        break;
-                    case FunctionType.CameraShake:
-                        break;
-                    case FunctionType.CamPeek:
-                        break;
                     case FunctionType.Character:
-                        // --
-                        break;
-                    case FunctionType.CharacterAttachmentNode:
-                        break;
-                    case FunctionType.CharacterCommand:
-                        break;
-                    case FunctionType.CharacterMonitor:
-                        break;
-                    case FunctionType.CharacterShivaArms:
-                        break;
-                    case FunctionType.CharacterTypeMonitor:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
+                        if (typeof(T) == typeof(Transform))
+                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
                         break;
                     case FunctionType.Checkpoint:
-                        break;
-                    case FunctionType.CheckpointRestoredNotify:
-                        break;
-                    case FunctionType.ChokePoint:
-                        break;
-                    case FunctionType.CHR_DamageMonitor:
-                        break;
-                    case FunctionType.CHR_DeathMonitor:
-                        break;
-                    case FunctionType.CHR_DeepCrouch:
-                        break;
-                    case FunctionType.CHR_GetAlliance:
-                        break;
-                    case FunctionType.CHR_GetHealth:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)0;
-                        break;
-                    case FunctionType.CHR_GetTorch:
-                        break;
-                    case FunctionType.CHR_HasWeaponOfType:
-                        break;
-                    case FunctionType.CHR_HoldBreath:
-                        break;
-                    case FunctionType.CHR_IsWithinRange:
-                        break;
-                    case FunctionType.CHR_KnockedOutMonitor:
-                        break;
-                    case FunctionType.CHR_LocomotionDuck:
-                        break;
-                    case FunctionType.CHR_LocomotionEffect:
-                        break;
-                    case FunctionType.CHR_LocomotionModifier:
-                        break;
-                    case FunctionType.CHR_ModifyBreathing:
-                        break;
-                    case FunctionType.Chr_PlayerCrouch:
-                        break;
-                    case FunctionType.CHR_PlayNPCBark:
-                        break;
-                    case FunctionType.CHR_PlaySecondaryAnimation:
-                        break;
-                    case FunctionType.CHR_RetreatMonitor:
-                        break;
-                    case FunctionType.CHR_SetAlliance:
-                        break;
-                    case FunctionType.CHR_SetAndroidThrowTarget:
-                        break;
-                    case FunctionType.CHR_SetDebugDisplayName:
-                        break;
-                    case FunctionType.CHR_SetFacehuggerAggroRadius:
-                        break;
-                    case FunctionType.CHR_SetFocalPoint:
-                        break;
-                    case FunctionType.CHR_SetHeadVisibility:
-                        break;
-                    case FunctionType.CHR_SetHealth:
-                        break;
-                    case FunctionType.CHR_SetInvincibility:
-                        break;
-                    case FunctionType.CHR_SetMood:
-                        break;
-                    case FunctionType.CHR_SetShowInMotionTracker:
-                        break;
-                    case FunctionType.CHR_SetSubModelVisibility:
-                        break;
-                    case FunctionType.CHR_SetTacticalPosition:
-                        break;
-                    case FunctionType.CHR_SetTacticalPositionToTarget:
-                        break;
-                    case FunctionType.CHR_SetTorch:
-                        break;
-                    case FunctionType.CHR_TakeDamage:
-                        break;
-                    case FunctionType.CHR_TorchMonitor:
-                        break;
-                    case FunctionType.CHR_VentMonitor:
-                        break;
-                    case FunctionType.CHR_WeaponFireMonitor:
-                        break;
-                    case FunctionType.ChromaticAberrations:
-                        break;
-                    case FunctionType.ClearPrimaryObjective:
-                        break;
-                    case FunctionType.ClearSubObjective:
-                        break;
-                    case FunctionType.ClipPlanesController:
-                        break;
-                    case FunctionType.CloseableInterface:
-                        break;
-                    case FunctionType.CMD_AimAt:
-                        break;
-                    case FunctionType.CMD_AimAtCurrentTarget:
-                        break;
-                    case FunctionType.CMD_Die:
-                        break;
-                    case FunctionType.CMD_Follow:
-                        break;
-                    case FunctionType.CMD_FollowUsingJobs:
-                        break;
-                    case FunctionType.CMD_ForceMeleeAttack:
-                        break;
-                    case FunctionType.CMD_ForceReloadWeapon:
-                        break;
-                    case FunctionType.CMD_GoTo:
-                        break;
-                    case FunctionType.CMD_GoToCover:
-                        break;
-                    case FunctionType.CMD_HolsterWeapon:
-                        break;
-                    case FunctionType.CMD_Idle:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("target_to_face");
-                        break;
-                    case FunctionType.CMD_LaunchMeleeAttack:
-                        break;
-                    case FunctionType.CMD_ModifyCombatBehaviour:
-                        break;
-                    case FunctionType.CMD_MoveTowards:
-                        break;
-                    case FunctionType.CMD_PlayAnimation:
-                        break;
-                    case FunctionType.CMD_Ragdoll:
-                        break;
-                    case FunctionType.CMD_ShootAt:
-                        break;
-                    case FunctionType.CMD_StopScript:
-                        break;
-                    case FunctionType.CollectIDTag:
-                        break;
-                    case FunctionType.CollectNostromoLog:
-                        break;
-                    case FunctionType.CollectSevastopolLog:
-                        break;
-                    case FunctionType.CollisionBarrier:
-                        break;
-                    case FunctionType.ColourCorrectionTransition:
-                        break;
-                    case FunctionType.ColourSettings:
-                        break;
-                    case FunctionType.CompositeInterface:
-                        break;
-                    case FunctionType.CompoundVolume:
-                        break;
-                    case FunctionType.ControllableRange:
-                        break;
-                    case FunctionType.Convo:
-                        break;
-                    case FunctionType.Counter:
+                        if (typeof(T) == typeof(string))
+                            return (T)(object)"";
                         break;
                     case FunctionType.CoverExclusionArea:
-                        break;
-                    case FunctionType.CoverLine:
-                        break;
-                    case FunctionType.Custom_Hiding_Controller:
-                        break;
-                    case FunctionType.Custom_Hiding_Vignette_controller:
-                        break;
-                    case FunctionType.DayToneMappingSettings:
-                        break;
-                    case FunctionType.DEBUG_SenseLevels:
-                        break;
-                    case FunctionType.DebugCamera:
-                        break;
-                    case FunctionType.DebugCaptureCorpse:
-                        break;
-                    case FunctionType.DebugCaptureScreenShot:
-                        break;
-                    case FunctionType.DebugCheckpoint:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)Bools.Get("level_reset");
-                        break;
-                    case FunctionType.DebugEnvironmentMarker:
-                        break;
-                    case FunctionType.DebugGraph:
-                        break;
-                    case FunctionType.DebugLoadCheckpoint:
-                        break;
-                    case FunctionType.DebugMenuToggle:
-                        break;
-                    case FunctionType.DebugObjectMarker:
-                        break;
-                    case FunctionType.DebugPositionMarker:
-                        break;
-                    case FunctionType.DebugText:
-                        break;
-                    case FunctionType.DebugTextStacking:
+                        if (typeof(T) == typeof(Transform))
+                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
                         break;
                     case FunctionType.DeleteBlankPanel:
                         if (typeof(T) == typeof(bool))
@@ -1239,132 +948,9 @@ namespace CathodeLib
                             }
                         }
                         break;
-                    case FunctionType.DepthOfFieldSettings:
-                        break;
-                    case FunctionType.DespawnCharacter:
-                        break;
-                    case FunctionType.DespawnPlayer:
-                        break;
-                    case FunctionType.Display_Element_On_Map:
-                        break;
-                    case FunctionType.DisplayMessage:
-                        break;
-                    case FunctionType.DisplayMessageWithCallbacks:
-                        break;
-                    case FunctionType.DistortionOverlay:
-                        break;
-                    case FunctionType.DistortionSettings:
-                        break;
-                    case FunctionType.Door:
-                        break;
                     case FunctionType.DoorStatus:
                         if (typeof(T) == typeof(int))
-                        {
-                            bool is_locked = Bools.Get("is_locked");
-                            if (!is_locked)
-                            {
-                                if (Bools.Get("is_powered"))
-                                    return (T)(object)(int)DOOR_STATE.USE_MECHANISM;
-                                return (T)(object)(int)DOOR_STATE.RESTORE_POWER;
-                            }
-
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get("door_mechanism");
-                            if (Bools.Get("cut_complete"))
-                            {
-                                switch (door_mechanism)
-                                {
-                                    case DOOR_MECHANISM.HIDDEN_HACKING:
-                                        door_mechanism = DOOR_MECHANISM.HACKING;
-                                        break;
-                                    case DOOR_MECHANISM.HIDDEN_KEYPAD:
-                                        door_mechanism = DOOR_MECHANISM.KEYPAD;
-                                        break;
-                                    case DOOR_MECHANISM.HIDDEN_LEVER:
-                                        door_mechanism = DOOR_MECHANISM.LEVER;
-                                        break;
-                                    case DOOR_MECHANISM.HIDDEN_BUTTON:
-                                        door_mechanism = DOOR_MECHANISM.BUTTON;
-                                        break;
-                                }
-                            }
-                            else
-                            {
-                                return (T)(object)(int)DOOR_STATE.CUTTING_REQUIRED;
-                            }
-
-                            if (!Bools.Get("is_powered"))
-                                return (T)(object)(int)DOOR_STATE.RESTORE_POWER;
-
-                            switch (door_mechanism)
-                            {
-                                case DOOR_MECHANISM.HACKING:
-                                    return (T)(object)(int)DOOR_STATE.HACKING_REQUIRED;
-                                case DOOR_MECHANISM.LEVER:
-                                    return (T)(object)(int)DOOR_STATE.USE_LEVER;
-                                case DOOR_MECHANISM.BUTTON:
-                                    return (T)(object)(int)DOOR_STATE.USE_BUTTON;
-                                case DOOR_MECHANISM.KEYPAD:
-                                    UI_KEYGATE_TYPE gate_type = (UI_KEYGATE_TYPE)EnumIndexes.Get("gate_type");
-                                    if (gate_type == UI_KEYGATE_TYPE.KEYPAD)
-                                    {
-                                        return (T)(object)(int)DOOR_STATE.USE_KEYCODE;
-                                    }
-                                    else
-                                    {
-                                        if (Bools.Get("has_correct_keycard"))
-                                            return (T)(object)(int)DOOR_STATE.USE_KEYCARD;
-                                        else
-                                            return (T)(object)(int)DOOR_STATE.KEYCARD_REQUIRED;
-                                    }
-                                default:
-                                    return (T)(object)(int)DOOR_STATE.LOCKED;
-                            }
-                        }
-                        break;
-                    case FunctionType.DurangoVideoCapture:
-                        break;
-                    case FunctionType.EFFECT_DirectionalPhysics:
-                        break;
-                    case FunctionType.EFFECT_EntityGenerator:
-                        break;
-                    case FunctionType.EFFECT_ImpactGenerator:
-                        break;
-                    case FunctionType.EggSpawner:
-                        break;
-                    case FunctionType.ElapsedTimer:
-                        break;
-                    case FunctionType.EnableMotionTrackerPassiveAudio:
-                        break;
-                    case FunctionType.EndGame:
-                        break;
-                    case FunctionType.ENT_Debug_Exit_Game:
-                        break;
-                    case FunctionType.EnvironmentMap:
-                        break;
-                    case FunctionType.EnvironmentModelReference:
-                        break;
-                    case FunctionType.EQUIPPABLE_ITEM:
-                        break;
-                    case FunctionType.EvaluatorInterface:
-                        break;
-                    case FunctionType.ExclusiveMaster:
-                        break;
-                    case FunctionType.Explosion_AINotifier:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)new Transform() { Position = Vectors.Get("ExplosionPos") };
-                        break;
-                    case FunctionType.ExternalVariableBool:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false; //i think this is unused
-                        break;
-                    case FunctionType.FakeAILightSourceInPlayersHand:
-                        break;
-                    case FunctionType.FilmGrainSettings:
-                        break;
-
-                    case FunctionType.Filter:
-                        break;
-                    case FunctionType.FilterAbsorber:
+                            return (T)(object)0;
                         break;
                     case FunctionType.FilterAnd:
                         if (typeof(T) == typeof(bool))
@@ -1378,120 +964,11 @@ namespace CathodeLib
                             return (T)(object)true;
                         }
                         break;
-                    case FunctionType.FilterBelongsToAlliance:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterCanSeeTarget:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterHasBehaviourTreeFlagSet:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterHasPlayerCollectedIdTag:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterHasWeaponEquipped:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterHasWeaponOfType:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterIsACharacter:
-                        break;
-                    case FunctionType.FilterIsAgressing:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterIsAnySaveInProgress:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterIsAPlayer:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterIsCharacter:
-                        break;
-                    case FunctionType.FilterIsCharacterClass:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterIsCharacterClassCombo:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterIsDead:
-                        break;
-                    case FunctionType.FilterIsEnemyOfAllianceGroup:
-                        break;
-                    case FunctionType.FilterIsEnemyOfCharacter:
-                        break;
-                    case FunctionType.FilterIsEnemyOfPlayer:
-                        break;
-                    case FunctionType.FilterIsFacingTarget:
-                        break;
-                    case FunctionType.FilterIsHumanNPC:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterIsInAGroup:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterIsInAlertnessState:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterIsinInventory:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterIsInLocomotionState:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterIsInWeaponRange:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterIsLocalPlayer:
-                        break;
-                    case FunctionType.FilterIsNotDeadManWalking:
-                        break;
-                    case FunctionType.FilterIsObject:
-                        break;
-                    case FunctionType.FilterIsPhysics:
-                        break;
-                    case FunctionType.FilterIsPhysicsObject:
-                        break;
-                    case FunctionType.FilterIsPlatform:
-                        if (typeof(T) == typeof(bool))
-                        {
-                            PLATFORM_TYPE platform = (PLATFORM_TYPE)EnumIndexes.Get("Platform");
-                            return (T)(object)(platform == PLATFORM_TYPE.PL_NEXTGEN || platform == PLATFORM_TYPE.PL_PC);
-                        }
-                        break;
-                    case FunctionType.FilterIsUsingDevice:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.FilterIsValidInventoryItem:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false; //hmmm, unsure
-                        break;
-                    case FunctionType.FilterIsWithdrawnAlien:
-                        break;
                     case FunctionType.FilterNot:
                         if (typeof(T) == typeof(bool))
                         {
                             List<InstancedEntity> filters = Bools.GetLinks("filter");
-                            return (T)(object)(filters.Count == 0 ? false : filters[0].GetAs<bool>());
+                            return (T)(object)(filters.Count == 0 ? true : filters[0].GetAs<bool>());
                         }
                         break;
                     case FunctionType.FilterOr:
@@ -1505,22 +982,6 @@ namespace CathodeLib
                             }
                             return (T)(object)false;
                         }
-                        break;
-                    case FunctionType.FilterSmallestUsedDifficulty:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false; 
-                        break;
-                    case FunctionType.FixedCamera:
-                        break;
-                    case FunctionType.FlareSettings:
-                        break;
-                    case FunctionType.FlareTask:
-                        break;
-                    case FunctionType.FlashCallback:
-                        break;
-                    case FunctionType.FlashInvoke:
-                        break;
-                    case FunctionType.FlashScript:
                         break;
                     case FunctionType.FloatAbsolute:
                         if (typeof(T) == typeof(float))
@@ -1546,33 +1007,33 @@ namespace CathodeLib
                             float val = Floats.Get("Value");
                             float min = Floats.Get("Min");
                             float max = Floats.Get("Max");
-                            if (min < 0.0f) val = min;
-                            if (max > 1.0f) val = max;
+                            if (val < min) val = min;
+                            if (val > max) val = max;
                             return (T)(object)val;
                         }
                         break;
                     case FunctionType.FloatClampMultiply:
                         if (typeof(T) == typeof(float))
                         {
-                            float mult = Floats.Get("LHS");
-                            if (mult < Floats.Get("Min"))
-                                return (T)(object)Floats.Get("Min");
-                            if (mult > (Floats.Get("Max") * Floats.Get("RHS")))
-                                return (T)(object)Floats.Get("Max");
+                            float val = Floats.Get("LHS");
+                            float min = Floats.Get("Min");
+                            float max = Floats.Get("Max") * Floats.Get("RHS");
+                            if (val < min) val = min;
+                            if (val > max) val = max;
+                            return (T)(object)val;
                         }
-                        break;
-                    case FunctionType.FloatCompare:
                         break;
                     case FunctionType.FloatDivide:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)(Floats.Get("LHS") / Floats.Get("RHS"));
+                        {
+                            float rhs = Floats.Get("RHS");
+                            if (Math.Abs(rhs) < 0.0001f) return (T)(object)0.0f;
+                            return (T)(object)(Floats.Get("LHS") / rhs);
+                        }
                         break;
                     case FunctionType.FloatEquals:
                         if (typeof(T) == typeof(bool))
-                        {
-                            float threshold = Floats.Get("Threshold");
-                            return (T)(object)(Floats.Get("LHS") == Floats.Get("RHS")); //todo - need to account for threshold  (if equal within threshold ,return true)
-                        }
+                            return (T)(object)(Math.Abs(Floats.Get("LHS") - Floats.Get("RHS")) < Math.Abs(Floats.Get("Threshold")));
                         break;
                     case FunctionType.FloatGetLinearProportion:
                         if (typeof(T) == typeof(float))
@@ -1586,40 +1047,47 @@ namespace CathodeLib
                     case FunctionType.FloatGreaterThan:
                         if (typeof(T) == typeof(bool))
                         {
+                            float lhs = Floats.Get("LHS");
+                            float rhs = Floats.Get("RHS");
                             float threshold = Floats.Get("Threshold");
-                            return (T)(object)(Floats.Get("LHS") > Floats.Get("RHS")); //todo - need to account for threshold  (if equal within threshold ,return false)
+                            if (Math.Abs(lhs - rhs) < threshold) return (T)(object)false;
+                            return (T)(object)(lhs > rhs);
                         }
                         break;
                     case FunctionType.FloatGreaterThanOrEqual:
                         if (typeof(T) == typeof(bool))
                         {
+                            float lhs = Floats.Get("LHS");
+                            float rhs = Floats.Get("RHS");
                             float threshold = Floats.Get("Threshold");
-                            return (T)(object)(Floats.Get("LHS") >= Floats.Get("RHS")); //todo - need to account for threshold  (if equal within threshold ,return true)
+                            if (Math.Abs(lhs - rhs) < threshold) return (T)(object)true;
+                            return (T)(object)(lhs > rhs);
                         }
                         break;
                     case FunctionType.FloatLessThan:
                         if (typeof(T) == typeof(bool))
                         {
+                            float lhs = Floats.Get("LHS");
+                            float rhs = Floats.Get("RHS");
                             float threshold = Floats.Get("Threshold");
-                            return (T)(object)(Floats.Get("LHS") < Floats.Get("RHS")); //todo - need to account for threshold (if equal within threshold ,return false)
+                            if (Math.Abs(lhs - rhs) < threshold) return (T)(object)false;
+                            return (T)(object)(lhs < rhs);
                         }
                         break;
                     case FunctionType.FloatLessThanOrEqual:
                         if (typeof(T) == typeof(bool))
                         {
+                            float lhs = Floats.Get("LHS");
+                            float rhs = Floats.Get("RHS");
                             float threshold = Floats.Get("Threshold");
-                            return (T)(object)(Floats.Get("LHS") <= Floats.Get("RHS")); //todo - need to account for threshold (if equal within threshold ,return true)
+                            if (Math.Abs(lhs - rhs) < threshold) return (T)(object)true;
+                            return (T)(object)(lhs < rhs);
                         }
                         break;
                     case FunctionType.FloatLinearInterpolateSpeed:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)Floats.Get("Initial_Value");
-                        break;
-                    case FunctionType.FloatLinearInterpolateSpeedAdvanced:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)Floats.Get("Initial_Value");
-                        break;
                     case FunctionType.FloatLinearInterpolateTimed:
+                        if (typeof(T) == typeof(float))
+                            return (T)(object)Floats.Get("Initial_Value");
                         break;
                     case FunctionType.FloatLinearProportion:
                         if (typeof(T) == typeof(float))
@@ -1628,10 +1096,6 @@ namespace CathodeLib
                             float max = Floats.Get("Target_Value");
                             return (T)(object)(min + (max - min) * Floats.Get("Proportion"));
                         }
-                        break;
-                    case FunctionType.FloatMath:
-                        break;
-                    case FunctionType.FloatMath_All:
                         break;
                     case FunctionType.FloatMax:
                         if (typeof(T) == typeof(float))
@@ -1682,8 +1146,43 @@ namespace CathodeLib
                         }
                         break;
                     case FunctionType.FloatModulate:
+                        if (typeof(T) == typeof(float))
+                        {
+                            float PI = 3.1415926535897932333797165867879296635503123989707390137482903185973555f;
+
+                            float offset = Floats.Get("bias");
+                            float amplitude = Floats.Get("amplitude");
+
+                            float phase = Floats.Get("phase") / 360.0f;
+                            float output = phase % 1.0f;
+
+                            WAVE_SHAPE wave_shape = (WAVE_SHAPE)EnumIndexes.Get("wave_shape");
+                            switch (wave_shape)
+                            {
+                                case WAVE_SHAPE.SIN:
+                                    output = (float)Math.Sin(output * 2.0f * PI);
+                                    break;
+                                case WAVE_SHAPE.SAW:
+                                    output = (0.5f - output) * 2.0f;
+                                    break;
+                                case WAVE_SHAPE.REV_SAW:
+                                    output = (output - 0.5f) * 2.0f;
+                                    break;
+                                case WAVE_SHAPE.SQUARE:
+                                    output = (output < 0.5f) ? 1.0f : -1.0f;
+                                    break;
+                                case WAVE_SHAPE.TRIANGLE:
+                                    if (output < 0.25f) output = output * 4.0f;
+                                    else if (output < 0.75f) output = (0.5f - output) * 4.0f;
+                                    else output = (output - 1.0f) * 4.0f;
+                                    break;
+                            }
+                            return (T)(object)(offset + amplitude * output);
+                        }
                         break;
                     case FunctionType.FloatModulateRandom:
+                        if (typeof(T) == typeof(float))
+                            return (T)(object)0.0f;
                         break;
                     case FunctionType.FloatMultiply:
                         if (typeof(T) == typeof(float))
@@ -1706,46 +1205,25 @@ namespace CathodeLib
                     case FunctionType.FloatMultiplyClamp:
                         if (typeof(T) == typeof(float))
                         {
-                            float mult = Floats.Get("LHS") * Floats.Get("RHS");
-                            if (mult < Floats.Get("Min"))
-                                return (T)(object)Floats.Get("Min");
-                            if (mult > Floats.Get("Max"))
-                                return (T)(object)Floats.Get("Max");
+                            float val = Floats.Get("LHS") * Floats.Get("RHS");
+                            float min = Floats.Get("Min");
+                            float max = Floats.Get("Max");
+                            if (val < min) val = min;
+                            if (val > max) val = max;
+                            return (T)(object)val;
                         }
                         break;
                     case FunctionType.FloatNotEqual:
                         if (typeof(T) == typeof(bool))
-                        {
-                            float threshold = Floats.Get("Threshold");
-                            return (T)(object)(Floats.Get("LHS") != Floats.Get("RHS")); //todo - need to account for threshold  (if equal within threshold ,return true)
-                        }
-                        break;
-                    case FunctionType.FloatOperation:
+                            return (T)(object)!(Math.Abs(Floats.Get("LHS") - Floats.Get("RHS")) < Math.Abs(Floats.Get("Threshold")));
                         break;
                     case FunctionType.FloatReciprocal:
                         if (typeof(T) == typeof(float))
-                        {
-                            float input = Floats.Get("Input");
-                            if (Math.Abs(input) < 0.00001f) return (T)(object)0.0f;
-                            return (T)(object)(1.0f / input);
-                        }
+                            return (T)(object)(1.0f / Floats.Get("Input"));
                         break;
                     case FunctionType.FloatRemainder:
                         if (typeof(T) == typeof(float))
                             return (T)(object)(Floats.Get("LHS") % Floats.Get("RHS"));
-                        break;
-                    case FunctionType.FloatSmoothStep:
-                        if (typeof(T) == typeof(float))
-                        {
-                            float edge0 = Floats.Get("Low_Edge");
-                            float edge1 = Floats.Get("High_Edge");
-                            float t = Floats.Get("Value");
-
-                            float result = (t - edge0) / (edge1 - edge0);
-                            if (result > 1.0f) result = 1.0f;
-                            if (result < 0.0f) result = 0.0f;
-                            return (T)(object)(result * result * (3.0f - 2.0f * result));
-                        }
                         break;
                     case FunctionType.FloatSqrt:
                         if (typeof(T) == typeof(float))
@@ -1755,85 +1233,9 @@ namespace CathodeLib
                         if (typeof(T) == typeof(float))
                             return (T)(object)(Floats.Get("LHS") - Floats.Get("RHS"));
                         break;
-                    case FunctionType.FlushZoneCache:
-                        break;
-                    case FunctionType.FogBox:
-                        break;
-                    case FunctionType.FogPlane:
-                        break;
-                    case FunctionType.FogSetting:
-                        break;
-                    case FunctionType.FogSphere:
-                        break;
-                    case FunctionType.FollowCameraModifier:
-                        break;
-                    case FunctionType.FollowTask:
-                        break;
-                    case FunctionType.Force_UI_Visibility:
-                        break;
-                    case FunctionType.FullScreenBlurSettings:
-                        break;
-                    case FunctionType.FullScreenOverlay:
-                        break;
-                    case FunctionType.GameDVR:
-                        break;
-                    case FunctionType.GameOver:
-                        break;
-                    case FunctionType.GameOverCredits:
-                        break;
-                    case FunctionType.GameplayTip:
-                        break;
-                    case FunctionType.GameStateChanged:
-                        break;
-                    case FunctionType.GateInterface:
-                        break;
-                    case FunctionType.GateResourceInterface:
-                        break;
-                    case FunctionType.GCIP_WorldPickup:
-                        break;
-                    case FunctionType.GenericHighlightEntity:
-                        break;
-                    case FunctionType.GetBlueprintAvailable:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)true; //todo - match type to available options
-                        break;
-                    case FunctionType.GetBlueprintLevel:
-                        break;
-                    case FunctionType.GetCentrePoint:
-                        break;
-                    case FunctionType.GetCharacterRotationSpeed:
-                        break;
-                    case FunctionType.GetClosestPercentOnSpline:
-                        break;
-                    case FunctionType.GetClosestPoint:
-                        break;
-                    case FunctionType.GetClosestPointFromSet:
-                        break;
-                    case FunctionType.GetClosestPointOnSpline:
-                        break;
-                    case FunctionType.GetComponentInterface:
-                        break;
-                    case FunctionType.GetCurrentCameraFov:
-                        break;
-                    case FunctionType.GetCurrentCameraPos:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)new Transform();
-                        break;
-                    case FunctionType.GetCurrentCameraTarget:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)new Transform();
-                        break;
-                    case FunctionType.GetCurrentPlaylistLevelIndex:
-                        break;
-                    case FunctionType.GetFlashFloatValue:
-                        break;
-                    case FunctionType.GetFlashIntValue:
-                        break;
                     case FunctionType.GetGatingToolLevel:
-                        break;
-                    case FunctionType.GetInventoryItemName:
-                        break;
-                    case FunctionType.GetNextPlaylistLevelName:
+                        if (typeof(T) == typeof(int))
+                            return (T)(object)0;
                         break;
                     case FunctionType.GetPlayerHasGatingTool:
                         if (typeof(T) == typeof(bool))
@@ -1843,15 +1245,9 @@ namespace CathodeLib
                         if (typeof(T) == typeof(bool))
                             return (T)(object)false;
                         break;
-                    case FunctionType.GetPointOnSpline:
-                        break;
                     case FunctionType.GetRotation:
                         if (typeof(T) == typeof(Vector3))
                             return (T)(object)Transforms.Get("Input").Rotation;
-                        break;
-                    case FunctionType.GetSelectedCharacterId:
-                        break;
-                    case FunctionType.GetSplineLength:
                         break;
                     case FunctionType.GetTranslation:
                         if (typeof(T) == typeof(Vector3))
@@ -1869,43 +1265,9 @@ namespace CathodeLib
                         if (typeof(T) == typeof(float))
                             return (T)(object)Vectors.Get("Input").Z;
                         break;
-                    case FunctionType.GlobalEvent:
-                        break;
-                    case FunctionType.GlobalEventMonitor:
-                        break;
-                    case FunctionType.GlobalPosition:
-                        if (typeof(T) == typeof(Transform))
-                        {
-                            return (T)(object)new Transform();
-                        }
-                        break;
-                    case FunctionType.GoToFrontend:
-                        break;
-                    case FunctionType.GPU_PFXEmitterReference:
-                        break;
-                    case FunctionType.HableToneMappingSettings:
-                        break;
-                    case FunctionType.HackingGame:
-                        break;
-                    case FunctionType.HandCamera:
-                        break;
                     case FunctionType.HasAccessAtDifficulty:
                         if (typeof(T) == typeof(bool))
                             return (T)(object)false;
-                        break;
-                    case FunctionType.HeldItem_AINotifier:
-                        break;
-                    case FunctionType.HighSpecMotionBlurSettings:
-                        break;
-                    case FunctionType.HostOnlyTrigger:
-                        break;
-                    case FunctionType.IdleTask:
-                        break;
-                    case FunctionType.ImpactSphere:
-                        break;
-                    case FunctionType.InhibitActionsUntilRelease:
-                        break;
-                    case FunctionType.InspectorInterface:
                         break;
                     case FunctionType.IntegerAbsolute:
                         if (typeof(T) == typeof(int))
@@ -1925,13 +1287,9 @@ namespace CathodeLib
                             return (T)(object)sum;
                         }
                         break;
-                    case FunctionType.IntegerAnalyse:
-                        break;
                     case FunctionType.IntegerAnd:
                         if (typeof(T) == typeof(int))
                             return (T)(object)(Integers.Get("LHS") & Integers.Get("RHS"));
-                        break;
-                    case FunctionType.IntegerCompare:
                         break;
                     case FunctionType.IntegerCompliment:
                         if (typeof(T) == typeof(int))
@@ -1960,10 +1318,6 @@ namespace CathodeLib
                     case FunctionType.IntegerLessThanOrEqual:
                         if (typeof(T) == typeof(bool))
                             return (T)(object)(Integers.Get("LHS") <= Integers.Get("RHS"));
-                        break;
-                    case FunctionType.IntegerMath:
-                        break;
-                    case FunctionType.IntegerMath_All:
                         break;
                     case FunctionType.IntegerMax:
                         if (typeof(T) == typeof(int))
@@ -2035,8 +1389,6 @@ namespace CathodeLib
                         if (typeof(T) == typeof(bool))
                             return (T)(object)(Integers.Get("LHS") != Integers.Get("RHS"));
                         break;
-                    case FunctionType.IntegerOperation:
-                        break;
                     case FunctionType.IntegerOr:
                         if (typeof(T) == typeof(int))
                             return (T)(object)(Integers.Get("LHS") | Integers.Get("RHS"));
@@ -2049,123 +1401,9 @@ namespace CathodeLib
                         if (typeof(T) == typeof(int))
                             return (T)(object)(Integers.Get("LHS") - Integers.Get("RHS"));
                         break;
-                    case FunctionType.Interaction:
-                        break;
-                    case FunctionType.InteractiveMovementControl:
-                        break;
-                    case FunctionType.Internal_JOB_SearchTarget:
-                        break;
-                    case FunctionType.InventoryItem:
-                        break;
-                    case FunctionType.IrawanToneMappingSettings:
-                        break;
-                    case FunctionType.IsActive:
-                        break;
-                    case FunctionType.IsAttached:
-                        break; 
-                    case FunctionType.IsCurrentLevelAChallengeMap:
-                        break; //todo - check level name
-                    case FunctionType.IsCurrentLevelAPreorderMap:
-                        break; //todo - check level name
-                    case FunctionType.IsEnabled:
-                        break;
-                    case FunctionType.IsInstallComplete:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)true;
-                        break;
-                    case FunctionType.IsLoaded:
-                        break; 
-                    case FunctionType.IsLoading:
-                        break; 
-                    case FunctionType.IsLocked:
-                        break; 
-                    case FunctionType.IsMultiplayerMode:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.IsOpen:
-                        break; 
-                    case FunctionType.IsOpening:
-                        break;
-                    case FunctionType.IsPaused:
-                        break;
-                    case FunctionType.IsPlaylistTypeAll:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.IsPlaylistTypeMarathon:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.IsPlaylistTypeSingle:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.IsSpawned:
-                        break;
-                    case FunctionType.IsStarted:
-                        break; 
-                    case FunctionType.IsSuspended:
-                        break; 
-                    case FunctionType.IsVisible:
-                        break; 
-                    case FunctionType.Job:
-                        break;
-                    case FunctionType.JOB_AreaSweep:
-                        break;
-                    case FunctionType.JOB_AreaSweepFlare:
-                        break;
-                    case FunctionType.JOB_Assault:
-                        break;
-                    case FunctionType.JOB_Follow:
-                        break;
-                    case FunctionType.JOB_Follow_Centre:
-                        break;
-                    case FunctionType.JOB_Idle:
-                        break;
-                    case FunctionType.JOB_Panic:
-                        break;
                     case FunctionType.JOB_SpottingPosition:
-                        break;
-                    case FunctionType.JOB_SystematicSearch:
-                        break;
-                    case FunctionType.JOB_SystematicSearchFlare:
-                        break;
-                    case FunctionType.JobWithPosition:
-                        break;
-                    case FunctionType.LeaderboardWriter:
-                        break;
-                    case FunctionType.LeaveGame:
-                        break;
-                    case FunctionType.LensDustSettings:
-                        break;
-                    case FunctionType.LevelCompletionTargets:
-                        break;
-                    case FunctionType.LevelInfo:
-                        break;
-                    case FunctionType.LevelLoaded:
-                        break;
-                    case FunctionType.LightAdaptationSettings:
-                        break;
-                    case FunctionType.LightingMaster:
-                        break;
-                    case FunctionType.LightReference:
-                        break;
-                    case FunctionType.LimitItemUse:
-                        break;
-                    case FunctionType.LODControls:
-                        break;
-                    case FunctionType.Logic_MultiGate:
-                        break;
-                    case FunctionType.Logic_Vent_Entrance:
-                        break;
-                    case FunctionType.Logic_Vent_System:
-                        break;
-                    case FunctionType.LogicAll:
-                        break;
-                    case FunctionType.LogicCounter:
-                        break;
-                    case FunctionType.LogicDelay:
+                        if (typeof(T) == typeof(Transform))
+                            return (T)(object)Transforms.Get("SpottingPosition"); //THIS SHOULD BE IN WORLDSPACE!
                         break;
                     case FunctionType.LogicGate:
                         if (typeof(T) == typeof(bool))
@@ -2195,81 +1433,29 @@ namespace CathodeLib
                         if (typeof(T) == typeof(bool))
                             return (T)(object)true;
                         break;
-                    case FunctionType.LogicPressurePad:
-                        break;
                     case FunctionType.LogicSwitch:
                         if (typeof(T) == typeof(bool))
                             return (T)(object)Bools.Get("initial_value");
                         break;
-                    case FunctionType.LowResFrameCapture:
-                        break;
-                    case FunctionType.Map_Floor_Change:
-                        break;
-                    case FunctionType.MapAnchor:
-                        break;
-                    case FunctionType.MapItem:
-                        break;
-                    case FunctionType.Master:
-                        break;
-                    case FunctionType.MELEE_WEAPON:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("position_input");
-                        break;
-                    case FunctionType.Minigames:
-                        break;
-                    case FunctionType.MissionNumber:
-                        break;
-                    case FunctionType.ModelReference:
-                        break;
-                    case FunctionType.ModifierInterface:
-                        break;
-                    case FunctionType.MonitorActionMap:
-                        break;
-                    case FunctionType.MonitorBase:
-                        break;
-                    case FunctionType.MonitorPadInput:
-                        break;
-                    case FunctionType.MotionTrackerMonitor:
-                        break;
-                    case FunctionType.MotionTrackerPing:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("FakePosition");
-                        break;
-                    case FunctionType.MoveAlongSpline:
-                        break;
-                    case FunctionType.MoveInTime:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("start_position");
-                        break;
-                    case FunctionType.MoviePlayer:
-                        break;
-                    case FunctionType.MultipleCharacterAttachmentNode:
-                        break;
-                    case FunctionType.MultiplePickupSpawner:
-                        break;
-                    case FunctionType.MultitrackLoop:
-                        break;
-                    case FunctionType.MusicController:
-                        break;
-                    case FunctionType.MusicTrigger:
-                        break;
                     case FunctionType.NavMeshArea:
+                        if (typeof(T) == typeof(Transform))
+                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
                         break;
                     case FunctionType.NavMeshBarrier:
+                        if (typeof(T) == typeof(Transform))
+                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
                         break;
                     case FunctionType.NavMeshExclusionArea:
+                        if (typeof(T) == typeof(Transform))
+                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
                         break;
                     case FunctionType.NavMeshReachabilitySeedPoint:
+                        if (typeof(T) == typeof(Transform))
+                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
                         break;
                     case FunctionType.NavMeshWalkablePlatform:
-                        break;
-                    case FunctionType.NetPlayerCounter:
-                        break;
-                    case FunctionType.NetworkedTimer:
-                        break;
-                    case FunctionType.NetworkProxy:
-                        break;
-                    case FunctionType.NonInteractiveWater:
+                        if (typeof(T) == typeof(Transform))
+                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
                         break;
                     case FunctionType.NonPersistentBool:
                         if (typeof(T) == typeof(bool))
@@ -2279,191 +1465,21 @@ namespace CathodeLib
                         if (typeof(T) == typeof(int))
                             return (T)(object)Integers.Get("initial_value");
                         break;
-                    case FunctionType.NPC_Aggression_Monitor:
-                        break;
-                    case FunctionType.NPC_AlienConfig:
-                        break;
-                    case FunctionType.NPC_AllSensesLimiter:
-                        break;
-                    case FunctionType.NPC_ambush_monitor:
-                        break;
-                    case FunctionType.NPC_AreaBox:
-                        if (typeof(T) == typeof(Transform))
-                        {
-
-                        }
-                        break;
-                    case FunctionType.NPC_behaviour_monitor:
-                        break;
-                    case FunctionType.NPC_ClearDefendArea:
-                        break;
-                    case FunctionType.NPC_ClearPursuitArea:
-                        break;
-                    case FunctionType.NPC_Coordinator:
-                        break;
-                    case FunctionType.NPC_Debug_Menu_Item:
-                        break;
-                    case FunctionType.NPC_DefineBackstageAvoidanceArea:
-                        break;
-                    case FunctionType.NPC_DynamicDialogue:
-                        break;
-                    case FunctionType.NPC_DynamicDialogueGlobalRange:
-                        break;
-                    case FunctionType.NPC_FakeSense:
-                        break;
-                    case FunctionType.NPC_FollowOffset:
-                        if (typeof(T) == typeof(Transform))
-                        {
-                            Transform pos = Transforms.Get("target_to_follow");
-                            Transform offset = new Transform() { Position = Vectors.Get("offset") };
-                            return (T)(object)(pos * offset);
-                        }
-                        break;
-                    case FunctionType.NPC_ForceCombatTarget:
-                        break;
-                    case FunctionType.NPC_ForceNextJob:
-                        break;
-                    case FunctionType.NPC_ForceRetreat:
-                        break;
-                    case FunctionType.NPC_Gain_Aggression_In_Radius:
-                        break;
-                    case FunctionType.NPC_GetCombatTarget:
-                        break;
-                    case FunctionType.NPC_GetLastSensedPositionOfTarget:
-                        break;
-                    case FunctionType.NPC_Group_Death_Monitor:
-                        break;
-                    case FunctionType.NPC_Group_DeathCounter:
-                        break;
-                    case FunctionType.NPC_Highest_Awareness_Monitor:
-                        break;
-                    case FunctionType.NPC_MeleeContext:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)EnumIndexes.Get("Context_Type");
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)Floats.Get("Radius");
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("ConvergePos");
-                        break;
-                    case FunctionType.NPC_multi_behaviour_monitor:
-                        break;
-                    case FunctionType.NPC_navmesh_type_monitor:
-                        break;
-                    case FunctionType.NPC_NotifyDynamicDialogueEvent:
-                        break;
-                    case FunctionType.NPC_Once:
-                        break;
-                    case FunctionType.NPC_ResetFiringStats:
-                        break;
-                    case FunctionType.NPC_ResetSensesAndMemory:
-                        break;
-                    case FunctionType.NPC_SenseLimiter:
-                        break;
-                    case FunctionType.NPC_set_behaviour_tree_flags:
-                        break;
-                    case FunctionType.NPC_SetAgressionProgression:
-                        break;
-                    case FunctionType.NPC_SetAimTarget:
-                        break;
-                    case FunctionType.NPC_SetAlertness:
-                        break;
-                    case FunctionType.NPC_SetAlienDevelopmentStage:
-                        break;
-                    case FunctionType.NPC_SetAutoTorchMode:
-                        break;
-                    case FunctionType.NPC_SetChokePoint:
-                        break;
-                    case FunctionType.NPC_SetDefendArea:
-                        break;
-                    case FunctionType.NPC_SetFiringAccuracy:
-                        break;
-                    case FunctionType.NPC_SetFiringRhythm:
-                        break;
-                    case FunctionType.NPC_SetGunAimMode:
-                        break;
-                    case FunctionType.NPC_SetHidingNearestLocation:
-                        break;
-                    case FunctionType.NPC_SetHidingSearchRadius:
-                        break;
-                    case FunctionType.NPC_SetInvisible:
-                        break;
-                    case FunctionType.NPC_SetLocomotionStyleForJobs:
-                        break;
-                    case FunctionType.NPC_SetLocomotionTargetSpeed:
-                        break;
-                    case FunctionType.NPC_SetPursuitArea:
-                        break;
-                    case FunctionType.NPC_SetRateOfFire:
-                        break;
-                    case FunctionType.NPC_SetSafePoint:
-                        break;
-                    case FunctionType.NPC_SetSenseSet:
-                        break;
-                    case FunctionType.NPC_SetStartPos:
-                        break;
-                    case FunctionType.NPC_SetTotallyBlindInDark:
-                        break;
-                    case FunctionType.NPC_SetupMenaceManager:
-                        break;
-                    case FunctionType.NPC_Sleeping_Android_Monitor:
-                        break;
-                    case FunctionType.NPC_Squad_DialogueMonitor:
-                        break;
-                    case FunctionType.NPC_Squad_GetAwarenessState:
-                        break;
-                    case FunctionType.NPC_Squad_GetAwarenessWatermark:
-                        break;
-                    case FunctionType.NPC_StopAiming:
-                        break;
-                    case FunctionType.NPC_StopShooting:
-                        break;
-                    case FunctionType.NPC_SuspiciousItem:
-                        break;
-                    case FunctionType.NPC_TargetAcquire:
-                        break;
-                    case FunctionType.NPC_TriggerAimRequest:
-                        break;
-                    case FunctionType.NPC_TriggerShootRequest:
-                        break;
-                    case FunctionType.NPC_WithdrawAlien:
-                        break;
-                    case FunctionType.NumConnectedPlayers:
-                        break;
-                    case FunctionType.NumDeadPlayers:
-                        break;
-                    case FunctionType.NumPlayersOnStart:
-                        break;
-                    case FunctionType.PadLightBar:
-                        break;
-                    case FunctionType.PadRumbleImpulse:
-                        break;
-                    case FunctionType.ParticipatingPlayersList:
-                        break;
-                    case FunctionType.ParticleEmitterReference:
-                        break;
                     case FunctionType.PathfindingAlienBackstageNode:
+                        if (typeof(T) == typeof(Transform))
+                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
                         break;
                     case FunctionType.PathfindingManualNode:
+                        if (typeof(T) == typeof(Transform))
+                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
                         break;
                     case FunctionType.PathfindingTeleportNode:
+                        if (typeof(T) == typeof(Transform))
+                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
                         break;
                     case FunctionType.PathfindingWaitNode:
-                        break;
-                    case FunctionType.Persistent_TriggerRandomSequence:
-                        break;
-                    case FunctionType.PhysicsApplyBuoyancy:
-                        break;
-                    case FunctionType.PhysicsApplyImpulse:
-                        break;
-                    case FunctionType.PhysicsApplyVelocity:
-                        break;
-                    case FunctionType.PhysicsModifyGravity:
-                        break;
-                    case FunctionType.PhysicsSystem:
-                        break;
-                    case FunctionType.PickupSpawner:
-                        break;
-                    case FunctionType.Planet:
+                        if (typeof(T) == typeof(Transform))
+                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
                         break;
                     case FunctionType.PlatformConstantBool:
                         if (typeof(T) == typeof(bool))
@@ -2477,197 +1493,59 @@ namespace CathodeLib
                         if (typeof(T) == typeof(int))
                             return (T)(object)Integers.Get("NextGen");
                         break;
-                    case FunctionType.PlayEnvironmentAnimation:
-                        break;
-                    case FunctionType.Player_ExploitableArea:
-                        break;
-                    case FunctionType.Player_Sensor:
-                        break;
-                    case FunctionType.PlayerCamera:
-                        break;
-                    case FunctionType.PlayerCameraMonitor:
-                        break;
-                    case FunctionType.PlayerCampaignDeaths:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)0;
-                        break;
-                    case FunctionType.PlayerCampaignDeathsInARow:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)0;
-                        break;
-                    case FunctionType.PlayerDeathCounter:
-                        break;
-                    case FunctionType.PlayerDiscardsItems:
-                        break;
-                    case FunctionType.PlayerDiscardsTools:
-                        break;
-                    case FunctionType.PlayerDiscardsWeapons:
-                        break;
-                    case FunctionType.PlayerHasEnoughItems:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.PlayerHasItem:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.PlayerHasItemEntity:
-                        break;
-                    case FunctionType.PlayerHasItemWithName:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.PlayerHasSpaceForItem:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)true;
-                        break;
-                    case FunctionType.PlayerKilledAllyMonitor:
-                        break;
-                    case FunctionType.PlayerLightProbe:
-                        break;
-                    case FunctionType.PlayerTorch:
-                        break;
-                    case FunctionType.PlayerTriggerBox:
-                        break;
-                    case FunctionType.PlayerUseTriggerBox:
-                        break;
-                    case FunctionType.PlayerWeaponMonitor:
-                        break;
-                    case FunctionType.PlayForMinDuration:
-                        break;
-                    case FunctionType.PointAt:
-                        if (typeof(T) == typeof(Transform))
-                        {
-                            //todo - might need to calculate the rotation here
-                            return (T)(object)Transforms.Get("origin");
-                        }
-                        break;
-                    case FunctionType.PointTracker:
-                        break;
-                    case FunctionType.PopupMessage:
-                        break;
                     case FunctionType.PositionDistance:
                         if (typeof(T) == typeof(float))
-                        {
-                            Vector3 to = Transforms.Get("LHS").Position;
-                            Vector3 from = Transforms.Get("RHS").Position;
-                            Vector3 res = to - from;
-                            return (T)(object)(float)Math.Sqrt(res.X * res.X + res.Y * res.Y + res.Z * res.Z);
-                        }
-                        break;
-                    case FunctionType.PositionMarker:
-                        break;
-                    case FunctionType.PostprocessingSettings:
-                        break;
-                    case FunctionType.ProjectileMotion:
-                        break;
-                    case FunctionType.ProjectileMotionComplex:
-                        break;
-                    case FunctionType.ProjectiveDecal:
-                        break;
-                    case FunctionType.ProximityDetector:
-                        break;
-                    case FunctionType.ProximityTrigger:
-                        break;
-                    case FunctionType.ProxyInterface:
-                        break;
-                    case FunctionType.QueryGCItemPool:
-                        break;
-                    case FunctionType.RadiosityIsland:
-                        break;
-                    case FunctionType.RadiosityProxy:
+                            return (T)(object)(float)0;
                         break;
                     case FunctionType.RandomBool:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
+                            return (T)(object)((float)new Random().NextDouble() < 0.5f);
                         break;
                     case FunctionType.RandomFloat:
-                        break;
-                    case FunctionType.RandomInt:
-                        break;
-                    case FunctionType.RandomObjectSelector:
-                        break;
-                    case FunctionType.RandomSelect:
-                        break;
-                    case FunctionType.RandomVector:
-                        break;
-                    case FunctionType.Raycast:
-                        break;
-                    case FunctionType.Refraction:
-                        break;
-                    case FunctionType.RegisterCharacterModel:
-                        break;
-                    case FunctionType.RemoveFromGCItemPool:
-                        break;
-                    case FunctionType.RemoveFromInventory:
-                        break;
-                    case FunctionType.RemoveWeaponsFromPlayer:
-                        break;
-                    case FunctionType.RespawnConfig:
-                        break;
-                    case FunctionType.RespawnExcluder:
-                        break;
-                    case FunctionType.ReTransformer:
-                        break;
-                    case FunctionType.Rewire:
-                        break;
-                    case FunctionType.RewireAccess_Point:
-                        break;
-                    case FunctionType.RewireLocation:
-                        break;
-                    case FunctionType.RewireSystem:
-                        break;
-                    case FunctionType.RewireTotalPowerResource:
-                        break;
-                    case FunctionType.RibbonEmitterReference:
-                        break;
-                    case FunctionType.RotateAtSpeed:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("start_pos");
-                        break;
-                    case FunctionType.RotateInTime:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("start_pos");
-                        break;
-                    case FunctionType.RTT_MoviePlayer:
-                        break;
-                    case FunctionType.SaveGlobalProgression:
-                        break;
-                    case FunctionType.SaveManagers:
-                        break;
-                    case FunctionType.ScalarProduct:
                         if (typeof(T) == typeof(float))
                         {
-                            Vector3 lhs = Vectors.Get("LHS");
-                            Vector3 rhs = Vectors.Get("RHS");
-                            return (T)(object)(float)(lhs.X * rhs.X + lhs.Y * rhs.Y + lhs.Z * rhs.Z);
+                            float min = Floats.Get("Min");
+                            float range = Floats.Get("Max") - min;
+                            float rand = (float)new Random().NextDouble() * range;
+                            return (T)(object)(rand + min);
                         }
                         break;
-                    case FunctionType.ScreenEffectEventMonitor:
+                    case FunctionType.RandomInt:
+                        if (typeof(T) == typeof(int))
+                        {
+                            int min = Integers.Get("Min");
+                            int range = Integers.Get("Max") - min;
+                            int rand = new Random().Next(range);
+                            return (T)(object)(rand + min);
+                        }
                         break;
-                    case FunctionType.ScreenFadeIn:
+                    case FunctionType.RandomVector:
+                        if (typeof(T) == typeof(Vector3))
+                        {
+                            float minX = Integers.Get("MinX");
+                            float rangeX = Integers.Get("MaxX") - minX;
+                            float randX = (float)new Random().NextDouble() * rangeX;
+                            float minY = Integers.Get("MinY");
+                            float rangeY = Integers.Get("MaxY") - minY;
+                            float randY = (float)new Random().NextDouble() * rangeY;
+                            float minZ = Integers.Get("MinZ");
+                            float rangeZ = Integers.Get("MaxZ") - minZ;
+                            float randZ = (float)new Random().NextDouble() * rangeZ;
+
+                            Vector3 result = new Vector3(randX + minX, randY + minY, randZ + minZ);
+                            if (Bools.Get("Normalised"))
+                            {
+                                float length = (float)Math.Sqrt(result.X * result.X + result.Y * result.Y + result.Z * result.Z);
+                                if (length == 0.0f)
+                                    result = new Vector3(0, 1, 0);
+                                result /= length;
+                            }
+                            return (T)(object)result;
+                        }
                         break;
-                    case FunctionType.ScreenFadeInTimed:
-                        break;
-                    case FunctionType.ScreenFadeOutToBlack:
-                        break;
-                    case FunctionType.ScreenFadeOutToBlackTimed:
-                        break;
-                    case FunctionType.ScreenFadeOutToWhite:
-                        break;
-                    case FunctionType.ScreenFadeOutToWhiteTimed:
-                        break;
-                    case FunctionType.ScriptInterface:
-                        break;
-                    case FunctionType.ScriptVariable:
-                        break;
-                    case FunctionType.SensorAttachmentInterface:
-                        break;
-                    case FunctionType.SensorInterface:
-                        break;
-                    case FunctionType.SetAsActiveMissionLevel:
-                        break;
-                    case FunctionType.SetBlueprintInfo:
+                    case FunctionType.RegisterCharacterModel:
+                        //if (typeof(T) == typeof(string))
+                        //    return (T)(object)Strings.Get("display_model");
                         break;
                     case FunctionType.SetBool:
                         if (typeof(T) == typeof(bool))
@@ -2677,63 +1555,17 @@ namespace CathodeLib
                         if (typeof(T) == typeof(Vector3))
                             return (T)(object)Vectors.Get("Colour");
                         break;
-                    case FunctionType.SetEnum:
-                        break;
-                    case FunctionType.SetEnumString:
-                        break;
                     case FunctionType.SetFloat:
                         if (typeof(T) == typeof(float))
                             return (T)(object)Floats.Get("Input");
-                        break;
-                    case FunctionType.SetGamepadAxes:
-                        break;
-                    case FunctionType.SetGameplayTips:
-                        break;
-                    case FunctionType.SetGatingToolLevel:
-                        break;
-                    case FunctionType.SetHackingToolLevel:
                         break;
                     case FunctionType.SetInteger:
                         if (typeof(T) == typeof(int))
                             return (T)(object)Integers.Get("Input");
                         break;
-                    case FunctionType.SetLocationAndOrientation:
-                        if (typeof(T) == typeof(Transform))
-                        {
-                            //todo - might need to calculate this
-                            return (T)(object)new Transform();
-                        }
-                        break;
-                    case FunctionType.SetMotionTrackerRange:
-                        break;
-                    case FunctionType.SetNextLoadingMovie:
-                        break;
-                    case FunctionType.SetObject:
-                        break;
-                    case FunctionType.SetObjectiveCompleted:
-                        break;
-                    case FunctionType.SetPlayerHasGatingTool:
-                        break;
-                    case FunctionType.SetPlayerHasKeycard:
-                        break;
-                    case FunctionType.SetPosition:
-                        if (typeof(T) == typeof(Transform))
-                        {
-                            List<InstancedEntity> inputs = Transforms.GetLinks("Input");
-                            if (inputs.Count > 0)
-                                return (T)(object)inputs[0].GetAs<Transform>();
-                            return (T)(object)new Transform() { Position = Vectors.Get("Translation"), Rotation = Vectors.Get("Rotation") };
-                        }
-                        break;
-                    case FunctionType.SetPrimaryObjective:
-                        break;
-                    case FunctionType.SetRichPresence:
-                        break;
                     case FunctionType.SetString:
-                        break;
-                    case FunctionType.SetSubObjective:
-                        break;
-                    case FunctionType.SetupGCDistribution:
+                        //if (typeof(T) == typeof(string))
+                        //    return (T)(object)Strings.Get("initial_value");
                         break;
                     case FunctionType.SetVector:
                         if (typeof(T) == typeof(Vector3))
@@ -2743,281 +1575,17 @@ namespace CathodeLib
                         if (typeof(T) == typeof(Vector3))
                             return (T)(object)Vectors.Get("Input");
                         break;
-                    case FunctionType.SharpnessSettings:
-                        break;
-                    case FunctionType.Showlevel_Completed:
-                        break;
-                    case FunctionType.SimpleRefraction:
-                        break;
-                    case FunctionType.SimpleWater:
-                        break;
-                    case FunctionType.SmokeCylinder:
-                        break;
-                    case FunctionType.SmokeCylinderAttachmentInterface:
-                        break;
-                    case FunctionType.SmoothMove:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("start_position");
-                        break;
-                    case FunctionType.Sound:
-                        if (typeof(T) == typeof(Transform))
-                        {
-                            //NOTE: This won't work. attached_sound_object is a type reference, not a transform
-                            List<InstancedEntity> inputs = Transforms.GetLinks("attached_sound_object");
-                            if (inputs.Count == 0)
-                                return (T)(object)new Transform();
-                            return (T)(object)inputs[0].GetAs<Transform>();
-                        }
-                        break;
-                    case FunctionType.SoundBarrier:
-                        break;
-                    case FunctionType.SoundEnvironmentMarker:
-                        break;
-                    case FunctionType.SoundEnvironmentZone:
-                        break;
-                    case FunctionType.SoundImpact:
-                        break;
-                    case FunctionType.SoundLevelInitialiser:
-                        break;
-                    case FunctionType.SoundLoadBank:
-                        break;
-                    case FunctionType.SoundLoadSlot:
-                        break;
-                    case FunctionType.SoundMissionInitialiser:
-                        break;
-                    case FunctionType.SoundNetworkNode:
-                        break;
                     case FunctionType.SoundObject:
-                        break;
-                    case FunctionType.SoundPhysicsInitialiser:
-                        break;
-                    case FunctionType.SoundPlaybackBaseClass:
-                        break;
-                    case FunctionType.SoundPlayerFootwearOverride:
-                        break;
-                    case FunctionType.SoundRTPCController:
-                        break;
-                    case FunctionType.SoundSetRTPC:
-                        break;
-                    case FunctionType.SoundSetState:
-                        break;
-                    case FunctionType.SoundSetSwitch:
-                        break;
-                    case FunctionType.SoundSpline:
-                        break;
-                    case FunctionType.SoundTimelineTrigger:
-                        break;
-                    case FunctionType.SpaceSuitVisor:
-                        break;
-                    case FunctionType.SpaceTransform:
                         if (typeof(T) == typeof(Transform))
-                        {
                             return (T)(object)new Transform();
-                        }
-                        break;
-                    case FunctionType.SpawnGroup:
-                        break;
-                    case FunctionType.Speech:
-                        break;
-                    case FunctionType.SpeechScript:
-                        break;
-                    case FunctionType.Sphere:
-                        break;
-                    case FunctionType.SplineDistanceLerp:
-                        break;
-                    case FunctionType.SplinePath:
                         break;
                     case FunctionType.SpottingExclusionArea:
-                        break;
-                    case FunctionType.Squad_SetMaxEscalationLevel:
-                        break;
-                    case FunctionType.StartNewChapter:
-                        break;
-                    case FunctionType.StateQuery:
-                        break;
-                    case FunctionType.StealCamera:
-                        break;
-                    case FunctionType.StreamingMonitor:
-                        break;
-                    case FunctionType.SurfaceEffectBox:
-                        break;
-                    case FunctionType.SurfaceEffectSphere:
-                        break;
-                    case FunctionType.SwitchLevel:
-                        break;
-                    case FunctionType.SyncOnAllPlayers:
-                        break;
-                    case FunctionType.SyncOnFirstPlayer:
-                        break;
-                    case FunctionType.Task:
-                        break;
-                    case FunctionType.TerminalContent:
-                        break;
-                    case FunctionType.TerminalFolder:
-                        break;
-                    case FunctionType.Thinker:
-                        break;
-                    case FunctionType.ThinkOnce:
-                        break;
-                    case FunctionType.ThrowingPointOfImpact:
-                        break;
-                    case FunctionType.ToggleFunctionality:
-                        break;
-                    case FunctionType.TogglePlayerTorch:
-                        break;
-                    case FunctionType.Torch_Control:
-                        break;
-                    case FunctionType.TorchDynamicMovement:
-                        break;
-                    case FunctionType.TransformerInterface:
-                        break;
-                    case FunctionType.TRAV_1ShotClimbUnder:
-                        break;
-                    case FunctionType.TRAV_1ShotFloorVentEntrance:
-                        break;
-                    case FunctionType.TRAV_1ShotFloorVentExit:
-                        break;
-                    case FunctionType.TRAV_1ShotLeap:
-                        break;
-                    case FunctionType.TRAV_1ShotSpline:
-                        break;
-                    case FunctionType.TRAV_1ShotVentEntrance:
-                        break;
-                    case FunctionType.TRAV_1ShotVentExit:
-                        break;
-                    case FunctionType.TRAV_ContinuousBalanceBeam:
-                        break;
-                    case FunctionType.TRAV_ContinuousCinematicSidle:
-                        break;
-                    case FunctionType.TRAV_ContinuousClimbingWall:
-                        break;
-                    case FunctionType.TRAV_ContinuousLadder:
-                        break;
-                    case FunctionType.TRAV_ContinuousLedge:
-                        break;
-                    case FunctionType.TRAV_ContinuousPipe:
-                        break;
-                    case FunctionType.TRAV_ContinuousTightGap:
-                        break;
-                    case FunctionType.Trigger_AudioOccluded:
-                        break;
-                    case FunctionType.TriggerBindAllCharactersOfType:
-                        break;
-                    case FunctionType.TriggerBindAllNPCs:
-                        break;
-                    case FunctionType.TriggerBindCharacter:
-                        break;
-                    case FunctionType.TriggerBindCharactersInSquad:
-                        break;
-                    case FunctionType.TriggerCameraViewCone:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.TriggerCameraViewConeMulti:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
+                        if (typeof(T) == typeof(Transform))
+                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
                         break;
                     case FunctionType.TriggerCameraVolume:
-                        break;
-                    case FunctionType.TriggerCheckDifficulty:
-                        break;
-                    case FunctionType.TriggerContainerObjectsFilterCounter:
-                        break;
-                    case FunctionType.TriggerDamaged:
-                        break;
-                    case FunctionType.TriggerDelay:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)Floats.Get("delay");
-                        break;
-                    case FunctionType.TriggerExtractBoundCharacter:
-                        break;
-                    case FunctionType.TriggerExtractBoundObject:
-                        break;
-                    case FunctionType.TriggerFilter:
-                        break;
-                    case FunctionType.TriggerLooper:
-                        break;
-                    case FunctionType.TriggerObjectsFilter:
-                        break;
-                    case FunctionType.TriggerObjectsFilterCounter:
-                        break;
-                    case FunctionType.TriggerRandom:
-                        break;
-                    case FunctionType.TriggerRandomSequence:
-                        break;
-                    case FunctionType.TriggerSelect:
-                        break;
-                    case FunctionType.TriggerSelect_Direct:
-                        break;
-                    case FunctionType.TriggerSequence:
-                        break;
-                    case FunctionType.TriggerSimple:
-                        break;
-                    case FunctionType.TriggerSwitch:
-                        break;
-                    case FunctionType.TriggerSync:
-                        break;
-                    case FunctionType.TriggerTouch:
-                        break;
-                    case FunctionType.TriggerUnbindCharacter:
-                        break;
-                    case FunctionType.TriggerViewCone:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
-                    case FunctionType.TriggerVolumeFilter:
-                        break;
-                    case FunctionType.TriggerVolumeFilter_Monitored:
-                        break;
-                    case FunctionType.TriggerWeightedRandom:
-                        break;
-                    case FunctionType.TriggerWhenSeeTarget:
-                        break;
-                    case FunctionType.TutorialMessage:
-                        break;
-                    case FunctionType.UI_Attached:
-                        break;
-                    case FunctionType.UI_Container:
-                        break;
-                    case FunctionType.UI_Icon:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)-1;
-                        break;
-                    case FunctionType.UI_KeyGate:
-                        break;
-                    case FunctionType.UI_Keypad:
-                        break;
-                    case FunctionType.UI_ReactionGame:
-                        break;
-                    case FunctionType.UIBreathingGameIcon:
-                        break;
-                    case FunctionType.UiSelectionBox:
-                        if (typeof(T) == typeof(int))
-                        {
-
-                        }
-                        break;
-                    case FunctionType.UiSelectionSphere:
-                        break;
-                    case FunctionType.UnlockAchievement:
-                        break;
-                    case FunctionType.UnlockLogEntry:
-                        break;
-                    case FunctionType.UnlockMapDetail:
-                        break;
-                    case FunctionType.UpdateGlobalPosition:
-                        if (typeof(T) == typeof(Transform))
-                        {
-                            return (T)(object)new Transform();
-                        }
-                        break;
-                    case FunctionType.UpdateLeaderBoardDisplay:
-                        break;
-                    case FunctionType.UpdatePrimaryObjective:
-                        break;
-                    case FunctionType.UpdateSubObjective:
-                        break;
-                    case FunctionType.VariableAnimationInfo:
+                            return (T)(object)0.0f;
                         break;
                     case FunctionType.VariableBool:
                         if (typeof(T) == typeof(bool))
@@ -3031,10 +1599,6 @@ namespace CathodeLib
                         if (typeof(T) == typeof(int))
                             return (T)(object)EnumIndexes.Get("initial_value");
                         break;
-                    case FunctionType.VariableEnumString:
-                        break;
-                    case FunctionType.VariableFilterObject:
-                        break;
                     case FunctionType.VariableFlashScreenColour:
                         if (typeof(T) == typeof(Vector3))
                             return (T)(object)Vectors.Get("initial_colour");
@@ -3043,30 +1607,17 @@ namespace CathodeLib
                         if (typeof(T) == typeof(float))
                             return (T)(object)Floats.Get("initial_value");
                         break;
-                    case FunctionType.VariableHackingConfig:
-                        break;
                     case FunctionType.VariableInt:
                         if (typeof(T) == typeof(int))
                             return (T)(object)Integers.Get("initial_value");
                         break;
-                    case FunctionType.VariableObject:
-                        break;
                     case FunctionType.VariablePosition:
                         if (typeof(T) == typeof(Transform))
-                            return (T)(object)new Transform(); // seems this is never set?
+                            return (T)(object)new Transform();
                         break;
                     case FunctionType.VariableString:
-                        //TODO - if implementing strings, the int call returns the anim hash as int
-                        //if (typeof(T) == typeof(int))
-                        //    return (T)(object)Utilities.AnimationHashedString(Strings.Get("initial_value"));
-                        break;
-                    case FunctionType.VariableThePlayer:
-                        if (typeof(T) == typeof(Transform))
-                        {
-                            return (T)(object)new Transform();
-                        }
-                        break;
-                    case FunctionType.VariableTriggerObject:
+                        //if (typeof(T) == typeof(string))
+                        //    return (T)(object)Strings.Get("initial_value");
                         break;
                     case FunctionType.VariableVector:
                         if (typeof(T) == typeof(Vector3))
@@ -3076,228 +1627,13 @@ namespace CathodeLib
                         if (typeof(T) == typeof(Vector3))
                             return (T)(object)Vectors.Get("initial_value");
                         break;
-                    case FunctionType.VectorAdd:
-                        if (typeof(T) == typeof(Vector3))
-                            return (T)(object)(Vector3)(Vectors.Get("LHS") + Vectors.Get("RHS"));
-                        break;
-                    case FunctionType.VectorDirection:
-                        if (typeof(T) == typeof(float))
-                        {
-                            Vector3 to = Vectors.Get("To");
-                            Vector3 from = Vectors.Get("From");
-                            Vector3 res = to - from;
-                            return (T)(object)(float)Math.Atan2(res.X, res.Z);
-                        }
-                        break;
-                    case FunctionType.VectorDistance:
-                        if (typeof(T) == typeof(float))
-                        {
-                            Vector3 to = Vectors.Get("To");
-                            Vector3 from = Vectors.Get("From");
-                            Vector3 res = to - from;
-                            return (T)(object)(float)Math.Sqrt(res.X * res.X + res.Y * res.Y + res.Z * res.Z);
-                        }
-                        break;
-                    case FunctionType.VectorLinearInterpolateSpeed:
-                        if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Vectors.Get("Initial_Value");
-                        break;
                     case FunctionType.VectorLinearInterpolateTimed:
                         if (typeof(T) == typeof(Vector3))
                             return (T)(object)Vectors.Get("Initial_Value");
                         break;
-                    case FunctionType.VectorLinearProportion:
-                        if (typeof(T) == typeof(Vector3))
-                        {
-                            Vector3 min = Vectors.Get("Initial_Value");
-                            Vector3 max = Vectors.Get("Target_Value");
-                            float proportion = Floats.Get("Proportion");
-
-                            return (T)(object)new Vector3(
-                                min.X + (max.X - min.X) * proportion,
-                                min.Y + (max.Y - min.Y) * proportion,
-                                min.Z + (max.Z - min.Z) * proportion
-                            );
-                        }
-                        break;
-                    case FunctionType.VectorMath:
-                        break;
-                    case FunctionType.VectorModulus:
-                        if (typeof(T) == typeof(float))
-                        {
-                            Vector3 val = Vectors.Get("Input");
-                            return (T)(object)(float)Math.Sqrt(val.X * val.X + val.Y * val.Y + val.Z * val.Z);
-                        }
-                        break;
-                    case FunctionType.VectorMultiply:
-                        if (typeof(T) == typeof(Vector3))
-                        {
-                            Vector3 lhs = Vectors.Get("LHS");
-                            Vector3 rhs = Vectors.Get("RHS");
-                            return (T)(object)new Vector3(lhs.X * rhs.X, lhs.Y * rhs.Y, lhs.Z * rhs.Z);
-                        }
-                        break;
-                    case FunctionType.VectorMultiplyByPos:
-                        if (typeof(T) == typeof(Transform))
-                        {
-                            Transform vect = new Transform() { Position = Vectors.Get("Vector") };
-                            Transform mx = Transforms.Get("WorldPos");
-                            return (T)(object)(vect * mx).Position;
-                        }
-                        break;
-                    case FunctionType.VectorNormalise:
-                        if (typeof(T) == typeof(Vector3))
-                        {
-                            Vector3 input = Vectors.Get("Input");
-                            float modulusSquared = input.X * input.X + input.Y * input.Y + input.Z * input.Z;
-                            if (modulusSquared < 0.00001f)
-                                return (T)(object)new Vector3(0, 0, 0);
-                            float length = 1.0f / (float)Math.Sqrt(modulusSquared);
-                            return (T)(object)new Vector3(input.X * length, input.Y * length, input.Z * length);
-                        }
-                        break;
-                    case FunctionType.VectorProduct:
-                        if (typeof(T) == typeof(Vector3))
-                        {
-                            Vector3 lhs = Vectors.Get("LHS");
-                            Vector3 rhs = Vectors.Get("RHS");
-                            return (T)(object)new Vector3(
-                                lhs.Y * rhs.Z - lhs.Z * rhs.Y,
-                                lhs.Z * rhs.X - lhs.X * rhs.Z,
-                                lhs.X * rhs.Y - lhs.Y * rhs.X
-                            );
-                        }
-                        break;
-                    case FunctionType.VectorReflect:
-                        if (typeof(T) == typeof(Vector3))
-                        {
-                            Vector3 input = Vectors.Get("Input");
-                            if (input.X == 0 && input.Y == 0 && input.Z == 0)
-                                return (T)(object)new Vector3(0, 0, 0);
-                            Vector3 normal = Vectors.Get("Normal");
-                            if (input.X == 0 && input.Y == 0 && input.Z == 0)
-                                return (T)(object)new Vector3(0, 0, 0);
-
-                            float inputDot = input.X * normal.X + input.Y * normal.Y + input.Z * normal.Z;
-                            return (T)(object)(input - (normal * (inputDot * 2.0f)));
-                        }
-                        break;
-                    case FunctionType.VectorRotateByPos:
-                        if (typeof(T) == typeof(Vector3))
-                        {
-                            Vector3 vect = Vectors.Get("Vector");
-                            Transform mx = Transforms.Get("WorldPos");
-                            mx.Position = new Vector3(0, 0, 0);
-                            Vector4 result = Vector4.Transform(new Vector4(vect.X, vect.Y, vect.Z, 0), mx.AsMatrix());
-                            return (T)(object)new Vector3(result.X, result.Y, result.Z);
-                        }
-                        break;
-                    case FunctionType.VectorRotatePitch:
-                        if (typeof(T) == typeof(Vector3))
-                        {
-                            Vector3 res = Vectors.Get("Vector");
-                            float pitch = Floats.Get("Pitch");
-                            float cosTheta = (float)Math.Cos(pitch);
-                            float sinTheta = (float)Math.Sin(pitch);
-                            return (T)(object)new Vector3(
-                                res.X * cosTheta + res.Z * sinTheta,
-                                res.Y,
-                                res.X * -sinTheta + res.Z * cosTheta
-                            );
-                        }
-                        break;
-                    case FunctionType.VectorRotateRoll:
-                        if (typeof(T) == typeof(Vector3))
-                        {
-                            Vector3 res = Vectors.Get("Vector");
-                            float roll = Floats.Get("Roll");
-                            float cosTheta = (float)Math.Cos(roll);
-                            float sinTheta = (float)Math.Sin(roll);
-                            return (T)(object)new Vector3(
-                                res.X * cosTheta - res.Y * sinTheta,
-                                res.X * sinTheta + res.Y * cosTheta,
-                                res.Z
-                            );
-                        }
-                        break;
-                    case FunctionType.VectorRotateYaw:
-                        if (typeof(T) == typeof(Vector3))
-                        {
-                            Vector3 res = Vectors.Get("Vector");
-                            float yaw = Floats.Get("Yaw");
-                            float cosTheta = (float)Math.Cos(yaw);
-                            float sinTheta = (float)Math.Sin(yaw);
-                            return (T)(object)new Vector3(
-                                res.X * cosTheta + res.Z * sinTheta,
-                                res.Y,
-                                res.X * -sinTheta + res.Z * cosTheta
-                            );
-                        }
-                        break;
                     case FunctionType.VectorScale:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)(Vector3)(Vectors.Get("LHS") * Vectors.Get("RHS"));
-                        break;
-                    case FunctionType.VectorSubtract:
-                        if (typeof(T) == typeof(Vector3))
-                            return (T)(object)(Vector3)(Vectors.Get("LHS") - Vectors.Get("RHS"));
-                        break;
-                    case FunctionType.VectorYaw:
-                        if (typeof(T) == typeof(float))
-                        {
-                            Vector3 res = Vectors.Get("Vector");
-                            return (T)(object)(float)Math.Atan2(res.X, res.Z);
-                        }
-                        break;
-                    case FunctionType.VideoCapture:
-                        break;
-                    case FunctionType.VignetteSettings:
-                        break;
-                    case FunctionType.VisibilityMaster:
-                        break;
-                    case FunctionType.Weapon_AINotifier:
-                        break;
-                    case FunctionType.WEAPON_AmmoTypeFilter:
-                        break;
-                    case FunctionType.WEAPON_AttackerFilter:
-                        break;
-                    case FunctionType.WEAPON_DamageFilter:
-                        break;
-                    case FunctionType.WEAPON_DidHitSomethingFilter:
-                        break;
-                    case FunctionType.WEAPON_Effect:
-                        break;
-                    case FunctionType.WEAPON_GiveToCharacter:
-                        break;
-                    case FunctionType.WEAPON_GiveToPlayer:
-                        break;
-                    case FunctionType.WEAPON_ImpactAngleFilter:
-                        break;
-                    case FunctionType.WEAPON_ImpactCharacterFilter:
-                        break;
-                    case FunctionType.WEAPON_ImpactEffect:
-                        break;
-                    case FunctionType.WEAPON_ImpactFilter:
-                        break;
-                    case FunctionType.WEAPON_ImpactInspector:
-                        break;
-                    case FunctionType.WEAPON_ImpactOrientationFilter:
-                        break;
-                    case FunctionType.WEAPON_MultiFilter:
-                        break;
-                    case FunctionType.WEAPON_TargetObjectFilter:
-                        break;
-                    case FunctionType.Zone:
-                        break;
-                    case FunctionType.ZoneExclusionLink:
-                        break;
-                    case FunctionType.ZoneInterface:
-                        break;
-                    case FunctionType.ZoneLink:
-                        break;
-                    case FunctionType.ZoneLoaded:
-                        break;
-                    default:
+                            return (T)(object)(Vectors.Get("LHS") * Vectors.Get("RHS"));
                         break;
                 }
             }
@@ -3542,6 +1878,117 @@ namespace CathodeLib
                 {
                     switch (function.function.AsFunctionType)
                     {
+                        case FunctionType.CAGEAnimation:
+
+                            break;
+                        case FunctionType.CameraPlayAnimation:
+
+                            break;
+                        case FunctionType.CameraResource:
+
+                            break;
+                        case FunctionType.Character:
+
+                            break;
+                        case FunctionType.Checkpoint:
+
+                            break;
+                        case FunctionType.CHR_PlaySecondaryAnimation:
+
+                            break;
+                        case FunctionType.CMD_GoTo:
+
+                            break;
+                        case FunctionType.CMD_GoToCover:
+
+                            break;
+                        case FunctionType.CMD_MoveTowards:
+
+                            break;
+                        case FunctionType.CMD_PlayAnimation:
+
+                            break;
+                        case FunctionType.CollisionBarrier:
+
+                            break;
+                        case FunctionType.ColourCorrectionTransition:
+
+                            break;
+                        case FunctionType.CoverExclusionArea:
+
+                            break;
+                        case FunctionType.CoverLine:
+
+                            break;
+                        case FunctionType.EnvironmentMap:
+
+                            break;
+                        case FunctionType.EnvironmentModelReference:
+
+                            break;
+                        case FunctionType.ExclusiveMaster:
+
+                            break;
+                        case FunctionType.FogBox:
+
+                            break;
+                        case FunctionType.FogPlane:
+
+                            break;
+                        case FunctionType.FogSphere:
+
+                            break;
+                        case FunctionType.JOB_Assault:
+
+                            break;
+                        case FunctionType.JOB_SpottingPosition:
+
+                            break;
+                        case FunctionType.LightingMaster:
+
+                            break;
+                        case FunctionType.ModelReference:
+
+                            break;
+                        case FunctionType.MusicController:
+
+                            break;
+                        case FunctionType.MusicTrigger:
+
+                            break;
+                        case FunctionType.NavMeshArea:
+
+                            break;
+                        case FunctionType.NavMeshBarrier:
+
+                            break;
+                        case FunctionType.NavMeshExclusionArea:
+
+                            break;
+                        case FunctionType.NavMeshReachabilitySeedPoint:
+
+                            break;
+                        case FunctionType.NavMeshWalkablePlatform:
+
+                            break;
+                        case FunctionType.ParticleEmitterReference:
+
+                            break;
+                        case FunctionType.PathfindingAlienBackstageNode:
+
+                            break;
+                        case FunctionType.PathfindingManualNode:
+
+                            break;
+                        case FunctionType.PathfindingTeleportNode:
+
+                            break;
+                        case FunctionType.PathfindingWaitNode:
+
+                            break;
+                        case FunctionType.PhysicsModifyGravity:
+
+                            break;
                         case FunctionType.PhysicsSystem:
                             ResourceReference physicsSystem = function.GetResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
                             if (physicsSystem == null) break;
@@ -3559,8 +2006,15 @@ namespace CathodeLib
                             //Calculate the instanced position
                             (Vector3 position, Quaternion rotation) = CalculateInstancedPosition(entity);
 
-                            //Create the physics map to instanced object
-                            level.PhysicsMaps.Entries.Add(new PhysicsMaps.Entry()
+                            //For sanity: get the existing entry
+                            List<PhysicsMaps.Entry> existing = level.PhysicsMaps.Entries.FindAll(o =>
+                                o.physics_system_index == physicsSystem.PhysicsSystemIndex &&
+                                o.resource_type == GUID_DYNAMIC_PHYSICS_SYSTEM &&
+                                o.composite_instance_id == compositeInstanceID &&
+                                o.entity == compositeInstanceReference);
+
+                            //Create the new entry
+                            PhysicsMaps.Entry newEntry = new PhysicsMaps.Entry()
                             {
                                 physics_system_index = physicsSystem.PhysicsSystemIndex,
                                 resource_type = GUID_DYNAMIC_PHYSICS_SYSTEM,
@@ -3568,7 +2022,80 @@ namespace CathodeLib
                                 entity = compositeInstanceReference,
                                 Position = position,
                                 Rotation = rotation
-                            });
+                            };
+
+                            //TODO: position calculation is wrong!
+
+                            level.PhysicsMaps.Entries.Add(newEntry);
+                            break;
+                        case FunctionType.PlayEnvironmentAnimation:
+
+                            break;
+                        case FunctionType.ProjectiveDecal:
+
+                            break;
+                        case FunctionType.RadiosityIsland:
+
+                            break;
+                        case FunctionType.RadiosityProxy:
+
+                            break;
+                        case FunctionType.RegisterCharacterModel:
+
+                            break;
+                        case FunctionType.RibbonEmitterReference:
+
+                            break;
+                        case FunctionType.SimpleRefraction:
+
+                            break;
+                        case FunctionType.SimpleWater:
+
+                            break;
+                        case FunctionType.Sound:
+
+                            break;
+                        case FunctionType.SoundBarrier:
+
+                            break;
+                        case FunctionType.SoundEnvironmentMarker:
+
+                            break;
+                        case FunctionType.SoundImpact:
+
+                            break;
+                        case FunctionType.SoundLevelInitialiser:
+
+                            break;
+                        case FunctionType.SoundLoadBank:
+
+                            break;
+                        case FunctionType.SoundLoadSlot:
+
+                            break;
+                        case FunctionType.SoundNetworkNode:
+
+                            break;
+                        case FunctionType.Speech:
+
+                            break;
+                        case FunctionType.SpeechScript:
+
+                            break;
+                        case FunctionType.SpottingExclusionArea:
+
+                            break;
+                        case FunctionType.SurfaceEffectBox:
+
+                            break;
+                        case FunctionType.SurfaceEffectSphere:
+
+                            break;
+                        case FunctionType.TRAV_1ShotSpline:
+
+                            break;
+                        case FunctionType.Zone:
+
                             break;
                     }
                 }
@@ -3594,6 +2121,11 @@ namespace CathodeLib
             InstancedEntity parent = entity;
             while (parent != null)
             {
+                //Console.WriteLine("Entity: " + parent.Entity.shortGUID.ToByteString() + "\n" +
+                //    "\tWithin Composite: " + parent.Composite.name + "\n" +
+                //    "\tAt Path: " + parent.Path.ToString() + "\n" +
+                //    "\tHas Position: " + parent.GetAs<InstancedEntity.Transform>("position").ToString() + "\n" +
+                //    "----------");
                 transforms.Add(parent.GetAs<InstancedEntity.Transform>("position"));
                 parent = parent.ParentCompositeInstanceEntity;
             }
