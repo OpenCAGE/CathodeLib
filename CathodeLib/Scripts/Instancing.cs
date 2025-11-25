@@ -32,13 +32,13 @@ namespace CathodeLib
                 //Check links first, these override the values
                 if (Links.TryGetValue(name, out List<Tuple<string, InstancedEntity>> links))
                     if (links.Count != 0)
-                        return links[0].Item2.GetAs<T>(links[0].Item1); //temp - filters accept multiple links
+                        return links[0].Item2.GetAs<T>(links[0].Item1);
 
                 //Fall back to our own value
                 if (Values.TryGetValue(name, out T val))
                     return val;
 
-                throw new Exception("Failed to find param."); //can just return false here i guess and hope for the best
+                throw new Exception("Failed to find param.");
             }
 
             public List<InstancedEntity> GetLinks(string name)
@@ -96,6 +96,7 @@ namespace CathodeLib
                 }
             }
 
+            #region Equality Checks
             public override bool Equals(object obj)
             {
                 if (obj is Parameters<T> other)
@@ -241,6 +242,7 @@ namespace CathodeLib
                 if (Equals(val1, val2)) return 0;
                 return val1.GetHashCode().CompareTo(val2.GetHashCode());
             }
+            #endregion
         }
 
         public class Transform : IComparable<Transform>
@@ -281,6 +283,7 @@ namespace CathodeLib
                 };
             }
 
+            #region Equality Checks
             public override bool Equals(object obj)
             {
                 if (obj is Transform other)
@@ -344,6 +347,7 @@ namespace CathodeLib
 
                 return a.Z.CompareTo(b.Z);
             }
+            #endregion
         }
 
         public Parameters<bool> Bools = new Parameters<bool>();
@@ -379,13 +383,13 @@ namespace CathodeLib
             Path = path;
             Composite = composite;
 
+            //Get all parameters that supply values
             var parameters = Level.Commands.Utils.GetAllParameters(entity, composite);
             parameters.RemoveAll(o =>
                 o.Item2 == ParameterVariant.REFERENCE_PIN ||
                 o.Item2 == ParameterVariant.TARGET_PIN ||
                 o.Item2 == ParameterVariant.METHOD_FUNCTION ||
                 o.Item2 == ParameterVariant.METHOD_PIN
-            //TODO: remove "output pin" as well? or perhaps we should impleement the logic for these?
             );
             switch (entity.variant)
             {
@@ -397,20 +401,20 @@ namespace CathodeLib
                             continue;
                         _parameters.Add(parameters.FirstOrDefault(o => o.Item1 == p.name));
                     }
-                    //TODO: also need to factor in parent links somehow
+                    //TODO: also need to factor in parent links somehow (?) -> actually, i think we can disregard logic links?
                     foreach (EntityConnector c in entity.childLinks)
                         _parameters.Add(parameters.FirstOrDefault(o => o.Item1 == c.thisParamID));
                     break;
                 //For others, get all default values, as well as ones that are set
                 default:
                     //NOTE: GetAllParameters does not check for duplicates, so do that now - need to fix that.
-                    // An example of another issue is {UI_ReactionGame} - the child UI_Attached should not add another 'success' entry
+                    // An example of another issue is {UI_ReactionGame} - the child UI_Attached should not add another 'success' entry - parent should override it
                     foreach (var entry in parameters)
                         _parameters.Add(entry);
                     break;
             }
 
-            //Get all boolean values on this entity
+            //Get the values off the entity, or create the default value if its not set
             foreach ((ShortGuid guid, ParameterVariant variant, DataType datatype) in _parameters)
             {
                 switch (datatype)
@@ -581,7 +585,6 @@ namespace CathodeLib
                         }
                         break;
                 }
-
             }
 
             //TODO: need to handle triggersequences a bit different i think? they can apply parameter data down
@@ -744,6 +747,7 @@ namespace CathodeLib
                     break;
             }
 
+            //todo - really we shouldn't get here after handling proxies (i think?). should throw.
             if (typeof(T) == typeof(bool))
                 return (T)(object)false;
             else if (typeof(T) == typeof(int))
@@ -769,6 +773,7 @@ namespace CathodeLib
         {
             if (name != "reference")
             {
+                //Get the value of the parameter, taking in to account anything applied by to the instance
                 if (typeof(T) == typeof(bool))
                     return (T)(object)Bools.Get(name);
                 else if (typeof(T) == typeof(int))
@@ -787,6 +792,7 @@ namespace CathodeLib
             }
             else
             {
+                //Calculate the reference value based on the entity's internal logic
                 switch (type)
                 {
                     case FunctionType.Character:
@@ -1641,10 +1647,12 @@ namespace CathodeLib
             FunctionType? inherited = Level.Commands.Utils.GetInheritedFunction(type);
             if (inherited.HasValue)
             {
+                //If the child class might supply a value, check it
                 return GetFunctionData<T>(name, inherited.Value);
             }
             else
             {
+                //We've reached the bottom of the inheritance, so just return a default value
                 if (typeof(T) == typeof(bool))
                     return (T)(object)false;
                 else if (typeof(T) == typeof(int))
@@ -1667,6 +1675,7 @@ namespace CathodeLib
             }
         }
 
+        #region Equality Checks
         public override bool Equals(object obj)
         {
             if (obj is InstancedEntity other)
@@ -1706,6 +1715,7 @@ namespace CathodeLib
                 return -1;
             return 0;
         }
+        #endregion
     }
 
     public class InstancedAlias
@@ -1719,6 +1729,7 @@ namespace CathodeLib
         public ShortGuid InstanceID;
         public List<InstancedEntity> Entities = new List<InstancedEntity>();
 
+        #region Equality Checks
         public override bool Equals(object obj)
         {
             if (obj is InstancedComposite other)
@@ -1752,6 +1763,7 @@ namespace CathodeLib
 
             return InstanceID.CompareTo(other.InstanceID);
         }
+        #endregion
     }
 
     public class Instancing
