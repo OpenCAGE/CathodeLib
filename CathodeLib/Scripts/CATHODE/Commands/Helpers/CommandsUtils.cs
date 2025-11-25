@@ -1126,15 +1126,6 @@ namespace CATHODE.Scripting
                     else
                     {
                         ParameterData data;
-                        FunctionType? functionType = FunctionType.CompositeInterface;
-                        while (true)
-                        {
-                            data = CreateDefaultParameterData(functionType.Value, parameter);
-                            if (data != null)
-                                return data;
-                            functionType = GetInheritedFunction(functionType.Value);
-                            if (functionType == null) break;
-                        }
                         Composite comp = _commands.GetComposite(functionEntity.function);
                         if (composite != null)
                         {
@@ -1145,6 +1136,15 @@ namespace CATHODE.Scripting
                                 if (data != null)
                                     return data;
                             }
+                        }
+                        FunctionType? functionType = FunctionType.CompositeInterface;
+                        while (true)
+                        {
+                            data = CreateDefaultParameterData(functionType.Value, parameter);
+                            if (data != null)
+                                return data;
+                            functionType = GetInheritedFunction(functionType.Value);
+                            if (functionType == null) break;
                         }
                     }
                     break;
@@ -1204,7 +1204,8 @@ namespace CATHODE.Scripting
                     bool isCorrectParam = paramID == parameter.AsUInt32;
                     switch (variant)
                     {
-                        case ParameterVariant.TARGET_PIN:
+                        //NOTE - having this uncommented causes an offset issue, why was it here?
+                        //case ParameterVariant.TARGET_PIN:
                         case ParameterVariant.REFERENCE_PIN:
                         case ParameterVariant.METHOD_FUNCTION:
                         case ParameterVariant.METHOD_PIN:

@@ -748,7 +748,7 @@ namespace CATHODE.Scripting
             if (x.path.Length != y.path.Length) return false;
             for (int i = 0; i < x.path.Length; i++)
             {
-                if (x.path[i].ToByteString() != y.path[i].ToByteString())
+                if (x.path[i] != y.path[i])
                     return false;
             }
             return true;
@@ -756,6 +756,16 @@ namespace CATHODE.Scripting
         public static bool operator !=(EntityPath x, EntityPath y)
         {
             return !(x == y);
+        }
+
+        public static EntityPath operator +(EntityPath x, EntityPath y)
+        {
+            List<ShortGuid> newPath = new List<ShortGuid>();
+            newPath.AddRange(x.path);
+            if (newPath.Count > 0 && newPath[newPath.Count - 1] == ShortGuid.Invalid)
+                newPath.RemoveAt(newPath.Count - 1);
+            newPath.AddRange(y.path);
+            return new EntityPath(newPath.ToArray());
         }
 
         public override bool Equals(object obj)

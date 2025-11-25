@@ -259,6 +259,11 @@ namespace CathodeLib
                 return Matrix4x4.CreateFromQuaternion(rotation) * Matrix4x4.CreateTranslation(Position);
             }
 
+            public override string ToString()
+            {
+                return Position.ToString() + ", " + Rotation.ToString();
+            }
+
             public static Transform operator *(Transform lhs, Transform rhs)
             {
                 Matrix4x4 lhsMatrix = lhs.AsMatrix();
@@ -375,6 +380,13 @@ namespace CathodeLib
             Composite = composite;
 
             var parameters = Level.Commands.Utils.GetAllParameters(entity, composite);
+            parameters.RemoveAll(o =>
+                o.Item2 == ParameterVariant.REFERENCE_PIN ||
+                o.Item2 == ParameterVariant.TARGET_PIN ||
+                o.Item2 == ParameterVariant.METHOD_FUNCTION ||
+                o.Item2 == ParameterVariant.METHOD_PIN
+                //TODO: remove "output pin" as well? or perhaps we should impleement the logic for these?
+            );
             switch (entity.variant)
             {
                 //For aliases, only factor in the parameters and links that are actually set, since these are OVERRIDES
@@ -564,6 +576,7 @@ namespace CathodeLib
                                     value = new Transform() { Position = tD.position, Rotation = tD.rotation };
                                     break;
                             }
+
                             Transforms.Values.Add(guid.ToString(), value);
                         }
                         break;
@@ -3414,11 +3427,15 @@ namespace CathodeLib
 
         public static void DoStuff(Level level)
         {
+            AllEntities.Clear();
+            AllComposites.Clear();
+            Root = new InstancedComposite();
+
             GenerateInstances(level, level.Commands.EntryPoints[0], new EntityPath(), Root, null, null, new List<InstancedAlias>());
 
             level.PhysicsMaps.Entries.Clear();
             WritePhysicsMaps(level, Root);
-            level.PhysicsMaps.Save();
+            //level.PhysicsMaps.Save();
 
             string gsdfsd = "";
         }
