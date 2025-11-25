@@ -1754,29 +1754,24 @@ namespace CathodeLib
         }
     }
 
-    public static class InstanceWriter
+    public class Instancing
     {
-        private static List<InstancedEntity> AllEntities = new List<InstancedEntity>();
-        private static List<InstancedComposite> AllComposites = new List<InstancedComposite>();
+        private List<InstancedEntity> AllEntities = new List<InstancedEntity>();
+        private List<InstancedComposite> AllComposites = new List<InstancedComposite>();
 
-        private static InstancedComposite Root = new InstancedComposite();
+        private InstancedComposite Root = new InstancedComposite();
 
-        public static void DoStuff(Level level)
+        private Level _level = null;
+
+        public Instancing(Level level)
         {
-            AllEntities.Clear();
-            AllComposites.Clear();
-            Root = new InstancedComposite();
-
-            GenerateInstances(level, level.Commands.EntryPoints[0], new EntityPath(), Root, null, null, new List<InstancedAlias>());
-
-            level.PhysicsMaps.Entries.Clear();
-            WritePhysicsMaps(level, Root);
-            //level.PhysicsMaps.Save();
-
-            string gsdfsd = "";
+            _level = level;
         }
 
-        private static void GenerateInstances(Level level, Composite composite, EntityPath path, InstancedComposite compositeInstance, InstancedComposite parentCompositeInstance, InstancedEntity parentCompositeInstanceEntity, List<InstancedAlias> aliases)
+        public void GenerateInstances() => GenerateInstances(_level.Commands.EntryPoints[0], new EntityPath(), Root, null, null, new List<InstancedAlias>());
+        public void ProcessInstances() => ProcessInstances(Root);
+
+        private void GenerateInstances(Composite composite, EntityPath path, InstancedComposite compositeInstance, InstancedComposite parentCompositeInstance, InstancedEntity parentCompositeInstanceEntity, List<InstancedAlias> aliases)
         {
             List<InstancedAlias> localAliases = new List<InstancedAlias>(aliases);
 
@@ -1786,7 +1781,7 @@ namespace CathodeLib
                 EntityPath pathToThisEntity = path.Copy();
                 pathToThisEntity.AddNextStep(entity);
 
-                InstancedEntity newInstance = new InstancedEntity(level, composite, entity, pathToThisEntity);
+                InstancedEntity newInstance = new InstancedEntity(_level, composite, entity, pathToThisEntity);
                 newInstance.ParentCompositeInstanceEntity = parentCompositeInstanceEntity;
                 newInstance.ParentCompositeInstance = parentCompositeInstance;
                 newInstance.ThisCompositeInstance = compositeInstance;
@@ -1845,7 +1840,7 @@ namespace CathodeLib
                 if (function.function.IsFunctionType)
                     continue;
 
-                Composite child = level.Commands.GetComposite(function.function);
+                Composite child = _level.Commands.GetComposite(function.function);
                 if (child == null)
                     continue;
 
@@ -1859,11 +1854,11 @@ namespace CathodeLib
                 newInstance.InstanceID = newPath.GenerateCompositeInstanceID();
                 InstancedEntity instancedEnt = compositeInstance.Entities.FirstOrDefault(o => o.Entity == function);
                 instancedEnt.ChildCompositeInstance = newInstance;
-                GenerateInstances(level, child, newPath, newInstance, compositeInstance, instancedEnt, childAliases);
+                GenerateInstances(child, newPath, newInstance, compositeInstance, instancedEnt, childAliases);
             }
         }
 
-        private static void WritePhysicsMaps(Level level, InstancedComposite composite)
+        private void ProcessInstances(InstancedComposite composite)
         {
             ShortGuid GUID_DYNAMIC_PHYSICS_SYSTEM = ShortGuidUtils.Generate("DYNAMIC_PHYSICS_SYSTEM");
 
@@ -2007,7 +2002,7 @@ namespace CathodeLib
                             (Vector3 position, Quaternion rotation) = CalculateInstancedPosition(entity);
 
                             //For sanity: get the existing entry
-                            List<PhysicsMaps.Entry> existing = level.PhysicsMaps.Entries.FindAll(o =>
+                            List<PhysicsMaps.Entry> existing = _level.PhysicsMaps.Entries.FindAll(o =>
                                 o.physics_system_index == physicsSystem.PhysicsSystemIndex &&
                                 o.resource_type == GUID_DYNAMIC_PHYSICS_SYSTEM &&
                                 o.composite_instance_id == compositeInstanceID &&
@@ -2026,7 +2021,7 @@ namespace CathodeLib
 
                             //TODO: position calculation is wrong!
 
-                            level.PhysicsMaps.Entries.Add(newEntry);
+                            _level.PhysicsMaps.Entries.Add(newEntry);
                             break;
                         case FunctionType.PlayEnvironmentAnimation:
 
@@ -2110,12 +2105,12 @@ namespace CathodeLib
                     if (entity.Bools.Get("deleted"))
                         continue;
 
-                    WritePhysicsMaps(level, entity.ChildCompositeInstance);
+                    ProcessInstances(entity.ChildCompositeInstance);
                 }
             }
         }
 
-        private static (Vector3, Quaternion) CalculateInstancedPosition(InstancedEntity entity)
+        private (Vector3, Quaternion) CalculateInstancedPosition(InstancedEntity entity)
         {
             List<InstancedEntity.Transform> transforms = new List<InstancedEntity.Transform>();
             InstancedEntity parent = entity;
