@@ -837,7 +837,7 @@ namespace CathodeLib
                 {
                     case FunctionType.Character:
                         if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
+                            return (T)(object)CalculateWorldTransform();
                         break;
                     case FunctionType.Checkpoint:
                         if (typeof(T) == typeof(string))
@@ -845,7 +845,7 @@ namespace CathodeLib
                         break;
                     case FunctionType.CoverExclusionArea:
                         if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
+                            return (T)(object)CalculateWorldTransform();
                         break;
                     case FunctionType.DeleteBlankPanel:
                         if (typeof(T) == typeof(bool))
@@ -1449,7 +1449,7 @@ namespace CathodeLib
                         break;
                     case FunctionType.JOB_SpottingPosition:
                         if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("SpottingPosition"); //THIS SHOULD BE IN WORLDSPACE!
+                            return (T)(object)CalculateWorldTransform();
                         break;
                     case FunctionType.LogicGate:
                         if (typeof(T) == typeof(bool))
@@ -1485,23 +1485,23 @@ namespace CathodeLib
                         break;
                     case FunctionType.NavMeshArea:
                         if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
+                            return (T)(object)CalculateWorldTransform();
                         break;
                     case FunctionType.NavMeshBarrier:
                         if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
+                            return (T)(object)CalculateWorldTransform();
                         break;
                     case FunctionType.NavMeshExclusionArea:
                         if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
+                            return (T)(object)CalculateWorldTransform();
                         break;
                     case FunctionType.NavMeshReachabilitySeedPoint:
                         if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
+                            return (T)(object)CalculateWorldTransform();
                         break;
                     case FunctionType.NavMeshWalkablePlatform:
                         if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
+                            return (T)(object)CalculateWorldTransform();
                         break;
                     case FunctionType.NonPersistentBool:
                         if (typeof(T) == typeof(bool))
@@ -1513,19 +1513,19 @@ namespace CathodeLib
                         break;
                     case FunctionType.PathfindingAlienBackstageNode:
                         if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
+                            return (T)(object)CalculateWorldTransform();
                         break;
                     case FunctionType.PathfindingManualNode:
                         if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
+                            return (T)(object)CalculateWorldTransform();
                         break;
                     case FunctionType.PathfindingTeleportNode:
                         if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
+                            return (T)(object)CalculateWorldTransform();
                         break;
                     case FunctionType.PathfindingWaitNode:
                         if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
+                            return (T)(object)CalculateWorldTransform();
                         break;
                     case FunctionType.PlatformConstantBool:
                         if (typeof(T) == typeof(bool))
@@ -1627,7 +1627,7 @@ namespace CathodeLib
                         break;
                     case FunctionType.SpottingExclusionArea:
                         if (typeof(T) == typeof(Transform))
-                            return (T)(object)Transforms.Get("position"); //SHOULD BE WORLDSPACE POSITION!
+                            return (T)(object)CalculateWorldTransform();
                         break;
                     case FunctionType.TriggerCameraVolume:
                         if (typeof(T) == typeof(float))
@@ -1756,11 +1756,22 @@ namespace CathodeLib
             return 0;
         }
 
-        public (Vector3 position, Quaternion rotation) CalculateWorldTransform()
+        public (Vector3 position, Quaternion rotation) CalculateWorldPositionRotation()
         {
             Matrix4x4 worldMatrix = CalculateWorldTransformMatrix();
             Matrix4x4.Decompose(worldMatrix, out Vector3 scale, out Quaternion rotation, out Vector3 position);
             return (position, rotation);
+        }
+
+        public Transform CalculateWorldTransform()
+        {
+            (Vector3 position, Quaternion rotation) = CalculateWorldPositionRotation();
+            (decimal yaw, decimal pitch, decimal roll) = rotation.ToYawPitchRoll();
+            return new Transform()
+            {
+                Position = position,
+                Rotation = new Vector3((float)pitch, (float)yaw, (float)roll)
+            };
         }
         
         private Matrix4x4 CalculateWorldTransformMatrix()
@@ -2131,7 +2142,7 @@ namespace CathodeLib
                         };
 
                         //Create the new entry
-                        (Vector3 position, Quaternion rotation) = entity.CalculateWorldTransform();
+                        (Vector3 position, Quaternion rotation) = entity.CalculateWorldPositionRotation();
                         PhysicsMaps.Entry newEntry = new PhysicsMaps.Entry()
                         {
                             physics_system_index = physicsSystem.PhysicsSystemIndex,
