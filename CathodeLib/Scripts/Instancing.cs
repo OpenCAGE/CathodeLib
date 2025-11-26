@@ -1755,6 +1755,26 @@ namespace CathodeLib
                 return -1;
             return 0;
         }
+
+        public (Vector3 position, Quaternion rotation) CalculateWorldTransform()
+        {
+            Matrix4x4 worldMatrix = CalculateWorldTransformMatrix();
+            Matrix4x4.Decompose(worldMatrix, out Vector3 scale, out Quaternion rotation, out Vector3 position);
+            return (position, rotation);
+        }
+        
+        private Matrix4x4 CalculateWorldTransformMatrix()
+        {
+            Transform localTransform = GetAs<Transform>("position");
+            Matrix4x4 localMatrix = localTransform.AsMatrix();
+            if (ParentCompositeInstanceEntity != null)
+            {
+                Matrix4x4 parentWorldMatrix = ParentCompositeInstanceEntity.CalculateWorldTransformMatrix();
+                localMatrix = localMatrix * parentWorldMatrix;
+            }
+            
+            return localMatrix;
+        }
         #endregion
     }
 
@@ -2110,17 +2130,8 @@ namespace CathodeLib
                             composite_instance_id = pathToThisEntity.GenerateCompositeInstanceID()
                         };
 
-                        //Calculate the instanced position
-                        (Vector3 position, Quaternion rotation) = CalculateInstancedPosition(entity);
-
-                        //For sanity: get the existing entry
-                        List<PhysicsMaps.Entry> existing = _level.PhysicsMaps.Entries.FindAll(o =>
-                            o.physics_system_index == physicsSystem.PhysicsSystemIndex &&
-                            o.resource_type == GUID_DYNAMIC_PHYSICS_SYSTEM &&
-                            o.composite_instance_id == compositeInstanceID &&
-                            o.entity == compositeInstanceReference);
-
                         //Create the new entry
+                        (Vector3 position, Quaternion rotation) = entity.CalculateWorldTransform();
                         PhysicsMaps.Entry newEntry = new PhysicsMaps.Entry()
                         {
                             physics_system_index = physicsSystem.PhysicsSystemIndex,
@@ -2130,8 +2141,6 @@ namespace CathodeLib
                             Position = position,
                             Rotation = rotation
                         };
-
-                        //TODO: position calculation is wrong!
 
                         lock (_physicsMapsLock)
                         {
@@ -2211,29 +2220,5 @@ namespace CathodeLib
             }
         }
 
-        private (Vector3, Quaternion) CalculateInstancedPosition(InstancedEntity entity)
-        {
-            List<InstancedEntity.Transform> transforms = new List<InstancedEntity.Transform>();
-            InstancedEntity parent = entity;
-            while (parent != null)
-            {
-                //Console.WriteLine("Entity: " + parent.Entity.shortGUID.ToByteString() + "\n" +
-                //    "\tWithin Composite: " + parent.Composite.name + "\n" +
-                //    "\tAt Path: " + parent.Path.ToString() + "\n" +
-                //    "\tHas Position: " + parent.GetAs<InstancedEntity.Transform>("position").ToString() + "\n" +
-                //    "----------");
-                transforms.Add(parent.GetAs<InstancedEntity.Transform>("position"));
-                parent = parent.ParentCompositeInstanceEntity;
-            }
-            transforms.Reverse();
-
-            cTransform stacked = new cTransform();
-            for (int i = 0; i < transforms.Count; i++)
-            {
-                //TODO: does this work correctly?
-                stacked += new cTransform() { position = transforms[i].Position, rotation = transforms[i].Rotation };
-            }
-            return (stacked.position, Quaternion.CreateFromYawPitchRoll(stacked.rotation.Y * (float)Math.PI / 180.0f, stacked.rotation.X * (float)Math.PI / 180.0f, stacked.rotation.Z * (float)Math.PI / 180.0f));
-        }
     }
 }
