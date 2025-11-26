@@ -14,39 +14,92 @@ using System.Threading.Tasks;
 
 namespace CathodeLib
 {
+    internal static class ShortGuids
+    {
+        public static readonly ShortGuid GUID_DYNAMIC_PHYSICS_SYSTEM = ShortGuidUtils.Generate("DYNAMIC_PHYSICS_SYSTEM");
+        public static readonly ShortGuid Reference = ShortGuidUtils.Generate("reference");
+        public static readonly ShortGuid Position = ShortGuidUtils.Generate("position");
+        public static readonly ShortGuid DoorMechanism = ShortGuidUtils.Generate("door_mechanism");
+        public static readonly ShortGuid ButtonType = ShortGuidUtils.Generate("button_type");
+        public static readonly ShortGuid LeverType = ShortGuidUtils.Generate("lever_type");
+        public static readonly ShortGuid IsDoor = ShortGuidUtils.Generate("is_door");
+        public static readonly ShortGuid Filter = ShortGuidUtils.Generate("filter");
+        public static readonly ShortGuid Input = ShortGuidUtils.Generate("Input");
+        public static readonly ShortGuid LHS = ShortGuidUtils.Generate("LHS");
+        public static readonly ShortGuid RHS = ShortGuidUtils.Generate("RHS");
+        public static readonly ShortGuid Threshold = ShortGuidUtils.Generate("Threshold");
+        public static readonly ShortGuid Min = ShortGuidUtils.Generate("Min");
+        public static readonly ShortGuid Max = ShortGuidUtils.Generate("Max");
+        public static readonly ShortGuid Value = ShortGuidUtils.Generate("Value");
+        public static readonly ShortGuid InitialValue = ShortGuidUtils.Generate("Initial_Value");
+        public static readonly ShortGuid TargetValue = ShortGuidUtils.Generate("Target_Value");
+        public static readonly ShortGuid Proportion = ShortGuidUtils.Generate("Proportion");
+        public static readonly ShortGuid Numbers = ShortGuidUtils.Generate("Numbers");
+        public static readonly ShortGuid Bias = ShortGuidUtils.Generate("bias");
+        public static readonly ShortGuid Amplitude = ShortGuidUtils.Generate("amplitude");
+        public static readonly ShortGuid Phase = ShortGuidUtils.Generate("phase");
+        public static readonly ShortGuid WaveShape = ShortGuidUtils.Generate("wave_shape");
+        public static readonly ShortGuid Allow = ShortGuidUtils.Generate("allow");
+        public static readonly ShortGuid InitialValueLower = ShortGuidUtils.Generate("initial_value");
+        public static readonly ShortGuid NextGen = ShortGuidUtils.Generate("NextGen");
+        public static readonly ShortGuid Colour = ShortGuidUtils.Generate("Colour");
+        public static readonly ShortGuid X = ShortGuidUtils.Generate("x");
+        public static readonly ShortGuid Y = ShortGuidUtils.Generate("y");
+        public static readonly ShortGuid Z = ShortGuidUtils.Generate("z");
+        public static readonly ShortGuid InitialColour = ShortGuidUtils.Generate("initial_colour");
+        public static readonly ShortGuid InitialX = ShortGuidUtils.Generate("initial_x");
+        public static readonly ShortGuid InitialY = ShortGuidUtils.Generate("initial_y");
+        public static readonly ShortGuid InitialZ = ShortGuidUtils.Generate("initial_z");
+        public static readonly ShortGuid Normalised = ShortGuidUtils.Generate("Normalised");
+        public static readonly ShortGuid MinX = ShortGuidUtils.Generate("MinX");
+        public static readonly ShortGuid MaxX = ShortGuidUtils.Generate("MaxX");
+        public static readonly ShortGuid MinY = ShortGuidUtils.Generate("MinY");
+        public static readonly ShortGuid MaxY = ShortGuidUtils.Generate("MaxY");
+        public static readonly ShortGuid MinZ = ShortGuidUtils.Generate("MinZ");
+        public static readonly ShortGuid MaxZ = ShortGuidUtils.Generate("MaxZ");
+        public static readonly ShortGuid IsTemplate = ShortGuidUtils.Generate("is_template");
+        public static readonly ShortGuid Deleted = ShortGuidUtils.Generate("deleted");
+    }
+
     public class InstancedEntity : IComparable<InstancedEntity>
     {
         public class Parameters<T> : IComparable<Parameters<T>>
         {
             //Values set on the entity itself at initialisation time
-            public Dictionary<string, T> Values = new Dictionary<string, T>();
+            public Dictionary<ShortGuid, T> Values;
 
             //Any links to other entities that set parameter values
-            public Dictionary<string, List<Tuple<string, InstancedEntity>>> Links = new Dictionary<string, List<Tuple<string, InstancedEntity>>>();
+            public Dictionary<ShortGuid, List<Tuple<ShortGuid, InstancedEntity>>> Links;
 
-            public bool Has(string name)
+            public Parameters(int capacity = 0)
             {
-                return Values.ContainsKey(name);
+                Values = new Dictionary<ShortGuid, T>(capacity);
+                Links = new Dictionary<ShortGuid, List<Tuple<ShortGuid, InstancedEntity>>>(capacity);
             }
 
-            public T Get(string name)
+            public bool Has(ShortGuid guid)
+            {
+                return Values.ContainsKey(guid);
+            }
+
+            public T Get(ShortGuid guid)
             {
                 //Check links first, these override the values
-                if (Links.TryGetValue(name, out List<Tuple<string, InstancedEntity>> links))
+                if (Links.TryGetValue(guid, out List<Tuple<ShortGuid, InstancedEntity>> links))
                     if (links.Count != 0)
                         return links[0].Item2.GetAs<T>(links[0].Item1);
 
                 //Fall back to our own value
-                if (Values.TryGetValue(name, out T val))
+                if (Values.TryGetValue(guid, out T val))
                     return val;
 
                 throw new Exception("Failed to find param.");
             }
 
-            public List<InstancedEntity> GetLinks(string name)
+            public List<InstancedEntity> GetLinks(ShortGuid guid)
             {
                 List<InstancedEntity> entities = new List<InstancedEntity>();
-                if (Links.TryGetValue(name, out List<Tuple<string, InstancedEntity>> ents))
+                if (Links.TryGetValue(guid, out List<Tuple<ShortGuid, InstancedEntity>> ents))
                 {
                     for (int i = 0; i < ents.Count; i++)
                     {
@@ -56,43 +109,40 @@ namespace CathodeLib
                 return entities;
             }
 
-            public void AddLinks(string name, List<Tuple<string, InstancedEntity>> links)
+            public void AddLinks(ShortGuid guid, List<Tuple<ShortGuid, InstancedEntity>> links)
             {
-                if (Links.ContainsKey(name))
-                    Links[name].AddRange(links);
+                if (Links.ContainsKey(guid))
+                    Links[guid].AddRange(links);
                 else
-                    Links.Add(name, links);
+                    Links.Add(guid, links);
             }
 
             //For VariableEntities -> we want to override the default values and add links for matching variable names on the entity that instanced the composite they're contained in
-            public void PopulateVariableParentInfo(Parameters<T> compInstParams, string varName)
+            public void PopulateVariableParentInfo(Parameters<T> compInstParams, ShortGuid varGuid)
             {
-                if (compInstParams.Values.ContainsKey(varName))
+                if (compInstParams.Values.TryGetValue(varGuid, out T value))
                 {
-                    if (!Values.ContainsKey(varName))
-                        Values.Add(varName, compInstParams.Values[varName]);
-                    else
-                        Values[varName] = compInstParams.Values[varName];
+                    Values[varGuid] = value;
                 }
-                if (compInstParams.Links.ContainsKey(varName))
+                if (compInstParams.Links.TryGetValue(varGuid, out List<Tuple<ShortGuid, InstancedEntity>> parentLinks))
                 {
-                    if (!Links.ContainsKey(varName))
-                        Links.Add(varName, new List<Tuple<string, InstancedEntity>>());
-                    Links[varName].AddRange(compInstParams.Links[varName]); //todo - probs want to insert first?
+                    if (!Links.TryGetValue(varGuid, out List<Tuple<ShortGuid, InstancedEntity>> existingLinks))
+                    {
+                        existingLinks = new List<Tuple<ShortGuid, InstancedEntity>>(parentLinks.Count);
+                        Links[varGuid] = existingLinks;
+                    }
+                    existingLinks.AddRange(parentLinks); //todo - probs want to insert first?
                 }
             }
 
             //Any entity can have an Alias override the values on it, kinda similar to the above 
             public void PopulateAliasInfo(Parameters<T> aliasParams)
             {
-                foreach (KeyValuePair<string, T> value in aliasParams.Values)
+                foreach (KeyValuePair<ShortGuid, T> value in aliasParams.Values)
                 {
-                    if (!Values.ContainsKey(value.Key))
-                        Values.Add(value.Key, value.Value);
-                    else
-                        Values[value.Key] = value.Value;
+                    Values[value.Key] = value.Value;
                 }
-                foreach (KeyValuePair<string, List<Tuple<string, InstancedEntity>>> value in aliasParams.Links)
+                foreach (KeyValuePair<ShortGuid, List<Tuple<ShortGuid, InstancedEntity>>> value in aliasParams.Links)
                 {
                     AddLinks(value.Key, value.Value);
                 }
@@ -113,7 +163,7 @@ namespace CathodeLib
                     if (Links.Count != other.Links.Count) return false;
                     foreach (var kvp in Links)
                     {
-                        if (!other.Links.TryGetValue(kvp.Key, out List<Tuple<string, InstancedEntity>> otherLinks))
+                        if (!other.Links.TryGetValue(kvp.Key, out List<Tuple<ShortGuid, InstancedEntity>> otherLinks))
                             return false;
                         if (kvp.Value.Count != otherLinks.Count) return false;
                         for (int i = 0; i < kvp.Value.Count; i++)
@@ -172,18 +222,18 @@ namespace CathodeLib
                 return CompareLinksDictionaries(Links, other.Links);
             }
 
-            private int CompareDictionaries(Dictionary<string, T> dict1, Dictionary<string, T> dict2)
+            private int CompareDictionaries(Dictionary<ShortGuid, T> dict1, Dictionary<ShortGuid, T> dict2)
             {
                 int countCompare = dict1.Count.CompareTo(dict2.Count);
                 if (countCompare != 0) return countCompare;
 
-                var keys1 = new List<string>(dict1.Keys);
-                var keys2 = new List<string>(dict2.Keys);
+                var keys1 = new List<ShortGuid>(dict1.Keys);
+                var keys2 = new List<ShortGuid>(dict2.Keys);
                 keys1.Sort();
                 keys2.Sort();
                 for (int i = 0; i < keys1.Count; i++)
                 {
-                    int keyCompare = string.Compare(keys1[i], keys2[i], StringComparison.Ordinal);
+                    int keyCompare = keys1[i].CompareTo(keys2[i]);
                     if (keyCompare != 0) return keyCompare;
 
                     T val1 = dict1[keys1[i]];
@@ -194,19 +244,19 @@ namespace CathodeLib
                 return 0;
             }
 
-            private int CompareLinksDictionaries(Dictionary<string, List<Tuple<string, InstancedEntity>>> dict1, Dictionary<string, List<Tuple<string, InstancedEntity>>> dict2)
+            private int CompareLinksDictionaries(Dictionary<ShortGuid, List<Tuple<ShortGuid, InstancedEntity>>> dict1, Dictionary<ShortGuid, List<Tuple<ShortGuid, InstancedEntity>>> dict2)
             {
                 int countCompare = dict1.Count.CompareTo(dict2.Count);
                 if (countCompare != 0) return countCompare;
 
-                var keys1 = new List<string>(dict1.Keys);
-                var keys2 = new List<string>(dict2.Keys);
+                var keys1 = new List<ShortGuid>(dict1.Keys);
+                var keys2 = new List<ShortGuid>(dict2.Keys);
                 keys1.Sort();
                 keys2.Sort();
 
                 for (int i = 0; i < keys1.Count; i++)
                 {
-                    int keyCompare = string.Compare(keys1[i], keys2[i], StringComparison.Ordinal);
+                    int keyCompare = keys1[i].CompareTo(keys2[i]);
                     if (keyCompare != 0) return keyCompare;
 
                     var list1 = dict1[keys1[i]];
@@ -216,7 +266,7 @@ namespace CathodeLib
 
                     for (int j = 0; j < list1.Count; j++)
                     {
-                        int item1Compare = string.Compare(list1[j].Item1, list2[j].Item1, StringComparison.Ordinal);
+                        int item1Compare = list1[j].Item1.CompareTo(list2[j].Item1);
                         if (item1Compare != 0) return item1Compare;
 
                         int item2Compare = list1[j].Item2?.CompareTo(list2[j].Item2) ?? (list2[j].Item2 == null ? 0 : -1);
@@ -352,12 +402,12 @@ namespace CathodeLib
             #endregion
         }
 
-        public Parameters<bool> Bools = new Parameters<bool>();
-        public Parameters<int> Integers = new Parameters<int>();
-        public Parameters<float> Floats = new Parameters<float>();
-        public Parameters<int> EnumIndexes = new Parameters<int>();
-        public Parameters<Vector3> Vectors = new Parameters<Vector3>();
-        public Parameters<Transform> Transforms = new Parameters<Transform>();
+        public Parameters<bool> Bools;
+        public Parameters<int> Integers;
+        public Parameters<float> Floats;
+        public Parameters<int> EnumIndexes;
+        public Parameters<Vector3> Vectors;
+        public Parameters<Transform> Transforms;
 
         public Level Level;
         public Entity Entity;
@@ -376,7 +426,7 @@ namespace CathodeLib
         //The composite instanced by this entity, one step forward in the path: will be null if this doesn't instance one
         public InstancedComposite ChildCompositeInstance;
 
-        private HashSet<(ShortGuid, ParameterVariant, DataType)> _parameters = new HashSet<(ShortGuid, ParameterVariant, DataType)>();
+        private HashSet<(ShortGuid, ParameterVariant, DataType)> _parameters;
 
         public InstancedEntity(Level level, Composite composite, Entity entity, EntityPath path, ConcurrentDictionary<(Entity, Composite), List<(ShortGuid, ParameterVariant, DataType)>> parameterCache, ConcurrentDictionary<(Composite, ShortGuid), Entity> entityLookupCache)
         {
@@ -397,6 +447,10 @@ namespace CathodeLib
             {
                 parameters = Level.Commands.Utils.GetAllParameters(entity, composite);
             }
+            
+            if (parameters == null)
+                parameters = new List<(ShortGuid, ParameterVariant, DataType)>();
+            
             parameters.RemoveAll(o =>
                 o.Item2 == ParameterVariant.REFERENCE_PIN ||
                 o.Item2 == ParameterVariant.TARGET_PIN ||
@@ -410,6 +464,14 @@ namespace CathodeLib
                     paramLookup[param.Item1] = param;
             }
 
+            int paramCount = parameters.Count;
+            _parameters = new HashSet<(ShortGuid, ParameterVariant, DataType)>();
+            Bools = new Parameters<bool>(paramCount);
+            Integers = new Parameters<int>(paramCount);
+            Floats = new Parameters<float>(paramCount);
+            EnumIndexes = new Parameters<int>(paramCount);
+            Vectors = new Parameters<Vector3>(paramCount);
+            Transforms = new Parameters<Transform>(paramCount);
             switch (entity.variant)
             {
                 //For aliases, only factor in the parameters and links that are actually set, since these are OVERRIDES
@@ -465,7 +527,7 @@ namespace CathodeLib
                                     value = ((cBool)Level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid)).value;
                                     break;
                             }
-                            Bools.Values.Add(guid.ToString(), value);
+                            Bools.Values.Add(guid, value);
                         }
                         break;
                     case DataType.INTEGER:
@@ -497,7 +559,7 @@ namespace CathodeLib
                                     value = ((cInteger)Level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid)).value;
                                     break;
                             }
-                            Integers.Values.Add(guid.ToString(), value);
+                            Integers.Values.Add(guid, value);
                         }
                         break;
                     case DataType.FLOAT:
@@ -530,8 +592,8 @@ namespace CathodeLib
                                     value = ((cFloat)Level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid)).value;
                                     break;
                             }
-                            if (!Floats.Values.ContainsKey(guid.ToString())) //todo - deprecate this when the hashset above is fixed
-                                Floats.Values.Add(guid.ToString(), value);
+                            if (!Floats.Values.ContainsKey(guid)) //todo - deprecate this when the hashset above is fixed
+                                Floats.Values.Add(guid, value);
                         }
                         break;
                     case DataType.ENUM:
@@ -563,7 +625,7 @@ namespace CathodeLib
                                     value = ((cEnum)Level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid)).enumIndex;
                                     break;
                             }
-                            EnumIndexes.Values.Add(guid.ToString(), value);
+                            EnumIndexes.Values.Add(guid, value);
                         }
                         break;
                     case DataType.VECTOR:
@@ -582,7 +644,7 @@ namespace CathodeLib
                                     value = ((cVector3)Level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid)).value;
                                     break;
                             }
-                            Vectors.Values.Add(guid.ToString(), value);
+                            Vectors.Values.Add(guid, value);
                         }
                         break;
                     case DataType.TRANSFORM:
@@ -604,7 +666,7 @@ namespace CathodeLib
                                     break;
                             }
 
-                            Transforms.Values.Add(guid.ToString(), value);
+                            Transforms.Values.Add(guid, value);
                         }
                         break;
                 }
@@ -629,44 +691,51 @@ namespace CathodeLib
                 }
             }
 
-            foreach ((ShortGuid guid, ParameterVariant variant, DataType datatype) in _parameters)
+            if (_parameters != null)
             {
-                List<EntityConnector> links = Entity.childLinks.FindAll(o => o.thisParamID == guid);
-                if (links.Count == 0)
-                    continue;
-
-                List<Tuple<string, InstancedEntity>> linksParsed = new List<Tuple<string, InstancedEntity>>(links.Count);
-                for (int i = 0; i < links.Count; i++)
+                foreach ((ShortGuid guid, ParameterVariant variant, DataType datatype) in _parameters)
                 {
-                    Entity connectedEnt = Composite.GetEntityByID(links[i].linkedEntityID);
-                    if (connectedEnt == null) continue;
-                    if (entityByGuid.TryGetValue(connectedEnt.shortGUID, out InstancedEntity instancedEntity))
+                    List<EntityConnector> links = Entity.childLinks.FindAll(o => o.thisParamID == guid);
+                    if (links.Count == 0)
+                        continue;
+
+                    List<Tuple<ShortGuid, InstancedEntity>> linksParsed = new List<Tuple<ShortGuid, InstancedEntity>>(links.Count);
+                    for (int i = 0; i < links.Count; i++)
                     {
-                        linksParsed.Add(new Tuple<string, InstancedEntity>(links[i].linkedParamID.ToString(), instancedEntity));
+                        Entity connectedEnt = Composite.GetEntityByID(links[i].linkedEntityID);
+                        if (connectedEnt == null) continue;
+                        if (entityByGuid.TryGetValue(connectedEnt.shortGUID, out InstancedEntity instancedEntity))
+                        {
+                            linksParsed.Add(new Tuple<ShortGuid, InstancedEntity>(links[i].linkedParamID, instancedEntity));
+                        }
+                    }
+
+                    if (linksParsed.Count == 0)
+                        continue;
+
+                    switch (datatype)
+                    {
+                        case DataType.BOOL:
+                            Bools.AddLinks(guid, linksParsed);
+                            break;
+                        case DataType.INTEGER:
+                            Integers.AddLinks(guid, linksParsed);
+                            break;
+                        case DataType.FLOAT:
+                            Floats.AddLinks(guid, linksParsed);
+                            break;
+                        case DataType.ENUM:
+                            EnumIndexes.AddLinks(guid, linksParsed);
+                            break;
+                        case DataType.VECTOR:
+                            Vectors.AddLinks(guid, linksParsed);
+                            break;
+                        case DataType.TRANSFORM:
+                            Transforms.AddLinks(guid, linksParsed);
+                            break;
                     }
                 }
-
-                switch (datatype)
-                {
-                    case DataType.BOOL:
-                        Bools.AddLinks(guid.ToString(), linksParsed);
-                        break;
-                    case DataType.INTEGER:
-                        Integers.AddLinks(guid.ToString(), linksParsed);
-                        break;
-                    case DataType.FLOAT:
-                        Floats.AddLinks(guid.ToString(), linksParsed);
-                        break;
-                    case DataType.ENUM:
-                        EnumIndexes.AddLinks(guid.ToString(), linksParsed);
-                        break;
-                    case DataType.VECTOR:
-                        Vectors.AddLinks(guid.ToString(), linksParsed);
-                        break;
-                    case DataType.TRANSFORM:
-                        Transforms.AddLinks(guid.ToString(), linksParsed);
-                        break;
-                }
+                _parameters = null;
             }
 
             //If this entity is a Composite interface type, we need to look for the parent entity that instanced our composite and forward the links on.
@@ -675,14 +744,14 @@ namespace CathodeLib
                 if (ParentCompositeInstanceEntity != null)
                 {
                     VariableEntity var = (VariableEntity)Entity;
-                    string varName = var.name.ToString();
+                    ShortGuid varGuid = var.name;
 
-                    Bools.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Bools, varName);
-                    Integers.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Integers, varName);
-                    Floats.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Floats, varName);
-                    EnumIndexes.PopulateVariableParentInfo(ParentCompositeInstanceEntity.EnumIndexes, varName);
-                    Vectors.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Vectors, varName);
-                    Transforms.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Transforms, varName);
+                    Bools.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Bools, varGuid);
+                    Integers.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Integers, varGuid);
+                    Floats.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Floats, varGuid);
+                    EnumIndexes.PopulateVariableParentInfo(ParentCompositeInstanceEntity.EnumIndexes, varGuid);
+                    Vectors.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Vectors, varGuid);
+                    Transforms.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Transforms, varGuid);
                 }
             }
         }
@@ -699,6 +768,12 @@ namespace CathodeLib
 
         public T GetAs<T>(string name = "reference")
         {
+            ShortGuid guid = name == "reference" ? ShortGuids.Reference : ShortGuidUtils.Generate(name);
+            return GetAs<T>(guid);
+        }
+
+        public T GetAs<T>(ShortGuid guid)
+        {
             switch (Entity.variant)
             {
                 case EntityVariant.FUNCTION:
@@ -706,11 +781,11 @@ namespace CathodeLib
                         FunctionEntity func = (FunctionEntity)Entity;
                         if (func.function.IsFunctionType)
                         {
-                            return GetFunctionData<T>(name, func.function.AsFunctionType);
+                            return GetFunctionData<T>(guid, func.function.AsFunctionType);
                         }
                         else
                         {
-                            return GetFunctionData<T>(name, FunctionType.CompositeInterface);
+                            return GetFunctionData<T>(guid, FunctionType.CompositeInterface);
                         }
                     }
 
@@ -720,7 +795,7 @@ namespace CathodeLib
                         switch (var.type)
                         {
                             case DataType.BOOL:
-                                bool b = Bools.Get(var.name.ToString());
+                                bool b = Bools.Get(var.name);
                                 if (typeof(T) == typeof(int))
                                     return (T)(object)(b ? 1 : 0);
                                 if (typeof(T) == typeof(float))
@@ -731,7 +806,7 @@ namespace CathodeLib
                                     return (T)(object)(string)(b ? "TRUE" : "FALSE");
                                 break;
                             case DataType.INTEGER:
-                                int i = Integers.Get(var.name.ToString());
+                                int i = Integers.Get(var.name);
                                 if (typeof(T) == typeof(int))
                                     return (T)(object)i;
                                 if (typeof(T) == typeof(float))
@@ -742,7 +817,7 @@ namespace CathodeLib
                                     return (T)(object)i.ToString();
                                 break;
                             case DataType.FLOAT:
-                                float f = Floats.Get(var.name.ToString());
+                                float f = Floats.Get(var.name);
                                 if (typeof(T) == typeof(int))
                                     return (T)(object)(int)f;
                                 if (typeof(T) == typeof(float))
@@ -753,7 +828,7 @@ namespace CathodeLib
                                     return (T)(object)f.ToString();
                                 break;
                             case DataType.ENUM:
-                                int e = EnumIndexes.Get(var.name.ToString());
+                                int e = EnumIndexes.Get(var.name);
                                 if (typeof(T) == typeof(int))
                                     return (T)(object)e;
                                 if (typeof(T) == typeof(float))
@@ -762,14 +837,14 @@ namespace CathodeLib
                                     return (T)(object)(e == 1);
                                 break;
                             case DataType.VECTOR:
-                                Vector3 v = Vectors.Get(var.name.ToString());
+                                Vector3 v = Vectors.Get(var.name);
                                 if (typeof(T) == typeof(Vector3))
                                     return (T)(object)v;
                                 if (typeof(T) == typeof(Transform))
                                     return (T)(object)new Transform() { Position = v };
                                 break;
                             case DataType.TRANSFORM:
-                                Transform t = Transforms.Get(var.name.ToString());
+                                Transform t = Transforms.Get(var.name);
                                 if (typeof(T) == typeof(Vector3))
                                     return (T)(object)t.Position;
                                 if (typeof(T) == typeof(Transform))
@@ -798,8 +873,8 @@ namespace CathodeLib
                 return (T)(object)new Vector3(0, 0, 0);
             else if (typeof(T) == typeof(Transform))
             {
-                if (Transforms.Has("position"))
-                    return (T)(object)Transforms.Get("position");
+                if (Transforms.Has(ShortGuids.Position))
+                    return (T)(object)Transforms.Get(ShortGuids.Position);
                 else
                     return (T)(object)new Transform();
             }
@@ -809,26 +884,26 @@ namespace CathodeLib
             }
         }
 
-        private T GetFunctionData<T>(string name, FunctionType type)
+        private T GetFunctionData<T>(ShortGuid guid, FunctionType type)
         {
-            if (name != "reference")
+            if (guid != ShortGuids.Reference)
             {
                 //Get the value of the parameter, taking in to account anything applied by to the instance
                 if (typeof(T) == typeof(bool))
-                    return (T)(object)Bools.Get(name);
+                    return (T)(object)Bools.Get(guid);
                 else if (typeof(T) == typeof(int))
                 {
-                    if (Integers.Has(name))
-                        return (T)(object)Integers.Get(name);
+                    if (Integers.Has(guid))
+                        return (T)(object)Integers.Get(guid);
                     else
-                        return (T)(object)EnumIndexes.Get(name);
+                        return (T)(object)EnumIndexes.Get(guid);
                 }
                 else if (typeof(T) == typeof(float))
-                    return (T)(object)Floats.Get(name);
+                    return (T)(object)Floats.Get(guid);
                 else if (typeof(T) == typeof(Vector3))
-                    return (T)(object)Vectors.Get(name);
+                    return (T)(object)Vectors.Get(guid);
                 else if (typeof(T) == typeof(Transform))
-                    return (T)(object)Transforms.Get(name);
+                    return (T)(object)Transforms.Get(guid);
             }
             else
             {
@@ -850,7 +925,7 @@ namespace CathodeLib
                     case FunctionType.DeleteBlankPanel:
                         if (typeof(T) == typeof(bool))
                         {
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get("door_mechanism");
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.BLANK:
@@ -863,10 +938,10 @@ namespace CathodeLib
                     case FunctionType.DeleteButtonDisk:
                         if (typeof(T) == typeof(bool))
                         {
-                            BUTTON_TYPE button_type = (BUTTON_TYPE)EnumIndexes.Get("button_type");
+                            BUTTON_TYPE button_type = (BUTTON_TYPE)EnumIndexes.Get(ShortGuids.ButtonType);
                             if (button_type != BUTTON_TYPE.DISK) return (T)(object)true;
 
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get("door_mechanism");
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.HIDDEN_BUTTON:
@@ -880,10 +955,10 @@ namespace CathodeLib
                     case FunctionType.DeleteButtonKeys:
                         if (typeof(T) == typeof(bool))
                         {
-                            BUTTON_TYPE button_type = (BUTTON_TYPE)EnumIndexes.Get("button_type");
+                            BUTTON_TYPE button_type = (BUTTON_TYPE)EnumIndexes.Get(ShortGuids.ButtonType);
                             if (button_type != BUTTON_TYPE.KEYS) return (T)(object)true;
 
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get("door_mechanism");
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.HIDDEN_BUTTON:
@@ -897,7 +972,7 @@ namespace CathodeLib
                     case FunctionType.DeleteCuttingPanel:
                         if (typeof(T) == typeof(bool))
                         {
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get("door_mechanism");
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.HIDDEN_BUTTON:
@@ -913,7 +988,7 @@ namespace CathodeLib
                     case FunctionType.DeleteHacking:
                         if (typeof(T) == typeof(bool))
                         {
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get("door_mechanism");
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.HACKING:
@@ -927,9 +1002,9 @@ namespace CathodeLib
                     case FunctionType.DeleteHousing:
                         if (typeof(T) == typeof(bool))
                         {
-                            if (!Bools.Get("is_door")) return (T)(object)true;
+                            if (!Bools.Get(ShortGuids.IsDoor)) return (T)(object)true;
 
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get("door_mechanism");
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.HIDDEN_BUTTON:
@@ -949,7 +1024,7 @@ namespace CathodeLib
                     case FunctionType.DeleteKeypad:
                         if (typeof(T) == typeof(bool))
                         {
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get("door_mechanism");
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.KEYPAD:
@@ -963,10 +1038,10 @@ namespace CathodeLib
                     case FunctionType.DeletePullLever:
                         if (typeof(T) == typeof(bool))
                         {
-                            LEVER_TYPE lever_type = (LEVER_TYPE)EnumIndexes.Get("lever_type");
+                            LEVER_TYPE lever_type = (LEVER_TYPE)EnumIndexes.Get(ShortGuids.LeverType);
                             if (lever_type != LEVER_TYPE.PULL) return (T)(object)true;
 
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get("door_mechanism");
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.HIDDEN_LEVER:
@@ -980,10 +1055,10 @@ namespace CathodeLib
                     case FunctionType.DeleteRotateLever:
                         if (typeof(T) == typeof(bool))
                         {
-                            LEVER_TYPE lever_type = (LEVER_TYPE)EnumIndexes.Get("lever_type");
+                            LEVER_TYPE lever_type = (LEVER_TYPE)EnumIndexes.Get(ShortGuids.LeverType);
                             if (lever_type != LEVER_TYPE.ROTATE) return (T)(object)true;
 
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get("door_mechanism");
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.HIDDEN_LEVER:
@@ -1001,7 +1076,7 @@ namespace CathodeLib
                     case FunctionType.FilterAnd:
                         if (typeof(T) == typeof(bool))
                         {
-                            List<InstancedEntity> filters = Bools.GetLinks("filter");
+                            List<InstancedEntity> filters = Bools.GetLinks(ShortGuids.Filter);
                             for (int i = 0; i < filters.Count; i++)
                             {
                                 if (!filters[i].GetAs<bool>())
@@ -1013,14 +1088,14 @@ namespace CathodeLib
                     case FunctionType.FilterNot:
                         if (typeof(T) == typeof(bool))
                         {
-                            List<InstancedEntity> filters = Bools.GetLinks("filter");
+                            List<InstancedEntity> filters = Bools.GetLinks(ShortGuids.Filter);
                             return (T)(object)(filters.Count == 0 ? true : filters[0].GetAs<bool>());
                         }
                         break;
                     case FunctionType.FilterOr:
                         if (typeof(T) == typeof(bool))
                         {
-                            List<InstancedEntity> filters = Bools.GetLinks("filter");
+                            List<InstancedEntity> filters = Bools.GetLinks(ShortGuids.Filter);
                             for (int i = 0; i < filters.Count; i++)
                             {
                                 if (filters[i].GetAs<bool>())
@@ -1031,16 +1106,16 @@ namespace CathodeLib
                         break;
                     case FunctionType.FloatAbsolute:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)Math.Abs(Floats.Get("Input"));
+                            return (T)(object)Math.Abs(Floats.Get(ShortGuids.Input));
                         break;
                     case FunctionType.FloatAdd:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)(Floats.Get("LHS") + Floats.Get("RHS"));
+                            return (T)(object)(Floats.Get(ShortGuids.LHS) + Floats.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.FloatAdd_All:
                         if (typeof(T) == typeof(float))
                         {
-                            List<InstancedEntity> numbers = Floats.GetLinks("Numbers");
+                            List<InstancedEntity> numbers = Floats.GetLinks(ShortGuids.Numbers);
                             float sum = 0;
                             for (int i = 0; i < numbers.Count; i++)
                                 sum += numbers[i].GetAs<float>();
@@ -1050,9 +1125,9 @@ namespace CathodeLib
                     case FunctionType.FloatClamp:
                         if (typeof(T) == typeof(float))
                         {
-                            float val = Floats.Get("Value");
-                            float min = Floats.Get("Min");
-                            float max = Floats.Get("Max");
+                            float val = Floats.Get(ShortGuids.Value);
+                            float min = Floats.Get(ShortGuids.Min);
+                            float max = Floats.Get(ShortGuids.Max);
                             if (val < min) val = min;
                             if (val > max) val = max;
                             return (T)(object)val;
@@ -1061,9 +1136,9 @@ namespace CathodeLib
                     case FunctionType.FloatClampMultiply:
                         if (typeof(T) == typeof(float))
                         {
-                            float val = Floats.Get("LHS");
-                            float min = Floats.Get("Min");
-                            float max = Floats.Get("Max") * Floats.Get("RHS");
+                            float val = Floats.Get(ShortGuids.LHS);
+                            float min = Floats.Get(ShortGuids.Min);
+                            float max = Floats.Get(ShortGuids.Max) * Floats.Get(ShortGuids.RHS);
                             if (val < min) val = min;
                             if (val > max) val = max;
                             return (T)(object)val;
@@ -1072,30 +1147,30 @@ namespace CathodeLib
                     case FunctionType.FloatDivide:
                         if (typeof(T) == typeof(float))
                         {
-                            float rhs = Floats.Get("RHS");
+                            float rhs = Floats.Get(ShortGuids.RHS);
                             if (Math.Abs(rhs) < 0.0001f) return (T)(object)0.0f;
-                            return (T)(object)(Floats.Get("LHS") / rhs);
+                            return (T)(object)(Floats.Get(ShortGuids.LHS) / rhs);
                         }
                         break;
                     case FunctionType.FloatEquals:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)(Math.Abs(Floats.Get("LHS") - Floats.Get("RHS")) < Math.Abs(Floats.Get("Threshold")));
+                            return (T)(object)(Math.Abs(Floats.Get(ShortGuids.LHS) - Floats.Get(ShortGuids.RHS)) < Math.Abs(Floats.Get(ShortGuids.Threshold)));
                         break;
                     case FunctionType.FloatGetLinearProportion:
                         if (typeof(T) == typeof(float))
                         {
-                            float min = Floats.Get("Min");
-                            float max = Floats.Get("Max");
-                            float mid = Floats.Get("Input");
+                            float min = Floats.Get(ShortGuids.Min);
+                            float max = Floats.Get(ShortGuids.Max);
+                            float mid = Floats.Get(ShortGuids.Input);
                             return (T)(object)((mid - min) / (max - min));
                         }
                         break;
                     case FunctionType.FloatGreaterThan:
                         if (typeof(T) == typeof(bool))
                         {
-                            float lhs = Floats.Get("LHS");
-                            float rhs = Floats.Get("RHS");
-                            float threshold = Floats.Get("Threshold");
+                            float lhs = Floats.Get(ShortGuids.LHS);
+                            float rhs = Floats.Get(ShortGuids.RHS);
+                            float threshold = Floats.Get(ShortGuids.Threshold);
                             if (Math.Abs(lhs - rhs) < threshold) return (T)(object)false;
                             return (T)(object)(lhs > rhs);
                         }
@@ -1103,9 +1178,9 @@ namespace CathodeLib
                     case FunctionType.FloatGreaterThanOrEqual:
                         if (typeof(T) == typeof(bool))
                         {
-                            float lhs = Floats.Get("LHS");
-                            float rhs = Floats.Get("RHS");
-                            float threshold = Floats.Get("Threshold");
+                            float lhs = Floats.Get(ShortGuids.LHS);
+                            float rhs = Floats.Get(ShortGuids.RHS);
+                            float threshold = Floats.Get(ShortGuids.Threshold);
                             if (Math.Abs(lhs - rhs) < threshold) return (T)(object)true;
                             return (T)(object)(lhs > rhs);
                         }
@@ -1113,9 +1188,9 @@ namespace CathodeLib
                     case FunctionType.FloatLessThan:
                         if (typeof(T) == typeof(bool))
                         {
-                            float lhs = Floats.Get("LHS");
-                            float rhs = Floats.Get("RHS");
-                            float threshold = Floats.Get("Threshold");
+                            float lhs = Floats.Get(ShortGuids.LHS);
+                            float rhs = Floats.Get(ShortGuids.RHS);
+                            float threshold = Floats.Get(ShortGuids.Threshold);
                             if (Math.Abs(lhs - rhs) < threshold) return (T)(object)false;
                             return (T)(object)(lhs < rhs);
                         }
@@ -1123,9 +1198,9 @@ namespace CathodeLib
                     case FunctionType.FloatLessThanOrEqual:
                         if (typeof(T) == typeof(bool))
                         {
-                            float lhs = Floats.Get("LHS");
-                            float rhs = Floats.Get("RHS");
-                            float threshold = Floats.Get("Threshold");
+                            float lhs = Floats.Get(ShortGuids.LHS);
+                            float rhs = Floats.Get(ShortGuids.RHS);
+                            float threshold = Floats.Get(ShortGuids.Threshold);
                             if (Math.Abs(lhs - rhs) < threshold) return (T)(object)true;
                             return (T)(object)(lhs < rhs);
                         }
@@ -1133,21 +1208,21 @@ namespace CathodeLib
                     case FunctionType.FloatLinearInterpolateSpeed:
                     case FunctionType.FloatLinearInterpolateTimed:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)Floats.Get("Initial_Value");
+                            return (T)(object)Floats.Get(ShortGuids.InitialValue);
                         break;
                     case FunctionType.FloatLinearProportion:
                         if (typeof(T) == typeof(float))
                         {
-                            float min = Floats.Get("Initial_Value");
-                            float max = Floats.Get("Target_Value");
-                            return (T)(object)(min + (max - min) * Floats.Get("Proportion"));
+                            float min = Floats.Get(ShortGuids.InitialValue);
+                            float max = Floats.Get(ShortGuids.TargetValue);
+                            return (T)(object)(min + (max - min) * Floats.Get(ShortGuids.Proportion));
                         }
                         break;
                     case FunctionType.FloatMax:
                         if (typeof(T) == typeof(float))
                         {
-                            float lhs = Floats.Get("LHS");
-                            float rhs = Floats.Get("RHS");
+                            float lhs = Floats.Get(ShortGuids.LHS);
+                            float rhs = Floats.Get(ShortGuids.RHS);
                             if (lhs > rhs) return (T)(object)lhs;
                             return (T)(object)rhs;
                         }
@@ -1155,7 +1230,7 @@ namespace CathodeLib
                     case FunctionType.FloatMax_All:
                         if (typeof(T) == typeof(float))
                         {
-                            List<InstancedEntity> numbers = Floats.GetLinks("Numbers");
+                            List<InstancedEntity> numbers = Floats.GetLinks(ShortGuids.Numbers);
                             float max = 0;
                             for (int i = 0; i < numbers.Count; i++)
                             {
@@ -1168,8 +1243,8 @@ namespace CathodeLib
                     case FunctionType.FloatMin:
                         if (typeof(T) == typeof(float))
                         {
-                            float lhs = Floats.Get("LHS");
-                            float rhs = Floats.Get("RHS");
+                            float lhs = Floats.Get(ShortGuids.LHS);
+                            float rhs = Floats.Get(ShortGuids.RHS);
                             if (lhs < rhs) return (T)(object)lhs;
                             return (T)(object)rhs;
                         }
@@ -1177,7 +1252,7 @@ namespace CathodeLib
                     case FunctionType.FloatMin_All:
                         if (typeof(T) == typeof(float))
                         {
-                            List<InstancedEntity> numbers = Floats.GetLinks("Numbers");
+                            List<InstancedEntity> numbers = Floats.GetLinks(ShortGuids.Numbers);
                             float min = 0;
                             if (numbers.Count > 0)
                             {
@@ -1196,13 +1271,13 @@ namespace CathodeLib
                         {
                             float PI = 3.1415926535897932333797165867879296635503123989707390137482903185973555f;
 
-                            float offset = Floats.Get("bias");
-                            float amplitude = Floats.Get("amplitude");
+                            float offset = Floats.Get(ShortGuids.Bias);
+                            float amplitude = Floats.Get(ShortGuids.Amplitude);
 
-                            float phase = Floats.Get("phase") / 360.0f;
+                            float phase = Floats.Get(ShortGuids.Phase) / 360.0f;
                             float output = phase % 1.0f;
 
-                            WAVE_SHAPE wave_shape = (WAVE_SHAPE)EnumIndexes.Get("wave_shape");
+                            WAVE_SHAPE wave_shape = (WAVE_SHAPE)EnumIndexes.Get(ShortGuids.WaveShape);
                             switch (wave_shape)
                             {
                                 case WAVE_SHAPE.SIN:
@@ -1232,12 +1307,12 @@ namespace CathodeLib
                         break;
                     case FunctionType.FloatMultiply:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)(Floats.Get("LHS") * Floats.Get("RHS"));
+                            return (T)(object)(Floats.Get(ShortGuids.LHS) * Floats.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.FloatMultiply_All:
                         if (typeof(T) == typeof(float))
                         {
-                            List<InstancedEntity> numbers = Floats.GetLinks("Numbers");
+                            List<InstancedEntity> numbers = Floats.GetLinks(ShortGuids.Numbers);
                             float sum = 0;
                             if (numbers.Count > 0)
                             {
@@ -1251,9 +1326,9 @@ namespace CathodeLib
                     case FunctionType.FloatMultiplyClamp:
                         if (typeof(T) == typeof(float))
                         {
-                            float val = Floats.Get("LHS") * Floats.Get("RHS");
-                            float min = Floats.Get("Min");
-                            float max = Floats.Get("Max");
+                            float val = Floats.Get(ShortGuids.LHS) * Floats.Get(ShortGuids.RHS);
+                            float min = Floats.Get(ShortGuids.Min);
+                            float max = Floats.Get(ShortGuids.Max);
                             if (val < min) val = min;
                             if (val > max) val = max;
                             return (T)(object)val;
@@ -1261,23 +1336,23 @@ namespace CathodeLib
                         break;
                     case FunctionType.FloatNotEqual:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)!(Math.Abs(Floats.Get("LHS") - Floats.Get("RHS")) < Math.Abs(Floats.Get("Threshold")));
+                            return (T)(object)!(Math.Abs(Floats.Get(ShortGuids.LHS) - Floats.Get(ShortGuids.RHS)) < Math.Abs(Floats.Get(ShortGuids.Threshold)));
                         break;
                     case FunctionType.FloatReciprocal:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)(1.0f / Floats.Get("Input"));
+                            return (T)(object)(1.0f / Floats.Get(ShortGuids.Input));
                         break;
                     case FunctionType.FloatRemainder:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)(Floats.Get("LHS") % Floats.Get("RHS"));
+                            return (T)(object)(Floats.Get(ShortGuids.LHS) % Floats.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.FloatSqrt:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)(float)Math.Sqrt(Math.Abs(Floats.Get("Input")));
+                            return (T)(object)(float)Math.Sqrt(Math.Abs(Floats.Get(ShortGuids.Input)));
                         break;
                     case FunctionType.FloatSubtract:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)(Floats.Get("LHS") - Floats.Get("RHS"));
+                            return (T)(object)(Floats.Get(ShortGuids.LHS) - Floats.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.GetGatingToolLevel:
                         if (typeof(T) == typeof(int))
@@ -1293,23 +1368,23 @@ namespace CathodeLib
                         break;
                     case FunctionType.GetRotation:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Transforms.Get("Input").Rotation;
+                            return (T)(object)Transforms.Get(ShortGuids.Input).Rotation;
                         break;
                     case FunctionType.GetTranslation:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Transforms.Get("Input").Position;
+                            return (T)(object)Transforms.Get(ShortGuids.Input).Position;
                         break;
                     case FunctionType.GetX:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)Vectors.Get("Input").X;
+                            return (T)(object)Vectors.Get(ShortGuids.Input).X;
                         break;
                     case FunctionType.GetY:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)Vectors.Get("Input").Y;
+                            return (T)(object)Vectors.Get(ShortGuids.Input).Y;
                         break;
                     case FunctionType.GetZ:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)Vectors.Get("Input").Z;
+                            return (T)(object)Vectors.Get(ShortGuids.Input).Z;
                         break;
                     case FunctionType.HasAccessAtDifficulty:
                         if (typeof(T) == typeof(bool))
@@ -1317,16 +1392,16 @@ namespace CathodeLib
                         break;
                     case FunctionType.IntegerAbsolute:
                         if (typeof(T) == typeof(int))
-                            return (T)(object)Math.Abs(Integers.Get("Input"));
+                            return (T)(object)Math.Abs(Integers.Get(ShortGuids.Input));
                         break;
                     case FunctionType.IntegerAdd:
                         if (typeof(T) == typeof(int))
-                            return (T)(object)(Integers.Get("LHS") + Integers.Get("RHS"));
+                            return (T)(object)(Integers.Get(ShortGuids.LHS) + Integers.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.IntegerAdd_All:
                         if (typeof(T) == typeof(int))
                         {
-                            List<InstancedEntity> numbers = Integers.GetLinks("Numbers");
+                            List<InstancedEntity> numbers = Integers.GetLinks(ShortGuids.Numbers);
                             int sum = 0;
                             for (int i = 0; i < numbers.Count; i++)
                                 sum += numbers[i].GetAs<int>();
@@ -1335,41 +1410,41 @@ namespace CathodeLib
                         break;
                     case FunctionType.IntegerAnd:
                         if (typeof(T) == typeof(int))
-                            return (T)(object)(Integers.Get("LHS") & Integers.Get("RHS"));
+                            return (T)(object)(Integers.Get(ShortGuids.LHS) & Integers.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.IntegerCompliment:
                         if (typeof(T) == typeof(int))
-                            return (T)(object)~Integers.Get("Input");
+                            return (T)(object)~Integers.Get(ShortGuids.Input);
                         break;
                     case FunctionType.IntegerDivide:
                         if (typeof(T) == typeof(int))
-                            return (T)(object)(Integers.Get("LHS") / Integers.Get("RHS"));
+                            return (T)(object)(Integers.Get(ShortGuids.LHS) / Integers.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.IntegerEquals:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)(Integers.Get("LHS") == Integers.Get("RHS"));
+                            return (T)(object)(Integers.Get(ShortGuids.LHS) == Integers.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.IntegerGreaterThan:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)(Integers.Get("LHS") > Integers.Get("RHS"));
+                            return (T)(object)(Integers.Get(ShortGuids.LHS) > Integers.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.IntegerGreaterThanOrEqual:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)(Integers.Get("LHS") >= Integers.Get("RHS"));
+                            return (T)(object)(Integers.Get(ShortGuids.LHS) >= Integers.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.IntegerLessThan:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)(Integers.Get("LHS") < Integers.Get("RHS"));
+                            return (T)(object)(Integers.Get(ShortGuids.LHS) < Integers.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.IntegerLessThanOrEqual:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)(Integers.Get("LHS") <= Integers.Get("RHS"));
+                            return (T)(object)(Integers.Get(ShortGuids.LHS) <= Integers.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.IntegerMax:
                         if (typeof(T) == typeof(int))
                         {
-                            int lhs = Integers.Get("LHS");
-                            int rhs = Integers.Get("RHS");
+                            int lhs = Integers.Get(ShortGuids.LHS);
+                            int rhs = Integers.Get(ShortGuids.RHS);
                             if (lhs > rhs) return (T)(object)lhs;
                             return (T)(object)rhs;
                         }
@@ -1377,7 +1452,7 @@ namespace CathodeLib
                     case FunctionType.IntegerMax_All:
                         if (typeof(T) == typeof(int))
                         {
-                            List<InstancedEntity> numbers = Integers.GetLinks("Numbers");
+                            List<InstancedEntity> numbers = Integers.GetLinks(ShortGuids.Numbers);
                             int max = 0;
                             for (int i = 0; i < numbers.Count; i++)
                             {
@@ -1390,8 +1465,8 @@ namespace CathodeLib
                     case FunctionType.IntegerMin:
                         if (typeof(T) == typeof(int))
                         {
-                            int lhs = Integers.Get("LHS");
-                            int rhs = Integers.Get("RHS");
+                            int lhs = Integers.Get(ShortGuids.LHS);
+                            int rhs = Integers.Get(ShortGuids.RHS);
                             if (lhs < rhs) return (T)(object)lhs;
                             return (T)(object)rhs;
                         }
@@ -1399,7 +1474,7 @@ namespace CathodeLib
                     case FunctionType.IntegerMin_All:
                         if (typeof(T) == typeof(int))
                         {
-                            List<InstancedEntity> numbers = Integers.GetLinks("Numbers");
+                            List<InstancedEntity> numbers = Integers.GetLinks(ShortGuids.Numbers);
                             int min = 0;
                             if (numbers.Count > 0)
                             {
@@ -1415,12 +1490,12 @@ namespace CathodeLib
                         break;
                     case FunctionType.IntegerMultiply:
                         if (typeof(T) == typeof(int))
-                            return (T)(object)(Integers.Get("LHS") * Integers.Get("RHS"));
+                            return (T)(object)(Integers.Get(ShortGuids.LHS) * Integers.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.IntegerMultiply_All:
                         if (typeof(T) == typeof(int))
                         {
-                            List<InstancedEntity> numbers = Integers.GetLinks("Numbers");
+                            List<InstancedEntity> numbers = Integers.GetLinks(ShortGuids.Numbers);
                             int sum = 0;
                             if (numbers.Count > 0)
                             {
@@ -1433,19 +1508,19 @@ namespace CathodeLib
                         break;
                     case FunctionType.IntegerNotEqual:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)(Integers.Get("LHS") != Integers.Get("RHS"));
+                            return (T)(object)(Integers.Get(ShortGuids.LHS) != Integers.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.IntegerOr:
                         if (typeof(T) == typeof(int))
-                            return (T)(object)(Integers.Get("LHS") | Integers.Get("RHS"));
+                            return (T)(object)(Integers.Get(ShortGuids.LHS) | Integers.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.IntegerRemainder:
                         if (typeof(T) == typeof(int))
-                            return (T)(object)(Integers.Get("LHS") % Integers.Get("RHS"));
+                            return (T)(object)(Integers.Get(ShortGuids.LHS) % Integers.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.IntegerSubtract:
                         if (typeof(T) == typeof(int))
-                            return (T)(object)(Integers.Get("LHS") - Integers.Get("RHS"));
+                            return (T)(object)(Integers.Get(ShortGuids.LHS) - Integers.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.JOB_SpottingPosition:
                         if (typeof(T) == typeof(Transform))
@@ -1453,27 +1528,27 @@ namespace CathodeLib
                         break;
                     case FunctionType.LogicGate:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)Bools.Get("allow");
+                            return (T)(object)Bools.Get(ShortGuids.Allow);
                         break;
                     case FunctionType.LogicGateAnd:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)(Bools.Get("LHS") && Bools.Get("RHS"));
+                            return (T)(object)(Bools.Get(ShortGuids.LHS) && Bools.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.LogicGateEquals:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)(Bools.Get("LHS") == Bools.Get("RHS"));
+                            return (T)(object)(Bools.Get(ShortGuids.LHS) == Bools.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.LogicGateNotEqual:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)(Bools.Get("LHS") != Bools.Get("RHS"));
+                            return (T)(object)(Bools.Get(ShortGuids.LHS) != Bools.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.LogicGateOr:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)(Bools.Get("LHS") || Bools.Get("RHS"));
+                            return (T)(object)(Bools.Get(ShortGuids.LHS) || Bools.Get(ShortGuids.RHS));
                         break;
                     case FunctionType.LogicNot:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)!Bools.Get("Input");
+                            return (T)(object)!Bools.Get(ShortGuids.Input);
                         break;
                     case FunctionType.LogicOnce:
                         if (typeof(T) == typeof(bool))
@@ -1481,7 +1556,7 @@ namespace CathodeLib
                         break;
                     case FunctionType.LogicSwitch:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)Bools.Get("initial_value");
+                            return (T)(object)Bools.Get(ShortGuids.InitialValueLower);
                         break;
                     case FunctionType.NavMeshArea:
                         if (typeof(T) == typeof(Transform))
@@ -1505,11 +1580,11 @@ namespace CathodeLib
                         break;
                     case FunctionType.NonPersistentBool:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)Bools.Get("initial_value");
+                            return (T)(object)Bools.Get(ShortGuids.InitialValueLower);
                         break;
                     case FunctionType.NonPersistentInt:
                         if (typeof(T) == typeof(int))
-                            return (T)(object)Integers.Get("initial_value");
+                            return (T)(object)Integers.Get(ShortGuids.InitialValueLower);
                         break;
                     case FunctionType.PathfindingAlienBackstageNode:
                         if (typeof(T) == typeof(Transform))
@@ -1529,15 +1604,15 @@ namespace CathodeLib
                         break;
                     case FunctionType.PlatformConstantBool:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)Bools.Get("NextGen");
+                            return (T)(object)Bools.Get(ShortGuids.NextGen);
                         break;
                     case FunctionType.PlatformConstantFloat:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)Floats.Get("NextGen");
+                            return (T)(object)Floats.Get(ShortGuids.NextGen);
                         break;
                     case FunctionType.PlatformConstantInt:
                         if (typeof(T) == typeof(int))
-                            return (T)(object)Integers.Get("NextGen");
+                            return (T)(object)Integers.Get(ShortGuids.NextGen);
                         break;
                     case FunctionType.PositionDistance:
                         if (typeof(T) == typeof(float))
@@ -1550,8 +1625,8 @@ namespace CathodeLib
                     case FunctionType.RandomFloat:
                         if (typeof(T) == typeof(float))
                         {
-                            float min = Floats.Get("Min");
-                            float range = Floats.Get("Max") - min;
+                            float min = Floats.Get(ShortGuids.Min);
+                            float range = Floats.Get(ShortGuids.Max) - min;
                             float rand = (float)new Random().NextDouble() * range;
                             return (T)(object)(rand + min);
                         }
@@ -1559,8 +1634,8 @@ namespace CathodeLib
                     case FunctionType.RandomInt:
                         if (typeof(T) == typeof(int))
                         {
-                            int min = Integers.Get("Min");
-                            int range = Integers.Get("Max") - min;
+                            int min = Integers.Get(ShortGuids.Min);
+                            int range = Integers.Get(ShortGuids.Max) - min;
                             int rand = new Random().Next(range);
                             return (T)(object)(rand + min);
                         }
@@ -1568,18 +1643,18 @@ namespace CathodeLib
                     case FunctionType.RandomVector:
                         if (typeof(T) == typeof(Vector3))
                         {
-                            float minX = Integers.Get("MinX");
-                            float rangeX = Integers.Get("MaxX") - minX;
+                            float minX = Integers.Get(ShortGuids.MinX);
+                            float rangeX = Integers.Get(ShortGuids.MaxX) - minX;
                             float randX = (float)new Random().NextDouble() * rangeX;
-                            float minY = Integers.Get("MinY");
-                            float rangeY = Integers.Get("MaxY") - minY;
+                            float minY = Integers.Get(ShortGuids.MinY);
+                            float rangeY = Integers.Get(ShortGuids.MaxY) - minY;
                             float randY = (float)new Random().NextDouble() * rangeY;
-                            float minZ = Integers.Get("MinZ");
-                            float rangeZ = Integers.Get("MaxZ") - minZ;
+                            float minZ = Integers.Get(ShortGuids.MinZ);
+                            float rangeZ = Integers.Get(ShortGuids.MaxZ) - minZ;
                             float randZ = (float)new Random().NextDouble() * rangeZ;
 
                             Vector3 result = new Vector3(randX + minX, randY + minY, randZ + minZ);
-                            if (Bools.Get("Normalised"))
+                            if (Bools.Get(ShortGuids.Normalised))
                             {
                                 float length = (float)Math.Sqrt(result.X * result.X + result.Y * result.Y + result.Z * result.Z);
                                 if (length == 0.0f)
@@ -1595,19 +1670,19 @@ namespace CathodeLib
                         break;
                     case FunctionType.SetBool:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)Bools.Get("Input");
+                            return (T)(object)Bools.Get(ShortGuids.Input);
                         break;
                     case FunctionType.SetColour:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Vectors.Get("Colour");
+                            return (T)(object)Vectors.Get(ShortGuids.Colour);
                         break;
                     case FunctionType.SetFloat:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)Floats.Get("Input");
+                            return (T)(object)Floats.Get(ShortGuids.Input);
                         break;
                     case FunctionType.SetInteger:
                         if (typeof(T) == typeof(int))
-                            return (T)(object)Integers.Get("Input");
+                            return (T)(object)Integers.Get(ShortGuids.Input);
                         break;
                     case FunctionType.SetString:
                         //if (typeof(T) == typeof(string))
@@ -1615,11 +1690,11 @@ namespace CathodeLib
                         break;
                     case FunctionType.SetVector:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)new Vector3(Floats.Get("x"), Floats.Get("y"), Floats.Get("z"));
+                            return (T)(object)new Vector3(Floats.Get(ShortGuids.X), Floats.Get(ShortGuids.Y), Floats.Get(ShortGuids.Z));
                         break;
                     case FunctionType.SetVector2:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Vectors.Get("Input");
+                            return (T)(object)Vectors.Get(ShortGuids.Input);
                         break;
                     case FunctionType.SoundObject:
                         if (typeof(T) == typeof(Transform))
@@ -1635,27 +1710,27 @@ namespace CathodeLib
                         break;
                     case FunctionType.VariableBool:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)Bools.Get("initial_value");
+                            return (T)(object)Bools.Get(ShortGuids.InitialValueLower);
                         break;
                     case FunctionType.VariableColour:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Vectors.Get("initial_colour");
+                            return (T)(object)Vectors.Get(ShortGuids.InitialColour);
                         break;
                     case FunctionType.VariableEnum:
                         if (typeof(T) == typeof(int))
-                            return (T)(object)EnumIndexes.Get("initial_value");
+                            return (T)(object)EnumIndexes.Get(ShortGuids.InitialValueLower);
                         break;
                     case FunctionType.VariableFlashScreenColour:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Vectors.Get("initial_colour");
+                            return (T)(object)Vectors.Get(ShortGuids.InitialColour);
                         break;
                     case FunctionType.VariableFloat:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)Floats.Get("initial_value");
+                            return (T)(object)Floats.Get(ShortGuids.InitialValueLower);
                         break;
                     case FunctionType.VariableInt:
                         if (typeof(T) == typeof(int))
-                            return (T)(object)Integers.Get("initial_value");
+                            return (T)(object)Integers.Get(ShortGuids.InitialValueLower);
                         break;
                     case FunctionType.VariablePosition:
                         if (typeof(T) == typeof(Transform))
@@ -1667,19 +1742,19 @@ namespace CathodeLib
                         break;
                     case FunctionType.VariableVector:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)new Vector3(Floats.Get("initial_x"), Floats.Get("initial_y"), Floats.Get("initial_z"));
+                            return (T)(object)new Vector3(Floats.Get(ShortGuids.InitialX), Floats.Get(ShortGuids.InitialY), Floats.Get(ShortGuids.InitialZ));
                         break;
                     case FunctionType.VariableVector2:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Vectors.Get("initial_value");
+                            return (T)(object)Vectors.Get(ShortGuids.InitialValueLower);
                         break;
                     case FunctionType.VectorLinearInterpolateTimed:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Vectors.Get("Initial_Value");
+                            return (T)(object)Vectors.Get(ShortGuids.InitialValue);
                         break;
                     case FunctionType.VectorScale:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)(Vectors.Get("LHS") * Vectors.Get("RHS"));
+                            return (T)(object)(Vectors.Get(ShortGuids.LHS) * Vectors.Get(ShortGuids.RHS));
                         break;
                 }
             }
@@ -1688,7 +1763,7 @@ namespace CathodeLib
             if (inherited.HasValue)
             {
                 //If the child class might supply a value, check it
-                return GetFunctionData<T>(name, inherited.Value);
+                return GetFunctionData<T>(guid, inherited.Value);
             }
             else
             {
@@ -1703,8 +1778,8 @@ namespace CathodeLib
                     return (T)(object)new Vector3(0, 0, 0);
                 else if (typeof(T) == typeof(Transform))
                 {
-                    if (Transforms.Has("position"))
-                        return (T)(object)Transforms.Get("position");
+                    if (Transforms.Has(ShortGuids.Position))
+                        return (T)(object)Transforms.Get(ShortGuids.Position);
                     else
                         return (T)(object)new Transform();
                 }
@@ -1776,14 +1851,13 @@ namespace CathodeLib
         
         private Matrix4x4 CalculateWorldTransformMatrix()
         {
-            Transform localTransform = GetAs<Transform>("position");
+            Transform localTransform = GetAs<Transform>(ShortGuids.Position);
             Matrix4x4 localMatrix = localTransform.AsMatrix();
             if (ParentCompositeInstanceEntity != null)
             {
                 Matrix4x4 parentWorldMatrix = ParentCompositeInstanceEntity.CalculateWorldTransformMatrix();
                 localMatrix = localMatrix * parentWorldMatrix;
             }
-            
             return localMatrix;
         }
         #endregion
@@ -1850,8 +1924,6 @@ namespace CathodeLib
         private readonly ConcurrentDictionary<(Composite, ShortGuid), Entity> _entityLookupCache = new ConcurrentDictionary<(Composite, ShortGuid), Entity>();
 
         private readonly object _physicsMapsLock = new object();
-
-        private ShortGuid GUID_DYNAMIC_PHYSICS_SYSTEM = ShortGuidUtils.Generate("DYNAMIC_PHYSICS_SYSTEM");
 
         public Instancing(Level level)
         {
@@ -1993,11 +2065,11 @@ namespace CathodeLib
                 if (entity.ChildCompositeInstance != null)
                 {
                     //Ignore templates
-                    if (entity.Bools.Get("is_template"))
+                    if (entity.Bools.Get(ShortGuids.IsTemplate))
                         continue;
 
                     //Ignore deleted
-                    if (entity.Bools.Get("deleted"))
+                    if (entity.Bools.Get(ShortGuids.Deleted))
                         continue;
 
                     ProcessInstances(entity.ChildCompositeInstance);
@@ -2146,7 +2218,7 @@ namespace CathodeLib
                         PhysicsMaps.Entry newEntry = new PhysicsMaps.Entry()
                         {
                             physics_system_index = physicsSystem.PhysicsSystemIndex,
-                            resource_type = GUID_DYNAMIC_PHYSICS_SYSTEM,
+                            resource_type = ShortGuids.GUID_DYNAMIC_PHYSICS_SYSTEM,
                             composite_instance_id = compositeInstanceID,
                             entity = compositeInstanceReference,
                             Position = position,
