@@ -16,7 +16,7 @@ namespace CathodeLib
 {
     internal static class ShortGuids
     {
-        public static readonly ShortGuid GUID_DYNAMIC_PHYSICS_SYSTEM = ShortGuidUtils.Generate("DYNAMIC_PHYSICS_SYSTEM");
+        public static readonly ShortGuid DYNAMIC_PHYSICS_SYSTEM = ShortGuidUtils.Generate("DYNAMIC_PHYSICS_SYSTEM");
         public static readonly ShortGuid Reference = ShortGuidUtils.Generate("reference");
         public static readonly ShortGuid Position = ShortGuidUtils.Generate("position");
         public static readonly ShortGuid DoorMechanism = ShortGuidUtils.Generate("door_mechanism");

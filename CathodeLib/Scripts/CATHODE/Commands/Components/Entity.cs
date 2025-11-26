@@ -883,7 +883,7 @@ namespace CATHODE.Scripting
                  /// <summary>
          /// Remove the last entity GUID along the path
          /// </summary>
-         public void GoBackOneStep()
+        public void GoBackOneStep()
         {
             if (path.Length > 0 && path[path.Length - 1] == ShortGuid.Invalid)
             {
@@ -901,6 +901,16 @@ namespace CATHODE.Scripting
             {
                 EnsureFinalIsEmpty();
             }
+        }
+
+        /// <summary>
+        /// Create a copy of this EntityPath
+        /// </summary>
+        public EntityPath Copy()
+        {
+            ShortGuid[] newPath = new ShortGuid[path.Length];
+            Array.Copy(path, newPath, path.Length);
+            return new EntityPath(newPath);
         }
         
                  /// <summary>

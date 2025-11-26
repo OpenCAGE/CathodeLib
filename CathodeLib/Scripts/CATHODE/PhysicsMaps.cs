@@ -27,14 +27,14 @@ namespace CATHODE
     /// </summary>
     public class PhysicsMaps : CathodeFile
     {
-        public List<Entry> Entries = new List<Entry>();
+        public List<DYNAMIC_PHYSICS_SYSTEM> Entries = new List<DYNAMIC_PHYSICS_SYSTEM>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
         public PhysicsMaps(string path) : base(path) { }
         public PhysicsMaps(MemoryStream stream, string path = "") : base(stream, path) { }
         public PhysicsMaps(byte[] data, string path = "") : base(data, path) { }
 
-        private List<Entry> _writeList = new List<Entry>();
+        private List<DYNAMIC_PHYSICS_SYSTEM> _writeList = new List<DYNAMIC_PHYSICS_SYSTEM>();
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
@@ -45,14 +45,9 @@ namespace CATHODE
                 int entryCount = reader.ReadInt32();
                 for (int i = 0; i < entryCount; i++)
                 {
-                    Entry entry = new Entry();
+                    DYNAMIC_PHYSICS_SYSTEM entry = new DYNAMIC_PHYSICS_SYSTEM();
                     entry.physics_system_index = reader.ReadInt32();
-                    reader.BaseStream.Position += 4;
-                    entry.resource_type = Utilities.Consume<ShortGuid>(reader);
-
-                    if (entry.resource_type != ShortGuidUtils.Generate("DYNAMIC_PHYSICS_SYSTEM"))
-                        throw new Exception("Unexpected resource type! Expected DYNAMIC_PHYSICS_SYSTEM.");
-
+                    reader.BaseStream.Position += 8;
                     entry.composite_instance_id = Utilities.Consume<ShortGuid>(reader); 
                     entry.entity = Utilities.Consume<EntityHandle>(reader);
 
@@ -115,7 +110,7 @@ namespace CATHODE
                 {
                     writer.Write(Entries[i].physics_system_index);
                     writer.Write(new byte[4]);
-                    Utilities.Write(writer, Entries[i].resource_type);
+                    Utilities.Write(writer, ShortGuids.DYNAMIC_PHYSICS_SYSTEM);
                     Utilities.Write(writer, Entries[i].composite_instance_id);
                     Utilities.Write(writer, Entries[i].entity);
 
@@ -148,7 +143,7 @@ namespace CATHODE
         /// Get the write index (useful for cross-ref'ing with compiled binaries)
         /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>
-        public int GetWriteIndex(Entry envAnim)
+        public int GetWriteIndex(DYNAMIC_PHYSICS_SYSTEM envAnim)
         {
             if (!_writeList.Contains(envAnim)) return -1;
             return _writeList.IndexOf(envAnim);
@@ -158,7 +153,7 @@ namespace CATHODE
         /// Get the object at the write index (useful for cross-ref'ing with compiled binaries)
         /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>
-        public Entry GetAtWriteIndex(int index)
+        public DYNAMIC_PHYSICS_SYSTEM GetAtWriteIndex(int index)
         {
             if (_writeList.Count <= index || index < 0) return null;
             return _writeList[index];
@@ -167,7 +162,7 @@ namespace CATHODE
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
-        public Entry ImportEntry(Entry physMap)
+        public DYNAMIC_PHYSICS_SYSTEM ImportEntry(DYNAMIC_PHYSICS_SYSTEM physMap)
         {
             if (physMap == null)
                 return null;
@@ -176,20 +171,17 @@ namespace CATHODE
             if (existing != null)
                 return existing;
 
-            Entry newPhysMap = physMap.Copy();
+            DYNAMIC_PHYSICS_SYSTEM newPhysMap = physMap.Copy();
             Entries.Add(newPhysMap);
             return newPhysMap;
         }
         #endregion
 
         #region STRUCTURES
-        public class Entry : IEquatable<Entry>
+        public class DYNAMIC_PHYSICS_SYSTEM : IEquatable<DYNAMIC_PHYSICS_SYSTEM>, IComparable<DYNAMIC_PHYSICS_SYSTEM>
         {
             //Should match system_index on the PhysicsSystem entity.
             public int physics_system_index; // the proxy index for the system to clone
-
-            //DYNAMIC_PHYSICS_SYSTEM
-            public ShortGuid resource_type;
 
             //This is the instance ID for the composite containing the PhysicsSystem.
             //We do not need to worry about the entity ID for the PhysicsSystem as the resources are written to the composite that contains it.
@@ -202,12 +194,11 @@ namespace CATHODE
             public Vector3 Position;
             public Quaternion Rotation;
 
-            public static bool operator ==(Entry x, Entry y)
+            public static bool operator ==(DYNAMIC_PHYSICS_SYSTEM x, DYNAMIC_PHYSICS_SYSTEM y)
             {
                 if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
                 if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
                 if (x.physics_system_index != y.physics_system_index) return false;
-                if (x.resource_type != y.resource_type) return false;
                 if (x.composite_instance_id != y.composite_instance_id) return false;
                 if (x.entity != y.entity) return false;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
@@ -220,31 +211,70 @@ namespace CATHODE
                 return true;
             }
 
-            public static bool operator !=(Entry x, Entry y)
+            public static bool operator !=(DYNAMIC_PHYSICS_SYSTEM x, DYNAMIC_PHYSICS_SYSTEM y)
             {
                 return !(x == y);
             }
 
-            public bool Equals(Entry other)
+            public bool Equals(DYNAMIC_PHYSICS_SYSTEM other)
             {
                 return this == other;
             }
 
             public override bool Equals(object obj)
             {
-                return obj is Entry entry && this == entry;
+                return obj is DYNAMIC_PHYSICS_SYSTEM entry && this == entry;
             }
 
             public override int GetHashCode()
             {
                 int hashCode = -1234567890;
                 hashCode = hashCode * -1521134295 + physics_system_index.GetHashCode();
-                hashCode = hashCode * -1521134295 + resource_type.GetHashCode();
                 hashCode = hashCode * -1521134295 + composite_instance_id.GetHashCode();
                 hashCode = hashCode * -1521134295 + EqualityComparer<EntityHandle>.Default.GetHashCode(entity);
                 hashCode = hashCode * -1521134295 + Position.GetHashCode();
                 hashCode = hashCode * -1521134295 + Rotation.GetHashCode();
                 return hashCode;
+            }
+
+            public int CompareTo(DYNAMIC_PHYSICS_SYSTEM other)
+            {
+                if (other == null) return 1;
+
+                int comparison = physics_system_index.CompareTo(other.physics_system_index);
+                if (comparison != 0) return comparison;
+                comparison = composite_instance_id.CompareTo(other.composite_instance_id);
+                if (comparison != 0) return comparison;
+                if (entity == null && other.entity == null)
+                {
+
+                }
+                else if (entity == null)
+                    return -1;
+                else if (other.entity == null)
+                    return 1;
+                else
+                {
+                    comparison = entity.entity_id.CompareTo(other.entity.entity_id);
+                    if (comparison != 0) return comparison;
+
+                    comparison = entity.composite_instance_id.CompareTo(other.entity.composite_instance_id);
+                    if (comparison != 0) return comparison;
+                }
+                comparison = Position.X.CompareTo(other.Position.X);
+                if (comparison != 0) return comparison;
+                comparison = Position.Y.CompareTo(other.Position.Y);
+                if (comparison != 0) return comparison;
+                comparison = Position.Z.CompareTo(other.Position.Z);
+                if (comparison != 0) return comparison;
+                comparison = Rotation.X.CompareTo(other.Rotation.X);
+                if (comparison != 0) return comparison;
+                comparison = Rotation.Y.CompareTo(other.Rotation.Y);
+                if (comparison != 0) return comparison;
+                comparison = Rotation.Z.CompareTo(other.Rotation.Z);
+                if (comparison != 0) return comparison;
+                comparison = Rotation.W.CompareTo(other.Rotation.W);
+                return comparison;
             }
         };
         #endregion
