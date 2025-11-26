@@ -5,10 +5,12 @@ using CATHODE.Scripting.Internal;
 using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace CathodeLib
 {
@@ -376,21 +378,38 @@ namespace CathodeLib
 
         private HashSet<(ShortGuid, ParameterVariant, DataType)> _parameters = new HashSet<(ShortGuid, ParameterVariant, DataType)>();
 
-        public InstancedEntity(Level level, Composite composite, Entity entity, EntityPath path)
+        public InstancedEntity(Level level, Composite composite, Entity entity, EntityPath path, ConcurrentDictionary<(Entity, Composite), List<(ShortGuid, ParameterVariant, DataType)>> parameterCache, ConcurrentDictionary<(Composite, ShortGuid), Entity> entityLookupCache)
         {
             Level = level;
             Entity = entity;
             Path = path;
             Composite = composite;
 
-            //Get all parameters that supply values
-            var parameters = Level.Commands.Utils.GetAllParameters(entity, composite);
+            //Get all parameters that supply values - use cache if available
+            List<(ShortGuid, ParameterVariant, DataType)> parameters;
+            if (parameterCache != null)
+            {
+                var cacheKey = (entity, composite);
+                parameters = parameterCache.GetOrAdd(cacheKey, key => Level.Commands.Utils.GetAllParameters(key.Item1, key.Item2));
+                parameters = new List<(ShortGuid, ParameterVariant, DataType)>(parameters);
+            }
+            else
+            {
+                parameters = Level.Commands.Utils.GetAllParameters(entity, composite);
+            }
             parameters.RemoveAll(o =>
                 o.Item2 == ParameterVariant.REFERENCE_PIN ||
                 o.Item2 == ParameterVariant.TARGET_PIN ||
                 o.Item2 == ParameterVariant.METHOD_FUNCTION ||
                 o.Item2 == ParameterVariant.METHOD_PIN
             );
+            Dictionary<ShortGuid, (ShortGuid, ParameterVariant, DataType)> paramLookup = new Dictionary<ShortGuid, (ShortGuid, ParameterVariant, DataType)>(parameters.Count);
+            foreach (var param in parameters)
+            {
+                if (!paramLookup.ContainsKey(param.Item1))
+                    paramLookup[param.Item1] = param;
+            }
+
             switch (entity.variant)
             {
                 //For aliases, only factor in the parameters and links that are actually set, since these are OVERRIDES
@@ -399,11 +418,15 @@ namespace CathodeLib
                     {
                         if (p.content == null)
                             continue;
-                        _parameters.Add(parameters.FirstOrDefault(o => o.Item1 == p.name));
+                        if (paramLookup.TryGetValue(p.name, out var param))
+                            _parameters.Add(param);
                     }
                     //TODO: also need to factor in parent links somehow (?) -> actually, i think we can disregard logic links?
                     foreach (EntityConnector c in entity.childLinks)
-                        _parameters.Add(parameters.FirstOrDefault(o => o.Item1 == c.thisParamID));
+                    {
+                        if (paramLookup.TryGetValue(c.thisParamID, out var param))
+                            _parameters.Add(param);
+                    }
                     break;
                 //For others, get all default values, as well as ones that are set
                 default:
@@ -592,18 +615,35 @@ namespace CathodeLib
 
         public void PopulateLinks(List<InstancedEntity> entities)
         {
+            PopulateLinks(entities, null);
+        }
+
+        public void PopulateLinks(List<InstancedEntity> entities, Dictionary<ShortGuid, InstancedEntity> entityByGuid)
+        {
+            if (entityByGuid == null)
+            {
+                entityByGuid = new Dictionary<ShortGuid, InstancedEntity>(entities.Count);
+                foreach (var ent in entities)
+                {
+                    entityByGuid[ent.Entity.shortGUID] = ent;
+                }
+            }
+
             foreach ((ShortGuid guid, ParameterVariant variant, DataType datatype) in _parameters)
             {
                 List<EntityConnector> links = Entity.childLinks.FindAll(o => o.thisParamID == guid);
                 if (links.Count == 0)
                     continue;
 
-                List<Tuple<string, InstancedEntity>> linksParsed = new List<Tuple<string, InstancedEntity>>();
+                List<Tuple<string, InstancedEntity>> linksParsed = new List<Tuple<string, InstancedEntity>>(links.Count);
                 for (int i = 0; i < links.Count; i++)
                 {
                     Entity connectedEnt = Composite.GetEntityByID(links[i].linkedEntityID);
                     if (connectedEnt == null) continue;
-                    linksParsed.Add(new Tuple<string, InstancedEntity>(links[i].linkedParamID.ToString(), entities.FirstOrDefault(o => o.Entity == connectedEnt)));
+                    if (entityByGuid.TryGetValue(connectedEnt.shortGUID, out InstancedEntity instancedEntity))
+                    {
+                        linksParsed.Add(new Tuple<string, InstancedEntity>(links[i].linkedParamID.ToString(), instancedEntity));
+                    }
                 }
 
                 switch (datatype)
@@ -1768,12 +1808,17 @@ namespace CathodeLib
 
     public class Instancing
     {
-        private List<InstancedEntity> AllEntities = new List<InstancedEntity>();
-        private List<InstancedComposite> AllComposites = new List<InstancedComposite>();
+        private ConcurrentBag<InstancedEntity> AllEntities = new ConcurrentBag<InstancedEntity>();
+        private ConcurrentBag<InstancedComposite> AllComposites = new ConcurrentBag<InstancedComposite>();
 
         private InstancedComposite Root = new InstancedComposite();
 
         private Level _level = null;
+
+        private readonly ConcurrentDictionary<(Entity, Composite), List<(ShortGuid, ParameterVariant, DataType)>> _parameterCache = new ConcurrentDictionary<(Entity, Composite), List<(ShortGuid, ParameterVariant, DataType)>>();
+        private readonly ConcurrentDictionary<(Composite, ShortGuid), Entity> _entityLookupCache = new ConcurrentDictionary<(Composite, ShortGuid), Entity>();
+
+        private readonly object _physicsMapsLock = new object();
 
         public Instancing(Level level)
         {
@@ -1788,30 +1833,48 @@ namespace CathodeLib
             List<InstancedAlias> localAliases = new List<InstancedAlias>(aliases);
 
             //First, create all 'instanced entity' objects - these populate their default bool values on creation
-            foreach (Entity entity in composite.GetEntities())
+            var entities = composite.GetEntities();
+            compositeInstance.Entities = new List<InstancedEntity>(entities.Count);
+            Dictionary<ShortGuid, InstancedEntity> entityByGuid = new Dictionary<ShortGuid, InstancedEntity>(entities.Count);
+            var entityArray = entities.ToArray();
+            var instances = new InstancedEntity[entityArray.Length];
+            var aliasList = new List<InstancedAlias>();
+            Parallel.For(0, entityArray.Length, i =>
             {
+                Entity entity = entityArray[i];
                 EntityPath pathToThisEntity = path.Copy();
                 pathToThisEntity.AddNextStep(entity);
 
-                InstancedEntity newInstance = new InstancedEntity(_level, composite, entity, pathToThisEntity);
+                InstancedEntity newInstance = new InstancedEntity(_level, composite, entity, pathToThisEntity, _parameterCache, _entityLookupCache);
                 newInstance.ParentCompositeInstanceEntity = parentCompositeInstanceEntity;
                 newInstance.ParentCompositeInstance = parentCompositeInstance;
                 newInstance.ThisCompositeInstance = compositeInstance;
-                compositeInstance.Entities.Add(newInstance);
+                instances[i] = newInstance;
 
                 //Keep track of aliases
                 if (entity.variant == EntityVariant.ALIAS)
                 {
-                    InstancedAlias alias = new InstancedAlias() { ActivePath = ((AliasEntity)entity).alias.path.ToList(), InstancedInfo = newInstance };
-                    localAliases.Add(alias);
+                    lock (aliasList)
+                    {
+                        InstancedAlias alias = new InstancedAlias() { ActivePath = ((AliasEntity)entity).alias.path.ToList(), InstancedInfo = newInstance };
+                        aliasList.Add(alias);
+                    }
                 }
+            });
+
+            //Add instances to collections
+            for (int i = 0; i < instances.Length; i++)
+            {
+                compositeInstance.Entities.Add(instances[i]);
+                entityByGuid[entityArray[i].shortGUID] = instances[i];
             }
+            localAliases.AddRange(aliasList);
 
             //Next, hook up the instanced entity links as references
-            foreach (InstancedEntity entity in compositeInstance.Entities)
+            Parallel.ForEach(compositeInstance.Entities, entity =>
             {
-                entity.PopulateLinks(compositeInstance.Entities);
-            }
+                entity.PopulateLinks(compositeInstance.Entities, entityByGuid);
+            });
 
             //Now, split all the aliases up by the first part of their path so that we can apply them
             Dictionary<ShortGuid, List<InstancedAlias>> trackedAliases = new Dictionary<ShortGuid, List<InstancedAlias>>();
@@ -1826,8 +1889,7 @@ namespace CathodeLib
                 if (alias.ActivePath.Count == 0 || alias.ActivePath[0] == ShortGuid.Invalid)
                 {
                     //We've arrived at the entity within this composite, apply the data out
-                    InstancedEntity toApply = compositeInstance.Entities.FirstOrDefault(o => o.Entity.shortGUID == currentStep);
-                    if (toApply != null)
+                    if (entityByGuid.TryGetValue(currentStep, out InstancedEntity toApply))
                     {
                         toApply.ApplyAlias(alias);
                     }
@@ -1835,18 +1897,25 @@ namespace CathodeLib
                 else
                 {
                     //Otherwise, just keep a track of the alias with its newly updated path to use further down
-                    if (!trackedAliases.ContainsKey(currentStep))
-                        trackedAliases.Add(currentStep, new List<InstancedAlias>());
-                    trackedAliases[currentStep].Add(alias);
+                    if (!trackedAliases.TryGetValue(currentStep, out List<InstancedAlias> aliasList2))
+                    {
+                        aliasList2 = new List<InstancedAlias>();
+                        trackedAliases[currentStep] = aliasList2;
+                    }
+                    aliasList2.Add(alias);
                 }
             }
 
             //TODO: proxies!
 
-            AllEntities.AddRange(compositeInstance.Entities);
+            foreach (var entity in compositeInstance.Entities)
+            {
+                AllEntities.Add(entity);
+            }
             AllComposites.Add(compositeInstance);
 
             //Now, traverse down in to any child composites, and rinse and repeat
+            List<(FunctionEntity function, Composite child, List<InstancedAlias> childAliases, EntityPath newPath, InstancedEntity instancedEnt)> childComposites = new List<(FunctionEntity, Composite, List<InstancedAlias>, EntityPath, InstancedEntity)>();
             foreach (FunctionEntity function in composite.functions)
             {
                 if (function.function.IsFunctionType)
@@ -1856,28 +1925,36 @@ namespace CathodeLib
                 if (child == null)
                     continue;
 
-                List<InstancedAlias> childAliases;
-                if (!trackedAliases.TryGetValue(function.shortGUID, out childAliases))
+                if (!trackedAliases.TryGetValue(function.shortGUID, out List<InstancedAlias> childAliases))
                     childAliases = new List<InstancedAlias>();
 
                 EntityPath newPath = path.Copy();
                 newPath.AddNextStep(function);
                 InstancedComposite newInstance = new InstancedComposite();
                 newInstance.InstanceID = newPath.GenerateCompositeInstanceID();
-                InstancedEntity instancedEnt = compositeInstance.Entities.FirstOrDefault(o => o.Entity == function);
+
+                if (!entityByGuid.TryGetValue(function.shortGUID, out InstancedEntity instancedEnt))
+                    continue;
+
                 instancedEnt.ChildCompositeInstance = newInstance;
-                GenerateInstances(child, newPath, newInstance, compositeInstance, instancedEnt, childAliases);
+                childComposites.Add((function, child, childAliases, newPath, instancedEnt));
             }
+            Parallel.ForEach(childComposites, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, childInfo =>
+            {
+                GenerateInstances(childInfo.child, childInfo.newPath, childInfo.instancedEnt.ChildCompositeInstance,
+                    compositeInstance, childInfo.instancedEnt, childInfo.childAliases);
+            });
         }
 
         private void ProcessInstances(InstancedComposite composite)
         {
             ShortGuid GUID_DYNAMIC_PHYSICS_SYSTEM = ShortGuidUtils.Generate("DYNAMIC_PHYSICS_SYSTEM");
 
-            foreach (InstancedEntity entity in composite.Entities)
+            var entitiesToProcess = composite.Entities.Where(e => e.Entity.variant == EntityVariant.FUNCTION && ((FunctionEntity)e.Entity).function.IsFunctionType).ToList();
+            Parallel.ForEach(entitiesToProcess, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, entity =>
             {
                 if (entity.Entity.variant != EntityVariant.FUNCTION)
-                    continue;
+                    return;
 
                 FunctionEntity function = (FunctionEntity)entity.Entity;
 
@@ -2033,7 +2110,10 @@ namespace CathodeLib
 
                             //TODO: position calculation is wrong!
 
-                            _level.PhysicsMaps.Entries.Add(newEntry);
+                            lock (_physicsMapsLock)
+                            {
+                                _level.PhysicsMaps.Entries.Add(newEntry);
+                            }
                             break;
                         case FunctionType.PlayEnvironmentAnimation:
 
@@ -2106,7 +2186,11 @@ namespace CathodeLib
                             break;
                     }
                 }
+            });
 
+            // Process child composites sequentially (they may have dependencies)
+            foreach (InstancedEntity entity in composite.Entities)
+            {
                 if (entity.ChildCompositeInstance != null)
                 {
                     //Ignore templates
