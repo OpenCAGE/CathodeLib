@@ -1820,6 +1820,8 @@ namespace CathodeLib
 
         private readonly object _physicsMapsLock = new object();
 
+        private ShortGuid GUID_DYNAMIC_PHYSICS_SYSTEM = ShortGuidUtils.Generate("DYNAMIC_PHYSICS_SYSTEM");
+
         public Instancing(Level level)
         {
             _level = level;
@@ -1948,244 +1950,10 @@ namespace CathodeLib
 
         private void ProcessInstances(InstancedComposite composite)
         {
-            ShortGuid GUID_DYNAMIC_PHYSICS_SYSTEM = ShortGuidUtils.Generate("DYNAMIC_PHYSICS_SYSTEM");
-
             var entitiesToProcess = composite.Entities.Where(e => e.Entity.variant == EntityVariant.FUNCTION && ((FunctionEntity)e.Entity).function.IsFunctionType).ToList();
             Parallel.ForEach(entitiesToProcess, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, entity =>
             {
-                if (entity.Entity.variant != EntityVariant.FUNCTION)
-                    return;
-
-                FunctionEntity function = (FunctionEntity)entity.Entity;
-
-                if (function.function.IsFunctionType)
-                {
-                    switch (function.function.AsFunctionType)
-                    {
-                        case FunctionType.CAGEAnimation:
-
-                            break;
-                        case FunctionType.CameraPlayAnimation:
-
-                            break;
-                        case FunctionType.CameraResource:
-
-                            break;
-                        case FunctionType.Character:
-
-                            break;
-                        case FunctionType.Checkpoint:
-
-                            break;
-                        case FunctionType.CHR_PlaySecondaryAnimation:
-
-                            break;
-                        case FunctionType.CMD_GoTo:
-
-                            break;
-                        case FunctionType.CMD_GoToCover:
-
-                            break;
-                        case FunctionType.CMD_MoveTowards:
-
-                            break;
-                        case FunctionType.CMD_PlayAnimation:
-
-                            break;
-                        case FunctionType.CollisionBarrier:
-
-                            break;
-                        case FunctionType.ColourCorrectionTransition:
-
-                            break;
-                        case FunctionType.CoverExclusionArea:
-
-                            break;
-                        case FunctionType.CoverLine:
-
-                            break;
-                        case FunctionType.EnvironmentMap:
-
-                            break;
-                        case FunctionType.EnvironmentModelReference:
-
-                            break;
-                        case FunctionType.ExclusiveMaster:
-
-                            break;
-                        case FunctionType.FogBox:
-
-                            break;
-                        case FunctionType.FogPlane:
-
-                            break;
-                        case FunctionType.FogSphere:
-
-                            break;
-                        case FunctionType.JOB_Assault:
-
-                            break;
-                        case FunctionType.JOB_SpottingPosition:
-
-                            break;
-                        case FunctionType.LightingMaster:
-
-                            break;
-                        case FunctionType.ModelReference:
-
-                            break;
-                        case FunctionType.MusicController:
-
-                            break;
-                        case FunctionType.MusicTrigger:
-
-                            break;
-                        case FunctionType.NavMeshArea:
-
-                            break;
-                        case FunctionType.NavMeshBarrier:
-
-                            break;
-                        case FunctionType.NavMeshExclusionArea:
-
-                            break;
-                        case FunctionType.NavMeshReachabilitySeedPoint:
-
-                            break;
-                        case FunctionType.NavMeshWalkablePlatform:
-
-                            break;
-                        case FunctionType.ParticleEmitterReference:
-
-                            break;
-                        case FunctionType.PathfindingAlienBackstageNode:
-
-                            break;
-                        case FunctionType.PathfindingManualNode:
-
-                            break;
-                        case FunctionType.PathfindingTeleportNode:
-
-                            break;
-                        case FunctionType.PathfindingWaitNode:
-
-                            break;
-                        case FunctionType.PhysicsModifyGravity:
-
-                            break;
-                        case FunctionType.PhysicsSystem:
-                            ResourceReference physicsSystem = function.GetResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
-                            if (physicsSystem == null) break;
-
-                            //Calculate the instance metadata
-                            EntityPath pathToThisEntity = entity.Path.Copy();
-                            ShortGuid compositeInstanceID = pathToThisEntity.GenerateCompositeInstanceID();
-                            pathToThisEntity.GoBackOneStep();
-                            EntityHandle compositeInstanceReference = new EntityHandle()
-                            {
-                                entity_id = pathToThisEntity.GetPointedEntityID(),
-                                composite_instance_id = pathToThisEntity.GenerateCompositeInstanceID()
-                            };
-
-                            //Calculate the instanced position
-                            (Vector3 position, Quaternion rotation) = CalculateInstancedPosition(entity);
-
-                            //For sanity: get the existing entry
-                            List<PhysicsMaps.Entry> existing = _level.PhysicsMaps.Entries.FindAll(o =>
-                                o.physics_system_index == physicsSystem.PhysicsSystemIndex &&
-                                o.resource_type == GUID_DYNAMIC_PHYSICS_SYSTEM &&
-                                o.composite_instance_id == compositeInstanceID &&
-                                o.entity == compositeInstanceReference);
-
-                            //Create the new entry
-                            PhysicsMaps.Entry newEntry = new PhysicsMaps.Entry()
-                            {
-                                physics_system_index = physicsSystem.PhysicsSystemIndex,
-                                resource_type = GUID_DYNAMIC_PHYSICS_SYSTEM,
-                                composite_instance_id = compositeInstanceID,
-                                entity = compositeInstanceReference,
-                                Position = position,
-                                Rotation = rotation
-                            };
-
-                            //TODO: position calculation is wrong!
-
-                            lock (_physicsMapsLock)
-                            {
-                                _level.PhysicsMaps.Entries.Add(newEntry);
-                            }
-                            break;
-                        case FunctionType.PlayEnvironmentAnimation:
-
-                            break;
-                        case FunctionType.ProjectiveDecal:
-
-                            break;
-                        case FunctionType.RadiosityIsland:
-
-                            break;
-                        case FunctionType.RadiosityProxy:
-
-                            break;
-                        case FunctionType.RegisterCharacterModel:
-
-                            break;
-                        case FunctionType.RibbonEmitterReference:
-
-                            break;
-                        case FunctionType.SimpleRefraction:
-
-                            break;
-                        case FunctionType.SimpleWater:
-
-                            break;
-                        case FunctionType.Sound:
-
-                            break;
-                        case FunctionType.SoundBarrier:
-
-                            break;
-                        case FunctionType.SoundEnvironmentMarker:
-
-                            break;
-                        case FunctionType.SoundImpact:
-
-                            break;
-                        case FunctionType.SoundLevelInitialiser:
-
-                            break;
-                        case FunctionType.SoundLoadBank:
-
-                            break;
-                        case FunctionType.SoundLoadSlot:
-
-                            break;
-                        case FunctionType.SoundNetworkNode:
-
-                            break;
-                        case FunctionType.Speech:
-
-                            break;
-                        case FunctionType.SpeechScript:
-
-                            break;
-                        case FunctionType.SpottingExclusionArea:
-
-                            break;
-                        case FunctionType.SurfaceEffectBox:
-
-                            break;
-                        case FunctionType.SurfaceEffectSphere:
-
-                            break;
-                        case FunctionType.TRAV_1ShotSpline:
-
-                            break;
-                        case FunctionType.Zone:
-
-                            break;
-                    }
-                }
+                ProcessEntity(entity);
             });
 
             // Process child composites sequentially (they may have dependencies)
@@ -2202,6 +1970,243 @@ namespace CathodeLib
                         continue;
 
                     ProcessInstances(entity.ChildCompositeInstance);
+                }
+            }
+        }
+
+        private void ProcessEntity(InstancedEntity entity)
+        {
+            if (entity.Entity.variant != EntityVariant.FUNCTION)
+                return;
+
+            FunctionEntity function = (FunctionEntity)entity.Entity;
+
+            if (function.function.IsFunctionType)
+            {
+                switch (function.function.AsFunctionType)
+                {
+                    case FunctionType.CAGEAnimation:
+
+                        break;
+                    case FunctionType.CameraPlayAnimation:
+
+                        break;
+                    case FunctionType.CameraResource:
+
+                        break;
+                    case FunctionType.Character:
+
+                        break;
+                    case FunctionType.Checkpoint:
+
+                        break;
+                    case FunctionType.CHR_PlaySecondaryAnimation:
+
+                        break;
+                    case FunctionType.CMD_GoTo:
+
+                        break;
+                    case FunctionType.CMD_GoToCover:
+
+                        break;
+                    case FunctionType.CMD_MoveTowards:
+
+                        break;
+                    case FunctionType.CMD_PlayAnimation:
+
+                        break;
+                    case FunctionType.CollisionBarrier:
+
+                        break;
+                    case FunctionType.ColourCorrectionTransition:
+
+                        break;
+                    case FunctionType.CoverExclusionArea:
+
+                        break;
+                    case FunctionType.CoverLine:
+
+                        break;
+                    case FunctionType.EnvironmentMap:
+
+                        break;
+                    case FunctionType.EnvironmentModelReference:
+
+                        break;
+                    case FunctionType.ExclusiveMaster:
+
+                        break;
+                    case FunctionType.FogBox:
+
+                        break;
+                    case FunctionType.FogPlane:
+
+                        break;
+                    case FunctionType.FogSphere:
+
+                        break;
+                    case FunctionType.JOB_Assault:
+
+                        break;
+                    case FunctionType.JOB_SpottingPosition:
+
+                        break;
+                    case FunctionType.LightingMaster:
+
+                        break;
+                    case FunctionType.ModelReference:
+
+                        break;
+                    case FunctionType.MusicController:
+
+                        break;
+                    case FunctionType.MusicTrigger:
+
+                        break;
+                    case FunctionType.NavMeshArea:
+
+                        break;
+                    case FunctionType.NavMeshBarrier:
+
+                        break;
+                    case FunctionType.NavMeshExclusionArea:
+
+                        break;
+                    case FunctionType.NavMeshReachabilitySeedPoint:
+
+                        break;
+                    case FunctionType.NavMeshWalkablePlatform:
+
+                        break;
+                    case FunctionType.ParticleEmitterReference:
+
+                        break;
+                    case FunctionType.PathfindingAlienBackstageNode:
+
+                        break;
+                    case FunctionType.PathfindingManualNode:
+
+                        break;
+                    case FunctionType.PathfindingTeleportNode:
+
+                        break;
+                    case FunctionType.PathfindingWaitNode:
+
+                        break;
+                    case FunctionType.PhysicsModifyGravity:
+
+                        break;
+                    case FunctionType.PhysicsSystem:
+                        ResourceReference physicsSystem = function.GetResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
+                        if (physicsSystem == null) break;
+
+                        //Calculate the instance metadata
+                        EntityPath pathToThisEntity = entity.Path.Copy();
+                        ShortGuid compositeInstanceID = pathToThisEntity.GenerateCompositeInstanceID();
+                        pathToThisEntity.GoBackOneStep();
+                        EntityHandle compositeInstanceReference = new EntityHandle()
+                        {
+                            entity_id = pathToThisEntity.GetPointedEntityID(),
+                            composite_instance_id = pathToThisEntity.GenerateCompositeInstanceID()
+                        };
+
+                        //Calculate the instanced position
+                        (Vector3 position, Quaternion rotation) = CalculateInstancedPosition(entity);
+
+                        //For sanity: get the existing entry
+                        List<PhysicsMaps.Entry> existing = _level.PhysicsMaps.Entries.FindAll(o =>
+                            o.physics_system_index == physicsSystem.PhysicsSystemIndex &&
+                            o.resource_type == GUID_DYNAMIC_PHYSICS_SYSTEM &&
+                            o.composite_instance_id == compositeInstanceID &&
+                            o.entity == compositeInstanceReference);
+
+                        //Create the new entry
+                        PhysicsMaps.Entry newEntry = new PhysicsMaps.Entry()
+                        {
+                            physics_system_index = physicsSystem.PhysicsSystemIndex,
+                            resource_type = GUID_DYNAMIC_PHYSICS_SYSTEM,
+                            composite_instance_id = compositeInstanceID,
+                            entity = compositeInstanceReference,
+                            Position = position,
+                            Rotation = rotation
+                        };
+
+                        //TODO: position calculation is wrong!
+
+                        lock (_physicsMapsLock)
+                        {
+                            _level.PhysicsMaps.Entries.Add(newEntry);
+                        }
+                        break;
+                    case FunctionType.PlayEnvironmentAnimation:
+
+                        break;
+                    case FunctionType.ProjectiveDecal:
+
+                        break;
+                    case FunctionType.RadiosityIsland:
+
+                        break;
+                    case FunctionType.RadiosityProxy:
+
+                        break;
+                    case FunctionType.RegisterCharacterModel:
+
+                        break;
+                    case FunctionType.RibbonEmitterReference:
+
+                        break;
+                    case FunctionType.SimpleRefraction:
+
+                        break;
+                    case FunctionType.SimpleWater:
+
+                        break;
+                    case FunctionType.Sound:
+
+                        break;
+                    case FunctionType.SoundBarrier:
+
+                        break;
+                    case FunctionType.SoundEnvironmentMarker:
+
+                        break;
+                    case FunctionType.SoundImpact:
+
+                        break;
+                    case FunctionType.SoundLevelInitialiser:
+
+                        break;
+                    case FunctionType.SoundLoadBank:
+
+                        break;
+                    case FunctionType.SoundLoadSlot:
+
+                        break;
+                    case FunctionType.SoundNetworkNode:
+
+                        break;
+                    case FunctionType.Speech:
+
+                        break;
+                    case FunctionType.SpeechScript:
+
+                        break;
+                    case FunctionType.SpottingExclusionArea:
+
+                        break;
+                    case FunctionType.SurfaceEffectBox:
+
+                        break;
+                    case FunctionType.SurfaceEffectSphere:
+
+                        break;
+                    case FunctionType.TRAV_1ShotSpline:
+
+                        break;
+                    case FunctionType.Zone:
+
+                        break;
                 }
             }
         }
