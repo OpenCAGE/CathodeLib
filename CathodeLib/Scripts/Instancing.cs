@@ -2152,12 +2152,14 @@ namespace CathodeLib
                     break;
                 case FunctionType.FogBox:
                     AddResourceEntry(entity);
+                    //AddResourceEntry(entity);
                     break;
                 case FunctionType.FogPlane:
 
                     break;
                 case FunctionType.FogSphere:
                     AddResourceEntry(entity);
+                    //AddResourceEntry(entity);
                     break;
                 case FunctionType.JOB_Assault:
 
@@ -2170,6 +2172,7 @@ namespace CathodeLib
                     break;
                 case FunctionType.LightReference:
                     AddResourceEntry(entity);
+                    //AddResourceEntry(entity);
                     break;
                 case FunctionType.ModelReference:
                     AddResourceEntry(entity);
@@ -2197,6 +2200,7 @@ namespace CathodeLib
                     break;
                 case FunctionType.ParticleEmitterReference:
                     AddResourceEntry(entity);
+                    //AddResourceEntry(entity);
                     break;
                 case FunctionType.PathfindingAlienBackstageNode:
 
@@ -2240,6 +2244,7 @@ namespace CathodeLib
                     break;
                 case FunctionType.RibbonEmitterReference:
                     AddResourceEntry(entity);
+                    //AddResourceEntry(entity);
                     break;
                 case FunctionType.SimpleRefraction:
                     AddResourceEntry(entity);
