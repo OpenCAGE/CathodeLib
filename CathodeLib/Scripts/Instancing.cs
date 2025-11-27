@@ -2215,10 +2215,10 @@ namespace CathodeLib
 
                         //Create the new entry
                         (Vector3 position, Quaternion rotation) = entity.CalculateWorldPositionRotation();
-                        PhysicsMaps.Entry newEntry = new PhysicsMaps.Entry()
+                        PhysicsMaps.DYNAMIC_PHYSICS_SYSTEM newEntry = new PhysicsMaps.DYNAMIC_PHYSICS_SYSTEM()
                         {
                             physics_system_index = physicsSystem.PhysicsSystemIndex,
-                            resource_type = ShortGuids.GUID_DYNAMIC_PHYSICS_SYSTEM,
+                            resource_type = ShortGuids.DYNAMIC_PHYSICS_SYSTEM,
                             composite_instance_id = compositeInstanceID,
                             entity = compositeInstanceReference,
                             Position = position,
