@@ -14,53 +14,6 @@ using System.Threading.Tasks;
 
 namespace CathodeLib
 {
-    internal static class ShortGuids
-    {
-        public static readonly ShortGuid DYNAMIC_PHYSICS_SYSTEM = ShortGuidUtils.Generate("DYNAMIC_PHYSICS_SYSTEM");
-        public static readonly ShortGuid Reference = ShortGuidUtils.Generate("reference");
-        public static readonly ShortGuid Position = ShortGuidUtils.Generate("position");
-        public static readonly ShortGuid DoorMechanism = ShortGuidUtils.Generate("door_mechanism");
-        public static readonly ShortGuid ButtonType = ShortGuidUtils.Generate("button_type");
-        public static readonly ShortGuid LeverType = ShortGuidUtils.Generate("lever_type");
-        public static readonly ShortGuid IsDoor = ShortGuidUtils.Generate("is_door");
-        public static readonly ShortGuid Filter = ShortGuidUtils.Generate("filter");
-        public static readonly ShortGuid Input = ShortGuidUtils.Generate("Input");
-        public static readonly ShortGuid LHS = ShortGuidUtils.Generate("LHS");
-        public static readonly ShortGuid RHS = ShortGuidUtils.Generate("RHS");
-        public static readonly ShortGuid Threshold = ShortGuidUtils.Generate("Threshold");
-        public static readonly ShortGuid Min = ShortGuidUtils.Generate("Min");
-        public static readonly ShortGuid Max = ShortGuidUtils.Generate("Max");
-        public static readonly ShortGuid Value = ShortGuidUtils.Generate("Value");
-        public static readonly ShortGuid InitialValue = ShortGuidUtils.Generate("Initial_Value");
-        public static readonly ShortGuid TargetValue = ShortGuidUtils.Generate("Target_Value");
-        public static readonly ShortGuid Proportion = ShortGuidUtils.Generate("Proportion");
-        public static readonly ShortGuid Numbers = ShortGuidUtils.Generate("Numbers");
-        public static readonly ShortGuid Bias = ShortGuidUtils.Generate("bias");
-        public static readonly ShortGuid Amplitude = ShortGuidUtils.Generate("amplitude");
-        public static readonly ShortGuid Phase = ShortGuidUtils.Generate("phase");
-        public static readonly ShortGuid WaveShape = ShortGuidUtils.Generate("wave_shape");
-        public static readonly ShortGuid Allow = ShortGuidUtils.Generate("allow");
-        public static readonly ShortGuid InitialValueLower = ShortGuidUtils.Generate("initial_value");
-        public static readonly ShortGuid NextGen = ShortGuidUtils.Generate("NextGen");
-        public static readonly ShortGuid Colour = ShortGuidUtils.Generate("Colour");
-        public static readonly ShortGuid X = ShortGuidUtils.Generate("x");
-        public static readonly ShortGuid Y = ShortGuidUtils.Generate("y");
-        public static readonly ShortGuid Z = ShortGuidUtils.Generate("z");
-        public static readonly ShortGuid InitialColour = ShortGuidUtils.Generate("initial_colour");
-        public static readonly ShortGuid InitialX = ShortGuidUtils.Generate("initial_x");
-        public static readonly ShortGuid InitialY = ShortGuidUtils.Generate("initial_y");
-        public static readonly ShortGuid InitialZ = ShortGuidUtils.Generate("initial_z");
-        public static readonly ShortGuid Normalised = ShortGuidUtils.Generate("Normalised");
-        public static readonly ShortGuid MinX = ShortGuidUtils.Generate("MinX");
-        public static readonly ShortGuid MaxX = ShortGuidUtils.Generate("MaxX");
-        public static readonly ShortGuid MinY = ShortGuidUtils.Generate("MinY");
-        public static readonly ShortGuid MaxY = ShortGuidUtils.Generate("MaxY");
-        public static readonly ShortGuid MinZ = ShortGuidUtils.Generate("MinZ");
-        public static readonly ShortGuid MaxZ = ShortGuidUtils.Generate("MaxZ");
-        public static readonly ShortGuid IsTemplate = ShortGuidUtils.Generate("is_template");
-        public static readonly ShortGuid Deleted = ShortGuidUtils.Generate("deleted");
-    }
-
     public class InstancedEntity : IComparable<InstancedEntity>
     {
         public class Parameters<T> : IComparable<Parameters<T>>
@@ -768,7 +721,7 @@ namespace CathodeLib
 
         public T GetAs<T>(string name = "reference")
         {
-            ShortGuid guid = name == "reference" ? ShortGuids.Reference : ShortGuidUtils.Generate(name);
+            ShortGuid guid = name == "reference" ? ShortGuids.reference : ShortGuidUtils.Generate(name);
             return GetAs<T>(guid);
         }
 
@@ -873,8 +826,8 @@ namespace CathodeLib
                 return (T)(object)new Vector3(0, 0, 0);
             else if (typeof(T) == typeof(Transform))
             {
-                if (Transforms.Has(ShortGuids.Position))
-                    return (T)(object)Transforms.Get(ShortGuids.Position);
+                if (Transforms.Has(ShortGuids.position))
+                    return (T)(object)Transforms.Get(ShortGuids.position);
                 else
                     return (T)(object)new Transform();
             }
@@ -886,7 +839,7 @@ namespace CathodeLib
 
         private T GetFunctionData<T>(ShortGuid guid, FunctionType type)
         {
-            if (guid != ShortGuids.Reference)
+            if (guid != ShortGuids.reference)
             {
                 //Get the value of the parameter, taking in to account anything applied by to the instance
                 if (typeof(T) == typeof(bool))
@@ -925,7 +878,7 @@ namespace CathodeLib
                     case FunctionType.DeleteBlankPanel:
                         if (typeof(T) == typeof(bool))
                         {
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.BLANK:
@@ -938,10 +891,10 @@ namespace CathodeLib
                     case FunctionType.DeleteButtonDisk:
                         if (typeof(T) == typeof(bool))
                         {
-                            BUTTON_TYPE button_type = (BUTTON_TYPE)EnumIndexes.Get(ShortGuids.ButtonType);
+                            BUTTON_TYPE button_type = (BUTTON_TYPE)EnumIndexes.Get(ShortGuids.button_type);
                             if (button_type != BUTTON_TYPE.DISK) return (T)(object)true;
 
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.HIDDEN_BUTTON:
@@ -955,10 +908,10 @@ namespace CathodeLib
                     case FunctionType.DeleteButtonKeys:
                         if (typeof(T) == typeof(bool))
                         {
-                            BUTTON_TYPE button_type = (BUTTON_TYPE)EnumIndexes.Get(ShortGuids.ButtonType);
+                            BUTTON_TYPE button_type = (BUTTON_TYPE)EnumIndexes.Get(ShortGuids.button_type);
                             if (button_type != BUTTON_TYPE.KEYS) return (T)(object)true;
 
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.HIDDEN_BUTTON:
@@ -972,7 +925,7 @@ namespace CathodeLib
                     case FunctionType.DeleteCuttingPanel:
                         if (typeof(T) == typeof(bool))
                         {
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.HIDDEN_BUTTON:
@@ -988,7 +941,7 @@ namespace CathodeLib
                     case FunctionType.DeleteHacking:
                         if (typeof(T) == typeof(bool))
                         {
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.HACKING:
@@ -1002,9 +955,9 @@ namespace CathodeLib
                     case FunctionType.DeleteHousing:
                         if (typeof(T) == typeof(bool))
                         {
-                            if (!Bools.Get(ShortGuids.IsDoor)) return (T)(object)true;
+                            if (!Bools.Get(ShortGuids.is_door)) return (T)(object)true;
 
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.HIDDEN_BUTTON:
@@ -1024,7 +977,7 @@ namespace CathodeLib
                     case FunctionType.DeleteKeypad:
                         if (typeof(T) == typeof(bool))
                         {
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.KEYPAD:
@@ -1038,10 +991,10 @@ namespace CathodeLib
                     case FunctionType.DeletePullLever:
                         if (typeof(T) == typeof(bool))
                         {
-                            LEVER_TYPE lever_type = (LEVER_TYPE)EnumIndexes.Get(ShortGuids.LeverType);
+                            LEVER_TYPE lever_type = (LEVER_TYPE)EnumIndexes.Get(ShortGuids.lever_type);
                             if (lever_type != LEVER_TYPE.PULL) return (T)(object)true;
 
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.HIDDEN_LEVER:
@@ -1055,10 +1008,10 @@ namespace CathodeLib
                     case FunctionType.DeleteRotateLever:
                         if (typeof(T) == typeof(bool))
                         {
-                            LEVER_TYPE lever_type = (LEVER_TYPE)EnumIndexes.Get(ShortGuids.LeverType);
+                            LEVER_TYPE lever_type = (LEVER_TYPE)EnumIndexes.Get(ShortGuids.lever_type);
                             if (lever_type != LEVER_TYPE.ROTATE) return (T)(object)true;
 
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.DoorMechanism);
+                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
                             switch (door_mechanism)
                             {
                                 case DOOR_MECHANISM.HIDDEN_LEVER:
@@ -1076,7 +1029,7 @@ namespace CathodeLib
                     case FunctionType.FilterAnd:
                         if (typeof(T) == typeof(bool))
                         {
-                            List<InstancedEntity> filters = Bools.GetLinks(ShortGuids.Filter);
+                            List<InstancedEntity> filters = Bools.GetLinks(ShortGuids.filter);
                             for (int i = 0; i < filters.Count; i++)
                             {
                                 if (!filters[i].GetAs<bool>())
@@ -1088,14 +1041,14 @@ namespace CathodeLib
                     case FunctionType.FilterNot:
                         if (typeof(T) == typeof(bool))
                         {
-                            List<InstancedEntity> filters = Bools.GetLinks(ShortGuids.Filter);
+                            List<InstancedEntity> filters = Bools.GetLinks(ShortGuids.filter);
                             return (T)(object)(filters.Count == 0 ? true : filters[0].GetAs<bool>());
                         }
                         break;
                     case FunctionType.FilterOr:
                         if (typeof(T) == typeof(bool))
                         {
-                            List<InstancedEntity> filters = Bools.GetLinks(ShortGuids.Filter);
+                            List<InstancedEntity> filters = Bools.GetLinks(ShortGuids.filter);
                             for (int i = 0; i < filters.Count; i++)
                             {
                                 if (filters[i].GetAs<bool>())
@@ -1208,13 +1161,13 @@ namespace CathodeLib
                     case FunctionType.FloatLinearInterpolateSpeed:
                     case FunctionType.FloatLinearInterpolateTimed:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)Floats.Get(ShortGuids.InitialValue);
+                            return (T)(object)Floats.Get(ShortGuids.Initial_Value);
                         break;
                     case FunctionType.FloatLinearProportion:
                         if (typeof(T) == typeof(float))
                         {
-                            float min = Floats.Get(ShortGuids.InitialValue);
-                            float max = Floats.Get(ShortGuids.TargetValue);
+                            float min = Floats.Get(ShortGuids.Initial_Value);
+                            float max = Floats.Get(ShortGuids.Target_Value);
                             return (T)(object)(min + (max - min) * Floats.Get(ShortGuids.Proportion));
                         }
                         break;
@@ -1271,13 +1224,13 @@ namespace CathodeLib
                         {
                             float PI = 3.1415926535897932333797165867879296635503123989707390137482903185973555f;
 
-                            float offset = Floats.Get(ShortGuids.Bias);
-                            float amplitude = Floats.Get(ShortGuids.Amplitude);
+                            float offset = Floats.Get(ShortGuids.bias);
+                            float amplitude = Floats.Get(ShortGuids.amplitude);
 
-                            float phase = Floats.Get(ShortGuids.Phase) / 360.0f;
+                            float phase = Floats.Get(ShortGuids.phase) / 360.0f;
                             float output = phase % 1.0f;
 
-                            WAVE_SHAPE wave_shape = (WAVE_SHAPE)EnumIndexes.Get(ShortGuids.WaveShape);
+                            WAVE_SHAPE wave_shape = (WAVE_SHAPE)EnumIndexes.Get(ShortGuids.wave_shape);
                             switch (wave_shape)
                             {
                                 case WAVE_SHAPE.SIN:
@@ -1528,7 +1481,7 @@ namespace CathodeLib
                         break;
                     case FunctionType.LogicGate:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)Bools.Get(ShortGuids.Allow);
+                            return (T)(object)Bools.Get(ShortGuids.allow);
                         break;
                     case FunctionType.LogicGateAnd:
                         if (typeof(T) == typeof(bool))
@@ -1556,7 +1509,7 @@ namespace CathodeLib
                         break;
                     case FunctionType.LogicSwitch:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)Bools.Get(ShortGuids.InitialValueLower);
+                            return (T)(object)Bools.Get(ShortGuids.initial_value);
                         break;
                     case FunctionType.NavMeshArea:
                         if (typeof(T) == typeof(Transform))
@@ -1580,11 +1533,11 @@ namespace CathodeLib
                         break;
                     case FunctionType.NonPersistentBool:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)Bools.Get(ShortGuids.InitialValueLower);
+                            return (T)(object)Bools.Get(ShortGuids.initial_value);
                         break;
                     case FunctionType.NonPersistentInt:
                         if (typeof(T) == typeof(int))
-                            return (T)(object)Integers.Get(ShortGuids.InitialValueLower);
+                            return (T)(object)Integers.Get(ShortGuids.initial_value);
                         break;
                     case FunctionType.PathfindingAlienBackstageNode:
                         if (typeof(T) == typeof(Transform))
@@ -1690,7 +1643,7 @@ namespace CathodeLib
                         break;
                     case FunctionType.SetVector:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)new Vector3(Floats.Get(ShortGuids.X), Floats.Get(ShortGuids.Y), Floats.Get(ShortGuids.Z));
+                            return (T)(object)new Vector3(Floats.Get(ShortGuids.x), Floats.Get(ShortGuids.y), Floats.Get(ShortGuids.z));
                         break;
                     case FunctionType.SetVector2:
                         if (typeof(T) == typeof(Vector3))
@@ -1710,27 +1663,27 @@ namespace CathodeLib
                         break;
                     case FunctionType.VariableBool:
                         if (typeof(T) == typeof(bool))
-                            return (T)(object)Bools.Get(ShortGuids.InitialValueLower);
+                            return (T)(object)Bools.Get(ShortGuids.initial_value);
                         break;
                     case FunctionType.VariableColour:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Vectors.Get(ShortGuids.InitialColour);
+                            return (T)(object)Vectors.Get(ShortGuids.initial_colour);
                         break;
                     case FunctionType.VariableEnum:
                         if (typeof(T) == typeof(int))
-                            return (T)(object)EnumIndexes.Get(ShortGuids.InitialValueLower);
+                            return (T)(object)EnumIndexes.Get(ShortGuids.initial_value);
                         break;
                     case FunctionType.VariableFlashScreenColour:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Vectors.Get(ShortGuids.InitialColour);
+                            return (T)(object)Vectors.Get(ShortGuids.initial_colour);
                         break;
                     case FunctionType.VariableFloat:
                         if (typeof(T) == typeof(float))
-                            return (T)(object)Floats.Get(ShortGuids.InitialValueLower);
+                            return (T)(object)Floats.Get(ShortGuids.initial_value);
                         break;
                     case FunctionType.VariableInt:
                         if (typeof(T) == typeof(int))
-                            return (T)(object)Integers.Get(ShortGuids.InitialValueLower);
+                            return (T)(object)Integers.Get(ShortGuids.initial_value);
                         break;
                     case FunctionType.VariablePosition:
                         if (typeof(T) == typeof(Transform))
@@ -1742,15 +1695,15 @@ namespace CathodeLib
                         break;
                     case FunctionType.VariableVector:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)new Vector3(Floats.Get(ShortGuids.InitialX), Floats.Get(ShortGuids.InitialY), Floats.Get(ShortGuids.InitialZ));
+                            return (T)(object)new Vector3(Floats.Get(ShortGuids.initial_x), Floats.Get(ShortGuids.initial_y), Floats.Get(ShortGuids.initial_z));
                         break;
                     case FunctionType.VariableVector2:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Vectors.Get(ShortGuids.InitialValueLower);
+                            return (T)(object)Vectors.Get(ShortGuids.initial_value);
                         break;
                     case FunctionType.VectorLinearInterpolateTimed:
                         if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Vectors.Get(ShortGuids.InitialValue);
+                            return (T)(object)Vectors.Get(ShortGuids.Initial_Value);
                         break;
                     case FunctionType.VectorScale:
                         if (typeof(T) == typeof(Vector3))
@@ -1778,8 +1731,8 @@ namespace CathodeLib
                     return (T)(object)new Vector3(0, 0, 0);
                 else if (typeof(T) == typeof(Transform))
                 {
-                    if (Transforms.Has(ShortGuids.Position))
-                        return (T)(object)Transforms.Get(ShortGuids.Position);
+                    if (Transforms.Has(ShortGuids.position))
+                        return (T)(object)Transforms.Get(ShortGuids.position);
                     else
                         return (T)(object)new Transform();
                 }
@@ -1851,7 +1804,7 @@ namespace CathodeLib
         
         private Matrix4x4 CalculateWorldTransformMatrix()
         {
-            Transform localTransform = GetAs<Transform>(ShortGuids.Position);
+            Transform localTransform = GetAs<Transform>(ShortGuids.position);
             Matrix4x4 localMatrix = localTransform.AsMatrix();
             if (ParentCompositeInstanceEntity != null)
             {
@@ -2065,11 +2018,11 @@ namespace CathodeLib
                 if (entity.ChildCompositeInstance != null)
                 {
                     //Ignore templates
-                    if (entity.Bools.Get(ShortGuids.IsTemplate))
+                    if (entity.Bools.Get(ShortGuids.is_template))
                         continue;
 
                     //Ignore deleted
-                    if (entity.Bools.Get(ShortGuids.Deleted))
+                    if (entity.Bools.Get(ShortGuids.deleted))
                         continue;
 
                     ProcessInstances(entity.ChildCompositeInstance);
@@ -2218,7 +2171,6 @@ namespace CathodeLib
                         PhysicsMaps.DYNAMIC_PHYSICS_SYSTEM newEntry = new PhysicsMaps.DYNAMIC_PHYSICS_SYSTEM()
                         {
                             physics_system_index = physicsSystem.PhysicsSystemIndex,
-                            resource_type = ShortGuids.DYNAMIC_PHYSICS_SYSTEM,
                             composite_instance_id = compositeInstanceID,
                             entity = compositeInstanceReference,
                             Position = position,
