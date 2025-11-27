@@ -51,5 +51,7 @@ namespace CathodeLib
         public static readonly ShortGuid MaxZ = ShortGuidUtils.Generate("MaxZ");
         public static readonly ShortGuid is_template = ShortGuidUtils.Generate("is_template");
         public static readonly ShortGuid deleted = ShortGuidUtils.Generate("deleted");
+        public static readonly ShortGuid resource = ShortGuidUtils.Generate("resource");
+        public static readonly ShortGuid start_on_reset = ShortGuidUtils.Generate("start_on_reset");
     }
 }
