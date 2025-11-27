@@ -136,10 +136,21 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class Resource
+        public class Resource : IComparable<Resource>
         {
             public ShortGuid composite_instance_id;
             public ShortGuid resource_id;
+
+            public int CompareTo(Resource other)
+            {
+                if (other == null) return 1;
+
+                int compositeComparison = composite_instance_id.CompareTo(other.composite_instance_id);
+                if (compositeComparison != 0)
+                    return compositeComparison;
+
+                return resource_id.CompareTo(other.resource_id);
+            }
         };
         #endregion
     }

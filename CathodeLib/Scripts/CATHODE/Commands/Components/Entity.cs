@@ -445,7 +445,7 @@ namespace CATHODE.Scripting
             if (rr == null)
             {
                 rr = new ResourceReference(type);
-                rr.resource_id = type == ResourceType.DYNAMIC_PHYSICS_SYSTEM ? ShortGuidUtils.Generate("DYNAMIC_PHYSICS_SYSTEM") : shortGUID;
+                rr.resource_id = type == ResourceType.DYNAMIC_PHYSICS_SYSTEM ? ShortGuids.DYNAMIC_PHYSICS_SYSTEM : shortGUID;
                 resources.Add(rr);
             }
             return rr;
@@ -459,7 +459,7 @@ namespace CATHODE.Scripting
             ResourceReference resource = resources.FirstOrDefault(o => o.resource_type == type);
             if (alsoCheckParameter && resource == null)
             {
-                Parameter resourceParam = GetParameter("resource");
+                Parameter resourceParam = GetParameter(ShortGuids.resource);
                 if (resourceParam != null && resourceParam.content != null && resourceParam.content.dataType == DataType.RESOURCE)
                     resource = ((cResource)resourceParam.content).GetResource(type);
             }
