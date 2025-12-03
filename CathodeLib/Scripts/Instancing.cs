@@ -2053,7 +2053,7 @@ namespace CathodeLib
                     if (entity.Bools.Get(ShortGuids.deleted))
                         continue;
 
-                    ProcessInstances(entity.ChildCompositeInstance, entity.Bools.Get(ShortGuids.is_template));
+                    ProcessInstances(entity.ChildCompositeInstance, isTemplate || entity.Bools.Get(ShortGuids.is_template));
                 }
             }
         }
