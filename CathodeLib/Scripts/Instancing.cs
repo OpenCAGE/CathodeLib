@@ -1897,6 +1897,8 @@ namespace CathodeLib
         private readonly object _physicsMapsLock = new object();
         private readonly object _collisionMapsLock = new object();
 
+        private List<ShortGuid> _sharedComposites = new List<ShortGuid>();
+
         public Instancing(Level level)
         {
             _level = level;
@@ -1916,6 +1918,7 @@ namespace CathodeLib
             if (Root?.Composite == null)
                 throw new Exception("Call GenerateInstances first");
 
+            _sharedComposites.Clear();
             ProcessInstances(Root, false);
         }
 
@@ -2052,6 +2055,13 @@ namespace CathodeLib
                 {
                     if (entity.Bools.Get(ShortGuids.deleted))
                         continue;
+
+                    if (entity.Bools.Get(ShortGuids.is_shared))
+                    {
+                        if (_sharedComposites.Contains(composite.Composite.shortGUID))
+                            continue;
+                        _sharedComposites.Add(composite.Composite.shortGUID);
+                    }
 
                     ProcessInstances(entity.ChildCompositeInstance, isTemplate || entity.Bools.Get(ShortGuids.is_template));
                 }
