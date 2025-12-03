@@ -48,6 +48,21 @@ namespace CathodeLib
                     return val;
 
                 throw new Exception("Failed to find param.");
+
+                if (typeof(T) == typeof(bool))
+                    return (T)(object)false;
+                else if (typeof(T) == typeof(int))
+                    return (T)(object)0;
+                else if (typeof(T) == typeof(float))
+                    return (T)(object)0.0f;
+                else if (typeof(T) == typeof(Vector3))
+                    return (T)(object)new Vector3(0, 0, 0);
+                else if (typeof(T) == typeof(Transform))
+                    return (T)(object)new Transform();
+                else
+                {
+                    throw new Exception("Unhandled");
+                }
             }
 
             public List<InstancedEntity> GetLinks(ShortGuid guid)
@@ -1887,8 +1902,22 @@ namespace CathodeLib
             _level = level;
         }
 
-        public void GenerateInstances() => GenerateInstances(_level.Commands.EntryPoints[0], new EntityPath(), Root, null, null, new List<InstancedAlias>());
-        public void ProcessInstances() => ProcessInstances(Root);
+        public void GenerateInstances()
+        {
+            Root = new InstancedComposite()
+            {
+                Composite = _level.Commands.EntryPoints[0],
+                InstanceID = ShortGuid.InitialiserBase
+            };
+            GenerateInstances(_level.Commands.EntryPoints[0], new EntityPath(), Root, null, null, new List<InstancedAlias>());
+        }
+        public void ProcessInstances()
+        {
+            if (Root?.Composite == null)
+                throw new Exception("Call GenerateInstances first");
+
+            ProcessInstances(Root);
+        }
 
         private void GenerateInstances(Composite composite, EntityPath path, InstancedComposite compositeInstance, InstancedComposite parentCompositeInstance, InstancedEntity parentCompositeInstanceEntity, List<InstancedAlias> aliases)
         {
@@ -1994,7 +2023,7 @@ namespace CathodeLib
                 newPath.AddNextStep(function);
                 InstancedComposite newInstance = new InstancedComposite();
                 newInstance.InstanceID = newPath.GenerateCompositeInstanceID(false);
-                newInstance.Composite = composite;
+                newInstance.Composite = child;
 
                 if (!entityByGuid.TryGetValue(function.shortGUID, out InstancedEntity instancedEnt))
                     continue;
