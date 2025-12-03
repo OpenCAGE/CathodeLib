@@ -1916,7 +1916,7 @@ namespace CathodeLib
             if (Root?.Composite == null)
                 throw new Exception("Call GenerateInstances first");
 
-            ProcessInstances(Root);
+            ProcessInstances(Root, false);
         }
 
         private void GenerateInstances(Composite composite, EntityPath path, InstancedComposite compositeInstance, InstancedComposite parentCompositeInstance, InstancedEntity parentCompositeInstanceEntity, List<InstancedAlias> aliases)
@@ -2038,33 +2038,27 @@ namespace CathodeLib
             });
         }
 
-        private void ProcessInstances(InstancedComposite composite)
+        private void ProcessInstances(InstancedComposite composite, bool isTemplate)
         {
             var entitiesToProcess = composite.Entities.Where(e => e.Entity.variant == EntityVariant.FUNCTION && ((FunctionEntity)e.Entity).function.IsFunctionType).ToList();
             Parallel.ForEach(entitiesToProcess, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, entity =>
             {
-                ProcessEntity(entity);
+                ProcessEntity(entity, isTemplate);
             });
 
-            // Process child composites sequentially (they may have dependencies)
             foreach (InstancedEntity entity in composite.Entities)
             {
                 if (entity.ChildCompositeInstance != null)
                 {
-                    //Ignore templates
-                    if (entity.Bools.Get(ShortGuids.is_template))
-                        continue;
-
-                    //Ignore deleted
                     if (entity.Bools.Get(ShortGuids.deleted))
                         continue;
 
-                    ProcessInstances(entity.ChildCompositeInstance);
+                    ProcessInstances(entity.ChildCompositeInstance, entity.Bools.Get(ShortGuids.is_template));
                 }
             }
         }
 
-        private void ProcessEntity(InstancedEntity entity)
+        private void ProcessEntity(InstancedEntity entity, bool isTemplate)
         {
             if (entity.Entity.variant != EntityVariant.FUNCTION)
                 return;
@@ -2120,7 +2114,7 @@ namespace CathodeLib
                             string gsdfsdf = "";
                         }
 
-                        AddResourceEntry(entity); //todo - should we instead respect collisionMapping.CollisionMapping.ResourceGUID ? check the condition above.
+                        //AddResourceEntry(entity);
                     }
                 }
             }
@@ -2159,7 +2153,8 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.CollisionBarrier:
-                    AddResourceEntry(entity);
+                    //if (!isTemplate)
+                    //    AddResourceEntry(entity);
                     break;
                 case FunctionType.ColourCorrectionTransition:
 
@@ -2168,27 +2163,30 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.CoverLine:
-                    AddResourceEntry(entity);
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.EnvironmentMap:
 
                     break;
                 case FunctionType.EnvironmentModelReference:
-                    AddResourceEntry(entity);
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.ExclusiveMaster:
-                    AddResourceEntry(entity);
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.FogBox:
-                    AddResourceEntry(entity);
-                    //AddResourceEntry(entity);
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.FogPlane:
 
                     break;
                 case FunctionType.FogSphere:
-                    AddResourceEntry(entity);
-                    //AddResourceEntry(entity);
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.JOB_Assault:
 
@@ -2200,8 +2198,8 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.LightReference:
-                    AddResourceEntry(entity);
-                    //AddResourceEntry(entity);
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.ModelReference:
                     AddResourceEntry(entity);
@@ -2216,7 +2214,8 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.NavMeshBarrier:
-                    AddResourceEntry(entity);
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.NavMeshExclusionArea:
 
@@ -2228,8 +2227,8 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.ParticleEmitterReference:
-                    AddResourceEntry(entity);
-                    //AddResourceEntry(entity);
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.PathfindingAlienBackstageNode:
 
@@ -2255,37 +2254,44 @@ namespace CathodeLib
                             break;
                         }
                     }
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.PlayEnvironmentAnimation:
 
                     break;
                 case FunctionType.ProjectiveDecal:
-                    AddResourceEntry(entity);
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.RadiosityIsland:
 
                     break;
                 case FunctionType.RadiosityProxy:
-                    AddResourceEntry(entity);
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.RegisterCharacterModel:
 
                     break;
                 case FunctionType.RibbonEmitterReference:
-                    AddResourceEntry(entity);
-                    //AddResourceEntry(entity);
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.SimpleRefraction:
-                    AddResourceEntry(entity);
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.SimpleWater:
-                    AddResourceEntry(entity);
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.Sound:
 
                     break;
                 case FunctionType.SoundBarrier:
-                    AddResourceEntry(entity);
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.SoundEnvironmentMarker:
 
@@ -2315,13 +2321,16 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.SurfaceEffectBox:
-                    AddResourceEntry(entity);
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.SurfaceEffectSphere:
-                    AddResourceEntry(entity);
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.TRAV_1ShotSpline:
-                    AddResourceEntry(entity);
+                    if (!isTemplate)
+                        AddResourceEntry(entity);
                     break;
                 case FunctionType.Zone:
 
