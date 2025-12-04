@@ -1919,7 +1919,7 @@ namespace CathodeLib
                 throw new Exception("Call GenerateInstances first");
 
             _sharedComposites.Clear();
-            ProcessInstances(Root, false);
+            ProcessInstances(Root, false, false);
         }
 
         private void GenerateInstances(Composite composite, EntityPath path, InstancedComposite compositeInstance, InstancedComposite parentCompositeInstance, InstancedEntity parentCompositeInstanceEntity, List<InstancedAlias> aliases)
@@ -2041,7 +2041,7 @@ namespace CathodeLib
             });
         }
 
-        private void ProcessInstances(InstancedComposite composite, bool isTemplate)
+        private void ProcessInstances(InstancedComposite composite, bool isTemplate, bool isShared)
         {
             var entitiesToProcess = composite.Entities.Where(e => e.Entity.variant == EntityVariant.FUNCTION && ((FunctionEntity)e.Entity).function.IsFunctionType).ToList();
             Parallel.ForEach(entitiesToProcess, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, entity =>
@@ -2056,14 +2056,15 @@ namespace CathodeLib
                     if (entity.Bools.Get(ShortGuids.deleted))
                         continue;
 
-                    if (entity.Bools.Get(ShortGuids.is_shared))
+                    bool thisIsShared = entity.Bools.Get(ShortGuids.is_shared);
+                    if (isShared || thisIsShared)
                     {
-                        if (_sharedComposites.Contains(composite.Composite.shortGUID))
+                        if (_sharedComposites.Contains(entity.ChildCompositeInstance.Composite.shortGUID))
                             continue;
-                        _sharedComposites.Add(composite.Composite.shortGUID);
+                        _sharedComposites.Add(entity.ChildCompositeInstance.Composite.shortGUID);
                     }
 
-                    ProcessInstances(entity.ChildCompositeInstance, isTemplate || entity.Bools.Get(ShortGuids.is_template));
+                    ProcessInstances(entity.ChildCompositeInstance, isTemplate || entity.Bools.Get(ShortGuids.is_template), isShared || thisIsShared);
                 }
             }
         }
@@ -2212,7 +2213,15 @@ namespace CathodeLib
                         AddResourceEntry(entity);
                     break;
                 case FunctionType.ModelReference:
-                    AddResourceEntry(entity);
+                    Parameter p = function.GetParameter("resource");
+                    if (p?.content != null && p.content.dataType == DataType.RESOURCE)
+                    {
+                        cResource r = (cResource)p.content;
+                        if (r.value.Count != 0)
+                        {
+                            AddResourceEntry(entity, "", true);
+                        }
+                    }
                     break;
                 case FunctionType.MusicController:
 
