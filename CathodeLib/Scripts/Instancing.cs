@@ -2,15 +2,12 @@ using CATHODE;
 using CATHODE.Enums;
 using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
-using CATHODE.ShaderTypes;
-using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace CathodeLib
@@ -858,21 +855,37 @@ namespace CathodeLib
             if (guid != ShortGuids.reference)
             {
                 //Get the value of the parameter, taking in to account anything applied by to the instance
-                if (typeof(T) == typeof(bool))
-                    return (T)(object)Bools.Get(guid);
-                else if (typeof(T) == typeof(int))
+                //Try to get from the most appropriate collection first, then convert if needed
+                if (Bools.Has(guid))
                 {
-                    if (Integers.Has(guid))
-                        return (T)(object)Integers.Get(guid);
-                    else
-                        return (T)(object)EnumIndexes.Get(guid);
+                    bool value = Bools.Get(guid);
+                    return GetValueAs<T>(value);
                 }
-                else if (typeof(T) == typeof(float))
-                    return (T)(object)Floats.Get(guid);
-                else if (typeof(T) == typeof(Vector3))
-                    return (T)(object)Vectors.Get(guid);
-                else if (typeof(T) == typeof(Transform))
-                    return (T)(object)Transforms.Get(guid);
+                else if (Integers.Has(guid))
+                {
+                    int value = Integers.Get(guid);
+                    return GetValueAs<T>(value);
+                }
+                else if (EnumIndexes.Has(guid))
+                {
+                    int value = EnumIndexes.Get(guid);
+                    return GetValueAs<T>(value);
+                }
+                else if (Floats.Has(guid))
+                {
+                    float value = Floats.Get(guid);
+                    return GetValueAs<T>(value);
+                }
+                else if (Vectors.Has(guid))
+                {
+                    Vector3 value = Vectors.Get(guid);
+                    return GetValueAs<T>(value);
+                }
+                else if (Transforms.Has(guid))
+                {
+                    Transform value = Transforms.Get(guid);
+                    return GetValueAs<T>(value);
+                }
             }
             else
             {
@@ -880,324 +893,258 @@ namespace CathodeLib
                 switch (type)
                 {
                     case FunctionType.Character:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)CalculateWorldTransform();
-                        break;
+                        {
+                            Transform result = CalculateWorldTransform();
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.Checkpoint:
-                        if (typeof(T) == typeof(string))
-                            return (T)(object)"";
-                        break;
+                        {
+                            string result = "";
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.CoverExclusionArea:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)CalculateWorldTransform();
-                        break;
+                        {
+                            Transform result = CalculateWorldTransform();
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.DeleteBlankPanel:
-                        if (typeof(T) == typeof(bool))
                         {
                             DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
-                            switch (door_mechanism)
-                            {
-                                case DOOR_MECHANISM.BLANK:
-                                    return (T)(object)false;
-                                default:
-                                    return (T)(object)true;
-                            }
+                            bool result = door_mechanism != DOOR_MECHANISM.BLANK;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.DeleteButtonDisk:
-                        if (typeof(T) == typeof(bool))
                         {
                             BUTTON_TYPE button_type = (BUTTON_TYPE)EnumIndexes.Get(ShortGuids.button_type);
-                            if (button_type != BUTTON_TYPE.DISK) return (T)(object)true;
-
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
-                            switch (door_mechanism)
+                            bool result = true;
+                            if (button_type == BUTTON_TYPE.DISK)
                             {
-                                case DOOR_MECHANISM.HIDDEN_BUTTON:
-                                case DOOR_MECHANISM.BUTTON:
-                                    return (T)(object)false;
-                                default:
-                                    return (T)(object)true;
+                                DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
+                                result = door_mechanism != DOOR_MECHANISM.HIDDEN_BUTTON && door_mechanism != DOOR_MECHANISM.BUTTON;
                             }
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.DeleteButtonKeys:
-                        if (typeof(T) == typeof(bool))
                         {
                             BUTTON_TYPE button_type = (BUTTON_TYPE)EnumIndexes.Get(ShortGuids.button_type);
-                            if (button_type != BUTTON_TYPE.KEYS) return (T)(object)true;
-
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
-                            switch (door_mechanism)
+                            bool result = true;
+                            if (button_type == BUTTON_TYPE.KEYS)
                             {
-                                case DOOR_MECHANISM.HIDDEN_BUTTON:
-                                case DOOR_MECHANISM.BUTTON:
-                                    return (T)(object)false;
-                                default:
-                                    return (T)(object)true;
+                                DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
+                                result = door_mechanism != DOOR_MECHANISM.HIDDEN_BUTTON && door_mechanism != DOOR_MECHANISM.BUTTON;
                             }
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.DeleteCuttingPanel:
-                        if (typeof(T) == typeof(bool))
                         {
                             DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
-                            switch (door_mechanism)
-                            {
-                                case DOOR_MECHANISM.HIDDEN_BUTTON:
-                                case DOOR_MECHANISM.HIDDEN_KEYPAD:
-                                case DOOR_MECHANISM.HIDDEN_HACKING:
-                                case DOOR_MECHANISM.HIDDEN_LEVER:
-                                    return (T)(object)false;
-                                default:
-                                    return (T)(object)true;
-                            }
+                            bool result = door_mechanism != DOOR_MECHANISM.HIDDEN_BUTTON &&
+                                         door_mechanism != DOOR_MECHANISM.HIDDEN_KEYPAD &&
+                                         door_mechanism != DOOR_MECHANISM.HIDDEN_HACKING &&
+                                         door_mechanism != DOOR_MECHANISM.HIDDEN_LEVER;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.DeleteHacking:
-                        if (typeof(T) == typeof(bool))
                         {
                             DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
-                            switch (door_mechanism)
-                            {
-                                case DOOR_MECHANISM.HACKING:
-                                case DOOR_MECHANISM.HIDDEN_HACKING:
-                                    return (T)(object)false;
-                                default:
-                                    return (T)(object)true;
-                            }
+                            bool result = door_mechanism != DOOR_MECHANISM.HACKING && door_mechanism != DOOR_MECHANISM.HIDDEN_HACKING;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.DeleteHousing:
-                        if (typeof(T) == typeof(bool))
                         {
-                            if (!Bools.Get(ShortGuids.is_door)) return (T)(object)true;
-
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
-                            switch (door_mechanism)
+                            if (!Bools.Get(ShortGuids.is_door))
                             {
-                                case DOOR_MECHANISM.HIDDEN_BUTTON:
-                                case DOOR_MECHANISM.HIDDEN_KEYPAD:
-                                case DOOR_MECHANISM.HIDDEN_HACKING:
-                                case DOOR_MECHANISM.HIDDEN_LEVER:
-                                case DOOR_MECHANISM.BUTTON:
-                                case DOOR_MECHANISM.KEYPAD:
-                                case DOOR_MECHANISM.HACKING:
-                                case DOOR_MECHANISM.LEVER:
-                                    return (T)(object)false;
-                                default:
-                                    return (T)(object)true;
+                                bool result = true;
+                                return GetValueAs<T>(result);
+                            }
+                            {
+                                DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
+                                bool result = door_mechanism != DOOR_MECHANISM.HIDDEN_BUTTON &&
+                                             door_mechanism != DOOR_MECHANISM.HIDDEN_KEYPAD &&
+                                             door_mechanism != DOOR_MECHANISM.HIDDEN_HACKING &&
+                                             door_mechanism != DOOR_MECHANISM.HIDDEN_LEVER &&
+                                             door_mechanism != DOOR_MECHANISM.BUTTON &&
+                                             door_mechanism != DOOR_MECHANISM.KEYPAD &&
+                                             door_mechanism != DOOR_MECHANISM.HACKING &&
+                                             door_mechanism != DOOR_MECHANISM.LEVER;
+                                return GetValueAs<T>(result);
                             }
                         }
-                        break;
                     case FunctionType.DeleteKeypad:
-                        if (typeof(T) == typeof(bool))
                         {
                             DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
-                            switch (door_mechanism)
-                            {
-                                case DOOR_MECHANISM.KEYPAD:
-                                case DOOR_MECHANISM.HIDDEN_KEYPAD:
-                                    return (T)(object)false;
-                                default:
-                                    return (T)(object)true;
-                            }
+                            bool result = door_mechanism != DOOR_MECHANISM.KEYPAD && door_mechanism != DOOR_MECHANISM.HIDDEN_KEYPAD;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.DeletePullLever:
-                        if (typeof(T) == typeof(bool))
                         {
                             LEVER_TYPE lever_type = (LEVER_TYPE)EnumIndexes.Get(ShortGuids.lever_type);
-                            if (lever_type != LEVER_TYPE.PULL) return (T)(object)true;
-
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
-                            switch (door_mechanism)
+                            bool result = true;
+                            if (lever_type == LEVER_TYPE.PULL)
                             {
-                                case DOOR_MECHANISM.HIDDEN_LEVER:
-                                case DOOR_MECHANISM.LEVER:
-                                    return (T)(object)false;
-                                default:
-                                    return (T)(object)true;
+                                DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
+                                result = door_mechanism != DOOR_MECHANISM.HIDDEN_LEVER && door_mechanism != DOOR_MECHANISM.LEVER;
                             }
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.DeleteRotateLever:
-                        if (typeof(T) == typeof(bool))
                         {
                             LEVER_TYPE lever_type = (LEVER_TYPE)EnumIndexes.Get(ShortGuids.lever_type);
-                            if (lever_type != LEVER_TYPE.ROTATE) return (T)(object)true;
-
-                            DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
-                            switch (door_mechanism)
+                            bool result = true;
+                            if (lever_type == LEVER_TYPE.ROTATE)
                             {
-                                case DOOR_MECHANISM.HIDDEN_LEVER:
-                                case DOOR_MECHANISM.LEVER:
-                                    return (T)(object)false;
-                                default:
-                                    return (T)(object)true;
+                                DOOR_MECHANISM door_mechanism = (DOOR_MECHANISM)EnumIndexes.Get(ShortGuids.door_mechanism);
+                                result = door_mechanism != DOOR_MECHANISM.HIDDEN_LEVER && door_mechanism != DOOR_MECHANISM.LEVER;
                             }
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.DoorStatus:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)0;
-                        break;
+                        {
+                            int result = 0;
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.FilterAnd:
-                        if (typeof(T) == typeof(bool))
                         {
                             List<InstancedEntity> filters = Bools.GetLinks(ShortGuids.filter);
+                            bool result = true;
                             for (int i = 0; i < filters.Count; i++)
                             {
                                 if (!filters[i].GetAs<bool>())
-                                    return (T)(object)false;
+                                {
+                                    result = false;
+                                    break;
+                                }
                             }
-                            return (T)(object)true;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.FilterNot:
-                        if (typeof(T) == typeof(bool))
                         {
                             List<InstancedEntity> filters = Bools.GetLinks(ShortGuids.filter);
-                            return (T)(object)(filters.Count == 0 ? true : filters[0].GetAs<bool>());
+                            bool result = filters.Count == 0 ? true : !filters[0].GetAs<bool>();
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.FilterOr:
-                        if (typeof(T) == typeof(bool))
                         {
                             List<InstancedEntity> filters = Bools.GetLinks(ShortGuids.filter);
+                            bool result = false;
                             for (int i = 0; i < filters.Count; i++)
                             {
                                 if (filters[i].GetAs<bool>())
-                                    return (T)(object)true;
+                                {
+                                    result = true;
+                                    break;
+                                }
                             }
-                            return (T)(object)false;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.FloatAbsolute:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)Math.Abs(Floats.Get(ShortGuids.Input));
-                        break;
+                        {
+                            float result = Math.Abs(Floats.Get(ShortGuids.Input));
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.FloatAdd:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)(Floats.Get(ShortGuids.LHS) + Floats.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            float result = Floats.Get(ShortGuids.LHS) + Floats.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.FloatAdd_All:
-                        if (typeof(T) == typeof(float))
                         {
                             List<InstancedEntity> numbers = Floats.GetLinks(ShortGuids.Numbers);
                             float sum = 0;
                             for (int i = 0; i < numbers.Count; i++)
                                 sum += numbers[i].GetAs<float>();
-                            return (T)(object)sum;
+                            return GetValueAs<T>(sum);
                         }
-                        break;
                     case FunctionType.FloatClamp:
-                        if (typeof(T) == typeof(float))
                         {
                             float val = Floats.Get(ShortGuids.Value);
                             float min = Floats.Get(ShortGuids.Min);
                             float max = Floats.Get(ShortGuids.Max);
                             if (val < min) val = min;
                             if (val > max) val = max;
-                            return (T)(object)val;
+                            return GetValueAs<T>(val);
                         }
-                        break;
                     case FunctionType.FloatClampMultiply:
-                        if (typeof(T) == typeof(float))
                         {
                             float val = Floats.Get(ShortGuids.LHS);
                             float min = Floats.Get(ShortGuids.Min);
                             float max = Floats.Get(ShortGuids.Max) * Floats.Get(ShortGuids.RHS);
                             if (val < min) val = min;
                             if (val > max) val = max;
-                            return (T)(object)val;
+                            return GetValueAs<T>(val);
                         }
-                        break;
                     case FunctionType.FloatDivide:
-                        if (typeof(T) == typeof(float))
                         {
                             float rhs = Floats.Get(ShortGuids.RHS);
-                            if (Math.Abs(rhs) < 0.0001f) return (T)(object)0.0f;
-                            return (T)(object)(Floats.Get(ShortGuids.LHS) / rhs);
+                            float result = Math.Abs(rhs) < 0.0001f ? 0.0f : (Floats.Get(ShortGuids.LHS) / rhs);
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.FloatEquals:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)(Math.Abs(Floats.Get(ShortGuids.LHS) - Floats.Get(ShortGuids.RHS)) < Math.Abs(Floats.Get(ShortGuids.Threshold)));
-                        break;
+                        {
+                            bool result = Math.Abs(Floats.Get(ShortGuids.LHS) - Floats.Get(ShortGuids.RHS)) < Math.Abs(Floats.Get(ShortGuids.Threshold));
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.FloatGetLinearProportion:
-                        if (typeof(T) == typeof(float))
                         {
                             float min = Floats.Get(ShortGuids.Min);
                             float max = Floats.Get(ShortGuids.Max);
                             float mid = Floats.Get(ShortGuids.Input);
-                            return (T)(object)((mid - min) / (max - min));
+                            float result = (mid - min) / (max - min);
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.FloatGreaterThan:
-                        if (typeof(T) == typeof(bool))
                         {
                             float lhs = Floats.Get(ShortGuids.LHS);
                             float rhs = Floats.Get(ShortGuids.RHS);
                             float threshold = Floats.Get(ShortGuids.Threshold);
-                            if (Math.Abs(lhs - rhs) < threshold) return (T)(object)false;
-                            return (T)(object)(lhs > rhs);
+                            bool result = Math.Abs(lhs - rhs) >= threshold && lhs > rhs;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.FloatGreaterThanOrEqual:
-                        if (typeof(T) == typeof(bool))
                         {
                             float lhs = Floats.Get(ShortGuids.LHS);
                             float rhs = Floats.Get(ShortGuids.RHS);
                             float threshold = Floats.Get(ShortGuids.Threshold);
-                            if (Math.Abs(lhs - rhs) < threshold) return (T)(object)true;
-                            return (T)(object)(lhs > rhs);
+                            bool result = Math.Abs(lhs - rhs) < threshold || lhs > rhs;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.FloatLessThan:
-                        if (typeof(T) == typeof(bool))
                         {
                             float lhs = Floats.Get(ShortGuids.LHS);
                             float rhs = Floats.Get(ShortGuids.RHS);
                             float threshold = Floats.Get(ShortGuids.Threshold);
-                            if (Math.Abs(lhs - rhs) < threshold) return (T)(object)false;
-                            return (T)(object)(lhs < rhs);
+                            bool result = Math.Abs(lhs - rhs) >= threshold && lhs < rhs;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.FloatLessThanOrEqual:
-                        if (typeof(T) == typeof(bool))
                         {
                             float lhs = Floats.Get(ShortGuids.LHS);
                             float rhs = Floats.Get(ShortGuids.RHS);
                             float threshold = Floats.Get(ShortGuids.Threshold);
-                            if (Math.Abs(lhs - rhs) < threshold) return (T)(object)true;
-                            return (T)(object)(lhs < rhs);
+                            bool result = Math.Abs(lhs - rhs) < threshold || lhs < rhs;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.FloatLinearInterpolateSpeed:
                     case FunctionType.FloatLinearInterpolateTimed:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)Floats.Get(ShortGuids.Initial_Value);
-                        break;
+                        {
+                            float result = Floats.Get(ShortGuids.Initial_Value);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.FloatLinearProportion:
-                        if (typeof(T) == typeof(float))
                         {
                             float min = Floats.Get(ShortGuids.Initial_Value);
                             float max = Floats.Get(ShortGuids.Target_Value);
-                            return (T)(object)(min + (max - min) * Floats.Get(ShortGuids.Proportion));
+                            float result = min + (max - min) * Floats.Get(ShortGuids.Proportion);
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.FloatMax:
-                        if (typeof(T) == typeof(float))
                         {
                             float lhs = Floats.Get(ShortGuids.LHS);
                             float rhs = Floats.Get(ShortGuids.RHS);
-                            if (lhs > rhs) return (T)(object)lhs;
-                            return (T)(object)rhs;
+                            float result = lhs > rhs ? lhs : rhs;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.FloatMax_All:
-                        if (typeof(T) == typeof(float))
                         {
                             List<InstancedEntity> numbers = Floats.GetLinks(ShortGuids.Numbers);
                             float max = 0;
@@ -1206,20 +1153,16 @@ namespace CathodeLib
                                 float number = numbers[i].GetAs<float>();
                                 if (max < number) max = number;
                             }
-                            return (T)(object)max;
+                            return GetValueAs<T>(max);
                         }
-                        break;
                     case FunctionType.FloatMin:
-                        if (typeof(T) == typeof(float))
                         {
                             float lhs = Floats.Get(ShortGuids.LHS);
                             float rhs = Floats.Get(ShortGuids.RHS);
-                            if (lhs < rhs) return (T)(object)lhs;
-                            return (T)(object)rhs;
+                            float result = lhs < rhs ? lhs : rhs;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.FloatMin_All:
-                        if (typeof(T) == typeof(float))
                         {
                             List<InstancedEntity> numbers = Floats.GetLinks(ShortGuids.Numbers);
                             float min = 0;
@@ -1232,11 +1175,9 @@ namespace CathodeLib
                                     if (number < min) min = number;
                                 }
                             }
-                            return (T)(object)min;
+                            return GetValueAs<T>(min);
                         }
-                        break;
                     case FunctionType.FloatModulate:
-                        if (typeof(T) == typeof(float))
                         {
                             float PI = 3.1415926535897932333797165867879296635503123989707390137482903185973555f;
 
@@ -1267,19 +1208,20 @@ namespace CathodeLib
                                     else output = (output - 1.0f) * 4.0f;
                                     break;
                             }
-                            return (T)(object)(offset + amplitude * output);
+                            float result = offset + amplitude * output;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.FloatModulateRandom:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)0.0f;
-                        break;
+                        {
+                            float result = 0.0f;
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.FloatMultiply:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)(Floats.Get(ShortGuids.LHS) * Floats.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            float result = Floats.Get(ShortGuids.LHS) * Floats.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.FloatMultiply_All:
-                        if (typeof(T) == typeof(float))
                         {
                             List<InstancedEntity> numbers = Floats.GetLinks(ShortGuids.Numbers);
                             float sum = 0;
@@ -1289,137 +1231,153 @@ namespace CathodeLib
                                 for (int i = 1; i < numbers.Count; i++)
                                     sum *= numbers[i].GetAs<float>();
                             }
-                            return (T)(object)sum;
+                            return GetValueAs<T>(sum);
                         }
-                        break;
                     case FunctionType.FloatMultiplyClamp:
-                        if (typeof(T) == typeof(float))
                         {
                             float val = Floats.Get(ShortGuids.LHS) * Floats.Get(ShortGuids.RHS);
                             float min = Floats.Get(ShortGuids.Min);
                             float max = Floats.Get(ShortGuids.Max);
                             if (val < min) val = min;
                             if (val > max) val = max;
-                            return (T)(object)val;
+                            return GetValueAs<T>(val);
                         }
-                        break;
                     case FunctionType.FloatNotEqual:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)!(Math.Abs(Floats.Get(ShortGuids.LHS) - Floats.Get(ShortGuids.RHS)) < Math.Abs(Floats.Get(ShortGuids.Threshold)));
-                        break;
+                        {
+                            bool result = !(Math.Abs(Floats.Get(ShortGuids.LHS) - Floats.Get(ShortGuids.RHS)) < Math.Abs(Floats.Get(ShortGuids.Threshold)));
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.FloatReciprocal:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)(1.0f / Floats.Get(ShortGuids.Input));
-                        break;
+                        {
+                            float result = 1.0f / Floats.Get(ShortGuids.Input);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.FloatRemainder:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)(Floats.Get(ShortGuids.LHS) % Floats.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            float result = Floats.Get(ShortGuids.LHS) % Floats.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.FloatSqrt:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)(float)Math.Sqrt(Math.Abs(Floats.Get(ShortGuids.Input)));
-                        break;
+                        {
+                            float result = (float)Math.Sqrt(Math.Abs(Floats.Get(ShortGuids.Input)));
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.FloatSubtract:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)(Floats.Get(ShortGuids.LHS) - Floats.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            float result = Floats.Get(ShortGuids.LHS) - Floats.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.GetGatingToolLevel:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)0;
-                        break;
+                        {
+                            int result = 0;
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.GetPlayerHasGatingTool:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
+                        {
+                            bool result = false;
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.GetPlayerHasKeycard:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
+                        {
+                            bool result = false;
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.GetRotation:
-                        if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Transforms.Get(ShortGuids.Input).Rotation;
-                        break;
+                        {
+                            Vector3 result = Transforms.Get(ShortGuids.Input).Rotation;
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.GetTranslation:
-                        if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Transforms.Get(ShortGuids.Input).Position;
-                        break;
+                        {
+                            Vector3 result = Transforms.Get(ShortGuids.Input).Position;
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.GetX:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)Vectors.Get(ShortGuids.Input).X;
-                        break;
+                        {
+                            float result = Vectors.Get(ShortGuids.Input).X;
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.GetY:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)Vectors.Get(ShortGuids.Input).Y;
-                        break;
+                        {
+                            float result = Vectors.Get(ShortGuids.Input).Y;
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.GetZ:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)Vectors.Get(ShortGuids.Input).Z;
-                        break;
+                        {
+                            float result = Vectors.Get(ShortGuids.Input).Z;
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.HasAccessAtDifficulty:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)false;
-                        break;
+                        {
+                            bool result = false;
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.IntegerAbsolute:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)Math.Abs(Integers.Get(ShortGuids.Input));
-                        break;
+                        {
+                            int result = Math.Abs(Integers.Get(ShortGuids.Input));
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.IntegerAdd:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)(Integers.Get(ShortGuids.LHS) + Integers.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            int result = Integers.Get(ShortGuids.LHS) + Integers.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.IntegerAdd_All:
-                        if (typeof(T) == typeof(int))
                         {
                             List<InstancedEntity> numbers = Integers.GetLinks(ShortGuids.Numbers);
                             int sum = 0;
                             for (int i = 0; i < numbers.Count; i++)
                                 sum += numbers[i].GetAs<int>();
-                            return (T)(object)sum;
+                            return GetValueAs<T>(sum);
                         }
-                        break;
                     case FunctionType.IntegerAnd:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)(Integers.Get(ShortGuids.LHS) & Integers.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            int result = Integers.Get(ShortGuids.LHS) & Integers.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.IntegerCompliment:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)~Integers.Get(ShortGuids.Input);
-                        break;
+                        {
+                            int result = ~Integers.Get(ShortGuids.Input);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.IntegerDivide:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)(Integers.Get(ShortGuids.LHS) / Integers.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            int result = Integers.Get(ShortGuids.LHS) / Integers.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.IntegerEquals:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)(Integers.Get(ShortGuids.LHS) == Integers.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            bool result = Integers.Get(ShortGuids.LHS) == Integers.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.IntegerGreaterThan:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)(Integers.Get(ShortGuids.LHS) > Integers.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            bool result = Integers.Get(ShortGuids.LHS) > Integers.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.IntegerGreaterThanOrEqual:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)(Integers.Get(ShortGuids.LHS) >= Integers.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            bool result = Integers.Get(ShortGuids.LHS) >= Integers.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.IntegerLessThan:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)(Integers.Get(ShortGuids.LHS) < Integers.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            bool result = Integers.Get(ShortGuids.LHS) < Integers.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.IntegerLessThanOrEqual:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)(Integers.Get(ShortGuids.LHS) <= Integers.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            bool result = Integers.Get(ShortGuids.LHS) <= Integers.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.IntegerMax:
-                        if (typeof(T) == typeof(int))
                         {
                             int lhs = Integers.Get(ShortGuids.LHS);
                             int rhs = Integers.Get(ShortGuids.RHS);
-                            if (lhs > rhs) return (T)(object)lhs;
-                            return (T)(object)rhs;
+                            int result = lhs > rhs ? lhs : rhs;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.IntegerMax_All:
-                        if (typeof(T) == typeof(int))
                         {
                             List<InstancedEntity> numbers = Integers.GetLinks(ShortGuids.Numbers);
                             int max = 0;
@@ -1428,20 +1386,16 @@ namespace CathodeLib
                                 int number = numbers[i].GetAs<int>();
                                 if (max < number) max = number;
                             }
-                            return (T)(object)max;
+                            return GetValueAs<T>(max);
                         }
-                        break;
                     case FunctionType.IntegerMin:
-                        if (typeof(T) == typeof(int))
                         {
                             int lhs = Integers.Get(ShortGuids.LHS);
                             int rhs = Integers.Get(ShortGuids.RHS);
-                            if (lhs < rhs) return (T)(object)lhs;
-                            return (T)(object)rhs;
+                            int result = lhs < rhs ? lhs : rhs;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.IntegerMin_All:
-                        if (typeof(T) == typeof(int))
                         {
                             List<InstancedEntity> numbers = Integers.GetLinks(ShortGuids.Numbers);
                             int min = 0;
@@ -1454,15 +1408,14 @@ namespace CathodeLib
                                     if (number < min) min = number;
                                 }
                             }
-                            return (T)(object)min;
+                            return GetValueAs<T>(min);
                         }
-                        break;
                     case FunctionType.IntegerMultiply:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)(Integers.Get(ShortGuids.LHS) * Integers.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            int result = Integers.Get(ShortGuids.LHS) * Integers.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.IntegerMultiply_All:
-                        if (typeof(T) == typeof(int))
                         {
                             List<InstancedEntity> numbers = Integers.GetLinks(ShortGuids.Numbers);
                             int sum = 0;
@@ -1472,145 +1425,170 @@ namespace CathodeLib
                                 for (int i = 1; i < numbers.Count; i++)
                                     sum *= numbers[i].GetAs<int>();
                             }
-                            return (T)(object)sum;
+                            return GetValueAs<T>(sum);
                         }
-                        break;
                     case FunctionType.IntegerNotEqual:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)(Integers.Get(ShortGuids.LHS) != Integers.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            bool result = Integers.Get(ShortGuids.LHS) != Integers.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.IntegerOr:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)(Integers.Get(ShortGuids.LHS) | Integers.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            int result = Integers.Get(ShortGuids.LHS) | Integers.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.IntegerRemainder:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)(Integers.Get(ShortGuids.LHS) % Integers.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            int result = Integers.Get(ShortGuids.LHS) % Integers.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.IntegerSubtract:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)(Integers.Get(ShortGuids.LHS) - Integers.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            int result = Integers.Get(ShortGuids.LHS) - Integers.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.JOB_SpottingPosition:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)CalculateWorldTransform();
-                        break;
+                        {
+                            Transform result = CalculateWorldTransform();
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.LogicGate:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)Bools.Get(ShortGuids.allow);
-                        break;
+                        {
+                            bool result = Bools.Get(ShortGuids.allow);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.LogicGateAnd:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)(Bools.Get(ShortGuids.LHS) && Bools.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            bool result = Bools.Get(ShortGuids.LHS) && Bools.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.LogicGateEquals:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)(Bools.Get(ShortGuids.LHS) == Bools.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            bool result = Bools.Get(ShortGuids.LHS) == Bools.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.LogicGateNotEqual:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)(Bools.Get(ShortGuids.LHS) != Bools.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            bool result = Bools.Get(ShortGuids.LHS) != Bools.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.LogicGateOr:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)(Bools.Get(ShortGuids.LHS) || Bools.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            bool result = Bools.Get(ShortGuids.LHS) || Bools.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.LogicNot:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)!Bools.Get(ShortGuids.Input);
-                        break;
+                        {
+                            bool result = !Bools.Get(ShortGuids.Input);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.LogicOnce:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)true;
-                        break;
+                        {
+                            bool result = true;
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.LogicSwitch:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)Bools.Get(ShortGuids.initial_value);
-                        break;
+                        {
+                            bool result = Bools.Get(ShortGuids.initial_value);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.NavMeshArea:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)CalculateWorldTransform();
-                        break;
+                        {
+                            Transform result = CalculateWorldTransform();
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.NavMeshBarrier:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)CalculateWorldTransform();
-                        break;
+                        {
+                            Transform result = CalculateWorldTransform();
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.NavMeshExclusionArea:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)CalculateWorldTransform();
-                        break;
+                        {
+                            Transform result = CalculateWorldTransform();
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.NavMeshReachabilitySeedPoint:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)CalculateWorldTransform();
-                        break;
+                        {
+                            Transform result = CalculateWorldTransform();
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.NavMeshWalkablePlatform:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)CalculateWorldTransform();
-                        break;
+                        {
+                            Transform result = CalculateWorldTransform();
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.NonPersistentBool:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)Bools.Get(ShortGuids.initial_value);
-                        break;
+                        {
+                            bool result = Bools.Get(ShortGuids.initial_value);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.NonPersistentInt:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)Integers.Get(ShortGuids.initial_value);
-                        break;
+                        {
+                            int result = Integers.Get(ShortGuids.initial_value);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.PathfindingAlienBackstageNode:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)CalculateWorldTransform();
-                        break;
+                        {
+                            Transform result = CalculateWorldTransform();
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.PathfindingManualNode:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)CalculateWorldTransform();
-                        break;
+                        {
+                            Transform result = CalculateWorldTransform();
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.PathfindingTeleportNode:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)CalculateWorldTransform();
-                        break;
+                        {
+                            Transform result = CalculateWorldTransform();
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.PathfindingWaitNode:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)CalculateWorldTransform();
-                        break;
+                        {
+                            Transform result = CalculateWorldTransform();
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.PlatformConstantBool:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)Bools.Get(ShortGuids.NextGen);
-                        break;
+                        {
+                            bool result = Bools.Get(ShortGuids.NextGen);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.PlatformConstantFloat:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)Floats.Get(ShortGuids.NextGen);
-                        break;
+                        {
+                            float result = Floats.Get(ShortGuids.NextGen);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.PlatformConstantInt:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)Integers.Get(ShortGuids.NextGen);
-                        break;
+                        {
+                            int result = Integers.Get(ShortGuids.NextGen);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.PositionDistance:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)(float)0;
-                        break;
+                        {
+                            float result = 0.0f;
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.RandomBool:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)((float)new Random().NextDouble() < 0.5f);
-                        break;
+                        {
+                            bool result = (float)new Random().NextDouble() < 0.5f;
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.RandomFloat:
-                        if (typeof(T) == typeof(float))
                         {
                             float min = Floats.Get(ShortGuids.Min);
                             float range = Floats.Get(ShortGuids.Max) - min;
                             float rand = (float)new Random().NextDouble() * range;
-                            return (T)(object)(rand + min);
+                            float result = rand + min;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.RandomInt:
-                        if (typeof(T) == typeof(int))
                         {
                             int min = Integers.Get(ShortGuids.Min);
                             int range = Integers.Get(ShortGuids.Max) - min;
                             int rand = new Random().Next(range);
-                            return (T)(object)(rand + min);
+                            int result = rand + min;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.RandomVector:
-                        if (typeof(T) == typeof(Vector3))
                         {
                             float minX = Integers.Get(ShortGuids.MinX);
                             float rangeX = Integers.Get(ShortGuids.MaxX) - minX;
@@ -1630,101 +1608,120 @@ namespace CathodeLib
                                     result = new Vector3(0, 1, 0);
                                 result /= length;
                             }
-                            return (T)(object)result;
+                            return GetValueAs<T>(result);
                         }
-                        break;
                     case FunctionType.RegisterCharacterModel:
                         //if (typeof(T) == typeof(string))
                         //    return (T)(object)Strings.Get("display_model");
                         break;
                     case FunctionType.SetBool:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)Bools.Get(ShortGuids.Input);
-                        break;
+                        {
+                            bool result = Bools.Get(ShortGuids.Input);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.SetColour:
-                        if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Vectors.Get(ShortGuids.Colour);
-                        break;
+                        {
+                            Vector3 result = Vectors.Get(ShortGuids.Colour);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.SetFloat:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)Floats.Get(ShortGuids.Input);
-                        break;
+                        {
+                            float result = Floats.Get(ShortGuids.Input);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.SetInteger:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)Integers.Get(ShortGuids.Input);
-                        break;
+                        {
+                            int result = Integers.Get(ShortGuids.Input);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.SetString:
                         //if (typeof(T) == typeof(string))
                         //    return (T)(object)Strings.Get("initial_value");
                         break;
                     case FunctionType.SetVector:
-                        if (typeof(T) == typeof(Vector3))
-                            return (T)(object)new Vector3(Floats.Get(ShortGuids.x), Floats.Get(ShortGuids.y), Floats.Get(ShortGuids.z));
-                        break;
+                        {
+                            Vector3 result = new Vector3(Floats.Get(ShortGuids.x), Floats.Get(ShortGuids.y), Floats.Get(ShortGuids.z));
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.SetVector2:
-                        if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Vectors.Get(ShortGuids.Input);
-                        break;
+                        {
+                            Vector3 result = Vectors.Get(ShortGuids.Input);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.SoundObject:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)new Transform();
-                        break;
+                        {
+                            Transform result = new Transform();
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.SpottingExclusionArea:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)CalculateWorldTransform();
-                        break;
+                        {
+                            Transform result = CalculateWorldTransform();
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.TriggerCameraVolume:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)0.0f;
-                        break;
+                        {
+                            float result = 0.0f;
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.VariableBool:
-                        if (typeof(T) == typeof(bool))
-                            return (T)(object)Bools.Get(ShortGuids.initial_value);
-                        break;
+                        {
+                            bool result = Bools.Get(ShortGuids.initial_value);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.VariableColour:
-                        if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Vectors.Get(ShortGuids.initial_colour);
-                        break;
+                        {
+                            Vector3 result = Vectors.Get(ShortGuids.initial_colour);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.VariableEnum:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)EnumIndexes.Get(ShortGuids.initial_value);
-                        break;
+                        {
+                            int result = EnumIndexes.Get(ShortGuids.initial_value);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.VariableFlashScreenColour:
-                        if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Vectors.Get(ShortGuids.initial_colour);
-                        break;
+                        {
+                            Vector3 result = Vectors.Get(ShortGuids.initial_colour);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.VariableFloat:
-                        if (typeof(T) == typeof(float))
-                            return (T)(object)Floats.Get(ShortGuids.initial_value);
-                        break;
+                        {
+                            float result = Floats.Get(ShortGuids.initial_value);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.VariableInt:
-                        if (typeof(T) == typeof(int))
-                            return (T)(object)Integers.Get(ShortGuids.initial_value);
-                        break;
+                        {
+                            int result = Integers.Get(ShortGuids.initial_value);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.VariablePosition:
-                        if (typeof(T) == typeof(Transform))
-                            return (T)(object)new Transform();
-                        break;
+                        {
+                            Transform result = new Transform();
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.VariableString:
                         //if (typeof(T) == typeof(string))
                         //    return (T)(object)Strings.Get("initial_value");
                         break;
                     case FunctionType.VariableVector:
-                        if (typeof(T) == typeof(Vector3))
-                            return (T)(object)new Vector3(Floats.Get(ShortGuids.initial_x), Floats.Get(ShortGuids.initial_y), Floats.Get(ShortGuids.initial_z));
-                        break;
+                        {
+                            Vector3 result = new Vector3(Floats.Get(ShortGuids.initial_x), Floats.Get(ShortGuids.initial_y), Floats.Get(ShortGuids.initial_z));
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.VariableVector2:
-                        if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Vectors.Get(ShortGuids.initial_value);
-                        break;
+                        {
+                            Vector3 result = Vectors.Get(ShortGuids.initial_value);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.VectorLinearInterpolateTimed:
-                        if (typeof(T) == typeof(Vector3))
-                            return (T)(object)Vectors.Get(ShortGuids.Initial_Value);
-                        break;
+                        {
+                            Vector3 result = Vectors.Get(ShortGuids.Initial_Value);
+                            return GetValueAs<T>(result);
+                        }
                     case FunctionType.VectorScale:
-                        if (typeof(T) == typeof(Vector3))
-                            return (T)(object)(Vectors.Get(ShortGuids.LHS) * Vectors.Get(ShortGuids.RHS));
-                        break;
+                        {
+                            Vector3 result = Vectors.Get(ShortGuids.LHS) * Vectors.Get(ShortGuids.RHS);
+                            return GetValueAs<T>(result);
+                        }
                 }
             }
 
@@ -1757,6 +1754,99 @@ namespace CathodeLib
                     throw new Exception("Unhandled");
                 }
             }
+        }
+
+        private T GetValueAs<T>(object value)
+        {
+            if (value == null)
+            {
+                if (typeof(T) == typeof(bool))
+                    return (T)(object)false;
+                else if (typeof(T) == typeof(int))
+                    return (T)(object)0;
+                else if (typeof(T) == typeof(float))
+                    return (T)(object)0.0f;
+                else if (typeof(T) == typeof(Vector3))
+                    return (T)(object)new Vector3(0, 0, 0);
+                else if (typeof(T) == typeof(Transform))
+                    return (T)(object)new Transform();
+                else if (typeof(T) == typeof(string))
+                    return (T)(object)"";
+                else
+                    throw new Exception("Unhandled type conversion");
+            }
+
+            Type valueType = value.GetType();
+
+            if (typeof(T) == valueType)
+            {
+                return (T)value;
+            }
+            else if (valueType == typeof(bool))
+            {
+                bool b = (bool)value;
+                if (typeof(T) == typeof(int))
+                    return (T)(object)(b ? 1 : 0);
+                if (typeof(T) == typeof(float))
+                    return (T)(object)(b ? 1.0f : 0.0f);
+                if (typeof(T) == typeof(string))
+                    return (T)(object)(b ? "TRUE" : "FALSE");
+            }
+            else if (valueType == typeof(int))
+            {
+                int i = (int)value;
+                if (typeof(T) == typeof(bool))
+                    return (T)(object)(i != 0);
+                if (typeof(T) == typeof(float))
+                    return (T)(object)(float)i;
+                if (typeof(T) == typeof(string))
+                    return (T)(object)i.ToString();
+            }
+            else if (valueType == typeof(float))
+            {
+                float f = (float)value;
+                if (typeof(T) == typeof(bool))
+                    return (T)(object)(f != 0.0f);
+                if (typeof(T) == typeof(int))
+                    return (T)(object)(int)f;
+                if (typeof(T) == typeof(string))
+                    return (T)(object)f.ToString();
+            }
+            else if (valueType == typeof(string))
+            {
+                string s = (string)value;
+                if (typeof(T) == typeof(bool))
+                {
+                    bool result = s.ToUpper() == "TRUE";
+                    return (T)(object)result;
+                }
+                if (typeof(T) == typeof(int))
+                {
+                    if (int.TryParse(s, out int result))
+                        return (T)(object)result;
+                    return (T)(object)0;
+                }
+                if (typeof(T) == typeof(float))
+                {
+                    if (float.TryParse(s, out float result))
+                        return (T)(object)result;
+                    return (T)(object)0.0f;
+                }
+            }
+            else if (valueType == typeof(Vector3))
+            {
+                Vector3 v = (Vector3)value;
+                if (typeof(T) == typeof(Transform))
+                    return (T)(object)new Transform() { Position = v };
+            }
+            else if (valueType == typeof(Transform))
+            {
+                Transform t = (Transform)value;
+                if (typeof(T) == typeof(Vector3))
+                    return (T)(object)t.Position;
+            }
+
+            return (T)value;
         }
 
         #region Equality Checks
