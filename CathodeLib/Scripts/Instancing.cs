@@ -2057,7 +2057,7 @@ namespace CathodeLib
                         continue;
 
                     bool thisIsShared = entity.Bools.Get(ShortGuids.is_shared);
-                    if (isShared || thisIsShared)
+                    if (thisIsShared)
                     {
                         if (_sharedComposites.Contains(entity.ChildCompositeInstance.Composite.shortGUID))
                             continue;
