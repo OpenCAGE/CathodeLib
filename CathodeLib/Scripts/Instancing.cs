@@ -1988,6 +1988,7 @@ namespace CathodeLib
         private readonly object _collisionMapsLock = new object();
 
         private List<ShortGuid> _sharedComposites = new List<ShortGuid>();
+        private ShortGuid _globalGUID;
 
         public Instancing(Level level)
         {
@@ -2001,7 +2002,8 @@ namespace CathodeLib
                 Composite = _level.Commands.EntryPoints[0],
                 InstanceID = ShortGuid.InitialiserBase
             };
-            GenerateInstances(_level.Commands.EntryPoints[0], new EntityPath(), Root, null, null, new List<InstancedAlias>());
+            _globalGUID = _level.Commands.EntryPoints[1].shortGUID;
+            GenerateInstances(Root.Composite, new EntityPath(), Root, null, null, new List<InstancedAlias>());
         }
         public void ProcessInstances()
         {
@@ -2133,6 +2135,9 @@ namespace CathodeLib
 
         private void ProcessInstances(InstancedComposite composite, bool isTemplate, bool isShared)
         {
+            if (composite.Composite.shortGUID == _globalGUID)
+                return;
+
             var entitiesToProcess = composite.Entities.Where(e => e.Entity.variant == EntityVariant.FUNCTION && ((FunctionEntity)e.Entity).function.IsFunctionType).ToList();
             Parallel.ForEach(entitiesToProcess, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, entity =>
             {
@@ -2145,6 +2150,9 @@ namespace CathodeLib
                 {
                     if (entity.Bools.Get(ShortGuids.deleted))
                         continue;
+
+                    if (entity.Bools.Has(ShortGuids.delete_me) && entity.Bools.Get(ShortGuids.delete_me))
+                        return;
 
                     bool thisIsShared = entity.Bools.Get(ShortGuids.is_shared);
                     if (thisIsShared)
@@ -2166,6 +2174,12 @@ namespace CathodeLib
 
             FunctionEntity function = (FunctionEntity)entity.Entity;
             if (!function.function.IsFunctionType)
+                return;
+
+            if (entity.Bools.Has(ShortGuids.deleted) && entity.Bools.Get(ShortGuids.deleted))
+                return;
+
+            if (entity.Bools.Has(ShortGuids.delete_me) && entity.Bools.Get(ShortGuids.delete_me))
                 return;
 
             //Handle resources on entities
@@ -2254,8 +2268,13 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.CollisionBarrier:
-                    //if (!isTemplate)
-                    //    AddResourceEntry(entity);
+                    if (!isTemplate && entity.Bools.Get(ShortGuids.static_collision))
+                    {
+                        if (function.GetResource(ResourceType.COLLISION_MAPPING) != null) // note - we should add if the resource exists, even if it doesn't map to a valid collision mapping entry... (wot)
+                        {
+                            AddResourceEntry(entity, "", true);
+                        }
+                    }
                     break;
                 case FunctionType.ColourCorrectionTransition:
 
