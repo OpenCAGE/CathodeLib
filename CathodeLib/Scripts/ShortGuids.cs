@@ -1,4 +1,4 @@
-﻿using CATHODE.Scripting;
+using CATHODE.Scripting;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -53,5 +53,8 @@ namespace CathodeLib
         public static readonly ShortGuid deleted = ShortGuidUtils.Generate("deleted");
         public static readonly ShortGuid resource = ShortGuidUtils.Generate("resource");
         public static readonly ShortGuid start_on_reset = ShortGuidUtils.Generate("start_on_reset");
+        public static readonly ShortGuid is_shared = ShortGuidUtils.Generate("is_shared");
+        public static readonly ShortGuid static_collision = ShortGuidUtils.Generate("static_collision");
+        public static readonly ShortGuid delete_me = ShortGuidUtils.Generate("delete_me");
     }
 }
