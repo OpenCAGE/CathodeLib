@@ -41,7 +41,7 @@ namespace CATHODE
                 {
                     Resource resource = new Resource();
                     resource.composite_instance_id = Utilities.Consume<ShortGuid>(reader);
-                    resource.resource_id = Utilities.Consume<ShortGuid>(reader); //this is the id that's used in commands.pak, frequently translates to Door/AnimatedModel/Light/DYNAMIC_PHYSICS_SYSTEM
+                    resource.resource_id = Utilities.Consume<ShortGuid>(reader); 
                     int index = reader.ReadInt32();
                     entries[index] = resource;
                 }
@@ -53,7 +53,7 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            List<Resource> orderedEntries = Entries.OrderBy(o => o.composite_instance_id).ThenBy(o => o.resource_id).ToList();
+            List<Resource> orderedEntries = Entries.OrderBy(o => o.composite_instance_id.AsUInt32).ThenBy(o => o.resource_id.AsUInt32).ToList();
 
             byte[][] entryBuffers = new byte[orderedEntries.Count][];
             Parallel.For(0, orderedEntries.Count, i =>
@@ -71,7 +71,7 @@ namespace CATHODE
                     writer.Write(entryBuffers[i]);
             }
             _writeList.Clear();
-            _writeList.AddRange(Entries);
+            _writeList.AddRange(orderedEntries);
             return true;
         }
 
