@@ -2180,59 +2180,6 @@ namespace CathodeLib
             if (entity.Bools.Has(ShortGuids.delete_me) && entity.Bools.Get(ShortGuids.delete_me))
                 return;
 
-            //Handle resources on entities
-            {
-                ResourceReference physicsSystem = function.GetResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
-                if (physicsSystem != null && physicsSystem.PhysicsSystemIndex != -1)
-                {
-                    (Vector3 position, Quaternion rotation) = entity.CalculateWorldPositionRotation();
-                    lock (_physicsMapsLock)
-                    {
-                        _level.PhysicsMaps.Entries.Add(new PhysicsMaps.DYNAMIC_PHYSICS_SYSTEM()
-                        {
-                            physics_system_index = physicsSystem.PhysicsSystemIndex,
-                            composite_instance_id = entity.ThisCompositeInstance.InstanceID,
-                            entity = new EntityHandle()
-                            {
-                                entity_id = entity.ParentCompositeInstanceEntity.Entity.shortGUID,
-                                composite_instance_id = entity.ParentCompositeInstance.InstanceID
-                            },
-                            Position = position,
-                            Rotation = rotation
-                        });
-                    }
-                    lock (_resourcesLock)
-                    {
-                        _level.Resources.AddUniqueResource(entity.ThisCompositeInstance.InstanceID, ShortGuids.DYNAMIC_PHYSICS_SYSTEM);
-                    }
-                }
-
-                ResourceReference collisionMapping = function.GetResource(ResourceType.COLLISION_MAPPING, true);
-                if (collisionMapping?.CollisionMapping != null)
-                {
-                    CollisionMaps.COLLISION_MAPPING newMap = collisionMapping.CollisionMapping.Copy();
-                    newMap.Entity = new EntityHandle()
-                    {
-                        composite_instance_id = entity.ThisCompositeInstance.InstanceID,
-                        entity_id = entity.Entity.shortGUID
-                    };
-                    lock (_collisionMapsLock)
-                    {
-                        _level.CollisionMaps.Entries.Add(newMap);
-                    }
-                    lock (_resourcesLock)
-                    {
-                        if (collisionMapping.CollisionMapping.ResourceGUID != entity.Entity.shortGUID)
-                        {
-                            string gsdfsdf = "";
-                        }
-
-                        //AddResourceEntry(entity);
-                    }
-                }
-            }
-            
-            //Handle entity specific logic
             switch (function.function.AsFunctionType)
             {
                 case FunctionType.CAGEAnimation:
@@ -2268,9 +2215,9 @@ namespace CathodeLib
                 case FunctionType.CollisionBarrier:
                     if (!isTemplate && entity.Bools.Get(ShortGuids.static_collision))
                     {
-                        if (function.GetResource(ResourceType.COLLISION_MAPPING) != null) // note - we should add if the resource exists, even if it doesn't map to a valid collision mapping entry... (wot)
+                        if (function.GetResource(ResourceType.COLLISION_MAPPING) != null) // note - we should add if the resource exists, even if it doesn't map to a valid collision mapping entry
                         {
-                            AddResourceEntry(entity, "", true);
+                            AddResourceEntry(entity);
                         }
                     }
                     break;
@@ -2326,7 +2273,7 @@ namespace CathodeLib
                         cResource r = (cResource)p.content;
                         if (r.value.Count != 0)
                         {
-                            AddResourceEntry(entity, "", true);
+                            AddResourceEntry(entity);
                         }
                     }
                     break;
@@ -2464,20 +2411,21 @@ namespace CathodeLib
             }
         }
 
-        private static int count = 0;
-
         private void AddResourceEntry(InstancedEntity entity)
         {
             lock (_resourcesLock)
             {
-                ShortGuid resourceID = entity.Entity.shortGUID;
-                Parameter resource = entity.Entity.GetParameter(ShortGuids.resource);
-                if (resource?.content != null && resource.content.dataType == DataType.RESOURCE)
+                ShortGuid resourceID = ((FunctionEntity)entity.Entity).function == FunctionType.PhysicsSystem ? ShortGuids.DYNAMIC_PHYSICS_SYSTEM : entity.Entity.shortGUID;
+                if (resourceID == entity.Entity.shortGUID)
                 {
-                    resourceID = ((cResource)resource.content).shortGUID;
+                    Parameter resource = entity.Entity.GetParameter(ShortGuids.resource);
+                    if (resource?.content != null && resource.content.dataType == DataType.RESOURCE)
+                    {
+                        resourceID = ((cResource)resource.content).shortGUID;
+                    }
                 }
 
-                _level.Resources.AddUniqueResource(entity.ThisCompositeInstance.InstanceID, entity.Entity.shortGUID);
+                _level.Resources.AddUniqueResource(resourceID, entity.ThisCompositeInstance.InstanceID);
             }
         }
     }

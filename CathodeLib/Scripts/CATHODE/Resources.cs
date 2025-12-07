@@ -116,10 +116,10 @@ namespace CATHODE
         {
             if (resource == null)
                 return null;
-            return AddUniqueResource(resource.composite_instance_id, resource.resource_id);
+            return AddUniqueResource(resource.resource_id, resource.composite_instance_id);
         }
 
-        public Resource AddUniqueResource(ShortGuid composite_instance_id, ShortGuid resource_id)
+        public Resource AddUniqueResource(ShortGuid resource_id, ShortGuid composite_instance_id)
         {
             Resource resource = Entries.FirstOrDefault(o => o.composite_instance_id == composite_instance_id && o.resource_id == resource_id);
             if (resource != null)
