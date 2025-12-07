@@ -368,31 +368,31 @@ namespace CathodeLib
             #endregion
         }
 
-        public Parameters<bool> Bools;
-        public Parameters<int> Integers;
-        public Parameters<float> Floats;
-        public Parameters<int> EnumIndexes;
-        public Parameters<Vector3> Vectors;
-        public Parameters<Transform> Transforms;
+        public Parameters<bool> Bools = new Parameters<bool>();
+        public Parameters<int> Integers = new Parameters<int>();
+        public Parameters<float> Floats = new Parameters<float>();
+        public Parameters<int> EnumIndexes = new Parameters<int>();
+        public Parameters<Vector3> Vectors = new Parameters<Vector3>();
+        public Parameters<Transform> Transforms = new Parameters<Transform>();
 
-        public Level Level;
-        public Entity Entity;
-        public EntityPath Path;
-        public Composite Composite;
+        public Level Level = null;
+        public Entity Entity = null;
+        public EntityPath Path = null;
+        public Composite Composite = null;
 
         //TODO: also load in MVR etc here?
 
         //The composite and entity one step back in the path, responsible for creating this instance: will be null if at root
-        public InstancedEntity ParentCompositeInstanceEntity;
-        public InstancedComposite ParentCompositeInstance;
+        public InstancedEntity ParentCompositeInstanceEntity = null;
+        public InstancedComposite ParentCompositeInstance = null;
 
         //The current composite instance
-        public InstancedComposite ThisCompositeInstance;
+        public InstancedComposite ThisCompositeInstance = null;
 
         //The composite instanced by this entity, one step forward in the path: will be null if this doesn't instance one
-        public InstancedComposite ChildCompositeInstance;
+        public InstancedComposite ChildCompositeInstance = null;
 
-        private HashSet<(ShortGuid, ParameterVariant, DataType)> _parameters;
+        private HashSet<(ShortGuid, ParameterVariant, DataType)> _parameters = new HashSet<(ShortGuid, ParameterVariant, DataType)>();
 
         public InstancedEntity(Level level, Composite composite, Entity entity, EntityPath path, ConcurrentDictionary<(Entity, Composite), List<(ShortGuid, ParameterVariant, DataType)>> parameterCache, ConcurrentDictionary<(Composite, ShortGuid), Entity> entityLookupCache)
         {
@@ -430,14 +430,6 @@ namespace CathodeLib
                     paramLookup[param.Item1] = param;
             }
 
-            int paramCount = parameters.Count;
-            _parameters = new HashSet<(ShortGuid, ParameterVariant, DataType)>();
-            Bools = new Parameters<bool>(paramCount);
-            Integers = new Parameters<int>(paramCount);
-            Floats = new Parameters<float>(paramCount);
-            EnumIndexes = new Parameters<int>(paramCount);
-            Vectors = new Parameters<Vector3>(paramCount);
-            Transforms = new Parameters<Transform>(paramCount);
             switch (entity.variant)
             {
                 //For aliases, only factor in the parameters and links that are actually set, since these are OVERRIDES
@@ -486,7 +478,9 @@ namespace CathodeLib
                                 case DataType.BOOL:
                                     value = ((cBool)p.content).value;
                                     break;
+                                case DataType.FILEPATH:
                                 case DataType.STRING:
+                                case DataType.ENUM_STRING:
                                     value = ((cString)p.content).value.ToUpper() == "TRUE";
                                     break;
                                 default:
@@ -514,7 +508,9 @@ namespace CathodeLib
                                 case DataType.BOOL:
                                     value = ((cBool)p.content).value ? 1 : 0;
                                     break;
+                                case DataType.FILEPATH:
                                 case DataType.STRING:
+                                case DataType.ENUM_STRING:
                                     try
                                     {
                                         value = Convert.ToInt32(((cString)p.content).value);
@@ -546,7 +542,9 @@ namespace CathodeLib
                                 case DataType.BOOL:
                                     value = ((cBool)p.content).value ? 1 : 0;
                                     break;
+                                case DataType.FILEPATH:
                                 case DataType.STRING:
+                                case DataType.ENUM_STRING:
                                     try
                                     {
                                         //note - we hit this a lot as seemingly reference is often a string but flagged in our logic a float
@@ -580,7 +578,9 @@ namespace CathodeLib
                                 case DataType.BOOL:
                                     value = ((cBool)p.content).value ? 1 : 0;
                                     break;
+                                case DataType.FILEPATH:
                                 case DataType.STRING:
+                                case DataType.ENUM_STRING:
                                     try
                                     {
                                         value = Convert.ToInt32(((cString)p.content).value); //todo - if this is ever string, it's probably actually the enum as a string. need to check if that's even supported.
@@ -2054,7 +2054,7 @@ namespace CathodeLib
                 compositeInstance.Entities.Add(instances[i]);
                 entityByGuid[entityArray[i].shortGUID] = instances[i];
             }
-            localAliases.AddRange(aliasList);
+            localAliases.InsertRange(0, aliasList);
 
             //Next, hook up the instanced entity links as references
             Parallel.ForEach(compositeInstance.Entities, entity =>
@@ -2091,8 +2091,6 @@ namespace CathodeLib
                     aliasList2.Add(alias);
                 }
             }
-
-            //TODO: proxies ?
 
             foreach (var entity in compositeInstance.Entities)
             {
