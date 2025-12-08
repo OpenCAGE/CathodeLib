@@ -45,21 +45,6 @@ namespace CathodeLib
                     return val;
 
                 throw new Exception("Failed to find param.");
-
-                if (typeof(T) == typeof(bool))
-                    return (T)(object)false;
-                else if (typeof(T) == typeof(int))
-                    return (T)(object)0;
-                else if (typeof(T) == typeof(float))
-                    return (T)(object)0.0f;
-                else if (typeof(T) == typeof(Vector3))
-                    return (T)(object)new Vector3(0, 0, 0);
-                else if (typeof(T) == typeof(Transform))
-                    return (T)(object)new Transform();
-                else
-                {
-                    throw new Exception("Unhandled");
-                }
             }
 
             public List<InstancedEntity> GetLinks(ShortGuid guid)
@@ -97,7 +82,7 @@ namespace CathodeLib
                         existingLinks = new List<Tuple<ShortGuid, InstancedEntity>>(parentLinks.Count);
                         Links[varGuid] = existingLinks;
                     }
-                    existingLinks.AddRange(parentLinks); //todo - probs want to insert first?
+                    existingLinks.AddRange(parentLinks); 
                 }
             }
 
@@ -2188,16 +2173,7 @@ namespace CathodeLib
                 case FunctionType.CameraPlayAnimation:
 
                     break;
-                case FunctionType.CameraResource:
-
-                    break;
                 case FunctionType.Character:
-
-                    break;
-                case FunctionType.Checkpoint:
-
-                    break;
-                case FunctionType.CHR_PlaySecondaryAnimation:
 
                     break;
                 case FunctionType.CMD_GoTo:
@@ -2277,12 +2253,6 @@ namespace CathodeLib
                         }
                     }
                     break;
-                case FunctionType.MusicController:
-
-                    break;
-                case FunctionType.MusicTrigger:
-
-                    break;
                 case FunctionType.NavMeshArea:
 
                     break;
@@ -2319,6 +2289,7 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.PhysicsSystem:
+                    if (!isTemplate)
                     {
                         ResourceReference physicsSystem = function.GetResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
                         if (physicsSystem == null || physicsSystem.PhysicsSystemIndex == -1)
@@ -2326,12 +2297,26 @@ namespace CathodeLib
                             //Should warn here!
                             break;
                         }
-                    }
-                    if (!isTemplate)
-                        AddResourceEntry(entity);
-                    break;
-                case FunctionType.PlayEnvironmentAnimation:
 
+                        (Vector3 position, Quaternion rotation) = entity.CalculateWorldPositionRotation();
+                        lock (_physicsMapsLock)
+                        {
+                            _level.PhysicsMaps.Entries.Add(new PhysicsMaps.DYNAMIC_PHYSICS_SYSTEM()
+                            {
+                                physics_system_index = physicsSystem.PhysicsSystemIndex,
+                                composite_instance_id = entity.ThisCompositeInstance.InstanceID,
+                                entity = new EntityHandle()
+                                {
+                                    entity_id = entity.ParentCompositeInstanceEntity.Entity.shortGUID,
+                                    composite_instance_id = entity.ParentCompositeInstance.InstanceID
+                                },
+                                Position = position,
+                                Rotation = rotation
+                            });
+                        }
+
+                        AddResourceEntry(entity);
+                    }
                     break;
                 case FunctionType.ProjectiveDecal:
                     if (!isTemplate)
@@ -2359,9 +2344,6 @@ namespace CathodeLib
                     if (!isTemplate)
                         AddResourceEntry(entity);
                     break;
-                case FunctionType.Sound:
-
-                    break;
                 case FunctionType.SoundBarrier:
                     if (!isTemplate)
                         AddResourceEntry(entity);
@@ -2369,25 +2351,10 @@ namespace CathodeLib
                 case FunctionType.SoundEnvironmentMarker:
 
                     break;
-                case FunctionType.SoundImpact:
-
-                    break;
                 case FunctionType.SoundLevelInitialiser:
 
                     break;
-                case FunctionType.SoundLoadBank:
-
-                    break;
-                case FunctionType.SoundLoadSlot:
-
-                    break;
                 case FunctionType.SoundNetworkNode:
-
-                    break;
-                case FunctionType.Speech:
-
-                    break;
-                case FunctionType.SpeechScript:
 
                     break;
                 case FunctionType.SpottingExclusionArea:
@@ -2415,18 +2382,25 @@ namespace CathodeLib
         {
             lock (_resourcesLock)
             {
-                ShortGuid resourceID = ((FunctionEntity)entity.Entity).function == FunctionType.PhysicsSystem ? ShortGuids.DYNAMIC_PHYSICS_SYSTEM : entity.Entity.shortGUID;
-                if (resourceID == entity.Entity.shortGUID)
-                {
-                    Parameter resource = entity.Entity.GetParameter(ShortGuids.resource);
-                    if (resource?.content != null && resource.content.dataType == DataType.RESOURCE)
-                    {
-                        resourceID = ((cResource)resource.content).shortGUID;
-                    }
-                }
-
-                _level.Resources.AddUniqueResource(resourceID, entity.ThisCompositeInstance.InstanceID);
+                //NOTE: Because of 'is_shared', we get some differences with added resources instance IDs, since the first hit (which may differ) is always the one that's written, but hopefully that's fine.
+                _level.Resources.AddUniqueResource(GetResourceID(entity), entity.ThisCompositeInstance.InstanceID);
             }
+        }
+
+        private static ShortGuid GetResourceID(InstancedEntity entity)
+        {
+            //Resource IDs for PhysicsSystem entities are always 'DYNAMIC_PHYSICS_SYSTEM'.
+            ShortGuid resourceID = ((FunctionEntity)entity.Entity).function == FunctionType.PhysicsSystem ? ShortGuids.DYNAMIC_PHYSICS_SYSTEM : entity.Entity.shortGUID;
+            if (resourceID == entity.Entity.shortGUID)
+            {
+                Parameter resource = entity.Entity.GetParameter(ShortGuids.resource);
+                if (resource?.content != null && resource.content.dataType == DataType.RESOURCE)
+                {
+                    //In the case that the resource is a parameter, we take that ID, which is actually based on a hash of the entity name instead of the direct entity ID.
+                    resourceID = ((cResource)resource.content).shortGUID;
+                }
+            }
+            return resourceID;
         }
     }
 }
