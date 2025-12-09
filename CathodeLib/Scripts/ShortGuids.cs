@@ -56,5 +56,6 @@ namespace CathodeLib
         public static readonly ShortGuid is_shared = ShortGuidUtils.Generate("is_shared");
         public static readonly ShortGuid static_collision = ShortGuidUtils.Generate("static_collision");
         public static readonly ShortGuid delete_me = ShortGuidUtils.Generate("delete_me");
+        public static readonly ShortGuid delete_standard_collision = ShortGuidUtils.Generate("delete_standard_collision");
     }
 }
