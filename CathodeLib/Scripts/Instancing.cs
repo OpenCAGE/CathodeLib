@@ -1961,6 +1961,7 @@ namespace CathodeLib
         private ConcurrentBag<InstancedEntity> AllEntities = new ConcurrentBag<InstancedEntity>();
         private ConcurrentBag<InstancedComposite> AllComposites = new ConcurrentBag<InstancedComposite>();
 
+        private InstancedComposite RequiredAssets = new InstancedComposite();
         private InstancedComposite Root = new InstancedComposite();
 
         private Level _level = null;
@@ -1982,6 +1983,26 @@ namespace CathodeLib
 
         public void GenerateInstances()
         {
+            //Create a temporary placeholder for all required assets to initialise
+            Composite requiredAssets = new Composite();
+            foreach (Composite composite in _level.Commands.Entries)
+            {
+                if (!composite.name.ToUpper().Replace("/", "\\").StartsWith("REQUIRED_ASSETS\\"))
+                    continue;
+
+                requiredAssets.AddFunction(composite);
+            }
+            RequiredAssets = new InstancedComposite()
+            {
+                Composite = requiredAssets,
+                InstanceID = ShortGuid.InitialiserBase //I'm unsure what this should actually be
+            };
+            GenerateInstances(RequiredAssets.Composite, new EntityPath(), RequiredAssets, null, null, new List<InstancedAlias>());
+
+            // ?? process "GLOBAL"
+            // ?? process "PAUSEMENU"
+
+            //Initialise the runtime level
             Root = new InstancedComposite()
             {
                 Composite = _level.Commands.EntryPoints[0],
@@ -1995,8 +2016,12 @@ namespace CathodeLib
             if (Root?.Composite == null)
                 throw new Exception("Call GenerateInstances first");
 
+            for (int i = 0; i < 18; i++)
+                _level.CollisionMaps.Entries.Add(new CollisionMaps.COLLISION_MAPPING());
+
             _sharedComposites.Clear();
-            ProcessInstances(Root, false, false);
+            ProcessInstances(Root, false, false, false, false, false);
+            ProcessInstances(RequiredAssets, false, false, true, false, false);
         }
 
         private void GenerateInstances(Composite composite, EntityPath path, InstancedComposite compositeInstance, InstancedComposite parentCompositeInstance, InstancedEntity parentCompositeInstanceEntity, List<InstancedAlias> aliases)
@@ -2116,7 +2141,7 @@ namespace CathodeLib
             });
         }
 
-        private void ProcessInstances(InstancedComposite composite, bool isTemplate, bool isShared)
+        private void ProcessInstances(InstancedComposite composite, bool isTemplate, bool isShared, bool isRequiredAssets, bool deleteStandardCollision, bool isDeleted)
         {
             if (composite.Composite.shortGUID == _globalGUID)
                 return;
@@ -2124,33 +2149,27 @@ namespace CathodeLib
             var entitiesToProcess = composite.Entities.Where(e => e.Entity.variant == EntityVariant.FUNCTION && ((FunctionEntity)e.Entity).function.IsFunctionType).ToList();
             Parallel.ForEach(entitiesToProcess, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, entity =>
             {
-                ProcessEntity(entity, isTemplate);
+                ProcessEntity(entity, isTemplate, isRequiredAssets, deleteStandardCollision, isDeleted);
             });
 
             foreach (InstancedEntity entity in composite.Entities)
             {
                 if (entity.ChildCompositeInstance != null)
                 {
-                    if (entity.Bools.Get(ShortGuids.deleted))
-                        continue;
-
-                    if (entity.Bools.Has(ShortGuids.delete_me) && entity.Bools.Get(ShortGuids.delete_me))
-                        return;
-
                     bool thisIsShared = entity.Bools.Get(ShortGuids.is_shared);
-                    if (thisIsShared)
+                    if (thisIsShared && !isRequiredAssets)
                     {
                         if (_sharedComposites.Contains(entity.ChildCompositeInstance.Composite.shortGUID))
                             continue;
                         _sharedComposites.Add(entity.ChildCompositeInstance.Composite.shortGUID);
                     }
 
-                    ProcessInstances(entity.ChildCompositeInstance, isTemplate || entity.Bools.Get(ShortGuids.is_template), isShared || thisIsShared);
+                    ProcessInstances(entity.ChildCompositeInstance, isTemplate || entity.Bools.Get(ShortGuids.is_template), isRequiredAssets ? false : isShared || thisIsShared, isRequiredAssets, deleteStandardCollision || entity.Bools.Get(ShortGuids.delete_standard_collision), isDeleted || entity.Bools.Get(ShortGuids.deleted) || (entity.Bools.Has(ShortGuids.delete_me) && entity.Bools.Get(ShortGuids.delete_me)));
                 }
             }
         }
 
-        private void ProcessEntity(InstancedEntity entity, bool isTemplate)
+        private void ProcessEntity(InstancedEntity entity, bool isTemplate, bool isRequiredAssets, bool deleteStandardCollision, bool isDeleted)
         {
             if (entity.Entity.variant != EntityVariant.FUNCTION)
                 return;
@@ -2159,11 +2178,7 @@ namespace CathodeLib
             if (!function.function.IsFunctionType)
                 return;
 
-            if (entity.Bools.Has(ShortGuids.deleted) && entity.Bools.Get(ShortGuids.deleted))
-                return;
-
-            if (entity.Bools.Has(ShortGuids.delete_me) && entity.Bools.Get(ShortGuids.delete_me))
-                return;
+            isDeleted = isDeleted || (entity.Bools.Has(ShortGuids.deleted) && entity.Bools.Get(ShortGuids.deleted)) || (entity.Bools.Has(ShortGuids.delete_me) && entity.Bools.Get(ShortGuids.delete_me));
 
             switch (function.function.AsFunctionType)
             {
@@ -2189,11 +2204,29 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.CollisionBarrier:
-                    if (!isTemplate && entity.Bools.Get(ShortGuids.static_collision))
+                    bool static_collision = entity.Bools.Get(ShortGuids.static_collision);
+                    if (!isDeleted && !isTemplate && !isRequiredAssets && static_collision)
                     {
                         if (function.GetResource(ResourceType.COLLISION_MAPPING) != null) // note - we should add if the resource exists, even if it doesn't map to a valid collision mapping entry
                         {
                             AddResourceEntry(entity);
+                        }
+
+                    }
+                    if (!isDeleted && !isTemplate && static_collision && !deleteStandardCollision)
+                    {
+                        CollisionMaps.COLLISION_MAPPING newMap = new CollisionMaps.COLLISION_MAPPING()
+                        {
+                            Entity = new EntityHandle()
+                            {
+                                composite_instance_id = entity.ThisCompositeInstance.InstanceID,
+                                entity_id = entity.Entity.shortGUID
+                            },
+                        };
+                        lock (_collisionMapsLock)
+                        {
+                            if (!isTemplate && !isRequiredAssets)
+                                _level.CollisionMaps.Entries.Add(newMap);
                         }
                     }
                     break;
@@ -2204,29 +2237,29 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.CoverLine:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
                     break;
                 case FunctionType.EnvironmentMap:
 
                     break;
                 case FunctionType.EnvironmentModelReference:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
                     break;
                 case FunctionType.ExclusiveMaster:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
                     break;
                 case FunctionType.FogBox:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
                     break;
                 case FunctionType.FogPlane:
 
                     break;
                 case FunctionType.FogSphere:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
                     break;
                 case FunctionType.JOB_Assault:
@@ -2239,17 +2272,49 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.LightReference:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
                     break;
                 case FunctionType.ModelReference:
-                    Parameter p = function.GetParameter("resource");
-                    if (p?.content != null && p.content.dataType == DataType.RESOURCE)
+                    if (!isDeleted && !isRequiredAssets)
                     {
-                        cResource r = (cResource)p.content;
-                        if (r.value.Count != 0)
+                        Parameter p = function.GetParameter("resource");
+                        if (p?.content != null && p.content.dataType == DataType.RESOURCE)
                         {
-                            AddResourceEntry(entity);
+                            cResource r = (cResource)p.content;
+                            if (r.value.Count != 0)
+                            {
+                                AddResourceEntry(entity);
+                            }
+                        }
+                    }
+                    {
+                        ResourceReference renderableInstance = function.GetResource(ResourceType.RENDERABLE_INSTANCE, true);
+                        ResourceReference collisionMapping = function.GetResource(ResourceType.COLLISION_MAPPING, true);
+                        if (collisionMapping?.CollisionMapping != null)
+                        {
+                            CollisionMaps.COLLISION_MAPPING newMap = new CollisionMaps.COLLISION_MAPPING()
+                            {
+                                Flags = collisionMapping.CollisionMapping.Flags,
+                                Index = collisionMapping.CollisionMapping.Index, //seems like this index is always -1 on the generic ones too, which i should update to the actual index
+                                ResourceGUID = collisionMapping.CollisionMapping.ResourceGUID,
+                                Entity = new EntityHandle()
+                                {
+                                    composite_instance_id = entity.ThisCompositeInstance.InstanceID,
+                                    entity_id = entity.Entity.shortGUID
+                                },
+                                Material = collisionMapping.CollisionMapping.Material,
+                                CollisionProxyIndex = collisionMapping.CollisionMapping.CollisionProxyIndex,
+                                MaterialMapping = collisionMapping.CollisionMapping.MaterialMapping, //this is tricky
+                                ZoneID = collisionMapping.CollisionMapping.ZoneID //need to work this out
+                            };
+                            lock (_collisionMapsLock)
+                            {
+                                if (_level.CollisionMaps.Entries.FirstOrDefault(o => o.Entity.entity_id == collisionMapping.CollisionMapping.Entity.entity_id) == null)
+                                    _level.CollisionMaps.Entries.Add(collisionMapping.CollisionMapping); 
+                                if (!isDeleted /*&& !!deleteStandardCollision && !isTemplate && !isRequiredAssets*/) 
+                                    _level.CollisionMaps.Entries.Add(newMap);
+                            }
                         }
                     }
                     break;
@@ -2257,8 +2322,24 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.NavMeshBarrier:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
+                    if (!isDeleted && !isTemplate)
+                    {
+                        CollisionMaps.COLLISION_MAPPING newMap = new CollisionMaps.COLLISION_MAPPING()
+                        {
+                            Entity = new EntityHandle()
+                            {
+                                composite_instance_id = entity.ThisCompositeInstance.InstanceID,
+                                entity_id = entity.Entity.shortGUID
+                            },
+                        };
+                        lock (_collisionMapsLock)
+                        {
+                            if (!isTemplate && !isRequiredAssets)
+                                _level.CollisionMaps.Entries.Add(newMap);
+                        }
+                    }
                     break;
                 case FunctionType.NavMeshExclusionArea:
 
@@ -2270,7 +2351,7 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.ParticleEmitterReference:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
                     break;
                 case FunctionType.PathfindingAlienBackstageNode:
@@ -2289,10 +2370,10 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.PhysicsSystem:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                     {
                         ResourceReference physicsSystem = function.GetResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
-                        if (physicsSystem == null || physicsSystem.PhysicsSystemIndex == -1)
+                        if (physicsSystem == null || physicsSystem.PhysicsSystemIndex == -1) //todo - this also maps to the index parameter, should consolidate!
                         {
                             //Should warn here!
                             break;
@@ -2319,34 +2400,66 @@ namespace CathodeLib
                     }
                     break;
                 case FunctionType.ProjectiveDecal:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
                     break;
                 case FunctionType.RadiosityIsland:
 
                     break;
                 case FunctionType.RadiosityProxy:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
+                    //if (!isDeleted && !isTemplate && !isRequiredAssets)
+                    //{
+                    //    CollisionMaps.COLLISION_MAPPING newMap = new CollisionMaps.COLLISION_MAPPING()
+                    //    {
+                    //        Entity = new EntityHandle()
+                    //        {
+                    //            composite_instance_id = entity.ThisCompositeInstance.InstanceID,
+                    //            entity_id = entity.Entity.shortGUID
+                    //        },
+                    //    };
+                    //    lock (_collisionMapsLock)
+                    //    {
+                    //        if (!isTemplate && !isRequiredAssets)
+                    //            _level.CollisionMaps.Entries.Add(newMap);
+                    //    }
+                    //}
                     break;
                 case FunctionType.RegisterCharacterModel:
 
                     break;
                 case FunctionType.RibbonEmitterReference:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
                     break;
                 case FunctionType.SimpleRefraction:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
                     break;
                 case FunctionType.SimpleWater:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
                     break;
                 case FunctionType.SoundBarrier:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
+                    if (!isDeleted && !isTemplate)
+                    {
+                        CollisionMaps.COLLISION_MAPPING newMap = new CollisionMaps.COLLISION_MAPPING()
+                        {
+                            Entity = new EntityHandle()
+                            {
+                                composite_instance_id = entity.ThisCompositeInstance.InstanceID,
+                                entity_id = entity.Entity.shortGUID
+                            },
+                        };
+                        lock (_collisionMapsLock)
+                        {
+                            if (!isTemplate && !isRequiredAssets)
+                                _level.CollisionMaps.Entries.Add(newMap);
+                        }
+                    }
                     break;
                 case FunctionType.SoundEnvironmentMarker:
 
@@ -2361,15 +2474,15 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.SurfaceEffectBox:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
                     break;
                 case FunctionType.SurfaceEffectSphere:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
                     break;
                 case FunctionType.TRAV_1ShotSpline:
-                    if (!isTemplate)
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
                     break;
                 case FunctionType.Zone:
