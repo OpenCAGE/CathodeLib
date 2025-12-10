@@ -1961,6 +1961,8 @@ namespace CathodeLib
         private ConcurrentBag<InstancedEntity> AllEntities = new ConcurrentBag<InstancedEntity>();
         private ConcurrentBag<InstancedComposite> AllComposites = new ConcurrentBag<InstancedComposite>();
 
+        private InstancedComposite Global = new InstancedComposite();
+        private InstancedComposite PauseMenu = new InstancedComposite();
         private InstancedComposite RequiredAssets = new InstancedComposite();
         private InstancedComposite Root = new InstancedComposite();
 
@@ -1983,8 +1985,21 @@ namespace CathodeLib
 
         public void GenerateInstances()
         {
-            //Create a temporary placeholder for all required assets to initialise
-            Composite requiredAssets = new Composite();
+            Global = new InstancedComposite()
+            {
+                Composite = _level.Commands.Entries.FirstOrDefault(o => o.name.ToUpper() == "GLOBAL"),
+                InstanceID = ShortGuid.GlobalGuid
+            };
+            GenerateInstances(Global.Composite, new EntityPath(), Global, null, null, new List<InstancedAlias>());
+
+            PauseMenu = new InstancedComposite()
+            {
+                Composite = _level.Commands.Entries.FirstOrDefault(o => o.name.ToUpper() == "PAUSEMENU"),
+                InstanceID = ShortGuid.PauseGuid
+            };
+            GenerateInstances(PauseMenu.Composite, new EntityPath(), PauseMenu, null, null, new List<InstancedAlias>());
+
+            Composite requiredAssets = new Composite(); //Create a temporary placeholder for all required assets to initialise
             foreach (Composite composite in _level.Commands.Entries)
             {
                 if (!composite.name.ToUpper().Replace("/", "\\").StartsWith("REQUIRED_ASSETS\\"))
@@ -1995,18 +2010,14 @@ namespace CathodeLib
             RequiredAssets = new InstancedComposite()
             {
                 Composite = requiredAssets,
-                InstanceID = ShortGuid.InitialiserBase //I'm unsure what this should actually be
+                InstanceID = ShortGuid.InstanceGuid //I'm unsure what this should actually be -> maybe just the composite guid?
             };
             GenerateInstances(RequiredAssets.Composite, new EntityPath(), RequiredAssets, null, null, new List<InstancedAlias>());
 
-            // ?? process "GLOBAL"
-            // ?? process "PAUSEMENU"
-
-            //Initialise the runtime level
             Root = new InstancedComposite()
             {
                 Composite = _level.Commands.EntryPoints[0],
-                InstanceID = ShortGuid.InitialiserBase
+                InstanceID = ShortGuid.InstanceGuid
             };
             _globalGUID = _level.Commands.EntryPoints[1].shortGUID;
             GenerateInstances(Root.Composite, new EntityPath(), Root, null, null, new List<InstancedAlias>());
@@ -2020,8 +2031,10 @@ namespace CathodeLib
                 _level.CollisionMaps.Entries.Add(new CollisionMaps.COLLISION_MAPPING());
 
             _sharedComposites.Clear();
-            ProcessInstances(Root, false, false, false, false, false);
+            ProcessInstances(Global, false, false, true, false, false);
+            ProcessInstances(PauseMenu, false, false, true, false, false);
             ProcessInstances(RequiredAssets, false, false, true, false, false);
+            ProcessInstances(Root, false, false, false, false, false);
         }
 
         private void GenerateInstances(Composite composite, EntityPath path, InstancedComposite compositeInstance, InstancedComposite parentCompositeInstance, InstancedEntity parentCompositeInstanceEntity, List<InstancedAlias> aliases)

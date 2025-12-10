@@ -933,7 +933,7 @@ namespace CATHODE.Scripting
         {
             bool hasTrailingInvalid = (path.Length > 0 && path[path.Length - 1] == ShortGuid.Invalid);
             ShortGuid[] values = new ShortGuid[hasInternalEntityID ? (hasTrailingInvalid ? path.Length - 1 : path.Length) : (hasTrailingInvalid ? path.Length : path.Length + 1)];
-            values[values.Length - 1] = ShortGuid.InitialiserBase;
+            values[values.Length - 1] = ShortGuid.InstanceGuid;
             int x = 0;
             for (int i = values.Length - 2; i >= 0; i--)
             {
@@ -955,7 +955,7 @@ namespace CATHODE.Scripting
         {
             bool hasTrailingInvalid = (path.Count > 0 && path[path.Count - 1] == ShortGuid.Invalid);
             ShortGuid[] values = new ShortGuid[hasInternalEntityID ? (hasTrailingInvalid ? path.Count - 1 : path.Count) : (hasTrailingInvalid ? path.Count : path.Count + 1)];
-            values[values.Length - 1] = ShortGuid.InitialiserBase;
+            values[values.Length - 1] = ShortGuid.InstanceGuid;
             int x = 0;
             for (int i = values.Length - 2; i >= 0; i--)
             {

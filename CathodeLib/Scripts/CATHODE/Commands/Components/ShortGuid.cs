@@ -15,10 +15,11 @@ namespace CATHODE.Scripting
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct ShortGuid : IComparable<ShortGuid>
     {
-        public static readonly ShortGuid Invalid = new ShortGuid(0);
-        public static readonly ShortGuid InitialiserBase = new ShortGuid(1257266174); //"FE-5B-F0-4A"
-        public static readonly ShortGuid Max = new ShortGuid(4294967295); //"FF-FF-FF-FF"
+        public static readonly ShortGuid InstanceGuid = new ShortGuid(1257266174);  //The base GUID for composite instance IDs within a level's root
+        public static readonly ShortGuid GlobalGuid = new ShortGuid(4074205553);    //The base GUID for composite instance IDs within GLOBAL
+        public static readonly ShortGuid PauseGuid = new ShortGuid(2677685801);     //The base GUID for composite instance IDs within PAUSEMENU
 
+        public static readonly ShortGuid Invalid = new ShortGuid(0);
         public bool IsInvalid => val == Invalid.val;
 
         private UInt32 val;
