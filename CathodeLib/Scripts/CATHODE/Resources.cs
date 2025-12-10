@@ -136,7 +136,7 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class Resource : IComparable<Resource>
+        public class Resource : IComparable<Resource>, IEquatable<Resource>
         {
             public ShortGuid composite_instance_id;
             public ShortGuid resource_id;
@@ -150,6 +150,26 @@ namespace CATHODE
                     return compositeComparison;
 
                 return resource_id.CompareTo(other.resource_id);
+            }
+
+            public bool Equals(Resource other)
+            {
+                if (other == null) return false;
+                return composite_instance_id.Equals(other.composite_instance_id) && 
+                       resource_id.Equals(other.resource_id);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as Resource);
+            }
+
+            public override int GetHashCode()
+            {
+                int hash = 17;
+                hash = hash * 31 + composite_instance_id.GetHashCode();
+                hash = hash * 31 + resource_id.GetHashCode();
+                return hash;
             }
         };
         #endregion
