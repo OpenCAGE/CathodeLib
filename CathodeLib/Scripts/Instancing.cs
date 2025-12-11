@@ -1961,9 +1961,7 @@ namespace CathodeLib
         private ConcurrentBag<InstancedEntity> AllEntities = new ConcurrentBag<InstancedEntity>();
         private ConcurrentBag<InstancedComposite> AllComposites = new ConcurrentBag<InstancedComposite>();
 
-        private InstancedComposite Global = new InstancedComposite();
-        private InstancedComposite PauseMenu = new InstancedComposite();
-        private InstancedComposite RequiredAssets = new InstancedComposite();
+        private List<InstancedComposite> RequiredAssets = new List<InstancedComposite>();
         private InstancedComposite Root = new InstancedComposite();
 
         private Level _level = null;
@@ -1985,41 +1983,29 @@ namespace CathodeLib
 
         public void GenerateInstances()
         {
-            Global = new InstancedComposite()
-            {
-                Composite = _level.Commands.Entries.FirstOrDefault(o => o.name.ToUpper() == "GLOBAL"),
-                InstanceID = ShortGuid.GlobalGuid
-            };
-            GenerateInstances(Global.Composite, new EntityPath(), Global, null, null, new List<InstancedAlias>());
+            _globalGUID = _level.Commands.EntryPoints[1].shortGUID;
 
-            PauseMenu = new InstancedComposite()
+            List<Composite> requiredAssets = new List<Composite>();
+            requiredAssets.Add(_level.Commands.Entries.FirstOrDefault(o => o.name.ToUpper() == "GLOBAL"));
+            requiredAssets.Add(_level.Commands.Entries.FirstOrDefault(o => o.name.ToUpper() == "PAUSEMENU"));
+            //requiredAssets.Add(_level.Commands.Entries.FirstOrDefault(o => o.name.ToUpper().Replace("/", "\\") == "REQUIRED_ASSETS\\JOBS\\INTERNAL\\SEARCHTARGETJOB\\SEARCHTARGETJOB"));
+            requiredAssets.AddRange(_level.Commands.Entries.FindAll(o => o.name.ToUpper().Replace("/", "\\").StartsWith("REQUIRED_ASSETS\\")));
+            foreach (Composite requiredAsset in requiredAssets)
             {
-                Composite = _level.Commands.Entries.FirstOrDefault(o => o.name.ToUpper() == "PAUSEMENU"),
-                InstanceID = ShortGuid.PauseGuid
-            };
-            GenerateInstances(PauseMenu.Composite, new EntityPath(), PauseMenu, null, null, new List<InstancedAlias>());
-
-            Composite requiredAssets = new Composite(); //Create a temporary placeholder for all required assets to initialise
-            foreach (Composite composite in _level.Commands.Entries)
-            {
-                if (!composite.name.ToUpper().Replace("/", "\\").StartsWith("REQUIRED_ASSETS\\"))
-                    continue;
-
-                requiredAssets.AddFunction(composite);
+                InstancedComposite instancedRequiredAsset = new InstancedComposite()
+                {
+                    Composite = requiredAsset,
+                    InstanceID = requiredAsset.shortGUID
+                };
+                RequiredAssets.Add(instancedRequiredAsset);
+                GenerateInstances(requiredAsset, new EntityPath(), instancedRequiredAsset, null, null, new List<InstancedAlias>());
             }
-            RequiredAssets = new InstancedComposite()
-            {
-                Composite = requiredAssets,
-                InstanceID = ShortGuid.InstanceGuid //I'm unsure what this should actually be -> maybe just the composite guid?
-            };
-            GenerateInstances(RequiredAssets.Composite, new EntityPath(), RequiredAssets, null, null, new List<InstancedAlias>());
 
             Root = new InstancedComposite()
             {
                 Composite = _level.Commands.EntryPoints[0],
                 InstanceID = ShortGuid.InstanceGuid
             };
-            _globalGUID = _level.Commands.EntryPoints[1].shortGUID;
             GenerateInstances(Root.Composite, new EntityPath(), Root, null, null, new List<InstancedAlias>());
         }
         public void ProcessInstances()
@@ -2030,15 +2016,19 @@ namespace CathodeLib
             for (int i = 0; i < 18; i++)
                 _level.CollisionMaps.Entries.Add(new CollisionMaps.COLLISION_MAPPING());
 
+            _sharedComposites.Clear(); // i think we shouldn't populate shared things for required, OR, should do Root first?
+            foreach (InstancedComposite instancedRequiredAsset in RequiredAssets)
+            {
+                //ProcessInstances(instancedRequiredAsset, false, false, true, false, false);
+            }
             _sharedComposites.Clear();
-            ProcessInstances(Global, false, false, true, false, false);
-            ProcessInstances(PauseMenu, false, false, true, false, false);
-            ProcessInstances(RequiredAssets, false, false, true, false, false);
             ProcessInstances(Root, false, false, false, false, false);
         }
 
         private void GenerateInstances(Composite composite, EntityPath path, InstancedComposite compositeInstance, InstancedComposite parentCompositeInstance, InstancedEntity parentCompositeInstanceEntity, List<InstancedAlias> aliases)
         {
+            //todo - when this logic is more complete, i need to add a whitelist which means that unused entity and parameter types are ignored to save on memory overhead
+
             List<InstancedAlias> localAliases = new List<InstancedAlias>(aliases);
 
             //First, create all 'instanced entity' objects - these populate their default bool values on creation
@@ -2169,15 +2159,17 @@ namespace CathodeLib
             {
                 if (entity.ChildCompositeInstance != null)
                 {
+                    bool thisIsDeleted = isDeleted || entity.Bools.Get(ShortGuids.deleted) || (entity.Bools.Has(ShortGuids.delete_me) && entity.Bools.Get(ShortGuids.delete_me));
+
                     bool thisIsShared = entity.Bools.Get(ShortGuids.is_shared);
-                    if (thisIsShared && !isRequiredAssets)
+                    if (thisIsShared && !isRequiredAssets && !thisIsDeleted)
                     {
                         if (_sharedComposites.Contains(entity.ChildCompositeInstance.Composite.shortGUID))
                             continue;
                         _sharedComposites.Add(entity.ChildCompositeInstance.Composite.shortGUID);
                     }
 
-                    ProcessInstances(entity.ChildCompositeInstance, isTemplate || entity.Bools.Get(ShortGuids.is_template), isRequiredAssets ? false : isShared || thisIsShared, isRequiredAssets, deleteStandardCollision || entity.Bools.Get(ShortGuids.delete_standard_collision), isDeleted || entity.Bools.Get(ShortGuids.deleted) || (entity.Bools.Has(ShortGuids.delete_me) && entity.Bools.Get(ShortGuids.delete_me)));
+                    ProcessInstances(entity.ChildCompositeInstance, isTemplate || entity.Bools.Get(ShortGuids.is_template), isRequiredAssets ? false : isShared || thisIsShared, isRequiredAssets, deleteStandardCollision || entity.Bools.Get(ShortGuids.delete_standard_collision), thisIsDeleted);
                 }
             }
         }
