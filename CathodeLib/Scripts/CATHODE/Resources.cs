@@ -71,7 +71,7 @@ namespace CATHODE
                     writer.Write(entryBuffers[i]);
             }
             _writeList.Clear();
-            _writeList.AddRange(orderedEntries);
+            _writeList.AddRange(Entries);
             return true;
         }
 
