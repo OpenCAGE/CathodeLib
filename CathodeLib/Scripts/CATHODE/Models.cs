@@ -1090,11 +1090,15 @@ namespace CATHODE
 
                         public byte[] Data = new byte[0];
 
+                        //I've added in unique GUIDs to help track submeshes even if their properties are identical, which can happen, E.G. for LV426 NPC spacesuits.
+                        private Guid guid = Guid.NewGuid();
+
                         public static bool operator ==(Submesh x, Submesh y)
                         {
                             if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
                             if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
                             if (ReferenceEquals(x, y)) return true;
+                            if (x.guid != y.guid) return false;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
                             if (x.MinBounds != y.MinBounds) return false;
                             if (x.MaxBounds != y.MaxBounds) return false;
@@ -1153,6 +1157,7 @@ namespace CATHODE
                             hashCode = hashCode * -1521134295 + IndexCount.GetHashCode();
                             hashCode = hashCode * -1521134295 + (Bones?.GetHashCode() ?? 0);
                             hashCode = hashCode * -1521134295 + (Data?.GetHashCode() ?? 0);
+                            hashCode = hashCode * -1521134295 + guid.GetHashCode();
                             return hashCode;
                         }
 
