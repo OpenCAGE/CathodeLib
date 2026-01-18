@@ -58,12 +58,11 @@ namespace CATHODE
             if (!File.Exists(filepathBIN)) 
                 return false;
 
-            List<string> filenameList = new List<string>();
-            List<string> meshNameList = new List<string>();
-            List<int> LODs = new List<int>();
+            Dictionary<CS2.Component.LOD.Submesh, int> boneOffsets = new Dictionary<CS2.Component.LOD.Submesh, int>();
+            List<(CS2.Component.LOD.Submesh submesh, int childModelIndex, int childLODIndex, string cs2Name, string submeshName)> submeshMetadata = new List<(CS2.Component.LOD.Submesh, int, int, string, string)>();
             using (BinaryReader bin = new BinaryReader(File.OpenRead(filepathBIN)))
             {
-                bin.BaseStream.Position += 4; //Magic
+                bin.BaseStream.Position += 4;
                 int modelCount = bin.ReadInt32();
                 if ((FileIdentifiers)bin.ReadInt16() != FileIdentifiers.HEADER_FILE) return false;
                 if ((FileIdentifiers)bin.ReadInt16() != FileIdentifiers.MODEL_DATA) return false;
@@ -109,23 +108,22 @@ namespace CATHODE
                 }
 
                 //Read model metadata
-                Dictionary<CS2.Component.LOD.Submesh, int> boneOffsets = new Dictionary<CS2.Component.LOD.Submesh, int>();
                 for (int i = 0; i < modelCount; i++)
                 {
-                    filenameList.Add(stringOffsets[bin.ReadInt32()]);
+                    CS2.Component.LOD.Submesh submesh = new CS2.Component.LOD.Submesh();
+
+                    string cs2Name = stringOffsets[bin.ReadInt32()];
                     bin.BaseStream.Position += 4;
-                    meshNameList.Add(stringOffsets[bin.ReadInt32()]);
+                    string submeshName = stringOffsets[bin.ReadInt32()];
                     bin.BaseStream.Position += 4;
 
-                    CS2.Component.LOD.Submesh submesh = new CS2.Component.LOD.Submesh();
                     submesh.MinBounds = Utilities.Consume<Vector3>(bin);
                     submesh.MinLODRange = bin.ReadSingle();
                     submesh.MaxBounds = Utilities.Consume<Vector3>(bin);
                     submesh.MaxLODRange = bin.ReadSingle();
 
-                    int childModelIndex = bin.ReadInt32(); //todo - need to use a ref for this and probably store it. might mean we can avoid the CS2 structure?
-                    int childLODIndex = bin.ReadInt32();
-                    if (childLODIndex != -1) LODs.Add(childLODIndex);
+                    int childModelIndex = bin.ReadInt32(); 
+                    int childLODIndex = bin.ReadInt32(); 
                     submesh.Material = _materials.GetAtWriteIndex(bin.ReadInt32());
 
                     submesh.RenderFlags = (CS2.Component.LOD.RenderingFlag)bin.ReadUInt32();
@@ -146,6 +144,7 @@ namespace CATHODE
                     if (submesh.Bones.Capacity != 0)
                         boneOffsets.Add(submesh, boneArrayOffset);
 
+                    submeshMetadata.Add((submesh, childModelIndex, childLODIndex, cs2Name, submeshName));
                     _writeList.Add(submesh);
                 }
 
@@ -165,46 +164,48 @@ namespace CATHODE
             using (BinaryReader pak = new BinaryReader(File.OpenRead(_filepath)))
             {
                 //Read & check the header info from the PAK
-                pak.BaseStream.Position += 4; //Skip unused
+                pak.BaseStream.Position += 4;
                 if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.ASSET_FILE) return false;
                 if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.MODEL_DATA) return false;
-                int entryCount = BigEndianUtils.ReadInt32(pak);       // Number of non-empty entries
-                int entryCountActual = BigEndianUtils.ReadInt32(pak); // Total number of entries including empty ones
-                pak.BaseStream.Position += 12; //Skip unused
+                pak.BaseStream.Position += 4;
+                int entryCount = BigEndianUtils.ReadInt32(pak);
+                pak.BaseStream.Position += 12;
 
-                int endOfHeaders = 32 + (entryCountActual * 48);
+                int endOfHeaders = 32 + (entryCount * 48);
                 for (int i = 0; i < entryCount; i++)
                 {
-                    //Read submesh header info [48]
+                    //Read component header info
                     pak.BaseStream.Position += 8;
                     int length = BigEndianUtils.ReadInt32(pak);
-                    pak.BaseStream.Position += 4; //length again 
+                    pak.BaseStream.Position += 4;
                     int offset = BigEndianUtils.ReadInt32(pak);
                     int sort = BigEndianUtils.ReadInt32(pak);
                     pak.BaseStream.Position += 8;
                     int binIndex = BigEndianUtils.ReadInt32(pak);
                     pak.BaseStream.Position += 12;
+                    int endOfHeader = (int)pak.BaseStream.Position;
 
-                    //Create a new model instance to add these submeshes to
-                    CS2 cs2 = Entries.FirstOrDefault(o => o.Name == filenameList[binIndex]);
+                    if (binIndex == -1)
+                        continue;
+
+                    CS2 cs2 = Entries.FirstOrDefault(o => o.Name == submeshMetadata[binIndex].cs2Name);
                     if (cs2 == null)
                     {
-                        cs2 = new CS2();
-                        cs2.Name = filenameList[binIndex];
+                        cs2 = new CS2() { Name = submeshMetadata[binIndex].cs2Name };
                         Entries.Add(cs2);
                     }
                     CS2.Component component = new CS2.Component();
                     cs2.Components.Add(component);
 
-                    //Read submesh content and add to appropriate model
-                    int offsetToReturnTo = (int)pak.BaseStream.Position;
+                    //Read component content and add to appropriate model
                     pak.BaseStream.Position = endOfHeaders + offset;
                     byte[] content = pak.ReadBytes(length);
                     using (BinaryReader reader = new BinaryReader(new MemoryStream(content)))
                     {
-                        int firstIndex = BigEndianUtils.ReadInt32(reader);
+                        int currentLOD = BigEndianUtils.ReadInt32(reader);
                         int submeshCount = BigEndianUtils.ReadInt32(reader);
 
+                        //Read LOD headers
                         reader.BaseStream.Position += 16;
                         List<Tuple<int, int[]>> entryOffsets = new List<Tuple<int, int[]>>(); //bin index, [start,length]
                         for (int x = 0; x < submeshCount; x++)
@@ -214,22 +215,27 @@ namespace CATHODE
                         }
                         reader.BaseStream.Position += 8;
 
-                        int lodIndex = component.LODs.Count - 1;
+                        //Populate LOD data
+                        CS2.Component.LOD lod = new CS2.Component.LOD(submeshMetadata[binIndex].submeshName);
+                        component.LODs.Add(lod);
                         foreach (Tuple<int, int[]> offsetData in entryOffsets)
                         {
+                            if (submeshMetadata[currentLOD].childLODIndex == offsetData.Item1)
+                            {
+                                lod = new CS2.Component.LOD(submeshMetadata[binIndex].submeshName);
+                                component.LODs.Add(lod);
+                                currentLOD = offsetData.Item1;
+                            }
+
                             CS2.Component.LOD.Submesh submesh = _writeList[offsetData.Item1];
                             reader.BaseStream.Position = offsetData.Item2[0];
                             submesh.Data = reader.ReadBytes(offsetData.Item2[1]);
-
-                            if (LODs.Contains(offsetData.Item1) || lodIndex == -1)
-                            {
-                                component.LODs.Add(new CS2.Component.LOD(meshNameList[offsetData.Item1]));
-                                lodIndex++;
-                            }
-                            component.LODs[lodIndex].Submeshes.Add(submesh);
+                            lod.Submeshes.Add(submesh);
                         }
                     }
-                    pak.BaseStream.Position = offsetToReturnTo;
+
+                    //Reset back to the header end for next entry
+                    pak.BaseStream.Position = endOfHeader;
                 }
             }
             return true;
@@ -439,7 +445,7 @@ namespace CATHODE
                     var (entry, component, entryIdx, componentIdx) = componentList[idx];
                     componentBuffers[idx] = SerializeComponentContent(entry, component, componentList, idx);
                 });
-                int contentOffset = 32 + (componentCount * 48);
+                int contentOffset = 32 + (submeshCount * 48);
                 pak.BaseStream.SetLength(contentOffset);
                 pak.BaseStream.Position = contentOffset;
                 List<int> offsets = new List<int>();
@@ -459,30 +465,40 @@ namespace CATHODE
                     for (int x = 0; x < Entries[i].Components.Count; x++)
                     {
                         pak.Write(new byte[8]);
-                        pak.Write(BigEndianUtils.FlipEndian((Int32)lengths[c]));
-                        pak.Write(BigEndianUtils.FlipEndian((Int32)lengths[c]));
-                        pak.Write(BigEndianUtils.FlipEndian((Int32)offsets[c]));
+                        pak.Write(BigEndianUtils.FlipEndian(lengths[c]));
+                        pak.Write(BigEndianUtils.FlipEndian(lengths[c]));
+                        pak.Write(BigEndianUtils.FlipEndian(offsets[c]));
                         pak.Write(0);
                         pak.Write(new byte[4] { 0x00, 0x01, 0x01, 0x00 });
                         pak.Write(0);
-
-                        pak.Write(BigEndianUtils.FlipEndian((Int32)GetWriteIndex(Entries[i].Components[x].LODs[0].Submeshes[0])));
+                        pak.Write(BigEndianUtils.FlipEndian(GetWriteIndex(Entries[i].Components[x].LODs[0].Submeshes[0])));
                         pak.Write(new byte[12]);
-
                         c++;
                     }
+                }
+                for (int i = 0; i < submeshCount - componentCount; i++)
+                {
+                    pak.Write(new byte[8]);
+                    pak.Write(BigEndianUtils.FlipEndian(-1));
+                    pak.Write(BigEndianUtils.FlipEndian(-1));
+                    pak.Write(BigEndianUtils.FlipEndian(-1));
+                    pak.Write(0);
+                    pak.Write(new byte[4] { 0x00, 0x01, 0x01, 0x00 });
+                    pak.Write(0);
+                    pak.Write(BigEndianUtils.FlipEndian(-1));
+                    pak.Write(new byte[12]);
                 }
 
                 //Write header
                 pak.BaseStream.Position = 0;
                 pak.Write(new byte[4]);
-                pak.Write(BigEndianUtils.FlipEndian((Int32)FileIdentifiers.ASSET_FILE));
-                pak.Write(BigEndianUtils.FlipEndian((Int32)FileIdentifiers.MODEL_DATA));
-                pak.Write(BigEndianUtils.FlipEndian((Int32)componentCount));
-                pak.Write(BigEndianUtils.FlipEndian((Int32)componentCount));
-                pak.Write(BigEndianUtils.FlipEndian((Int32)16));
-                pak.Write(BigEndianUtils.FlipEndian((Int32)1));
-                pak.Write(BigEndianUtils.FlipEndian((Int32)1));
+                pak.Write(BigEndianUtils.FlipEndian((int)FileIdentifiers.ASSET_FILE));
+                pak.Write(BigEndianUtils.FlipEndian((int)FileIdentifiers.MODEL_DATA));
+                pak.Write(BigEndianUtils.FlipEndian(componentCount));
+                pak.Write(BigEndianUtils.FlipEndian(submeshCount));
+                pak.Write(BigEndianUtils.FlipEndian(16));
+                pak.Write(BigEndianUtils.FlipEndian(1));
+                pak.Write(BigEndianUtils.FlipEndian(1));
             }
             return true;
         }
