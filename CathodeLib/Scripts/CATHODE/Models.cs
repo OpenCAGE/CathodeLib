@@ -222,7 +222,7 @@ namespace CATHODE
                         {
                             if (submeshMetadata[currentLOD].childLODIndex == offsetData.Item1)
                             {
-                                lod = new CS2.Component.LOD(submeshMetadata[binIndex].submeshName);
+                                lod = new CS2.Component.LOD(submeshMetadata[offsetData.Item1].submeshName);
                                 component.LODs.Add(lod);
                                 currentLOD = offsetData.Item1;
                             }
