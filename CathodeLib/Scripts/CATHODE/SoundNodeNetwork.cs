@@ -11,7 +11,9 @@ using System.Xml.Linq;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/SNDNODENETWORK.DAT */
+    /// <summary>
+    /// DATA/ENV/x/WORLD/SNDNODENETWORK.DAT
+    /// </summary>
     public class SoundNodeNetwork : CathodeFile
     {
         public List<NetworkInfo> Entries = new List<NetworkInfo>();

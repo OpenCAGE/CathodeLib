@@ -13,7 +13,9 @@ using System.Numerics;
 
 namespace CATHODE
 {
-    /* DATA/TEXT/**//**.TXT */
+    /// <summary>
+    /// DATA/TEXT/*/*.TXT
+    /// </summary>
     public class TextDB : CathodeFile
     {
         public Dictionary<string, string> Entries = new Dictionary<string, string>();

@@ -9,9 +9,6 @@ using System.Windows.Input;
 using static CathodeLib.CompositeModificationInfoTable;
 using System.IO;
 
-
-
-
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -22,7 +19,9 @@ namespace CATHODE.Scripting
 {
     public class CommandsUtils
     {
-        //NOTE: This list is exposed publicly, because it is up to your app to manage it.
+        /// <summary>
+        /// NOTE: This list is exposed publicly, because it is up to your app to manage it.
+        /// </summary>
         public CompositePurgeTable PurgedComposites => _compPurges;
 
         private CompositePurgeTable _compPurges = new CompositePurgeTable();
@@ -46,8 +45,26 @@ namespace CATHODE.Scripting
                 LoadInfo(_commands.Filepath);
         }
 
+        ~CommandsUtils()
+        {
+            if (_commands == null)
+                return;
+
+            _commands.OnLoadSuccess -= LoadInfo;
+            _commands.OnSaveSuccess -= SaveInfo;
+
+            _compPurges?.purged?.Clear();
+            _entityNames?.names?.Clear();
+            _modificationInfo?.modification_info?.Clear();
+            _pinInfo?.composite_pin_infos?.Clear();
+                
+            _commands = null;
+        }
+
         #region Generic Utility Functions
-        /* Gets the composite that contains the entity - OPTIMIZED with caching */
+        /// <summary>
+        /// Gets the composite that contains the entity
+        /// </summary>
         public Composite GetContainedComposite(Entity entity)
         {
             if (entity == null) return null;
@@ -77,7 +94,9 @@ namespace CATHODE.Scripting
             return null;
         }
 
-        /* Resolve an alias or proxy */
+        /// <summary>
+        /// Resolve an alias or proxy
+        /// </summary>
         public List<Tuple<Composite, Entity>> ResolveAliasOrProxy(Entity entity, Composite composite)
         {
             switch (entity?.variant)
@@ -102,7 +121,9 @@ namespace CATHODE.Scripting
             return ResolveProxy(hierarchy);
         }
 
-        /* Resolve an alias */
+        /// <summary>
+        /// Resolve an alias
+        /// </summary>
         public List<Tuple<Composite, Entity>> ResolveAlias(AliasEntity alias, Composite composite)
         {
             return ResolveAlias(alias?.alias?.path, composite);
@@ -146,7 +167,9 @@ namespace CATHODE.Scripting
             return path;
         }
 
-        /* Resolve a proxy */
+        /// <summary>
+        /// Resolve a proxy
+        /// </summary>
         public List<Tuple<Composite, Entity>> ResolveProxy(ProxyEntity proxy)
         {
             return ResolveProxy(proxy?.proxy?.path);
@@ -160,14 +183,12 @@ namespace CATHODE.Scripting
             if (hierarchy == null || hierarchy.Length <= 2)
                 return new List<Tuple<Composite, Entity>>();
 
+            Composite initialComp = _commands.GetComposite(hierarchy[0]); //NOTE: This isn't always the initial comp, so we check from the entry point first.
+            Composite currentComp = _commands.EntryPoints[0];
+
             bool hasTerminator = hierarchy[hierarchy.Length - 1] == ShortGuid.Invalid;
             int maxIndex = hierarchy.Length - (hasTerminator ? 1 : 0);
-
-            Composite initialComp = _commands.GetComposite(hierarchy[0]); //NOTE: This isn't always the initial comp, so we check from the entry point first.
-
-            Composite currentComp = _commands.EntryPoints[0];
             
-            // Pre-allocate list with estimated capacity
             var path = new List<Tuple<Composite, Entity>>(maxIndex - 1);
             
             for (int i = 1; i < maxIndex; i++)
@@ -207,13 +228,59 @@ namespace CATHODE.Scripting
             return path;
         }
 
-        /* Checks a resolved alias or proxy to see if it could be resolved */
+        /// <summary>
+        /// Resolve a hierarchy pointing from the root composite
+        /// </summary>
+        public List<Tuple<Composite, Entity>> ResolveHierarchy(EntityPath path)
+        {
+            return ResolveHierarchy(path?.path);
+        }
+        public List<Tuple<Composite, Entity>> ResolveHierarchy(ShortGuid[] hierarchy)
+        {
+            if (hierarchy == null || hierarchy.Length == 0)
+                return new List<Tuple<Composite, Entity>>();
+
+            Composite currentComp = _commands.EntryPoints[0];
+
+            bool hasTerminator = hierarchy[hierarchy.Length - 1] == ShortGuid.Invalid;
+            int maxIndex = hierarchy.Length - (hasTerminator ? 1 : 0);
+
+            var path = new List<Tuple<Composite, Entity>>(maxIndex - 1);
+
+            for (int i = 0; i < maxIndex; i++)
+            {
+                Entity entity = currentComp.GetEntityByID(hierarchy[i]);
+                if (entity == null)
+                    return new List<Tuple<Composite, Entity>>(); //Unresolvable!
+
+                path.Add(new Tuple<Composite, Entity>(currentComp, entity));
+
+                //Look up next composite to check, if we're not on the last one
+                if (i != maxIndex - 1)
+                {
+                    if (entity.variant != EntityVariant.FUNCTION)
+                        return new List<Tuple<Composite, Entity>>(); //Unresolvable!
+
+                    FunctionEntity function = (FunctionEntity)entity;
+                    currentComp = _commands.GetComposite(function.function);
+                    if (currentComp == null)
+                        return new List<Tuple<Composite, Entity>>(); //Unresolvable!
+                }
+            }
+            return path;
+        }
+
+        /// <summary>
+        /// Checks a resolved alias or proxy to see if it could be resolved
+        /// </summary>
         public bool CouldResolve(List<Tuple<Composite, Entity>> path)
         {
             return path != null && path.Count != 0;
         }
 
-        /* Checks a resolved alias or proxy to get the pointed Entity and Composite */
+        /// <summary>
+        /// Checks a resolved alias or proxy to get the pointed Entity and Composite
+        /// </summary>
         public (Composite, Entity) GetResolvedTarget(List<Tuple<Composite, Entity>> path)
         {
             if (!CouldResolve(path))
@@ -221,7 +288,9 @@ namespace CATHODE.Scripting
             return (path[path.Count - 1].Item1, path[path.Count - 1].Item2);
         }
 
-        /* Gets a resolved alias or proxy as a string representation - OPTIMIZED */
+        /// <summary>
+        /// Gets a resolved alias or proxy as a string representation - OPTIMIZED
+        /// </summary>
         public string GetResolvedAsString(List<Tuple<Composite, Entity>> path, bool includeGuids = true)
         {
             if (path == null || path.Count == 0)
@@ -244,68 +313,9 @@ namespace CATHODE.Scripting
             return sb.ToString();
         }
 
-        /* Resolve an entity hierarchy */
-        [Obsolete("This method will be removed in a future CathodeLib release. Please use ResolveAlias and ResolveProxy respectively when resolving a hierarchy!")]
-        public Entity ResolveHierarchy(Composite composite, ShortGuid[] hierarchy, out Composite containedComposite, out string asString, bool includeShortGuids = true)
-        {
-            if (hierarchy.Length == 0)
-            {
-                containedComposite = null;
-                asString = "";
-                return null;
-            }
-
-            List<ShortGuid> hierarchyCopy = hierarchy.ToList();
-        
-            Composite currentFlowgraphToSearch = composite;
-            if (currentFlowgraphToSearch == null || currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[0]) == null)
-            {
-                currentFlowgraphToSearch = _commands.EntryPoints[0];
-                if (currentFlowgraphToSearch == null || currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[0]) == null)
-                {
-                    currentFlowgraphToSearch = _commands.GetComposite(hierarchyCopy[0]);
-                    if (currentFlowgraphToSearch == null || currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[1]) == null)
-                    {
-                        containedComposite = null;
-                        asString = "";
-                        return null;
-                    }
-                    hierarchyCopy.RemoveAt(0);
-                }
-            }
-        
-            Entity entity = null;
-            string hierarchyString = "";
-            for (int i = 0; i < hierarchyCopy.Count; i++)
-            {
-                entity = currentFlowgraphToSearch.GetEntityByID(hierarchyCopy[i]);
-        
-                if (entity == null) break;
-                if (includeShortGuids) hierarchyString += "[" + entity.shortGUID.ToByteString() + "] ";
-                hierarchyString += GetEntityName(currentFlowgraphToSearch.shortGUID, entity.shortGUID);
-                if (i >= hierarchyCopy.Count - 2) break; //Last is always 00-00-00-00
-                hierarchyString += " -> ";
-        
-                if (entity.variant == EntityVariant.FUNCTION)
-                {
-                    Composite flowRef = _commands.GetComposite(((FunctionEntity)entity).function);
-                    if (flowRef != null)
-                    {
-                        currentFlowgraphToSearch = flowRef;
-                    }
-                    else
-                    {
-                        entity = null;
-                        break;
-                    }
-                }
-            }
-            containedComposite = (entity == null) ? null : currentFlowgraphToSearch;
-            asString = hierarchyString;
-            return entity;
-        }
-
-        /* Calculate an instanced entity's worldspace position & rotation */
+        /// <summary>
+        /// Calculate an instanced entity's worldspace position & rotation
+        /// </summary>
         public (Vector3, Quaternion) CalculateInstancedPosition(EntityPath hierarchy)
         {
             cTransform globalTransform = new cTransform();
@@ -331,7 +341,9 @@ namespace CATHODE.Scripting
 #endif
         }
 
-        /* CA's CAGE doesn't properly tidy up hierarchies pointing to deleted entities - so we can do that to save confusion */
+        /// <summary>
+        /// CA's CAGE doesn't properly tidy up hierarchies pointing to deleted entities - so we can do that to save confusion
+        /// </summary>
         public bool PurgeDeadLinks(Composite composite, bool force = false)
         {
             if (!force && _compPurges.purged.Contains(composite.shortGUID))
@@ -352,7 +364,6 @@ namespace CATHODE.Scripting
             int originalFuncCount = 0;
 
             // Functions must be a valid FunctionType, or point to a Composite that exists
-            // Use dictionary for O(1) lookups and efficient removal
             var functionsToRemove = new List<ShortGuid>();
             foreach (var kvp in composite.functions_dictionary)
             {
@@ -367,30 +378,30 @@ namespace CATHODE.Scripting
                 composite.functions_dictionary.Remove(guid);
             }
 
-                    // Aliases must point to children of the Composite that still exist
-        // Also remove aliases that don't have any links in or out, or any parameters
-        var aliasesToRemove = new List<ShortGuid>();
-        foreach (var kvp in composite.aliases_dictionary)
-        {
-            var alias = kvp.Value;
-            // Remove if alias cannot be resolved
-            if (!CouldResolve(ResolveAlias(alias, composite)))
+            // Aliases must point to children of the Composite that still exist
+            // Also remove aliases that don't have any links in or out, or any parameters
+            var aliasesToRemove = new List<ShortGuid>();
+            foreach (var kvp in composite.aliases_dictionary)
             {
-                aliasesToRemove.Add(kvp.Key);
+                var alias = kvp.Value;
+                // Remove if alias cannot be resolved
+                if (!CouldResolve(ResolveAlias(alias, composite)))
+                {
+                    aliasesToRemove.Add(kvp.Key);
+                }
+                // Remove if alias has no child links, no parameters, and no parent links
+                else if (alias.childLinks.Count == 0 && 
+                         alias.parameters.Count == 0 && 
+                         alias.GetParentLinks(composite).Count == 0)
+                {
+                    aliasesToRemove.Add(kvp.Key);
+                }
             }
-            // Remove if alias has no child links, no parameters, and no parent links
-            else if (alias.childLinks.Count == 0 && 
-                     alias.parameters.Count == 0 && 
-                     alias.GetParentLinks(composite).Count == 0)
+            originalAliasCount = composite.aliases_dictionary.Count;
+            foreach (var guid in aliasesToRemove)
             {
-                aliasesToRemove.Add(kvp.Key);
+                composite.aliases_dictionary.Remove(guid);
             }
-        }
-        originalAliasCount = composite.aliases_dictionary.Count;
-        foreach (var guid in aliasesToRemove)
-        {
-            composite.aliases_dictionary.Remove(guid);
-        }
 
             // Proxies must be able to be resolved in some form
             var proxiesToRemove = new List<ShortGuid>();
@@ -502,13 +513,17 @@ namespace CATHODE.Scripting
             return true;
         }
 
-        /* Remove all links between Entities within the Composite */
+        /// <summary>
+        /// Remove all links between Entities within the Composite
+        /// </summary>
         public void ClearAllLinks(Composite composite)
         {
             composite.GetEntities().ForEach(o => o.childLinks.Clear());
         }
 
-        /* Count the number of links in the Composite */
+        /// <summary>
+        /// Count the number of links in the Composite
+        /// </summary>
         public int CountLinks(Composite composite)
         {
             int count = 0;
@@ -520,13 +535,17 @@ namespace CATHODE.Scripting
         #endregion
 
         #region Parameter Utils
-        /* Get the inherited function type for a given function type (returns null if it doesn't inherit) */
+        /// <summary>
+        /// Get the inherited function type for a given function type (returns null if it doesn't inherit)
+        /// </summary>
         public FunctionType? GetInheritedFunction(FunctionType function)
         {
             return CustomTable.Vanilla.CathodeEntities.FunctionBaseClasses[function];
         }
 
-        /* Add all parameters to a given entity with default values (NOTE: you only need to pass in composite if Entity is an Alias or Variable, otherwise feel free to pass null) */
+        /// <summary>
+        /// Add all parameters to a given entity with default values (NOTE: you only need to pass in composite if Entity is an Alias or Variable, otherwise feel free to pass null)
+        /// </summary>
         public void AddAllDefaultParameters(Entity entity, Composite composite, bool overwrite = true, ParameterVariant variants = ParameterVariant.STATE_PARAMETER | ParameterVariant.INPUT_PIN | ParameterVariant.PARAMETER, bool includeInherited = true)
         {
             switch (entity.variant)
@@ -692,7 +711,9 @@ namespace CATHODE.Scripting
             }
         }
 
-        /* Get all possible parameters for a given entity */
+        /// <summary>
+        /// Get all possible parameters for a given entity
+        /// </summary>
         public List<(ShortGuid, ParameterVariant, DataType)> GetAllParameters(Entity entity, Composite composite, bool includeInherited = true)
         {
             List<(ShortGuid, ParameterVariant, DataType)> parameters = new List<(ShortGuid, ParameterVariant, DataType)>();
@@ -767,7 +788,9 @@ namespace CATHODE.Scripting
             return parameters;
         }
 
-        /* Get all possible parameters for a given function type (not including inherited) */
+        /// <summary>
+        /// Get all possible parameters for a given function type (not including inherited)
+        /// </summary>
         public List<(ShortGuid, ParameterVariant, DataType)> GetAllParameters(FunctionType function)
         {
             List<(ShortGuid, ParameterVariant, DataType)> parameters = new List<(ShortGuid, ParameterVariant, DataType)>();
@@ -852,7 +875,9 @@ namespace CATHODE.Scripting
             return parameters;
         }
 
-        /* Get metadata about a parameter on an entity: variant, type, and function/composite that implements (if applicable) */
+        /// <summary>
+        /// Get metadata about a parameter on an entity: variant, type, and function/composite that implements (if applicable)
+        /// </summary>
         public (ParameterVariant?, DataType?, ShortGuid) GetParameterMetadata(Entity entity, string parameter, Composite composite)
         {
             return GetParameterMetadata(entity, ShortGuidUtils.Generate(parameter), composite);
@@ -934,7 +959,9 @@ namespace CATHODE.Scripting
             return (null, null, ShortGuid.Invalid);
         }
 
-        /* Get metadata about a parameter on a function: variant, type, and function that implements */
+        /// <summary>
+        /// Get metadata about a parameter on a function: variant, type, and function that implements
+        /// </summary>
         public (ParameterVariant?, DataType?, FunctionType?) GetParameterMetadata(FunctionType function, string parameter)
         {
             return GetParameterMetadata(function, ShortGuidUtils.Generate(parameter));
@@ -1029,7 +1056,9 @@ namespace CATHODE.Scripting
             return (null, null, null);
         }
 
-        /* Create ParameterData with default values for the given entity's parameter */
+        /// <summary>
+        /// Create ParameterData with default values for the given entity's parameter
+        /// </summary>
         public ParameterData CreateDefaultParameterData(Entity entity, Composite composite, string parameter)
         {
             return CreateDefaultParameterData(entity, composite, ShortGuidUtils.Generate(parameter));
@@ -1097,15 +1126,6 @@ namespace CATHODE.Scripting
                     else
                     {
                         ParameterData data;
-                        FunctionType? functionType = FunctionType.CompositeInterface;
-                        while (true)
-                        {
-                            data = CreateDefaultParameterData(functionType.Value, parameter);
-                            if (data != null)
-                                return data;
-                            functionType = GetInheritedFunction(functionType.Value);
-                            if (functionType == null) break;
-                        }
                         Composite comp = _commands.GetComposite(functionEntity.function);
                         if (composite != null)
                         {
@@ -1116,6 +1136,15 @@ namespace CATHODE.Scripting
                                 if (data != null)
                                     return data;
                             }
+                        }
+                        FunctionType? functionType = FunctionType.CompositeInterface;
+                        while (true)
+                        {
+                            data = CreateDefaultParameterData(functionType.Value, parameter);
+                            if (data != null)
+                                return data;
+                            functionType = GetInheritedFunction(functionType.Value);
+                            if (functionType == null) break;
                         }
                     }
                     break;
@@ -1145,7 +1174,9 @@ namespace CATHODE.Scripting
             return null;
         }
 
-        /* Create ParameterData with default values for the given function type's parameter */
+        /// <summary>
+        /// Create ParameterData with default values for the given function type's parameter
+        /// </summary>
         public ParameterData CreateDefaultParameterData(FunctionType function, string parameter)
         {
             return CreateDefaultParameterData(function, ShortGuidUtils.Generate(parameter));
@@ -1173,7 +1204,8 @@ namespace CATHODE.Scripting
                     bool isCorrectParam = paramID == parameter.AsUInt32;
                     switch (variant)
                     {
-                        case ParameterVariant.TARGET_PIN:
+                        //NOTE - having this uncommented causes an offset issue, why was it here?
+                        //case ParameterVariant.TARGET_PIN:
                         case ParameterVariant.REFERENCE_PIN:
                         case ParameterVariant.METHOD_FUNCTION:
                         case ParameterVariant.METHOD_PIN:
@@ -1269,7 +1301,9 @@ namespace CATHODE.Scripting
             return null;
         }
 
-        /* Get the relay pin for a given method pin */
+        /// <summary>
+        /// Get the relay pin for a given method pin
+        /// </summary>
         public ShortGuid GetRelay(ShortGuid guid)
         {
             using (BinaryReader reader = new BinaryReader(new MemoryStream(CustomTable.Vanilla.CathodeEntities.content)))
@@ -1288,7 +1322,9 @@ namespace CATHODE.Scripting
         #endregion
 
         #region Enum Utils
-        //Check the formatted enum dump for content
+        /// <summary>
+        /// Check the formatted enum dump for content
+        /// </summary>
         public CathodeEnumTable.EnumDescriptor GetEnum(string name)
         {
             ShortGuid id = ShortGuidUtils.Generate(name);
@@ -1301,7 +1337,9 @@ namespace CATHODE.Scripting
         #endregion
 
         #region Entity Names
-        /* Get the name of an entity contained within a composite */
+        /// <summary>
+        /// Get the name of an entity contained within a composite
+        /// </summary>
         public string GetEntityName(Composite composite, Entity entity) => GetEntityName(composite.shortGUID, entity.shortGUID);
         public string GetEntityName(ShortGuid compositeID, ShortGuid entityID)
         {
@@ -1314,7 +1352,9 @@ namespace CATHODE.Scripting
             return entityID.ToByteString();
         }
 
-        /* Set the name of an entity contained within a composite */
+        /// <summary>
+        /// Set the name of an entity contained within a composite
+        /// </summary>
         public void SetEntityName(Composite composite, Entity entity, string name) => SetEntityName(composite.shortGUID, entity.shortGUID, name);
         public void SetEntityName(ShortGuid compositeID, ShortGuid entityID, string name)
         {
@@ -1327,7 +1367,9 @@ namespace CATHODE.Scripting
                 _entityNames.names[compositeID][entityID] = name;
         }
 
-        /* Clear the name of an entity contained within a composite */
+        /// <summary>
+        /// Clear the name of an entity contained within a composite
+        /// </summary>
         public void ClearEntityName(Composite composite, Entity entity) => ClearEntityName(composite.shortGUID, entity.shortGUID);
         public void ClearEntityName(ShortGuid compositeID, ShortGuid entityID)
         {
@@ -1337,14 +1379,18 @@ namespace CATHODE.Scripting
         #endregion
 
         #region Composite Modification Info
-        /* Set/update the modification metadata for a composite */
+        /// <summary>
+        /// Set/update the modification metadata for a composite
+        /// </summary>
         public void SetModificationInfo(CompositeModificationInfoTable.ModificationInfo info)
         {
             _modificationInfo.modification_info.RemoveAll(o => o.composite_id == info.composite_id);
             _modificationInfo.modification_info.Add(info);
         }
 
-        /* Get the modification metadata for a composite (if it exists) */
+        /// <summary>
+        /// Get the modification metadata for a composite (if it exists)
+        /// </summary>
         public CompositeModificationInfoTable.ModificationInfo GetModificationInfo(Composite composite) => GetModificationInfo(composite.shortGUID);
         public CompositeModificationInfoTable.ModificationInfo GetModificationInfo(ShortGuid composite)
         {
@@ -1353,7 +1399,9 @@ namespace CATHODE.Scripting
         #endregion
 
         #region Composite Pin Info 
-        /* Set/update the pin info for a composite VariableEntity */
+        /// <summary>
+        /// Set/update the pin info for a composite VariableEntity
+        /// </summary>
         public void SetPinInfo(Composite composite, CompositePinInfoTable.PinInfo info) => SetPinInfo(composite.shortGUID, info);
         public void SetPinInfo(ShortGuid composite, CompositePinInfoTable.PinInfo info)
         {
@@ -1368,7 +1416,9 @@ namespace CATHODE.Scripting
             infos.Add(info);
         }
 
-        /* Get the pin info for a composite VariableEntity */
+        /// <summary>
+        /// Get the pin info for a composite VariableEntity
+        /// </summary>
         public CompositePinInfoTable.PinInfo GetPinInfo(Composite composite, VariableEntity variableEnt) => GetPinInfo(composite.shortGUID, variableEnt.shortGUID);
         public CompositePinInfoTable.PinInfo GetPinInfo(ShortGuid composite, ShortGuid variableEnt)
         {
@@ -1382,7 +1432,9 @@ namespace CATHODE.Scripting
             return info;
         }
 
-        /* Convert PinType enum to ParameterVariant enum */
+        /// <summary>
+        /// Convert PinType enum to ParameterVariant enum
+        /// </summary>
         public ParameterVariant PinTypeToParameterVariant(ShortGuid type)
         {
             return PinTypeToParameterVariant((CompositePinType)type.AsUInt32);
@@ -1432,7 +1484,9 @@ namespace CATHODE.Scripting
         #endregion
 
         #region Table Management
-        /* Handle loading/saving "purge states" -> this tracks the composites that have had unresolvable entities removed from */
+        /// <summary>
+        /// Handle loading/saving "purge states" -> this tracks the composites that have had unresolvable entities removed from
+        /// </summary>
         private void LoadInfo(string filepath)
         {
             ShortGuidUtils.LoadCustomNames(_commands.Filepath);

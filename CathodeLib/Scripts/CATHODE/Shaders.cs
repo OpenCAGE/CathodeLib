@@ -1,24 +1,29 @@
-﻿using CathodeLib;
+using CATHODE.ShaderTypes;
+using CathodeLib;
+using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/RENDERABLE/LEVEL_SHADERS_DX11.PAK & LEVEL_SHADERS_DX11_BIN.PAK & LEVEL_SHADERS_DX11_IDX_REMAP.PAK */
+    /// <summary>
+    /// DATA/ENV/x/RENDERABLE/LEVEL_SHADERS_DX11.PAK & LEVEL_SHADERS_DX11_BIN.PAK & LEVEL_SHADERS_DX11_IDX_REMAP.PAK
+    /// </summary>
     public class Shaders : CathodeFile
     {
         public List<Shader> Entries = new List<Shader>();
 
+        private List<Shader> _writeList = new List<Shader>();
+
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public Shaders(string path) : base(path) { }
-
-        private string _filepathBIN;
-        private string _filepathIDX;
 
         ~Shaders()
         {
@@ -26,18 +31,14 @@ namespace CATHODE
         }
 
         #region FILE_IO
-        override protected bool LoadInternal(MemoryStream stream)
+        override protected bool LoadInternal(MemoryStream stream) 
         {
             //NOTE: Loading via byte[] or MemoryStream is not currently supported. Must be loaded via disk from a filepath!
             if (_filepath == "")
                 return false;
 
-            string trimmed = _filepath.Substring(0, _filepath.Length - 4);
-            _filepathBIN = trimmed + "_BIN.PAK";
-            _filepathIDX = trimmed + "_IDX_REMAP.PAK";
-
-            if (!File.Exists(_filepathBIN)) return false;
-            if (!File.Exists(_filepathIDX)) return false;
+            string filepathBIN = _filepath.Substring(0, _filepath.Length - 4) + "_BIN.PAK";
+            if (!File.Exists(filepathBIN)) return false;
 
             List<byte[]> VertexShaders = new List<byte[]>();
             List<byte[]> PixelShaders = new List<byte[]>();
@@ -46,61 +47,42 @@ namespace CATHODE
             List<byte[]> GeometryShaders = new List<byte[]>();
             List<byte[]> ComputeShaders = new List<byte[]>();
 
-            //This is all the raw DXBC shader data
-            List<Utilities.PAKContent> content = Utilities.ReadPAK(_filepathBIN, FileIdentifiers.SHADER_DATA);
-            for (int i = 0; i < content.Count; i++)
+            //This is all the raw shader data
+            List<Utilities.PAKContent> content = Utilities.ReadPAK(filepathBIN, FileIdentifiers.SHADER_DATA);
             {
-                if (content[i].BinIndex != i) return false;
-
-                using (BinaryReader reader = new BinaryReader(new MemoryStream(content[i].Data)))
+                int[] counts = new int[6];
+                using (BinaryReader reader = new BinaryReader(new MemoryStream(content[0].Data)))
+                    for (int i = 0; i < 6; i++)
+                        counts[i] = reader.ReadInt32();
+                int z = 1;
+                for (int i = 0; i < 6; i++)
                 {
-                    //The first entry acts as an additional header
-                    if (i == 0)
+                    for (int x = 0; x < counts[i]; x++)
                     {
-                        VertexShaders.Capacity = reader.ReadInt32();
-                        PixelShaders.Capacity = reader.ReadInt32();
-                        HullShaders.Capacity = reader.ReadInt32();
-                        DomainShaders.Capacity = reader.ReadInt32();
-                        GeometryShaders.Capacity = reader.ReadInt32();
-                        ComputeShaders.Capacity = reader.ReadInt32();
-                        continue;
+                        if (content[z].BinIndex != z) return false;
+                        switch (i)
+                        {
+                            case 0:
+                                VertexShaders.Add(content[z].Data);
+                                break;
+                            case 1:
+                                PixelShaders.Add(content[z].Data);
+                                break;
+                            case 2:
+                                HullShaders.Add(content[z].Data);
+                                break;
+                            case 3:
+                                DomainShaders.Add(content[z].Data);
+                                break;
+                            case 4:
+                                GeometryShaders.Add(content[z].Data);
+                                break;
+                            case 5:
+                                ComputeShaders.Add(content[z].Data);
+                                break;
+                        }
+                        z++;
                     }
-
-                    ShaderType type = GetTypeFromDXBC(content[i].Data);
-                    switch (type)
-                    {
-                        case ShaderType.VERTEX:
-                            VertexShaders.Add(content[i].Data);
-                            break;
-                        case ShaderType.PIXEL:
-                            PixelShaders.Add(content[i].Data);
-                            break;
-                        case ShaderType.HULL:
-                            HullShaders.Add(content[i].Data);
-                            break;
-                        case ShaderType.DOMAIN:
-                            DomainShaders.Add(content[i].Data);
-                            break;
-                        case ShaderType.GEOMETRY:
-                            GeometryShaders.Add(content[i].Data);
-                            break;
-                        case ShaderType.COMPUTE:
-                            ComputeShaders.Add(content[i].Data);
-                            break;
-                    }
-                }
-            }
-
-            //I don't think we need to read this really, it's just a count
-            content = Utilities.ReadPAK(_filepathIDX, FileIdentifiers.SHADER_DATA);
-            for (int i = 0; i < content.Count; i++)
-            {
-                if (content[i].BinIndex != i) return false;
-
-                using (BinaryReader reader = new BinaryReader(new MemoryStream(content[i].Data)))
-                {
-                    int index = reader.ReadInt32();
-                    if (index != i) return false;
                 }
             }
 
@@ -112,105 +94,66 @@ namespace CATHODE
 
                 using (BinaryReader reader = new BinaryReader(new MemoryStream(content[i].Data)))
                 {
+                    reader.BaseStream.Position = 8;
+
                     Shader shader = new Shader();
+                    int samplerCount = reader.ReadInt16(); //max 16
+                    int[] parameterRemapCount = Utilities.ConsumeArray<int>(reader, 5);
+                    int samplerRemapCount = reader.ReadInt16();
 
-                    reader.BaseStream.Position = 8; //0x7725BBA4, 36, 1
+                    reader.BaseStream.Position += 40; 
+                    shader.Ubershader = (SHADER_LIST)reader.ReadInt16();
+                    shader.UbershaderFeatureFlags = reader.ReadInt64();
+                    shader.UbershaderRequirementFlags = reader.ReadInt64();
+                    shader.RequiredShaderModel = (SHADER_MODEL)reader.ReadByte();
+                    shader.CycleCount = reader.ReadInt16();
+                    shader.RegisterCount = reader.ReadByte();
+                    shader.PermutationHash = reader.ReadUInt32();
+                    shader.RenderStates = new StateBlock(reader);
 
-                    int textureCount = reader.ReadInt16();
-                    int[] cstCounts = Utilities.ConsumeArray<int>(reader, 5);
-                    int textureLinkCount = reader.ReadInt16();
-                    reader.BaseStream.Position += 40; //String version of Category
-                    shader.Category = (ShaderCategory)reader.ReadInt16();
-
-                    // Index 0: 0x04: seems to be metal. 0x01: seems to be non-metal. But it has many exceptions so maybe check renderdoc.
-                    // Index 1: ParallaxMap? It seems to be either 0x30 and 0x80 for the most part, sometimes it combines both into 0xB0.
-                    // Index 2: Lower part of this byte is NormalMap0 related! 0x04 means it has normal map 0. No hits for 1, 2 or 8 yet.
-                    //          0x03 is a thing, but not normal map. What is it? Can be 0x07 where it has normal map and both the 0x03 thing.
-                    //          0x0C is also a thing (8 and 4), so it has normal map and something else?
-                    //          I'm gonna say 0x03 means DiffuseMap1.
-                    // Index 3: 0x04 Not OcclusionTint. (NormalMap0 + NormalMap0UVMultiplier + NormalMap0Strength?)
-                    // Index 4: Seems to tell me about AO. If 4, then it has AO tint. If 1 it has AO texture.
-                    // Index 6: Seems to tell me about Dirt/OpacityNoise.
-                    //      0x19 (0001 1001): has opacity noise and dirt maps.
-                    //      0x38 (0011 1000): has dirt map.
-                    //      0x39 (0011 1001): has opacity noise and dirt maps.
-                    // Index 10: First half, only found 4, and it seems to be something included in all (Diffuse0 as well?).
-                    // Seems like the least significant bit enables/disables opacity noise?
-                    for (int x = 0; x < 20; x++) 
-                        shader.Flags[x] = reader.ReadByte();
-
-                    shader.Unknown1 = reader.ReadInt32();
-
-                    int entryCount = reader.ReadInt16();
-                    for (int x = 0; x < entryCount; x++)
-                    {
-                        shader.Unknown2.Add(new Shader.UnknownPair()
-                        {
-                            unk1 = reader.ReadInt16(),
-                            unk2 = reader.ReadInt32()
-                        });
-                    }
-
-                    for (int x = 0; x < textureCount; x++)
-                    {
-                        Shader.UnknownTextureThing unk = new Shader.UnknownTextureThing();
-                        unk.unk1 = reader.ReadByte();
-                        unk.unk2 = reader.ReadByte();
-                        unk.unk3 = new short[16];
-                        for (int z = 0; z < 16; z++)
-                            unk.unk3[z] = reader.ReadInt16();
-                        unk.unk4 = reader.ReadSingle();
-                        unk.unk5 = reader.ReadInt16();
-                        unk.unk6 = reader.ReadSingle();
-                        shader.Unknown3.Add(unk);
-                    }
-                    for (int x = 0; x < textureCount; x++)
-                    {
-                        shader.Unknown3[x].unk7 = reader.ReadByte();
-                    }
-
-                    shader.CSTLinks = new int[5][];
-                    for (int x = 0; x < 5; x++)
-                    {
-                        shader.CSTLinks[x] = new int[cstCounts[x]];
-                        for (int z = 0; z < cstCounts[x]; z++)
-                        {
-                            shader.CSTLinks[x][z] = reader.ReadByte();
-                        }
-                    }
-
-                    shader.TextureLinks = new int[textureLinkCount];
-                    for (int x = 0; x < textureLinkCount; x++)
-                    {
-                        shader.TextureLinks[x] = reader.ReadByte();
-                    }
+                    for (int x = 0; x < samplerCount; x++)
+                        shader.Samplers.Add(new StateBlock(reader));
+                    for (int x = 0; x < samplerCount; x++)
+                        shader.SamplerStageBindings.Add(reader.ReadByte());
+                    for (int x = 0; x < parameterRemapCount[0]; x++)
+                        shader.EngineParameterRemaps.Add(reader.ReadByte());
+                    for (int x = 0; x < parameterRemapCount[1]; x++)
+                        shader.VertexShaderParameterRemaps.Add(reader.ReadByte());
+                    for (int x = 0; x < parameterRemapCount[2]; x++)
+                        shader.PixelShaderParameterRemaps.Add(reader.ReadByte());
+                    for (int x = 0; x < parameterRemapCount[3]; x++)
+                        shader.HullShaderParameterRemaps.Add(reader.ReadByte());
+                    for (int x = 0; x < parameterRemapCount[4]; x++)
+                        shader.DomainShaderParameterRemaps.Add(reader.ReadByte());
+                    for (int x = 0; x < samplerRemapCount; x++)
+                        shader.SamplerRemaps.Add(reader.ReadByte());
 
                     int vertexShaderIdx = reader.ReadInt32();
-                    int pixelShaderIdx = reader.ReadInt32();
-                    int hullShaderIdx = reader.ReadInt32();
-                    int domainShaderIdx = reader.ReadInt32();
-                    int geometryShaderIdx = reader.ReadInt32();
-                    int computeShaderIdx = reader.ReadInt32();
-
                     shader.VertexShader = vertexShaderIdx == -1 ? null : VertexShaders[vertexShaderIdx];
+                    int pixelShaderIdx = reader.ReadInt32();
                     shader.PixelShader = pixelShaderIdx == -1 ? null : PixelShaders[pixelShaderIdx];
+                    int hullShaderIdx = reader.ReadInt32();
                     shader.HullShader = hullShaderIdx == -1 ? null : HullShaders[hullShaderIdx];
+                    int domainShaderIdx = reader.ReadInt32();
                     shader.DomainShader = domainShaderIdx == -1 ? null : DomainShaders[domainShaderIdx];
+                    int geometryShaderIdx = reader.ReadInt32();
                     shader.GeometryShader = geometryShaderIdx == -1 ? null : GeometryShaders[geometryShaderIdx];
+                    int computeShaderIdx = reader.ReadInt32();
                     shader.ComputeShader = computeShaderIdx == -1 ? null : ComputeShaders[computeShaderIdx];
-
-                    int pos = (int)reader.BaseStream.Position;
-                    int len = (int)reader.BaseStream.Length;
 
                     Entries.Add(shader);
                 }
             }
 
+            _writeList.AddRange(Entries);
             return true;
         }
 
         override protected bool SaveInternal()
         {
+            string filepathBIN = _filepath.Substring(0, _filepath.Length - 4) + "_BIN.PAK";
+            string filepathIDX = _filepath.Substring(0, _filepath.Length - 4) + "_IDX_REMAP.PAK";
+
             //Compile all shader data
             List<byte[]> VertexShaders = new List<byte[]>();
             List<byte[]> PixelShaders = new List<byte[]>();
@@ -261,7 +204,7 @@ namespace CATHODE
                     Data = AllShaders[i]
                 });
             }
-            Utilities.WritePAK(_filepathBIN, FileIdentifiers.SHADER_DATA, content);
+            Utilities.WritePAK(filepathBIN, FileIdentifiers.SHADER_DATA, content);
 
             //Write out indexes
             content = new List<Utilities.PAKContent>();
@@ -273,267 +216,150 @@ namespace CATHODE
                     Data = BitConverter.GetBytes((Int32)i)
                 });
             }
-            Utilities.WritePAK(_filepathIDX, FileIdentifiers.SHADER_DATA, content);
+            Utilities.WritePAK(filepathIDX, FileIdentifiers.SHADER_DATA, content);
 
             //Write out metadata
-            content = new List<Utilities.PAKContent>();
-            for (int i = 0; i < Entries.Count; i++)
+            byte[][] shaderBuffers = new byte[Entries.Count][];
+            Parallel.For(0, Entries.Count, i =>
             {
-                MemoryStream data = new MemoryStream();
-                using (BinaryWriter writer = new BinaryWriter(data))
-                {
-                    writer.Write(0x7725BBA4);
-                    writer.Write((Int16)36);
-                    writer.Write((Int16)1);
-                    writer.Write((Int16)Entries[i].Unknown3.Count);
-                    for (int z = 0; z < 5; z++)
-                        writer.Write(Entries[i].CSTLinks[z].Length);
-                    writer.Write((Int16)Entries[i].TextureLinks.Length);
-                    Utilities.WriteString(Entries[i].Category.ToString(), writer);
-                    writer.Write(new byte[40 - Entries[i].Category.ToString().Length]);
-                    writer.Write((Int16)Entries[i].Category);
-                    for (int z = 0; z < 20; z++)
-                        writer.Write((byte)Entries[i].Flags[z]);
-                    writer.Write(Entries[i].Unknown1);
-                    writer.Write((Int16)Entries[i].Unknown2.Count);
-                    for (int z = 0; z < Entries[i].Unknown2.Count; z++)
-                    {
-                        writer.Write((Int16)Entries[i].Unknown2[z].unk1);
-                        writer.Write(Entries[i].Unknown2[z].unk2);
-                    }
-                    for (int z = 0; z < Entries[i].Unknown3.Count; z++)
-                    {
-                        writer.Write((byte)Entries[i].Unknown3[z].unk1);
-                        writer.Write((byte)Entries[i].Unknown3[z].unk2);
-                        for (int p = 0; p < 16; p++)
-                            writer.Write((Int16)Entries[i].Unknown3[z].unk3[p]);
-                        writer.Write(Entries[i].Unknown3[z].unk4);
-                        writer.Write((Int16)Entries[i].Unknown3[z].unk5);
-                        writer.Write(Entries[i].Unknown3[z].unk6);
-                    }
-                    for (int z = 0; z < Entries[i].Unknown3.Count; z++)
-                    {
-                        writer.Write((byte)Entries[i].Unknown3[z].unk7);
-                    }
-                    for (int z = 0; z < 5; z++)
-                    {
-                        for (int p = 0; p < Entries[i].CSTLinks[z].Length; p++)
-                        {
-                            writer.Write((byte)Entries[i].CSTLinks[z][p]);
-                        }
-                    }
-                    for (int z = 0; z < Entries[i].TextureLinks.Length; z++)
-                    {
-                        writer.Write((byte)Entries[i].TextureLinks[z]);
-                    }
-                    writer.Write(Entries[i].VertexShader == null ? -1 : VertexShaders.IndexOf(Entries[i].VertexShader));
-                    writer.Write(Entries[i].PixelShader == null ? -1 : PixelShaders.IndexOf(Entries[i].PixelShader));
-                    writer.Write(Entries[i].HullShader == null ? -1 : HullShaders.IndexOf(Entries[i].HullShader));
-                    writer.Write(Entries[i].DomainShader == null ? -1 : DomainShaders.IndexOf(Entries[i].DomainShader));
-                    writer.Write(Entries[i].GeometryShader == null ? -1 : GeometryShaders.IndexOf(Entries[i].GeometryShader));
-                    writer.Write(Entries[i].ComputeShader == null ? -1 : ComputeShaders.IndexOf(Entries[i].ComputeShader));
-                }
+                shaderBuffers[i] = SerializeShaderMetadata(Entries[i], i, VertexShaders, PixelShaders, HullShaders, DomainShaders, GeometryShaders, ComputeShaders);
+            });
+            content = new List<Utilities.PAKContent>();
+            for (int i = 0; i < shaderBuffers.Length; i++)
+            {
                 content.Add(new Utilities.PAKContent()
                 {
                     BinIndex = i,
-                    Data = data.ToArray()
+                    Data = shaderBuffers[i]
                 });
             }
             Utilities.WritePAK(_filepath, FileIdentifiers.SHADER_DATA, content);
+
+            _writeList.Clear();
+            _writeList.AddRange(Entries);
             return true;
+        }
+
+        private byte[] SerializeShaderMetadata(Shader shader, int index, List<byte[]> vertexShaders, List<byte[]> pixelShaders, List<byte[]> hullShaders, List<byte[]> domainShaders, List<byte[]> geometryShaders, List<byte[]> computeShaders)
+        {
+            using (MemoryStream data = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(data))
+            {
+                writer.Write(0x7725BBA4);
+                writer.Write(0x00010024);
+
+                writer.Write((Int16)shader.Samplers.Count);
+                writer.Write(shader.EngineParameterRemaps.Count);
+                writer.Write(shader.VertexShaderParameterRemaps.Count);
+                writer.Write(shader.PixelShaderParameterRemaps.Count);
+                writer.Write(shader.HullShaderParameterRemaps.Count);
+                writer.Write(shader.DomainShaderParameterRemaps.Count);
+                writer.Write((Int16)shader.SamplerRemaps.Count);
+
+                Utilities.WriteString(shader.Ubershader.ToString(), writer);
+                writer.Write(new byte[40 - shader.Ubershader.ToString().Length]);
+                writer.Write((Int16)shader.Ubershader);
+                writer.Write(shader.UbershaderFeatureFlags);
+                writer.Write(shader.UbershaderRequirementFlags);
+                writer.Write((byte)shader.RequiredShaderModel);
+                writer.Write((Int16)shader.CycleCount);
+                writer.Write((byte)shader.RegisterCount);
+                writer.Write(shader.PermutationHash);
+                shader.RenderStates.Write(writer);
+
+                for (int x = 0; x < shader.Samplers.Count; x++)
+                    shader.Samplers[x].Write(writer);
+                for (int x = 0; x < shader.Samplers.Count; x++)
+                    writer.Write((byte)shader.SamplerStageBindings[x]);
+                for (int x = 0; x < shader.EngineParameterRemaps.Count; x++)
+                    writer.Write((byte)shader.EngineParameterRemaps[x]);
+                for (int x = 0; x < shader.VertexShaderParameterRemaps.Count; x++)
+                    writer.Write((byte)shader.VertexShaderParameterRemaps[x]);
+                for (int x = 0; x < shader.PixelShaderParameterRemaps.Count; x++)
+                    writer.Write((byte)shader.PixelShaderParameterRemaps[x]);
+                for (int x = 0; x < shader.HullShaderParameterRemaps.Count; x++)
+                    writer.Write((byte)shader.HullShaderParameterRemaps[x]);
+                for (int x = 0; x < shader.DomainShaderParameterRemaps.Count; x++)
+                    writer.Write((byte)shader.DomainShaderParameterRemaps[x]);
+                for (int x = 0; x < shader.SamplerRemaps.Count; x++)
+                    writer.Write((byte)shader.SamplerRemaps[x]);
+
+                writer.Write(shader.VertexShader == null ? -1 : vertexShaders.IndexOf(shader.VertexShader));
+                writer.Write(shader.PixelShader == null ? -1 : pixelShaders.IndexOf(shader.PixelShader));
+                writer.Write(shader.HullShader == null ? -1 : hullShaders.IndexOf(shader.HullShader));
+                writer.Write(shader.DomainShader == null ? -1 : domainShaders.IndexOf(shader.DomainShader));
+                writer.Write(shader.GeometryShader == null ? -1 : geometryShaders.IndexOf(shader.GeometryShader));
+                writer.Write(shader.ComputeShader == null ? -1 : computeShaders.IndexOf(shader.ComputeShader));
+
+                return data.ToArray();
+            }
         }
         #endregion
 
-        private ShaderType GetTypeFromDXBC(byte[] dxbc)
+        #region HELPERS
+        /// <summary>
+        /// Get the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public int GetWriteIndex(Shader shader)
         {
-            using (BinaryReader reader = new BinaryReader(new MemoryStream(dxbc)))
-            {
-                reader.BaseStream.Position += 4; //DXBC
-                int[] checksums = Utilities.ConsumeArray<int>(reader, 4);
-                reader.BaseStream.Position += 4; //1
-
-                int size = reader.ReadInt32();
-                int chunkCount = reader.ReadInt32();
-                int[] chunkOffsets = Utilities.ConsumeArray<int>(reader, chunkCount);
-
-                for (int x = 0; x < chunkCount; x++)
-                {
-                    reader.BaseStream.Position = chunkOffsets[x];
-
-                    fourcc chunkFourcc = Utilities.Consume<fourcc>(reader);
-                    //Console.WriteLine(chunkFourcc.ToString());
-                    int chunkSize = reader.ReadInt32();
-                    byte[] chunkContent = reader.ReadBytes(chunkSize);
-                    using (BinaryReader chunkReader = new BinaryReader(new MemoryStream(chunkContent)))
-                    {
-                        switch (chunkFourcc.ToString())
-                        {
-                            /*
-                            case "RDEF": //Resource definition. Describes constant buffers and resource bindings.
-                                {
-                                    int constantBufferCount = chunkReader.ReadInt32();
-                                    int constantBufferOffset = chunkReader.ReadInt32();
-                                    int resourceBindingCount = chunkReader.ReadInt32();
-                                    int resourceBindingOffset = chunkReader.ReadInt32();
-
-                                    chunkReader.BaseStream.Position += 2; //0, 5
-
-                                    shader.Type = chunkReader.ReadInt16();
-                                    shader.Flags = chunkReader.ReadInt32();
-
-                                    int creatorStringOffset = chunkReader.ReadInt32();
-
-                                    chunkReader.BaseStream.Position += 28; //RD11, 60, 24, 32, 40, 36, 12
-
-                                    shader.InterfaceSlotCount = chunkReader.ReadInt32();
-
-                                    chunkReader.BaseStream.Position = resourceBindingOffset;
-                                    for (int z = 0; z < resourceBindingCount; z++)
-                                    {
-                                        int nameOffset = chunkReader.ReadInt32();
-                                        shader.ResourceBindings.Add(new Shader.ResourceBinding()
-                                        {
-                                            Name = Utilities.ReadString(chunkReader, nameOffset),
-                                            ShaderInputType = chunkReader.ReadInt32(),
-                                            ResourceReturnType = chunkReader.ReadInt32(),
-                                            ResourceViewDimension = chunkReader.ReadInt32(),
-                                            SampleCount = chunkReader.ReadInt32(),
-                                            BindPoint = chunkReader.ReadInt32(),
-                                            BindCount = chunkReader.ReadInt32(),
-                                            ShaderInputFlags = chunkReader.ReadInt32()
-                                        });
-                                    }
-
-                                    //in consecutive order in the write: the string table is here, then byte aligned to 4
-
-                                    chunkReader.BaseStream.Position = constantBufferOffset;
-                                    int[] cbVariableCounts = new int[constantBufferCount];
-                                    int[] cbVariableOffsets = new int[constantBufferCount];
-                                    for (int z = 0; z < constantBufferCount; z++)
-                                    {
-                                        int nameOffset = chunkReader.ReadInt32();
-                                        cbVariableCounts[z] = chunkReader.ReadInt32();
-                                        cbVariableOffsets[z] = chunkReader.ReadInt32();
-                                        int SizeInBytes = chunkReader.ReadInt32();
-                                        chunkReader.BaseStream.Position += 8; //0,0
-
-                                        shader.ConstantBuffers.Add(new Shader.ConstantBuffer()
-                                        {
-                                            Name = Utilities.ReadString(chunkReader, nameOffset)
-                                        });
-                                    }
-                                    for (int z = 0; z < constantBufferCount; z++)
-                                    {
-                                        chunkReader.BaseStream.Position = cbVariableOffsets[z];
-
-                                        int[] dataOffsets = new int[cbVariableCounts[z]];
-                                        int[] dataLengths = new int[cbVariableCounts[z]];
-                                        int[] typeOffsets = new int[cbVariableCounts[z]];
-                                        for (int p = 0; p < cbVariableCounts[z]; p++)
-                                        {
-                                            int nameOffset = chunkReader.ReadInt32();
-                                            dataOffsets[p] = chunkReader.ReadInt32();
-                                            dataLengths[p] = chunkReader.ReadInt32();
-                                            int flags = chunkReader.ReadInt32();
-                                            typeOffsets[p] = chunkReader.ReadInt32();
-
-                                            chunkReader.BaseStream.Position += 20; //0,-1,0,-1,0
-
-                                            shader.ConstantBuffers[z].Variables.Add(new Shader.ConstantBuffer.Variable()
-                                            {
-                                                Name = Utilities.ReadString(chunkReader, nameOffset),
-                                                Flags = flags
-                                            });
-                                        }
-                                        for (int p = 0; p < cbVariableCounts[z]; p++)
-                                        {
-                                            chunkReader.BaseStream.Position = typeOffsets[p];
-
-                                            int Class = chunkReader.ReadInt16();
-                                            int Type = chunkReader.ReadInt16();
-                                            int RowCount = chunkReader.ReadInt16();
-                                            int ColumnCount = chunkReader.ReadInt16();
-                                            int ArrayCount = chunkReader.ReadInt16();
-
-                                            short[] Unknown_ = Utilities.ConsumeArray<Int16>(chunkReader, 11);
-                                            int nameOffset = chunkReader.ReadInt32();
-
-                                            shader.ConstantBuffers[z].Variables[p].TypeName = Utilities.ReadString(chunkReader, nameOffset);
-                                        }
-                                    }
-
-                                    chunkReader.BaseStream.Position = creatorStringOffset;
-                                    shader.Creator = Utilities.ReadString(chunkReader);
-                                    break;
-                                }
-
-                            case "PCSG": //Patch constant signature
-                            case "ISGN": //Input signature
-                            case "OSGN": //Output signature
-                                {
-                                    int entryCount = chunkReader.ReadInt32();
-                                    chunkReader.BaseStream.Position += 4; //8
-
-                                    for (int p = 0; p < entryCount; p++)
-                                    {
-                                        int nameOffset = chunkReader.ReadInt32();
-                                        int SemanticIndex = chunkReader.ReadInt32();
-                                        int SystemValueType = chunkReader.ReadInt32();
-                                        SignatureComponentType ComponentType = (SignatureComponentType)chunkReader.ReadInt32();
-
-                                        int Register = chunkReader.ReadInt32();
-                                        byte Mask = chunkReader.ReadByte(); // NOTE: Bitmask, each element means one vector element. 0 -> x, 1 -> y and so forth.
-                                        byte ReadWriteMask = chunkReader.ReadByte(); // NOTE: Same as above, but it is possible that not all elements are used by the shader.
-
-                                        chunkReader.BaseStream.Position += 2;
-                                    }
-                                    break;
-                                }
-                            */
-                            case "SHEX": //Shader (SM5)
-                                {
-                                    chunkReader.BaseStream.Position += 2; //80
-
-                                    ShaderType type = (ShaderType)chunkReader.ReadInt16();
-
-                                    return type;
-
-                                    int count = chunkReader.ReadInt32();
-                                    byte[] contentBytes = chunkReader.ReadBytes((count - 2) * 4);
-
-                                    if (chunkReader.BaseStream.Length != chunkReader.BaseStream.Position)
-                                        throw new Exception("");
-                                    break;
-                                }
-
-                            /*
-                            case "STAT": //Statistics. Useful statistics about the shader, such as instruction count, declaration count, etc.
-                                {
-                                    shader.Stats = Utilities.Consume<Shader.STAT>(chunkReader);
-                                    break;
-                                }
-                            */
-                        }
-                    }
-                }
-                throw new Exception("Invalid DXBC");
-            }
+            if (!_writeList.Contains(shader)) return -1;
+            return _writeList.IndexOf(shader);
         }
+
+        /// <summary>
+        /// Get the object at the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public Shader GetAtWriteIndex(int index)
+        {
+            if (_writeList.Count <= index || index < 0) return null;
+            return _writeList[index];
+        }
+
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects.
+        /// </summary>
+        public Shader ImportEntry(Shader shader)
+        {
+            if (shader == null)
+                return null;
+
+            var existing = Entries.FirstOrDefault(o => o == shader);
+            if (existing != null)
+                return existing;
+
+            Shader newShader = shader.Copy();
+            Entries.Add(newShader);
+            return newShader;
+        }
+        #endregion
 
         #region STRUCTURES
 
-        public class Shader
+        public class Shader : IEquatable<Shader>
         {
-            public ShaderCategory Category;
-            public int[] Flags = new int[20];
+            public SHADER_LIST Ubershader;
+            public SHADER_MODEL RequiredShaderModel;
 
-            public int Unknown1;
-            public List<UnknownPair> Unknown2 = new List<UnknownPair>();
-            public List<UnknownTextureThing> Unknown3 = new List<UnknownTextureThing>();
+            public long UbershaderFeatureFlags;
+            public long UbershaderRequirementFlags;
 
-            //TODO: what are these actually pointing to
-            public int[][] CSTLinks = new int[5][]; 
-            public int[] TextureLinks;
+            public int CycleCount;
+            public int RegisterCount;
+            public uint PermutationHash;
+
+            public List<StateBlock> Samplers = new List<StateBlock>();
+            public List<int> SamplerStageBindings = new List<int>();
+            public List<int> SamplerRemaps = new List<int>();
+
+            public List<int> EngineParameterRemaps = new List<int>();
+            public List<int> VertexShaderParameterRemaps = new List<int>();
+            public List<int> PixelShaderParameterRemaps = new List<int>();
+            public List<int> HullShaderParameterRemaps = new List<int>();
+            public List<int> DomainShaderParameterRemaps = new List<int>();
+
+            public StateBlock RenderStates;
 
             public byte[] VertexShader;
             public byte[] PixelShader;
@@ -542,11 +368,162 @@ namespace CATHODE
             public byte[] GeometryShader;
             public byte[] ComputeShader;
 
+            public static bool operator ==(Shader x, Shader y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return false;
+                return x.Equals(y);
+            }
+
+            public static bool operator !=(Shader x, Shader y)
+            {
+                return !(x == y);
+            }
+
+            public bool Equals(Shader other)
+            {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+
+                if (Ubershader != other.Ubershader) return false;
+                if (RequiredShaderModel != other.RequiredShaderModel) return false;
+                if (UbershaderFeatureFlags != other.UbershaderFeatureFlags) return false;
+                if (UbershaderRequirementFlags != other.UbershaderRequirementFlags) return false;
+                if (CycleCount != other.CycleCount) return false;
+                if (RegisterCount != other.RegisterCount) return false;
+                if (PermutationHash != other.PermutationHash) return false;
+
+                // Compare Samplers list
+                if (Samplers.Count != other.Samplers.Count) return false;
+                for (int i = 0; i < Samplers.Count; i++)
+                {
+                    if (!Samplers[i].Equals(other.Samplers[i])) return false;
+                }
+
+                // Compare integer lists
+                if (!ListsEqual(SamplerStageBindings, other.SamplerStageBindings)) return false;
+                if (!ListsEqual(SamplerRemaps, other.SamplerRemaps)) return false;
+                if (!ListsEqual(EngineParameterRemaps, other.EngineParameterRemaps)) return false;
+                if (!ListsEqual(VertexShaderParameterRemaps, other.VertexShaderParameterRemaps)) return false;
+                if (!ListsEqual(PixelShaderParameterRemaps, other.PixelShaderParameterRemaps)) return false;
+                if (!ListsEqual(HullShaderParameterRemaps, other.HullShaderParameterRemaps)) return false;
+                if (!ListsEqual(DomainShaderParameterRemaps, other.DomainShaderParameterRemaps)) return false;
+
+                // Compare RenderStates
+                if (RenderStates == null && other.RenderStates != null) return false;
+                if (RenderStates != null && other.RenderStates == null) return false;
+                if (RenderStates != null && other.RenderStates != null)
+                {
+                    if (!RenderStates.Equals(other.RenderStates)) return false;
+                }
+
+                // Compare shader byte arrays
+                if (!ByteArraysEqual(VertexShader, other.VertexShader)) return false;
+                if (!ByteArraysEqual(PixelShader, other.PixelShader)) return false;
+                if (!ByteArraysEqual(HullShader, other.HullShader)) return false;
+                if (!ByteArraysEqual(DomainShader, other.DomainShader)) return false;
+                if (!ByteArraysEqual(GeometryShader, other.GeometryShader)) return false;
+                if (!ByteArraysEqual(ComputeShader, other.ComputeShader)) return false;
+
+                return true;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as Shader);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = 17;
+                    hash = hash * 23 + Ubershader.GetHashCode();
+                    hash = hash * 23 + RequiredShaderModel.GetHashCode();
+                    hash = hash * 23 + UbershaderFeatureFlags.GetHashCode();
+                    hash = hash * 23 + UbershaderRequirementFlags.GetHashCode();
+                    hash = hash * 23 + CycleCount.GetHashCode();
+                    hash = hash * 23 + RegisterCount.GetHashCode();
+                    hash = hash * 23 + PermutationHash.GetHashCode();
+                    hash = hash * 23 + Samplers.Count.GetHashCode();
+                    foreach (var sampler in Samplers)
+                    {
+                        hash = hash * 23 + (sampler?.GetHashCode() ?? 0);
+                    }
+                    hash = hash * 23 + (RenderStates?.GetHashCode() ?? 0);
+                    hash = hash * 23 + GetListHashCode(SamplerStageBindings);
+                    hash = hash * 23 + GetListHashCode(SamplerRemaps);
+                    hash = hash * 23 + GetListHashCode(EngineParameterRemaps);
+                    hash = hash * 23 + GetListHashCode(VertexShaderParameterRemaps);
+                    hash = hash * 23 + GetListHashCode(PixelShaderParameterRemaps);
+                    hash = hash * 23 + GetListHashCode(HullShaderParameterRemaps);
+                    hash = hash * 23 + GetListHashCode(DomainShaderParameterRemaps);
+                    hash = hash * 23 + GetByteArrayHashCode(VertexShader);
+                    hash = hash * 23 + GetByteArrayHashCode(PixelShader);
+                    hash = hash * 23 + GetByteArrayHashCode(HullShader);
+                    hash = hash * 23 + GetByteArrayHashCode(DomainShader);
+                    hash = hash * 23 + GetByteArrayHashCode(GeometryShader);
+                    hash = hash * 23 + GetByteArrayHashCode(ComputeShader);
+                    return hash;
+                }
+            }
+
+            private static bool ListsEqual(List<int> x, List<int> y)
+            {
+                if (x == null && y == null) return true;
+                if (x == null || y == null) return false;
+                if (x.Count != y.Count) return false;
+                for (int i = 0; i < x.Count; i++)
+                {
+                    if (x[i] != y[i]) return false;
+                }
+                return true;
+            }
+
+            private static bool ByteArraysEqual(byte[] x, byte[] y)
+            {
+                if (x == null && y == null) return true;
+                if (x == null || y == null) return false;
+                if (x.Length != y.Length) return false;
+                for (int i = 0; i < x.Length; i++)
+                {
+                    if (x[i] != y[i]) return false;
+                }
+                return true;
+            }
+
+            private static int GetListHashCode(List<int> list)
+            {
+                if (list == null) return 0;
+                unchecked
+                {
+                    int hash = 17;
+                    hash = hash * 23 + list.Count.GetHashCode();
+                    foreach (var item in list)
+                    {
+                        hash = hash * 23 + item.GetHashCode();
+                    }
+                    return hash;
+                }
+            }
+
+            private static int GetByteArrayHashCode(byte[] array)
+            {
+                if (array == null) return 0;
+                unchecked
+                {
+                    int hash = 17;
+                    hash = hash * 23 + array.Length.GetHashCode();
+                    for (int i = 0; i < array.Length && i < 16; i++) // Limit to first 16 bytes for hash
+                    {
+                        hash = hash * 23 + array[i].GetHashCode();
+                    }
+                    return hash;
+                }
+            }
+
             ~Shader()
             {
-                Unknown2.Clear();
-                Unknown3.Clear();
-
                 VertexShader = null;
                 PixelShader = null;
                 HullShader = null;
@@ -554,173 +531,217 @@ namespace CATHODE
                 GeometryShader = null;
                 ComputeShader = null;
             }
-
-            public class UnknownPair
-            {
-                public int unk1;
-                public int unk2;
-            }
-
-            public class UnknownTextureThing
-            {
-                public byte unk1;
-                public byte unk2;
-                public Int16[] unk3; //16
-                public float unk4;
-                public Int16 unk5;
-                public float unk6;
-
-                public byte unk7;
-            }
         }
 
-        enum ShaderType
+        public class StateBlock : IEquatable<StateBlock>
         {
-            PIXEL,
-            VERTEX,
-            GEOMETRY,
-            HULL,
-            DOMAIN,
-            COMPUTE,
-        };
+            public int Index;
+            public List<Entry> Entries = new List<Entry>();
 
-        public enum ShaderCategory
-        {
-            NONE = 0,
+            public StateBlock() { }
+            public StateBlock(BinaryReader reader) => Read(reader);
 
-            CA_PARTICLE = 12,
-            CA_RIBBON = 13,
-            CA_ENVIRONMENT = 17,
-            CA_SHADOWCASTER = 18,
-            CA_DECAL_ENVIRONMENT = 19,
-            CA_CHARACTER = 20,
-            CA_SKIN = 21,
-            CA_HAIR = 22,
-            CA_EYE = 23,
-            CA_SKIN_OCCLUSION = 24,
-            CA_DEFERRED = 27,
-            CA_DECAL = 30,
-            CA_FOGPLANE = 31,
-            CA_FOGSPHERE = 32,
-            CA_DEBUG = 33,
-            CA_POST_PROCESSING = 35,
-            CA_FILTERS = 37,
-            CA_LENS_FLARE = 38,
-            CA_LIQUID_ENVIRONMENT = 39,
-            CA_OCCLUSION_CULLING = 42,
-            CA_REFRACTION = 43,
-            CA_SIMPLE_REFRACTION = 44,
-            CA_DISTORTION_OVERLAY = 45,
-            CA_SURFACE_EFFECTS = 50,
-            CA_EFFECT_OVERLAY = 51,
-            CA_TERRAIN = 52,
-            CA_NONINTERACTIVE_WATER = 53,
-            CA_SIMPLEWATER = 54,
-            CA_PLANET = 55,
-            CA_LIGHTMAP_ENVIRONMENT = 58,
-            CA_LOW_LOD_CHARACTER = 60,
-            CA_LIGHT_DECAL = 61,
-            CA_VOLUME_LIGHT = 62,
-            CA_WATER_CAUSTICS_OVERLAY = 63,
-            CA_SPACESUIT_VISOR = 64,
-            CA_CAMERA_MAP = 65,
-        };
-
-        /*
-        public enum DXBCType
-        {
-            VERTEX = -2,
-            PIXEL = -1,
-        }
-
-        enum SignatureComponentType
-        {
-            UNSIGNED_INTEGER = 1,
-            SIGNED_INTEGER = 2,
-            FLOATING_POINT = 3,
-        }
-
-        public class Shader
-        {
-            public STAT Stats;
-
-            public string Creator;
-
-            public int Type = 0; //DXBCType
-            public int Flags = 0;
-
-            public int InterfaceSlotCount = 0;
-
-            public List<ResourceBinding> ResourceBindings = new List<ResourceBinding>();
-            public List<ConstantBuffer> ConstantBuffers = new List<ConstantBuffer>();
-        
-            [StructLayout(LayoutKind.Sequential, Pack = 1)]
-            public class STAT
+            public static bool operator ==(StateBlock x, StateBlock y)
             {
-                public int InstructionCount;
-                public int TempRegisterCount;
-                public int DefineCount;
-                public int DeclarationCount;
-                public int FloatInstructionCount;
-                public int IntInstructionCount;
-                public int UIntInstructionCount;
-                public int StaticFlowControlCount;
-                public int DynamicFlowControlCount;
-                public int MacroInstructionCount; // Not sure.
-                public int TempArrayCount;
-                public int ArrayInstructionCount;
-                public int CutInstructionCount;
-                public int EmitInstructionCount;
-                public int TextureNormalInstructionCount;
-                public int TextureLoadInstructionCount;
-                public int TextureComparisonInstructionCount;
-                public int TextureBiasInstructionCount;
-                public int TextureGradientInstructionCount;
-                public int MovInstructionCount;
-                public int MovCInstructionCount;
-                public int Unknown0_;
-                public int InputPrimitiveForGeometryShaders;
-                public int PrimitiveTopologyForGeometryShaders;
-                public int MaxOutputVertexCountForGeometryShaders;
-
-                [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-                public int[] unk0; //zeros
-
-                public int IsSampleFrequencyShader; // 1 for sample frequency shadeer, otherwise 0.
-
-                [MarshalAs(UnmanagedType.ByValArray, SizeConst = 9)]
-                public int[] unk1;
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return false;
+                return x.Equals(y);
             }
 
-            public class ResourceBinding
+            public static bool operator !=(StateBlock x, StateBlock y)
             {
-                public string Name;
-
-                public int ShaderInputType;
-                public int ResourceReturnType;
-                public int ResourceViewDimension;
-                public int SampleCount;
-                public int BindPoint;
-                public int BindCount;
-                public int ShaderInputFlags;
+                return !(x == y);
             }
 
-            public class ConstantBuffer
+            public bool Equals(StateBlock other)
             {
-                public string Name;
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
 
-                public List<Variable> Variables = new List<Variable>();
+                if (Index != other.Index) return false;
+                if (Entries.Count != other.Entries.Count) return false;
 
-                public class Variable
+                for (int i = 0; i < Entries.Count; i++)
                 {
-                    public string Name;
-                    public string TypeName;
+                    if (!Entries[i].Equals(other.Entries[i])) return false;
+                }
 
-                    public int Flags;
+                return true;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as StateBlock);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = 17;
+                    hash = hash * 23 + Index.GetHashCode();
+                    hash = hash * 23 + Entries.Count.GetHashCode();
+                    foreach (var entry in Entries)
+                    {
+                        hash = hash * 23 + (entry?.GetHashCode() ?? 0);
+                    }
+                    return hash;
+                }
+            }
+
+            public void Read(BinaryReader reader)
+            {
+                int count = reader.ReadByte();
+                Index = reader.ReadByte();
+                for (int x = 0; x < count; x++)
+                    Entries.Add(new Entry { StateId = reader.ReadInt16(), Value = reader.ReadInt32() });
+            }
+
+            public void Write(BinaryWriter writer)
+            {
+                writer.Write((byte)Entries.Count);
+                writer.Write((byte)Index);
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    writer.Write((Int16)Entries[i].StateId);
+                    writer.Write(Entries[i].Value);
+                }
+            }
+
+            public class Entry : IEquatable<Entry>
+            {
+                public int StateId; //this is RenderState or SamplerState depending on state use
+                public int Value; //see convert_to_state_description
+
+                public static bool operator ==(Entry x, Entry y)
+                {
+                    if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                    if (ReferenceEquals(y, null)) return false;
+                    return x.Equals(y);
+                }
+
+                public static bool operator !=(Entry x, Entry y)
+                {
+                    return !(x == y);
+                }
+
+                public bool Equals(Entry other)
+                {
+                    if (other == null) return false;
+                    if (ReferenceEquals(this, other)) return true;
+
+                    if (StateId != other.StateId) return false;
+                    if (Value != other.Value) return false;
+
+                    return true;
+                }
+
+                public override bool Equals(object obj)
+                {
+                    return Equals(obj as Entry);
+                }
+
+                public override int GetHashCode()
+                {
+                    unchecked
+                    {
+                        int hash = 17;
+                        hash = hash * 23 + StateId.GetHashCode();
+                        hash = hash * 23 + Value.GetHashCode();
+                        return hash;
+                    }
                 }
             }
         }
-        */
+
+        public enum SamplerState
+        {
+            AddressU,
+            AddressV,
+            AddressW,
+            BorderColor,
+            MagFilter,
+            MinFilter,
+            MipFilter,
+            MipmapLodBias,
+            MaxMipLevel,
+            MaxAnisotrophy,
+            MagFilterZ,
+            MinFilterZ,
+            SeparateZFilterEnable,
+            MinMipLevel,
+            TrilinearThreshold,
+            AnisotrophyBias,
+            HGradientExpBias,
+            VGradientExpBias,
+            WhiteBorderColor,
+            PointBorderEnable,
+            SRGBTexture,
+        };
+
+        public enum RenderState
+        {
+            ZEnable,
+            ZFunc,
+            ZWriteEnable,
+            FillMode,
+            CullMode,
+            AlphaBlendEnable,
+            SeparateAlphaBlendEnable,
+            BlendFactor,
+            SrcBlend,
+            DestBlend,
+            AlphaTestEnable,
+            AlphaRef,
+            AlphaFunc,
+            DepthBias,
+            SlopeScaleDepthBias,
+            PointSpriteEnable,
+            SrcBlendAlpha,
+            DestBlendAlpha,
+            PointSize,
+            ScissorTestEnable,
+            BlendOp,
+            ColorWriteEnable,
+            ColorWriteEnable1,
+            ColorWriteEnable2,
+            ColorWriteEnable3,
+            StencilRef,
+            StencilEnable,
+            StencilFunc,
+            StencilWriteMask,
+            StencilTestMask,
+            StencilPass,
+            StencilFail,
+            StencilZFail,
+            ClipPlaneEnable,
+            CCW_StencilFunc,
+            CCW_StencilPass,
+            CCW_StencilRef,
+            CCW_StencilWriteMask,
+            HiZEnable,
+            HalfPixelOffset,
+            HighPrecisionBlendEnable,
+            LineWidth,
+            PresentImmediateThreshold,
+            PrimitiveResetEnable,
+            PrimitiveResetIndex,
+            ViewportEnable,
+            ShadeMode,
+            FogEnable,
+            SRGBWriteEnable,
+            BlendEnableMRT,
+            DitherEnable,
+            BlendOpAlpha,
+        };
+
+        public enum SHADER_MODEL
+        {
+            PLATFORM_DEFAULT = 0,
+            SHADER_MODEL_3,
+            SHADER_MODEL_4,
+            SHADER_MODEL_5,
+        };
         #endregion
     }
 }

@@ -11,7 +11,9 @@ using CathodeLib;
 
 namespace CATHODE
 {
-    /* DATA/GLOBAL/ANIMATION.PAK -> ANIM_SYS/SKELE/DB.BIN */
+    /// <summary>
+    /// DATA/GLOBAL/ANIMATION.PAK -> ANIM_SYS/SKELE/DB.BIN
+    /// </summary>
     public class SkeleDB : CathodeFile
     {
         public Data Entries = new Data();
@@ -25,12 +27,15 @@ namespace CATHODE
         public SkeleDB(MemoryStream stream, AnimationStrings strings, string path = "") : base(stream, path)
         {
             _strings = strings;
-            _loaded = Load();
+            _loaded = Load(stream);
         }
         public SkeleDB(byte[] data, AnimationStrings strings, string path = "") : base(data, path)
         {
             _strings = strings;
-            _loaded = Load();
+            using (MemoryStream stream = new MemoryStream(data))
+            {
+                _loaded = Load(stream);
+            }
         }
 
         private AnimationStrings _strings;

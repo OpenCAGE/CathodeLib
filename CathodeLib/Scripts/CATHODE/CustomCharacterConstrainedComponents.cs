@@ -9,7 +9,9 @@ using static CATHODE.EXPERIMENTAL.MissionSave;
 
 namespace CATHODE
 {
-    /* DATA/CHR_INFO/CUSTOMCHARACTERCONSTRAINEDCOMPONENTS.BIN */
+    /// <summary>
+    /// DATA/CHR_INFO/CUSTOMCHARACTERCONSTRAINEDCOMPONENTS.BIN
+    /// </summary>
     public class CustomCharacterConstrainedComponents : CathodeFile
     {
         public List<Entry> Entries = new List<Entry>();
@@ -70,12 +72,12 @@ namespace CATHODE
                 Entry.Component component = new Entry.Component();
                 byte[] stringBlock = reader.ReadBytes(64);
                 component.Name = Utilities.ReadString(stringBlock);
-                component.Model = (CharacterModel)reader.ReadInt32();
-                component.Gender = (CharacterGender)reader.ReadInt32();
-                component.Ethnicity = (CharacterEthnicity)reader.ReadInt32();
-                component.Build = (CharacterBuild)reader.ReadInt32();
-                component.SleeveType = (CharacterSleeve)reader.ReadInt32();
-                component.SoundType = (FoleySound)reader.ReadInt32();
+                component.Model = (CUSTOM_CHARACTER_MODEL)reader.ReadInt32();
+                component.Gender = (CUSTOM_CHARACTER_GENDER)reader.ReadInt32();
+                component.Ethnicity = (CUSTOM_CHARACTER_ETHNICITY)reader.ReadInt32();
+                component.Build = (CUSTOM_CHARACTER_BUILD)reader.ReadInt32();
+                component.SleeveType = (CUSTOM_CHARACTER_SLEEVETYPE)reader.ReadInt32();
+                component.SoundType = (CHARACTER_FOLEY_SOUND)reader.ReadInt32();
                 entry.Components.Add(component);
             }
             Entries.Add(entry);
@@ -92,12 +94,12 @@ namespace CATHODE
             {
                 public string Name;
 
-                public CharacterModel Model;
-                public CharacterGender Gender;
-                public CharacterEthnicity Ethnicity;
-                public CharacterBuild Build;
-                public CharacterSleeve SleeveType;
-                public FoleySound SoundType;
+                public CUSTOM_CHARACTER_MODEL Model;
+                public CUSTOM_CHARACTER_GENDER Gender;
+                public CUSTOM_CHARACTER_ETHNICITY Ethnicity;
+                public CUSTOM_CHARACTER_BUILD Build;
+                public CUSTOM_CHARACTER_SLEEVETYPE SleeveType;
+                public CHARACTER_FOLEY_SOUND SoundType;
             }
         };
 

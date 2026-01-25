@@ -5,8 +5,10 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
-    /* DATA/UI.PAK & DATA/CHR_INFO.PAK & DATA/GLOBAL/ANIMATION.PAK & DATA/GLOBAL/UI.PAK */
-    /* Note: Also supports the PAK2 files in Viking: Battle for Asgard */
+    /// <summary>
+    /// DATA/UI.PAK & DATA/CHR_INFO.PAK & DATA/GLOBAL/ANIMATION.PAK & DATA/GLOBAL/UI.PAK
+    /// Note: Also supports the PAK2 files in Viking: Battle for Asgard
+    /// </summary>
     public class PAK2 : CathodeFile
     {
         public List<File> Entries = new List<File>();

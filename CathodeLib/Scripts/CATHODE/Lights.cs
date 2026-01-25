@@ -11,7 +11,9 @@ using System.Numerics;
 
 namespace CATHODE.EXPERIMENTAL
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/LIGHTS.BIN */
+    /// <summary>
+    /// DATA/ENV/x/WORLD/LIGHTS.BIN
+    /// </summary>
     public class Lights : CathodeFile
     {
         public List<int> Indexes = new List<int>();

@@ -1,10 +1,12 @@
-﻿using CathodeLib;
+using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
+using static CATHODE.Resources;
+
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -15,7 +17,7 @@ namespace CATHODE.Scripting.Internal.Parsers
 {
     public static class CommandsPAK
     {
-        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries)
+        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
         {
             byte[] content = stream.ToArray(); //NOTE: this gives us quite a memory overhead, which should probably be changed.
             using (BinaryReader reader = new BinaryReader(stream))
@@ -234,22 +236,26 @@ namespace CATHODE.Scripting.Internal.Parsers
 
                                             ResourceReference resource = new ResourceReference();
                                             resource.position = new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle());
-                                            resource.rotation = new Vector3(reader_parallel.ReadSingle(), reader_parallel.ReadSingle(), reader_parallel.ReadSingle());
+                                            float __x, __y, __z; __y = reader_parallel.ReadSingle(); __x = reader_parallel.ReadSingle(); __z = reader_parallel.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
+                                            resource.rotation = new Vector3(__x, __y, __z);
                                             resource.resource_id = new ShortGuid(reader_parallel);
                                             resource.resource_type = (ResourceType)reader_parallel.ReadUInt32();
                                             switch (resource.resource_type)
                                             {
                                                 case ResourceType.RENDERABLE_INSTANCE:
-                                                    resource.index = reader_parallel.ReadInt32();
-                                                    resource.count = reader_parallel.ReadInt32();
+                                                    resource.RenderableInstance = reds.GetAtWriteIndex(reader_parallel.ReadInt32(), reader_parallel.ReadInt32());
                                                     break;
                                                 case ResourceType.COLLISION_MAPPING:
-                                                    resource.index = reader_parallel.ReadInt32();
+                                                    resource.CollisionMapping = colMaps.GetAtWriteIndex(reader_parallel.ReadInt32());
                                                     resource.entityID = new ShortGuid(reader_parallel);
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
+                                                    int animModelIndex = reader_parallel.ReadInt32();
+                                                    resource.AnimatedModel = envAnims.Entries.FirstOrDefault(o => o.ResourceIndex == animModelIndex); //TODO: why is this not write index? we should probs order by this on read
+                                                    reader_parallel.BaseStream.Position += 4;
+                                                    break;
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                    resource.index = reader_parallel.ReadInt32();
+                                                    resource.PhysicsSystemIndex = reader_parallel.ReadInt32();
                                                     reader_parallel.BaseStream.Position += 4;
                                                     break;
                                                 default:
@@ -472,7 +478,7 @@ namespace CATHODE.Scripting.Internal.Parsers
             }
         }
 
-        public static void Write(ShortGuid[] EntryPoints, List<Composite> Entries, out byte[] content)
+        public static void Write(ShortGuid[] EntryPoints, List<Composite> Entries, out byte[] content, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
         {
             ShortGuid SHORTGUID_resource = ShortGuidUtils.Generate("resource");
 
@@ -789,15 +795,15 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             writer.Write(resourceReferences[i][p].position.x);
                                             writer.Write(resourceReferences[i][p].position.y);
                                             writer.Write(resourceReferences[i][p].position.z);
-                                            writer.Write(resourceReferences[i][p].rotation.x);
                                             writer.Write(resourceReferences[i][p].rotation.y);
+                                            writer.Write(resourceReferences[i][p].rotation.x);
                                             writer.Write(resourceReferences[i][p].rotation.z);
 #else
                                             writer.Write(resourceReferences[i][p].position.X);
                                             writer.Write(resourceReferences[i][p].position.Y);
                                             writer.Write(resourceReferences[i][p].position.Z);
-                                            writer.Write(resourceReferences[i][p].rotation.X);
                                             writer.Write(resourceReferences[i][p].rotation.Y);
+                                            writer.Write(resourceReferences[i][p].rotation.X);
                                             writer.Write(resourceReferences[i][p].rotation.Z);
 #endif
                                             writer.Write(resourceReferences[i][p].resource_id.AsUInt32); //Sometimes this is the entity ID that uses the resource, other times it's the "resource" parameter ID link
@@ -805,16 +811,21 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             switch (resourceReferences[i][p].resource_type)
                                             {
                                                 case ResourceType.RENDERABLE_INSTANCE:
-                                                    writer.Write(resourceReferences[i][p].index);
-                                                    writer.Write(resourceReferences[i][p].count);
+                                                    int redsIndex = reds.GetWriteIndex(resourceReferences[i][p].RenderableInstance, resourceReferences[i][p].PhysicsSystemIndex);
+                                                    writer.Write(redsIndex == -1 ? 0 : redsIndex);
+                                                    writer.Write(redsIndex == -1 ? 0 : resourceReferences[i][p].RenderableInstance.Count);
                                                     break;
                                                 case ResourceType.COLLISION_MAPPING:
-                                                    writer.Write(resourceReferences[i][p].index);
+                                                    writer.Write(colMaps.GetWriteIndex(resourceReferences[i][p].CollisionMapping));
                                                     writer.Write(resourceReferences[i][p].entityID.AsUInt32);
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
+                                                    //writer.Write(envAnims.GetWriteIndex(resourceReferences[i][p].AnimatedModel));
+                                                    writer.Write(resourceReferences[i][p].AnimatedModel.ResourceIndex);
+                                                    writer.Write(-1);
+                                                    break;
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                    writer.Write(resourceReferences[i][p].index);
+                                                    writer.Write(resourceReferences[i][p].PhysicsSystemIndex);
                                                     writer.Write(-1);
                                                     break;
                                                 case ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE:
@@ -1037,7 +1048,9 @@ namespace CATHODE.Scripting.Internal.Parsers
             }
         }
 
-        /* Read offset info & count, jump to the offset & return the count */
+        /// <summary>
+        /// Read offset info & count, jump to the offset & return the count
+        /// </summary>
         private static int JumpToOffset(BinaryReader reader)
         {
             int offset = reader.ReadInt32() * 4;

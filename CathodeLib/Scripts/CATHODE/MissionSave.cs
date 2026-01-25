@@ -6,7 +6,9 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE.EXPERIMENTAL
 {
-    /* *.AIS */
+    /// <summary>
+    /// *.AIS
+    /// </summary>
     public class MissionSave : CathodeFile
     {
         public static new Implementation Implementation = Implementation.NONE;
@@ -24,7 +26,9 @@ namespace CATHODE.EXPERIMENTAL
         // Check CATHODE::SaveState::save_leaf!
 
         #region FILE_IO
-        /* Load the file */
+        /// <summary>
+        /// Load the file
+        /// </summary>
         override protected bool LoadInternal(MemoryStream stream)
         {
             using (BinaryReader reader = new BinaryReader(stream))
@@ -63,7 +67,9 @@ namespace CATHODE.EXPERIMENTAL
             return true;
         }
 
-        /* Save the file */
+        /// <summary>
+        /// Save the file
+        /// </summary>
         override protected bool SaveInternal()
         {
             using (BinaryWriter stream = new BinaryWriter(File.OpenWrite(_filepath)))

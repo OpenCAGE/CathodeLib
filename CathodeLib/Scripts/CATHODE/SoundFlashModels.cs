@@ -5,7 +5,9 @@ using System.IO;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/SOUNDFLASHMODELS.DAT */
+    /// <summary>
+    /// DATA/ENV/x/WORLD/SOUNDFLASHMODELS.DAT
+    /// </summary>
     public class SoundFlashModels : CathodeFile
     {
         //This stores the models which use flash textures, along with the flash texture ID
@@ -13,9 +15,17 @@ namespace CATHODE
         public List<FlashModel> Entries = new List<FlashModel>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
-        public SoundFlashModels(string path) : base(path) { }
-        public SoundFlashModels(MemoryStream stream, string path = "") : base(stream, path) { }
-        public SoundFlashModels(byte[] data, string path = "") : base(data, path) { }
+        protected override bool HandlesLoadingManually => true;
+        private Textures _globalTextures;
+        private Textures _levelTextures;
+
+        public SoundFlashModels(string path, Textures globalTextures, Textures levelTextures) : base(path)
+        {
+            _globalTextures = globalTextures;
+            _levelTextures = levelTextures;
+
+            _loaded = Load();
+        }
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
@@ -27,10 +37,10 @@ namespace CATHODE
                 for (int i = 0; i < entryCount; i++)
                 {
                     FlashModel f = new FlashModel();
-                    f.flash_texture_id = reader.ReadInt32(); //flash textures end in [FLASH]
+                    f.Texture = new TexturePtr(reader, _globalTextures, _levelTextures);
                     int modelCount = reader.ReadInt32();
                     for (int x = 0; x < modelCount; x++)
-                        f.model_indexes.Add(reader.ReadInt32());
+                        f.ModelIndexes.Add(reader.ReadInt32());
                     Entries.Add(f);
                 }
             }
@@ -46,10 +56,10 @@ namespace CATHODE
                 writer.Write(Entries.Count);
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    writer.Write(Entries[i].flash_texture_id);
-                    writer.Write(Entries[i].model_indexes.Count);
-                    for (int x = 0; x < Entries[i].model_indexes.Count; x++)
-                        writer.Write(Entries[i].model_indexes[x]);
+                    Entries[i].Texture.Write(writer, _globalTextures, _levelTextures);
+                    writer.Write(Entries[i].ModelIndexes.Count);
+                    for (int x = 0; x < Entries[i].ModelIndexes.Count; x++)
+                        writer.Write(Entries[i].ModelIndexes[x]);
                 }
             }
             return true;
@@ -59,8 +69,8 @@ namespace CATHODE
         #region STRUCTURES
         public class FlashModel
         {
-            public int flash_texture_id;
-            public List<int> model_indexes = new List<int>();
+            public TexturePtr Texture;
+            public List<int> ModelIndexes = new List<int>();
         }
         #endregion
     }

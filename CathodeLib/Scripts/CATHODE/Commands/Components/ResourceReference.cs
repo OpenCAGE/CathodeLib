@@ -9,7 +9,9 @@ using System.Numerics;
 
 namespace CATHODE.Scripting
 {
-    /* A reference to a game resource (E.G. a renderable element, a collision mapping, etc) */
+    /// <summary>
+    /// A reference to a game resource (E.G. a renderable element, a collision mapping, etc)
+    /// </summary>
     [Serializable]
     public class ResourceReference : ICloneable
     {
@@ -24,7 +26,7 @@ namespace CATHODE.Scripting
                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
                 case ResourceType.RENDERABLE_INSTANCE:
                 case ResourceType.ANIMATED_MODEL:
-                    index = 0;
+                    //index = 0;
                     break;
             }
             resource_type = type;
@@ -39,8 +41,6 @@ namespace CATHODE.Scripting
             if (x.rotation != y.rotation) return false;
             if (x.resource_id != y.resource_id) return false;
             if (x.resource_type != y.resource_type) return false;
-            if (x.index != y.index) return false;
-            if (x.count != y.count) return false;
             if (x.entityID != y.entityID) return false;
 
             return true;
@@ -62,8 +62,10 @@ namespace CATHODE.Scripting
                    EqualityComparer<Vector3>.Default.Equals(rotation, reference.rotation) &&
                    EqualityComparer<ShortGuid>.Default.Equals(resource_id, reference.resource_id) &&
                    resource_type == reference.resource_type &&
-                   index == reference.index &&
-                   count == reference.count &&
+                   PhysicsSystemIndex == reference.PhysicsSystemIndex &&
+                   AnimatedModel == reference.AnimatedModel &&
+                   CollisionMapping == reference.CollisionMapping &&
+                   RenderableInstance == reference.RenderableInstance &&
                    EqualityComparer<ShortGuid>.Default.Equals(entityID, reference.entityID);
         }
 
@@ -74,20 +76,24 @@ namespace CATHODE.Scripting
             hashCode = hashCode * -1521134295 + rotation.GetHashCode();
             hashCode = hashCode * -1521134295 + resource_id.GetHashCode();
             hashCode = hashCode * -1521134295 + resource_type.GetHashCode();
-            hashCode = hashCode * -1521134295 + index.GetHashCode();
-            hashCode = hashCode * -1521134295 + count.GetHashCode();
             hashCode = hashCode * -1521134295 + entityID.GetHashCode();
             return hashCode;
         }
 
-        public Vector3 position = new Vector3(0, 0, 0);
-        public Vector3 rotation = new Vector3(0, 0, 0);
+        public Vector3 position = new Vector3(0, 0, 0); // todo - i think these should be based on the entity info?
+        public Vector3 rotation = new Vector3(0, 0, 0); // todo - i think these should be based on the entity info?
 
         public ShortGuid resource_id; //this can be translated to a string sometimes, like DYNAMIC_PHYSICS_SYSTEM
         public ResourceType resource_type;
 
-        public int index = -1;
-        public int count = 1;
+        public int PhysicsSystemIndex = 0; //DYNAMIC_PHYSICS_SYSTEM: maps to the Havok index
+
+        public EnvironmentAnimations.EnvironmentAnimation AnimatedModel = null; //ANIMATED_MODEL
+        public CollisionMaps.COLLISION_MAPPING CollisionMapping = null; //COLLISION_MAPPING
+        //EXCLUSIVE_MASTER_STATE_RESOURCE
+        //NAV_MESH_BARRIER_RESOURCE
+        public List<RenderableElements.Element> RenderableInstance = new List<RenderableElements.Element>(); //RENDERABLE_INSTANCE
+        //TRAVERSAL_SEGMENT
 
         public ShortGuid entityID = new ShortGuid("FF-FF-FF-FF");
     }

@@ -10,7 +10,9 @@ using System.Xml.Linq;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/SOUNDEVENTDATA.DAT */
+    /// <summary>
+    /// DATA/ENV/x/WORLD/SOUNDEVENTDATA.DAT
+    /// </summary>
     public class SoundEventData : CathodeFile
     {
         //This stores all available sound events within soundbanks, along with their associated max attenuation and metadata (parameters)

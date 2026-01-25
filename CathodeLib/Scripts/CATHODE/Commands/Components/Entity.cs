@@ -17,7 +17,9 @@ using CathodeLib.Properties;
 
 namespace CATHODE.Scripting.Internal
 {
-    /* An entity in a composite */
+    /// <summary>
+    /// An entity in a composite
+    /// </summary>
     [Serializable]
     public class Entity : IComparable<Entity>
     {
@@ -44,7 +46,9 @@ namespace CATHODE.Scripting.Internal
             parameters.Clear();
         }
 
-        /* Implements IComparable for searching */
+        /// <summary>
+        /// Implements IComparable for searching
+        /// </summary>
         public int CompareTo(Entity other)
         {
             if (other == null) return 1;
@@ -57,7 +61,9 @@ namespace CATHODE.Scripting.Internal
             return 0;
         }
 
-        /* Get parameter by string name or ShortGuid */
+        /// <summary>
+        /// Get parameter by string name or ShortGuid
+        /// </summary>
         public Parameter GetParameter(string name)
         {
             ShortGuid id = ShortGuidUtils.Generate(name);
@@ -68,7 +74,9 @@ namespace CATHODE.Scripting.Internal
             return parameters.FirstOrDefault(o => o.name == id);
         }
 
-        /* Get all links out matching the given name */
+        /// <summary>
+        /// Get all links out matching the given name
+        /// </summary>
         public List<EntityConnector> GetLinksOut(string name)
         {
             ShortGuid id = ShortGuidUtils.Generate(name);
@@ -79,7 +87,9 @@ namespace CATHODE.Scripting.Internal
             return childLinks.FindAll(o => o.thisParamID == id);
         }
 
-        /* Get all links in matching the given name */
+        /// <summary>
+        /// Get all links in matching the given name
+        /// </summary>
         public List<EntityConnector> GetLinksIn(string name, Composite comp)
         {
             ShortGuid id = ShortGuidUtils.Generate(name);
@@ -91,7 +101,9 @@ namespace CATHODE.Scripting.Internal
             return parent_links.FindAll(o => o.linkedParamID == id && o.linkedEntityID == this.shortGUID);
         }
 
-        /* Add a data-supplying parameter to the entity */
+        /// <summary>
+        /// Add a data-supplying parameter to the entity
+        /// </summary>
         /*
         public Parameter AddParameter<T>(string name, T data, ParameterVariant variant = ParameterVariant.PARAMETER)
         {
@@ -187,7 +199,9 @@ namespace CATHODE.Scripting.Internal
             return param;
         }
 
-        /* Remove a parameter from the entity */
+        /// <summary>
+        /// Remove a parameter from the entity
+        /// </summary>
         public bool RemoveParameter(string name)
         {
             ShortGuid name_id = ShortGuidUtils.Generate(name);
@@ -203,7 +217,9 @@ namespace CATHODE.Scripting.Internal
             return count != 0;
         }
 
-        /* Add a link from a parameter on us out to a parameter on another entity */
+        /// <summary>
+        /// Add a link from a parameter on us out to a parameter on another entity
+        /// </summary>
         public void AddParameterLink(string parameter, Entity childEntity, string childParameter)
         {
             childLinks.Add(new EntityConnector(childEntity.shortGUID, ShortGuidUtils.Generate(parameter), ShortGuidUtils.Generate(childParameter)));
@@ -221,7 +237,9 @@ namespace CATHODE.Scripting.Internal
             childLinks.Add(new EntityConnector(childEntityGUID, parameterGUID, childParameterGUID));
         }
 
-        /* Remove a link to another entity */
+        /// <summary>
+        /// Remove a link to another entity
+        /// </summary>
         public void RemoveParameterLink(string parameter, Entity childEntity, string childParameter)
         {
             ShortGuid parameter_id = ShortGuidUtils.Generate(parameter);
@@ -242,7 +260,9 @@ namespace CATHODE.Scripting.Internal
             childLinks.RemoveAll(o => o.thisParamID == parameterGUID && o.linkedEntityID == childEntityGUID && o.linkedParamID == childParameterGUID);
         }
 
-        /* Utility: Find all links in to this entity (pass in the composite this entity is within) */
+        /// <summary>
+        /// Utility: Find all links in to this entity (pass in the composite this entity is within)
+        /// </summary>
         public List<EntityConnector> GetParentLinks(Composite containedComposite)
         {
             List<EntityConnector> connections = new List<EntityConnector>();
@@ -264,7 +284,9 @@ namespace CATHODE.Scripting.Internal
             return connections;
         }
 
-        /* Utility: Returns true if this entity has any links IN or OUT (pass in the composite this entity is within) */
+        /// <summary>
+        /// Utility: Returns true if this entity has any links IN or OUT (pass in the composite this entity is within)
+        /// </summary>
         public bool HasLinks(Composite containedComposite)
         {
             if (childLinks.Count != 0)
@@ -282,7 +304,9 @@ namespace CATHODE.Scripting.Internal
             return false;
         }
 
-        /* Utility: Remove all child links out from the given parameter */
+        /// <summary>
+        /// Utility: Remove all child links out from the given parameter
+        /// </summary>
         public void RemoveAllParameterLinksOut(string parameter)
         {
             ShortGuid parameter_id = ShortGuidUtils.Generate(parameter);
@@ -293,7 +317,9 @@ namespace CATHODE.Scripting.Internal
             childLinks.Clear();
         }
 
-        /* Utility: Remove all child links in to the given parameter */
+        /// <summary>
+        /// Utility: Remove all child links in to the given parameter
+        /// </summary>
         public void RemoveAllParameterLinksIn(string parameter, Composite comp)
         {
             ShortGuid parameter_id = ShortGuidUtils.Generate(parameter);
@@ -317,14 +343,18 @@ namespace CATHODE.Scripting.Internal
             }
         }
 
-        /* Utility: Remove all child links in to and out of the given parameter */
+        /// <summary>
+        /// Utility: Remove all child links in to and out of the given parameter
+        /// </summary>
         public void RemoveAllParameterLinks(string parameter, Composite comp)
         {
             RemoveAllParameterLinksIn(parameter, comp);
             RemoveAllParameterLinksOut(parameter);
         }
 
-        /* Utility: Remove all child links in to and out of the given parameter */
+        /// <summary>
+        /// Utility: Remove all child links in to and out of the given parameter
+        /// </summary>
         public void RemoveAllParameterLinks(Composite comp)
         {
             RemoveAllParameterLinksIn(comp);
@@ -405,7 +435,9 @@ namespace CATHODE.Scripting
         public ShortGuid function;
         public List<ResourceReference> resources = new List<ResourceReference>(); //TODO: can we replace this with a cResource to save duplicating functionality?
 
-        /* Add a new resource reference of type */
+        /// <summary>
+        /// Add a new resource reference of type
+        /// </summary>
         public ResourceReference AddResource(ResourceType type)
         {
             //We can only have one type of resource reference per function entity, so if it already exists, we just return the existing one.
@@ -413,27 +445,21 @@ namespace CATHODE.Scripting
             if (rr == null)
             {
                 rr = new ResourceReference(type);
-                rr.resource_id = type == ResourceType.DYNAMIC_PHYSICS_SYSTEM ? ShortGuidUtils.Generate("DYNAMIC_PHYSICS_SYSTEM") : shortGUID;
-                switch (rr.resource_type)
-                {
-                    case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                    case ResourceType.RENDERABLE_INSTANCE:
-                    case ResourceType.ANIMATED_MODEL:
-                        rr.index = 0;
-                        break;
-                }
+                rr.resource_id = type == ResourceType.DYNAMIC_PHYSICS_SYSTEM ? ShortGuids.DYNAMIC_PHYSICS_SYSTEM : shortGUID;
                 resources.Add(rr);
             }
             return rr;
         }
 
-        /* Find a resource reference of type on the entity - will also check the "resource" parameter second if alsoCheckParameter is true */
+        /// <summary>
+        /// Find a resource reference of type on the entity - will also check the "resource" parameter second if alsoCheckParameter is true
+        /// </summary>
         public ResourceReference GetResource(ResourceType type, bool alsoCheckParameter = false)
         {
             ResourceReference resource = resources.FirstOrDefault(o => o.resource_type == type);
             if (alsoCheckParameter && resource == null)
             {
-                Parameter resourceParam = GetParameter("resource");
+                Parameter resourceParam = GetParameter(ShortGuids.resource);
                 if (resourceParam != null && resourceParam.content != null && resourceParam.content.dataType == DataType.RESOURCE)
                     resource = ((cResource)resourceParam.content).GetResource(type);
             }
@@ -722,7 +748,7 @@ namespace CATHODE.Scripting
             if (x.path.Length != y.path.Length) return false;
             for (int i = 0; i < x.path.Length; i++)
             {
-                if (x.path[i].ToByteString() != y.path[i].ToByteString())
+                if (x.path[i] != y.path[i])
                     return false;
             }
             return true;
@@ -730,6 +756,16 @@ namespace CATHODE.Scripting
         public static bool operator !=(EntityPath x, EntityPath y)
         {
             return !(x == y);
+        }
+
+        public static EntityPath operator +(EntityPath x, EntityPath y)
+        {
+            List<ShortGuid> newPath = new List<ShortGuid>();
+            newPath.AddRange(x.path);
+            if (newPath.Count > 0 && newPath[newPath.Count - 1] == ShortGuid.Invalid)
+                newPath.RemoveAt(newPath.Count - 1);
+            newPath.AddRange(y.path);
+            return new EntityPath(newPath.ToArray());
         }
 
         public override bool Equals(object obj)
@@ -763,7 +799,7 @@ namespace CATHODE.Scripting
             return val;
         }
 
-        [Obsolete("Please use CommandsUtils GetResolvedAsString after resolving with ResolveAliasOrProxy.")]
+        [Obsolete("Please use CommandsUtils GetResolvedAsString after resolving with ResolveAliasOrProxy, or ResolveHierarchy if a direct style from root.")]
         public string ToString(Commands commands, Composite composite, bool withIDs = true)
         {
             return commands.Utils.GetResolvedAsString(commands.Utils.ResolveAliasOrProxy(path, composite), withIDs);
@@ -776,8 +812,10 @@ namespace CATHODE.Scripting
             return val;
         }
 
-        /* Get the ID of the entity that this path points to */
-        public ShortGuid GetPointedEntityID()
+                 /// <summary>
+         /// Get the ID of the entity that this path points to
+         /// </summary>
+         public ShortGuid GetPointedEntityID()
         {
             ShortGuid id = ShortGuid.Invalid;
             for (int i = path.Length - 1; i >= 0; i--)
@@ -789,8 +827,10 @@ namespace CATHODE.Scripting
             return id;
         }
 
-        /* Generate the checksum used identify the path */
-        public ShortGuid GeneratePathHash()
+                 /// <summary>
+         /// Generate the checksum used identify the path
+         /// </summary>
+         public ShortGuid GeneratePathHash()
         {
             if (path.Length == 0) return ShortGuid.Invalid;
             EnsureFinalIsEmpty();
@@ -803,20 +843,26 @@ namespace CATHODE.Scripting
             return checksumGenerated;
         }
 
-        /* Generate the instance ID used to identify the instanced composite we're executed in */
-        public ShortGuid GenerateCompositeInstanceID(bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
+                 /// <summary>
+         /// Generate the instance ID used to identify the instanced composite we're executed in
+         /// </summary>
+         public ShortGuid GenerateCompositeInstanceID(bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
         {
             return path.GenerateCompositeInstanceID(hasInternalEntityID);
         }
 
-        /* Generate a zone ID (use this when the EntityHandle points to a Zone entity) */
-        public ShortGuid GenerateZoneID()
+                 /// <summary>
+         /// Generate a zone ID (use this when the EntityHandle points to a Zone entity)
+         /// </summary>
+         public ShortGuid GenerateZoneID()
         {
             return new ShortGuid(0 + GenerateCompositeInstanceID().AsUInt32 + GetPointedEntityID().AsUInt32 + 1);
         }
 
-        /* Add the next entity GUID along the path */
-        public void AddNextStep(Entity entity)
+                 /// <summary>
+         /// Add the next entity GUID along the path
+         /// </summary>
+         public void AddNextStep(Entity entity)
         {
             AddNextStep(entity.shortGUID);
         }
@@ -834,7 +880,9 @@ namespace CATHODE.Scripting
             EnsureFinalIsEmpty();
         }
 
-        /* Remove the last entity GUID along the path */
+                 /// <summary>
+         /// Remove the last entity GUID along the path
+         /// </summary>
         public void GoBackOneStep()
         {
             if (path.Length > 0 && path[path.Length - 1] == ShortGuid.Invalid)
@@ -854,8 +902,20 @@ namespace CATHODE.Scripting
                 EnsureFinalIsEmpty();
             }
         }
+
+        /// <summary>
+        /// Create a copy of this EntityPath
+        /// </summary>
+        public EntityPath Copy()
+        {
+            ShortGuid[] newPath = new ShortGuid[path.Length];
+            Array.Copy(path, newPath, path.Length);
+            return new EntityPath(newPath);
+        }
         
-        /* Updates this path to have the path to another entity prepended to it */
+                 /// <summary>
+         /// Updates this path to have the path to another entity prepended to it
+         /// </summary>
         //public void PrependPath(EntityPath otherPath)
         //{
         //    int length = otherPath.path[otherPath.path.Count - 1] == ShortGuid.Invalid ? otherPath.path.Count - 2 : otherPath.path.Count - 1;
@@ -866,12 +926,14 @@ namespace CATHODE.Scripting
 
     public static class PathUtils
     {
-        /* Generate the instance ID used to identify the instanced composite we're executed in */
-        public static ShortGuid GenerateCompositeInstanceID(this ShortGuid[] path, bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
+                 /// <summary>
+         /// Generate the instance ID used to identify the instanced composite we're executed in
+         /// </summary>
+         public static ShortGuid GenerateCompositeInstanceID(this ShortGuid[] path, bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
         {
             bool hasTrailingInvalid = (path.Length > 0 && path[path.Length - 1] == ShortGuid.Invalid);
             ShortGuid[] values = new ShortGuid[hasInternalEntityID ? (hasTrailingInvalid ? path.Length - 1 : path.Length) : (hasTrailingInvalid ? path.Length : path.Length + 1)];
-            values[values.Length - 1] = ShortGuid.InitialiserBase;
+            values[values.Length - 1] = ShortGuid.InstanceGuid;
             int x = 0;
             for (int i = values.Length - 2; i >= 0; i--)
             {
@@ -886,11 +948,14 @@ namespace CATHODE.Scripting
             }
             return instanceGenerated;
         }
-        public static ShortGuid GenerateCompositeInstanceID(this List<ShortGuid> path, bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
+                 /// <summary>
+         /// Generate the instance ID used to identify the instanced composite we're executed in
+         /// </summary>
+         public static ShortGuid GenerateCompositeInstanceID(this List<ShortGuid> path, bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
         {
             bool hasTrailingInvalid = (path.Count > 0 && path[path.Count - 1] == ShortGuid.Invalid);
             ShortGuid[] values = new ShortGuid[hasInternalEntityID ? (hasTrailingInvalid ? path.Count - 1 : path.Count) : (hasTrailingInvalid ? path.Count : path.Count + 1)];
-            values[values.Length - 1] = ShortGuid.InitialiserBase;
+            values[values.Length - 1] = ShortGuid.InstanceGuid;
             int x = 0;
             for (int i = values.Length - 2; i >= 0; i--)
             {

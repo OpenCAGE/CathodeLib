@@ -1,20 +1,24 @@
 using CATHODE;
 using CATHODE.Scripting;
+using CathodeLib.ArrayExtensions;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
 
 namespace CathodeLib
 {
-    public class Utilities
+    public static class Utilities
     {
-        //Read a single templated object
+        /// <summary>
+        /// Read a single templated object
+        /// </summary>
         public static T Consume<T>(BinaryReader reader, int offset)
         {
             reader.BaseStream.Position = offset;
@@ -33,7 +37,9 @@ namespace CathodeLib
             return theStructure;
         }
 
-        //Read a templated array
+        /// <summary>
+        /// Read a templated array
+        /// </summary>
         public static T[] ConsumeArray<T>(BinaryReader reader, int count, int offset)
         {
             reader.BaseStream.Position = offset;
@@ -52,7 +58,9 @@ namespace CathodeLib
             return toReturn;
         }
 
-        //Align the stream
+        /// <summary>
+        /// Align the stream
+        /// </summary>
         public static void Align(BinaryReader reader, int val = 4)
         {
             reader.BaseStream.Seek((val - (reader.BaseStream.Position % val)) % val, SeekOrigin.Current);
@@ -62,7 +70,9 @@ namespace CathodeLib
             while (writer.BaseStream.Position % val != 0) writer.Write(fillWith);
         }
 
-        //Reads a string with alternating nulls up to a trailing 0x00 byte
+        /// <summary>
+        /// Reads a string with alternating nulls up to a trailing 0x00 byte
+        /// </summary>
         public static string ReadStringAlternating(byte[] bytes)
         {
             byte[] trimmed = new byte[bytes.Length / 2];
@@ -77,7 +87,9 @@ namespace CathodeLib
             return ReadString(trimmed);
         }
 
-        //Reads a string up to a trailing 0x00 byte
+        /// <summary>
+        /// Reads a string up to a trailing 0x00 byte
+        /// </summary>
         public static string ReadString(BinaryReader reader, int position, bool resetPosition = true)
         {
             long startPos = reader.BaseStream.Position;
@@ -128,7 +140,9 @@ namespace CathodeLib
             return Encoding.ASCII.GetString(bytes.ToArray());
         }
 
-        //Writes a string without a leading length value
+        /// <summary>
+        /// Writes a string without a leading length value
+        /// </summary>
         public static void WriteString(string string_to_write, BinaryWriter writer, bool trailingByte = false)
         {
             byte[] content = Encoding.ASCII.GetBytes(string_to_write);
@@ -136,7 +150,9 @@ namespace CathodeLib
             if (trailingByte) writer.Write((byte)0x00);
         }
 
-        //Removes the leading nulls from a byte array, useful for cleaning byte-aligned file extracts
+        /// <summary>
+        /// Removes the leading nulls from a byte array, useful for cleaning byte-aligned file extracts
+        /// </summary>
         public static byte[] RemoveLeadingNulls(byte[] extracted_file)
         {
             //Remove from leading
@@ -155,7 +171,9 @@ namespace CathodeLib
             return to_return;
         }
 
-        //Write a templated type
+        /// <summary>
+        /// Write a templated type
+        /// </summary>
         public static void Write<T>(BinaryWriter stream, T aux)
         {
             int length = Marshal.SizeOf(aux);
@@ -177,7 +195,9 @@ namespace CathodeLib
             Write<T>(stream, aux.ToArray<T>());
         }
 
-        //Generate a hashed string for use in the animation system (FNV hash)
+        /// <summary>
+        /// Generate a hashed string for use in the animation system (FNV hash)
+        /// </summary>
         public static uint AnimationHashedString(string str)
         {
             uint hash = 0x811c9dc5;
@@ -193,30 +213,78 @@ namespace CathodeLib
             return hash;
         }
 
-        //Generate a hashed string for use in sound system (wwise FNV-1)
+        /// <summary>
+        /// Generate a hashed string for use in sound system (wwise FNV-1)
+        /// </summary>
         public static uint SoundHashedString(string str)
         {
             byte[] namebytes = Encoding.UTF8.GetBytes(str.ToLower());
-            uint hash = 2166136261; 
+            uint hash = 2166136261;
             for (int i = 0; i < namebytes.Length; i++)
             {
                 byte namebyte = namebytes[i];
-                hash = hash * 16777619; 
-                hash = hash ^ namebyte; 
-                hash = hash & 0xFFFFFFFF; 
+                hash = hash * 16777619;
+                hash = hash ^ namebyte;
+                hash = hash & 0xFFFFFFFF;
             }
             return hash;
         }
 
-        //Read a PAK
+        /// <summary>
+        /// Convert a model component to a renderable element using its default materials
+        /// </summary>
+        public static List<RenderableElements.Element> ToRenderableElements(this Models.CS2.Component model)
+        {
+            List<RenderableElements.Element> reds = new List<RenderableElements.Element>();
+            List<RenderableElements.Element> lod = new List<RenderableElements.Element>();
+            for (int i = model.LODs.Count - 1; i >= 0; --i)
+            {
+                for (int x = 0; x < model.LODs[i].Submeshes.Count; x++)
+                {
+                    RenderableElements.Element element = new RenderableElements.Element()
+                    {
+                        Model = model.LODs[i].Submeshes[x],
+                        Material = model.LODs[i].Submeshes[x].Material,
+                    };
+                    if (x == 0)
+                    {
+                        element.LODs.AddRange(lod);
+                        lod.Clear();
+                    }
+                    if (i != 0)
+                    {
+                        lod.Add(element);
+                    }
+                    else
+                    {
+                        reds.Add(element);
+                    }
+                }
+            }
+            return reds;
+        }
+
+        /// <summary>
+        /// Load a Level by passing AI.exe's folder, and the name of the level in ENV (e.g. Production/Frontend)
+        /// </summary>
+        public static Level LoadLevel(string pathToAI, string level)
+        {
+            PAK2 animPAK = new PAK2(pathToAI + "\\DATA\\GLOBAL\\ANIMATION.PAK");
+            Global global = new Global(pathToAI + "\\DATA\\ENV\\GLOBAL\\", animPAK);
+            return new Level(pathToAI + "\\DATA\\ENV\\" + level, global);
+        }
+
+        /// <summary>
+        /// Read a PAK
+        /// </summary>
         public static List<PAKContent> ReadPAK(string path, FileIdentifiers type)
         {
-            List<PAKContent> content = new List<PAKContent>(); 
+            List<PAKContent> content = new List<PAKContent>();
             bool e = type == FileIdentifiers.MODEL_DATA;
 
             using (BinaryReader reader = new BinaryReader(File.OpenRead(path)))
             {
-                reader.BaseStream.Position += 4; 
+                reader.BaseStream.Position += 4;
                 if ((FileIdentifiers)BigEndianUtils.ReadInt32(reader, e) != FileIdentifiers.ASSET_FILE) return null;
                 if ((FileIdentifiers)BigEndianUtils.ReadInt32(reader, e) != type) return null;
                 int entryCount = BigEndianUtils.ReadInt32(reader, e);
@@ -230,7 +298,7 @@ namespace CathodeLib
                 {
                     reader.BaseStream.Position += 8;
                     int length = BigEndianUtils.ReadInt32(reader, e);
-                    reader.BaseStream.Position += 4; 
+                    reader.BaseStream.Position += 4;
                     int offset = BigEndianUtils.ReadInt32(reader, e);
                     reader.BaseStream.Position += 12;
                     int binIndex = BigEndianUtils.ReadInt32(reader, e);
@@ -250,7 +318,9 @@ namespace CathodeLib
             return content;
         }
 
-        //Write a PAK
+        /// <summary>
+        /// Write a PAK
+        /// </summary>
         public static void WritePAK(string path, FileIdentifiers type, List<PAKContent> content)
         {
             bool e = type == FileIdentifiers.MODEL_DATA;
@@ -316,9 +386,44 @@ namespace CathodeLib
     {
         public static (decimal, decimal, decimal) ToYawPitchRoll(this Quaternion q)
         {
-            decimal yaw = Convert.ToDecimal(Math.Atan2(2 * (q.Y * q.W + q.X * q.Z), 1 - 2 * (q.Y * q.Y + q.X * q.X)) * (180 / Math.PI));
-            decimal pitch = Convert.ToDecimal(Math.Asin(2 * (q.X * q.W - q.Z * q.Y)) * (180 / Math.PI));
-            decimal roll = Convert.ToDecimal(Math.Atan2(2 * (q.Z * q.W + q.X * q.Y), 1 - 2 * (q.X * q.X + q.Z * q.Z)) * (180 / Math.PI));
+            // Helper function to safely convert double to decimal
+            decimal SafeConvertToDecimal(double value)
+            {
+                if (double.IsNaN(value) || double.IsInfinity(value))
+                    return 0m;
+
+                // Clamp to decimal range to prevent overflow
+                const double maxDecimal = (double)decimal.MaxValue;
+                const double minDecimal = (double)decimal.MinValue;
+
+                if (value > maxDecimal) value = maxDecimal;
+                if (value < minDecimal) value = minDecimal;
+
+                try
+                {
+                    return Convert.ToDecimal(value);
+                }
+                catch (OverflowException)
+                {
+                    return 0m;
+                }
+            }
+
+            // Check for invalid quaternion
+            if (float.IsNaN(q.X) || float.IsNaN(q.Y) || float.IsNaN(q.Z) || float.IsNaN(q.W) ||
+                float.IsInfinity(q.X) || float.IsInfinity(q.Y) || float.IsInfinity(q.Z) || float.IsInfinity(q.W))
+            {
+                return (0m, 0m, 0m);
+            }
+
+            // Calculate yaw, pitch, roll with safe conversion
+            double yawRad = Math.Atan2(2 * (q.Y * q.W + q.X * q.Z), 1 - 2 * (q.Y * q.Y + q.X * q.X));
+            double pitchRad = Math.Asin(Math.Max(-1, Math.Min(1, 2 * (q.X * q.W - q.Z * q.Y)))); // Clamp to [-1, 1] to prevent domain error
+            double rollRad = Math.Atan2(2 * (q.Z * q.W + q.X * q.Y), 1 - 2 * (q.X * q.X + q.Z * q.Z));
+
+            decimal yaw = SafeConvertToDecimal(yawRad * (180 / Math.PI));
+            decimal pitch = SafeConvertToDecimal(pitchRad * (180 / Math.PI));
+            decimal roll = SafeConvertToDecimal(rollRad * (180 / Math.PI));
 
             return (yaw, pitch, roll);
         }
@@ -506,7 +611,7 @@ namespace CathodeLib
             return hashCode;
         }
     }
-    
+
     /*
     [Serializable]
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -598,6 +703,134 @@ namespace CathodeLib
         public override string ToString()
         {
             return new string(V);
+        }
+    }
+
+}
+
+namespace CathodeLib.ObjectExtensions
+{
+    public static class ObjectExtensions
+    {
+        private static readonly MethodInfo CloneMethod = typeof(Object).GetMethod("MemberwiseClone", BindingFlags.NonPublic | BindingFlags.Instance);
+
+        public static bool IsPrimitive(this Type type)
+        {
+            if (type == typeof(String)) return true;
+            return (type.IsValueType & type.IsPrimitive);
+        }
+
+        public static Object Copy(this Object originalObject)
+        {
+            return InternalCopy(originalObject, new Dictionary<Object, Object>(new ReferenceEqualityComparer()));
+        }
+        private static Object InternalCopy(Object originalObject, IDictionary<Object, Object> visited)
+        {
+            if (originalObject == null) return null;
+            var typeToReflect = originalObject.GetType();
+            if (IsPrimitive(typeToReflect)) return originalObject;
+            if (visited.TryGetValue(originalObject, out object obj)) return obj;
+            if (typeof(Delegate).IsAssignableFrom(typeToReflect)) return null;
+            var cloneObject = CloneMethod.Invoke(originalObject, null);
+            if (typeToReflect.IsArray)
+            {
+                var arrayType = typeToReflect.GetElementType();
+                if (IsPrimitive(arrayType) == false)
+                {
+                    Array clonedArray = (Array)cloneObject;
+                    clonedArray.ForEach((array, indices) => array.SetValue(InternalCopy(clonedArray.GetValue(indices), visited), indices));
+                }
+
+            }
+            visited.Add(originalObject, cloneObject);
+            CopyFields(originalObject, visited, cloneObject, typeToReflect);
+            RecursiveCopyBaseTypePrivateFields(originalObject, visited, cloneObject, typeToReflect);
+            return cloneObject;
+        }
+
+        private static void RecursiveCopyBaseTypePrivateFields(object originalObject, IDictionary<object, object> visited, object cloneObject, Type typeToReflect)
+        {
+            if (typeToReflect.BaseType != null)
+            {
+                RecursiveCopyBaseTypePrivateFields(originalObject, visited, cloneObject, typeToReflect.BaseType);
+                CopyFields(originalObject, visited, cloneObject, typeToReflect.BaseType, BindingFlags.Instance | BindingFlags.NonPublic, info => info.IsPrivate);
+            }
+        }
+
+        private static void CopyFields(object originalObject, IDictionary<object, object> visited, object cloneObject, Type typeToReflect, BindingFlags bindingFlags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.FlattenHierarchy, Func<FieldInfo, bool> filter = null)
+        {
+            foreach (FieldInfo fieldInfo in typeToReflect.GetFields(bindingFlags))
+            {
+                if (filter != null && filter(fieldInfo) == false) continue;
+                if (IsPrimitive(fieldInfo.FieldType)) continue;
+                var originalFieldValue = fieldInfo.GetValue(originalObject);
+                var clonedFieldValue = InternalCopy(originalFieldValue, visited);
+                fieldInfo.SetValue(cloneObject, clonedFieldValue);
+            }
+        }
+        public static T Copy<T>(this T original)
+        {
+            return (T)Copy((Object)original);
+        }
+    }
+
+    public class ReferenceEqualityComparer : EqualityComparer<Object>
+    {
+        public override bool Equals(object x, object y)
+        {
+            return ReferenceEquals(x, y);
+        }
+        public override int GetHashCode(object obj)
+        {
+            if (obj == null) return 0;
+            return obj.GetHashCode();
+        }
+    }
+}
+
+namespace CathodeLib.ArrayExtensions
+{ 
+    public static class ArrayExtensions
+    {
+        public static void ForEach(this Array array, Action<Array, int[]> action)
+        {
+            if (array.LongLength == 0) return;
+            ArrayTraverse walker = new ArrayTraverse(array);
+            do action(array, walker.Position);
+            while (walker.Step());
+        }
+    }
+
+    internal class ArrayTraverse
+    {
+        public int[] Position;
+        private int[] maxLengths;
+
+        public ArrayTraverse(Array array)
+        {
+            maxLengths = new int[array.Rank];
+            for (int i = 0; i < array.Rank; ++i)
+            {
+                maxLengths[i] = array.GetLength(i) - 1;
+            }
+            Position = new int[array.Rank];
+        }
+
+        public bool Step()
+        {
+            for (int i = 0; i < Position.Length; ++i)
+            {
+                if (Position[i] < maxLengths[i])
+                {
+                    Position[i]++;
+                    for (int j = 0; j < i; j++)
+                    {
+                        Position[j] = 0;
+                    }
+                    return true;
+                }
+            }
+            return false;
         }
     }
 }

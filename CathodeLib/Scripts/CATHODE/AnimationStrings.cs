@@ -9,7 +9,9 @@ using CathodeLib;
 
 namespace CATHODE
 {
-    /* DATA/GLOBAL/ANIMATION.PAK -> ANIM_STRING_DB.BIN, ANIM_STRING_DB_DEBUG.BIN */
+    /// <summary>
+    /// DATA/GLOBAL/ANIMATION.PAK -> ANIM_STRING_DB.BIN, ANIM_STRING_DB_DEBUG.BIN
+    /// </summary>
     public class AnimationStrings : CathodeFile
     {
         public Dictionary<uint, string> Entries = new Dictionary<uint, string>();
@@ -73,7 +75,9 @@ namespace CATHODE
         #endregion
 
         #region ACCESSORS
-        /* Add a string to the DB */
+        /// <summary>
+        /// Add a string to the DB (generates an ID)
+        /// </summary>
         public void AddString(string str)
         {
             uint id = Utilities.AnimationHashedString(str);
@@ -81,11 +85,34 @@ namespace CATHODE
             Entries.Add(id, str);
         }
 
-        /* Remove a string from the DB */
+        /// <summary>
+        /// Remove a string from the DB
+        /// </summary>
         public void RemoveString(string str)
         {
             uint id = Utilities.AnimationHashedString(str);
             Entries.Remove(id);
+        }
+
+        /// <summary>
+        /// Get the string value for a given ID (if it doesn't exist, returns the ID as a string)
+        /// </summary>
+        public string GetString(uint id)
+        {
+            if (Entries.TryGetValue(id, out string s))
+                return s;
+            return id.ToString(); //Warn?
+        }
+
+        /// <summary>
+        /// Get the ID for a given string, and caches it if it's new
+        /// </summary>
+        public uint GetID(string str)
+        {
+            uint id = Utilities.AnimationHashedString(str);
+            if (!Entries.ContainsKey(id))
+                Entries.Add(id, str);
+            return id;
         }
         #endregion
 

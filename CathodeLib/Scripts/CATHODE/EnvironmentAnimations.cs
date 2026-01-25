@@ -5,6 +5,10 @@ using CATHODE.Scripting;
 using CathodeLib;
 using System;
 using System.Linq;
+using static CATHODE.CollisionMaps;
+using CathodeLib.ObjectExtensions;
+
+
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -13,7 +17,9 @@ using System.Numerics;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/ENVIRONMENT_ANIMATION.DAT */
+    /// <summary>
+    /// DATA/ENV/x/WORLD/ENVIRONMENT_ANIMATION.DAT
+    /// </summary>
     public class EnvironmentAnimations : CathodeFile
     {
         public List<EnvironmentAnimation> Entries = new List<EnvironmentAnimation>();
@@ -27,13 +33,18 @@ namespace CATHODE
         public EnvironmentAnimations(MemoryStream stream, AnimationStrings strings, string path = "") : base(stream, path)
         {
             _strings = strings;
-            _loaded = Load();
+            _loaded = Load(stream);
         }
         public EnvironmentAnimations(byte[] data, AnimationStrings strings, string path = "") : base(data, path)
         {
             _strings = strings;
-            _loaded = Load();
+            using (MemoryStream stream = new MemoryStream(data))
+            {
+                _loaded = Load(stream);
+            }
         }
+
+        private List<EnvironmentAnimation> _writeList = new List<EnvironmentAnimation>();
 
         private AnimationStrings _strings;
 
@@ -104,6 +115,7 @@ namespace CATHODE
                     Entries.Add(anim);
                 }
             }
+            _writeList.AddRange(Entries);
             return true;
         }
 
@@ -191,11 +203,50 @@ namespace CATHODE
                     writer.Write(Entries[i].unk1);
                 }
             }
+            _writeList.Clear();
+            _writeList.AddRange(Entries);
             return true;
         }
-#endregion
+        #endregion
 
         #region HELPERS
+        /// <summary>
+        /// Get the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public int GetWriteIndex(EnvironmentAnimation envAnim)
+        {
+            if (!_writeList.Contains(envAnim)) return -1;
+            return _writeList.IndexOf(envAnim);
+        }
+
+        /// <summary>
+        /// Get the object at the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public EnvironmentAnimation GetAtWriteIndex(int index)
+        {
+            if (_writeList.Count <= index || index < 0) return null;
+            return _writeList[index];
+        }
+
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects.
+        /// </summary>
+        public EnvironmentAnimation ImportEntry(EnvironmentAnimation envAnim)
+        {
+            if (envAnim == null)
+                return null;
+
+            var existing = Entries.FirstOrDefault(o => o == envAnim);
+            if (existing != null)
+                return existing;
+
+            EnvironmentAnimation newEnvAnim = envAnim.Copy();
+            Entries.Add(newEnvAnim);
+            return newEnvAnim;
+        }
+
         private List<T> PopulateArray<T>(BinaryReader reader, T[] array)
         {
             List<T> arr = new List<T>();
@@ -224,7 +275,7 @@ namespace CATHODE
         #endregion
 
         #region STRUCTURES
-        public class EnvironmentAnimation
+        public class EnvironmentAnimation : IEquatable<EnvironmentAnimation>
         {
             public string SkeletonName; //we write this using AnimationHashedString
             public int ResourceIndex; //This matches the ANIMATED_MODEL resource reference
@@ -251,8 +302,64 @@ namespace CATHODE
 
             public int unk1 = 0;
 
+            public static bool operator ==(EnvironmentAnimation x, EnvironmentAnimation y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+                if (x.SkeletonName != y.SkeletonName) return false;
+                if (x.ResourceIndex != y.ResourceIndex) return false;
+                if (x.unk1 != y.unk1) return false;
+                if (!ListsEqual(x.Indexes0, y.Indexes0)) return false;
+                if (!ListsEqual(x.Indexes1, y.Indexes1)) return false;
+                if (!ListsEqual(x.Matrices0, y.Matrices0)) return false;
+                if (!ListsEqual(x.Matrices1, y.Matrices1)) return false;
+                if (!ListsEqual(x.Data0, y.Data0)) return false;
+                return true;
+            }
+
+            public static bool operator !=(EnvironmentAnimation x, EnvironmentAnimation y)
+            {
+                return !(x == y);
+            }
+
+            public bool Equals(EnvironmentAnimation other)
+            {
+                return this == other;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is EnvironmentAnimation anim && this == anim;
+            }
+
+            public override int GetHashCode()
+            {
+                int hashCode = -1234567890;
+                hashCode = hashCode * -1521134295 + (SkeletonName?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + ResourceIndex.GetHashCode();
+                hashCode = hashCode * -1521134295 + unk1.GetHashCode();
+                hashCode = hashCode * -1521134295 + (Indexes0?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + (Indexes1?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + (Matrices0?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + (Matrices1?.GetHashCode() ?? 0);
+                hashCode = hashCode * -1521134295 + (Data0?.GetHashCode() ?? 0);
+                return hashCode;
+            }
+
+            private static bool ListsEqual<T>(List<T> x, List<T> y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return false;
+                if (x.Count != y.Count) return false;
+                for (int i = 0; i < x.Count; i++)
+                {
+                    if (!EqualityComparer<T>.Default.Equals(x[i], y[i])) return false;
+                }
+                return true;
+            }
+
             [StructLayout(LayoutKind.Sequential, Pack = 1)]
-            public struct Info
+            public struct Info : IEquatable<Info>
             {
                 public ShortGuid ID; //id is only found in this file
                 public Vector3 P;
@@ -260,12 +367,69 @@ namespace CATHODE
                 public float[] V;
                 [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
                 public byte[] Unknown_;
+
+                public static bool operator ==(Info x, Info y)
+                {
+                    if (x.ID != y.ID) return false;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                    if (x.P != y.P) return false;
+#else
+                    if (x.P.X != y.P.X || x.P.Y != y.P.Y || x.P.Z != y.P.Z) return false;
+#endif
+                    if (!ArraysEqual(x.V, y.V)) return false;
+                    if (!ArraysEqual(x.Unknown_, y.Unknown_)) return false;
+                    return true;
+                }
+
+                public static bool operator !=(Info x, Info y)
+                {
+                    return !(x == y);
+                }
+
+                public bool Equals(Info other)
+                {
+                    return this == other;
+                }
+
+                public override bool Equals(object obj)
+                {
+                    return obj is Info info && this == info;
+                }
+
+                public override int GetHashCode()
+                {
+                    int hashCode = -1234567890;
+                    hashCode = hashCode * -1521134295 + ID.GetHashCode();
+                    hashCode = hashCode * -1521134295 + P.GetHashCode();
+                    hashCode = hashCode * -1521134295 + (V?.GetHashCode() ?? 0);
+                    hashCode = hashCode * -1521134295 + (Unknown_?.GetHashCode() ?? 0);
+                    return hashCode;
+                }
+
+                private static bool ArraysEqual(byte[] x, byte[] y)
+                {
+                    if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                    if (ReferenceEquals(y, null)) return false;
+                    if (x.Length != y.Length) return false;
+                    for (int i = 0; i < x.Length; i++)
+                    {
+                        if (x[i] != y[i]) return false;
+                    }
+                    return true;
+                }
+
+                private static bool ArraysEqual(float[] x, float[] y)
+                {
+                    if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                    if (ReferenceEquals(y, null)) return false;
+                    if (x.Length != y.Length) return false;
+                    for (int i = 0; i < x.Length; i++)
+                    {
+                        if (x[i] != y[i]) return false;
+                    }
+                    return true;
+                }
             };
-        }
-
-        public class SkinnedEnvironmentAnimation : EnvironmentAnimation
-        {
-
         }
         #endregion
     }

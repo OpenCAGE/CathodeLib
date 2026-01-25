@@ -11,7 +11,9 @@ using UnityEngine;
 
 namespace CATHODE.Scripting
 {
-    /* A script composite containing entities */
+    /// <summary>
+    /// A script composite containing entities
+    /// </summary>
     [Serializable]
     public class Composite
     {
@@ -33,19 +35,25 @@ namespace CATHODE.Scripting
         public ShortGuid shortGUID;  //The id when this composite is used as an entity in another composite
         public string name = ""; //The string name of the composite
 
-        /* All entities within the composite */
+        /// <summary>
+        /// All entities within the composite
+        /// </summary>
         public Dictionary<ShortGuid, VariableEntity> variables_dictionary = new Dictionary<ShortGuid, VariableEntity>(); //Variables which can be accessed outside of this composite as parameters, and connected to entities internally
         public Dictionary<ShortGuid, FunctionEntity> functions_dictionary = new Dictionary<ShortGuid, FunctionEntity>(); //Functional nodes, including hard-coded functions and references to other composites
         public Dictionary<ShortGuid, AliasEntity> aliases_dictionary = new Dictionary<ShortGuid, AliasEntity>(); //Aliases of entities in child composites
         public Dictionary<ShortGuid, ProxyEntity> proxies_dictionary = new Dictionary<ShortGuid, ProxyEntity>(); //Entites acting as entities from other composites
 
-        /* Accessors for entities within the composite - ideally, use the dictionaries! */
+        /// <summary>
+        /// Accessors for entities within the composite - ideally, use the dictionaries!
+        /// </summary>
         public ReadOnlyEntityCollection<VariableEntity> variables => new ReadOnlyEntityCollection<VariableEntity>(variables_dictionary.Values);
         public ReadOnlyEntityCollection<FunctionEntity> functions => new ReadOnlyEntityCollection<FunctionEntity>(functions_dictionary.Values);
         public ReadOnlyEntityCollection<AliasEntity> aliases => new ReadOnlyEntityCollection<AliasEntity>(aliases_dictionary.Values);
         public ReadOnlyEntityCollection<ProxyEntity> proxies => new ReadOnlyEntityCollection<ProxyEntity>(proxies_dictionary.Values);
 
-        /* If an entity exists in the composite, return it */
+        /// <summary>
+        /// If an entity exists in the composite, return it
+        /// </summary>
         public Entity GetEntityByID(ShortGuid id)
         {
             if (variables_dictionary.TryGetValue(id, out VariableEntity variable)) return variable;
@@ -55,7 +63,9 @@ namespace CATHODE.Scripting
             return null;
         }
 
-        /* Returns a collection of all entities in the composite */
+        /// <summary>
+        /// Returns a collection of all entities in the composite
+        /// </summary>
         public List<Entity> GetEntities()
         {
             List<Entity> toReturn = new List<Entity>(variables_dictionary.Count + functions_dictionary.Count + aliases_dictionary.Count + proxies_dictionary.Count);
@@ -66,13 +76,17 @@ namespace CATHODE.Scripting
             return toReturn;
         }
 
-        /* Returns a collection of function entities in the composite matching the given type */
+        /// <summary>
+        /// Returns a collection of function entities in the composite matching the given type
+        /// </summary>
         public List<FunctionEntity> GetFunctionEntitiesOfType(FunctionType type)
         {
             return functions_dictionary.Values.Where(o => o.function == type).ToList();
         }
 
-        /* Removes all function entities in the composite matching the given type */
+        /// <summary>
+        /// Removes all function entities in the composite matching the given type
+        /// </summary>
         public void RemoveAllFunctionEntitiesOfType(FunctionType type)
         {
             var keysToRemove = functions_dictionary.Where(kvp => kvp.Value.function == type).Select(kvp => kvp.Key).ToList();
@@ -82,7 +96,9 @@ namespace CATHODE.Scripting
             }
         }
 
-        /* Add a new function entity */
+        /// <summary>
+        /// Add a new function entity
+        /// </summary>
         public FunctionEntity AddFunction(FunctionType function)
         {
             FunctionEntity func = null;
@@ -97,25 +113,34 @@ namespace CATHODE.Scripting
                     func = new FunctionEntity(function);
                     break;
             }
-            functions_dictionary.Add(func.shortGUID, func);
-            return func;
+            return AddFunction(func);
         }
         public FunctionEntity AddFunction(Composite composite)
         {
-            FunctionEntity func = new FunctionEntity(composite);
+            return AddFunction(new FunctionEntity(composite));
+        }
+        public FunctionEntity AddFunction(FunctionEntity func)
+        {
             functions_dictionary.Add(func.shortGUID, func);
             return func;
         }
 
-        /* Add a new variable entity */
+        /// <summary>
+        /// Add a new variable entity
+        /// </summary>
         public VariableEntity AddVariable(string parameter, DataType type)
         {
-            VariableEntity vari = new VariableEntity(parameter, type);
+            return AddVariable(new VariableEntity(parameter, type));
+        }
+        public VariableEntity AddVariable(VariableEntity vari)
+        {
             variables_dictionary.Add(vari.shortGUID, vari);
             return vari;
         }
 
-        /* Add a new proxy entity */
+        /// <summary>
+        /// Add a new proxy entity
+        /// </summary>
         public ProxyEntity AddProxy(Commands commands, ShortGuid[] hierarchy)
         {
             ProxyEntity proxy = new ProxyEntity();
@@ -125,19 +150,30 @@ namespace CATHODE.Scripting
             if (pointedEnt?.variant != EntityVariant.FUNCTION)
                 return null; //Proxies must point to a FunctionEntity!
             proxy.function = ((FunctionEntity)pointedEnt).function;
+            return AddProxy(proxy);
+        }
+        public ProxyEntity AddProxy(ProxyEntity proxy)
+        {
             proxies_dictionary.Add(proxy.shortGUID, proxy);
             return proxy;
         }
 
-        /* Add a new alias entity */
+        /// <summary>
+        /// Add a new alias entity
+        /// </summary>
         public AliasEntity AddAlias(ShortGuid[] hierarchy)
         {
-            AliasEntity alias = new AliasEntity(hierarchy);
+            return AddAlias(new AliasEntity(hierarchy));
+        }
+        public AliasEntity AddAlias(AliasEntity alias)
+        {
             aliases_dictionary.Add(alias.shortGUID, alias);
             return alias;
         }
 
-        /* Remove a variable entity */
+        /// <summary>
+        /// Remove a variable entity
+        /// </summary>
         public bool RemoveVariable(ShortGuid id)
         {
             return variables_dictionary.Remove(id);
@@ -149,7 +185,9 @@ namespace CATHODE.Scripting
             return false;
         }
 
-        /* Remove a function entity */
+        /// <summary>
+        /// Remove a function entity
+        /// </summary>
         public bool RemoveFunction(ShortGuid id)
         {
             return functions_dictionary.Remove(id);
@@ -161,7 +199,9 @@ namespace CATHODE.Scripting
             return false;
         }
 
-        /* Remove an alias entity */
+        /// <summary>
+        /// Remove an alias entity
+        /// </summary>
         public bool RemoveAlias(ShortGuid id)
         {
             return aliases_dictionary.Remove(id);
@@ -173,7 +213,9 @@ namespace CATHODE.Scripting
             return false;
         }
 
-        /* Remove a proxy entity by ShortGuid */
+        /// <summary>
+        /// Remove a proxy entity by ShortGuid
+        /// </summary>
         public bool RemoveProxy(ShortGuid id)
         {
             return proxies_dictionary.Remove(id);
@@ -185,7 +227,9 @@ namespace CATHODE.Scripting
             return false;
         }
 
-        /* Remove an entity */
+        /// <summary>
+        /// Remove an entity
+        /// </summary>
         public bool RemoveEntity(ShortGuid id)
         {
             return RemoveVariable(id) || RemoveFunction(id) || RemoveAlias(id) || RemoveProxy(id);

@@ -8,7 +8,9 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/CHARACTERACCESSORYSETS.BIN */
+    /// <summary>
+    /// DATA/ENV/x/WORLD/CHARACTERACCESSORYSETS.BIN
+    /// </summary>
     public class CharacterAccessorySets : CathodeFile
     {
         public List<CharacterAttributes> Entries = new List<CharacterAttributes>();
@@ -44,20 +46,20 @@ namespace CATHODE
                     entry.components.Arms.AccessoryIndex = reader.ReadInt32();
                     entry.components.Collision.AccessoryIndex = reader.ReadInt32();
 
-                    entry.asset_type = (CharacterAsset)reader.ReadInt32(); 
-                    entry.voice_actor = (VoiceActor)reader.ReadInt32();
-                    entry.gender = (CharacterGender)reader.ReadInt32();
-                    entry.ethnicity = (CharacterEthnicity)reader.ReadInt32();
-                    entry.build = (CharacterBuild)reader.ReadInt32();
+                    entry.asset_type = (CUSTOM_CHARACTER_ASSETS)reader.ReadInt32(); 
+                    entry.voice_actor = (DIALOGUE_VOICE_ACTOR)reader.ReadInt32();
+                    entry.gender = (CUSTOM_CHARACTER_GENDER)reader.ReadInt32();
+                    entry.ethnicity = (CUSTOM_CHARACTER_ETHNICITY)reader.ReadInt32();
+                    entry.build = (CUSTOM_CHARACTER_BUILD)reader.ReadInt32();
 
                     byte[] stringBlock = reader.ReadBytes(260);
                     entry.face_skeleton = Utilities.ReadString(stringBlock);
                     stringBlock = reader.ReadBytes(260);
                     entry.gender_skeleton = Utilities.ReadString(stringBlock);
 
-                    entry.foley.Torso = (FoleySound)reader.ReadInt32();
-                    entry.foley.Leg = (FoleySound)reader.ReadInt32();
-                    entry.foley.Footwear = (FoleySound)reader.ReadInt32();
+                    entry.foley.Torso = (CHARACTER_FOLEY_SOUND)reader.ReadInt32();
+                    entry.foley.Leg = (CHARACTER_FOLEY_SOUND)reader.ReadInt32();
+                    entry.foley.Footwear = (CHARACTER_FOLEY_SOUND)reader.ReadInt32();
                     Entries.Add(entry);
                 }
             }
@@ -119,16 +121,16 @@ namespace CATHODE
             public EntityHandle character = new EntityHandle();
             public Components components = new Components();
 
-            public CharacterAsset asset_type = CharacterAsset.ASSETSET_01; //TODO: Is this defined by CUSTOMCHARACTERASSETDATA.BIN?
-            public VoiceActor voice_actor = VoiceActor.CV1;
-            public CharacterGender gender = CharacterGender.MALE;
-            public CharacterEthnicity ethnicity = CharacterEthnicity.CAUCASIAN;
-            public CharacterBuild build = CharacterBuild.STANDARD;
+            public CUSTOM_CHARACTER_ASSETS asset_type = CUSTOM_CHARACTER_ASSETS.ASSETSET_01; //TODO: Is this defined by CUSTOMCUSTOM_CHARACTER_ASSETSDATA.BIN?
+            public DIALOGUE_VOICE_ACTOR voice_actor = DIALOGUE_VOICE_ACTOR.CV1;
+            public CUSTOM_CHARACTER_GENDER gender = CUSTOM_CHARACTER_GENDER.MALE;
+            public CUSTOM_CHARACTER_ETHNICITY ethnicity = CUSTOM_CHARACTER_ETHNICITY.CAUCASIAN;
+            public CUSTOM_CHARACTER_BUILD build = CUSTOM_CHARACTER_BUILD.STANDARD;
 
             public string face_skeleton = "AL";
             public string gender_skeleton = "MALE";
 
-            public FoleySounds foley = new FoleySounds();
+            public CHARACTER_FOLEY_SOUNDs foley = new CHARACTER_FOLEY_SOUNDs();
 
             public class Components
             {
@@ -146,11 +148,11 @@ namespace CATHODE
                 }
             }
 
-            public class FoleySounds
+            public class CHARACTER_FOLEY_SOUNDs
             {
-                public FoleySound Torso = FoleySound.HEAVY_OVERALLS;
-                public FoleySound Leg = FoleySound.HEAVY_OVERALLS;
-                public FoleySound Footwear = FoleySound.BOOTS;
+                public CHARACTER_FOLEY_SOUND Torso = CHARACTER_FOLEY_SOUND.HEAVY_OVERALLS;
+                public CHARACTER_FOLEY_SOUND Leg = CHARACTER_FOLEY_SOUND.HEAVY_OVERALLS;
+                public CHARACTER_FOLEY_SOUND Footwear = CHARACTER_FOLEY_SOUND.BOOTS;
             }
         };
         #endregion

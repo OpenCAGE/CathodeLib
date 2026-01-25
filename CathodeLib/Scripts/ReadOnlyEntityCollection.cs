@@ -6,7 +6,9 @@ using System.Text;
 
 namespace CathodeLib
 {
-    /* Custom read-only collections that throw errors on modification attempts */
+    /// <summary>
+    /// Custom read-only collections that throw errors on modification attempts
+    /// </summary>
     public class ReadOnlyEntityCollection<T> : IList<T>, IReadOnlyList<T>
     {
         private readonly List<T> _items;
@@ -38,7 +40,9 @@ namespace CathodeLib
         public int IndexOf(T item) => _items.IndexOf(item);
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-        // Additional methods to support List<T> compatibility
+        /// <summary>
+        /// Additional methods to support List<T> compatibility
+        /// </summary>
         public List<T> FindAll(Predicate<T> match) => _items.FindAll(match);
         public T Find(Predicate<T> match) => _items.Find(match);
         public bool Exists(Predicate<T> match) => _items.Exists(match);

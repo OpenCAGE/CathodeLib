@@ -19,7 +19,9 @@ namespace CATHODE.Scripting
     {
         private static GuidNameTable _custom = new GuidNameTable();
 
-        /* Generate a ShortGuid to interface with the Cathode scripting system */
+        /// <summary>
+        /// Generate a ShortGuid to interface with the Cathode scripting system
+        /// </summary>
         public static ShortGuid Generate(string value, bool cache = true)
         {
             if (_custom.cache.TryGetValue(value, out ShortGuid customVal))
@@ -42,7 +44,9 @@ namespace CATHODE.Scripting
             return guid;
         }
 
-        /* Attempts to look up the string for a given ShortGuid */
+        /// <summary>
+        /// Attempts to look up the string for a given ShortGuid
+        /// </summary>
         public static string FindString(ShortGuid guid)
         {
             if (_custom.cacheReversed.TryGetValue(guid, out string customVal))
@@ -53,7 +57,9 @@ namespace CATHODE.Scripting
             return guid.ToByteString();
         }
 
-        /* Generate a random unique ShortGuid */
+        /// <summary>
+        /// Generate a random unique ShortGuid
+        /// </summary>
         public static ShortGuid GenerateRandom()
         {
             string str = Guid.NewGuid().ToString();
@@ -71,7 +77,9 @@ namespace CATHODE.Scripting
             return guid;
         }
 
-        /* Cache a pre-generated ShortGuid */
+        /// <summary>
+        /// Cache a pre-generated ShortGuid
+        /// </summary>
         private static bool Cache(ShortGuid guid, string value)
         {
             if (_custom.cache.ContainsKey(value)) return false;
@@ -86,7 +94,9 @@ namespace CATHODE.Scripting
         }
 
         #region Commands Linking
-        /* Load/save custom shortguids */
+        /// <summary>
+        /// Load/save custom shortguids
+        /// </summary>
         internal static void LoadCustomNames(string filepath)
         {
             GuidNameTable guids = (GuidNameTable)CustomTable.ReadTable(filepath, CustomTableType.SHORT_GUIDS);

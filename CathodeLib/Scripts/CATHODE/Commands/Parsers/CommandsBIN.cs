@@ -32,7 +32,7 @@ namespace CATHODE.Scripting.Internal.Parsers
             RESOURCE_GUID = ShortGuidUtils.Generate("resource");
         }
 
-        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries)
+        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
         {
 #if COMPILE_NAME_LIST
             EntityNames.Clear();
@@ -448,22 +448,25 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     ResourceReference resource = new ResourceReference();
                                     reader.BaseStream.Position = command_entries[i + 6].Item2;
                                     resource.position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                                    resource.rotation = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                                    float __x, __y, __z; __y = reader.ReadSingle(); __x = reader.ReadSingle(); __z = reader.ReadSingle(); //This is Y/X/Z as it's stored as Yaw/Pitch/Roll
+                                    resource.rotation = new Vector3(__x, __y, __z);
                                     resource.resource_id = Utilities.Consume<ShortGuid>(reader, command_entries[i + 2].Item2);
                                     resource.resource_type = (ResourceType)Utilities.Consume<uint>(reader, command_entries[i + 3].Item2);
                                     switch (resource.resource_type)
                                     {
                                         case ResourceType.RENDERABLE_INSTANCE:
-                                            resource.index = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
-                                            resource.count = Utilities.Consume<int>(reader, command_entries[i + 5].Item2);
+                                            resource.RenderableInstance = reds.GetAtWriteIndex(Utilities.Consume<int>(reader, command_entries[i + 4].Item2), Utilities.Consume<int>(reader, command_entries[i + 5].Item2));
                                             break;
                                         case ResourceType.COLLISION_MAPPING:
-                                            resource.index = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
+                                            resource.CollisionMapping = colMaps.GetAtWriteIndex(Utilities.Consume<int>(reader, command_entries[i + 4].Item2));
                                             resource.entityID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 5].Item2);
                                             break;
                                         case ResourceType.ANIMATED_MODEL:
+                                            int animModelIndex = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
+                                            resource.AnimatedModel = envAnims.Entries.FirstOrDefault(o => o.ResourceIndex == animModelIndex);
+                                            break;
                                         case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                            resource.index = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
+                                            resource.PhysicsSystemIndex = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
                                             break;
                                     }
                                     if (cache.Item2.TryGetValue(resource.resource_id, out Entity ent))
@@ -515,7 +518,7 @@ namespace CATHODE.Scripting.Internal.Parsers
             EntryPoints[2] = Entries.FirstOrDefault(o => o.name.ToUpper() == "PAUSEMENU").shortGUID;
         }
 
-        public static void Write(ShortGuid[] EntryPoints, List<Composite> Entries, out byte[] content)
+        public static void Write(ShortGuid[] EntryPoints, List<Composite> Entries, out byte[] content, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
         {
             List<Tuple<uint, int>> commands = new List<Tuple<uint, int>>();
             using (MemoryStream buffer = new MemoryStream())
@@ -748,12 +751,21 @@ namespace CATHODE.Scripting.Internal.Parsers
                                 {
                                     bufferWriter.Write((int)keyframe.mode);
                                     bufferWriter.Write(keyframe.time);
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                                    bufferWriter.Write(keyframe.value.x);
+                                    bufferWriter.Write(keyframe.value.y);
+                                    bufferWriter.Write(keyframe.tan_in.x);
+                                    bufferWriter.Write(keyframe.tan_in.y);
+                                    bufferWriter.Write(keyframe.tan_out.x);
+                                    bufferWriter.Write(keyframe.tan_out.y);
+#else
                                     bufferWriter.Write(keyframe.value.X);
                                     bufferWriter.Write(keyframe.value.Y);
                                     bufferWriter.Write(keyframe.tan_in.X);
                                     bufferWriter.Write(keyframe.tan_in.Y);
                                     bufferWriter.Write(keyframe.tan_out.X);
                                     bufferWriter.Write(keyframe.tan_out.Y);
+#endif
                                 }
                                 bufferWriter.Write(new byte[32]);
                                 commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_FLOAT_TRACK | (uint)(32 * (floatTrack.keyframes.Count + 1)), offset));
@@ -803,7 +815,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                     {
                         foreach (var resource in func.resources)
                         {
-                            AddResourceCommand(commands, bufferWriter, composite, resource);
+                            AddResourceCommand(commands, bufferWriter, composite, resource, envAnims, colMaps, reds);
                         }
                     }
 
@@ -835,12 +847,21 @@ namespace CATHODE.Scripting.Internal.Parsers
                             {
                                 case DataType.TRANSFORM:
                                     cTransform t = (cTransform)paramEntry.content;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                                    bufferWriter.Write(t.position.x);
+                                    bufferWriter.Write(t.position.y);
+                                    bufferWriter.Write(t.position.z);
+                                    bufferWriter.Write(t.rotation.y);
+                                    bufferWriter.Write(t.rotation.x);
+                                    bufferWriter.Write(t.rotation.z);
+#else
                                     bufferWriter.Write(t.position.X);
                                     bufferWriter.Write(t.position.Y);
                                     bufferWriter.Write(t.position.Z);
                                     bufferWriter.Write(t.rotation.Y);
                                     bufferWriter.Write(t.rotation.X);
                                     bufferWriter.Write(t.rotation.Z);
+#endif
                                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_POSITION | 24, offset));
                                     break;
                                 case DataType.INTEGER:
@@ -866,13 +887,19 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     Utilities.Write<ShortGuid>(bufferWriter, r.shortGUID);
                                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
                                     for (int x = 0; x < r.value.Count; x++)
-                                        AddResourceCommand(commands, bufferWriter, composite, r.value[x]);
+                                        AddResourceCommand(commands, bufferWriter, composite, r.value[x], envAnims, colMaps, reds);
                                     break;
                                 case DataType.VECTOR:
                                     cVector3 v = (cVector3)paramEntry.content;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                                    bufferWriter.Write(v.value.x);
+                                    bufferWriter.Write(v.value.y);
+                                    bufferWriter.Write(v.value.z);
+#else
                                     bufferWriter.Write(v.value.X);
                                     bufferWriter.Write(v.value.Y);
                                     bufferWriter.Write(v.value.Z);
+#endif
                                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_VECTOR | 12, offset));
                                     break;
                                 case DataType.ENUM:
@@ -885,12 +912,21 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     cSpline s = (cSpline)paramEntry.content;
                                     foreach (var point in s.splinePoints)
                                     {
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                                        bufferWriter.Write(point.position.x);
+                                        bufferWriter.Write(point.position.y);
+                                        bufferWriter.Write(point.position.z);
+                                        bufferWriter.Write(point.rotation.y);
+                                        bufferWriter.Write(point.rotation.x);
+                                        bufferWriter.Write(point.rotation.z);
+#else
                                         bufferWriter.Write(point.position.X);
                                         bufferWriter.Write(point.position.Y);
                                         bufferWriter.Write(point.position.Z);
                                         bufferWriter.Write(point.rotation.Y);
                                         bufferWriter.Write(point.rotation.X);
                                         bufferWriter.Write(point.rotation.Z);
+#endif
                                     }
                                     bufferWriter.Write(-1.0f); bufferWriter.Write(-1.0f); bufferWriter.Write(-1.0f);
                                     bufferWriter.Write(-1.0f); bufferWriter.Write(-1.0f); bufferWriter.Write(-1.0f);
@@ -962,7 +998,7 @@ namespace CATHODE.Scripting.Internal.Parsers
             }
         }
 
-        private static void AddResourceCommand(List<Tuple<uint, int>> commands, BinaryWriter writer, Composite composite, ResourceReference resource)
+        private static void AddResourceCommand(List<Tuple<uint, int>> commands, BinaryWriter writer, Composite composite, ResourceReference resource, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
         {
             int offset = (int)writer.BaseStream.Position;
             commands.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_RESOURCE | CommandTypes.COMMAND_ADD), offset));
@@ -978,20 +1014,21 @@ namespace CATHODE.Scripting.Internal.Parsers
             writer.Write((uint)resource.resource_type);
             commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
 
+            //todo: not doing the same 'min of zero' thing i'm doing in the pak parser - am i right doing it there?
             switch (resource.resource_type)
             {
                 case ResourceType.RENDERABLE_INSTANCE:
                     offset = (int)writer.BaseStream.Position;
-                    writer.Write(resource.index);
+                    writer.Write(reds.GetWriteIndex(resource.RenderableInstance));
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
 
                     offset = (int)writer.BaseStream.Position;
-                    writer.Write(resource.count);
+                    writer.Write(resource.RenderableInstance.Count);
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
                     break;
                 case ResourceType.COLLISION_MAPPING:
                     offset = (int)writer.BaseStream.Position;
-                    writer.Write(resource.index);
+                    writer.Write(colMaps.GetWriteIndex(resource.CollisionMapping));
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
 
                     offset = (int)writer.BaseStream.Position;
@@ -999,33 +1036,51 @@ namespace CATHODE.Scripting.Internal.Parsers
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
                     break;
                 case ResourceType.ANIMATED_MODEL:
-                case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
                     offset = (int)writer.BaseStream.Position;
-                    writer.Write(resource.index);
+                    //writer.Write(envAnims.GetWriteIndex(resource.AnimatedModel));
+                    writer.Write(resource.AnimatedModel.ResourceIndex);
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
 
                     offset = (int)writer.BaseStream.Position;
                     writer.Write(0);
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
                     break;
-                default:
+                case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
                     offset = (int)writer.BaseStream.Position;
-                    writer.Write(0);
+                    writer.Write(resource.PhysicsSystemIndex);
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
 
                     offset = (int)writer.BaseStream.Position;
-                    writer.Write(0);
+                    writer.Write(-1);
+                    commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+                    break;
+                default:
+                    offset = (int)writer.BaseStream.Position;
+                    writer.Write(-1);
+                    commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
+
+                    offset = (int)writer.BaseStream.Position;
+                    writer.Write(-1);
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
                     break;
             }
 
             offset = (int)writer.BaseStream.Position;
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+            writer.Write(resource.position.x);
+            writer.Write(resource.position.y);
+            writer.Write(resource.position.z);
+            writer.Write(resource.rotation.y);
+            writer.Write(resource.rotation.x);
+            writer.Write(resource.rotation.z);
+#else
             writer.Write(resource.position.X);
             writer.Write(resource.position.Y);
             writer.Write(resource.position.Z);
-            writer.Write(resource.rotation.X);
             writer.Write(resource.rotation.Y);
+            writer.Write(resource.rotation.X);
             writer.Write(resource.rotation.Z);
+#endif
             commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_POSITION | 24, offset));
         }
 

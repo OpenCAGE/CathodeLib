@@ -1,4 +1,7 @@
-﻿using System;
+﻿using CATHODE.Animations;
+using CATHODE.Scripting;
+using CathodeLib;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -6,88 +9,177 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text;
-using CATHODE.Scripting;
-using CathodeLib;
+using static System.Collections.Specialized.BitVector32;
 
 namespace CATHODE
 {
-    /* DATA/GLOBAL/ANIMATION.PAK -> ANIM_CLIP_DB.BIN */
+    /// <summary>
+    /// DATA/GLOBAL/ANIMATION.PAK -> x_ANIM_CLIP_DB.BIN
+    /// </summary>
     public class AnimClipDB : CathodeFile
     {
-        public Dictionary<uint, string> Entries = new Dictionary<uint, string>();
-        public static new Implementation Implementation = Implementation.LOAD;
+        public List<AnimClip> Animations = new List<AnimClip>();
+        public List<Tuple<string, string>> BlendSets = new List<Tuple<string, string>>();
+        public List<Context> Contexts = new List<Context>();
+        
+        public string Character { get; set; }
+        
+        public static new Implementation Implementation = Implementation.LOAD | Implementation.CREATE;
 
-        public AnimClipDB(string path) : base(path) { }
-        public AnimClipDB(MemoryStream stream, string path = "") : base(stream, path) { }
-        public AnimClipDB(byte[] data, string path = "") : base(data, path) { }
+        public AnimClipDB(string path, AnimationStrings strings) : base(path)
+        {
+            _strings = strings;
+            _loaded = Load();
+        }
+        public AnimClipDB(MemoryStream stream, AnimationStrings strings, string path) : base(stream, path)
+        {
+            _strings = strings;
+            _loaded = Load(stream);
+        }
+        public AnimClipDB(byte[] data, AnimationStrings strings, string path) : base(data, path)
+        {
+            _strings = strings;
+            using (MemoryStream stream = new MemoryStream(data))
+            {
+                _loaded = Load(stream);
+            }
+        }
+
+        private AnimationStrings _strings;
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
+            if (_strings == null || _filepath == null || _filepath == "")
+                return false;
+
             using (BinaryReader reader = new BinaryReader(stream))
             {
-                int EntryCount1 = reader.ReadInt32();
-                int EntryCount2 = reader.ReadInt32();
-                IndexPair[] Entries1 = Utilities.ConsumeArray<IndexPair>(reader, EntryCount1);
-                IndexPair[] Entries2 = Utilities.ConsumeArray<IndexPair>(reader, EntryCount2);
+                reader.BaseStream.Position += 8;
+                Character = _strings.GetString(reader.ReadUInt32()); //note - the name of the file is this hashed string, followed by _ANIM_CLIP_DB.BIN
+                reader.BaseStream.Position += 4;
 
-                int Count0 = reader.ReadInt32();
-                int Count1 = reader.ReadInt32();
-                IndexPair[] Stuff0 = Utilities.ConsumeArray<IndexPair>(reader, Count0);
-                OffsetPair[] Stuff1 = Utilities.ConsumeArray<OffsetPair>(reader, Count1);
+                //anim_db.cpp line 4482
 
-                int Count2 = reader.ReadInt32();
-                int[] Stuff2 = Utilities.ConsumeArray<int>(reader, Count2);
+                Animations = ReadAnimationHashTable(reader);
 
-                int Count4 = reader.ReadInt32();
-                int Count5 = reader.ReadInt32();
-                int Count6 = reader.ReadInt32();
-                IndexPair[] Stuff5 = Utilities.ConsumeArray<IndexPair>(reader, Count5);
-                int[] Stuff6 = Utilities.ConsumeArray<int>(reader, Count6);
+                BlendSets = HashTable.Read(reader, (r, n) =>
+                    new Tuple<string, string>(n, _strings.GetString(r.ReadUInt32()))
+                , _strings);
 
-                int Count7 = reader.ReadInt32();
-                int[] Stuff7 = Utilities.ConsumeArray<int>(reader, Count7);
+                List<Tuple<string, uint>> contextNames = ReadStringHashTable(reader);
+                for (int i = 0; i < contextNames.Count; i++)
+                {
+                    Context context = new Context();
+                    context.Name = contextNames.FirstOrDefault(o => o.Item2 == i)?.Item1; //sometimes this is null - when it's null, the index of the string seems to be a hash?
+                    context.Animations = ReadAnimationHashTable(reader);
+                    context.BlendSets = HashTable.Read(reader, (r, n) =>
+                        new Tuple<string, string>(n, _strings.GetString(r.ReadUInt32()))
+                    , _strings);
+                    Contexts.Add(context);
+                }
 
-                byte[] HeaderCounts0 = Utilities.ConsumeArray<byte>(reader, 5);
-                float[] HeaderFloats0 = Utilities.ConsumeArray<float>(reader, 6); // TODO: Is this HKX min/max floats for compression?
-                int[] HeaderStuff0 = Utilities.ConsumeArray<int>(reader, 4);
-
-                int[] ContentStuff0 = Utilities.ConsumeArray<int>(reader, HeaderCounts0[1] * 4);
-                Vector2[] ContentStuff1 = Utilities.ConsumeArray<Vector2>(reader, HeaderCounts0[2]);
-
-                bone_entry[] BoneEntries = Utilities.ConsumeArray<bone_entry>(reader, HeaderCounts0[3]);
-
-                // NOTE: Following content seems to be 4 unknown u8s followed by 4 u8s of which the 0th is ff and 1, 2 and 3 seem to
-                //  sum to 255. I would guess those are bone weights? Bone weights tend to sum to 1.
+                reader.BaseStream.Position += 4;
+                return true;
             }
-            return true;
+        }
+
+        private List<AnimClip> ReadAnimationHashTable(BinaryReader reader)
+        {
+            return HashTable.Read(reader, (r, n) => new AnimClip
+            {
+                Name = n,
+                Path = _strings.GetString(r.ReadUInt32()),
+                MetadataInstance = r.ReadInt32() //what does this map to
+            }, _strings);
+        }
+
+        private List<Tuple<string, uint>> ReadStringHashTable(BinaryReader reader)
+        {
+            return HashTable.Read(reader, (r, n) => 
+                new Tuple<string, uint>(n, r.ReadUInt32())
+            , _strings);
         }
 
         override protected bool SaveInternal()
         {
+            return false;
+
+            /*
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
+
+                writer.Write(new byte[8]); 
+                writer.Write(_strings.GetID(Character));
+                writer.Write(0);
+
+                WriteHashTable(writer, Animations, (w, item) => {
+                    w.Write(_strings.GetID(item.PathLabel));
+                    w.Write(item.MetadataInstance);
+                });
+               
+                WriteHashTable(writer, BlendSets, (w, item) => {
+                    w.Write(_strings.GetID(item));
+                });
+               
+                WriteHashTable(writer, PatchNames, (w, item) => {
+                    w.Write(_strings.GetID(item));
+                });
+               
+                foreach (var context in Contexts)
+                {
+                    WriteHashTable(writer, context.Animations, (w, item) => {
+                        w.Write(_strings.GetID(item.Path));
+                        w.Write(item.MetadataInstance);
+                    });
+                    WriteHashTable(writer, context.BlendSets, (w, item) => {
+                        w.Write(_strings.GetID(item));
+                    });
+                }
+
+                // Write termination
+                writer.Write(0);
+
+                return true;
             }
-            return true;
+            */
+        }
+
+        private void WriteHashTable<T>(BinaryWriter writer, List<T> data, Action<BinaryWriter, T> itemWriter)
+        {
+            writer.Write(data.Count);
+            writer.Write(data.Count);
+
+            // Write hash table entries
+            for (int i = 0; i < data.Count; i++)
+            {
+                writer.Write(Utilities.AnimationHashedString($"item_{i}")); // Generate hash
+                writer.Write(i);
+            }
+
+            // Write data entries
+            foreach (var item in data)
+            {
+                itemWriter(writer, item);
+            }
         }
         #endregion
 
         #region STRUCTURES
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        private struct IndexPair
+        public struct AnimClip
         {
-            public uint id;
-            public int index;
+            public string Name;
+            public string Path;
+            public int MetadataInstance;
         }
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        private struct bone_entry
+
+        public class Context
         {
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-            byte[] Joints;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-            byte[] Weights;
-        };
+            public string Name;
+            public List<AnimClip> Animations = new List<AnimClip>();
+            public List<Tuple<string, string>> BlendSets = new List<Tuple<string, string>>();
+        }
         #endregion
     }
 }

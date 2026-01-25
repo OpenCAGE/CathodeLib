@@ -1,9 +1,7 @@
-﻿using CathodeLib;
+using CathodeLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Runtime.InteropServices;
-using CathodeLib.Properties;
 
 using System.Linq;
 
@@ -15,7 +13,9 @@ using System.Numerics;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/RENDERABLE/RADIOSITY_INSTANCE_MAP.TXT */
+    /// <summary>
+    /// DATA/ENV/x/RENDERABLE/RADIOSITY_INSTANCE_MAP.TXT
+    /// </summary>
     public class RadiosityInstanceMap : CathodeFile
     {
         public List<Entry> Entries = new List<Entry>();

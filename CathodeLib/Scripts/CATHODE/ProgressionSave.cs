@@ -4,7 +4,9 @@ using CathodeLib;
 
 namespace CATHODE.EXPERIMENTAL
 {
-    /* PROGRESSION.AIS */
+    /// <summary>
+    /// PROGRESSION.AIS
+    /// </summary>
     public class ProgressionSave : CathodeFile
     {
         public Progression Content;

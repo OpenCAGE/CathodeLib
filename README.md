@@ -1,4 +1,4 @@
-<img src="https://i.imgur.com/TZNGZVA.jpg" width="100%">
+<img src="http://mattfiler.co.uk/cathodelib.jpg" width="100%">
 
 # CathodeLib - Alien: Isolation C# Library
 
@@ -24,8 +24,14 @@ Note: in debug mode the parsers will all fail hard, however in release mode all 
 	- This is a A16B16G16R16F image with a specified resolution, baking alpha light data for the level
 - `CATHODE.AnimationStrings` handles `ANIM_STRING_DB.BIN` and `ANIM_STRING_DB_DEBUG.BIN` files within `ANIMATION.PAK
 	- This is a database of hashed animation-related strings, and their associated hashes
+- `CATHODE.GlobalAnimClipDB` handles `ANIM_CLIP_DB.BIN` files within `ANIMATION.PAK`
+	- This is a database of animation clips (WIP)
 - `CATHODE.AnimClipDB` handles `ANIM_CLIP_DB.BIN` files within `ANIMATION.PAK`
 	- This is a database of animation clips available by character type (WIP)
+- `CATHODE.AnimClipDBSec` handles `ANIM_CLIP_DB_SEC_*.BIN` files within `ANIMATION.PAK`
+	- This is a database of animation clips available by character type (WIP)
+- `CATHODE.AnimTreeDb` handles `ANIM_TREE_DB.BIN` files within `ANIMATION.PAK`
+	- This is a database of animation trees available by character type (WIP)
 - `CATHODE.BML` handles any `.BML` files
     - Get/set content as an `XmlDocument` via `BML.Content`
 - `CATHODE.CharacterAccessorySets` handles level `WORLD/CHARACTERACCESSORYSETS.BIN` files

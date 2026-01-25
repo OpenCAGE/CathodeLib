@@ -10,7 +10,9 @@ using System.Xml.Linq;
 
 namespace CATHODE
 {
-    /* DATA/ENV/PRODUCTION/x/WORLD/SOUNDDIALOGUELOOKUPS.DAT */
+    /// <summary>
+    /// DATA/ENV/x/WORLD/SOUNDDIALOGUELOOKUPS.DAT
+    /// </summary>
     public class SoundDialogueLookups : CathodeFile
     {
         //This stores the associated sound and animation hashes for soundbank entries

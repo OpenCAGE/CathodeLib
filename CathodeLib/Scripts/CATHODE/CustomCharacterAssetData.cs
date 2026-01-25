@@ -10,11 +10,13 @@ using System.Runtime.InteropServices;
 
 namespace CATHODE
 {
-    /* DATA/CHR_INFO/CUSTOMCHARACTERASSETDATA.BIN */
+    /// <summary>
+    /// DATA/CHR_INFO/CUSTOMCHARACTERASSETDATA.BIN
+    /// </summary>
     public class CustomCharacterAssetData : CathodeFile
     {
         public List<AssetDefinition> Entries = new List<AssetDefinition>();
-        public static new Implementation Implementation = Implementation.NONE;
+        public static new Implementation Implementation = Implementation.CREATE | Implementation.SAVE | Implementation.LOAD;
 
         public CustomCharacterAssetData(string path) : base(path) { }
         public CustomCharacterAssetData(MemoryStream stream, string path = "") : base(stream, path) { }
@@ -30,7 +32,7 @@ namespace CATHODE
                 for (int i = 0; i < count; i++)
                 {
                     AssetDefinition assetDef = new AssetDefinition();
-                    assetDef.AssetType = (CharacterAsset)reader.ReadInt32();
+                    assetDef.AssetType = (CUSTOM_CHARACTER_ASSETS)reader.ReadInt32();
                     Dictionary<ColourType, int> colourCounts = new Dictionary<ColourType, int>();
                     foreach (ColourType colour in Enum.GetValues(typeof(ColourType)))
                     {
@@ -84,7 +86,7 @@ namespace CATHODE
         #region STRUCTURES
         public class AssetDefinition
         {
-            public CharacterAsset AssetType;
+            public CUSTOM_CHARACTER_ASSETS AssetType;
             public Dictionary<ColourType, List<Vector3>> Tints = new Dictionary<ColourType, List<Vector3>>();
             public List<string> Decals = new List<string>();
         };
