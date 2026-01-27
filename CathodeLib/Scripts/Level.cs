@@ -85,7 +85,9 @@ namespace CathodeLib
 
         public const int NumberOfTicks = 30;
 
+        public Global Global => _global;
         private Global _global;
+
         private string _path;
 
         /// <summary>
