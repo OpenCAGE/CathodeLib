@@ -615,6 +615,16 @@ namespace CATHODE
             return null;
         }
         /// <summary>
+        /// Find a model for a component
+        /// </summary>
+        public CS2 FindModelForComponent(CS2.Component component)
+        {
+            for (int i = 0; i < Entries.Count; i++)
+                if (Entries[i].Components.Contains(component))
+                    return Entries[i];
+            return null;
+        }
+        /// <summary>
         /// Find a LOD that contains a given submesh
         /// </summary>
         public CS2.Component.LOD FindModelLODForSubmesh(CS2.Component.LOD.Submesh submesh)

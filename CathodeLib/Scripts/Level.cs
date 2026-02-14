@@ -30,8 +30,6 @@ namespace CathodeLib
     /// </summary>
     public class Level
     {
-        public string Name;
-
         public Textures Textures;
         public Shaders Shaders;
         public Collisions WeightedCollisions;
@@ -71,6 +69,18 @@ namespace CathodeLib
 
         public Dictionary<string, Dictionary<string, TextDB>> Strings;
 
+        public Global Global => _global;
+        private Global _global;
+
+        public string Filepath => _filepath;
+        private string _filepath = "";
+
+        public string Name => _name;
+        private string _name = "";
+
+        public bool Patched => _patched;
+        private bool _patched = false;
+
         /// <summary>
         /// Triggered every time one of the files within the level loads.
         /// Keep a count of this and divide it by NumberOfTicks to get a loading percentage.
@@ -85,18 +95,15 @@ namespace CathodeLib
 
         public const int NumberOfTicks = 30;
 
-        private Global _global;
-        private string _path;
-
         /// <summary>
         /// A container for data related to a level in the game's "ENV" folder
         /// </summary>
         public Level(string path, Global global, bool loadImmediately = true)
         {
-            _path = path;
             _global = global;
-
-            Name = _path.ToUpper().Replace("\\", "/").Split(new string[] { "DATA/ENV/" }, StringSplitOptions.None)[1].TrimEnd('/');
+            _filepath = path.Replace("\\", "/").TrimEnd('/').ToUpper();
+            _name = _filepath.Split(new string[] { "DATA/ENV/" }, StringSplitOptions.None)[1];
+            _patched = (Name == "PRODUCTION/DLC/BSPNOSTROMO_RIPLEY" || Name == "PRODUCTION/DLC/BSPNOSTROMO_TWOTEAMS") && Directory.Exists(_filepath + "_PATCH");
 
             if (loadImmediately)
                 Load();
@@ -112,44 +119,47 @@ namespace CathodeLib
             if (_global?.AnimationStrings_Debug == null)
                 throw new Exception("Missing Global Animation Strings");
 
-            Parallel.Invoke(
-                () => { Textures = new Textures(_path + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK"); OnLoadTick?.Invoke(); },
-                () => { Shaders = new Shaders(_path + "/RENDERABLE/LEVEL_SHADERS_DX11.PAK"); OnLoadTick?.Invoke(); },
-                () => { WeightedCollisions = new Collisions(_path + "/WORLD/COLLISION.BIN"); OnLoadTick?.Invoke(); },
-                () => { MorphTargetDB = new MorphTargets(_path + "/WORLD/MORPH_TARGET_DB.BIN"); OnLoadTick?.Invoke(); },
-                () => { Resources = new Resources(_path + "/WORLD/RESOURCES.BIN"); OnLoadTick?.Invoke(); },
-                () => { MaterialMaps = new MaterialMappings(_path + "/WORLD/MATERIAL_MAPPINGS.PAK"); OnLoadTick?.Invoke(); }
-            );
-
-            Materials = new Materials(_path + "/RENDERABLE/LEVEL_MODELS.MTL", _global.Textures, Textures, Shaders); OnLoadTick?.Invoke();
-            Models = new Models(_path + "/RENDERABLE/LEVEL_MODELS.PAK", Materials, WeightedCollisions, MorphTargetDB); OnLoadTick?.Invoke();
-            RenderableElements = new RenderableElements(_path + "/WORLD/REDS.BIN", Models, Materials); OnLoadTick?.Invoke();
-            Movers = new Movers(_path + "/WORLD/MODELS.MVR", RenderableElements, Resources); OnLoadTick?.Invoke();
+            string renderable = _filepath + "/RENDERABLE/";
+            string world = _filepath + (_patched ? "_PATCH" : "") + "/WORLD/";
 
             Parallel.Invoke(
-                () => { EnvironmentMaps = new EnvironmentMaps(_path + "/WORLD/ENVIRONMENTMAP.BIN", Movers); OnLoadTick?.Invoke(); },
-                () => { PathBarrierResources = new PathBarrierResources(_path + "/WORLD/PATH_BARRIER_RESOURCES", Resources); OnLoadTick?.Invoke(); },
-                () => { SoundFlashModels = new SoundFlashModels(_path + "/WORLD/SOUNDFLASHMODELS.DAT", _global.Textures, Textures); OnLoadTick?.Invoke(); },
-                () => { CollisionMaps = new CollisionMaps(_path + "/WORLD/COLLISION.MAP", Materials, MaterialMaps); OnLoadTick?.Invoke(); }
+                () => { Textures = new Textures(renderable + "LEVEL_TEXTURES.ALL.PAK"); OnLoadTick?.Invoke(); },
+                () => { Shaders = new Shaders(renderable + "LEVEL_SHADERS_DX11.PAK"); OnLoadTick?.Invoke(); },
+                () => { WeightedCollisions = new Collisions(world + "COLLISION.BIN"); OnLoadTick?.Invoke(); },
+                () => { MorphTargetDB = new MorphTargets(world + "MORPH_TARGET_DB.BIN"); OnLoadTick?.Invoke(); },
+                () => { Resources = new Resources(world + "RESOURCES.BIN"); OnLoadTick?.Invoke(); },
+                () => { MaterialMaps = new MaterialMappings(world + "MATERIAL_MAPPINGS.PAK"); OnLoadTick?.Invoke(); }
+            );
+
+            Materials = new Materials(renderable + "LEVEL_MODELS.MTL", _global.Textures, Textures, Shaders); OnLoadTick?.Invoke();
+            Models = new Models(renderable + "LEVEL_MODELS.PAK", Materials, WeightedCollisions, MorphTargetDB); OnLoadTick?.Invoke();
+            RenderableElements = new RenderableElements(world + "REDS.BIN", Models, Materials); OnLoadTick?.Invoke();
+            Movers = new Movers(world + "MODELS.MVR", RenderableElements, Resources); OnLoadTick?.Invoke();
+
+            Parallel.Invoke(
+                () => { EnvironmentMaps = new EnvironmentMaps(world + "ENVIRONMENTMAP.BIN", Movers); OnLoadTick?.Invoke(); },
+                () => { PathBarrierResources = new PathBarrierResources(world + "PATH_BARRIER_RESOURCES", Resources); OnLoadTick?.Invoke(); },
+                () => { SoundFlashModels = new SoundFlashModels(world + "SOUNDFLASHMODELS.DAT", _global.Textures, Textures); OnLoadTick?.Invoke(); },
+                () => { CollisionMaps = new CollisionMaps(world + "COLLISION.MAP", Materials, MaterialMaps); OnLoadTick?.Invoke(); }
             );
 
             Parallel.Invoke(
-                () => { RadInstanceMap = new RadiosityInstanceMap(_path + "/RENDERABLE/RADIOSITY_INSTANCE_MAP.TXT"); OnLoadTick?.Invoke(); },
-                () => { AlphaLight = new AlphaLightLevel(_path + "/WORLD/ALPHALIGHT_LEVEL.BIN"); OnLoadTick?.Invoke(); },
-                () => { AccessorySets = new CharacterAccessorySets(_path + "/WORLD/CHARACTERACCESSORYSETS.BIN"); OnLoadTick?.Invoke(); },
-                () => { EnvironmentAnimations = new EnvironmentAnimations(_path + "/WORLD/ENVIRONMENT_ANIMATION.DAT", _global.AnimationStrings_Debug); OnLoadTick?.Invoke(); },
-                () => { Lights = new Lights(_path + "/WORLD/LIGHTS.BIN"); OnLoadTick?.Invoke(); },
-                () => { MaterialMappings = new MaterialMappings(_path + "/WORLD/MATERIAL_MAPPINGS.PAK"); OnLoadTick?.Invoke(); },
-                () => { PhysicsMaps = new PhysicsMaps(_path + "/WORLD/PHYSICS.MAP"); OnLoadTick?.Invoke(); },
-                () => { SoundNodeNetwork = new SoundNodeNetwork(_path + "/WORLD/SNDNODENETWORK.DAT"); OnLoadTick?.Invoke(); },
-                () => { SoundBankData = new SoundBankData(_path + "/WORLD/SOUNDBANKDATA.DAT"); OnLoadTick?.Invoke(); },
-                () => { SoundDialogueLookups = new SoundDialogueLookups(_path + "/WORLD/SOUNDDIALOGUELOOKUPS.DAT"); OnLoadTick?.Invoke(); },
-                () => { SoundEnvironmentData = new SoundEnvironmentData(_path + "/WORLD/SOUNDENVIRONMENTDATA.DAT"); OnLoadTick?.Invoke(); },
-                () => { SoundEventData = new SoundEventData(_path + "/WORLD/SOUNDEVENTDATA.DAT"); OnLoadTick?.Invoke(); },
-                () => { SoundLoadZones = new SoundLoadZones(_path + "/WORLD/SOUNDLOADZONES.DAT"); OnLoadTick?.Invoke(); }
+                () => { RadInstanceMap = new RadiosityInstanceMap(renderable + "RADIOSITY_INSTANCE_MAP.TXT"); OnLoadTick?.Invoke(); },
+                () => { AlphaLight = new AlphaLightLevel(world + "ALPHALIGHT_LEVEL.BIN"); OnLoadTick?.Invoke(); },
+                () => { AccessorySets = new CharacterAccessorySets(world + "CHARACTERACCESSORYSETS.BIN"); OnLoadTick?.Invoke(); },
+                () => { EnvironmentAnimations = new EnvironmentAnimations(world + "ENVIRONMENT_ANIMATION.DAT", _global.AnimationStrings_Debug); OnLoadTick?.Invoke(); },
+                () => { Lights = new Lights(world + "LIGHTS.BIN"); OnLoadTick?.Invoke(); },
+                () => { MaterialMappings = new MaterialMappings(world + "MATERIAL_MAPPINGS.PAK"); OnLoadTick?.Invoke(); },
+                () => { PhysicsMaps = new PhysicsMaps(world + "PHYSICS.MAP"); OnLoadTick?.Invoke(); },
+                () => { SoundNodeNetwork = new SoundNodeNetwork(world + "SNDNODENETWORK.DAT"); OnLoadTick?.Invoke(); },
+                () => { SoundBankData = new SoundBankData(world + "SOUNDBANKDATA.DAT"); OnLoadTick?.Invoke(); },
+                () => { SoundDialogueLookups = new SoundDialogueLookups(world + "SOUNDDIALOGUELOOKUPS.DAT"); OnLoadTick?.Invoke(); },
+                () => { SoundEnvironmentData = new SoundEnvironmentData(world + "SOUNDENVIRONMENTDATA.DAT"); OnLoadTick?.Invoke(); },
+                () => { SoundEventData = new SoundEventData(world + "SOUNDEVENTDATA.DAT"); OnLoadTick?.Invoke(); },
+                () => { SoundLoadZones = new SoundLoadZones(world + "SOUNDLOADZONES.DAT"); OnLoadTick?.Invoke(); }
             );
 
-            Commands = new Commands(_path + "/WORLD/COMMANDS" + (File.Exists(_path + "/WORLD/COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements); OnLoadTick?.Invoke();
+            Commands = new Commands(world + "COMMANDS" + (File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements); OnLoadTick?.Invoke();
 
             //RENDERABLE/DAMAGE/*
             //RENDERABLE/GALAXY/*
@@ -158,7 +168,6 @@ namespace CathodeLib
             //WORLD/COLLISION.HKX
             //WORLD/COLLISION.HKX64
             //WORLD/CUTSCENE_DIRECTOR_DATA.BIN
-            //WORLD/EXCLUSIVE_MASTER_RESOURCE_INDICES (loaded below)
             //WORLD/LEVEL.STR
             //WORLD/OCCLUDER_TRIANGLE_BVH.BIN
             //WORLD/PHYSICS.HKX
@@ -166,7 +175,7 @@ namespace CathodeLib
             //WORLD/RADIOSITY_COLLISION_MAPPING.BIN
 
             int stateCount = 1; // we always implicitly have one state (the default state: state zero)
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_path + "/WORLD/EXCLUSIVE_MASTER_RESOURCE_INDICES")))
+            using (BinaryReader reader = new BinaryReader(File.OpenRead(world + "EXCLUSIVE_MASTER_RESOURCE_INDICES")))
             {
                 reader.BaseStream.Position = 4;  // version: 1
                 int states = reader.ReadInt32(); // number of changeable states
@@ -179,7 +188,7 @@ namespace CathodeLib
             }
             for (int i = 0; i < stateCount; i++)
             {
-                string statePath = _path + "/WORLD/STATE_" + i + "/";
+                string statePath = world + "STATE_" + i + "/";
 
                 State state = new State() { Index = i };
                 //ASSAULT_POSITIONS
@@ -191,8 +200,8 @@ namespace CathodeLib
             }
             OnLoadTick?.Invoke();
 
-            string pathDATA = _path.Replace('\\', '/').Split(new string[] { "/DATA/ENV" }, StringSplitOptions.None)[0] + "/DATA";
-            string levelName = Directory.GetParent(_path).Name;
+            string pathDATA = _filepath.Replace('\\', '/').Split(new string[] { "/DATA/ENV" }, StringSplitOptions.None)[0] + "/DATA";
+            string levelName = Directory.GetParent(_filepath).Name;
             XmlNodeList textDBsGlobal = new BML(pathDATA + "/LEVEL_TEXT_DATABASES.BML").Content.SelectNodes("//level_text_databases/level");
             List<string> globalDBs = new List<string>();
             for (int i = 0; i < textDBsGlobal.Count; i++)
@@ -201,12 +210,12 @@ namespace CathodeLib
                         globalDBs.Add(textDBsGlobal[i].ChildNodes[x].Attributes["name"].Value);
             List<string> textList = Directory.GetFiles(pathDATA + "/TEXT/", "*.TXT", SearchOption.AllDirectories).ToList<string>();
             List<string> levelDBs = new List<string>();
-            if (File.Exists(_path + "/TEXT/TEXT_DB_LIST.TXT"))
+            if (File.Exists(_filepath + "/TEXT/TEXT_DB_LIST.TXT"))
             {
-                string[] textDBsLevel = File.ReadAllLines(_path + "/TEXT/TEXT_DB_LIST.TXT");
+                string[] textDBsLevel = File.ReadAllLines(_filepath + "/TEXT/TEXT_DB_LIST.TXT");
                 for (int i = 0; i < textDBsLevel.Length; i++)
                     levelDBs.Add(textDBsLevel[i]);
-                textList.AddRange(Directory.GetFiles(_path + "/TEXT/", "*.TXT", SearchOption.AllDirectories));
+                textList.AddRange(Directory.GetFiles(_filepath + "/TEXT/", "*.TXT", SearchOption.AllDirectories));
             }
             textList.Reverse();
             Strings = new Dictionary<string, Dictionary<string, TextDB>>();
@@ -300,7 +309,7 @@ namespace CathodeLib
         /// <summary>
         /// Get all levels available within the ENV folder. Pass the path to the folder that contains AI.exe.
         /// </summary>
-        public static List<string> GetLevels(string gameDirectory, bool swapNostromoForPatch = false)
+        public static List<string> GetLevels(string gameDirectory)
         {
             string[] galaxyBins = Directory.GetFiles(gameDirectory + "/DATA/ENV/", "GALAXY.DEFINITION_BIN", SearchOption.AllDirectories);
             List<string> mapList = new List<string>();
@@ -320,9 +329,7 @@ namespace CathodeLib
                 int length = file.Length - extraLength;
                 if (length <= 0) continue;
 
-                string mapName = file.Substring(0, length).ToUpper();
-                if (swapNostromoForPatch && (mapName == "DLC/BSPNOSTROMO_RIPLEY" || mapName == "DLC/BSPNOSTROMO_TWOTEAMS")) mapName += "_PATCH";
-                mapList.Add(mapName.ToUpper());
+                mapList.Add(file.Substring(0, length).ToUpper());
             }
             return mapList;
         }

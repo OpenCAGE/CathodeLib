@@ -16,8 +16,6 @@ namespace CathodeLib
     //  EGS: 0x00db7d40
     //  GOG: 0x007ef2e0
 
-    //persistence launch arg makes data/dev/%s?
-
     public class PatchManager
     {
         public enum Platform
@@ -27,7 +25,21 @@ namespace CathodeLib
             GOG,
         }
 
-        /* Patch the AI binary to circumvent FILE_HASHES::verify_integrity */
+        /// <summary>
+        /// It's recommended to always call this for CathodeLib edit functionality to operate!
+        /// </summary>
+        public static void PerformRecommendedPatches(Platform platform, string pathToAI)
+        {
+            PatchFileIntegrityCheck(platform, pathToAI);
+            //PatchPatchLevels(platform, pathToAI);
+            DisableCurrentGenOptimisations(platform, pathToAI, true);
+            PatchPopupMessage(platform, pathToAI);
+            UpdateLevelListInPackages(platform, pathToAI);
+        }
+
+        /// <summary>
+        /// Patch the AI binary to circumvent FILE_HASHES::verify_integrity
+        /// </summary>
         public static bool PatchFileIntegrityCheck(Platform platform, string pathToAI)
         {
             List<PatchBytes> hashPatches = new List<PatchBytes>();
@@ -65,7 +77,45 @@ namespace CathodeLib
             }
         }
 
-        /* Patch the no_ui option in game binary */
+        /// <summary>
+        /// Patch the game binary to disable the _PATCH directory for pre-order DLCs
+        /// </summary>
+        /*
+        public static bool PatchPatchLevels(Platform platform, string pathToAI)
+        {
+            byte[] patchRemover = { 0x5C, 0x5C, 0x57, 0x4F, 0x52, 0x4C, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+            try
+            {
+                using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(pathToAI + "/AI.exe")))
+                {
+                    switch (platform)
+                    {
+                        case Platform.STEAM:
+                            writer.BaseStream.Position = 15673322;
+                            break;
+                        case Platform.EPIC_GAMES_STORE:
+                            //writer.BaseStream.Position = ; TODO look for %WORLD offset (the offset here is after the second %s)
+                            break;
+                        case Platform.GOG:
+                            //writer.BaseStream.Position = ; TODO
+                            break;
+                    }
+                    if (writer.BaseStream.Position != 0)
+                        writer.Write(patchRemover);
+                }
+                return true;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("PatchManager::PatchLaunchMode - " + e.ToString());
+                return false;
+            }
+        }
+        */
+
+        /// <summary>
+        /// Patch the no_ui option in game binary
+        /// </summary>
         public static bool PatchNoUIFlag(Platform platform, string pathToAI, bool noUI)
         {
             List<PatchBytes> noUIPatches = new List<PatchBytes>();
@@ -101,7 +151,9 @@ namespace CathodeLib
             }
         }
 
-        /* Patch the skip_frontend option in game binary */
+        /// <summary>
+        /// Patch the skip_frontend option in game binary
+        /// </summary>
         public static bool PatchSkipFrontendFlag(Platform platform, string pathToAI, bool skipFrontend)
         {
             List<PatchBytes> skipFEPatches = new List<PatchBytes>();
@@ -140,7 +192,9 @@ namespace CathodeLib
             }
         }
 
-        /* Patch the instruction to set Mem_Replay_Logs logging in game binary */
+        /// <summary>
+        /// Patch the instruction to set Mem_Replay_Logs logging in game binary
+        /// </summary>
         public static bool PatchMemReplayLogFlag(Platform platform, string pathToAI, bool shouldLog)
         {
             List<PatchBytes> memReplayPatches = new List<PatchBytes>();
@@ -176,8 +230,10 @@ namespace CathodeLib
             }
         }
 
-        /* Patch the instruction to make requires_script_for_current_gen always return true in game binary */
-        public static bool DisableCurrentGenOptimisations(Platform platform, string pathToAI, bool shouldLog)
+        /// <summary>
+        /// Patch the instruction to make requires_script_for_current_gen always return true in game binary
+        /// </summary>
+        public static bool DisableCurrentGenOptimisations(Platform platform, string pathToAI, bool disable)
         {
             List<PatchBytes> memReplayPatches = new List<PatchBytes>();
             switch (platform)
@@ -199,7 +255,7 @@ namespace CathodeLib
                     for (int i = 0; i < memReplayPatches.Count; i++)
                     {
                         writer.BaseStream.Position = memReplayPatches[i].offset;
-                        if (shouldLog) writer.Write(memReplayPatches[i].patched);
+                        if (disable) writer.Write(memReplayPatches[i].patched);
                         else writer.Write(memReplayPatches[i].original);
                     }
                 }
@@ -212,7 +268,9 @@ namespace CathodeLib
             }
         }
 
-        /* Patch the cUI UI perf stats flag in the game binary */
+        /// <summary>
+        /// Patch the cUI UI perf stats flag in the game binary
+        /// </summary>
         public static bool PatchUIPerfFlag(Platform platform, string pathToAI, bool shouldShow)
         {
             try
@@ -242,7 +300,9 @@ namespace CathodeLib
             }
         }
 
-        /* Patch the game binary to remove the seemingly debug "TEXT_" prefix for PopupMessage texts */
+        /// <summary>
+        /// Patch the game binary to remove the seemingly debug "TEXT_" prefix for PopupMessage texts
+        /// </summary>
         public static bool PatchPopupMessage(Platform platform, string pathToAI)
         {
             try
@@ -274,7 +334,9 @@ namespace CathodeLib
             }
         }
 
-        /* Patch the game binary to allow us to launch directly to a map */
+        /// <summary>
+        /// Patch the game binary to allow us to launch directly to a map
+        /// </summary>
         public static bool PatchLaunchMode(Platform platform, string pathToAI, string MapName = "Production/Frontend")
         {
             //This is the level the benchmark function loads into - we can overwrite it to change
@@ -357,7 +419,9 @@ namespace CathodeLib
             }
         }
 
-        /* Update the list of levels in PACKAGES MAIN.PKG to account for any custom levels */
+        /// <summary>
+        /// Update the list of levels in PACKAGES MAIN.PKG to account for any custom levels
+        /// </summary>
         public static bool UpdateLevelListInPackages(Platform platform, string pathToAI)
         {
             try
