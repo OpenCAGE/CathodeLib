@@ -58,6 +58,8 @@ namespace CathodeLib
         public SoundEnvironmentData SoundEnvironmentData;
         public SoundEventData SoundEventData;
         public SoundLoadZones SoundLoadZones;
+        public GalaxyItems GalaxyItems;
+        public GalaxyDefinition GalaxyDefinition;
 
         public class State
         {
@@ -93,7 +95,7 @@ namespace CathodeLib
         /// </summary>
         public Action OnSaveTick;
 
-        public const int NumberOfTicks = 30;
+        public const int NumberOfTicks = 32;
 
         /// <summary>
         /// A container for data related to a level in the game's "ENV" folder
@@ -159,10 +161,14 @@ namespace CathodeLib
                 () => { SoundLoadZones = new SoundLoadZones(world + "SOUNDLOADZONES.DAT"); OnLoadTick?.Invoke(); }
             );
 
+            Parallel.Invoke(
+                () => { GalaxyItems = new GalaxyItems(renderable + "GALAXY/GALAXY.ITEMS_BIN"); OnLoadTick?.Invoke(); },
+                () => { GalaxyDefinition = new GalaxyDefinition(renderable + "GALAXY/GALAXY.DEFINITION_BIN"); OnLoadTick?.Invoke(); }
+            );
+
             Commands = new Commands(world + "COMMANDS" + (File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements); OnLoadTick?.Invoke();
 
             //RENDERABLE/DAMAGE/*
-            //RENDERABLE/GALAXY/*
             //RENDERABLE/RADIOSITY_RUNTIME.BIN
             //WORLD/BEHAVIOR_TREE.DB
             //WORLD/COLLISION.HKX
@@ -277,6 +283,11 @@ namespace CathodeLib
             );
 
             Commands.Save(); OnSaveTick?.Invoke();
+
+            Parallel.Invoke(
+                () => { GalaxyItems.Save(); OnSaveTick?.Invoke(); },
+                () => { GalaxyDefinition.Save(); OnSaveTick?.Invoke(); }
+            );
 
             //TODO: save states
             OnSaveTick?.Invoke();
