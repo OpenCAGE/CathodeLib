@@ -42,7 +42,7 @@ namespace CathodeLib
         public Movers Movers;
         public EnvironmentMaps EnvironmentMaps;
         public PathBarrierResources PathBarrierResources;
-        public SoundFlashModels SoundFlashModels;
+        //public SoundFlashModels SoundFlashModels;
         public CollisionMaps CollisionMaps;
         public RadiosityInstanceMap RadInstanceMap;
         public AlphaLightLevel AlphaLight;
@@ -95,7 +95,7 @@ namespace CathodeLib
         /// </summary>
         public Action OnSaveTick;
 
-        public const int NumberOfTicks = 32;
+        public const int NumberOfTicks = 31;
 
         /// <summary>
         /// A container for data related to a level in the game's "ENV" folder
@@ -141,7 +141,7 @@ namespace CathodeLib
             Parallel.Invoke(
                 () => { EnvironmentMaps = new EnvironmentMaps(world + "ENVIRONMENTMAP.BIN", Movers); OnLoadTick?.Invoke(); },
                 () => { PathBarrierResources = new PathBarrierResources(world + "PATH_BARRIER_RESOURCES", Resources); OnLoadTick?.Invoke(); },
-                () => { SoundFlashModels = new SoundFlashModels(world + "SOUNDFLASHMODELS.DAT", _global.Textures, Textures); OnLoadTick?.Invoke(); },
+                //() => { SoundFlashModels = new SoundFlashModels(world + "SOUNDFLASHMODELS.DAT", _global.Textures, Textures); OnLoadTick?.Invoke(); },
                 () => { CollisionMaps = new CollisionMaps(world + "COLLISION.MAP", Materials, MaterialMaps); OnLoadTick?.Invoke(); }
             );
 
@@ -163,22 +163,18 @@ namespace CathodeLib
 
             Parallel.Invoke(
                 () => { GalaxyItems = new GalaxyItems(renderable + "GALAXY/GALAXY.ITEMS_BIN"); OnLoadTick?.Invoke(); },
-                () => { GalaxyDefinition = new GalaxyDefinition(renderable + "GALAXY/GALAXY.DEFINITION_BIN"); OnLoadTick?.Invoke(); }
+                () => { GalaxyDefinition = new GalaxyDefinition(renderable + "GALAXY/GALAXY.DEFINITION_BIN"); OnLoadTick?.Invoke(); } //Not used at runtime, but useful to regenerate GalaxyItems.
             );
 
             Commands = new Commands(world + "COMMANDS" + (File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements); OnLoadTick?.Invoke();
 
-            //RENDERABLE/DAMAGE/*
-            //RENDERABLE/RADIOSITY_RUNTIME.BIN
-            //WORLD/BEHAVIOR_TREE.DB
-            //WORLD/COLLISION.HKX
-            //WORLD/COLLISION.HKX64
-            //WORLD/CUTSCENE_DIRECTOR_DATA.BIN
-            //WORLD/LEVEL.STR
-            //WORLD/OCCLUDER_TRIANGLE_BVH.BIN
-            //WORLD/PHYSICS.HKX
-            //WORLD/PHYSICS.HKX64
-            //WORLD/RADIOSITY_COLLISION_MAPPING.BIN
+            //The following files are used by the game, but not handled yet:
+            // - RENDERABLE/RADIOSITY_RUNTIME.BIN
+            // - WORLD/RADIOSITY_COLLISION_MAPPING.BIN
+            // - WORLD/BEHAVIOR_TREE.DB
+            // - WORLD/COLLISION.HKX / HKX64
+            // - WORLD/PHYSICS.HKX / HKX64
+            // - WORLD/OCCLUDER_TRIANGLE_BVH.BIN
 
             int stateCount = 1; // we always implicitly have one state (the default state: state zero)
             using (BinaryReader reader = new BinaryReader(File.OpenRead(world + "EXCLUSIVE_MASTER_RESOURCE_INDICES")))
@@ -265,7 +261,7 @@ namespace CathodeLib
             Parallel.Invoke(
                 () => { EnvironmentMaps.Save(); OnSaveTick?.Invoke(); },
                 () => { PathBarrierResources.Save(); OnSaveTick?.Invoke(); },
-                () => { SoundFlashModels.Save(); OnSaveTick?.Invoke(); },
+                //() => { SoundFlashModels.Save(); OnSaveTick?.Invoke(); },
                 () => { CollisionMaps.Save(); OnSaveTick?.Invoke(); },
                 () => { RadInstanceMap.Save(); OnSaveTick?.Invoke(); },
                 () => { AlphaLight.Save(); OnSaveTick?.Invoke(); },
@@ -313,8 +309,8 @@ namespace CathodeLib
             }
 
             //Import global textures referenced by sound flash models
-            for (int i = 0; i < SoundFlashModels.Entries.Count; i++)
-                SoundFlashModels.Entries[i].Texture?.RemapToLevel(this);
+            //for (int i = 0; i < SoundFlashModels.Entries.Count; i++)
+            //    SoundFlashModels.Entries[i].Texture?.RemapToLevel(this);
         }
 
         /// <summary>
