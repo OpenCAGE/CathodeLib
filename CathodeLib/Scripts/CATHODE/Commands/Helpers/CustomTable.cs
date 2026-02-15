@@ -21,27 +21,12 @@ namespace CathodeLib
         {
             public VanillaData()
             {
-#if UNITY_EDITOR || UNITY_STANDALONE
-                byte[] content = File.ReadAllBytes(UnityEngine.Application.streamingAssetsPath + "/info.dat");
-#else
-                byte[] content = CathodeLib.Properties.Resources.info;
-                if (File.Exists("LocalDB\\info.dat"))
-                    content = File.ReadAllBytes("LocalDB\\info.dat");
-#endif
-
-                using (MemoryStream stream = new MemoryStream())
-                using (GZipStream compressedStream = new GZipStream(new MemoryStream(content), CompressionMode.Decompress))
-                {
-                    compressedStream.CopyTo(stream);
-                    content = stream.ToArray();
-                }
-
-                CompositePaths = (CompositePathTable)ReadTable(content, CustomTableType.COMPOSITE_PATHS);
-                CompositePinInfos = (CompositePinInfoTable)ReadTable(content, CustomTableType.COMPOSITE_PIN_INFO);
-                EntityNames = (EntityNameTable)ReadTable(content, CustomTableType.ENTITY_NAMES);
-                ShortGuids = (GuidNameTable)ReadTable(content, CustomTableType.SHORT_GUIDS);
-                CathodeEntities = (CathodeEntityTable)ReadTable(content, CustomTableType.CATHODE_ENTITY_INFO);
-                CathodeEnums = (CathodeEnumTable)ReadTable(content, CustomTableType.CATHODE_ENUM_INFO);
+                CompositePaths = new CompositePathTable();
+                CompositePinInfos = new CompositePinInfoTable();
+                EntityNames = new EntityNameTable();
+                ShortGuids = new GuidNameTable();
+                CathodeEntities = new CathodeEntityTable();
+                CathodeEnums = new CathodeEnumTable();
             }
 
             public readonly CompositePathTable CompositePaths;
