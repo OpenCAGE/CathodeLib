@@ -58,6 +58,7 @@ namespace CathodeLib
         public SoundEnvironmentData SoundEnvironmentData;
         public SoundEventData SoundEventData;
         public SoundLoadZones SoundLoadZones;
+        public BehaviorTreeDB BehaviorTreeDB;
         public GalaxyItems GalaxyItems;
         public GalaxyDefinition GalaxyDefinition;
 
@@ -95,7 +96,7 @@ namespace CathodeLib
         /// </summary>
         public Action OnSaveTick;
 
-        public const int NumberOfTicks = 31;
+        public const int NumberOfTicks = 32;
 
         /// <summary>
         /// A container for data related to a level in the game's "ENV" folder
@@ -158,7 +159,8 @@ namespace CathodeLib
                 () => { SoundDialogueLookups = new SoundDialogueLookups(world + "SOUNDDIALOGUELOOKUPS.DAT"); OnLoadTick?.Invoke(); },
                 () => { SoundEnvironmentData = new SoundEnvironmentData(world + "SOUNDENVIRONMENTDATA.DAT"); OnLoadTick?.Invoke(); },
                 () => { SoundEventData = new SoundEventData(world + "SOUNDEVENTDATA.DAT"); OnLoadTick?.Invoke(); },
-                () => { SoundLoadZones = new SoundLoadZones(world + "SOUNDLOADZONES.DAT"); OnLoadTick?.Invoke(); }
+                () => { SoundLoadZones = new SoundLoadZones(world + "SOUNDLOADZONES.DAT"); OnLoadTick?.Invoke(); },
+                () => { BehaviorTreeDB = new BehaviorTreeDB(world + "BEHAVIOR_TREE.DB"); OnLoadTick?.Invoke(); }
             );
 
             Parallel.Invoke(
@@ -171,7 +173,6 @@ namespace CathodeLib
             //The following files are used by the game, but not handled yet:
             // - RENDERABLE/RADIOSITY_RUNTIME.BIN
             // - WORLD/RADIOSITY_COLLISION_MAPPING.BIN
-            // - WORLD/BEHAVIOR_TREE.DB
             // - WORLD/COLLISION.HKX / HKX64
             // - WORLD/PHYSICS.HKX / HKX64
             // - WORLD/OCCLUDER_TRIANGLE_BVH.BIN
@@ -275,7 +276,8 @@ namespace CathodeLib
                 () => { SoundDialogueLookups.Save(); OnSaveTick?.Invoke(); },
                 () => { SoundEnvironmentData.Save(); OnSaveTick?.Invoke(); },
                 () => { SoundEventData.Save(); OnSaveTick?.Invoke(); },
-                () => { SoundLoadZones.Save(); OnSaveTick?.Invoke(); }
+                () => { SoundLoadZones.Save(); OnSaveTick?.Invoke(); },
+                () => { BehaviorTreeDB.Save(); OnSaveTick?.Invoke(); }
             );
 
             Commands.Save(); OnSaveTick?.Invoke();
