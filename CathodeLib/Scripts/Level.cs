@@ -42,7 +42,6 @@ namespace CathodeLib
         public Movers Movers;
         public EnvironmentMaps EnvironmentMaps;
         public PathBarrierResources PathBarrierResources;
-        //public SoundFlashModels SoundFlashModels;
         public CollisionMaps CollisionMaps;
         public RadiosityInstanceMap RadInstanceMap;
         public AlphaLightLevel AlphaLight;
@@ -57,7 +56,6 @@ namespace CathodeLib
         public SoundDialogueLookups SoundDialogueLookups;
         public SoundEnvironmentData SoundEnvironmentData;
         public SoundEventData SoundEventData;
-        public SoundLoadZones SoundLoadZones;
         public BehaviorTreeDB BehaviorTreeDB;
         public GalaxyItems GalaxyItems;
         public GalaxyDefinition GalaxyDefinition;
@@ -96,7 +94,7 @@ namespace CathodeLib
         /// </summary>
         public Action OnSaveTick;
 
-        public const int NumberOfTicks = 32;
+        public const int NumberOfTicks = 31;
 
         /// <summary>
         /// A container for data related to a level in the game's "ENV" folder
@@ -142,7 +140,6 @@ namespace CathodeLib
             Parallel.Invoke(
                 () => { EnvironmentMaps = new EnvironmentMaps(world + "ENVIRONMENTMAP.BIN", Movers); OnLoadTick?.Invoke(); },
                 () => { PathBarrierResources = new PathBarrierResources(world + "PATH_BARRIER_RESOURCES", Resources); OnLoadTick?.Invoke(); },
-                //() => { SoundFlashModels = new SoundFlashModels(world + "SOUNDFLASHMODELS.DAT", _global.Textures, Textures); OnLoadTick?.Invoke(); },
                 () => { CollisionMaps = new CollisionMaps(world + "COLLISION.MAP", Materials, MaterialMaps); OnLoadTick?.Invoke(); }
             );
 
@@ -159,7 +156,6 @@ namespace CathodeLib
                 () => { SoundDialogueLookups = new SoundDialogueLookups(world + "SOUNDDIALOGUELOOKUPS.DAT"); OnLoadTick?.Invoke(); },
                 () => { SoundEnvironmentData = new SoundEnvironmentData(world + "SOUNDENVIRONMENTDATA.DAT"); OnLoadTick?.Invoke(); },
                 () => { SoundEventData = new SoundEventData(world + "SOUNDEVENTDATA.DAT"); OnLoadTick?.Invoke(); },
-                () => { SoundLoadZones = new SoundLoadZones(world + "SOUNDLOADZONES.DAT"); OnLoadTick?.Invoke(); },
                 () => { BehaviorTreeDB = new BehaviorTreeDB(world + "BEHAVIOR_TREE.DB"); OnLoadTick?.Invoke(); }
             );
 
@@ -262,7 +258,6 @@ namespace CathodeLib
             Parallel.Invoke(
                 () => { EnvironmentMaps.Save(); OnSaveTick?.Invoke(); },
                 () => { PathBarrierResources.Save(); OnSaveTick?.Invoke(); },
-                //() => { SoundFlashModels.Save(); OnSaveTick?.Invoke(); },
                 () => { CollisionMaps.Save(); OnSaveTick?.Invoke(); },
                 () => { RadInstanceMap.Save(); OnSaveTick?.Invoke(); },
                 () => { AlphaLight.Save(); OnSaveTick?.Invoke(); },
@@ -276,7 +271,6 @@ namespace CathodeLib
                 () => { SoundDialogueLookups.Save(); OnSaveTick?.Invoke(); },
                 () => { SoundEnvironmentData.Save(); OnSaveTick?.Invoke(); },
                 () => { SoundEventData.Save(); OnSaveTick?.Invoke(); },
-                () => { SoundLoadZones.Save(); OnSaveTick?.Invoke(); },
                 () => { BehaviorTreeDB.Save(); OnSaveTick?.Invoke(); }
             );
 
