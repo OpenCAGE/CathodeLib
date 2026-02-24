@@ -334,7 +334,7 @@ namespace CATHODE
 
             public LightFlags OfflineLightFeatures = null; //Null if we have none (not a light material)
 
-            public Shaders.Shader Shader; //Index into shader pak
+            public Shaders.Shader Shader;
             public int PhysicalMaterialIndex; //255 i assume means none -> this is an index into the Havok physics materials database (at path data/material_data/materials.xml/bml).
             public int EnvironmentMapIndex; //255 means 'any' -> this is an index into our TextureReferences array. it's optionally overridden per renderable instance by MVR.
 
