@@ -23,6 +23,13 @@ namespace CathodeLib
             AnimationStrings = new AnimationStrings(animPAK.Entries.FirstOrDefault(o => o.Filename.Contains("ANIM_STRING_DB.BIN")).Content);
             AnimationStrings_Debug = new AnimationStrings(animPAK.Entries.FirstOrDefault(o => o.Filename.Contains("ANIM_STRING_DB_DEBUG.BIN")).Content);
         }
+
+        ~Global()
+        {
+            Textures = null;
+            AnimationStrings = null;
+            AnimationStrings_Debug = null;
+        }
     }
 
     /// <summary>
@@ -42,7 +49,6 @@ namespace CathodeLib
         public Movers Movers;
         public EnvironmentMaps EnvironmentMaps;
         public PathBarrierResources PathBarrierResources;
-        public SoundFlashModels SoundFlashModels;
         public CollisionMaps CollisionMaps;
         public RadiosityInstanceMap RadInstanceMap;
         public AlphaLightLevel AlphaLight;
@@ -57,13 +63,21 @@ namespace CathodeLib
         public SoundDialogueLookups SoundDialogueLookups;
         public SoundEnvironmentData SoundEnvironmentData;
         public SoundEventData SoundEventData;
-        public SoundLoadZones SoundLoadZones;
+        public BehaviorTreeDB BehaviorTreeDB;
+        public GalaxyItems GalaxyItems;
+        public GalaxyDefinition GalaxyDefinition;
 
         public class State
         {
             public int Index;
             public NavigationMesh NavMesh;
             public Traversals Traversals;
+
+            ~State()
+            {
+                NavMesh = null;
+                Traversals = null;
+            }
         }
         public List<State> StateResources = new List<State>(); //State 0 loaded by default
 
@@ -93,7 +107,7 @@ namespace CathodeLib
         /// </summary>
         public Action OnSaveTick;
 
-        public const int NumberOfTicks = 30;
+        public const int NumberOfTicks = 31;
 
         /// <summary>
         /// A container for data related to a level in the game's "ENV" folder
@@ -107,6 +121,56 @@ namespace CathodeLib
 
             if (loadImmediately)
                 Load();
+        }
+
+        ~Level()
+        {
+            Materials?.ClearReferences();
+            Models?.ClearReferences();
+            RenderableElements?.ClearReferences();
+            Movers?.ClearReferences();
+            EnvironmentMaps?.ClearReferences();
+            PathBarrierResources?.ClearReferences();
+            CollisionMaps?.ClearReferences();
+            Commands?.ClearReferences();
+            EnvironmentAnimations?.ClearReferences();
+
+            Textures = null;
+            Shaders = null;
+            WeightedCollisions = null;
+            MorphTargetDB = null;
+            Resources = null;
+            MaterialMaps = null;
+            Materials = null;
+            Models = null;
+            RenderableElements = null;
+            Movers = null;
+            EnvironmentMaps = null;
+            PathBarrierResources = null;
+            CollisionMaps = null;
+            RadInstanceMap = null;
+            AlphaLight = null;
+            AccessorySets = null;
+            Commands = null;
+            EnvironmentAnimations = null;
+            Lights = null;
+            MaterialMappings = null;
+            PhysicsMaps = null;
+            SoundNodeNetwork = null;
+            SoundBankData = null;
+            SoundDialogueLookups = null;
+            SoundEnvironmentData = null;
+            SoundEventData = null;
+            BehaviorTreeDB = null;
+            GalaxyItems = null;
+            GalaxyDefinition = null;
+
+            _global = null;
+
+            StateResources?.Clear();
+            StateResources = null;
+            Strings?.Clear();
+            Strings = null;
         }
 
         /// <summary>
@@ -139,7 +203,6 @@ namespace CathodeLib
             Parallel.Invoke(
                 () => { EnvironmentMaps = new EnvironmentMaps(world + "ENVIRONMENTMAP.BIN", Movers); OnLoadTick?.Invoke(); },
                 () => { PathBarrierResources = new PathBarrierResources(world + "PATH_BARRIER_RESOURCES", Resources); OnLoadTick?.Invoke(); },
-                () => { SoundFlashModels = new SoundFlashModels(world + "SOUNDFLASHMODELS.DAT", _global.Textures, Textures); OnLoadTick?.Invoke(); },
                 () => { CollisionMaps = new CollisionMaps(world + "COLLISION.MAP", Materials, MaterialMaps); OnLoadTick?.Invoke(); }
             );
 
@@ -156,23 +219,22 @@ namespace CathodeLib
                 () => { SoundDialogueLookups = new SoundDialogueLookups(world + "SOUNDDIALOGUELOOKUPS.DAT"); OnLoadTick?.Invoke(); },
                 () => { SoundEnvironmentData = new SoundEnvironmentData(world + "SOUNDENVIRONMENTDATA.DAT"); OnLoadTick?.Invoke(); },
                 () => { SoundEventData = new SoundEventData(world + "SOUNDEVENTDATA.DAT"); OnLoadTick?.Invoke(); },
-                () => { SoundLoadZones = new SoundLoadZones(world + "SOUNDLOADZONES.DAT"); OnLoadTick?.Invoke(); }
+                () => { BehaviorTreeDB = new BehaviorTreeDB(world + "BEHAVIOR_TREE.DB"); OnLoadTick?.Invoke(); }
+            );
+
+            Parallel.Invoke(
+                () => { GalaxyItems = new GalaxyItems(renderable + "GALAXY/GALAXY.ITEMS_BIN"); OnLoadTick?.Invoke(); },
+                () => { GalaxyDefinition = new GalaxyDefinition(renderable + "GALAXY/GALAXY.DEFINITION_BIN"); OnLoadTick?.Invoke(); } //Not used at runtime, but useful to regenerate GalaxyItems.
             );
 
             Commands = new Commands(world + "COMMANDS" + (File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements); OnLoadTick?.Invoke();
 
-            //RENDERABLE/DAMAGE/*
-            //RENDERABLE/GALAXY/*
-            //RENDERABLE/RADIOSITY_RUNTIME.BIN
-            //WORLD/BEHAVIOR_TREE.DB
-            //WORLD/COLLISION.HKX
-            //WORLD/COLLISION.HKX64
-            //WORLD/CUTSCENE_DIRECTOR_DATA.BIN
-            //WORLD/LEVEL.STR
-            //WORLD/OCCLUDER_TRIANGLE_BVH.BIN
-            //WORLD/PHYSICS.HKX
-            //WORLD/PHYSICS.HKX64
-            //WORLD/RADIOSITY_COLLISION_MAPPING.BIN
+            //The following files are used by the game, but not handled yet:
+            // - RENDERABLE/RADIOSITY_RUNTIME.BIN
+            // - WORLD/RADIOSITY_COLLISION_MAPPING.BIN
+            // - WORLD/COLLISION.HKX / HKX64
+            // - WORLD/PHYSICS.HKX / HKX64
+            // - WORLD/OCCLUDER_TRIANGLE_BVH.BIN
 
             int stateCount = 1; // we always implicitly have one state (the default state: state zero)
             using (BinaryReader reader = new BinaryReader(File.OpenRead(world + "EXCLUSIVE_MASTER_RESOURCE_INDICES")))
@@ -259,7 +321,6 @@ namespace CathodeLib
             Parallel.Invoke(
                 () => { EnvironmentMaps.Save(); OnSaveTick?.Invoke(); },
                 () => { PathBarrierResources.Save(); OnSaveTick?.Invoke(); },
-                () => { SoundFlashModels.Save(); OnSaveTick?.Invoke(); },
                 () => { CollisionMaps.Save(); OnSaveTick?.Invoke(); },
                 () => { RadInstanceMap.Save(); OnSaveTick?.Invoke(); },
                 () => { AlphaLight.Save(); OnSaveTick?.Invoke(); },
@@ -273,10 +334,15 @@ namespace CathodeLib
                 () => { SoundDialogueLookups.Save(); OnSaveTick?.Invoke(); },
                 () => { SoundEnvironmentData.Save(); OnSaveTick?.Invoke(); },
                 () => { SoundEventData.Save(); OnSaveTick?.Invoke(); },
-                () => { SoundLoadZones.Save(); OnSaveTick?.Invoke(); }
+                () => { BehaviorTreeDB.Save(); OnSaveTick?.Invoke(); }
             );
 
             Commands.Save(); OnSaveTick?.Invoke();
+
+            Parallel.Invoke(
+                () => { GalaxyItems.Save(); OnSaveTick?.Invoke(); },
+                () => { GalaxyDefinition.Save(); OnSaveTick?.Invoke(); }
+            );
 
             //TODO: save states
             OnSaveTick?.Invoke();
@@ -302,8 +368,8 @@ namespace CathodeLib
             }
 
             //Import global textures referenced by sound flash models
-            for (int i = 0; i < SoundFlashModels.Entries.Count; i++)
-                SoundFlashModels.Entries[i].Texture?.RemapToLevel(this);
+            //for (int i = 0; i < SoundFlashModels.Entries.Count; i++)
+            //    SoundFlashModels.Entries[i].Texture?.RemapToLevel(this);
         }
 
         /// <summary>

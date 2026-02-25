@@ -23,6 +23,7 @@ namespace CathodeLib
             STEAM,
             EPIC_GAMES_STORE,
             GOG,
+            WINDOWS_STORE,
         }
 
         /// <summary>

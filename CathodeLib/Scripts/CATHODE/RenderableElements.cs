@@ -32,6 +32,19 @@ namespace CATHODE
             _loaded = Load();
         }
 
+        public void ClearReferences()
+        {
+            _models = null;
+            _materials = null;
+        }
+
+        ~RenderableElements()
+        {
+            ClearReferences();
+            Entries.Clear();
+            _writeList.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

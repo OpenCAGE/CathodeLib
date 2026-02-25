@@ -23,6 +23,11 @@ namespace CATHODE
 
         public TextDB(string path) : base(path) { }
 
+        ~TextDB()
+        {
+            Entries.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

@@ -29,6 +29,12 @@ namespace CATHODE
 
         private List<MaterialMapping> _writeList = new List<MaterialMapping>();
 
+        ~MaterialMappings()         
+        {
+            Entries.Clear();
+            _writeList.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

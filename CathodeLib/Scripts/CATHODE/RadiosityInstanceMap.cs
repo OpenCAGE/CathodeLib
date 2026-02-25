@@ -23,6 +23,11 @@ namespace CATHODE
 
         public RadiosityInstanceMap(string path) : base(path) { }
 
+        ~RadiosityInstanceMap()
+        {
+            Entries.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

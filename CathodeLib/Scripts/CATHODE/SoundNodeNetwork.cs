@@ -23,6 +23,11 @@ namespace CATHODE
         public SoundNodeNetwork(MemoryStream stream, string path = "") : base(stream, path) { }
         public SoundNodeNetwork(byte[] data, string path = "") : base(data, path) { }
 
+        ~SoundNodeNetwork()
+        {
+            Entries.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

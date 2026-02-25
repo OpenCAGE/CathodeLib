@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using static CATHODE.Models;
 using static CATHODE.Movers;
+using static CATHODE.Shaders;
 using static CATHODE.TexturePtr;
 using static CATHODE.Textures.TEX4;
 
@@ -27,6 +28,8 @@ namespace CATHODE
         private Textures _levelTextures;
         private Shaders _shaders;
 
+        private List<Material> _writeList = new List<Material>();
+
         public Materials(string path, Textures globalTextures, Textures levelTextures, Shaders shaders) : base(path)
         {
             _globalTextures = globalTextures;
@@ -36,7 +39,19 @@ namespace CATHODE
             _loaded = Load();
         }
 
-        private List<Material> _writeList = new List<Material>();
+        public void ClearReferences()
+        {
+            _globalTextures = null;
+            _levelTextures = null;
+            _shaders = null;
+        }
+
+        ~Materials()
+        {
+            ClearReferences();
+            Entries.Clear();
+            _writeList.Clear();
+        }
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
@@ -334,7 +349,7 @@ namespace CATHODE
 
             public LightFlags OfflineLightFeatures = null; //Null if we have none (not a light material)
 
-            public Shaders.Shader Shader; //Index into shader pak
+            public Shaders.Shader Shader;
             public int PhysicalMaterialIndex; //255 i assume means none -> this is an index into the Havok physics materials database (at path data/material_data/materials.xml/bml).
             public int EnvironmentMapIndex; //255 means 'any' -> this is an index into our TextureReferences array. it's optionally overridden per renderable instance by MVR.
 

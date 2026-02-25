@@ -27,6 +27,8 @@ namespace CATHODE
         private Collisions _collisions;
         private MorphTargets _morphTargets;
 
+        private List<CS2.Component.LOD.Submesh> _writeList = new List<CS2.Component.LOD.Submesh>();
+
         public Models(string path, Materials materials, Collisions weightedCollisions, MorphTargets morphTargets) : base (path)
         {
             _materials = materials;
@@ -36,10 +38,31 @@ namespace CATHODE
             _loaded = Load();
         }
 
-        private List<CS2.Component.LOD.Submesh> _writeList = new List<CS2.Component.LOD.Submesh>();
+        public void ClearReferences()
+        {
+            _materials = null;
+            _collisions = null;
+            _morphTargets = null;
+        }
 
         ~Models()
         {
+            foreach (var model in Entries)
+            {
+                foreach (var component in model?.Components ?? new List<CATHODE.Models.CS2.Component>())
+                {
+                    foreach (var lod in component?.LODs ?? new List<CATHODE.Models.CS2.Component.LOD>())
+                    {
+                        foreach (var submesh in lod?.Submeshes ?? new List<CATHODE.Models.CS2.Component.LOD.Submesh>())
+                        {
+                            if (submesh?.Data != null)
+                                submesh.Data = null;
+                        }
+                    }
+                }
+            }
+            ClearReferences();
+
             Entries.Clear();
             _writeList.Clear();
         }

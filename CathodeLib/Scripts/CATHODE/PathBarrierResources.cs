@@ -1,4 +1,4 @@
-﻿using CATHODE.Enums;
+using CATHODE.Enums;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
@@ -24,6 +24,17 @@ namespace CATHODE
             _resources = resources;
 
             _loaded = Load();
+        }
+
+        public void ClearReferences()
+        {
+            _resources = null;
+        }
+
+        ~PathBarrierResources()
+        {
+            ClearReferences();
+            Entries.Clear();
         }
 
         #region FILE_IO

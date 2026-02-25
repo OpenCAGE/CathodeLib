@@ -1,4 +1,4 @@
-﻿using CATHODE.Scripting;
+using CATHODE.Scripting;
 using CathodeLib;
 using CathodeLib.ObjectExtensions;
 using System;
@@ -33,6 +33,19 @@ namespace CATHODE
             _materialMaps = materialMaps;
 
             _loaded = Load();
+        }
+
+        public void ClearReferences()
+        {
+            _materials = null;
+            _materialMaps = null;
+        }
+
+        ~CollisionMaps()
+        {
+            ClearReferences();
+            Entries.Clear();
+            _writeList.Clear();
         }
 
         #region FILE_IO

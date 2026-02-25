@@ -26,8 +26,15 @@ namespace CATHODE
 
         ~Textures()
         {
-            Entries.Clear();
-            _writeList.Clear();
+            foreach (var tex in Entries)
+            {
+                if (tex?.TexturePersistent?.Content != null)
+                    tex.TexturePersistent.Content = null;
+                if (tex?.TextureStreamed?.Content != null)
+                    tex.TextureStreamed.Content = null;
+            }
+            Entries?.Clear();
+            _writeList?.Clear();
         }
 
         #region FILE_IO

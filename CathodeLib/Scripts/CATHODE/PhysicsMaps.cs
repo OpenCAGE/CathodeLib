@@ -36,6 +36,12 @@ namespace CATHODE
 
         private List<DYNAMIC_PHYSICS_SYSTEM> _writeList = new List<DYNAMIC_PHYSICS_SYSTEM>();
 
+        ~PhysicsMaps()
+        {
+            Entries.Clear();
+            _writeList.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

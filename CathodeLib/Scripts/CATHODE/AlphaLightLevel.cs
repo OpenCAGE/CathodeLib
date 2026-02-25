@@ -25,6 +25,11 @@ namespace CATHODE
         public Vector2 Resolution;
         public byte[] ImageData; // this is in A16B16G16R16F format
 
+        ~AlphaLightLevel()
+        {
+            ImageData = null;
+        }
+
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

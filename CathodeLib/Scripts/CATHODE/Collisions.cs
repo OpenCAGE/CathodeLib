@@ -34,6 +34,12 @@ namespace CATHODE
 
         private List<WeightedCollision> _writeList = new List<WeightedCollision>();
 
+        ~Collisions()
+        {
+            Entries.Clear();
+            _writeList.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
