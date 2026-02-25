@@ -24,6 +24,11 @@ namespace CATHODE
         public SoundDialogueLookups(MemoryStream stream, string path = "") : base(stream, path) { }
         public SoundDialogueLookups(byte[] data, string path = "") : base(data, path) { }
 
+        ~SoundDialogueLookups()
+        {
+            Entries.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

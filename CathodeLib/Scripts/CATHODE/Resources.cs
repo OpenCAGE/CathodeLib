@@ -27,6 +27,12 @@ namespace CATHODE
 
         private List<Resource> _writeList = new List<Resource>(); 
 
+        ~Resources()
+        {
+            Entries.Clear();
+            _writeList.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

@@ -24,6 +24,11 @@ namespace CATHODE
         public SoundEnvironmentData(MemoryStream stream, string path = "") : base(stream, path) { }
         public SoundEnvironmentData(byte[] data, string path = "") : base(data, path) { }
 
+        ~SoundEnvironmentData()
+        {
+            Entries.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

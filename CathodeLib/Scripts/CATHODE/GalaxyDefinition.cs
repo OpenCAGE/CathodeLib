@@ -32,6 +32,11 @@ namespace CATHODE
         public GalaxyDefinition(MemoryStream stream, string path = "") : base(stream, path) { }
         public GalaxyDefinition(byte[] data, string path = "") : base(data, path) { }
 
+        ~GalaxyDefinition()
+        {
+            Entries.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

@@ -29,6 +29,12 @@ namespace CATHODE
 
         private List<MorphTarget> _writeList = new List<MorphTarget>();
 
+        ~MorphTargets()
+        {
+            Entries.Clear();
+            _writeList.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

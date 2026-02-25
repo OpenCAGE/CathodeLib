@@ -25,6 +25,9 @@ namespace CATHODE
         public List<EnvironmentAnimation> Entries = new List<EnvironmentAnimation>();
         public static new Implementation Implementation = Implementation.LOAD | Implementation.CREATE | Implementation.SAVE;
 
+        private AnimationStrings _strings;
+        private List<EnvironmentAnimation> _writeList = new List<EnvironmentAnimation>();
+
         public EnvironmentAnimations(string path, AnimationStrings strings) : base(path)
         {
             _strings = strings;
@@ -44,9 +47,17 @@ namespace CATHODE
             }
         }
 
-        private List<EnvironmentAnimation> _writeList = new List<EnvironmentAnimation>();
+        public void ClearReferences()
+        {
+            _strings = null;
+        }
 
-        private AnimationStrings _strings;
+        ~EnvironmentAnimations()
+        {
+            ClearReferences();
+            _writeList.Clear();
+            Entries.Clear();
+        }
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)

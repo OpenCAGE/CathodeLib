@@ -23,6 +23,13 @@ namespace CathodeLib
             AnimationStrings = new AnimationStrings(animPAK.Entries.FirstOrDefault(o => o.Filename.Contains("ANIM_STRING_DB.BIN")).Content);
             AnimationStrings_Debug = new AnimationStrings(animPAK.Entries.FirstOrDefault(o => o.Filename.Contains("ANIM_STRING_DB_DEBUG.BIN")).Content);
         }
+
+        ~Global()
+        {
+            Textures = null;
+            AnimationStrings = null;
+            AnimationStrings_Debug = null;
+        }
     }
 
     /// <summary>
@@ -65,6 +72,12 @@ namespace CathodeLib
             public int Index;
             public NavigationMesh NavMesh;
             public Traversals Traversals;
+
+            ~State()
+            {
+                NavMesh = null;
+                Traversals = null;
+            }
         }
         public List<State> StateResources = new List<State>(); //State 0 loaded by default
 
@@ -108,6 +121,56 @@ namespace CathodeLib
 
             if (loadImmediately)
                 Load();
+        }
+
+        ~Level()
+        {
+            Materials?.ClearReferences();
+            Models?.ClearReferences();
+            RenderableElements?.ClearReferences();
+            Movers?.ClearReferences();
+            EnvironmentMaps?.ClearReferences();
+            PathBarrierResources?.ClearReferences();
+            CollisionMaps?.ClearReferences();
+            Commands?.ClearReferences();
+            EnvironmentAnimations?.ClearReferences();
+
+            Textures = null;
+            Shaders = null;
+            WeightedCollisions = null;
+            MorphTargetDB = null;
+            Resources = null;
+            MaterialMaps = null;
+            Materials = null;
+            Models = null;
+            RenderableElements = null;
+            Movers = null;
+            EnvironmentMaps = null;
+            PathBarrierResources = null;
+            CollisionMaps = null;
+            RadInstanceMap = null;
+            AlphaLight = null;
+            AccessorySets = null;
+            Commands = null;
+            EnvironmentAnimations = null;
+            Lights = null;
+            MaterialMappings = null;
+            PhysicsMaps = null;
+            SoundNodeNetwork = null;
+            SoundBankData = null;
+            SoundDialogueLookups = null;
+            SoundEnvironmentData = null;
+            SoundEventData = null;
+            BehaviorTreeDB = null;
+            GalaxyItems = null;
+            GalaxyDefinition = null;
+
+            _global = null;
+
+            StateResources?.Clear();
+            StateResources = null;
+            Strings?.Clear();
+            Strings = null;
         }
 
         /// <summary>

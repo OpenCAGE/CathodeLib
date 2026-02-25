@@ -28,6 +28,8 @@ namespace CATHODE
         private RenderableElements _reds;
         private Resources _resources;
 
+        private List<MOVER_DESCRIPTOR> _writeList = new List<MOVER_DESCRIPTOR>();
+
         public Movers(string path, RenderableElements reds, Resources resources) : base(path)
         {
             _reds = reds;
@@ -36,10 +38,15 @@ namespace CATHODE
             _loaded = Load();
         }
 
-        private List<MOVER_DESCRIPTOR> _writeList = new List<MOVER_DESCRIPTOR>(); 
+        public void ClearReferences()
+        {
+            _reds = null;
+            _resources = null;
+        }
 
         ~Movers()
         {
+            ClearReferences();
             Entries.Clear();
             _writeList.Clear();
         }

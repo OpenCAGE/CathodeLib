@@ -19,6 +19,11 @@ namespace CATHODE
         protected override bool HandlesLoadingManually => true;
         private Movers _movers;
 
+        /// <summary>
+        /// This is the number of environment maps in the level. We should never reference an index higher than this.
+        /// </summary>
+        public int EnvironmentMapCount = 0;
+
         public EnvironmentMaps(string path, Movers movers) : base(path)
         {
             _movers = movers;
@@ -26,10 +31,16 @@ namespace CATHODE
             _loaded = Load();
         }
 
-        /// <summary>
-        /// This is the number of environment maps in the level. We should never reference an index higher than this.
-        /// </summary>
-        public int EnvironmentMapCount = 0;
+        public void ClearReferences()
+        {
+            _movers = null;
+        }
+
+        ~EnvironmentMaps()
+        {
+            ClearReferences();
+            Entries.Clear();
+        }
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)

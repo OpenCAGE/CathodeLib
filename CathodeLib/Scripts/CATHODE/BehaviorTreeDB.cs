@@ -25,6 +25,11 @@ namespace CATHODE
         public BehaviorTreeDB(MemoryStream stream, string path = "") : base(stream, path) { }
         public BehaviorTreeDB(byte[] data, string path = "") : base(data, path) { }
 
+        ~BehaviorTreeDB()
+        {
+            Entries.Clear();
+        }
+
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

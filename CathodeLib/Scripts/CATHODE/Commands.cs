@@ -43,8 +43,16 @@ namespace CATHODE
             _loaded = Load();
         }
 
+        public void ClearReferences()
+        {
+            _envAnims = null;
+            _colMaps = null;
+            _reds = null;
+        }
+
         ~Commands()
         {
+            ClearReferences();
             Entries.Clear();
         }
 
