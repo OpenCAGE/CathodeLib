@@ -70,13 +70,13 @@ namespace CathodeLib
         public class State
         {
             public int Index;
+            public Cover Cover;
             public NavigationMesh NavMesh;
-            public Traversals Traversals;
 
             ~State()
             {
+                Cover = null;
                 NavMesh = null;
-                Traversals = null;
             }
         }
         public List<State> StateResources = new List<State>(); //State 0 loaded by default
@@ -254,11 +254,10 @@ namespace CathodeLib
 
                 State state = new State() { Index = i };
                 //ASSAULT_POSITIONS
-                //COVER
+                state.Cover = new Cover(statePath + "COVER");
                 //CRAWL_SPACE_SPOTTING_POSITIONS
                 state.NavMesh = new NavigationMesh(statePath + "NAV_MESH");
                 //SPOTTING_POSITIONS
-                state.Traversals = new Traversals(statePath + "TRAVERSAL");
             }
             OnLoadTick?.Invoke();
 
@@ -343,6 +342,8 @@ namespace CathodeLib
                 () => { GalaxyItems.Save(); OnSaveTick?.Invoke(); },
                 () => { GalaxyDefinition.Save(); OnSaveTick?.Invoke(); }
             );
+
+            //todo - save state: also TRAVERSALS isn't loaded as it's not used, but should write out the empty file
 
             //TODO: save states
             OnSaveTick?.Invoke();
