@@ -96,11 +96,8 @@ namespace CATHODE
                 writer.BaseStream.SetLength(0);
                 writer.Write(846362211); 
                 writer.Write(7); 
-
-                short count = (short)Entries.Count;
-                writer.Write(count);
-
-                for (int i = 0; i < count; i++)
+                writer.Write((short)Entries.Count);
+                for (int i = 0; i < Entries.Count; i++)
                 {
                     CoverSegment segment = Entries[i];
 
@@ -126,10 +123,16 @@ namespace CATHODE
                     Utilities.Write(writer, segment.CathodeParent);
                 }
 
-                writer.Write(0);
-                for (int i = 0; i < count; i++)
+                int numSlots = 0;
+                for (int i = 0; i < Entries.Count; i++)
                 {
-                    var slots = Entries[i].OccupancySlots ?? new List<CoverSegment.CoverSlot>();
+                    numSlots += Entries[i].OccupancySlots.Count;
+                }
+                writer.Write(numSlots);
+
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    var slots = Entries[i].OccupancySlots;
                     short slotsCount = (short)slots.Count;
                     writer.Write(slotsCount);
 
@@ -187,6 +190,105 @@ namespace CATHODE
                 public int Flags;
                 public int ClearAimAnglesHorizontal;
                 public int ClearAimAnglesVertical;
+
+                public float LeftEdgeRightmostHorizontal
+                {
+                    get => GetHorizontalAngle(0);
+                    set => ClearAimAnglesHorizontal = SetHorizontalAngle(ClearAimAnglesHorizontal, 0, value);
+                }
+                public float OverTopLeftmostHorizontal
+                {
+                    get => GetHorizontalAngle(1);
+                    set => ClearAimAnglesHorizontal = SetHorizontalAngle(ClearAimAnglesHorizontal, 1, value);
+                }
+                public float OverTopRightmostHorizontal
+                {
+                    get => GetHorizontalAngle(2);
+                    set => ClearAimAnglesHorizontal = SetHorizontalAngle(ClearAimAnglesHorizontal, 2, value);
+                }
+
+                public float RightEdgeLeftmostHorizontal
+                {
+                    get => GetHorizontalAngle(3);
+                    set => ClearAimAnglesHorizontal = SetHorizontalAngle(ClearAimAnglesHorizontal, 3, value);
+                }
+
+                public float LeftEdgeBottomVertical
+                {
+                    get => GetVerticalAngle(0);
+                    set => ClearAimAnglesVertical = SetVerticalAngle(ClearAimAnglesVertical, 0, value);
+                }
+                public float LeftEdgeTopVertical
+                {
+                    get => GetVerticalAngle(1);
+                    set => ClearAimAnglesVertical = SetVerticalAngle(ClearAimAnglesVertical, 1, value);
+                }
+                public float OverTopBottomVertical
+                {
+                    get => GetVerticalAngle(2);
+                    set => ClearAimAnglesVertical = SetVerticalAngle(ClearAimAnglesVertical, 2, value);
+                }
+                public float OverTopTopVertical
+                {
+                    get => GetVerticalAngle(3);
+                    set => ClearAimAnglesVertical = SetVerticalAngle(ClearAimAnglesVertical, 3, value);
+                }
+                public float RightEdgeBottomVertical
+                {
+                    get => GetVerticalAngle(4);
+                    set => ClearAimAnglesVertical = SetVerticalAngle(ClearAimAnglesVertical, 4, value);
+                }
+                public float RightEdgeTopVertical
+                {
+                    get => GetVerticalAngle(5);
+                    set => ClearAimAnglesVertical = SetVerticalAngle(ClearAimAnglesVertical, 5, value);
+                }
+
+                private readonly float _halfPi = (float)(Math.PI / 2.0);
+                private float DecodeAngleNibble(int nibble)
+                {
+                    if (nibble < 0) nibble = 0;
+                    if (nibble > 15) nibble = 15;
+                    return -_halfPi + (nibble * (float)Math.PI / 15f);
+                }
+                private int EncodeAngleNibble(float angle)
+                {
+                    if (angle < -_halfPi) angle = -_halfPi;
+                    if (angle > _halfPi) angle = _halfPi;
+                    float t = (angle + _halfPi) / (2 * _halfPi); 
+                    int nibble = (int)Math.Round(t * 15f);
+                    if (nibble < 0) nibble = 0;
+                    if (nibble > 15) nibble = 15;
+                    return nibble;
+                }
+                private float GetHorizontalAngle(int indexFromMsb)
+                {
+                    int shift = (3 - indexFromMsb) * 4;
+                    int nibble = (ClearAimAnglesHorizontal >> shift) & 0xF;
+                    return DecodeAngleNibble(nibble);
+                }
+                private int SetHorizontalAngle(int packed, int indexFromMsb, float angle)
+                {
+                    int shift = (3 - indexFromMsb) * 4;
+                    int nibble = EncodeAngleNibble(angle);
+                    packed &= ~(0xF << shift);
+                    packed |= (nibble & 0xF) << shift;
+                    return packed;
+                }
+                private float GetVerticalAngle(int indexFromMsb)
+                {
+                    int shift = (5 - indexFromMsb) * 4;
+                    int nibble = (ClearAimAnglesVertical >> shift) & 0xF;
+                    return DecodeAngleNibble(nibble);
+                }
+                private int SetVerticalAngle(int packed, int indexFromMsb, float angle)
+                {
+                    int shift = (5 - indexFromMsb) * 4;
+                    int nibble = EncodeAngleNibble(angle);
+                    packed &= ~(0xF << shift);
+                    packed |= (nibble & 0xF) << shift;
+                    return packed;
+                }
             }
         }
 
