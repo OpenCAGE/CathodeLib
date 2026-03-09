@@ -69,12 +69,14 @@ namespace CathodeLib
 
         public class State
         {
-            public int Index;
+            public Resources.Resource Resource = null; //TODO: this gives you the instance of the ExclusiveMaster entity - use it. Can be null if it's default (0).
+
             public Cover Cover;
             public NavigationMesh NavMesh;
 
             ~State()
             {
+                Resource = null;
                 Cover = null;
                 NavMesh = null;
             }
@@ -148,7 +150,7 @@ namespace CathodeLib
             EnvironmentMaps = null;
             PathBarrierResources = null;
             CollisionMaps = null;
-            RadInstanceMap = null;
+            RadInstanceMap = null; //todo - can this be removed?
             AlphaLight = null;
             AccessorySets = null;
             Commands = null;
@@ -236,27 +238,25 @@ namespace CathodeLib
             // - WORLD/PHYSICS.HKX / HKX64
             // - WORLD/OCCLUDER_TRIANGLE_BVH.BIN
 
-            int stateCount = 1; // we always implicitly have one state (the default state: state zero)
+            StateResources.Add(new State());
             using (BinaryReader reader = new BinaryReader(File.OpenRead(world + "EXCLUSIVE_MASTER_RESOURCE_INDICES")))
             {
-                reader.BaseStream.Position = 4;  // version: 1
-                int states = reader.ReadInt32(); // number of changeable states
-                stateCount += states;
-                for (int x = 0; x < states; x++)
+                reader.BaseStream.Position = 4;
+                int states = reader.ReadInt32(); 
+                for (int i = 0; i < states; i++)
                 {
                     int resourceIndex = reader.ReadInt32();
-                    Resources.Resource resource = Resources.Entries[resourceIndex]; //TODO: this gives you the instance of the ExclusiveMaster entity - use it
+                    StateResources.Add(new State() { Resource = Resources.Entries[resourceIndex] });
                 }
             }
-            for (int i = 0; i < stateCount; i++)
+            for (int i = 0; i < StateResources.Count; i++)
             {
                 string statePath = world + "STATE_" + i + "/";
 
-                State state = new State() { Index = i };
                 //ASSAULT_POSITIONS
-                state.Cover = new Cover(statePath + "COVER");
+                StateResources[i].Cover = new Cover(statePath + "COVER");
                 //CRAWL_SPACE_SPOTTING_POSITIONS
-                state.NavMesh = new NavigationMesh(statePath + "NAV_MESH");
+                StateResources[i].NavMesh = new NavigationMesh(statePath + "NAV_MESH");
                 //SPOTTING_POSITIONS
             }
             OnLoadTick?.Invoke();
@@ -298,6 +298,9 @@ namespace CathodeLib
         public void Save()
         {
             //TODO: if we haven't pulled GLOBAL texture data into our texture pak, do so, and update sources.
+
+            string renderable = _filepath + "/RENDERABLE/";
+            string world = _filepath + (_patched ? "_PATCH" : "") + "/WORLD/";
 
             Parallel.Invoke(
                 () => { Textures.Save(); OnSaveTick?.Invoke(); },
@@ -343,9 +346,22 @@ namespace CathodeLib
                 () => { GalaxyDefinition.Save(); OnSaveTick?.Invoke(); }
             );
 
-            //todo - save state: also TRAVERSALS isn't loaded as it's not used, but should write out the empty file
-
-            //TODO: save states
+            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(world + "EXCLUSIVE_MASTER_RESOURCE_INDICES")))
+            {
+                writer.BaseStream.SetLength(0);
+                writer.Write(1);
+                writer.Write(StateResources.Count - 1);
+                for (int i = 1; i < StateResources.Count; i++)
+                {
+                    writer.Write(Resources.GetWriteIndex(StateResources[i].Resource));
+                }
+            }
+            Parallel.For(0, StateResources.Count, (i) =>
+            {
+                StateResources[i].Cover.Save();
+                //StateResources[i].NavMesh.Save(); TODO: Not saving this as it's wrong!
+                File.WriteAllBytes(world + "STATE_" + i + "/TRAVERSAL", new byte[] { 0x74, 0x72, 0x61, 0x76, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x3F, 0x00, 0x00 });
+            });
             OnSaveTick?.Invoke();
 
             //TODO: save strings (?)
