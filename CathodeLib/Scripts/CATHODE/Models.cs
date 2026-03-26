@@ -464,7 +464,6 @@ namespace CATHODE
             binStreamCompressed?.Close();
             binStream.Close();
 
-            //todo - fzip
             using (BinaryWriter pak = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 int componentCount = 0;
@@ -543,6 +542,10 @@ namespace CATHODE
                 pak.Write(BigEndianUtils.FlipEndian(1));
                 pak.Write(BigEndianUtils.FlipEndian(1));
             }
+
+            if (_compressed)
+                Utilities.FZipCompressPAK(_filepath);
+
             return true;
         }
 

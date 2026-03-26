@@ -1,7 +1,10 @@
 using CATHODE;
 using CATHODE.Scripting;
 using CathodeLib.ArrayExtensions;
+using Extensions.Data;
+using K4os.Compression.LZ4;
 using System;
+using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -228,6 +231,130 @@ namespace CathodeLib
                 hash = hash & 0xFFFFFFFF;
             }
             return hash;
+        }
+
+        /// <summary>
+        /// Compress a PAK file using FZIP
+        /// </summary>
+        public static void FZipCompressPAK(string filepath, bool appendExtension = false)
+        {
+            int origUnpackedSize;
+            List<byte[]> uncompressedContent = new List<byte[]>();
+            {
+                using (BinaryReader reader = new BinaryReader(File.OpenRead(filepath)))
+                {
+                    origUnpackedSize = (int)reader.BaseStream.Length;
+
+                    reader.BaseStream.Position += 16;
+                    int MaxEntryCount = BinaryPrimitives.ReverseEndianness(reader.ReadInt32());
+                    reader.BaseStream.Position += 12;
+
+                    List<Tuple<int, int>> offsetAndLengths = new List<Tuple<int, int>>();
+                    for (int i = 0; i < MaxEntryCount; i++)
+                    {
+                        reader.BaseStream.Position += 12;
+                        int length = BinaryPrimitives.ReverseEndianness(reader.ReadInt32());
+                        int offset = BinaryPrimitives.ReverseEndianness(reader.ReadInt32());
+                        reader.BaseStream.Position += 28;
+
+                        if (length > 0)
+                            offsetAndLengths.Add(new Tuple<int, int>(offset, length));
+                    }
+
+                    long origHeaderSize = reader.BaseStream.Position;
+                    reader.BaseStream.Position = 0;
+                    uncompressedContent.Insert(0, reader.ReadBytes((int)origHeaderSize));
+
+                    int endOfHeaders = 32 + (MaxEntryCount * 48);
+
+                    foreach (Tuple<int, int> offsetAndLength in offsetAndLengths)
+                    {
+                        reader.BaseStream.Position = offsetAndLength.Item1 + endOfHeaders;
+                        uncompressedContent.Add(reader.ReadBytes(offsetAndLength.Item2));
+                    }
+                }
+            }
+
+            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(filepath + (appendExtension ? ".fzip" : ""))))
+            {
+                writer.BaseStream.SetLength(0);
+
+                writer.Write(new char[] { 'F', 'Z', 'I', 'P' });
+                writer.Write((Int16)2);
+                writer.Write((Int16)0);
+                writer.Write(uncompressedContent.Count);
+                writer.Write(origUnpackedSize);
+
+                int newPakHeaderSize = 16 + (20 * uncompressedContent.Count);
+                int offsetTrackerCompressed = newPakHeaderSize;
+                int offsetTrackerOriginal = 0;
+
+                List<byte[]> compressedContent = new List<byte[]>();
+                for (int i = 0; i < uncompressedContent.Count; i++)
+                {
+                    int uncompressedSize = uncompressedContent[i].Length;
+                    if (uncompressedSize < 0) uncompressedSize = 0;
+                    int compressedSize = uncompressedSize == 0 ? 0 : LZ4Codec.MaximumOutputSize(uncompressedSize);
+
+                    if (uncompressedSize != 0)
+                    {
+                        using (MemoryStream lz4stream = new MemoryStream())
+                        {
+                            using (BinaryWriter lz4 = new BinaryWriter(lz4stream))
+                            {
+                                int maxSize = LZ4Codec.MaximumOutputSize(uncompressedSize);
+                                int blockSize = maxSize <= 64 * 1024 ? 64 * 1024 : maxSize <= 256 * 1024 ? 256 * 1024 : maxSize <= 1024 * 1024 ? 1024 * 1024 : 4 * 1024 * 1024;
+                                lz4.Write(new byte[] { 0x04, 0x22, 0x4D, 0x18 });
+                                lz4.Write(new byte[] {
+                                0x64,
+                                maxSize <= 64 * 1024 ? (byte)0x40 : maxSize <= 256 * 1024 ? (byte)0x50 : maxSize <= 1024 * 1024 ? (byte)0x60 : (byte)0x70,
+                                blockSize == 0x40 ? (byte)0xA7 : blockSize == 0x50 ? (byte)0x08 : blockSize == 0x60 ? (byte)0x85 : (byte)0xB9
+                            });
+
+                                for (int offset = 0; offset < uncompressedSize; offset += blockSize)
+                                {
+                                    int currentChunkSize = Math.Min(blockSize, uncompressedSize - offset);
+                                    byte[] chunkBuffer = new byte[currentChunkSize];
+                                    Array.Copy(uncompressedContent[i], offset, chunkBuffer, 0, currentChunkSize);
+
+                                    byte[] target = new byte[maxSize];
+                                    int compressedBytes = LZ4Codec.Encode(
+                                        chunkBuffer, 0, currentChunkSize,
+                                        target, 0, maxSize,
+                                        LZ4Level.L12_MAX
+                                    );
+
+                                    lz4.Write(compressedBytes);
+                                    lz4.Write(target, 0, compressedBytes);
+                                }
+
+                                lz4.Write(0);
+                                lz4.Write(XXHash.XXH32(uncompressedContent[i], 0));
+                            }
+                            compressedSize = lz4stream.ToArray().Length;
+                            compressedContent.Add(lz4stream.ToArray());
+                        }
+                    }
+                    else
+                    {
+                        compressedContent.Add(new byte[] { });
+                    }
+
+                    writer.Write(offsetTrackerCompressed);
+                    writer.Write(compressedSize);
+                    writer.Write(offsetTrackerOriginal);
+                    writer.Write(uncompressedSize);
+                    writer.Write((Int16)4);
+                    writer.Write((Int16)0);
+
+                    offsetTrackerCompressed += compressedSize;
+                    offsetTrackerOriginal += uncompressedSize;
+                }
+                for (int i = 0; i < uncompressedContent.Count; i++)
+                {
+                    writer.Write(compressedContent[i]);
+                }
+            }
         }
 
         /// <summary>

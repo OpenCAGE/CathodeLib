@@ -165,7 +165,6 @@ namespace CATHODE
                 bin.Write(headerListBegin);
             }
 
-            //todo - fzip
             using (BinaryWriter pak = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 //Figure out number of non-null contents
@@ -238,6 +237,10 @@ namespace CATHODE
                 pak.Write(BigEndianUtils.FlipEndian(1));
                 pak.Write(BigEndianUtils.FlipEndian(1));
             }
+
+            if (_compressed)
+                Utilities.FZipCompressPAK(_filepath);
+
             return true;
         }
 
