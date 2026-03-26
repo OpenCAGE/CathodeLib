@@ -42,7 +42,6 @@ namespace CathodeLib
         public Collisions WeightedCollisions;
         public MorphTargets MorphTargetDB;
         public Resources Resources;
-        public MaterialMappings MaterialMaps;
         public Materials Materials;
         public Models Models;
         public RenderableElements RenderableElements;
@@ -109,7 +108,7 @@ namespace CathodeLib
         /// </summary>
         public Action OnSaveTick;
 
-        public const int NumberOfTicks = 31;
+        public const int NumberOfTicks = 30;
 
         /// <summary>
         /// A container for data related to a level in the game's "ENV" folder
@@ -142,7 +141,6 @@ namespace CathodeLib
             WeightedCollisions = null;
             MorphTargetDB = null;
             Resources = null;
-            MaterialMaps = null;
             Materials = null;
             Models = null;
             RenderableElements = null;
@@ -188,24 +186,26 @@ namespace CathodeLib
             string renderable = _filepath + "/RENDERABLE/";
             string world = _filepath + (_patched ? "_PATCH" : "") + "/WORLD/";
 
+            bool compressed = File.Exists(renderable + "LEVEL_TEXTURES.ALL.PAK.FZIP");
+
             Parallel.Invoke(
-                () => { Textures = new Textures(renderable + "LEVEL_TEXTURES.ALL.PAK"); OnLoadTick?.Invoke(); },
-                () => { Shaders = new Shaders(renderable + "LEVEL_SHADERS_DX11.PAK"); OnLoadTick?.Invoke(); },
-                () => { WeightedCollisions = new Collisions(world + "COLLISION.BIN"); OnLoadTick?.Invoke(); },
+                () => { Textures = new Textures(renderable + "LEVEL_TEXTURES.ALL.PAK" + (compressed ? ".FZIP" : "")); OnLoadTick?.Invoke(); },
+                () => { Shaders = new Shaders(renderable + "LEVEL_SHADERS_DX11.PAK" + (compressed ? ".GZ" : "")); OnLoadTick?.Invoke(); },
+                () => { WeightedCollisions = new Collisions(world + "COLLISION.BIN" + (compressed ? ".GZ" : "")); OnLoadTick?.Invoke(); },
                 () => { MorphTargetDB = new MorphTargets(world + "MORPH_TARGET_DB.BIN"); OnLoadTick?.Invoke(); },
                 () => { Resources = new Resources(world + "RESOURCES.BIN"); OnLoadTick?.Invoke(); },
-                () => { MaterialMaps = new MaterialMappings(world + "MATERIAL_MAPPINGS.PAK"); OnLoadTick?.Invoke(); }
+                () => { MaterialMappings = new MaterialMappings(world + "MATERIAL_MAPPINGS.PAK"); OnLoadTick?.Invoke(); }
             );
 
-            Materials = new Materials(renderable + "LEVEL_MODELS.MTL", _global.Textures, Textures, Shaders); OnLoadTick?.Invoke();
-            Models = new Models(renderable + "LEVEL_MODELS.PAK", Materials, WeightedCollisions, MorphTargetDB); OnLoadTick?.Invoke();
-            RenderableElements = new RenderableElements(world + "REDS.BIN", Models, Materials); OnLoadTick?.Invoke();
-            Movers = new Movers(world + "MODELS.MVR", RenderableElements, Resources); OnLoadTick?.Invoke();
+            Materials = new Materials(renderable + "LEVEL_MODELS.MTL" + (compressed ? ".GZ" : ""), _global.Textures, Textures, Shaders); OnLoadTick?.Invoke();
+            Models = new Models(renderable + "LEVEL_MODELS.PAK" + (compressed ? ".FZIP" : ""), Materials, WeightedCollisions, MorphTargetDB); OnLoadTick?.Invoke();
+            RenderableElements = new RenderableElements(world + "REDS.BIN" + (compressed ? ".GZ" : ""), Models, Materials); OnLoadTick?.Invoke();
+            Movers = new Movers(world + "MODELS.MVR" + (compressed ? ".GZ" : ""), RenderableElements, Resources); OnLoadTick?.Invoke();
 
             Parallel.Invoke(
                 () => { EnvironmentMaps = new EnvironmentMaps(world + "ENVIRONMENTMAP.BIN", Movers); OnLoadTick?.Invoke(); },
                 () => { PathBarrierResources = new PathBarrierResources(world + "PATH_BARRIER_RESOURCES", Resources); OnLoadTick?.Invoke(); },
-                () => { CollisionMaps = new CollisionMaps(world + "COLLISION.MAP", Materials, MaterialMaps); OnLoadTick?.Invoke(); }
+                () => { CollisionMaps = new CollisionMaps(world + "COLLISION.MAP" + (compressed ? ".GZ" : ""), Materials, MaterialMappings); OnLoadTick?.Invoke(); }
             );
 
             Parallel.Invoke(
@@ -214,7 +214,6 @@ namespace CathodeLib
                 () => { AccessorySets = new CharacterAccessorySets(world + "CHARACTERACCESSORYSETS.BIN"); OnLoadTick?.Invoke(); },
                 () => { EnvironmentAnimations = new EnvironmentAnimations(world + "ENVIRONMENT_ANIMATION.DAT", _global.AnimationStrings_Debug); OnLoadTick?.Invoke(); },
                 () => { Lights = new Lights(world + "LIGHTS.BIN"); OnLoadTick?.Invoke(); },
-                () => { MaterialMappings = new MaterialMappings(world + "MATERIAL_MAPPINGS.PAK"); OnLoadTick?.Invoke(); },
                 () => { PhysicsMaps = new PhysicsMaps(world + "PHYSICS.MAP"); OnLoadTick?.Invoke(); },
                 () => { SoundNodeNetwork = new SoundNodeNetwork(world + "SNDNODENETWORK.DAT"); OnLoadTick?.Invoke(); },
                 () => { SoundBankData = new SoundBankData(world + "SOUNDBANKDATA.DAT"); OnLoadTick?.Invoke(); },
@@ -229,10 +228,10 @@ namespace CathodeLib
                 () => { GalaxyDefinition = new GalaxyDefinition(renderable + "GALAXY/GALAXY.DEFINITION_BIN"); OnLoadTick?.Invoke(); } //Not used at runtime, but useful to regenerate GalaxyItems.
             );
 
-            Commands = new Commands(world + "COMMANDS" + (File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements); OnLoadTick?.Invoke();
+            Commands = new Commands(world + "COMMANDS" + (File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN") + (compressed ? ".GZ" : ""), EnvironmentAnimations, CollisionMaps, RenderableElements); OnLoadTick?.Invoke();
 
             //The following files are used by the game, but not handled yet:
-            // - RENDERABLE/RADIOSITY_RUNTIME.BIN
+            // - RENDERABLE/RADIOSITY_RUNTIME.BIN (and .GZ)
             // - WORLD/RADIOSITY_COLLISION_MAPPING.BIN
             // - WORLD/COLLISION.HKX / HKX64
             // - WORLD/PHYSICS.HKX / HKX64
@@ -307,7 +306,7 @@ namespace CathodeLib
                 () => { Shaders.Save(); OnSaveTick?.Invoke(); },
                 () => { WeightedCollisions.Save(); OnSaveTick?.Invoke(); },
                 () => { MorphTargetDB.Save(); OnSaveTick?.Invoke(); },
-                () => { MaterialMaps.Save(); OnSaveTick?.Invoke(); }
+                () => { MaterialMappings.Save(); OnSaveTick?.Invoke(); }
             );
 
             Materials.Save(); OnSaveTick?.Invoke();
@@ -329,7 +328,6 @@ namespace CathodeLib
                 () => { AccessorySets.Save(); OnSaveTick?.Invoke(); },
                 () => { EnvironmentAnimations.Save(); OnSaveTick?.Invoke(); },
                 () => { Lights.Save(); OnSaveTick?.Invoke(); },
-                () => { MaterialMappings.Save(); OnSaveTick?.Invoke(); },
                 () => { PhysicsMaps.Save(); OnSaveTick?.Invoke(); },
                 () => { SoundNodeNetwork.Save(); OnSaveTick?.Invoke(); },
                 () => { SoundBankData.Save(); OnSaveTick?.Invoke(); },
@@ -402,10 +400,10 @@ namespace CathodeLib
                 string mapPath = galaxyBins[i].Substring(0, galaxyBins[i].Length - extraLength);
 
                 //Try match a few files outside of the GALAXY definition, to ensure we are actually a map.
-                if (!File.Exists(mapPath + "/WORLD/COMMANDS.PAK") && !File.Exists(mapPath + "/WORLD/COMMANDS.BIN")) continue;
-                if (!File.Exists(mapPath + "/WORLD/MODELS.MVR")) continue;
-                if (!File.Exists(mapPath + "/RENDERABLE/LEVEL_MODELS.PAK")) continue;
-                if (!File.Exists(mapPath + "/RENDERABLE/MODELS_LEVEL.BIN")) continue;
+                if (!File.Exists(mapPath + "/WORLD/COMMANDS.PAK") && !File.Exists(mapPath + "/WORLD/COMMANDS.BIN") && !File.Exists(mapPath + "/WORLD/COMMANDS.PAK.GZ") && !File.Exists(mapPath + "/WORLD/COMMANDS.BIN.GZ")) continue;
+                if (!File.Exists(mapPath + "/WORLD/MODELS.MVR") && !File.Exists(mapPath + "/WORLD/MODELS.MVR.GZ")) continue;
+                if (!File.Exists(mapPath + "/RENDERABLE/LEVEL_MODELS.PAK") && !File.Exists(mapPath + "/RENDERABLE/LEVEL_MODELS.PAK.FZIP")) continue;
+                if (!File.Exists(mapPath + "/RENDERABLE/MODELS_LEVEL.BIN") && !File.Exists(mapPath + "/RENDERABLE/MODELS_LEVEL.BIN.GZ")) continue;
 
                 string[] split = galaxyBins[i].Replace("\\", "/").Split(new[] { "/DATA/ENV/" }, StringSplitOptions.None);
                 string file = split[split.Length - 1];

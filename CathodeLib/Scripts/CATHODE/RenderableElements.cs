@@ -4,6 +4,7 @@ using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
 using static CATHODE.Resources;
@@ -18,11 +19,14 @@ namespace CATHODE
         public List<Element> Entries = new List<Element>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
-        private List<Element> _writeList = new List<Element>();
-
         protected override bool HandlesLoadingManually => true;
         private Models _models;
         private Materials _materials;
+
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
+
+        private List<Element> _writeList = new List<Element>();
 
         public RenderableElements(string path, Models models, Materials materials) : base(path)
         {
@@ -48,7 +52,13 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(stream))
+            _compressed = _filepath == null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
+
+            Stream streamNew = stream;
+            if (_compressed)
+                streamNew = new GZipStream(stream, CompressionMode.Decompress);
+
+            using (BinaryReader reader = new BinaryReader(streamNew))
             {
                 List<Tuple<int, byte>> lods = new List<Tuple<int, byte>>();
                 int entryCount = reader.ReadInt32();
@@ -68,6 +78,8 @@ namespace CATHODE
                     for (int x = 0; x < lods[i].Item2; x++)
                         Entries[i].LODs.Add(Entries[lods[i].Item1 + x]);
             }
+            streamNew.Close();
+
             _writeList.AddRange(Entries);
             return true;
         }
@@ -79,13 +91,20 @@ namespace CATHODE
             {
                 entryBuffers[i] = SerializeElement(Entries[i]);
             });
-            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
+
+            Stream stream = File.OpenWrite(_filepath);
+            if (_compressed)
+                stream = new GZipStream(stream, CompressionMode.Compress);
+
+            using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 writer.BaseStream.SetLength(0);
                 writer.Write(Entries.Count);
                 for (int i = 0; i < entryBuffers.Length; i++)
                     writer.Write(entryBuffers[i]);
             }
+            stream.Close();
+
             _writeList.Clear();
             _writeList.AddRange(Entries);
             return true;

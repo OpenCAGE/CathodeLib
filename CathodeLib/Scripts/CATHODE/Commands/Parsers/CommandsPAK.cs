@@ -5,7 +5,6 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
-using static CATHODE.Resources;
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
@@ -17,9 +16,16 @@ namespace CATHODE.Scripting.Internal.Parsers
 {
     public static class CommandsPAK
     {
-        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
+        public static void Read(Stream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
         {
-            byte[] content = stream.ToArray(); //NOTE: this gives us quite a memory overhead, which should probably be changed.
+            byte[] content = null;
+            {
+                Stream temp = new MemoryStream();
+                stream.CopyTo(temp);
+                stream.Position = 0;
+                content = ((MemoryStream)temp).ToArray();
+            }
+
             using (BinaryReader reader = new BinaryReader(stream))
             {
                 //Read entry points

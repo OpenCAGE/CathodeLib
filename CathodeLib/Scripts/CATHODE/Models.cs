@@ -6,6 +6,8 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using CathodeLib.ObjectExtensions;
+using System.IO.Compression;
+
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #else
@@ -26,6 +28,9 @@ namespace CATHODE
         private Materials _materials;
         private Collisions _collisions;
         private MorphTargets _morphTargets;
+
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
 
         private List<CS2.Component.LOD.Submesh> _writeList = new List<CS2.Component.LOD.Submesh>();
 
@@ -77,13 +82,18 @@ namespace CATHODE
             if (_filepath == "")
                 return false;
 
-            string filepathBIN = GetBinPath();
-            if (!File.Exists(filepathBIN)) 
+            if (!File.Exists(GetBinPath())) 
                 return false;
+
+            _compressed = Path.GetExtension(_filepath).ToLower() == ".fzip";
+
+            Stream binStream = File.OpenRead(GetBinPath());
+            if (_compressed)
+                binStream = new GZipStream(binStream, CompressionMode.Decompress);
 
             Dictionary<CS2.Component.LOD.Submesh, int> boneOffsets = new Dictionary<CS2.Component.LOD.Submesh, int>();
             List<(CS2.Component.LOD.Submesh submesh, int childModelIndex, int childLODIndex, string cs2Name, string submeshName)> submeshMetadata = new List<(CS2.Component.LOD.Submesh, int, int, string, string)>();
-            using (BinaryReader bin = new BinaryReader(File.OpenRead(filepathBIN)))
+            using (BinaryReader bin = new BinaryReader(binStream))
             {
                 bin.BaseStream.Position += 4;
                 int modelCount = bin.ReadInt32();
@@ -183,7 +193,9 @@ namespace CATHODE
                     }
                 }
             }
+            binStream.Close();
 
+            //todo - fzip
             using (BinaryReader pak = new BinaryReader(File.OpenRead(_filepath)))
             {
                 //Read & check the header info from the PAK
@@ -293,7 +305,12 @@ namespace CATHODE
                 }
             }
 
-            using (BinaryWriter bin = new BinaryWriter(File.OpenWrite(GetBinPath())))
+            Stream binStream = File.OpenWrite(GetBinPath());
+            Stream binStreamCompressed = null;
+            if (_compressed)
+                binStreamCompressed = new GZipStream(binStream, CompressionMode.Compress);
+
+            using (BinaryWriter bin = new BinaryWriter(_compressed ? binStreamCompressed : binStream))
             {
                 bin.BaseStream.SetLength(0);
                 _writeList.Clear();
@@ -411,20 +428,20 @@ namespace CATHODE
                 for (int idx = 0; idx < submeshList.Count; idx++)
                 {
                     var (entry, component, lod, mesh, entryIdx, componentIdx, lodIdx, submeshIdx) = submeshList[idx];
-                    
+
                     byte[] buffer = metadataBuffers[idx];
-                    
+
                     int nextSubmeshIndex = (submeshIdx < lod.Submeshes.Count - 1) ? _writeList.Count + 1 : -1;
                     byte[] nextSubmeshBytes = BitConverter.GetBytes(nextSubmeshIndex);
                     Array.Copy(nextSubmeshBytes, 0, buffer, 48, 4);
-                    
+
                     int nextLODIndex = (submeshIdx == 0 && lodIdx < component.LODs.Count - 1) ? _writeList.Count + lod.Submeshes.Count : -1;
                     byte[] nextLODBytes = BitConverter.GetBytes(nextLODIndex);
                     Array.Copy(nextLODBytes, 0, buffer, 52, 4);
-                    
+
                     byte[] boneOffsetBytes = BitConverter.GetBytes(boneOffset);
                     Array.Copy(boneOffsetBytes, 0, buffer, 76, 4);
-                    
+
                     bin.Write(buffer);
                     boneOffset += mesh.Bones.Count;
                     _writeList.Add(mesh);
@@ -444,7 +461,10 @@ namespace CATHODE
                         bin.Write(boneBuffers[idx]);
                 }
             }
+            binStreamCompressed?.Close();
+            binStream.Close();
 
+            //todo - fzip
             using (BinaryWriter pak = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 int componentCount = 0;
@@ -608,7 +628,7 @@ namespace CATHODE
 
         private string GetBinPath()
         {
-            return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "MODELS_" + Path.GetFileName(_filepath).Substring(0, Path.GetFileName(_filepath).Length - 11) + ".BIN";
+            return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "MODELS_" + Path.GetFileName(_filepath).Substring(0, Path.GetFileName(_filepath).Length - 11) + ".BIN" + (_compressed ? ".GZ" : "");
         }
         #endregion
 

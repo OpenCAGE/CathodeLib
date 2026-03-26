@@ -18,11 +18,14 @@ namespace CATHODE
     /// </summary>
     public class Shaders : CathodeFile
     {
+        public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public List<Shader> Entries = new List<Shader>();
+
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
 
         private List<Shader> _writeList = new List<Shader>();
 
-        public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public Shaders(string path) : base(path) { }
 
         ~Shaders()
@@ -50,8 +53,10 @@ namespace CATHODE
             if (_filepath == "")
                 return false;
 
-            string filepathBIN = _filepath.Substring(0, _filepath.Length - 4) + "_BIN.PAK";
-            if (!File.Exists(filepathBIN)) return false;
+            if (!File.Exists(GetBinPath()))
+                return false;
+
+            _compressed = Path.GetExtension(_filepath).ToLower() == ".gz";
 
             List<byte[]> VertexShaders = new List<byte[]>();
             List<byte[]> PixelShaders = new List<byte[]>();
@@ -61,7 +66,8 @@ namespace CATHODE
             List<byte[]> ComputeShaders = new List<byte[]>();
 
             //This is all the raw shader data
-            List<Utilities.PAKContent> content = Utilities.ReadPAK(filepathBIN, FileIdentifiers.SHADER_DATA);
+            //todo - bring the pak loading into here, and support gzip
+            List<Utilities.PAKContent> content = Utilities.ReadPAK(GetBinPath(), FileIdentifiers.SHADER_DATA);
             {
                 int[] counts = new int[6];
                 using (BinaryReader reader = new BinaryReader(new MemoryStream(content[0].Data)))
@@ -217,6 +223,7 @@ namespace CATHODE
                     Data = AllShaders[i]
                 });
             }
+            //todo - bring the pak writing into here, and support gzip
             Utilities.WritePAK(filepathBIN, FileIdentifiers.SHADER_DATA, content);
 
             //Write out indexes
@@ -306,6 +313,11 @@ namespace CATHODE
 
                 return data.ToArray();
             }
+        }
+
+        private string GetBinPath()
+        {
+            return _filepath.Substring(0, _filepath.Length - 4) + "_BIN.PAK" + (_compressed ? ".GZ" : "");
         }
         #endregion
 

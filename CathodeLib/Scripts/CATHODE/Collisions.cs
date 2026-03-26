@@ -10,6 +10,8 @@ using System.Runtime.InteropServices;
 using static CATHODE.Movers;
 using static CATHODE.Models;
 using CathodeLib.ObjectExtensions;
+using System.IO.Compression;
+
 
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
@@ -28,11 +30,14 @@ namespace CATHODE
         public List<WeightedCollision> Entries = new List<WeightedCollision>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
+
+        private List<WeightedCollision> _writeList = new List<WeightedCollision>();
+
         public Collisions(string path) : base(path) { }
         public Collisions(MemoryStream stream, string path = "") : base(stream, path) { }
         public Collisions(byte[] data, string path = "") : base(data, path) { }
-
-        private List<WeightedCollision> _writeList = new List<WeightedCollision>();
 
         ~Collisions()
         {
@@ -43,7 +48,13 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
-            using (var reader = new BinaryReader(stream))
+            _compressed = _filepath == null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
+
+            Stream streamNew = stream;
+            if (_compressed)
+                streamNew = new GZipStream(stream, CompressionMode.Decompress);
+
+            using (var reader = new BinaryReader(streamNew))
             {
                 //remove these if exceptions dont throw
                 byte[] magic = reader.ReadBytes(4);
@@ -109,6 +120,8 @@ namespace CATHODE
                     }
                 }
             }
+            streamNew.Close();
+
             _writeList.AddRange(Entries);
             return true;
         }
@@ -177,7 +190,11 @@ namespace CATHODE
                 }
             }
 
-            using (var writer = new BinaryWriter(File.OpenWrite(_filepath)))
+            Stream stream = File.OpenWrite(_filepath);
+            if (_compressed)
+                stream = new GZipStream(stream, CompressionMode.Compress);
+
+            using (var writer = new BinaryWriter(stream))
             {
                 writer.BaseStream.SetLength(0);
                 writer.Write(new byte[4] { 0x0C, 0xA0, 0xFE, 0xEF });
@@ -200,6 +217,8 @@ namespace CATHODE
                 vertexData.ForEach(v => Utilities.Write(writer, v));
                 indexData.ForEach(i => writer.Write(i));
             }
+            stream.Close();
+
             _writeList.Clear();
             _writeList.AddRange(Entries);
             return true;

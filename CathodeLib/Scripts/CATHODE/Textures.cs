@@ -20,9 +20,12 @@ namespace CATHODE
         public List<TEX4> Entries = new List<TEX4>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
-        public Textures(string path) : base(path) { }
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
 
         public List<TEX4> _writeList = new List<TEX4>();
+
+        public Textures(string path) : base(path) { }
 
         ~Textures()
         {
@@ -44,11 +47,12 @@ namespace CATHODE
             if (_filepath == "")
                 return false;
 
-            string filepathBIN = GetBinPath();
-            if (!File.Exists(filepathBIN)) 
+            if (!File.Exists(GetBinPath())) 
                 return false;
 
-            using (BinaryReader bin = new BinaryReader(File.OpenRead(filepathBIN)))
+            _compressed = Path.GetExtension(_filepath).ToLower() == ".fzip";
+
+            using (BinaryReader bin = new BinaryReader(File.OpenRead(GetBinPath())))
             {
                 //Read the header info from the BIN
                 if ((FileIdentifiers)bin.ReadInt32() != FileIdentifiers.TEXTURE_DATA)
@@ -93,6 +97,7 @@ namespace CATHODE
                 }
             }
 
+            //todo - fzip
             using (BinaryReader pak = new BinaryReader(File.OpenRead(_filepath)))
             {
                 //Read & check the header info from the PAK
@@ -128,7 +133,6 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            //Write BIN file
             _writeList.Clear();
             using (BinaryWriter bin = new BinaryWriter(File.OpenWrite(GetBinPath())))
             {
@@ -161,7 +165,7 @@ namespace CATHODE
                 bin.Write(headerListBegin);
             }
 
-            //Update headers in PAK for all entries
+            //todo - fzip
             using (BinaryWriter pak = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 //Figure out number of non-null contents

@@ -7,6 +7,8 @@ using CATHODE.Scripting;
 using CathodeLib;
 using CathodeLib.ObjectExtensions;
 using System.Linq;
+using System.IO.Compression;
+
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
@@ -27,6 +29,9 @@ namespace CATHODE
         protected override bool HandlesLoadingManually => true;
         private RenderableElements _reds;
         private Resources _resources;
+
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
 
         private List<MOVER_DESCRIPTOR> _writeList = new List<MOVER_DESCRIPTOR>();
 
@@ -54,9 +59,15 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
+            _compressed = _filepath == null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
+
+            Stream streamNew = stream;
+            if (_compressed)
+                streamNew = new GZipStream(stream, CompressionMode.Decompress);
+
             //note: first 12 always renderable but not linked to commands -> they are always the same models across every level. is it the content of GLOBAL?
 
-            using (BinaryReader reader = new BinaryReader(stream))
+            using (BinaryReader reader = new BinaryReader(streamNew))
             {
                 reader.BaseStream.Position += 4;
                 int entryCount = reader.ReadInt32();
@@ -89,6 +100,7 @@ namespace CATHODE
                     Entries.Add(mvr);
                 }
             }
+            streamNew.Close();
 
             _writeList.AddRange(Entries);
             return true;
@@ -106,7 +118,12 @@ namespace CATHODE
             {
                 entryBuffers[i] = SerializeEntry(Entries[i]);
             });
-            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
+
+            Stream stream = File.OpenWrite(_filepath);
+            if (_compressed)
+                stream = new GZipStream(stream, CompressionMode.Compress);
+
+            using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 writer.BaseStream.SetLength(0);
                 writer.Write((Entries.Count * 320) + 32);
@@ -120,6 +137,8 @@ namespace CATHODE
                 for (int i = 0; i < entryBuffers.Length; i++)
                     writer.Write(entryBuffers[i]);
             }
+            stream.Close();
+
             _writeList.Clear();
             _writeList.AddRange(Entries);
             return true;

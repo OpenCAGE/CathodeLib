@@ -9,6 +9,8 @@ using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Threading.Tasks;
 using CATHODE.Scripting.Internal.Parsers;
+using System.IO.Compression;
+
 
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
@@ -31,6 +33,9 @@ namespace CATHODE
         private EnvironmentAnimations _envAnims;
         private CollisionMaps _colMaps;
         private RenderableElements _reds;
+
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
 
         public Commands(string path, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds) : base(path)
         {
@@ -78,14 +83,21 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
-            byte[] content = stream.ToArray();
+            _compressed = _filepath == null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
+
+            Stream streamNew = stream;
+            if (_compressed)
+                streamNew = new GZipStream(stream, CompressionMode.Decompress);
+
             switch (Path.GetExtension(_filepath).ToUpper())
             {
+                case ".PAK.GZ":
                 case ".PAK":
-                    CommandsPAK.Read(stream, out _entryPoints, out Entries, _envAnims, _colMaps, _reds);
+                    CommandsPAK.Read(streamNew, out _entryPoints, out Entries, _envAnims, _colMaps, _reds);
                     break;
+                case ".BIN.GZ":
                 case ".BIN":
-                    CommandsBIN.Read(stream, out _entryPoints, out Entries, _envAnims, _colMaps, _reds);
+                    CommandsBIN.Read(streamNew, out _entryPoints, out Entries, _envAnims, _colMaps, _reds);
                     break;
                 default:
                     return false;
@@ -225,20 +237,29 @@ namespace CATHODE
             byte[] content = null;
             switch (Path.GetExtension(_filepath).ToUpper())
             {
+                case ".PAK.GZ":
                 case ".PAK":
                     CommandsPAK.Write(_entryPoints, Entries, out content, _envAnims, _colMaps, _reds);
                     break;
+                case ".BIN.GZ":
                 case ".BIN":
                     CommandsBIN.Write(_entryPoints, Entries, out content, _envAnims, _colMaps, _reds);
                     break;
                 default:
                     return false;
             }
-            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
+
+            Stream stream = File.OpenWrite(_filepath);
+            if (_compressed)
+                stream = new GZipStream(stream, CompressionMode.Compress);
+
+            using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 writer.BaseStream.SetLength(0);
                 writer.Write(content);
             }
+            stream.Close();
+
             return true;
         }
         #endregion
