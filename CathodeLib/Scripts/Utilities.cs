@@ -3,6 +3,8 @@ using CATHODE.Scripting;
 using CathodeLib.ArrayExtensions;
 using Extensions.Data;
 using K4os.Compression.LZ4;
+using K4os.Compression.LZ4.Internal;
+using K4os.Compression.LZ4.Streams;
 using System;
 using System.Buffers.Binary;
 using System.Collections;
@@ -294,45 +296,29 @@ namespace CathodeLib
                 {
                     int uncompressedSize = uncompressedContent[i].Length;
                     if (uncompressedSize < 0) uncompressedSize = 0;
-                    int compressedSize = uncompressedSize == 0 ? 0 : LZ4Codec.MaximumOutputSize(uncompressedSize);
+                    int compressedSize = 0;
 
                     if (uncompressedSize != 0)
                     {
-                        using (MemoryStream lz4stream = new MemoryStream())
+                        using (var output = new MemoryStream())
                         {
-                            using (BinaryWriter lz4 = new BinaryWriter(lz4stream))
+                            var settings = new LZ4EncoderSettings
                             {
-                                int maxSize = LZ4Codec.MaximumOutputSize(uncompressedSize);
-                                int blockSize = maxSize <= 64 * 1024 ? 64 * 1024 : maxSize <= 256 * 1024 ? 256 * 1024 : maxSize <= 1024 * 1024 ? 1024 * 1024 : 4 * 1024 * 1024;
-                                lz4.Write(new byte[] { 0x04, 0x22, 0x4D, 0x18 });
-                                lz4.Write(new byte[] {
-                                0x64,
-                                maxSize <= 64 * 1024 ? (byte)0x40 : maxSize <= 256 * 1024 ? (byte)0x50 : maxSize <= 1024 * 1024 ? (byte)0x60 : (byte)0x70,
-                                blockSize == 0x40 ? (byte)0xA7 : blockSize == 0x50 ? (byte)0x08 : blockSize == 0x60 ? (byte)0x85 : (byte)0xB9
-                            });
+                                BlockSize = uncompressedSize <= 64 * 1024 ? Mem.K64 : uncompressedSize <= 256 * 1024 ? Mem.K256 : uncompressedSize <= 1024 * 1024 ? Mem.M1 : Mem.M4,
+                                ContentChecksum = true,
+                                BlockChecksum = false,
+                                ChainBlocks = true,
+                                CompressionLevel = LZ4Level.L12_MAX
+                            };
 
-                                for (int offset = 0; offset < uncompressedSize; offset += blockSize)
-                                {
-                                    int currentChunkSize = Math.Min(blockSize, uncompressedSize - offset);
-                                    byte[] chunkBuffer = new byte[currentChunkSize];
-                                    Array.Copy(uncompressedContent[i], offset, chunkBuffer, 0, currentChunkSize);
-
-                                    byte[] target = new byte[maxSize];
-                                    int compressedBytes = LZ4Codec.Encode(
-                                        chunkBuffer, 0, currentChunkSize,
-                                        target, 0, maxSize,
-                                        LZ4Level.L12_MAX
-                                    );
-
-                                    lz4.Write(compressedBytes);
-                                    lz4.Write(target, 0, compressedBytes);
-                                }
-
-                                lz4.Write(0);
-                                lz4.Write(XXHash.XXH32(uncompressedContent[i], 0));
+                            using (var lz4 = LZ4Stream.Encode(output, settings, leaveOpen: true))
+                            {
+                                lz4.Write(uncompressedContent[i], 0, uncompressedContent[i].Length);
                             }
-                            compressedSize = lz4stream.ToArray().Length;
-                            compressedContent.Add(lz4stream.ToArray());
+
+                            byte[] bytes = output.ToArray();
+                            compressedSize = bytes.Length;
+                            compressedContent.Add(bytes);
                         }
                     }
                     else
