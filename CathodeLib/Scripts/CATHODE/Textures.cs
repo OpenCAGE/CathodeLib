@@ -56,8 +56,7 @@ namespace CATHODE
             using (BinaryReader bin = new BinaryReader(binStream))
             {
                 //Read the header info from the BIN
-                if ((FileIdentifiers)bin.ReadInt32() != FileIdentifiers.TEXTURE_DATA)
-                    return false;
+                bin.BaseStream.Position += 4;
                 int entryCount = bin.ReadInt32();
                 if (entryCount == 0)
                     return true;
@@ -102,9 +101,7 @@ namespace CATHODE
             using (BinaryReader pak = new BinaryReader(pakStream))
             {
                 //Read & check the header info from the PAK
-                pak.BaseStream.Position += 4; //Skip unused
-                if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.ASSET_FILE) return false;
-                if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.TEXTURE_DATA) return false;
+                pak.BaseStream.Position += 12;
                 int entryCount = BigEndianUtils.ReadInt32(pak);
                 pak.BaseStream.Position += 16;
 
@@ -167,7 +164,7 @@ namespace CATHODE
                     _writeList.Add(Entries[i]);
                 }
                 bin.BaseStream.Position = 0;
-                bin.Write((int)FileIdentifiers.TEXTURE_DATA);
+                bin.Write(45);
                 bin.Write(entryCount);
                 bin.Write(headerListBegin);
             }
@@ -237,8 +234,8 @@ namespace CATHODE
                 //Write main header
                 pak.BaseStream.Position = 0;
                 pak.Write(0);
-                pak.Write(BigEndianUtils.FlipEndian((int)FileIdentifiers.ASSET_FILE));
-                pak.Write(BigEndianUtils.FlipEndian((int)FileIdentifiers.TEXTURE_DATA));
+                pak.Write(BigEndianUtils.FlipEndian(14));
+                pak.Write(BigEndianUtils.FlipEndian(45));
                 pak.Write(BigEndianUtils.FlipEndian(writeCount));
                 pak.Write(BigEndianUtils.FlipEndian(writeCount));
                 pak.Write(BigEndianUtils.FlipEndian(1));

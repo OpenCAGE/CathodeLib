@@ -471,113 +471,6 @@ namespace CathodeLib
             Global global = new Global(pathToAI + "\\DATA\\ENV\\GLOBAL\\", animPAK);
             return new Level(pathToAI + "\\DATA\\ENV\\" + level, global);
         }
-
-        /// <summary>
-        /// Read a PAK
-        /// </summary>
-        public static List<PAKContent> ReadPAK(string path, FileIdentifiers type)
-        {
-            List<PAKContent> content = new List<PAKContent>();
-            bool e = type == FileIdentifiers.MODEL_DATA;
-
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(path)))
-            {
-                reader.BaseStream.Position += 4;
-                if ((FileIdentifiers)BigEndianUtils.ReadInt32(reader, e) != FileIdentifiers.ASSET_FILE) return null;
-                if ((FileIdentifiers)BigEndianUtils.ReadInt32(reader, e) != type) return null;
-                int entryCount = BigEndianUtils.ReadInt32(reader, e);
-                int entryCountActual = BigEndianUtils.ReadInt32(reader, e);
-                reader.BaseStream.Position += 12;
-
-                int endOfHeaders = 32 + (entryCountActual * 48);
-
-                List<OffsetPair> info = new List<OffsetPair>();
-                for (int i = 0; i < entryCount; i++)
-                {
-                    reader.BaseStream.Position += 8;
-                    int length = BigEndianUtils.ReadInt32(reader, e);
-                    reader.BaseStream.Position += 4;
-                    int offset = BigEndianUtils.ReadInt32(reader, e);
-                    reader.BaseStream.Position += 12;
-                    int binIndex = BigEndianUtils.ReadInt32(reader, e);
-                    reader.BaseStream.Position += 12;
-
-                    info.Add(new OffsetPair() { GlobalOffset = offset + endOfHeaders, EntryCount = length });
-                    content.Add(new PAKContent() { BinIndex = binIndex });
-                }
-
-                for (int i = 0; i < entryCount; i++)
-                {
-                    reader.BaseStream.Position = info[i].GlobalOffset;
-                    content[i].Data = reader.ReadBytes(info[i].EntryCount);
-                }
-            }
-
-            return content;
-        }
-
-        /// <summary>
-        /// Write a PAK
-        /// </summary>
-        public static void WritePAK(string path, FileIdentifiers type, List<PAKContent> content)
-        {
-            bool e = type == FileIdentifiers.MODEL_DATA;
-
-            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(path)))
-            {
-                //Write content
-                int contentOffset = 32 + (content.Count * 48);
-                writer.BaseStream.SetLength(contentOffset);
-                writer.BaseStream.Position = contentOffset;
-                List<int> offsets = new List<int>();
-                List<int> lengths = new List<int>();
-                List<int> lengthsAligned = new List<int>();
-                for (int i = 0; i < content.Count; i++)
-                {
-                    offsets.Add((int)writer.BaseStream.Position - contentOffset);
-                    writer.Write(content[i].Data);
-                    lengths.Add((int)writer.BaseStream.Position - contentOffset - offsets[offsets.Count - 1]);
-                    Align(writer, 16);
-                    lengthsAligned.Add((int)writer.BaseStream.Position - contentOffset - offsets[offsets.Count - 1]);
-                }
-
-                //Write model headers
-                writer.BaseStream.Position = 32;
-                for (int i = 0; i < content.Count; i++)
-                {
-                    writer.Write(new byte[8]);
-                    writer.Write(e ? BigEndianUtils.FlipEndian((Int32)lengths[i]) : BitConverter.GetBytes((Int32)lengths[i]));
-                    writer.Write(e ? BigEndianUtils.FlipEndian((Int32)lengthsAligned[i]) : BitConverter.GetBytes((Int32)lengthsAligned[i]));
-                    writer.Write(e ? BigEndianUtils.FlipEndian((Int32)offsets[i]) : BitConverter.GetBytes((Int32)offsets[i]));
-
-                    writer.Write(new byte[5]);
-                    writer.Write(type == FileIdentifiers.MODEL_DATA ? new byte[2] { 0x01, 0x01 } : new byte[2] { 0x00, 0x01 });
-                    writer.Write(new byte[5]);
-
-                    writer.Write(e ? BigEndianUtils.FlipEndian((Int32)content[i].BinIndex) : BitConverter.GetBytes((Int32)content[i].BinIndex));
-                    writer.Write(new byte[12]);
-                }
-
-                //Write header
-                writer.BaseStream.Position = 0;
-                writer.Write(new byte[4]);
-                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)FileIdentifiers.ASSET_FILE) : BitConverter.GetBytes((Int32)FileIdentifiers.ASSET_FILE));
-                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)type) : BitConverter.GetBytes((Int32)type));
-                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)content.Count) : BitConverter.GetBytes((Int32)content.Count));
-                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)content.Count) : BitConverter.GetBytes((Int32)content.Count));
-                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)16) : BitConverter.GetBytes((Int32)16));
-                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)1) : BitConverter.GetBytes((Int32)1));
-
-                int unk = type == FileIdentifiers.MODEL_DATA ? 1 : 0;
-                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)unk) : BitConverter.GetBytes((Int32)unk));
-            }
-        }
-
-        public class PAKContent
-        {
-            public int BinIndex = 0;
-            public byte[] Data;
-        }
     }
 
     public static class MathsUtils
@@ -730,20 +623,6 @@ namespace CathodeLib
     {
         LEVEL,
         GLOBAL
-    }
-
-    public enum FileIdentifiers
-    {
-        HEADER_FILE = 96,
-        ASSET_FILE = 14,
-
-        SHADER_DATA = 3,
-        MODEL_DATA = 19,
-        TEXTURE_DATA = 45,
-
-        //From ABOUT.TXT (unsure where used)
-        STRING_FILE_VERSION = 6,
-        ENTITY_FILE_VERSION = 171,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

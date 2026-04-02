@@ -94,8 +94,7 @@ namespace CATHODE
             {
                 bin.BaseStream.Position += 4;
                 int modelCount = bin.ReadInt32();
-                if ((FileIdentifiers)bin.ReadInt16() != FileIdentifiers.HEADER_FILE) return false;
-                if ((FileIdentifiers)bin.ReadInt16() != FileIdentifiers.MODEL_DATA) return false;
+                bin.BaseStream.Position += 4;
                 int vbfCount = bin.ReadInt32();
 
                 //Read vertex buffer formats
@@ -195,10 +194,7 @@ namespace CATHODE
             using (BinaryReader pak = new BinaryReader(pakStream))
             {
                 //Read & check the header info from the PAK
-                pak.BaseStream.Position += 4;
-                if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.ASSET_FILE) return false;
-                if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.MODEL_DATA) return false;
-                pak.BaseStream.Position += 4;
+                pak.BaseStream.Position += 16;
                 int entryCount = BigEndianUtils.ReadInt32(pak);
                 pak.BaseStream.Position += 12;
 
@@ -315,8 +311,8 @@ namespace CATHODE
                 //Write header
                 Utilities.WriteString("XMDB", bin);
                 bin.Write(submeshCount);
-                bin.Write((Int16)FileIdentifiers.HEADER_FILE);
-                bin.Write((Int16)FileIdentifiers.MODEL_DATA);
+                bin.Write((Int16)96);
+                bin.Write((Int16)19);
                 bin.Write(vertexFormats.Count);
 
                 //Write vertex buffers
@@ -533,8 +529,8 @@ namespace CATHODE
                 //Write header
                 pak.BaseStream.Position = 0;
                 pak.Write(new byte[4]);
-                pak.Write(BigEndianUtils.FlipEndian((int)FileIdentifiers.ASSET_FILE));
-                pak.Write(BigEndianUtils.FlipEndian((int)FileIdentifiers.MODEL_DATA));
+                pak.Write(BigEndianUtils.FlipEndian(14));
+                pak.Write(BigEndianUtils.FlipEndian(19));
                 pak.Write(BigEndianUtils.FlipEndian(componentCount));
                 pak.Write(BigEndianUtils.FlipEndian(submeshCount));
                 pak.Write(BigEndianUtils.FlipEndian(16));
