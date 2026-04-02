@@ -195,8 +195,8 @@ namespace CATHODE
             }
             binStream.Close();
 
-            //todo - fzip
-            using (BinaryReader pak = new BinaryReader(File.OpenRead(_filepath)))
+            using (Stream pakStream = _compressed ? Utilities.FZipDecompressPAK(_filepath) : new MemoryStream(File.ReadAllBytes(_filepath)))
+            using (BinaryReader pak = new BinaryReader(pakStream))
             {
                 //Read & check the header info from the PAK
                 pak.BaseStream.Position += 4;

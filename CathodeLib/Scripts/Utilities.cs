@@ -344,6 +344,49 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// Decompress a FZIP PAK
+        /// </summary>
+        public static MemoryStream FZipDecompressPAK(string filepath)
+        {
+            using (MemoryStream outStream = new MemoryStream())
+            using (BinaryWriter outWriter = new BinaryWriter(outStream))
+            {
+                using (Stream stream = File.OpenRead(filepath))
+                using (BinaryReader reader = new BinaryReader(stream))
+                {
+                    reader.BaseStream.Position += 8;
+                    int count = reader.ReadInt32();
+                    reader.BaseStream.Position += 4;
+
+                    Dictionary<int, Tuple<int, int>> offsetLengthPairs = new Dictionary<int, Tuple<int, int>>();
+                    for (int i = 0; i < count; i++)
+                    {
+                        int offset = reader.ReadInt32();
+                        int compressedLength = reader.ReadInt32();
+                        reader.BaseStream.Position += 4;
+                        int uncompressedLength = reader.ReadInt32();
+                        offsetLengthPairs.Add(offset, new Tuple<int, int>(compressedLength, uncompressedLength));
+                        reader.BaseStream.Position += 4;
+                    }
+
+                    foreach (KeyValuePair<int, Tuple<int, int>> pair in offsetLengthPairs)
+                    {
+                        reader.BaseStream.Position = pair.Key;
+                        using (MemoryStream compressedStream = new MemoryStream(reader.ReadBytes(pair.Value.Item1)))
+                        using (Stream lz4 = LZ4Stream.Decode(compressedStream))
+                        {
+                            byte[] content = new byte[pair.Value.Item2];
+                            outWriter.Write(lz4.Read(content, 0, (int)lz4.Length));
+                            outWriter.Write(content);
+                        }
+                    }
+                }
+
+                return outStream;
+            }
+        }
+
+        /// <summary>
         /// Convert a model component to a renderable element using its default materials
         /// </summary>
         public static List<RenderableElements.Element> ToRenderableElements(this Models.CS2.Component model)

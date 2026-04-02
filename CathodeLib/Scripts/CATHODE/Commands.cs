@@ -83,7 +83,7 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
-            _compressed = _filepath == null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
+            _compressed = _filepath != null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
 
             Stream streamNew = stream;
             if (_compressed)
