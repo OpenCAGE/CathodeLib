@@ -4,9 +4,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using CathodeLib.ObjectExtensions;
-using System.IO.Compression;
 
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
@@ -301,14 +301,20 @@ namespace CATHODE
                 }
             }
 
-            Stream binStream = File.OpenWrite(GetBinPath());
-            Stream binStreamCompressed = null;
+            MemoryStream binMemory = null;
+            Stream binOut;
             if (_compressed)
-                binStreamCompressed = new GZipStream(binStream, CompressionMode.Compress);
-
-            using (BinaryWriter bin = new BinaryWriter(_compressed ? binStreamCompressed : binStream))
             {
-                bin.BaseStream.SetLength(0);
+                binMemory = new MemoryStream();
+                binOut = binMemory;
+            }
+            else
+                binOut = new FileStream(GetBinPath(), FileMode.Create, FileAccess.Write, FileShare.Read);
+
+            using (BinaryWriter bin = new BinaryWriter(binOut, Encoding.UTF8, leaveOpen: _compressed))
+            {
+                if (!_compressed)
+                    bin.BaseStream.SetLength(0);
                 _writeList.Clear();
 
                 //Write header
@@ -457,8 +463,12 @@ namespace CATHODE
                         bin.Write(boneBuffers[idx]);
                 }
             }
-            binStreamCompressed?.Close();
-            binStream.Close();
+
+            if (_compressed)
+            {
+                File.WriteAllBytes(GetBinPath(), Utilities.GZIPCompress(binMemory.ToArray()));
+                binMemory.Dispose();
+            }
 
             using (BinaryWriter pak = new BinaryWriter(File.OpenWrite(_filepath)))
             {

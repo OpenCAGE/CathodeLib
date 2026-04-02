@@ -412,6 +412,21 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// GZIP compress
+        /// </summary>
+        public static byte[] GZIPCompress(byte[] data)
+        {
+            if (data == null)
+                data = Array.Empty<byte>();
+            using (MemoryStream compressed = new MemoryStream())
+            {
+                using (var gzip = new GZipStream(compressed, CompressionMode.Compress, leaveOpen: true))
+                    gzip.Write(data, 0, data.Length);
+                return compressed.ToArray();
+            }
+        }
+
+        /// <summary>
         /// Convert a model component to a renderable element using its default materials
         /// </summary>
         public static List<RenderableElements.Element> ToRenderableElements(this Models.CS2.Component model)

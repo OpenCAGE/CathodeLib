@@ -4,8 +4,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
+using System.Text;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using static CATHODE.Models;
@@ -135,10 +135,6 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            Stream cstStream = File.OpenWrite(GetCstPath());
-            if (_compressed)
-                cstStream = new GZipStream(cstStream, CompressionMode.Compress);
-
             //Write constants
             int[] offsets = new int[5];
             List<int>[] matOffsets = new List<int>[5];
@@ -148,13 +144,15 @@ namespace CATHODE
                 matOffsets[i] = new List<int>();
                 matCounts[i] = new List<int>();
             }
-            using (BinaryWriter cst = new BinaryWriter(cstStream))
+
+            void WriteCst(BinaryWriter cst)
             {
-                cst.BaseStream.SetLength(0);
+                if (!_compressed)
+                    cst.BaseStream.SetLength(0);
                 for (int i = 0; i < 5; i++)
                 {
                     offsets[i] = (int)cst.BaseStream.Position;
-                    
+
                     for (int x = 0; x < Entries.Count; x++)
                     {
                         List<float> constants = null;
@@ -168,22 +166,35 @@ namespace CATHODE
                         }
                         matOffsets[i].Add(constants.Count == 0 ? 0 : ((int)cst.BaseStream.Position - offsets[i]) / 4);
                         matCounts[i].Add(constants.Count);
-                        
+
                         for (int z = 0; z < constants.Count; z++)
                             cst.Write(constants[z]);
                     }
                 }
             }
-            cstStream.Close();
 
-            Stream mtlStream = File.OpenWrite(_filepath);
             if (_compressed)
-                mtlStream = new GZipStream(mtlStream, CompressionMode.Compress);
+            {
+                using (MemoryStream cstMs = new MemoryStream())
+                {
+                    using (BinaryWriter cst = new BinaryWriter(cstMs, Encoding.UTF8, leaveOpen: true))
+                        WriteCst(cst);
+                    File.WriteAllBytes(GetCstPath(), Utilities.GZIPCompress(cstMs.ToArray()));
+                }
+            }
+            else
+            {
+                using (FileStream fs = new FileStream(GetCstPath(), FileMode.Create, FileAccess.Write, FileShare.Read))
+                using (BinaryWriter cst = new BinaryWriter(fs))
+                    WriteCst(cst);
+            }
 
             _writeList.Clear();
-            using (BinaryWriter mtl = new BinaryWriter(mtlStream))
+
+            void WriteMtl(BinaryWriter mtl)
             {
-                mtl.BaseStream.SetLength(0);
+                if (!_compressed)
+                    mtl.BaseStream.SetLength(0);
 
                 //Write header
                 mtl.Write(0); //placeholder file length (-4)
@@ -241,7 +252,22 @@ namespace CATHODE
                 mtl.BaseStream.Position = 36;
                 mtl.Write(namesLength);
             }
-            mtlStream.Close();
+
+            if (_compressed)
+            {
+                using (MemoryStream mtlMs = new MemoryStream())
+                {
+                    using (BinaryWriter mtl = new BinaryWriter(mtlMs, Encoding.UTF8, leaveOpen: true))
+                        WriteMtl(mtl);
+                    File.WriteAllBytes(_filepath, Utilities.GZIPCompress(mtlMs.ToArray()));
+                }
+            }
+            else
+            {
+                using (FileStream fs = new FileStream(_filepath, FileMode.Create, FileAccess.Write, FileShare.Read))
+                using (BinaryWriter mtl = new BinaryWriter(fs))
+                    WriteMtl(mtl);
+            }
 
             return true;
         }
@@ -294,7 +320,7 @@ namespace CATHODE
 
         private string GetCstPath()
         {
-            return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + Path.GetFileName(_filepath).Split('.')[0] + "CST" + (_compressed ? ".GZ" : "");
+            return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + Path.GetFileName(_filepath).Split('.')[0] + ".CST" + (_compressed ? ".GZ" : "");
         }
         #endregion
 

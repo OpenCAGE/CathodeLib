@@ -99,19 +99,21 @@ namespace CATHODE
                 entryBuffers[i] = SerializeEntry(Entries[i]);
             });
 
-            Stream stream = File.OpenWrite(_filepath);
-            if (_compressed)
-                stream = new GZipStream(stream, CompressionMode.Compress);
-
-            using (BinaryWriter writer = new BinaryWriter(stream))
+            using (FileStream fileStream = new FileStream(_filepath, FileMode.Create, FileAccess.Write, FileShare.Read))
             {
-                writer.BaseStream.SetLength(0);
-                writer.Write((Entries.Count) * 48);
-                writer.Write(Entries.Count);
-                for (int i = 0; i < entryBuffers.Length; i++)
-                    writer.Write(entryBuffers[i]);
+                Stream writeStream = fileStream;
+                if (_compressed)
+                    writeStream = new GZipStream(fileStream, CompressionMode.Compress);
+                using (BinaryWriter writer = new BinaryWriter(writeStream))
+                {
+                    if (!_compressed)
+                        writer.BaseStream.SetLength(0);
+                    writer.Write((Entries.Count) * 48);
+                    writer.Write(Entries.Count);
+                    for (int i = 0; i < entryBuffers.Length; i++)
+                        writer.Write(entryBuffers[i]);
+                }
             }
-            stream.Close();
 
             _writeList.Clear();
             _writeList.AddRange(Entries);

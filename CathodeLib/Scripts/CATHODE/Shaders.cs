@@ -173,9 +173,6 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            string filepathBIN = _filepath.Substring(0, _filepath.Length - 4) + "_BIN.PAK";
-            string filepathIDX = _filepath.Substring(0, _filepath.Length - 4) + "_IDX_REMAP.PAK";
-
             //Compile all shader data
             List<byte[]> VertexShaders = new List<byte[]>();
             List<byte[]> PixelShaders = new List<byte[]>();
@@ -227,7 +224,7 @@ namespace CATHODE
                 });
             }
             //todo - bring the pak writing into here, and support gzip
-            Utilities.WritePAK(filepathBIN, FileIdentifiers.SHADER_DATA, content);
+            Utilities.WritePAK(GetBinPath(), FileIdentifiers.SHADER_DATA, content);
 
             //Write out indexes
             content = new List<Utilities.PAKContent>();
@@ -239,7 +236,7 @@ namespace CATHODE
                     Data = BitConverter.GetBytes((Int32)i)
                 });
             }
-            Utilities.WritePAK(filepathIDX, FileIdentifiers.SHADER_DATA, content);
+            Utilities.WritePAK(GetIdxRemapPath(), FileIdentifiers.SHADER_DATA, content);
 
             //Write out metadata
             byte[][] shaderBuffers = new byte[Entries.Count][];
@@ -321,6 +318,11 @@ namespace CATHODE
         private string GetBinPath()
         {
             return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + Path.GetFileName(_filepath).Split('.')[0] + "_BIN.PAK" + (_compressed ? ".GZ" : "");
+        }
+
+        private string GetIdxRemapPath()
+        {
+            return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + Path.GetFileName(_filepath).Split('.')[0] + "_IDX_REMAP.PAK";
         }
         #endregion
 

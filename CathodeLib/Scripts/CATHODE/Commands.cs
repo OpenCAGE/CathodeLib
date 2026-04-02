@@ -87,8 +87,6 @@ namespace CATHODE
         {
             _compressed = _filepath != null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
 
-            string sdfsd = Path.GetExtension(_filepath).ToUpper();
-
             switch (Path.GetExtension(_filepath).ToUpper())
             {
                 case ".PAK":
@@ -236,11 +234,10 @@ namespace CATHODE
             byte[] content = null;
             switch (Path.GetExtension(_filepath).ToUpper())
             {
-                case ".PAK.GZ":
                 case ".PAK":
                     CommandsPAK.Write(_entryPoints, Entries, out content, _envAnims, _colMaps, _reds);
                     break;
-                case ".BIN.GZ":
+                case ".GZ":
                 case ".BIN":
                     CommandsBIN.Write(_entryPoints, Entries, out content, _envAnims, _colMaps, _reds);
                     break;
@@ -248,16 +245,18 @@ namespace CATHODE
                     return false;
             }
 
-            Stream stream = File.OpenWrite(_filepath);
-            if (_compressed)
-                stream = new GZipStream(stream, CompressionMode.Compress);
-
-            using (BinaryWriter writer = new BinaryWriter(stream))
+            using (FileStream fileStream = new FileStream(_filepath, FileMode.Create, FileAccess.Write, FileShare.Read))
             {
-                writer.BaseStream.SetLength(0);
-                writer.Write(content);
+                Stream writeStream = fileStream;
+                if (_compressed)
+                    writeStream = new GZipStream(fileStream, CompressionMode.Compress);
+                using (BinaryWriter writer = new BinaryWriter(writeStream))
+                {
+                    if (!_compressed)
+                        writer.BaseStream.SetLength(0);
+                    writer.Write(content);
+                }
             }
-            stream.Close();
 
             return true;
         }
