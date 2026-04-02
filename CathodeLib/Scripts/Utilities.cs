@@ -406,12 +406,12 @@ namespace CathodeLib
         public static void GZIPCompress(string filepath, bool appendExtension = false)
         {
             byte[] content = File.ReadAllBytes(filepath);
-            using (Stream stream = File.OpenWrite(filepath))
+            using (FileStream fs = File.Create(filepath))
             {
-                stream.SetLength(0);
-                using (GZipStream streamCompressed = new GZipStream(stream, CompressionLevel.Optimal))
+                using (GZipStream stream = new GZipStream(fs, CompressionLevel.Optimal))
                 {
-                    streamCompressed.Write(content, 0, content.Length);
+                    stream.Write(content, 0, content.Length);
+                    stream.Flush();
                 }
             }
         }

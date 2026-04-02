@@ -172,9 +172,6 @@ namespace CATHODE
                 bin.Write(headerListBegin);
             }
 
-            if (_compressed)
-                Utilities.GZIPCompress(GetBinPath());
-
             using (Stream pakStream = File.OpenWrite(_filepath))
             using (BinaryWriter pak = new BinaryWriter(pakStream))
             {
