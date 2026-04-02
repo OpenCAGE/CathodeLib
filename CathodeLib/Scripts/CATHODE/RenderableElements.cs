@@ -81,26 +81,28 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
+            if (_compressed && Path.GetExtension(_filepath).ToLower() != ".gz")
+                _filepath += ".gz";
+            else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
+                _filepath = _filepath.Substring(0, _filepath.Length - 3);
+
             byte[][] entryBuffers = new byte[Entries.Count][];
             Parallel.For(0, Entries.Count, i =>
             {
                 entryBuffers[i] = SerializeElement(Entries[i]);
             });
 
-            using (FileStream fileStream = new FileStream(_filepath, FileMode.Create, FileAccess.Write, FileShare.Read))
+            using (Stream stream = File.OpenWrite(_filepath))
+            using (BinaryWriter writer = new BinaryWriter(stream))
             {
-                Stream writeStream = fileStream;
-                if (_compressed)
-                    writeStream = new GZipStream(fileStream, CompressionMode.Compress);
-                using (BinaryWriter writer = new BinaryWriter(writeStream))
-                {
-                    if (!_compressed)
-                        writer.BaseStream.SetLength(0);
-                    writer.Write(Entries.Count);
-                    for (int i = 0; i < entryBuffers.Length; i++)
-                        writer.Write(entryBuffers[i]);
-                }
+                writer.BaseStream.SetLength(0);
+                writer.Write(Entries.Count);
+                for (int i = 0; i < entryBuffers.Length; i++)
+                    writer.Write(entryBuffers[i]);
             }
+
+            if (_compressed)
+                Utilities.GZIPCompress(_filepath);
 
             _writeList.Clear();
             _writeList.AddRange(Entries);

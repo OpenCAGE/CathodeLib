@@ -173,6 +173,11 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
+            if (_compressed && Path.GetExtension(_filepath).ToLower() != ".gz")
+                _filepath += ".gz";
+            else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
+                _filepath = _filepath.Substring(0, _filepath.Length - 3);
+
             //Compile all shader data
             List<byte[]> VertexShaders = new List<byte[]>();
             List<byte[]> PixelShaders = new List<byte[]>();

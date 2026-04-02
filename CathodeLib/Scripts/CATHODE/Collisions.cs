@@ -123,6 +123,11 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
+            if (_compressed && Path.GetExtension(_filepath).ToLower() != ".gz")
+                _filepath += ".gz";
+            else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
+                _filepath = _filepath.Substring(0, _filepath.Length - 3);
+
             var collisionData = new List<WeightedCollisionData>();
             var boneData = new List<BoneData>();
             var vertexData = new List<VertexData>();
@@ -185,36 +190,33 @@ namespace CATHODE
                 }
             }
 
-            using (FileStream fileStream = new FileStream(_filepath, FileMode.Create, FileAccess.Write, FileShare.Read))
+            using (Stream stream = File.OpenWrite(_filepath))
+            using (BinaryWriter writer = new BinaryWriter(stream))
             {
-                Stream writeStream = fileStream;
-                if (_compressed)
-                    writeStream = new GZipStream(fileStream, CompressionMode.Compress);
-                using (var writer = new BinaryWriter(writeStream))
-                {
-                    if (!_compressed)
-                        writer.BaseStream.SetLength(0);
-                    writer.Write(new byte[4] { 0x0C, 0xA0, 0xFE, 0xEF });
-                    writer.Write(2);
-                    writer.Write(0);
+                writer.BaseStream.SetLength(0);
+                writer.Write(new byte[4] { 0x0C, 0xA0, 0xFE, 0xEF });
+                writer.Write(2);
+                writer.Write(0);
 
-                    writer.Write(
-                        collisionData.Count * Marshal.SizeOf<WeightedCollisionData>() +
-                        boneData.Count * Marshal.SizeOf<BoneData>() +
-                        vertexData.Count * Marshal.SizeOf<VertexData>() +
-                        indexData.Count * sizeof(ushort)
-                    );
-                    writer.Write(collisionData.Count);
-                    writer.Write(boneData.Count);
-                    writer.Write(vertexData.Count);
-                    writer.Write(indexData.Count);
+                writer.Write(
+                    collisionData.Count * Marshal.SizeOf<WeightedCollisionData>() +
+                    boneData.Count * Marshal.SizeOf<BoneData>() +
+                    vertexData.Count * Marshal.SizeOf<VertexData>() +
+                    indexData.Count * sizeof(ushort)
+                );
+                writer.Write(collisionData.Count);
+                writer.Write(boneData.Count);
+                writer.Write(vertexData.Count);
+                writer.Write(indexData.Count);
 
-                    collisionData.ForEach(d => Utilities.Write(writer, d));
-                    boneData.ForEach(b => Utilities.Write(writer, b));
-                    vertexData.ForEach(v => Utilities.Write(writer, v));
-                    indexData.ForEach(i => writer.Write(i));
-                }
+                collisionData.ForEach(d => Utilities.Write(writer, d));
+                boneData.ForEach(b => Utilities.Write(writer, b));
+                vertexData.ForEach(v => Utilities.Write(writer, v));
+                indexData.ForEach(i => writer.Write(i));
             }
+
+            if (_compressed)
+                Utilities.GZIPCompress(_filepath);
 
             _writeList.Clear();
             _writeList.AddRange(Entries);

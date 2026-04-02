@@ -277,6 +277,11 @@ namespace CATHODE
         /// </summary>
         override protected bool SaveInternal()
         {
+            if (_compressed && Path.GetExtension(_filepath).ToLower() != ".fzip")
+                _filepath += ".fzip";
+            else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".fzip")
+                _filepath = _filepath.Substring(0, _filepath.Length - 5);
+
             int submeshCount = 0;
             for (int i = 0; i < Entries.Count; i++)
                 for (int z = 0; z < Entries[i].Components.Count; z++)
@@ -301,20 +306,10 @@ namespace CATHODE
                 }
             }
 
-            MemoryStream binMemory = null;
-            Stream binOut;
-            if (_compressed)
+            using (Stream binStream = File.OpenWrite(GetBinPath()))
+            using (BinaryWriter bin = new BinaryWriter(binStream))
             {
-                binMemory = new MemoryStream();
-                binOut = binMemory;
-            }
-            else
-                binOut = new FileStream(GetBinPath(), FileMode.Create, FileAccess.Write, FileShare.Read);
-
-            using (BinaryWriter bin = new BinaryWriter(binOut, Encoding.UTF8, leaveOpen: _compressed))
-            {
-                if (!_compressed)
-                    bin.BaseStream.SetLength(0);
+                bin.BaseStream.SetLength(0);
                 _writeList.Clear();
 
                 //Write header
@@ -465,12 +460,10 @@ namespace CATHODE
             }
 
             if (_compressed)
-            {
-                File.WriteAllBytes(GetBinPath(), Utilities.GZIPCompress(binMemory.ToArray()));
-                binMemory.Dispose();
-            }
+                Utilities.GZIPCompress(GetBinPath());
 
-            using (BinaryWriter pak = new BinaryWriter(File.OpenWrite(_filepath)))
+            using (Stream pakStream = File.OpenWrite(_filepath))
+            using (BinaryWriter pak = new BinaryWriter(pakStream))
             {
                 int componentCount = 0;
                 for (int i = 0; i < Entries.Count; i++)

@@ -15,6 +15,7 @@ using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
 
@@ -400,6 +401,22 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// GZIP compress
+        /// </summary>
+        public static void GZIPCompress(string filepath, bool appendExtension = false)
+        {
+            byte[] content = File.ReadAllBytes(filepath);
+            using (Stream stream = File.OpenWrite(filepath))
+            {
+                stream.SetLength(0);
+                using (GZipStream streamCompressed = new GZipStream(stream, CompressionLevel.Optimal))
+                {
+                    streamCompressed.Write(content, 0, content.Length);
+                }
+            }
+        }
+
+        /// <summary>
         /// GZIP decompress 
         /// </summary>
         public static MemoryStream GZIPDecompress(MemoryStream stream)
@@ -409,21 +426,6 @@ namespace CathodeLib
                 gzip.CopyTo(decompressed);
             decompressed.Position = 0;
             return decompressed;
-        }
-
-        /// <summary>
-        /// GZIP compress
-        /// </summary>
-        public static byte[] GZIPCompress(byte[] data)
-        {
-            if (data == null)
-                data = Array.Empty<byte>();
-            using (MemoryStream compressed = new MemoryStream())
-            {
-                using (var gzip = new GZipStream(compressed, CompressionMode.Compress, leaveOpen: true))
-                    gzip.Write(data, 0, data.Length);
-                return compressed.ToArray();
-            }
         }
 
         /// <summary>

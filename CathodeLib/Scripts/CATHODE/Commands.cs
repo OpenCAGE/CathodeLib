@@ -9,7 +9,6 @@ using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Threading.Tasks;
 using CATHODE.Scripting.Internal.Parsers;
-using System.IO.Compression;
 using System.Runtime.CompilerServices;
 
 
@@ -118,6 +117,11 @@ namespace CATHODE
             //Validate entry points and composite count
             if (Entries.Count == 0) return false;
             if (_entryPoints == null) _entryPoints = new ShortGuid[3];
+
+            if (_compressed && Path.GetExtension(_filepath).ToLower() != ".gz")
+                _filepath += ".gz";
+            else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
+                _filepath = _filepath.Substring(0, _filepath.Length - 3);
 
             #region FIX_POTENTIAL_ERRORS
             //If we have composites but the entry points are broken, correct them first!
@@ -245,18 +249,15 @@ namespace CATHODE
                     return false;
             }
 
-            using (FileStream fileStream = new FileStream(_filepath, FileMode.Create, FileAccess.Write, FileShare.Read))
+            using (Stream stream = File.OpenWrite(_filepath))
+            using (BinaryWriter writer = new BinaryWriter(stream))
             {
-                Stream writeStream = fileStream;
-                if (_compressed)
-                    writeStream = new GZipStream(fileStream, CompressionMode.Compress);
-                using (BinaryWriter writer = new BinaryWriter(writeStream))
-                {
-                    if (!_compressed)
-                        writer.BaseStream.SetLength(0);
-                    writer.Write(content);
-                }
+                writer.BaseStream.SetLength(0);
+                writer.Write(content);
             }
+
+            if (_compressed)
+                Utilities.GZIPCompress(_filepath);
 
             return true;
         }

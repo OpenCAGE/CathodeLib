@@ -134,8 +134,14 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
+            if (_compressed && Path.GetExtension(_filepath).ToLower() != ".fzip")
+                _filepath += ".fzip";
+            else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".fzip")
+                _filepath = _filepath.Substring(0, _filepath.Length - 5);
+
             _writeList.Clear();
-            using (BinaryWriter bin = new BinaryWriter(File.OpenWrite(GetBinPath())))
+            using (Stream binStream = File.OpenWrite(GetBinPath()))
+            using (BinaryWriter bin = new BinaryWriter(binStream))
             {
                 bin.BaseStream.SetLength(0);
                 bin.Write(new byte[12]);
@@ -166,7 +172,11 @@ namespace CATHODE
                 bin.Write(headerListBegin);
             }
 
-            using (BinaryWriter pak = new BinaryWriter(File.OpenWrite(_filepath)))
+            if (_compressed)
+                Utilities.GZIPCompress(GetBinPath());
+
+            using (Stream pakStream = File.OpenWrite(_filepath))
+            using (BinaryWriter pak = new BinaryWriter(pakStream))
             {
                 //Figure out number of non-null contents
                 int writeCount = 0;

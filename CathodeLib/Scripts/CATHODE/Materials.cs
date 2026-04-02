@@ -4,8 +4,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
-using System.Text;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using static CATHODE.Models;
@@ -135,6 +135,11 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
+            if (_compressed && Path.GetExtension(_filepath).ToLower() != ".gz")
+                _filepath += ".gz";
+            else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
+                _filepath = _filepath.Substring(0, _filepath.Length - 3);
+
             //Write constants
             int[] offsets = new int[5];
             List<int>[] matOffsets = new List<int>[5];
@@ -144,11 +149,10 @@ namespace CATHODE
                 matOffsets[i] = new List<int>();
                 matCounts[i] = new List<int>();
             }
-
-            void WriteCst(BinaryWriter cst)
+            using (Stream cstStream = File.OpenWrite(GetCstPath()))
+            using (BinaryWriter cst = new BinaryWriter(cstStream))
             {
-                if (!_compressed)
-                    cst.BaseStream.SetLength(0);
+                cst.BaseStream.SetLength(0);
                 for (int i = 0; i < 5; i++)
                 {
                     offsets[i] = (int)cst.BaseStream.Position;
@@ -174,27 +178,13 @@ namespace CATHODE
             }
 
             if (_compressed)
-            {
-                using (MemoryStream cstMs = new MemoryStream())
-                {
-                    using (BinaryWriter cst = new BinaryWriter(cstMs, Encoding.UTF8, leaveOpen: true))
-                        WriteCst(cst);
-                    File.WriteAllBytes(GetCstPath(), Utilities.GZIPCompress(cstMs.ToArray()));
-                }
-            }
-            else
-            {
-                using (FileStream fs = new FileStream(GetCstPath(), FileMode.Create, FileAccess.Write, FileShare.Read))
-                using (BinaryWriter cst = new BinaryWriter(fs))
-                    WriteCst(cst);
-            }
+                Utilities.GZIPCompress(GetCstPath());
 
             _writeList.Clear();
-
-            void WriteMtl(BinaryWriter mtl)
+            using (Stream mtlStream = File.OpenWrite(_filepath))
+            using (BinaryWriter mtl = new BinaryWriter(mtlStream))
             {
-                if (!_compressed)
-                    mtl.BaseStream.SetLength(0);
+                mtl.BaseStream.SetLength(0);
 
                 //Write header
                 mtl.Write(0); //placeholder file length (-4)
@@ -254,20 +244,7 @@ namespace CATHODE
             }
 
             if (_compressed)
-            {
-                using (MemoryStream mtlMs = new MemoryStream())
-                {
-                    using (BinaryWriter mtl = new BinaryWriter(mtlMs, Encoding.UTF8, leaveOpen: true))
-                        WriteMtl(mtl);
-                    File.WriteAllBytes(_filepath, Utilities.GZIPCompress(mtlMs.ToArray()));
-                }
-            }
-            else
-            {
-                using (FileStream fs = new FileStream(_filepath, FileMode.Create, FileAccess.Write, FileShare.Read))
-                using (BinaryWriter mtl = new BinaryWriter(fs))
-                    WriteMtl(mtl);
-            }
+                Utilities.GZIPCompress(_filepath);
 
             return true;
         }
