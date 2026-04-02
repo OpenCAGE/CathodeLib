@@ -82,17 +82,14 @@ namespace CATHODE
             if (_filepath == "")
                 return false;
 
+            _compressed = Path.GetExtension(_filepath).ToLower() == ".fzip";
+
             if (!File.Exists(GetBinPath())) 
                 return false;
 
-            _compressed = Path.GetExtension(_filepath).ToLower() == ".fzip";
-
-            Stream binStream = File.OpenRead(GetBinPath());
-            if (_compressed)
-                binStream = new GZipStream(binStream, CompressionMode.Decompress);
-
             Dictionary<CS2.Component.LOD.Submesh, int> boneOffsets = new Dictionary<CS2.Component.LOD.Submesh, int>();
             List<(CS2.Component.LOD.Submesh submesh, int childModelIndex, int childLODIndex, string cs2Name, string submeshName)> submeshMetadata = new List<(CS2.Component.LOD.Submesh, int, int, string, string)>();
+            using (MemoryStream binStream = _compressed ? Utilities.GZIPDecompress(new MemoryStream(File.ReadAllBytes(GetBinPath()))) : new MemoryStream(File.ReadAllBytes(GetBinPath())))
             using (BinaryReader bin = new BinaryReader(binStream))
             {
                 bin.BaseStream.Position += 4;
@@ -155,8 +152,8 @@ namespace CATHODE
                     submesh.MaxBounds = Utilities.Consume<Vector3>(bin);
                     submesh.MaxLODRange = bin.ReadSingle();
 
-                    int childModelIndex = bin.ReadInt32(); 
-                    int childLODIndex = bin.ReadInt32(); 
+                    int childModelIndex = bin.ReadInt32();
+                    int childLODIndex = bin.ReadInt32();
                     submesh.Material = _materials.GetAtWriteIndex(bin.ReadInt32());
 
                     submesh.RenderFlags = (CS2.Component.LOD.RenderingFlag)bin.ReadUInt32();
@@ -193,7 +190,6 @@ namespace CATHODE
                     }
                 }
             }
-            binStream.Close();
 
             using (Stream pakStream = _compressed ? Utilities.FZipDecompressPAK(_filepath) : new MemoryStream(File.ReadAllBytes(_filepath)))
             using (BinaryReader pak = new BinaryReader(pakStream))
@@ -631,7 +627,7 @@ namespace CATHODE
 
         private string GetBinPath()
         {
-            return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "MODELS_" + Path.GetFileName(_filepath).Substring(0, Path.GetFileName(_filepath).Length - 11) + ".BIN" + (_compressed ? ".GZ" : "");
+            return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "MODELS_" + Path.GetFileName(_filepath).Split('_')[0] + ".BIN" + (_compressed ? ".GZ" : "");
         }
         #endregion
 

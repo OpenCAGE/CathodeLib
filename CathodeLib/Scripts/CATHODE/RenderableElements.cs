@@ -54,11 +54,7 @@ namespace CATHODE
         {
             _compressed = _filepath != null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
 
-            Stream streamNew = stream;
-            if (_compressed)
-                streamNew = new GZipStream(stream, CompressionMode.Decompress);
-
-            using (BinaryReader reader = new BinaryReader(streamNew))
+            using (BinaryReader reader = new BinaryReader(_compressed ? Utilities.GZIPDecompress(stream) : stream))
             {
                 List<Tuple<int, byte>> lods = new List<Tuple<int, byte>>();
                 int entryCount = reader.ReadInt32();
@@ -78,7 +74,6 @@ namespace CATHODE
                     for (int x = 0; x < lods[i].Item2; x++)
                         Entries[i].LODs.Add(Entries[lods[i].Item1 + x]);
             }
-            streamNew.Close();
 
             _writeList.AddRange(Entries);
             return true;

@@ -61,13 +61,9 @@ namespace CATHODE
         {
             _compressed = _filepath != null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
 
-            Stream streamNew = stream;
-            if (_compressed)
-                streamNew = new GZipStream(stream, CompressionMode.Decompress);
-
             //note: first 12 always renderable but not linked to commands -> they are always the same models across every level. is it the content of GLOBAL?
 
-            using (BinaryReader reader = new BinaryReader(streamNew))
+            using (BinaryReader reader = new BinaryReader(_compressed ? Utilities.GZIPDecompress(stream) : stream))
             {
                 reader.BaseStream.Position += 4;
                 int entryCount = reader.ReadInt32();
@@ -100,7 +96,6 @@ namespace CATHODE
                     Entries.Add(mvr);
                 }
             }
-            streamNew.Close();
 
             _writeList.AddRange(Entries);
             return true;

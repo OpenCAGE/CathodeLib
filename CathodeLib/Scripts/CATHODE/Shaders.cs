@@ -53,10 +53,13 @@ namespace CATHODE
             if (_filepath == "")
                 return false;
 
+            _compressed = Path.GetExtension(_filepath).ToLower() == ".gz";
+
+            if (_compressed)
+                return false; //TEMP!! TODO!!
+
             if (!File.Exists(GetBinPath()))
                 return false;
-
-            _compressed = Path.GetExtension(_filepath).ToLower() == ".gz";
 
             List<byte[]> VertexShaders = new List<byte[]>();
             List<byte[]> PixelShaders = new List<byte[]>();
@@ -317,7 +320,7 @@ namespace CATHODE
 
         private string GetBinPath()
         {
-            return _filepath.Substring(0, _filepath.Length - 4) + "_BIN.PAK" + (_compressed ? ".GZ" : "");
+            return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + Path.GetFileName(_filepath).Split('.')[0] + "_BIN.PAK" + (_compressed ? ".GZ" : "");
         }
         #endregion
 

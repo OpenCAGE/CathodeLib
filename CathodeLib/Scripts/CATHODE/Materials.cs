@@ -64,20 +64,14 @@ namespace CATHODE
             if (_filepath == "")
                 return false;
 
+            _compressed = Path.GetExtension(_filepath).ToLower() == ".gz";
+
             if (!File.Exists(GetCstPath())) 
                 return false;
 
-            _compressed = Path.GetExtension(_filepath).ToLower() == ".gz";
-
-            Stream cstStream = File.OpenRead(GetCstPath());
-            if (_compressed)
-                cstStream = new GZipStream(cstStream, CompressionMode.Decompress);
-            Stream mtlStream = File.OpenRead(_filepath);
-            if (_compressed)
-                mtlStream = new GZipStream(mtlStream, CompressionMode.Decompress);
-
-            using (BinaryReader cst = new BinaryReader(cstStream))
-            using (BinaryReader mtl = new BinaryReader(mtlStream))
+            using (MemoryStream cstStream = new MemoryStream(File.ReadAllBytes(GetCstPath())))
+            using (BinaryReader cst = new BinaryReader(_compressed ? Utilities.GZIPDecompress(cstStream) : cstStream))
+            using (BinaryReader mtl = new BinaryReader(_compressed ? Utilities.GZIPDecompress(stream) : stream))
             {
                 mtl.BaseStream.Position += 8;
                 int materialOffset = mtl.ReadInt32();
@@ -135,8 +129,6 @@ namespace CATHODE
                     _writeList.Add(material);
                 }
             }
-            cstStream.Close();
-            mtlStream.Close();
 
             return true;
         }
@@ -302,7 +294,7 @@ namespace CATHODE
 
         private string GetCstPath()
         {
-            return _filepath.Substring(0, _filepath.Length - 3) + "CST" + (_compressed ? ".GZ" : "");
+            return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + Path.GetFileName(_filepath).Split('.')[0] + "CST" + (_compressed ? ".GZ" : "");
         }
         #endregion
 

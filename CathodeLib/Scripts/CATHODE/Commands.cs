@@ -10,6 +10,8 @@ using System.Runtime.InteropServices.ComTypes;
 using System.Threading.Tasks;
 using CATHODE.Scripting.Internal.Parsers;
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
+
 
 
 
@@ -85,19 +87,16 @@ namespace CATHODE
         {
             _compressed = _filepath != null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
 
-            Stream streamNew = stream;
-            if (_compressed)
-                streamNew = new GZipStream(stream, CompressionMode.Decompress);
+            string sdfsd = Path.GetExtension(_filepath).ToUpper();
 
             switch (Path.GetExtension(_filepath).ToUpper())
             {
-                case ".PAK.GZ":
                 case ".PAK":
-                    CommandsPAK.Read(streamNew, out _entryPoints, out Entries, _envAnims, _colMaps, _reds);
+                    CommandsPAK.Read(stream, out _entryPoints, out Entries, _envAnims, _colMaps, _reds);
                     break;
-                case ".BIN.GZ":
+                case ".GZ":
                 case ".BIN":
-                    CommandsBIN.Read(streamNew, out _entryPoints, out Entries, _envAnims, _colMaps, _reds);
+                    CommandsBIN.Read(_compressed ? Utilities.GZIPDecompress(stream) : stream, out _entryPoints, out Entries, _envAnims, _colMaps, _reds);
                     break;
                 default:
                     return false;

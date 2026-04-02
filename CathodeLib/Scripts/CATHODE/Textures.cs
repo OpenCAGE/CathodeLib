@@ -47,12 +47,13 @@ namespace CATHODE
             if (_filepath == "")
                 return false;
 
+            _compressed = Path.GetExtension(_filepath).ToLower() == ".fzip";
+
             if (!File.Exists(GetBinPath())) 
                 return false;
 
-            _compressed = Path.GetExtension(_filepath).ToLower() == ".fzip";
-
-            using (BinaryReader bin = new BinaryReader(File.OpenRead(GetBinPath())))
+            using (Stream binStream = File.OpenRead(GetBinPath()))
+            using (BinaryReader bin = new BinaryReader(binStream))
             {
                 //Read the header info from the BIN
                 if ((FileIdentifiers)bin.ReadInt32() != FileIdentifiers.TEXTURE_DATA)

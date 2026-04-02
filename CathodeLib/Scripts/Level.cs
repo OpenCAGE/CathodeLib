@@ -262,7 +262,9 @@ namespace CathodeLib
 
             string pathDATA = _filepath.Replace('\\', '/').Split(new string[] { "/DATA/ENV" }, StringSplitOptions.None)[0] + "/DATA";
             string levelName = Directory.GetParent(_filepath).Name;
-            XmlNodeList textDBsGlobal = new BML(pathDATA + "/LEVEL_TEXT_DATABASES.BML").Content.SelectNodes("//level_text_databases/level");
+            XmlDocument doc = new XmlDocument();
+            doc.LoadXml(File.ReadAllText(pathDATA + "/LEVEL_TEXT_DATABASES.XML"));
+            XmlNodeList textDBsGlobal = doc.SelectNodes("//level_text_databases/level");
             List<string> globalDBs = new List<string>();
             for (int i = 0; i < textDBsGlobal.Count; i++)
                 if (textDBsGlobal[i].Attributes["name"].Value.ToUpper() == levelName.ToUpper() || textDBsGlobal[i].Attributes["name"].Value == "globals")

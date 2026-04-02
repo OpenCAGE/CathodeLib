@@ -10,6 +10,7 @@ using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
@@ -348,8 +349,8 @@ namespace CathodeLib
         /// </summary>
         public static MemoryStream FZipDecompressPAK(string filepath)
         {
-            using (MemoryStream outStream = new MemoryStream())
-            using (BinaryWriter outWriter = new BinaryWriter(outStream))
+            MemoryStream outStream = new MemoryStream();
+            using (BinaryWriter outWriter = new BinaryWriter(outStream, Encoding.UTF8, leaveOpen: true))
             {
                 using (Stream stream = File.OpenRead(filepath))
                 using (BinaryReader reader = new BinaryReader(stream))
@@ -369,21 +370,45 @@ namespace CathodeLib
                         reader.BaseStream.Position += 4;
                     }
 
-                    foreach (KeyValuePair<int, Tuple<int, int>> pair in offsetLengthPairs)
+                    foreach (KeyValuePair<int, Tuple<int, int>> pair in offsetLengthPairs.OrderBy(p => p.Key))
                     {
+                        int compressedLength = pair.Value.Item1;
+                        int uncompressedLength = pair.Value.Item2;
                         reader.BaseStream.Position = pair.Key;
-                        using (MemoryStream compressedStream = new MemoryStream(reader.ReadBytes(pair.Value.Item1)))
+
+                        if (uncompressedLength == 0)
+                            continue;
+
+                        using (MemoryStream compressedStream = new MemoryStream(reader.ReadBytes(compressedLength)))
                         using (Stream lz4 = LZ4Stream.Decode(compressedStream))
                         {
-                            byte[] content = new byte[pair.Value.Item2];
-                            outWriter.Write(lz4.Read(content, 0, (int)lz4.Length));
+                            byte[] content = new byte[uncompressedLength];
+                            int totalRead = 0;
+                            while (totalRead < content.Length)
+                            {
+                                int read = lz4.Read(content, totalRead, content.Length - totalRead);
+                                totalRead += read;
+                            }
                             outWriter.Write(content);
                         }
                     }
                 }
 
+                outStream.Position = 0;
                 return outStream;
             }
+        }
+
+        /// <summary>
+        /// GZIP decompress 
+        /// </summary>
+        public static MemoryStream GZIPDecompress(MemoryStream stream)
+        {
+            MemoryStream decompressed = new MemoryStream();
+            using (var gzip = new GZipStream(stream, CompressionMode.Decompress, leaveOpen: true))
+                gzip.CopyTo(decompressed);
+            decompressed.Position = 0;
+            return decompressed;
         }
 
         /// <summary>

@@ -16,15 +16,9 @@ namespace CATHODE.Scripting.Internal.Parsers
 {
     public static class CommandsPAK
     {
-        public static void Read(Stream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
+        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
         {
-            byte[] content = null;
-            {
-                Stream temp = new MemoryStream();
-                stream.CopyTo(temp);
-                stream.Position = 0;
-                content = ((MemoryStream)temp).ToArray();
-            }
+            byte[] content = stream.ToArray();
 
             using (BinaryReader reader = new BinaryReader(stream))
             {

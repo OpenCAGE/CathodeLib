@@ -57,11 +57,7 @@ namespace CATHODE
         {
             _compressed = _filepath != null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
 
-            Stream streamNew = stream;
-            if (_compressed)
-                streamNew = new GZipStream(stream, CompressionMode.Decompress);
-
-            using (BinaryReader reader = new BinaryReader(streamNew))
+            using (BinaryReader reader = new BinaryReader(_compressed ? Utilities.GZIPDecompress(stream) : stream))
             {
                 //The way this works:
                 // - First 18 entries are empty
@@ -86,7 +82,6 @@ namespace CATHODE
                     Entries.Add(entry);
                 }
             }
-            streamNew.Close();
 
             _writeList.AddRange(Entries);
             return true;
