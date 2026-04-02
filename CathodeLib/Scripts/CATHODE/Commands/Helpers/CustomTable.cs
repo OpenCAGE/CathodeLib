@@ -59,6 +59,9 @@ namespace CathodeLib
         {
             //TODO: Perhaps we should write to a buffer, and then gzip the buffer, and then append that, instead?
 
+            if (GetFileType(filepath) == CustomTableFileType.COMMANDS_COMPRESSED)
+                filepath = filepath + ".META";
+
             if (!File.Exists(filepath))
                 File.WriteAllBytes(filepath, new byte[0]);
 
@@ -161,6 +164,9 @@ namespace CathodeLib
         /// </summary>
         public static Table ReadTable(string filepath, CustomTableType table)
         {
+            if (GetFileType(filepath) == CustomTableFileType.COMMANDS_COMPRESSED)
+                filepath = filepath + ".META";
+
             if (!File.Exists(filepath))
                 return null;
             return ReadTable(File.ReadAllBytes(filepath), table, GetFileType(filepath));
@@ -242,6 +248,8 @@ namespace CathodeLib
                     return CustomTableFileType.COMMANDS_PAK;
                 case "COMMANDS.BIN":
                     return CustomTableFileType.COMMANDS_BIN;
+                case "COMMANDS.BIN.GZ":
+                    return CustomTableFileType.COMMANDS_COMPRESSED;
             }
             return CustomTableFileType.STANDALONE;
         }

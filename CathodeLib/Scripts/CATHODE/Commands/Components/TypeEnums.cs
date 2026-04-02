@@ -1211,5 +1211,6 @@ namespace CATHODE.Scripting.Internal
         COMMANDS_PAK,
         COMMANDS_BIN,
         STANDALONE,
+        COMMANDS_COMPRESSED,
     }
 }
