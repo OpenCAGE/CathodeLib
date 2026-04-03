@@ -24,6 +24,29 @@ namespace CathodeLib
             EPIC_GAMES_STORE,
             GOG,
             WINDOWS_STORE,
+
+            UNKNOWN
+        }
+
+        /// <summary>
+        /// Figure out the current platform for the game
+        /// </summary>
+        public static Platform GetPlatform(string pathToAI)
+        {
+            if (File.Exists(pathToAI + "/STEAM_API.DLL")) 
+                return Platform.STEAM;
+
+            else if (File.Exists(pathToAI + "/EOSSDK-Win32-Shipping.dll"))
+                return Platform.EPIC_GAMES_STORE;
+
+            else if (File.Exists(pathToAI + "/GALAXY.DLL"))
+                return Platform.GOG;
+
+            else if (File.Exists(pathToAI + "/MicrosoftGame.config"))
+                return Platform.WINDOWS_STORE;
+
+            else
+                return Platform.UNKNOWN;
         }
 
         /// <summary>
