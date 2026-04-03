@@ -20,10 +20,16 @@ namespace CathodeLib
     {
         public enum Platform
         {
+            //Windows
             STEAM,
             EPIC_GAMES_STORE,
             GOG,
             WINDOWS_STORE,
+
+            //Others
+            SWITCH,
+            IOS_ANDROID,
+            MAC_LINUX,
 
             UNKNOWN
         }
@@ -33,7 +39,7 @@ namespace CathodeLib
         /// </summary>
         public static Platform GetPlatform(string pathToAI)
         {
-            if (File.Exists(pathToAI + "/STEAM_API.DLL")) 
+            if (File.Exists(pathToAI + "/STEAM_API.DLL"))
                 return Platform.STEAM;
 
             else if (File.Exists(pathToAI + "/EOSSDK-Win32-Shipping.dll"))
@@ -44,6 +50,15 @@ namespace CathodeLib
 
             else if (File.Exists(pathToAI + "/MicrosoftGame.config"))
                 return Platform.WINDOWS_STORE;
+
+            else if (File.Exists(pathToAI + "/data/global/animation_switch.pak"))
+                return Platform.SWITCH;
+
+            else if (File.Exists(pathToAI + "/data/font_config_switch.xml"))
+                return Platform.IOS_ANDROID;
+
+            else if (Directory.Exists(pathToAI + "/data/havok"))
+                return Platform.MAC_LINUX;
 
             else
                 return Platform.UNKNOWN;
