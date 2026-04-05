@@ -1410,6 +1410,19 @@ namespace CATHODE.Scripting
                     customNames.Add(entry.Key, entry.Value);
             }
         }
+
+        /// <summary>
+        /// Overwrites all Composite names with 'pretty' versions that aren't fully capitalised, as they are by default for PAK files.
+        /// </summary>
+        public void SetPrettyNames()
+        {
+            foreach (Composite composite in _commands.Entries)
+            {
+                string prettyPath = CustomTable.Vanilla.CompositePaths.GetPrettyPath(composite.shortGUID);
+                if (prettyPath != "") composite.name = prettyPath;
+                composite.name = composite.name.Replace("/", "\\");
+            }
+        }
         #endregion
 
         #region Composite Modification Info

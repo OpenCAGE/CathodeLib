@@ -14,23 +14,10 @@ namespace CATHODE.Scripting.Internal.Parsers
 {
     public static class CommandsBIN
     {
-        private static ShortGuid NAME_GUID;
-        private static ShortGuid ANIM_TRACK_TYPE_GUID;
-        private static ShortGuid PHYSICS_SYSTEM_GUID;
-        private static ShortGuid RESOURCE_GUID;
-
 #if COMPILE_NAME_LIST
         public static Dictionary<ShortGuid, Dictionary<ShortGuid, string>> EntityNames = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>();
         public static Dictionary<ShortGuid, string> ParameterNames = new Dictionary<ShortGuid, string>();
 #endif
-
-        static CommandsBIN()
-        {
-            NAME_GUID = ShortGuidUtils.Generate("name");
-            ANIM_TRACK_TYPE_GUID = ShortGuidUtils.Generate("ANIM_TRACK_TYPE");
-            PHYSICS_SYSTEM_GUID = ShortGuidUtils.Generate("PhysicsSystem");
-            RESOURCE_GUID = ShortGuidUtils.Generate("resource");
-        }
 
         public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
         {
@@ -406,7 +393,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     if (cache.Item2.TryGetValue(entityID, out Entity ent))
                                     {
                                         if (paramData != null) //Skipping nulls: links seem to get added as null parameters
-                                            if (paramName != NAME_GUID || (ent.variant == EntityVariant.FUNCTION && ((FunctionEntity)ent).function.AsFunctionType == FunctionType.Zone)) //Skipping "name" parameter as this is handled by our name table
+                                            if (paramName != ShortGuids.name || (ent.variant == EntityVariant.FUNCTION && ((FunctionEntity)ent).function.AsFunctionType == FunctionType.Zone)) //Skipping "name" parameter as this is handled by our name table
                                                 ent.AddParameter(paramName, paramData);
                                     }
                                 }
@@ -480,7 +467,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         {
                                             foreach (Parameter parameter in entity.parameters)
                                             {
-                                                if (parameter.name != RESOURCE_GUID) continue;
+                                                if (parameter.name != ShortGuids.resource) continue;
                                                 if (((cResource)parameter.content).shortGUID == resource.resource_id)
                                                 {
                                                     ((cResource)parameter.content).value.Add(resource);
@@ -493,7 +480,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         {
                                             if (resource.resource_type == ResourceType.DYNAMIC_PHYSICS_SYSTEM)
                                             {
-                                                FunctionEntity physEnt = cache.Item1.functions.FirstOrDefault(o => o.function == PHYSICS_SYSTEM_GUID);
+                                                FunctionEntity physEnt = cache.Item1.functions.FirstOrDefault(o => o.function == ShortGuids.PhysicsSystem);
                                                 if (physEnt != null)
                                                 {
                                                     physEnt.resources.Add(resource);
@@ -742,7 +729,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                 commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
 
                                 offset = (int)bufferWriter.BaseStream.Position;
-                                Utilities.Write<ShortGuid>(bufferWriter, ANIM_TRACK_TYPE_GUID);
+                                Utilities.Write<ShortGuid>(bufferWriter, ShortGuids.ANIM_TRACK_TYPE);
                                 bufferWriter.Write((int)CAGEAnimation.TrackType.FLOAT);
                                 commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_ENUM | 8, offset));
 
@@ -788,7 +775,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                 commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
 
                                 offset = (int)bufferWriter.BaseStream.Position;
-                                Utilities.Write<ShortGuid>(bufferWriter, ANIM_TRACK_TYPE_GUID);
+                                Utilities.Write<ShortGuid>(bufferWriter, ShortGuids.ANIM_TRACK_TYPE);
                                 bufferWriter.Write((int)(eventTrack.keyframes.Count == 0 ? CAGEAnimation.TrackType.INVALID : eventTrack.keyframes[0].track_type));
                                 commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_ENUM | 8, offset));
 
