@@ -653,6 +653,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                     for (int i = 0; i < Entries.Count; i++)
                     {
                         int scriptStartPos = (int)writer.BaseStream.Position / 4;
+                        int firstInst = -1;
+                        int lastInst = -1;
 
                         Utilities.Write<ShortGuid>(writer, ShortGuidUtils.Generate(Entries[i].name, false));
                         for (int x = 0; x < Entries[i].name.Length; x++) writer.Write(Entries[i].name[x]);
@@ -779,10 +781,17 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     {
                                         var functions = Entries[i].functions_dictionary.Values.ToList();
                                         scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, functions.Count);
-                                        foreach (var function in functions)
+                                        for (int z = 0; z < functions.Count; z++)
                                         {
-                                            writer.Write(function.shortGUID.AsUInt32);
-                                            writer.Write(function.function.AsUInt32);
+                                            if (!functions[z].function.IsFunctionType)
+                                            {
+                                                if (firstInst == -1)
+                                                    firstInst = z;
+                                                lastInst = z;
+                                            }
+
+                                            writer.Write(functions[z].shortGUID.AsUInt32);
+                                            writer.Write(functions[z].function.AsUInt32);
                                         }
                                         break;
                                     }
@@ -1022,9 +1031,9 @@ namespace CATHODE.Scripting.Internal.Parsers
                             if (x == 0) Utilities.Write<ShortGuid>(writer, Entries[i].shortGUID);
                         }
 
-                        //Write function count (TODO: sometimes this count excludes some entities in the vanilla paks - why?)
-                        writer.Write(Entries[i].functions_dictionary.Values.Count(o => o.function.IsFunctionType));
-                        writer.Write(Entries[i].functions_dictionary.Count);
+                        //Write first/last composite instance in array
+                        writer.Write(firstInst == -1 ? 0 : firstInst);
+                        writer.Write(lastInst == -1 ? 0 : lastInst);
                     }
                     #endregion
 
