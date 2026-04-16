@@ -38,6 +38,9 @@ namespace CATHODE.Scripting
             _nameID = ShortGuidUtils.Generate("name").AsUInt32;
             _commands = commands;
 
+            if (_commands == null)
+                return;
+
             _commands.OnLoadSuccess += LoadInfo;
             _commands.OnSaveSuccess += SaveInfo;
 
@@ -422,9 +425,9 @@ namespace CATHODE.Scripting
             foreach (var kvp in composite.functions_dictionary)
             {
                 var function = kvp.Value;
-                switch (ShortGuidUtils.FindString(function.function))
+                switch (function.function.AsFunctionType)
                 {
-                    case "TriggerSequence":
+                    case FunctionType.TriggerSequence:
                         // TriggerSequence sequences must point to entities that still exist
                         TriggerSequence trig = (TriggerSequence)function;
                         var sequenceToRemove = new List<TriggerSequence.SequenceEntry>();
@@ -442,7 +445,7 @@ namespace CATHODE.Scripting
                             trig.sequence.Remove(entry);
                         }
                         break;
-                    case "CAGEAnimation":
+                    case FunctionType.CAGEAnimation:
                         // CAGEAnimation connections must point to entities that still exist
                         CAGEAnimation anim = (CAGEAnimation)function;
                         var connectionsToRemove = new List<CAGEAnimation.Connection>();
