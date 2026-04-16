@@ -505,6 +505,10 @@ namespace CathodeLib
 
                 flowgraph.SupportedLevels = (FlowgraphMeta.SupportedLevel)reader.ReadInt64();
 
+                //Bit of a bodge: since the flag is never gonna be big enough for 64, use the last byte as a separate flag
+                reader.BaseStream.Position -= 1;
+                flowgraph.AlwaysUse = reader.ReadBoolean();
+
                 int nodeMetaCount = reader.ReadInt32();
                 for (int x = 0; x < nodeMetaCount; x++)
                 {
@@ -559,6 +563,9 @@ namespace CathodeLib
 
                 writer.Write((long)flowgraphs[i].SupportedLevels);
 
+                writer.BaseStream.Position -= 1;
+                writer.Write(flowgraphs[i].AlwaysUse);
+
                 writer.Write(flowgraphs[i].Nodes.Count);
                 for (int x = 0; x < flowgraphs[i].Nodes.Count; x++)
                 {
@@ -606,7 +613,9 @@ namespace CathodeLib
             public PointF CanvasPosition;
             public float CanvasScale;
 
-            public SupportedLevel SupportedLevels; //NOTE: Only used on vanilla layouts
+            //NOTE: Only used on vanilla layouts
+            public SupportedLevel SupportedLevels; //Defines flags for supported levels
+            public bool AlwaysUse = false; //If this is true, ignore the flag, it can apply to any
 
             public List<NodeMeta> Nodes = new List<NodeMeta>();
 
