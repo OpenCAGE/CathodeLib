@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using CathodeLib;
 using System.IO;
 using System.Linq;
+using System.Xml.Linq;
+
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
@@ -14,17 +16,13 @@ namespace CATHODE.Scripting.Internal.Parsers
 {
     public static class CommandsBIN
     {
-#if COMPILE_NAME_LIST
         public static Dictionary<ShortGuid, Dictionary<ShortGuid, string>> EntityNames = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>();
         public static Dictionary<ShortGuid, string> ParameterNames = new Dictionary<ShortGuid, string>();
-#endif
 
         public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
         {
-#if COMPILE_NAME_LIST
             EntityNames.Clear();
             ParameterNames.Clear();
-#endif
 
             EntryPoints = new ShortGuid[3];
             Entries = new List<Composite>();
@@ -65,6 +63,13 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         Entries.Add(composite);
                                         entityCache.Add(composite.shortGUID, new Tuple<Composite, Dictionary<ShortGuid, Entity>>(composite, new Dictionary<ShortGuid, Entity>()));
                                     }
+                                    else
+                                    {
+                                        string formattedName = 
+                                            composite.name.Contains("\\Build\\Library\\") ? composite.name.Split(new string[] { "\\Build\\Library\\" }, StringSplitOptions.None)[1] :
+                                            composite.name.Contains("\\Build\\Levels\\") ? Path.GetFileName(composite.name) : composite.name;
+                                        Entries.FirstOrDefault(o => o.shortGUID == composite.shortGUID).name = formattedName;
+                                    }
                                 }
                                 break;
                             case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_ROOT:
@@ -91,12 +96,10 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     func.shortGUID = guid;
                                     func.function = function;
                                     string name = Utilities.ReadString(reader, command_entries[i + 4].Item2);
-#if COMPILE_NAME_LIST
                                     if (!EntityNames.ContainsKey(cache.Item1.shortGUID))
                                         EntityNames.Add(cache.Item1.shortGUID, new Dictionary<ShortGuid, string>());
                                     if (!EntityNames[cache.Item1.shortGUID].ContainsKey(guid) && name != "")
                                         EntityNames[cache.Item1.shortGUID].Add(guid, name);
-#endif
                                     if (!cache.Item2.ContainsKey(func.shortGUID))
                                     {
                                         cache.Item1.functions_dictionary.Add(func.shortGUID, func);
@@ -145,10 +148,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         name = Utilities.Consume<ShortGuid>(reader, command_entries[i + 4].Item2)
                                     };
                                     string name = Utilities.ReadString(reader, command_entries[i + 5].Item2);
-#if COMPILE_NAME_LIST
                                     if (!ParameterNames.ContainsKey(var.name) && name != "")
                                         ParameterNames.Add(var.name, name);
-#endif
                                     if (!cache.Item2.ContainsKey(var.shortGUID))
                                     {
                                         cache.Item1.variables_dictionary.Add(var.shortGUID, var);
@@ -189,7 +190,6 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         cache.Item1.functions_dictionary.Add(trig.shortGUID, trig);
                                     }
                                     string name = Utilities.ReadString(reader, command_entries[i + 4].Item2);
-#if COMPILE_NAME_LIST
                                     ShortGuid guid = ShortGuidUtils.Generate(name);
                                     if (!ParameterNames.ContainsKey(guid) && name != "")
                                     {
@@ -197,7 +197,6 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         ParameterNames.Add(ShortGuidUtils.Generate(name + "_relay"), name + "_relay");
                                         ParameterNames.Add(ShortGuidUtils.Generate(name + "_finished"), name + "_finished");
                                     }
-#endif
                                     trig.methods.Add(new TriggerSequence.MethodEntry(name));
                                 }
                                 break;
@@ -356,6 +355,13 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_FILE_PATH:
                                         case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_STRING:
                                             paramData = new cString(Utilities.ReadString(reader)); // ((cString)paramData).value.Length + 1 == length
+                                            if (paramName == ShortGuids.name)
+                                            {
+                                                if (!EntityNames.ContainsKey(cache.Item1.shortGUID))
+                                                    EntityNames.Add(cache.Item1.shortGUID, new Dictionary<ShortGuid, string>());
+                                                if (!EntityNames[cache.Item1.shortGUID].ContainsKey(entityID) && ((cString)paramData).value != "")
+                                                    EntityNames[cache.Item1.shortGUID].Add(entityID, ((cString)paramData).value);
+                                            }
                                             break;
                                         case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_BOOL:
                                             paramData = new cBool(reader.ReadBoolean());
