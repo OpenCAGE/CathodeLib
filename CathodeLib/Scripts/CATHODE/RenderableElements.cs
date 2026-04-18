@@ -194,7 +194,7 @@ namespace CATHODE
                 if (newElement.ModelLocation == PakLocation.GLOBAL || newElement.MaterialLocation == PakLocation.GLOBAL)
                     throw new Exception("Unexpected model/material location - GLOBAL is unsupported.");
                 
-                Models.CS2 cs2 = _models.ImportEntry(sourceModels.FindModelForSubmesh(elements[i].Model)); //We add the WHOLE cs2, if it doesn't exist, even though we only point to a submesh of it
+                Models.CS2 cs2 = _models.ImportEntry(sourceModels.FindModel(elements[i].Model)); //We add the WHOLE cs2, if it doesn't exist, even though we only point to a submesh of it
                 newElement.Model = cs2.GetSubmesh(newElement.Model);
                 newElement.Material = _materials.ImportEntry(newElement.Material);
 

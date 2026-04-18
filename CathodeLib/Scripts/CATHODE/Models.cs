@@ -632,9 +632,30 @@ namespace CATHODE
 
         #region HELPERS
         /// <summary>
+        /// Find a model for a component
+        /// </summary>
+        public CS2 FindModel(CS2.Component component)
+        {
+            for (int i = 0; i < Entries.Count; i++)
+                if (Entries[i].Components.Contains(component))
+                    return Entries[i];
+            return null;
+        }
+        /// <summary>
+        /// Find a model that contains a given LOD
+        /// </summary>
+        public CS2 FindModel(CS2.Component.LOD lod)
+        {
+            for (int i = 0; i < Entries.Count; i++)
+                for (int z = 0; z < Entries[i].Components.Count; z++)
+                    if (Entries[i].Components[z].LODs.Contains(lod))
+                        return Entries[i];
+            return null;
+        }
+        /// <summary>
         /// Find a model that contains a given submesh
         /// </summary>
-        public CS2 FindModelForSubmesh(CS2.Component.LOD.Submesh submesh)
+        public CS2 FindModel(CS2.Component.LOD.Submesh submesh)
         {
             for (int i = 0; i < Entries.Count; i++)
                 for (int z = 0; z < Entries[i].Components.Count; z++)
@@ -644,9 +665,20 @@ namespace CATHODE
             return null;
         }
         /// <summary>
+        /// Find a component of a model that contains the given LOD
+        /// </summary>
+        public CS2.Component FindModelComponent(CS2.Component.LOD lod)
+        {
+            for (int i = 0; i < Entries.Count; i++)
+                for (int z = 0; z < Entries[i].Components.Count; z++)
+                    if (Entries[i].Components[z].LODs.Contains(lod))
+                        return Entries[i].Components[z];
+            return null;
+        }
+        /// <summary>
         /// Find a component of a model that contains a submesh
         /// </summary>
-        public CS2.Component FindModelComponentForSubmesh(CS2.Component.LOD.Submesh submesh)
+        public CS2.Component FindModelComponent(CS2.Component.LOD.Submesh submesh)
         {
             for (int i = 0; i < Entries.Count; i++)
                 for (int z = 0; z < Entries[i].Components.Count; z++)
@@ -656,19 +688,9 @@ namespace CATHODE
             return null;
         }
         /// <summary>
-        /// Find a model for a component
-        /// </summary>
-        public CS2 FindModelForComponent(CS2.Component component)
-        {
-            for (int i = 0; i < Entries.Count; i++)
-                if (Entries[i].Components.Contains(component))
-                    return Entries[i];
-            return null;
-        }
-        /// <summary>
         /// Find a LOD that contains a given submesh
         /// </summary>
-        public CS2.Component.LOD FindModelLODForSubmesh(CS2.Component.LOD.Submesh submesh)
+        public CS2.Component.LOD FindModelLOD(CS2.Component.LOD.Submesh submesh)
         {
             for (int i = 0; i < Entries.Count; i++)
                 for (int z = 0; z < Entries[i].Components.Count; z++)
