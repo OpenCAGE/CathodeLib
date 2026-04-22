@@ -25,8 +25,8 @@ namespace CathodeLib
                 byte[] content = File.ReadAllBytes(UnityEngine.Application.streamingAssetsPath + "/info.dat");
 #else
                 byte[] content = CathodeLib.Properties.Resources.info;
-                if (File.Exists("LocalDB\\info.dat"))
-                    content = File.ReadAllBytes("LocalDB\\info.dat");
+                if (File.Exists("data/info.dat"))
+                    content = File.ReadAllBytes("data/info.dat");
 #endif
 
                 using (MemoryStream stream = new MemoryStream())
