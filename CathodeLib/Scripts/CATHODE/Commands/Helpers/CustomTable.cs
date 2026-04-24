@@ -145,6 +145,9 @@ namespace CathodeLib
                             case CustomTableType.COMPOSITE_PAGE_HISTORY:
                                 ((CompositePageHistoryTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomTableType.FLAGS:
+                                ((FlagTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
 #if DEBUG
                         if (tableType == table)
@@ -234,6 +237,9 @@ namespace CathodeLib
                         break;
                     case CustomTableType.COMPOSITE_PAGE_HISTORY:
                         data = new CompositePageHistoryTable(reader);
+                        break;
+                    case CustomTableType.FLAGS:
+                        data = new FlagTable(reader);
                         break;
                 }
             }
@@ -1186,6 +1192,35 @@ namespace CathodeLib
                 Utilities.Write<ShortGuid>(writer, composites.Key);
                 writer.Write(composites.Value);
             }
+        }
+    }
+    public class FlagTable : CustomTable.Table
+    {
+        public FlagTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.FLAGS;
+        }
+
+        public bool HasBeenModified = false;
+
+        public override void Read(BinaryReader reader)
+        {
+            int metadataCount = reader.ReadInt32();
+            for (int i = 0; i < metadataCount; i++)
+            {
+                switch (i)
+                {
+                    case 0:
+                        HasBeenModified = reader.ReadBoolean();
+                        break;
+                }
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(1);
+            writer.Write(HasBeenModified);
         }
     }
 }

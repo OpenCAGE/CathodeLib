@@ -29,6 +29,9 @@ namespace CATHODE.Scripting
         private CompositeModificationInfoTable _modificationInfo = new CompositeModificationInfoTable();
         private CompositePinInfoTable _pinInfo = new CompositePinInfoTable();
 
+        public FlagTable Flags => _flagTable;
+        private FlagTable _flagTable = new FlagTable();
+
         private static uint _nameID; //We remove the "name" param on every entity except Zone, since that is handled by EntityUtils.
 
         private Commands _commands = null;
@@ -60,7 +63,7 @@ namespace CATHODE.Scripting
             _entityNames?.names?.Clear();
             _modificationInfo?.modification_info?.Clear();
             _pinInfo?.composite_pin_infos?.Clear();
-                
+
             _commands = null;
         }
 
@@ -1597,6 +1600,9 @@ namespace CATHODE.Scripting
                 _pinInfo = new CompositePinInfoTable();
             else
                 Console.WriteLine("Loaded custom pin info for " + _pinInfo.composite_pin_infos.Count + " composites!");
+
+            _flagTable = (FlagTable)CustomTable.ReadTable(filepath, CustomTableType.FLAGS);
+            if (_flagTable == null) _flagTable = new FlagTable();
         }
         private void SaveInfo(string filepath)
         {
@@ -1613,6 +1619,8 @@ namespace CATHODE.Scripting
 
             CustomTable.WriteTable(filepath, CustomTableType.COMPOSITE_PIN_INFO, _pinInfo);
             Console.WriteLine("Saved custom pin info for " + _pinInfo.composite_pin_infos.Count + " composites!");
+
+            CustomTable.WriteTable(filepath, CustomTableType.FLAGS, _flagTable);
         }
         #endregion
     }
