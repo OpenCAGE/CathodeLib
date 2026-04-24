@@ -1,7 +1,6 @@
 using CATHODE;
 using CATHODE.Scripting;
 using CathodeLib.ArrayExtensions;
-using Extensions.Data;
 using K4os.Compression.LZ4;
 using K4os.Compression.LZ4.Internal;
 using K4os.Compression.LZ4.Streams;

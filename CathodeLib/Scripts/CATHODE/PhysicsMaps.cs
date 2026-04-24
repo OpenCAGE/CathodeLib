@@ -267,6 +267,21 @@ namespace CATHODE
                     comparison = entity.composite_instance_id.CompareTo(other.entity.composite_instance_id);
                     if (comparison != 0) return comparison;
                 }
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                comparison = Position.x.CompareTo(other.Position.x);
+                if (comparison != 0) return comparison;
+                comparison = Position.y.CompareTo(other.Position.y);
+                if (comparison != 0) return comparison;
+                comparison = Position.z.CompareTo(other.Position.z);
+                if (comparison != 0) return comparison;
+                comparison = Rotation.x.CompareTo(other.Rotation.x);
+                if (comparison != 0) return comparison;
+                comparison = Rotation.y.CompareTo(other.Rotation.y);
+                if (comparison != 0) return comparison;
+                comparison = Rotation.z.CompareTo(other.Rotation.z);
+                if (comparison != 0) return comparison;
+                comparison = Rotation.w.CompareTo(other.Rotation.w);
+#else
                 comparison = Position.X.CompareTo(other.Position.X);
                 if (comparison != 0) return comparison;
                 comparison = Position.Y.CompareTo(other.Position.Y);
@@ -280,9 +295,10 @@ namespace CATHODE
                 comparison = Rotation.Z.CompareTo(other.Rotation.Z);
                 if (comparison != 0) return comparison;
                 comparison = Rotation.W.CompareTo(other.Rotation.W);
+#endif
                 return comparison;
             }
         };
-        #endregion
+#endregion
     }
 }

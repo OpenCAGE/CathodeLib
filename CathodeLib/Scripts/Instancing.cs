@@ -10,6 +10,7 @@ using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 
+#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN)
 namespace CathodeLib
 {
     public class InstancedEntity : IComparable<InstancedEntity>
@@ -2522,3 +2523,4 @@ namespace CathodeLib
         }
     }
 }
+#endif
