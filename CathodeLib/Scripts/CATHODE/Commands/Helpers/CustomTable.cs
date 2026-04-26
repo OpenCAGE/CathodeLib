@@ -1205,6 +1205,9 @@ namespace CathodeLib
 
         public override void Read(BinaryReader reader)
         {
+            if (reader == null)
+                return;
+
             int metadataCount = reader.ReadInt32();
             for (int i = 0; i < metadataCount; i++)
             {
