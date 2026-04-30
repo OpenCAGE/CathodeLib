@@ -150,7 +150,7 @@ namespace CATHODE
 
             int nonStationary = 0;
             for (int i = 0; i < Entries.Count; i++)
-                if (!Entries[i].Flags.stationary)
+                if (!Entries[i].Flags.Stationary)
                     nonStationary++;
 
             byte[][] entryBuffers = new byte[Entries.Count][];
@@ -309,7 +309,7 @@ namespace CATHODE
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public struct MoverFlag
         {
-            public bool requires_script
+            public bool RequiresScript
             {
                 get
                 {
@@ -320,7 +320,7 @@ namespace CATHODE
                     flags |= 0x0004;
                 }
             }
-            public bool visible
+            public bool Visible
             {
                 get
                 {
@@ -331,7 +331,7 @@ namespace CATHODE
                     flags |= 0x0001;
                 }
             }
-            public bool stationary
+            public bool Stationary
             {
                 get
                 {
@@ -892,9 +892,9 @@ namespace CATHODE
                 if (SecondaryZoneID != other.SecondaryZoneID) return false;
                 if (LightingMasterID != other.LightingMasterID) return false;
 
-                if (Flags.requires_script != other.Flags.requires_script) return false;
-                if (Flags.visible != other.Flags.visible) return false;
-                if (Flags.stationary != other.Flags.stationary) return false;
+                if (Flags.RequiresScript != other.Flags.RequiresScript) return false;
+                if (Flags.Visible != other.Flags.Visible) return false;
+                if (Flags.Stationary != other.Flags.Stationary) return false;
 
                 return true;
             }
@@ -950,9 +950,9 @@ namespace CATHODE
                     hash = hash * 23 + PrimaryZoneID.GetHashCode();
                     hash = hash * 23 + SecondaryZoneID.GetHashCode();
                     hash = hash * 23 + LightingMasterID.GetHashCode();
-                    hash = hash * 23 + Flags.requires_script.GetHashCode();
-                    hash = hash * 23 + Flags.visible.GetHashCode();
-                    hash = hash * 23 + Flags.stationary.GetHashCode();
+                    hash = hash * 23 + Flags.RequiresScript.GetHashCode();
+                    hash = hash * 23 + Flags.Visible.GetHashCode();
+                    hash = hash * 23 + Flags.Stationary.GetHashCode();
                     return hash;
                 }
             }
