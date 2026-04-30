@@ -27,11 +27,13 @@ namespace CATHODE
         protected override bool HandlesLoadingManually => true;
         private RenderableElements _reds;
         private Resources _resources;
+        private EnvironmentMaps _envMaps;
 
         public bool Compressed { get { return _compressed; } set { _compressed = value; } }
         private bool _compressed = false;
 
         private List<MOVER_DESCRIPTOR> _writeList = new List<MOVER_DESCRIPTOR>();
+        private Dictionary<MOVER_DESCRIPTOR, int> _envMapPatch = new Dictionary<MOVER_DESCRIPTOR, int>();
 
         public Movers(string path, RenderableElements reds, Resources resources) : base(path)
         {
@@ -45,6 +47,7 @@ namespace CATHODE
         {
             _reds = null;
             _resources = null;
+            _envMaps = null;
         }
 
         ~Movers()
@@ -80,7 +83,7 @@ namespace CATHODE
                     reader.BaseStream.Position += 12;
                     mvr.cull_flags = (CullFlag)reader.ReadInt32();
                     mvr.entity = Utilities.Consume<EntityHandle>(reader);
-                    mvr.environment_map_index = reader.ReadInt32();
+                    _envMapPatch.Add(mvr, reader.ReadInt32());
                     mvr.emissive_tint = new Vector3(reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
                     mvr.emissive_flags = (EmissiveFlag)reader.ReadByte();
                     mvr.emissive_intensity_multiplier = reader.ReadSingle();
@@ -163,7 +166,7 @@ namespace CATHODE
                 writer.Write(new byte[12]);
                 writer.Write((int)entry.cull_flags);
                 Utilities.Write<EntityHandle>(writer, entry.entity);
-                writer.Write(entry.environment_map_index);
+                writer.Write(_envMaps.GetWriteIndex(entry.environment_map));
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
                 writer.Write((byte)entry.emissive_tint.x);
                 writer.Write((byte)entry.emissive_tint.y);
@@ -234,6 +237,19 @@ namespace CATHODE
 
             Entries.Add(newMover);
             return newMover;
+        }
+
+        /// <summary>
+        /// Patches up environment maps after loading
+        /// </summary>
+        public void PatchEnvMaps(EnvironmentMaps envMaps)
+        {
+            _envMaps = envMaps;
+            foreach (KeyValuePair<MOVER_DESCRIPTOR, int> entry in _envMapPatch)
+            {
+                entry.Key.environment_map = _envMaps.GetAtWriteIndex(entry.Value);
+            }
+            _envMapPatch.Clear();
         }
         #endregion
 
@@ -312,7 +328,7 @@ namespace CATHODE
             public CullFlag cull_flags = CullFlag.DEFAULT;
 
             public EntityHandle entity; //The entity in the Commands file
-            public int environment_map_index = -1; //environment_map.bin index
+            public EnvironmentMaps.Mapping environment_map = null;
 
             public Vector3 emissive_tint = new Vector3(255, 255, 255); // sRGB
             public EmissiveFlag emissive_flags = EmissiveFlag.None;
@@ -773,7 +789,7 @@ namespace CATHODE
 
                 if (cull_flags != other.cull_flags) return false;
                 if (entity != other.entity) return false;
-                if (environment_map_index != other.environment_map_index) return false;
+                if (environment_map != other.environment_map) return false;
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
                 if (emissive_tint != other.emissive_tint) return false;
@@ -831,7 +847,7 @@ namespace CATHODE
                     }
                     hash = hash * 23 + cull_flags.GetHashCode();
                     hash = hash * 23 + (entity?.GetHashCode() ?? 0);
-                    hash = hash * 23 + environment_map_index.GetHashCode();
+                    hash = hash * 23 + (environment_map?.GetHashCode() ?? 0);
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
                     hash = hash * 23 + emissive_tint.x.GetHashCode();
                     hash = hash * 23 + emissive_tint.y.GetHashCode();

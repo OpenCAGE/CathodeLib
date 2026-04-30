@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using static CATHODE.Models;
 using static CATHODE.Shaders;
+using static CATHODE.Textures.TEX4;
 
 namespace CATHODE
 {
@@ -340,6 +341,25 @@ namespace CATHODE
         {
             if (index < 0 || _writeList.Count <= index) return null;
             return _writeList[index];
+        }
+
+        /// <summary>
+        /// Get a environment map by its current index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public TEX4 GetAtWriteIndexForEnvMap(int index)
+        {
+            int i = 0;
+            foreach (TEX4 tex in _writeList)
+            {
+                if (!tex.StateFlags.HasFlag(TextureStateFlag.CUBE))
+                    continue;
+
+                if (i == index)
+                    return tex;
+                i++;
+            }
+            return null;
         }
 
         /// <summary>

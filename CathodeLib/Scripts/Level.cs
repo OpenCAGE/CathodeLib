@@ -203,10 +203,12 @@ namespace CathodeLib
             Movers = new Movers(world + "MODELS.MVR" + (compressed ? ".GZ" : ""), RenderableElements, Resources); OnLoadTick?.Invoke();
 
             Parallel.Invoke(
-                () => { EnvironmentMaps = new EnvironmentMaps(world + "ENVIRONMENTMAP.BIN", Movers); OnLoadTick?.Invoke(); },
+                () => { EnvironmentMaps = new EnvironmentMaps(world + "ENVIRONMENTMAP.BIN", Movers, Textures); OnLoadTick?.Invoke(); },
                 () => { PathBarrierResources = new PathBarrierResources(world + "PATH_BARRIER_RESOURCES", Resources); OnLoadTick?.Invoke(); },
                 () => { CollisionMaps = new CollisionMaps(world + "COLLISION.MAP" + (compressed ? ".GZ" : ""), Materials, MaterialMappings); OnLoadTick?.Invoke(); }
             );
+
+            Movers.PatchEnvMaps(EnvironmentMaps);
 
             Parallel.Invoke(
                 () => { RadInstanceMap = new RadiosityInstanceMap(renderable + "RADIOSITY_INSTANCE_MAP.TXT"); OnLoadTick?.Invoke(); },
@@ -319,10 +321,15 @@ namespace CathodeLib
             );
 
             RenderableElements.Save(); OnSaveTick?.Invoke();
+            EnvironmentMaps.Save(); OnSaveTick?.Invoke();
             Movers.Save(); OnSaveTick?.Invoke();
 
+            //We must save EnvMap mappings again because the Movers might've changed places above.
+            //Unfortunately we need to save EnvMaps before Movers so those indexes are correct too.
+            //Really I should probably just bring the EnvMap mappings into the Mover class!
+            EnvironmentMaps.Save(); OnSaveTick?.Invoke(); 
+
             Parallel.Invoke(
-                () => { EnvironmentMaps.Save(); OnSaveTick?.Invoke(); },
                 () => { PathBarrierResources.Save(); OnSaveTick?.Invoke(); },
                 () => { CollisionMaps.Save(); OnSaveTick?.Invoke(); },
                 () => { RadInstanceMap.Save(); OnSaveTick?.Invoke(); },

@@ -1,10 +1,12 @@
 using CATHODE.Scripting;
 using CathodeLib;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using static CATHODE.Movers;
 
 namespace CATHODE
 {
@@ -18,15 +20,14 @@ namespace CATHODE
 
         protected override bool HandlesLoadingManually => true;
         private Movers _movers;
+        private Textures _textures;
 
-        /// <summary>
-        /// This is the number of environment maps in the level. We should never reference an index higher than this.
-        /// </summary>
-        public int EnvironmentMapCount = 0;
+        private List<Mapping> _writeList = new List<Mapping>();
 
-        public EnvironmentMaps(string path, Movers movers) : base(path)
+        public EnvironmentMaps(string path, Movers movers, Textures textures) : base(path)
         {
             _movers = movers;
+            _textures = textures;
 
             _loaded = Load();
         }
@@ -34,6 +35,7 @@ namespace CATHODE
         public void ClearReferences()
         {
             _movers = null;
+            _textures = null;
         }
 
         ~EnvironmentMaps()
@@ -45,6 +47,8 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
+            Dictionary<int, List<Mapping>> envMapIndexes = new Dictionary<int, List<Mapping>>();
+
             using (BinaryReader reader = new BinaryReader(stream))
             {
                 reader.BaseStream.Position += 8;
@@ -53,11 +57,25 @@ namespace CATHODE
                 {
                     Mapping entry = new Mapping();
                     entry.Mover = _movers.GetAtWriteIndex(reader.ReadInt32());
-                    entry.EnvMapIndex = reader.ReadInt32();
+                    int envMapIndex = reader.ReadInt32();
+                    if (envMapIndexes.ContainsKey(envMapIndex))
+                        envMapIndexes[envMapIndex].Add(entry);
+                    else
+                        envMapIndexes.Add(envMapIndex, new List<Mapping>() { entry });
                     Entries.Add(entry);
+                    _writeList.Add(entry);
                 }
-                EnvironmentMapCount = reader.ReadInt32();
             }
+
+            foreach (KeyValuePair<int, List<Mapping>> index in envMapIndexes)
+            {
+                Textures.TEX4 tex = index.Key == -1 ? null : _textures.GetAtWriteIndexForEnvMap(index.Key);
+                foreach (Mapping mapping in index.Value)
+                {
+                    mapping.EnvironmentMap = tex;
+                }
+            }
+
             return true;
         }
 
@@ -71,6 +89,14 @@ namespace CATHODE
                 entryBuffers[i] = SerializeMapping(orderedEntries[i]);
             });
 
+            int totalEnvMaps = 0;
+            foreach (Textures.TEX4 tex in _textures.Entries)            
+            {
+                if (tex.StateFlags.HasFlag(Textures.TextureStateFlag.CUBE))
+                    totalEnvMaps++;
+            }
+
+            _writeList.Clear();
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
@@ -78,8 +104,11 @@ namespace CATHODE
                 writer.Write(1);
                 writer.Write(Entries.Count);
                 for (int i = 0; i < entryBuffers.Length; i++)
+                {
                     writer.Write(entryBuffers[i]);
-                writer.Write(EnvironmentMapCount);
+                    _writeList.Add(Entries[i]);
+                }
+                writer.Write(totalEnvMaps);
             }
             return true;
         }
@@ -90,64 +119,78 @@ namespace CATHODE
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 writer.Write(_movers.GetWriteIndex(mapping.Mover));
-                writer.Write(mapping.EnvMapIndex);
+                writer.Write(mapping.EnvironmentMap == null ? -1 : _textures.GetWriteIndexForEnvMap(mapping.EnvironmentMap));
                 return stream.ToArray();
             }
         }
         #endregion
 
+        //NOTE TO SELF - i need to update environmentmap_index indexes and Texture_Index in Commands when saving!
+        //               at runtime on intiialise of the entity they are queried to update params like Priority and Colour/EmissiveFactor.
+
         #region HELPERS
         /// <summary>
-        /// Returns the environment map script entity for the given mover index.
+        /// Get the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>
-        public FunctionEntity GetEnvironmentMapForMover(int moverIndex, Commands commands)
+        public int GetWriteIndex(Mapping mapping)
         {
-            Mapping m = Entries.FirstOrDefault(e => _movers.GetWriteIndex(e.Mover) == moverIndex);
-            if (m != null)
-            {
-                foreach (Composite c in commands.Entries)
-                {
-                    foreach (FunctionEntity e in c.GetFunctionEntitiesOfType(FunctionType.EnvironmentMap))
-                    {
-                        Parameter p = e.GetParameter("environmentmap_index");
-                        if (p?.content == null || p.content.dataType != DataType.INTEGER)
-                            continue;
-                        if (((cInteger)p.content).value == m.EnvMapIndex)
-                            return e;
-                    }
-                }
-            }
-            return null;
+            if (!_writeList.Contains(mapping)) return -1;
+            return _writeList.IndexOf(mapping);
         }
 
         /// <summary>
-        /// Returns the texture index used by the given environment map entity.
+        /// Get the object at the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>
-        public int GetTextureIndexForEnvironmentMap(FunctionEntity envMap)
+        public Mapping GetAtWriteIndex(int index)
         {
-            Parameter p = envMap.GetParameter("Texture_Index");
-            if (p?.content == null || p.content.dataType != DataType.INTEGER)
-                return -1;
-            return ((cInteger)p.content).value;
-        }
-
-        /// <summary>
-        /// Returns all mover indices that use the given environment map entity.
-        /// </summary>
-        public List<int> GetMoverIndexesForEnvironmentMap(FunctionEntity envMap)
-        {
-            Parameter p = envMap.GetParameter("environmentmap_index");
-            if (p?.content == null || p.content.dataType != DataType.INTEGER)
-                return null;
-            return Entries.Where(e => e.EnvMapIndex == ((cInteger)p.content).value).Select(e => _movers.GetWriteIndex(e.Mover)).ToList();
+            if (_writeList.Count <= index || index < 0) return null;
+            return _writeList[index];
         }
         #endregion
 
         #region STRUCTURES
-        public class Mapping
+        public class Mapping : IEquatable<Mapping>
         {
-            public int EnvMapIndex;
             public Movers.MOVER_DESCRIPTOR Mover;
+            public Textures.TEX4 EnvironmentMap;
+
+            public static bool operator ==(Mapping x, Mapping y)
+            {
+                if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                if (ReferenceEquals(y, null)) return false;
+                return x.Equals(y);
+            }
+
+            public static bool operator !=(Mapping x, Mapping y)
+            {
+                return !(x == y);
+            }
+
+            public bool Equals(Mapping other)
+            {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+
+                if (Mover != other.Mover) return false;
+                if (EnvironmentMap != other.EnvironmentMap) return false;
+
+                return true;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as Mapping);
+            }
+
+            public override int GetHashCode()
+            {
+                int hashCode = 471264742;
+                hashCode = hashCode * -1521134295 + EqualityComparer<Movers.MOVER_DESCRIPTOR>.Default.GetHashCode(Mover);
+                hashCode = hashCode * -1521134295 + EqualityComparer<Textures.TEX4>.Default.GetHashCode(EnvironmentMap);
+                return hashCode;
+            }
         };
         #endregion
     }
