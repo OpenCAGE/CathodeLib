@@ -314,6 +314,25 @@ namespace CATHODE
         }
 
         /// <summary>
+        /// Get the current index for a EnvironmentMap texture (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public int GetWriteIndexForEnvMap(TEX4 texture)
+        {
+            int i = 0;
+            foreach (TEX4 tex in _writeList)
+            {
+                if (!tex.StateFlags.HasFlag(TextureStateFlag.CUBE))
+                    continue;
+
+                if (tex == texture)
+                    return i;
+                i++;
+            }
+            return -1;
+        }
+
+        /// <summary>
         /// Get a texture by its current index (useful for cross-ref'ing with compiled binaries)
         /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>

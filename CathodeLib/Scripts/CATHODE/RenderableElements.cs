@@ -225,7 +225,6 @@ namespace CATHODE
 
             public List<Element> LODs = new List<Element>();
 
-            //see RenderableElementCache::process_renderable_element_descriptors_for_movers
             public static bool operator ==(Element x, Element y)
             {
                 if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);

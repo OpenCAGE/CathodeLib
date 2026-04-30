@@ -575,7 +575,18 @@ namespace CATHODE
                 return x.flags == y.flags;
             }
 
+            public static bool operator ==(LightFlags x, int y)
+            {
+                if (x == null) return false;
+                return x.flags == y;
+            }
+
             public static bool operator !=(LightFlags x, LightFlags y)
+            {
+                return !(x == y);
+            }
+
+            public static bool operator !=(LightFlags x, int y)
             {
                 return !(x == y);
             }

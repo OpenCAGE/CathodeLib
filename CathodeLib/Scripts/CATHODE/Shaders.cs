@@ -523,14 +523,12 @@ namespace CATHODE
                 if (RegisterCount != other.RegisterCount) return false;
                 if (PermutationHash != other.PermutationHash) return false;
 
-                // Compare Samplers list
                 if (Samplers.Count != other.Samplers.Count) return false;
                 for (int i = 0; i < Samplers.Count; i++)
                 {
                     if (!Samplers[i].Equals(other.Samplers[i])) return false;
                 }
 
-                // Compare integer lists
                 if (!ListsEqual(SamplerStageBindings, other.SamplerStageBindings)) return false;
                 if (!ListsEqual(SamplerRemaps, other.SamplerRemaps)) return false;
                 if (!ListsEqual(EngineParameterRemaps, other.EngineParameterRemaps)) return false;
@@ -539,7 +537,6 @@ namespace CATHODE
                 if (!ListsEqual(HullShaderParameterRemaps, other.HullShaderParameterRemaps)) return false;
                 if (!ListsEqual(DomainShaderParameterRemaps, other.DomainShaderParameterRemaps)) return false;
 
-                // Compare RenderStates
                 if (RenderStates == null && other.RenderStates != null) return false;
                 if (RenderStates != null && other.RenderStates == null) return false;
                 if (RenderStates != null && other.RenderStates != null)
@@ -547,7 +544,6 @@ namespace CATHODE
                     if (!RenderStates.Equals(other.RenderStates)) return false;
                 }
 
-                // Compare shader byte arrays
                 if (!ByteArraysEqual(VertexShader, other.VertexShader)) return false;
                 if (!ByteArraysEqual(PixelShader, other.PixelShader)) return false;
                 if (!ByteArraysEqual(HullShader, other.HullShader)) return false;

@@ -1,5 +1,6 @@
 using CATHODE;
 using CATHODE.Scripting;
+using CATHODE.ShaderTypes;
 using CathodeLib.ArrayExtensions;
 using K4os.Compression.LZ4;
 using K4os.Compression.LZ4.Internal;
@@ -17,6 +18,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
+using static CATHODE.RenderableElements;
 
 namespace CathodeLib
 {
@@ -469,6 +471,64 @@ namespace CathodeLib
             PAK2 animPAK = new PAK2(pathToAI + "\\DATA\\GLOBAL\\ANIMATION.PAK");
             Global global = new Global(pathToAI + "\\DATA\\ENV\\GLOBAL\\", animPAK);
             return new Level(pathToAI + "\\DATA\\ENV\\" + level, global);
+        }
+
+        /// <summary>
+        /// Given a set of renderable elements, figure out the renderable instance's type - this metadata can be used to decipher things such as MVR constants.
+        /// </summary>
+        public static RenderableInstanceType CalculateRenderableType(this List<Element> elements)
+        {
+            if ((elements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.DEFERRED_LIGHTING)) != 0)
+            {
+                return RenderableInstanceType.LIGHT; 
+            }
+            else if ((elements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.PARTICLE)) != 0 ||
+                     (elements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.RIBBON)) != 0)
+            {
+                if (elements[0].Material.OfflineLightFeatures == 1)
+                {
+                    return RenderableInstanceType.DYNAMICFX_UNIQUE_MAT;
+                }
+                else
+                {
+                    return RenderableInstanceType.DYNAMICFX;
+                }
+            }
+            else if ((elements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.CHARACTER)) != 0)
+            {
+                return RenderableInstanceType.CHARACTER;
+            }
+            else if (elements[0].Material.Shader.Ubershader == SHADER_LIST.CA_ENVIRONMENT)
+            {
+                if ((elements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.APPROXIMATE_LIGHTING)) != 0 ||
+                    (elements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.DECAL)) != 0)
+                {
+                    return RenderableInstanceType.ENVIRONMENT_EXTRA;
+                }
+
+                foreach (Element e in elements)
+                {
+                    if (e?.Material?.Shader?.Ubershader == SHADER_LIST.CA_ENVIRONMENT &&
+                        (e?.Material?.Shader?.UbershaderFeatureFlags & (1L << (int)CA_ENVIRONMENT.FEATURES.EMISSIVE)) != 0)
+                    {
+                        return RenderableInstanceType.ENVIRONMENT_EXTRA;
+                    }
+                }
+
+                return RenderableInstanceType.ENVIRONMENT;
+            }
+            else if (elements[0].Material.Shader.Ubershader == SHADER_LIST.CA_PLANET)
+            {
+                return RenderableInstanceType.PLANET; 
+            }
+            else if (elements[0].Material.Shader.Ubershader == SHADER_LIST.CA_FOGSPHERE)
+            {
+                return RenderableInstanceType.FOGSPHERE;
+            }
+            else
+            {
+                return RenderableInstanceType.MISC;
+            }
         }
     }
 
