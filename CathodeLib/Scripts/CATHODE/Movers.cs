@@ -7,6 +7,8 @@ using CATHODE.Scripting;
 using CathodeLib;
 using CathodeLib.ObjectExtensions;
 using System.Linq;
+using System.Collections.Concurrent;
+
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
@@ -27,18 +29,18 @@ namespace CATHODE
         protected override bool HandlesLoadingManually => true;
         private RenderableElements _reds;
         private Resources _resources;
-        private EnvironmentMaps _envMaps;
+        private Textures _textures;
 
         public bool Compressed { get { return _compressed; } set { _compressed = value; } }
         private bool _compressed = false;
 
         private List<MOVER_DESCRIPTOR> _writeList = new List<MOVER_DESCRIPTOR>();
-        private Dictionary<MOVER_DESCRIPTOR, int> _envMapPatch = new Dictionary<MOVER_DESCRIPTOR, int>();
 
-        public Movers(string path, RenderableElements reds, Resources resources) : base(path)
+        public Movers(string path, RenderableElements reds, Resources resources, Textures textures) : base(path)
         {
             _reds = reds;
             _resources = resources;
+            _textures = textures;
 
             _loaded = Load();
         }
@@ -47,7 +49,7 @@ namespace CATHODE
         {
             _reds = null;
             _resources = null;
-            _envMaps = null;
+            _textures = null;
         }
 
         ~Movers()
@@ -60,6 +62,10 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
+            //NOTE: Loading via byte[] or MemoryStream is not currently supported. Must be loaded via disk from a filepath!
+            if (_filepath == "")
+                return false;
+
             _compressed = _filepath != null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
 
             //note: first 12 always renderable but not linked to commands -> they are always the same models across every level. is it the content of GLOBAL?
@@ -69,7 +75,18 @@ namespace CATHODE
                 reader.BaseStream.Position += 4;
                 int entryCount = reader.ReadInt32();
                 reader.BaseStream.Position += 24;
-                
+
+                Textures.TEX4[] environmentMaps = new Textures.TEX4[entryCount]; 
+                using (BinaryReader envMapReader = new BinaryReader(File.OpenRead(GetEnvMapPath())))
+                {
+                    envMapReader.BaseStream.Position += 8;
+                    int envMapEntryCount = envMapReader.ReadInt32();
+                    for (int i = 0; i < envMapEntryCount; i++)
+                    {
+                        environmentMaps[envMapReader.ReadInt32()] = _textures.GetAtWriteIndex(envMapReader.ReadInt32());
+                    }
+                }
+
                 for (int i = 0; i < entryCount; i++)
                 {
                     MOVER_DESCRIPTOR mvr = new MOVER_DESCRIPTOR();
@@ -83,7 +100,8 @@ namespace CATHODE
                     reader.BaseStream.Position += 12;
                     mvr.cull_flags = (CullFlag)reader.ReadInt32();
                     mvr.entity = Utilities.Consume<EntityHandle>(reader);
-                    _envMapPatch.Add(mvr, reader.ReadInt32());
+                    reader.BaseStream.Position += 4;
+                    mvr.environment_map = environmentMaps[i];
                     mvr.emissive_tint = new Vector3(reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
                     mvr.emissive_flags = (EmissiveFlag)reader.ReadByte();
                     mvr.emissive_intensity_multiplier = reader.ReadSingle();
@@ -109,6 +127,27 @@ namespace CATHODE
             else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
                 _filepath = _filepath.Substring(0, _filepath.Length - 3);
 
+            int totalEnvMaps = 0;
+            foreach (Textures.TEX4 tex in _textures.Entries)
+            {
+                if (tex.StateFlags.HasFlag(Textures.TextureStateFlag.CUBE))
+                    totalEnvMaps++;
+            }
+
+            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(GetEnvMapPath())))
+            {
+                writer.BaseStream.SetLength(0);
+                Utilities.WriteString("envm", writer);
+                writer.Write(1);
+                writer.Write(Entries.Count);
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    writer.Write(i);
+                    writer.Write(Entries[i].environment_map == null ? -1 : _textures.GetWriteIndexForEnvMap(Entries[i].environment_map));
+                }
+                writer.Write(totalEnvMaps);
+            }
+
             int non_stationary = 0;
             for (int i = 0; i < Entries.Count; i++)
                 if (!Entries[i].flags.stationary)
@@ -117,7 +156,7 @@ namespace CATHODE
             byte[][] entryBuffers = new byte[Entries.Count][];
             Parallel.For(0, Entries.Count, i =>
             {
-                entryBuffers[i] = SerializeEntry(Entries[i]);
+                entryBuffers[i] = SerializeEntry(Entries[i], i);
             });
 
             using (Stream stream = File.OpenWrite(_filepath))
@@ -144,7 +183,7 @@ namespace CATHODE
             return true;
         }
 
-        private byte[] SerializeEntry(MOVER_DESCRIPTOR entry)
+        private byte[] SerializeEntry(MOVER_DESCRIPTOR entry, int index)
         {
             using (MemoryStream stream = new MemoryStream(320))
             using (BinaryWriter writer = new BinaryWriter(stream))
@@ -166,7 +205,7 @@ namespace CATHODE
                 writer.Write(new byte[12]);
                 writer.Write((int)entry.cull_flags);
                 Utilities.Write<EntityHandle>(writer, entry.entity);
-                writer.Write(_envMaps.GetWriteIndex(entry.environment_map));
+                writer.Write(index);
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
                 writer.Write((byte)entry.emissive_tint.x);
                 writer.Write((byte)entry.emissive_tint.y);
@@ -239,17 +278,9 @@ namespace CATHODE
             return newMover;
         }
 
-        /// <summary>
-        /// Patches up environment maps after loading
-        /// </summary>
-        public void PatchEnvMaps(EnvironmentMaps envMaps)
+        private string GetEnvMapPath()
         {
-            _envMaps = envMaps;
-            foreach (KeyValuePair<MOVER_DESCRIPTOR, int> entry in _envMapPatch)
-            {
-                entry.Key.environment_map = _envMaps.GetAtWriteIndex(entry.Value);
-            }
-            _envMapPatch.Clear();
+            return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "ENVIRONMENTMAP.BIN";
         }
         #endregion
 
@@ -328,7 +359,7 @@ namespace CATHODE
             public CullFlag cull_flags = CullFlag.DEFAULT;
 
             public EntityHandle entity; //The entity in the Commands file
-            public EnvironmentMaps.Mapping environment_map = null;
+            public Textures.TEX4 environment_map = null;
 
             public Vector3 emissive_tint = new Vector3(255, 255, 255); // sRGB
             public EmissiveFlag emissive_flags = EmissiveFlag.None;

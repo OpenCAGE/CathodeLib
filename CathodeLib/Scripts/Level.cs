@@ -46,7 +46,6 @@ namespace CathodeLib
         public Models Models;
         public RenderableElements RenderableElements;
         public Movers Movers;
-        public EnvironmentMaps EnvironmentMaps;
         public PathBarrierResources PathBarrierResources;
         public CollisionMaps CollisionMaps;
         public RadiosityInstanceMap RadInstanceMap;
@@ -108,7 +107,7 @@ namespace CathodeLib
         /// </summary>
         public Action OnSaveTick;
 
-        public const int NumberOfTicks = 30;
+        public const int NumberOfTicks = 29;
 
         /// <summary>
         /// A container for data related to a level in the game's "ENV" folder
@@ -130,7 +129,6 @@ namespace CathodeLib
             Models?.ClearReferences();
             RenderableElements?.ClearReferences();
             Movers?.ClearReferences();
-            EnvironmentMaps?.ClearReferences();
             PathBarrierResources?.ClearReferences();
             CollisionMaps?.ClearReferences();
             Commands?.ClearReferences();
@@ -145,7 +143,6 @@ namespace CathodeLib
             Models = null;
             RenderableElements = null;
             Movers = null;
-            EnvironmentMaps = null;
             PathBarrierResources = null;
             CollisionMaps = null;
             RadInstanceMap = null; //todo - can this be removed?
@@ -200,15 +197,12 @@ namespace CathodeLib
             Materials = new Materials(renderable + "LEVEL_MODELS.MTL" + (compressed ? ".GZ" : ""), _global.Textures, Textures, Shaders); OnLoadTick?.Invoke();
             Models = new Models(renderable + "LEVEL_MODELS.PAK" + (compressed ? ".FZIP" : ""), Materials, WeightedCollisions, MorphTargetDB); OnLoadTick?.Invoke();
             RenderableElements = new RenderableElements(world + "REDS.BIN" + (compressed ? ".GZ" : ""), Models, Materials); OnLoadTick?.Invoke();
-            Movers = new Movers(world + "MODELS.MVR" + (compressed ? ".GZ" : ""), RenderableElements, Resources); OnLoadTick?.Invoke();
+            Movers = new Movers(world + "MODELS.MVR" + (compressed ? ".GZ" : ""), RenderableElements, Resources, Textures); OnLoadTick?.Invoke();
 
             Parallel.Invoke(
-                () => { EnvironmentMaps = new EnvironmentMaps(world + "ENVIRONMENTMAP.BIN", Movers, Textures); OnLoadTick?.Invoke(); },
                 () => { PathBarrierResources = new PathBarrierResources(world + "PATH_BARRIER_RESOURCES", Resources); OnLoadTick?.Invoke(); },
                 () => { CollisionMaps = new CollisionMaps(world + "COLLISION.MAP" + (compressed ? ".GZ" : ""), Materials, MaterialMappings); OnLoadTick?.Invoke(); }
             );
-
-            Movers.PatchEnvMaps(EnvironmentMaps);
 
             Parallel.Invoke(
                 () => { RadInstanceMap = new RadiosityInstanceMap(renderable + "RADIOSITY_INSTANCE_MAP.TXT"); OnLoadTick?.Invoke(); },
@@ -321,13 +315,7 @@ namespace CathodeLib
             );
 
             RenderableElements.Save(); OnSaveTick?.Invoke();
-            EnvironmentMaps.Save(); OnSaveTick?.Invoke();
             Movers.Save(); OnSaveTick?.Invoke();
-
-            //We must save EnvMap mappings again because the Movers might've changed places above.
-            //Unfortunately we need to save EnvMaps before Movers so those indexes are correct too.
-            //Really I should probably just bring the EnvMap mappings into the Mover class!
-            EnvironmentMaps.Save(); OnSaveTick?.Invoke(); 
 
             Parallel.Invoke(
                 () => { PathBarrierResources.Save(); OnSaveTick?.Invoke(); },
@@ -390,6 +378,8 @@ namespace CathodeLib
                 for (int x = 0; x < material.TextureReferences.Count; x++)
                     material.TextureReferences[x]?.RemapToLevel(this);
             }
+
+            // DO i also need to do the samplers on the shader? confused what that is.
 
             //Import global textures referenced by sound flash models
             //for (int i = 0; i < SoundFlashModels.Entries.Count; i++)
