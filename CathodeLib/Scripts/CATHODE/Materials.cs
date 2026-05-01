@@ -464,14 +464,6 @@ namespace CATHODE
                 get { return (LightType)(flags & 0xFF); }
                 set { flags = (flags & ~0xFF) | ((int)value & 0xFF); }
             }
-            public enum LightType
-            {
-                Ambient = 0,
-                Strip = 1,
-                Point = 2,
-                Spot = 3,
-                Directional = 4
-            };
 
             //Light features
             public bool SoftDiffuse

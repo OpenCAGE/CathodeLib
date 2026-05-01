@@ -9,7 +9,7 @@ using UnityEngine;
 using System.Numerics;
 #endif
 
-namespace CATHODE.EXPERIMENTAL
+namespace CATHODE
 {
     /// <summary>
     /// DATA/ENV/x/WORLD/LIGHTS.BIN
@@ -105,6 +105,7 @@ namespace CATHODE.EXPERIMENTAL
         #endregion
 
         #region STRUCTURES
+        [Flags]
         public enum LightFeature : ushort
         {
             SoftDiffuse = 1 << 0,
@@ -123,6 +124,22 @@ namespace CATHODE.EXPERIMENTAL
             Volume = 1 << 13,
             NoAlphaLight = 1 << 14,
             HorizontalGoboFlip = 1 << 15
+        };
+
+        public enum LightType
+        {
+            Ambient,
+            Strip,
+            Point,
+            Spot,
+            Directional
+        };
+
+        public enum LightFadeType
+        {
+            None,
+            Shadow,
+            Light,
         };
 
         public class Node

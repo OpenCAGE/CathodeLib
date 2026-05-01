@@ -8,6 +8,8 @@ using CathodeLib;
 using CathodeLib.ObjectExtensions;
 using System.Linq;
 using System.Collections.Concurrent;
+using static CATHODE.Lights;
+
 
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
@@ -709,16 +711,42 @@ namespace CATHODE
                             _visibility = (byte)(255.0f * Math.Min(1.0f, Math.Max(0.0f, value)));
                         }
                     }
-                    private byte _visibility; 
+                    private byte _visibility;
 
-                    public byte FlareIntensityScalePacked;
-                    public byte RadiosityFractionPacked;
-
-                    public Materials.LightFlags.LightType Type
+                    public float FlareIntensityScale
                     {
                         get
                         {
-                            return (Materials.LightFlags.LightType)_type;
+                            float x = (float)_flareIntensityScale * (1.0f / 255.0f);
+                            return x * x * 100.0f;
+                        }
+                        set
+                        {
+                            _flareIntensityScale = (byte)(255.0f * Math.Min(1.0f, Math.Sqrt(Math.Max(0.0f, value / 100.0f))));
+                        }
+                    }
+                    private byte _flareIntensityScale;
+
+                    public bool UsesRadiosity => _radiosityFraction != 0;
+                    public float RadiosityFraction
+                    {
+                        get
+                        {
+                            float x = (float)_radiosityFraction * (1.0f / 255.0f);
+                            return x * x * 4.0f;
+                        }
+                        set
+                        {
+                            _radiosityFraction = (byte)(255.0f * Math.Min(1.0f, Math.Sqrt(Math.Max(0.0f, value / 4.0f))));
+                        }
+                    }
+                    private byte _radiosityFraction;
+
+                    public LightType Type
+                    {
+                        get
+                        {
+                            return (LightType)_type;
                         }
                         set
                         {
@@ -729,12 +757,49 @@ namespace CATHODE
 
                     public byte ShadowPriorityOffset;
                     public byte SlopeScaleDepthBias;
-                    public UInt16 Features;
 
-                    public byte NotUsed;
-                    public byte LightFadeType;
-                    public byte FlareOccluderRadiusPacked;
-                    public byte FlareSpotOffsetPacked;
+                    public LightFeature Features;
+
+                    private byte _unused;
+
+                    public LightFadeType LightFadeType
+                    {
+                        get
+                        {
+                            return (LightFadeType)_lightFadeType;
+                        }
+                        set
+                        {
+                            _lightFadeType = (byte)value;
+                        }
+                    }
+                    private byte _lightFadeType;
+
+                    public float FlareOccluderRadius
+                    {
+                        get
+                        {
+                            return (float)_flareOccluderRadius * (1.0f / 255.0f);
+                        }
+                        set
+                        {
+                            _flareOccluderRadius = (byte)(255.0f * Math.Max(0.0f, Math.Min(1.0f, value)));
+                        }
+                    }
+                    private byte _flareOccluderRadius;
+
+                    public float FlareSpotOffset
+                    {
+                        get
+                        {
+                            return (float)_flareSpotOffset * (1.0f / 255.0f) - 0.5f;
+                        }
+                        set
+                        {
+                            _flareSpotOffset = (byte)(255.0f * Math.Max(0.0f, Math.Min(1.0f, value + 0.5f)));
+                        }
+                    }
+                    private byte _flareSpotOffset;
 
                     public float DepthBias;
                 }
