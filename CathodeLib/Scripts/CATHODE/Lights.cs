@@ -120,7 +120,7 @@ namespace CATHODE
             SquareLight = 1 << 9,
             Flashlight = 1 << 10,
             PhysicalAttenuation = 1 << 11,
-            Distance_Mip_Selection_Gobo = 1 << 12,
+            DistanceMipSelectionGobo = 1 << 12,
             Volume = 1 << 13,
             NoAlphaLight = 1 << 14,
             HorizontalGoboFlip = 1 << 15
