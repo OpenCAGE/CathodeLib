@@ -433,9 +433,9 @@ namespace CATHODE
                 public class DEFERRED_GPU_CONSTANTS
                 {
                     public Vector3 Colour;
-	                public float ShadowFade;
+                    private float _unused1;
 
-	                public float AttenuationDefocus;
+                    public float AttenuationDefocus;
 	                public float AttenuationBegin;
 	                public float NearDist;
 
@@ -445,9 +445,9 @@ namespace CATHODE
                     public float InnerAngle;
 
                     public float ArealightRadius;
-	                public float LightFade;
-	                public float AttenuationEnd;
-                    private float _unused;
+                    private float _unused2;
+                    public float AttenuationEnd;
+                    private float _unused3;
                     public float NearDistShadowOffset;
 
                     public Vector3 VolumeColour;
