@@ -457,7 +457,7 @@ namespace CATHODE
                 }
 
                 [StructLayout(LayoutKind.Sequential, Pack = 1)]
-                public class PARTICLE_GPU_CONSTANTS
+                public class PARTICLE_GPU_CONSTANTS //GPU Particles
                 {
 	                public float ExpiryTime;
 	                public float StartTime;
@@ -488,22 +488,11 @@ namespace CATHODE
                 }
 
                 [StructLayout(LayoutKind.Sequential, Pack = 1)]
-                public class DYNAMIC_FX_GPU_CONSTANTS
+                public class DYNAMIC_FX_GPU_CONSTANTS //CPU Particles
                 {
 	                public float ExpiryTime;
 	                public float StartTime;
 	                public float RandomNumber;
-                }
-
-                [StructLayout(LayoutKind.Sequential, Pack = 1)]
-                public class CHARACTER_GPU_CONSTANTS
-                {
-                    public Vector4 NoTintColour;
-                    public Vector4 PrimaryTintColour;
-                    public Vector4 SecondaryTintColour;
-                    public Vector4 TertiaryTintColour;
-
-                    public float BurnAmount; // fire damage
                 }
 
                 [StructLayout(LayoutKind.Sequential, Pack = 1)]
