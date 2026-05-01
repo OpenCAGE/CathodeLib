@@ -509,21 +509,21 @@ namespace CATHODE
                 [StructLayout(LayoutKind.Sequential, Pack = 1)]
                 public class ENVIRONMENT_GPU_CONSTANTS
                 {
-                    public Vector4 VertexColourScalars;
-                    public Vector4 DiffuseColourScalars;
+                    public Vector4 VertexColourScalars = new Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+                    public Vector4 DiffuseColourScalars = new Vector4(1.0f, 1.0f, 1.0f, 1.0f);
 
-	                public float AlphaBlendNoisePowerScale;
-                    public float AlphaBlendNoiseUvScale;
-                    public Vector2 AlphaBlendNoiseUvOffset;
+                    public float AlphaBlendNoisePowerScale = 1.0f;
+                    public float AlphaBlendNoiseUvScale = 1.0f;
+                    public Vector2 AlphaBlendNoiseUvOffset = new Vector2(0.0f, 0.0f);
 
-                    public Vector2 AtlasOffset;
-                    public Vector2 AtlasBias;
+                    public Vector2 AtlasOffset = new Vector2(0.0f, 0.0f);
+                    public Vector2 AtlasBias = new Vector2(1.0f, 1.0f);
 
-                    public float DirtMultiplyBlendSpecPowerScale;
-                    public float DirtMapUvScale;
+                    public float DirtMultiplyBlendSpecPowerScale = 1.0f;
+                    public float DirtMapUvScale = 1.0f;
 
-                    public float UvOffsetX;
-                    public float UvOffsetY;
+                    public float UvOffsetX = 0.0f;
+                    public float UvOffsetY = 0.0f;
                 }
 
                 [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -578,18 +578,18 @@ namespace CATHODE
                 [StructLayout(LayoutKind.Sequential, Pack = 1)]
                 public class FOGPLANE_GPU_CONSTANTS
                 {
-	                public float StartDistanceFadeScalar;
-	                public float DistanceFadeScalar;
-	                public float AngleFadeScalar;
-	                public float FresnelPowerScalar;
-	                public float HeightMaxDensityScalar;
-                    public Vector3 ColourTint;
-                    public float ThicknessScalar;
-	                public float EdgeSoftnessScalar;
-	                public float DiffuseMap0_UvScalar;
-	                public float DiffuseMap0_SpeedScalar;
-	                public float DiffuseMap1_UvScalar;
-	                public float DiffuseMap1_SpeedScalar;
+	                public float StartDistanceFadeScalar = 1.0f;
+	                public float DistanceFadeScalar = 1.0f;
+	                public float AngleFadeScalar = 1.0f;
+	                public float FresnelPowerScalar = 1.0f;
+	                public float HeightMaxDensityScalar = 1.0f;
+                    public Vector3 ColourTint = new Vector3(1.0f, 1.0f, 1.0f);
+                    public float ThicknessScalar = 1.0f;
+	                public float EdgeSoftnessScalar = 1.0f;
+	                public float DiffuseMap0_UvScalar = 1.0f;
+	                public float DiffuseMap0_SpeedScalar = 1.0f;
+	                public float DiffuseMap1_UvScalar = 1.0f;
+	                public float DiffuseMap1_SpeedScalar = 1.0f;
                 }
 
                 [StructLayout(LayoutKind.Sequential, Pack = 1)]
