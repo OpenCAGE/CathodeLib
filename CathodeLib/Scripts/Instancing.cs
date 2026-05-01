@@ -2517,6 +2517,22 @@ namespace CathodeLib
                     }
 
                     {
+                        // if material is CA_ENVIRONMENT
+                        ENVIRONMENT_GPU_CONSTANTS gpuConstants = new ENVIRONMENT_GPU_CONSTANTS();
+                        Vector3 vertColourScale = entity.Vectors.Get(ShortGuidUtils.Generate("vertex_colour_scale"));
+                        gpuConstants.VertexColourScalars = new Vector4(vertColourScale.X, vertColourScale.Y, vertColourScale.Z, entity.Floats.Get(ShortGuidUtils.Generate("vertex_opacity_scale")));
+                        Vector3 diffColourScale = entity.Vectors.Get(ShortGuidUtils.Generate("diffuse_colour_scale")) / 255.0f;
+                        gpuConstants.DiffuseColourScalars = new Vector4(vertColourScale.X, vertColourScale.Y, vertColourScale.Z, entity.Floats.Get(ShortGuidUtils.Generate("diffuse_opacity_scale")));
+                        gpuConstants.UvOffsetX = 0.0f;
+                        gpuConstants.UvOffsetY = 0.0f;
+                        gpuConstants.AlphaBlendNoisePowerScale = entity.Floats.Get(ShortGuidUtils.Generate("alpha_blend_noise_power_scale"));
+                        gpuConstants.AlphaBlendNoiseUvScale = entity.Floats.Get(ShortGuidUtils.Generate("alpha_blend_noise_uv_scale"));
+                        gpuConstants.AlphaBlendNoiseUvOffset = new Vector2(entity.Floats.Get(ShortGuidUtils.Generate("alpha_blend_noise_uv_offset_X")), entity.Floats.Get(ShortGuidUtils.Generate("alpha_blend_noise_uv_offset_Y")));
+                        gpuConstants.DirtMultiplyBlendSpecPowerScale = entity.Floats.Get(ShortGuidUtils.Generate("dirt_multiply_blend_spec_power_scale"));
+                        gpuConstants.DirtMapUvScale = entity.Floats.Get(ShortGuidUtils.Generate("dirt_map_uv_scale"));
+                    }
+
+                    {
                         // if material is CA_LIGHT_DECAL
                         LIGHTDECAL_GPU_CONSTANTS gpuConstants = new LIGHTDECAL_GPU_CONSTANTS();
                         Vector3 tint = entity.Vectors.Get(ShortGuidUtils.Generate("lightdecal_tint")) / 255.0f;
