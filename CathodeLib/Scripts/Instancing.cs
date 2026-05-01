@@ -2,6 +2,7 @@ using CATHODE;
 using CATHODE.Enums;
 using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
+using CATHODE.ShaderTypes;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -9,6 +10,10 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
+using static CATHODE.Lights;
+using static CATHODE.Movers.MOVER_DESCRIPTOR;
+using static CATHODE.Movers.MOVER_DESCRIPTOR.GPU_CONSTANTS;
+using static CATHODE.Movers.MOVER_DESCRIPTOR.RENDER_CONSTANTS;
 
 #if !(UNITY_EDITOR || UNITY_STANDALONE_WIN)
 namespace CathodeLib
@@ -2260,13 +2265,113 @@ namespace CathodeLib
                 case FunctionType.FogBox:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
+                    {
+                        CA_FOGPLANE.FEATURES features = 0;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("BILLBOARD")))
+                            features |= CA_FOGPLANE.FEATURES.BILLBOARD;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("LOW_RES")) & !entity.Bools.Get(ShortGuidUtils.Generate("EARLY_ALPHA")))
+                            features |= CA_FOGPLANE.FEATURES.LOW_RES;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("EARLY_ALPHA")))
+                            features |= CA_FOGPLANE.FEATURES.EARLY_ALPHA;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("CONVEX_GEOM")))
+                            features |= CA_FOGPLANE.FEATURES.CONVEX_GEOM;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("START_DISTANT_CLIP")))
+                            features |= CA_FOGPLANE.FEATURES.START_DISTANT_CLIP;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("SOFTNESS")))
+                            features |= CA_FOGPLANE.FEATURES.SOFTNESS;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("LINEAR_HEIGHT_DENSITY")))
+                            features |= CA_FOGPLANE.FEATURES.LINEAR_HEIGHT_DENSITY;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("FRESNEL_FALLOFF")))
+                            features |= CA_FOGPLANE.FEATURES.FRESNEL_FALLOFF;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("DEPTH_INTERSECT_COLOUR")))
+                            features |= CA_FOGPLANE.FEATURES.DEPTH_INTERSECT_COLOUR;
+
+                        //if material is CA_FOGPLANE
+                        FOGPLANE_GPU_CONSTANTS gpuConstants = new FOGPLANE_GPU_CONSTANTS();
+                        gpuConstants.StartDistanceFadeScalar = entity.Bools.Get(ShortGuidUtils.Generate("START_DISTANT_CLIP")) ? entity.Floats.Get(ShortGuidUtils.Generate("START_DISTANCE_FADE")) : 0.0f;
+                        gpuConstants.DistanceFadeScalar = entity.Floats.Get(ShortGuidUtils.Generate("DISTANCE_FADE")) + 1.192092896e-07F;
+                        gpuConstants.AngleFadeScalar = entity.Floats.Get(ShortGuidUtils.Generate("ANGLE_FADE"));
+                        gpuConstants.FresnelPowerScalar = entity.Floats.Get(ShortGuidUtils.Generate("FRESNEL_POWER"));
+                        gpuConstants.HeightMaxDensityScalar = entity.Floats.Get(ShortGuidUtils.Generate("HEIGHT_MAX_DENSITY"));
+                        gpuConstants.ThicknessScalar = entity.Floats.Get(ShortGuidUtils.Generate("THICKNESS"));
+                        gpuConstants.EdgeSoftnessScalar = 1.0f;
+                        gpuConstants.ColourTint = entity.Vectors.Get(ShortGuidUtils.Generate("COLOUR_TINT")) / 255.0f;
+                        gpuConstants.DiffuseMap0_UvScalar = 1.0f;
+                        gpuConstants.DiffuseMap0_SpeedScalar = 1.0f;
+                        gpuConstants.DiffuseMap1_UvScalar = 1.0f;
+                        gpuConstants.DiffuseMap1_SpeedScalar = 1.0f;
+                    }
                     break;
                 case FunctionType.FogPlane:
-
+                    {
+                        //if material is CA_FOGPLANE
+                        FOGPLANE_GPU_CONSTANTS gpuConstants = new FOGPLANE_GPU_CONSTANTS();
+                        gpuConstants.StartDistanceFadeScalar = entity.Floats.Get(ShortGuidUtils.Generate("start_distance_fade_scalar"));
+                        gpuConstants.DistanceFadeScalar = entity.Floats.Get(ShortGuidUtils.Generate("distance_fade_scalar")) + 1.192092896e-07F;
+                        gpuConstants.AngleFadeScalar = entity.Floats.Get(ShortGuidUtils.Generate("angle_fade_scalar"));
+                        gpuConstants.FresnelPowerScalar = entity.Floats.Get(ShortGuidUtils.Generate("linear_height_density_fresnel_power_scalar"));
+                        gpuConstants.HeightMaxDensityScalar = entity.Floats.Get(ShortGuidUtils.Generate("linear_heigth_density_max_scalar"));
+                        gpuConstants.ThicknessScalar = entity.Floats.Get(ShortGuidUtils.Generate("thickness_scalar"));
+                        gpuConstants.EdgeSoftnessScalar = entity.Floats.Get(ShortGuidUtils.Generate("edge_softness_scalar"));
+                        gpuConstants.DiffuseMap0_UvScalar = entity.Floats.Get(ShortGuidUtils.Generate("diffuse_0_uv_scalar"));
+                        gpuConstants.DiffuseMap0_SpeedScalar = entity.Floats.Get(ShortGuidUtils.Generate("diffuse_0_speed_scalar"));
+                        gpuConstants.DiffuseMap1_UvScalar = entity.Floats.Get(ShortGuidUtils.Generate("diffuse_1_uv_scalar"));
+                        gpuConstants.DiffuseMap1_SpeedScalar = entity.Floats.Get(ShortGuidUtils.Generate("diffuse_1_speed_scalar"));
+                        gpuConstants.ColourTint = entity.Vectors.Get(ShortGuidUtils.Generate("tint")) / 255.0f;
+                    }
                     break;
                 case FunctionType.FogSphere:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
+
+                    {
+                        CA_FOGSPHERE.FEATURES features = 0;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("EXPONENTIAL_DENSITY")))
+                            features |= CA_FOGSPHERE.FEATURES.EXPONENTIAL_DENSITY;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("SCENE_DEPENDANT_DENSITY")))
+                            features |= CA_FOGSPHERE.FEATURES.SCENE_DEPENDANT_DENSITY;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("FRESNEL_TERM")))
+                            features |= CA_FOGSPHERE.FEATURES.FRESNEL_TERM;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("SOFTNESS")))
+                            features |= CA_FOGSPHERE.FEATURES.SOFTNESS;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("LOW_RES_ALPHA")) & !entity.Bools.Get(ShortGuidUtils.Generate("EARLY_ALPHA")))
+                            features |= CA_FOGSPHERE.FEATURES.LOW_RES_ALPHA;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("EARLY_ALPHA")))
+                            features |= CA_FOGSPHERE.FEATURES.EARLY_ALPHA;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("BLEND_ALPHA_OVER_DISTANCE")))
+                            features |= CA_FOGSPHERE.FEATURES.BLEND_ALPHA_OVER_DISTANCE;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("SECONDARY_BLEND_ALPHA_OVER_DISTANCE")))
+                            features |= CA_FOGSPHERE.FEATURES.SECONDARY_BLEND_ALPHA_OVER_DISTANCE;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("CONVEX_GEOM")))
+                            features |= CA_FOGSPHERE.FEATURES.CONVEX_GEOM;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("ALPHA_LIGHTING")))
+                        {
+                            features |= CA_FOGSPHERE.FEATURES.ALPHA_LIGHTING;
+                            if (entity.Bools.Get(ShortGuidUtils.Generate("DYNAMIC_ALPHA_LIGHTING")))
+                                features |= CA_FOGSPHERE.FEATURES.DYNAMIC_ALPHA_LIGHTING;
+                        }
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("DEPTH_INTERSECT_COLOUR")))
+                            features |= CA_FOGSPHERE.FEATURES.DEPTH_INTERSECT_COLOUR;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("NO_CLIP")))
+                            features |= CA_FOGSPHERE.FEATURES.NO_CLIP;
+
+                        //if material is CA_FOGSPHERE
+                        FOGSPHERE_GPU_CONSTANTS gpuConstants = new FOGSPHERE_GPU_CONSTANTS();
+                        gpuConstants.ColourTint = entity.Vectors.Get(ShortGuidUtils.Generate("COLOUR_TINT")) / 255.0f;
+                        gpuConstants.Intensity = entity.Floats.Get(ShortGuidUtils.Generate("INTENSITY"));
+                        gpuConstants.Opacity = entity.Floats.Get(ShortGuidUtils.Generate("OPACITY"));
+                        gpuConstants.Density = entity.Floats.Get(ShortGuidUtils.Generate("DENSITY"));
+                        gpuConstants.FresnelPower = entity.Floats.Get(ShortGuidUtils.Generate("FRESNEL_POWER"));
+                        gpuConstants.SoftnessEdge = entity.Floats.Get(ShortGuidUtils.Generate("SOFTNESS_EDGE"));
+                        gpuConstants.FarBlendDistance = entity.Floats.Get(ShortGuidUtils.Generate("FAR_BLEND_DISTANCE"));
+                        gpuConstants.NearBlendDistance = entity.Floats.Get(ShortGuidUtils.Generate("NEAR_BLEND_DISTANCE"));
+                        gpuConstants.SecondaryFarBlendDistance = entity.Floats.Get(ShortGuidUtils.Generate("SECONDARY_FAR_BLEND_DISTANCE"));
+                        gpuConstants.SecondaryNearBlendDistance = entity.Floats.Get(ShortGuidUtils.Generate("SECONDARY_NEAR_BLEND_DISTANCE"));
+                        gpuConstants.Radius = entity.Floats.Get(ShortGuidUtils.Generate("radius"));
+                        gpuConstants.DepthIntersectionColour = entity.Vectors.Get(ShortGuidUtils.Generate("DEPTH_INTERSECT_COLOUR_VALUE")) / 255.0f;
+                        gpuConstants.DepthIntersectionAlpha = entity.Floats.Get(ShortGuidUtils.Generate("DEPTH_INTERSECT_ALPHA_VALUE"));
+                        gpuConstants.DepthIntersectionRange = entity.Floats.Get(ShortGuidUtils.Generate("DEPTH_INTERSECT_RANGE"));
+                    }
                     break;
                 case FunctionType.JOB_Assault:
 
@@ -2278,8 +2383,85 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.LightReference:
-                    if (!isDeleted && !isTemplate && !isRequiredAssets)
-                        AddResourceEntry(entity);
+                    {
+                        if (!isDeleted && !isTemplate && !isRequiredAssets)
+                            AddResourceEntry(entity);
+
+
+                        DEFERRED_PARAMS cpuConstants = new DEFERRED_PARAMS();
+                        cpuConstants.Type = (LightType)entity.EnumIndexes.Get(ShortGuidUtils.Generate("type"));
+                        if (entity.Floats.Get(ShortGuidUtils.Generate("diffuse_bias")) > 1.0f)
+                            cpuConstants.Features |= LightFeature.DiffuseBias;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("is_flash_light")))
+                            cpuConstants.Features |= LightFeature.Flashlight;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("has_lens_flare")))
+                            cpuConstants.Features |= LightFeature.LensFlare;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("has_noclip")))
+                            cpuConstants.Features |= LightFeature.NoClip;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("physical_attenuation")))
+                            cpuConstants.Features |= LightFeature.PhysicalAttenuation;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("horizontal_gobo_flip")))
+                            cpuConstants.Features |= LightFeature.HorizontalGoboFlip;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("is_specular")))
+                            cpuConstants.Features |= LightFeature.Specular;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("no_alphalight")))
+                            cpuConstants.Features |= LightFeature.NoAlphaLight;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("volume")) && cpuConstants.Type == LightType.Spot)
+                            cpuConstants.Features |= LightFeature.Volume;
+                        //if (entity.Strings.Get(ShortGuidUtils.Generate("gobo_texture")) && cpuConstants.Type == LightType.Spot)
+                        //    cpuConstants.Features |= LightFeature.Gobo;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("cast_shadow")) && cpuConstants.Type == LightType.Spot)
+                            cpuConstants.Features |= LightFeature.Shadow;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("is_square_light")) && cpuConstants.Type == LightType.Spot)
+                            cpuConstants.Features |= LightFeature.SquareLight;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("distance_mip_selection_gobo")) && cpuConstants.Type == LightType.Spot)
+                            cpuConstants.Features |= LightFeature.DistanceMipSelectionGobo;
+                        float areaLightRadius = entity.Floats.Get(ShortGuidUtils.Generate("area_light_radius"));
+                        if (areaLightRadius > 0.0001f)
+                            cpuConstants.Features |= LightFeature.AreaLight;
+                        //TODO
+
+                        DEFERRED_GPU_CONSTANTS gpuConstants = new DEFERRED_GPU_CONSTANTS();
+                        float endAttenuation = entity.Floats.Get(ShortGuidUtils.Generate("end_attenuation"));
+                        float startAttenuation = Math.Min(entity.Floats.Get(ShortGuidUtils.Generate("start_attenuation")), endAttenuation - 0.05f);
+                        gpuConstants.AttenuationBegin = Math.Max(Math.Min(startAttenuation, endAttenuation), 0.00001f); //not sure if these start/ends are correct
+                        gpuConstants.AttenuationEnd = Math.Max(Math.Min(startAttenuation, endAttenuation), 0.00001f);
+                        gpuConstants.Colour = Math.Max(0.0f, entity.Floats.Get(ShortGuidUtils.Generate("intensity_multiplier"))) * (entity.Vectors.Get(ShortGuidUtils.Generate("colour")) / 255.0f);
+                        if (cpuConstants.Features.HasFlag(LightFeature.PhysicalAttenuation))
+                        {
+                            gpuConstants.VolumeColour = gpuConstants.Colour;
+                        }
+                        else
+                        {
+                            gpuConstants.AttenuationDefocus = (gpuConstants.AttenuationBegin / 5.0f) * (gpuConstants.AttenuationBegin / 5.0f);
+                            gpuConstants.VolumeColour = gpuConstants.AttenuationDefocus * gpuConstants.Colour;
+                        }
+                        if (cpuConstants.Features.HasFlag(LightFeature.Volume))
+                        {
+                            gpuConstants.VolumeColour *= entity.Vectors.Get(ShortGuidUtils.Generate("volume_colour_factor")) / 255.0f;
+                        }
+                        gpuConstants.NearDist = Math.Min(entity.Floats.Get(ShortGuidUtils.Generate("near_dist")), gpuConstants.AttenuationEnd - 0.00001f);
+                        gpuConstants.Softness = entity.Floats.Get(ShortGuidUtils.Generate("diffuse_softness"));
+                        gpuConstants.DiffuseBias = entity.Floats.Get(ShortGuidUtils.Generate("diffuse_bias"));
+                        gpuConstants.GlossinessScale = Math.Max(0.0f, Math.Min(1.0f, entity.Floats.Get(ShortGuidUtils.Generate("glossiness_scale"))));
+                        gpuConstants.OuterAngle = (float)Math.Min(Math.Min(Math.Max(Math.Cos(MathsUtils.Deg2Rad(entity.Floats.Get(ShortGuidUtils.Generate("outer_cone_angle"))) / 2.0f), 0.0f), 1.0f), 0.999f);
+                        gpuConstants.InnerAngle = (float)Math.Min(Math.Min(Math.Max(Math.Cos(MathsUtils.Deg2Rad(entity.Floats.Get(ShortGuidUtils.Generate("inner_cone_angle"))) / 2.0f), 0.0f), 1.0f), 0.999f);
+                        if (!cpuConstants.Features.HasFlag(LightFeature.SquareLight))
+                        {
+                            gpuConstants.InnerAngle = Math.Min(Math.Max(gpuConstants.OuterAngle + 0.01f, gpuConstants.InnerAngle), 0.999f);
+                        }
+                        else
+                        {
+                            gpuConstants.InnerAngle = Math.Min(gpuConstants.OuterAngle + 0.01f, 0.999f);
+                        }
+                        gpuConstants.ArealightRadius = areaLightRadius;
+                        gpuConstants.Specularity = 0.0f; //TODO - is this unused?!?! mfSpecularity
+                        gpuConstants.NearDistShadowOffset = entity.Floats.Get(ShortGuidUtils.Generate("near_dist_shadow_offset"));
+                        gpuConstants.AspectRatio = cpuConstants.Features.HasFlag(LightFeature.SquareLight) ? Math.Max(entity.Floats.Get(ShortGuidUtils.Generate("aspect_ratio")), 0.001f) : 1.0f;
+                        gpuConstants.VolumeDensity = entity.Floats.Get(ShortGuidUtils.Generate("volume_density"));
+                        float volumeEndAttenuation = entity.Floats.Get(ShortGuidUtils.Generate("volume_end_attenuation"));
+                        gpuConstants.VolumeAttenuationEnd = volumeEndAttenuation > 0.0f ? volumeEndAttenuation : entity.Floats.Get(ShortGuidUtils.Generate("end_attenuation"));
+                    }
                     break;
                 case FunctionType.ModelReference:
                     if (!isDeleted && !isRequiredAssets)
@@ -2357,8 +2539,74 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.ParticleEmitterReference:
-                    if (!isDeleted && !isTemplate && !isRequiredAssets)
-                        AddResourceEntry(entity);
+                    {
+                        bool uniqueMaterial = entity.Bools.Get(ShortGuidUtils.Generate("unique_material"));
+                        //string material = entity.Strings.Get(ShortGuidUtils.Generate("material"));
+
+                        if (!isDeleted && !isTemplate && !isRequiredAssets)
+                            AddResourceEntry(entity);
+
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("CPU")))
+                        {
+                            //model is CPU_PARTICLE_MODEL
+
+                            DYNAMIC_FX_GPU_CONSTANTS gpuConstants = new DYNAMIC_FX_GPU_CONSTANTS();
+                            //gpuConstants.RandomNumber <- random number, is this important?
+                            gpuConstants.StartTime = 0.0f;
+                            gpuConstants.ExpiryTime = entity.Floats.Get(ShortGuidUtils.Generate("SYSTEM_EXPIRY_TIME"));
+
+                            DYNAMIC_PFX_PARAMS cpuConstants = new DYNAMIC_PFX_PARAMS();
+                            cpuConstants.ExpiredFinishEmissions = false;
+                            cpuConstants.Distance = 0.0f;
+                            cpuConstants.ImpactPoint = new Vector3();
+                            cpuConstants.ImpactNormal = new Vector3();
+                            cpuConstants.NumVerts = 0;
+                            cpuConstants.PrimitiveCount = 0;
+                            cpuConstants.VertexByteOffset = 0;
+                            cpuConstants.Handle = -1;
+                            cpuConstants.DrawPass = entity.Integers.Get(ShortGuidUtils.Generate("DRAW_PASS"));
+                            cpuConstants.EntityGuid = entity.Entity.shortGUID;
+                            cpuConstants.ParentGuid = entity.ParentCompositeInstance.InstanceID; //todo - is this correct? i think i should replace this whole thing with entity handle.
+                        }
+                        else
+                        {
+                            //model is 1000_PARTICLE_CUBE
+
+                            PARTICLE_GPU_CONSTANTS gpuConstants = new PARTICLE_GPU_CONSTANTS();
+                            //gpuConstants.RandomNumber <- random number
+                            gpuConstants.StartTime = 0.0f;
+                            gpuConstants.ExpiryTime = entity.Floats.Get(ShortGuidUtils.Generate("SYSTEM_EXPIRY_TIME"));
+                            gpuConstants.CurrentDistance = 0.0f;
+                            gpuConstants.AspectRatio = entity.Floats.Get(ShortGuidUtils.Generate("ASPECT_RATIO"));
+                            gpuConstants.FadeAtDistance = entity.Floats.Get(ShortGuidUtils.Generate("FADE_AT_DISTANCE"));
+                            gpuConstants.AlphaIn = entity.Floats.Get(ShortGuidUtils.Generate("ALPHA_IN")) * 0.01f;
+                            gpuConstants.AlphaOut = entity.Floats.Get(ShortGuidUtils.Generate("ALPHA_OUT")) * 0.01f;
+                            gpuConstants.AlphaRefValue = entity.Floats.Get(ShortGuidUtils.Generate("ALPHA_REF_VALUE"));
+                            gpuConstants.SizeStartMin = entity.Floats.Get(ShortGuidUtils.Generate("SIZE_START_MIN"));
+                            gpuConstants.SizeStartMax = entity.Floats.Get(ShortGuidUtils.Generate("SIZE_START_MAX"));
+                            gpuConstants.SizeEndMin = entity.Floats.Get(ShortGuidUtils.Generate("SIZE_END_MIN"));
+                            gpuConstants.SizeEndMax = entity.Floats.Get(ShortGuidUtils.Generate("SIZE_END_MAX"));
+                            gpuConstants.MaskAmountMin = entity.Floats.Get(ShortGuidUtils.Generate("MASK_AMOUNT_MIN"));
+                            gpuConstants.MaskAmountMax = entity.Floats.Get(ShortGuidUtils.Generate("MASK_AMOUNT_MAX"));
+                            gpuConstants.MaskAmountMidpoint = entity.Floats.Get(ShortGuidUtils.Generate("MASK_AMOUNT_MIDPOINT"));
+                            gpuConstants.ColourScaleMin = entity.Floats.Get(ShortGuidUtils.Generate("COLOUR_SCALE_MIN"));
+                            gpuConstants.ColourScaleMax = entity.Floats.Get(ShortGuidUtils.Generate("COLOUR_SCALE_MAX"));
+                            gpuConstants.ParticleExpiryTimeMin = entity.Floats.Get(ShortGuidUtils.Generate("PARTICLE_EXPIRY_TIME_MIN"));
+                            gpuConstants.ParticleExpiryTimeMax = entity.Floats.Get(ShortGuidUtils.Generate("PARTICLE_EXPIRY_TIME_MAX"));
+                            gpuConstants.Wind = new Vector3(entity.Floats.Get(ShortGuidUtils.Generate("WIND_X")), entity.Floats.Get(ShortGuidUtils.Generate("WIND_Y")), entity.Floats.Get(ShortGuidUtils.Generate("WIND_Z")));
+
+                            PARTICLE_PARAMS cpuConstants = new PARTICLE_PARAMS();
+                            int particleCount = entity.Integers.Get(ShortGuidUtils.Generate("PARTICLE_COUNT"));
+                            cpuConstants.NumVerts = 2 * particleCount * 4;
+                            cpuConstants.PrimitiveCount = 2 * particleCount;
+                            cpuConstants.VertexOffset = (int)(gpuConstants.RandomNumber * (float)(1000 - particleCount)) * 4;
+                            cpuConstants.DrawPass = entity.Integers.Get(ShortGuidUtils.Generate("DRAW_PASS"));
+                            cpuConstants.BoundingBoxMax = entity.Vectors.Get(ShortGuidUtils.Generate("bounds_max"));
+                            cpuConstants.BoundingBoxMin = entity.Vectors.Get(ShortGuidUtils.Generate("bounds_min"));
+                            cpuConstants.EntityGuid = entity.Entity.shortGUID;
+                            cpuConstants.ParentGuid = entity.ParentCompositeInstance.InstanceID; //todo - is this correct? i think i should replace this whole thing with entity handle.
+                        }
+                    }
                     break;
                 case FunctionType.PathfindingAlienBackstageNode:
 
@@ -2438,14 +2686,63 @@ namespace CathodeLib
                 case FunctionType.RibbonEmitterReference:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
+                    {
+                        DYNAMIC_FX_GPU_CONSTANTS gpuConstants = new DYNAMIC_FX_GPU_CONSTANTS();
+                        //gpuConstants.RandomNumber <- generate one
+                        gpuConstants.StartTime = 0.0f;
+                        gpuConstants.ExpiryTime = entity.Floats.Get(ShortGuidUtils.Generate("SYSTEM_EXPIRY_TIME"));
+
+                        DYNAMIC_PFX_PARAMS cpuConstants = new DYNAMIC_PFX_PARAMS();
+                        cpuConstants.ExpiredFinishEmissions = false;
+                        cpuConstants.Distance = 0.0f;
+                        cpuConstants.ImpactPoint = new Vector3();
+                        cpuConstants.ImpactNormal = new Vector3();
+                        cpuConstants.NumVerts = 0;
+                        cpuConstants.PrimitiveCount = 0;
+                        cpuConstants.VertexByteOffset = 0;
+                        cpuConstants.Handle = -1;
+                        cpuConstants.DrawPass = entity.Integers.Get(ShortGuidUtils.Generate("DRAW_PASS"));
+                        cpuConstants.EntityGuid = entity.Entity.shortGUID;
+                        cpuConstants.ParentGuid = entity.ParentCompositeInstance.InstanceID; //todo - is this correct? i think i should replace this whole thing with entity handle.
+                    }
                     break;
                 case FunctionType.SimpleRefraction:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
+                    {
+                        CA_SIMPLE_REFRACTION.FEATURES features = 0;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("SECONDARY_NORMAL_MAPPING")))
+                            features |= CA_SIMPLE_REFRACTION.FEATURES.SECONDARY_NORMAL_MAPPING;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("ALPHA_MASKING")))
+                            features |= CA_SIMPLE_REFRACTION.FEATURES.ALPHA_MASKING;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("DISTORTION_OCCLUSION")))
+                            features |= CA_SIMPLE_REFRACTION.FEATURES.DISTORTION_OCCLUSION;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("FLOW_UV_ANIMATION")))
+                            features |= CA_SIMPLE_REFRACTION.FEATURES.FLOW_UV_ANIMATION;
+                    }
                     break;
                 case FunctionType.SimpleWater:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
+                    {
+                        CA_SIMPLEWATER.FEATURES features = 0;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("SECONDARY_NORMAL_MAPPING")))
+                            features |= CA_SIMPLEWATER.FEATURES.SECONDARY_NORMAL_MAPPING;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("LOW_RES_ALPHA_PASS")))
+                            features |= CA_SIMPLEWATER.FEATURES.LOW_RES_ALPHA_PASS;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("ALPHA_MASKING")))
+                            features |= CA_SIMPLEWATER.FEATURES.ALPHA_MASKING;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("FLOW_MAPPING")))
+                            features |= CA_SIMPLEWATER.FEATURES.FLOW_UV_ANIMATION;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("ENVIRONMENT_MAPPING")))
+                            features |= CA_SIMPLEWATER.FEATURES.ENVIRONMENT_MAPPING;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("LOCALISED_ENVIRONMENT_MAPPING")))
+                            features |= CA_SIMPLEWATER.FEATURES.LOCALISED_ENVIRONMENT_MAPPING;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("LOCALISED_ENVMAP_BOX_PROJECTION")))
+                            features |= CA_SIMPLEWATER.FEATURES.LOCALISED_ENVMAP_BOX_PROJECTION;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("REFLECTIVE_MAPPING")))
+                            features |= CA_SIMPLEWATER.FEATURES.REFLECTIVE_MAPPING;
+                    }
                     break;
                 case FunctionType.SoundBarrier:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
@@ -2482,10 +2779,24 @@ namespace CathodeLib
                 case FunctionType.SurfaceEffectBox:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
+                    {
+                        CA_EFFECT_OVERLAY.FEATURES features = CA_EFFECT_OVERLAY.FEATURES.BOX;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("WS_LOCKED")))
+                            features |= CA_EFFECT_OVERLAY.FEATURES.WS_LOCKED;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("ENVMAP")))
+                            features |= CA_EFFECT_OVERLAY.FEATURES.ENVMAP;
+                    }
                     break;
                 case FunctionType.SurfaceEffectSphere:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
+                    {
+                        CA_EFFECT_OVERLAY.FEATURES features = CA_EFFECT_OVERLAY.FEATURES.SPHERE;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("WS_LOCKED")))
+                            features |= CA_EFFECT_OVERLAY.FEATURES.WS_LOCKED;
+                        if (entity.Bools.Get(ShortGuidUtils.Generate("ENVMAP")))
+                            features |= CA_EFFECT_OVERLAY.FEATURES.ENVMAP;
+                    }
                     break;
                 case FunctionType.TRAV_1ShotSpline:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
