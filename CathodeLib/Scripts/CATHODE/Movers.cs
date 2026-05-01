@@ -527,36 +527,6 @@ namespace CATHODE
                 }
 
                 [StructLayout(LayoutKind.Sequential, Pack = 1)]
-                public class PLANET_GPU_CONSTANTS
-                {
-                    public Vector3 SunPosition;
-                    public float Scale;
-                    public Vector3 ParallaxPosition;
-	                public float OverbrightScalar;
-                    public float LightWrapAngleScalar;
-                    public float PenumraFalloffPowerScalar;
-	                public float AtmosphereRimTransparencyScalar;
-	                public float AtmosphereEdgeFalloffPower;
-	                public float FlowCycleTime;
-	                public float FlowSpeed;
-	                public float FlowTexScale;
-	                public float FlowWarpStrength;
-	                public float AtmosphereTextureScrollSpeed;
-	                public float AtmosphereDetailTextureScrollSpeed;
-	                public float DetailTexScalar;
-	                public float AtmosphereNormalMapScalar;
-	                public float TerrainUvScalar;
-	                public float AtmosphereNormalStrength;
-	                public float TerrainNormalStrength;
-                }
-
-                [StructLayout(LayoutKind.Sequential, Pack = 1)]
-                public class NONINTERACTIVE_WATER_GPU_CONSTANTS
-                {
-	                public float SoftnessEdgeReciprocal;
-                }
-
-                [StructLayout(LayoutKind.Sequential, Pack = 1)]
                 public class FOGSPHERE_GPU_CONSTANTS
                 {
                     public Vector3 ColourTint;
@@ -596,51 +566,6 @@ namespace CATHODE
                 public class LIGHTDECAL_GPU_CONSTANTS
                 {
                     public Vector3 LightdecalIntensity;
-                }
-
-                [StructLayout(LayoutKind.Sequential, Pack = 1)]
-                public class GPU_PFX_CONSTANTS
-                {
-                    public Vector3 PreviousPosition;
-	                public float TimeDelta;
-	                public float SpawnStart;
-	                public float SpawnEnd;
-	                public float PixelScale;
-	                public float Type;
-
-	                public float Speed;
-	                public float SpeedVar;
-	                public float Lifetime;
-	                public float LifetimeVar;
-	                public float SpreadMin;
-	                public float SpreadMax;
-	                public float EmitterSize;
-
-	                public float InvTexHeight;
-	                public float Time;
-                }
-
-                [StructLayout(LayoutKind.Sequential, Pack = 1)]
-                public class GPU_PFX_COMPUTE_CONSTANTS
-                {
-                    public Vector3 PreviousPosition;
-	                float	TimeDelta;
-	                int		SpawnNumber;
-	                int		Type;
-	                float	RandomOffset;
-	                float	SecondRandomScale;
-	                float	PixelScale;
-
-	                float	Speed;
-	                float	SpeedVar;
-	                float	Lifetime;
-	                float	LifetimeVar;
-	                float	SpreadMin;
-	                float	SpreadMax;
-	                float	EmitterSize;
-
-	                float	InvTexHeight;
-	                float	Time;
                 }
             }
 
@@ -833,24 +758,6 @@ namespace CATHODE
                     public Vector3 DecalScale;
                     public uint DynamicTextureIndex;
                     public uint EnvironmentMapIndex;
-                }
-
-                [StructLayout(LayoutKind.Sequential, Pack = 1)]
-                public class PLANET_PARAMS
-                {
-                    public Vector3 ColourRGB;
-                    public Vector3 Offset;
-                    public float Range;
-                    public float Decay;
-                    public float MinOcclusionDistance;
-                    public float Intensity;
-                    public float Density;
-                    public bool BlocksLightShafts;
-                    public bool UseSourceOcclusion;
-                    public int DrawPass;
-                    public Vector3 LensFlareColour;
-                    public float LensFlareBrightness;
-                    public Vector4 GlobalTint;
                 }
 
                 [StructLayout(LayoutKind.Sequential, Pack = 1)]
