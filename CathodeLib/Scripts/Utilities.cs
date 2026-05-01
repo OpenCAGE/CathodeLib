@@ -604,6 +604,11 @@ namespace CathodeLib
             }
             return angle;
         }
+
+        public static double Deg2Rad(double degrees)
+        {
+            return degrees * (Math.PI / 180.0);
+        }
     }
 
     public static class BigEndianUtils
