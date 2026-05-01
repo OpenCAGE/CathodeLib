@@ -2389,7 +2389,12 @@ namespace CathodeLib
 
 
                         DEFERRED_PARAMS cpuConstants = new DEFERRED_PARAMS();
+                        cpuConstants.Visibility = 1.0f;
+                        cpuConstants.FlareIntensityScale = entity.Floats.Get(ShortGuidUtils.Generate("flare_intensity_scale"));
+                        cpuConstants.RadiosityFraction = entity.Floats.Get(ShortGuidUtils.Generate("radiosity_multiplier"));
                         cpuConstants.Type = (LightType)entity.EnumIndexes.Get(ShortGuidUtils.Generate("type"));
+                        cpuConstants.ShadowPriorityOffset = (byte)entity.Integers.Get(ShortGuidUtils.Generate("shadow_priority"));
+                        cpuConstants.SlopeScaleDepthBias = (byte)entity.Integers.Get(ShortGuidUtils.Generate("slope_scale_depth_bias"));
                         if (entity.Floats.Get(ShortGuidUtils.Generate("diffuse_bias")) > 1.0f)
                             cpuConstants.Features |= LightFeature.DiffuseBias;
                         if (entity.Bools.Get(ShortGuidUtils.Generate("is_flash_light")))
@@ -2419,7 +2424,10 @@ namespace CathodeLib
                         float areaLightRadius = entity.Floats.Get(ShortGuidUtils.Generate("area_light_radius"));
                         if (areaLightRadius > 0.0001f)
                             cpuConstants.Features |= LightFeature.AreaLight;
-                        //TODO
+                        cpuConstants.LightFadeType = (LightFadeType)entity.EnumIndexes.Get(ShortGuidUtils.Generate("fade_type"));
+                        cpuConstants.FlareOccluderRadius = entity.Floats.Get(ShortGuidUtils.Generate("flare_occluder_radius"));
+                        cpuConstants.FlareSpotOffset = entity.Floats.Get(ShortGuidUtils.Generate("flare_spot_offset"));
+                        cpuConstants.DepthBias = entity.Floats.Get(ShortGuidUtils.Generate("depth_bias"));
 
                         DEFERRED_GPU_CONSTANTS gpuConstants = new DEFERRED_GPU_CONSTANTS();
                         float endAttenuation = entity.Floats.Get(ShortGuidUtils.Generate("end_attenuation"));
