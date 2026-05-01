@@ -2294,12 +2294,7 @@ namespace CathodeLib
                         gpuConstants.FresnelPowerScalar = entity.Floats.Get(ShortGuidUtils.Generate("FRESNEL_POWER"));
                         gpuConstants.HeightMaxDensityScalar = entity.Floats.Get(ShortGuidUtils.Generate("HEIGHT_MAX_DENSITY"));
                         gpuConstants.ThicknessScalar = entity.Floats.Get(ShortGuidUtils.Generate("THICKNESS"));
-                        gpuConstants.EdgeSoftnessScalar = 1.0f;
                         gpuConstants.ColourTint = entity.Vectors.Get(ShortGuidUtils.Generate("COLOUR_TINT")) / 255.0f;
-                        gpuConstants.DiffuseMap0_UvScalar = 1.0f;
-                        gpuConstants.DiffuseMap0_SpeedScalar = 1.0f;
-                        gpuConstants.DiffuseMap1_UvScalar = 1.0f;
-                        gpuConstants.DiffuseMap1_SpeedScalar = 1.0f;
                     }
                     break;
                 case FunctionType.FogPlane:
@@ -2523,8 +2518,6 @@ namespace CathodeLib
                         gpuConstants.VertexColourScalars = new Vector4(vertColourScale.X, vertColourScale.Y, vertColourScale.Z, entity.Floats.Get(ShortGuidUtils.Generate("vertex_opacity_scale")));
                         Vector3 diffColourScale = entity.Vectors.Get(ShortGuidUtils.Generate("diffuse_colour_scale")) / 255.0f;
                         gpuConstants.DiffuseColourScalars = new Vector4(vertColourScale.X, vertColourScale.Y, vertColourScale.Z, entity.Floats.Get(ShortGuidUtils.Generate("diffuse_opacity_scale")));
-                        gpuConstants.UvOffsetX = 0.0f;
-                        gpuConstants.UvOffsetY = 0.0f;
                         gpuConstants.AlphaBlendNoisePowerScale = entity.Floats.Get(ShortGuidUtils.Generate("alpha_blend_noise_power_scale"));
                         gpuConstants.AlphaBlendNoiseUvScale = entity.Floats.Get(ShortGuidUtils.Generate("alpha_blend_noise_uv_scale"));
                         gpuConstants.AlphaBlendNoiseUvOffset = new Vector2(entity.Floats.Get(ShortGuidUtils.Generate("alpha_blend_noise_uv_offset_X")), entity.Floats.Get(ShortGuidUtils.Generate("alpha_blend_noise_uv_offset_Y")));
@@ -2590,14 +2583,6 @@ namespace CathodeLib
                             gpuConstants.ExpiryTime = entity.Floats.Get(ShortGuidUtils.Generate("SYSTEM_EXPIRY_TIME"));
 
                             DYNAMIC_PFX_PARAMS cpuConstants = new DYNAMIC_PFX_PARAMS();
-                            cpuConstants.ExpiredFinishEmissions = false;
-                            cpuConstants.Distance = 0.0f;
-                            cpuConstants.ImpactPoint = new Vector3();
-                            cpuConstants.ImpactNormal = new Vector3();
-                            cpuConstants.NumVerts = 0;
-                            cpuConstants.PrimitiveCount = 0;
-                            cpuConstants.VertexByteOffset = 0;
-                            cpuConstants.Handle = -1;
                             cpuConstants.DrawPass = entity.Integers.Get(ShortGuidUtils.Generate("DRAW_PASS"));
                             cpuConstants.EntityGuid = entity.Entity.shortGUID;
                             cpuConstants.ParentGuid = entity.ParentCompositeInstance.InstanceID; //todo - is this correct? i think i should replace this whole thing with entity handle.
@@ -2727,14 +2712,6 @@ namespace CathodeLib
                         gpuConstants.ExpiryTime = entity.Floats.Get(ShortGuidUtils.Generate("SYSTEM_EXPIRY_TIME"));
 
                         DYNAMIC_PFX_PARAMS cpuConstants = new DYNAMIC_PFX_PARAMS();
-                        cpuConstants.ExpiredFinishEmissions = false;
-                        cpuConstants.Distance = 0.0f;
-                        cpuConstants.ImpactPoint = new Vector3();
-                        cpuConstants.ImpactNormal = new Vector3();
-                        cpuConstants.NumVerts = 0;
-                        cpuConstants.PrimitiveCount = 0;
-                        cpuConstants.VertexByteOffset = 0;
-                        cpuConstants.Handle = -1;
                         cpuConstants.DrawPass = entity.Integers.Get(ShortGuidUtils.Generate("DRAW_PASS"));
                         cpuConstants.EntityGuid = entity.Entity.shortGUID;
                         cpuConstants.ParentGuid = entity.ParentCompositeInstance.InstanceID; //todo - is this correct? i think i should replace this whole thing with entity handle.

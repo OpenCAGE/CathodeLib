@@ -394,6 +394,8 @@ namespace CATHODE
                     using (MemoryStream stream = new MemoryStream())
                     using (BinaryWriter writer = new BinaryWriter(stream))
                     {
+                        writer.Write(new byte[96]);
+                        writer.BaseStream.Position = 0;
                         Utilities.Write<T>(writer, value);
                         buffer = stream.ToArray();
                     }
@@ -510,9 +512,6 @@ namespace CATHODE
 
                     public float DirtMultiplyBlendSpecPowerScale = 1.0f;
                     public float DirtMapUvScale = 1.0f;
-
-                    public float UvOffsetX = 0.0f;
-                    public float UvOffsetY = 0.0f;
                 }
 
                 [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -578,6 +577,8 @@ namespace CATHODE
                     using (MemoryStream stream = new MemoryStream())
                     using (BinaryWriter writer = new BinaryWriter(stream))
                     {
+                        writer.Write(new byte[84]);
+                        writer.BaseStream.Position = 0;
                         Utilities.Write<T>(writer, value);
                         buffer = stream.ToArray();
                     }
@@ -723,47 +724,20 @@ namespace CATHODE
                 {
                     public Vector3 CustomPositionArray1;
                     public Vector3 CustomPositionArray2;
-
-                    public float EmissiveScale;
-                    public int DecalID;
-                    public float ActivateTime;
-                    public int DrawPass;
-
-                    public float EndTime;
-
-                    public uint SkeletonIndex;
-                    public uint PrevSkeletonIndex;
-                    public uint NumBones;
-
-                    public UInt16 WrinkleWeightSetID;
-                    public Int16 Deprecated;
-
-                    public byte Bitfield1Packed; 
-
-                    public byte DamageType;
-
-                    public UInt16 EmissiveSurfaceID;
-
-                    public Vector3 DecalScale;
-                    public uint DynamicTextureIndex;
-                    public uint EnvironmentMapIndex;
                 }
 
                 [StructLayout(LayoutKind.Sequential, Pack = 1)]
                 public class DYNAMIC_PFX_PARAMS //CPU Particles
                 {
                     public float DrawPass;
-                    public float NumVerts;
-                    public float PrimitiveCount;
-                    public float VertexByteOffset;
+
+                    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 12)]
+                    private byte[] _unused;
+
                     public ShortGuid EntityGuid;
                     public ShortGuid ParentGuid;
 
-                    public int Handle;
-                    public bool ExpiredFinishEmissions;
-                    public float Distance;
-                    public Vector3 ImpactPoint;
-                    public Vector3 ImpactNormal;
+                    private int _unused2 = -1;
                 }
 
                 [StructLayout(LayoutKind.Sequential, Pack = 1)]
