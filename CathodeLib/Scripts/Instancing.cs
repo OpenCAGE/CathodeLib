@@ -2460,7 +2460,6 @@ namespace CathodeLib
                             gpuConstants.InnerAngle = Math.Min(gpuConstants.OuterAngle + 0.01f, 0.999f);
                         }
                         gpuConstants.ArealightRadius = areaLightRadius;
-                        gpuConstants.Specularity = 0.0f; //TODO - is this unused?!?! mfSpecularity
                         gpuConstants.NearDistShadowOffset = entity.Floats.Get(ShortGuidUtils.Generate("near_dist_shadow_offset"));
                         gpuConstants.AspectRatio = cpuConstants.Features.HasFlag(LightFeature.SquareLight) ? Math.Max(entity.Floats.Get(ShortGuidUtils.Generate("aspect_ratio")), 0.001f) : 1.0f;
                         gpuConstants.VolumeDensity = entity.Floats.Get(ShortGuidUtils.Generate("volume_density"));
@@ -2579,7 +2578,6 @@ namespace CathodeLib
 
                             DYNAMIC_FX_GPU_CONSTANTS gpuConstants = new DYNAMIC_FX_GPU_CONSTANTS();
                             //gpuConstants.RandomNumber <- random number, is this important?
-                            gpuConstants.StartTime = 0.0f;
                             gpuConstants.ExpiryTime = entity.Floats.Get(ShortGuidUtils.Generate("SYSTEM_EXPIRY_TIME"));
 
                             DYNAMIC_PFX_PARAMS cpuConstants = new DYNAMIC_PFX_PARAMS();
@@ -2593,9 +2591,7 @@ namespace CathodeLib
 
                             PARTICLE_GPU_CONSTANTS gpuConstants = new PARTICLE_GPU_CONSTANTS();
                             //gpuConstants.RandomNumber <- random number
-                            gpuConstants.StartTime = 0.0f;
                             gpuConstants.ExpiryTime = entity.Floats.Get(ShortGuidUtils.Generate("SYSTEM_EXPIRY_TIME"));
-                            gpuConstants.CurrentDistance = 0.0f;
                             gpuConstants.AspectRatio = entity.Floats.Get(ShortGuidUtils.Generate("ASPECT_RATIO"));
                             gpuConstants.FadeAtDistance = entity.Floats.Get(ShortGuidUtils.Generate("FADE_AT_DISTANCE"));
                             gpuConstants.AlphaIn = entity.Floats.Get(ShortGuidUtils.Generate("ALPHA_IN")) * 0.01f;
@@ -2708,7 +2704,6 @@ namespace CathodeLib
                     {
                         DYNAMIC_FX_GPU_CONSTANTS gpuConstants = new DYNAMIC_FX_GPU_CONSTANTS();
                         //gpuConstants.RandomNumber <- generate one
-                        gpuConstants.StartTime = 0.0f;
                         gpuConstants.ExpiryTime = entity.Floats.Get(ShortGuidUtils.Generate("SYSTEM_EXPIRY_TIME"));
 
                         DYNAMIC_PFX_PARAMS cpuConstants = new DYNAMIC_PFX_PARAMS();

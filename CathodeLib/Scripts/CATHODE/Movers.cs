@@ -447,8 +447,8 @@ namespace CATHODE
                     public float ArealightRadius;
 	                public float LightFade;
 	                public float AttenuationEnd;
-	                public float Specularity;
-	                public float NearDistShadowOffset;
+                    private float _unused;
+                    public float NearDistShadowOffset;
 
                     public Vector3 VolumeColour;
                     public float VolumeDensity;
@@ -462,11 +462,11 @@ namespace CATHODE
                 public class PARTICLE_GPU_CONSTANTS //GPU Particles
                 {
 	                public float ExpiryTime;
-	                public float StartTime;
-	                public float RandomNumber;
-	                public float CurrentDistance;
+                    private float _unused1;
+                    public float RandomNumber;
+                    private float _unused2;
 
-	                public float AspectRatio;
+                    public float AspectRatio;
 	                public float FadeAtDistance;
 	                public float AlphaIn;
 	                public float AlphaOut;
@@ -493,8 +493,8 @@ namespace CATHODE
                 public class DYNAMIC_FX_GPU_CONSTANTS //CPU Particles
                 {
 	                public float ExpiryTime;
-	                public float StartTime;
-	                public float RandomNumber;
+                    private float _unused;
+                    public float RandomNumber;
                 }
 
                 [StructLayout(LayoutKind.Sequential, Pack = 1)]
