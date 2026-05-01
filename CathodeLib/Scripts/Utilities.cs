@@ -609,6 +609,19 @@ namespace CathodeLib
         {
             return degrees * (Math.PI / 180.0);
         }
+
+        public static double sRGBToLinear(float x)
+        {
+            const float a = 0.055f;
+            if (x <= 0.04045f)
+            {
+                return x * (1.0f / 12.92f);
+            }
+            else
+            {
+                return Math.Pow((x + a) * (1.0f / (1.0f + a)), 2.4f);
+            }
+        }
     }
 
     public static class BigEndianUtils

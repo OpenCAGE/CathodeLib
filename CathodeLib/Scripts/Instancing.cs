@@ -2434,7 +2434,8 @@ namespace CathodeLib
                         float startAttenuation = Math.Min(entity.Floats.Get(ShortGuidUtils.Generate("start_attenuation")), endAttenuation - 0.05f);
                         gpuConstants.AttenuationBegin = Math.Max(Math.Min(startAttenuation, endAttenuation), 0.00001f); //not sure if these start/ends are correct
                         gpuConstants.AttenuationEnd = Math.Max(Math.Min(startAttenuation, endAttenuation), 0.00001f);
-                        gpuConstants.Colour = Math.Max(0.0f, entity.Floats.Get(ShortGuidUtils.Generate("intensity_multiplier"))) * (entity.Vectors.Get(ShortGuidUtils.Generate("colour")) / 255.0f);
+                        Vector3 colour = entity.Vectors.Get(ShortGuidUtils.Generate("colour"));
+                        gpuConstants.Colour = Math.Max(0.0f, entity.Floats.Get(ShortGuidUtils.Generate("intensity_multiplier"))) * new Vector3((float)MathsUtils.sRGBToLinear(colour.X / 255.0f), (float)MathsUtils.sRGBToLinear(colour.Y / 255.0f), (float)MathsUtils.sRGBToLinear(colour.Z / 255.0f));
                         if (cpuConstants.Features.HasFlag(LightFeature.PhysicalAttenuation))
                         {
                             gpuConstants.VolumeColour = gpuConstants.Colour;
@@ -2446,7 +2447,8 @@ namespace CathodeLib
                         }
                         if (cpuConstants.Features.HasFlag(LightFeature.Volume))
                         {
-                            gpuConstants.VolumeColour *= entity.Vectors.Get(ShortGuidUtils.Generate("volume_colour_factor")) / 255.0f;
+                            Vector3 volumeColourFactor = entity.Vectors.Get(ShortGuidUtils.Generate("volume_colour_factor"));
+                            gpuConstants.VolumeColour *= new Vector3((float)MathsUtils.sRGBToLinear(volumeColourFactor.X / 255.0f), (float)MathsUtils.sRGBToLinear(volumeColourFactor.Y / 255.0f), (float)MathsUtils.sRGBToLinear(volumeColourFactor.Z / 255.0f));
                         }
                         gpuConstants.NearDist = Math.Min(entity.Floats.Get(ShortGuidUtils.Generate("near_dist")), gpuConstants.AttenuationEnd - 0.00001f);
                         gpuConstants.Softness = entity.Floats.Get(ShortGuidUtils.Generate("diffuse_softness"));
@@ -2512,6 +2514,14 @@ namespace CathodeLib
                                     _level.CollisionMaps.Entries.Add(newMap);
                             }
                         }
+                    }
+
+                    {
+                        // if material is CA_LIGHT_DECAL
+                        LIGHTDECAL_GPU_CONSTANTS gpuConstants = new LIGHTDECAL_GPU_CONSTANTS();
+                        Vector3 tint = entity.Vectors.Get(ShortGuidUtils.Generate("lightdecal_tint")) / 255.0f;
+                        float intensity = entity.Floats.Get(ShortGuidUtils.Generate("lightdecal_intensity"));
+                        gpuConstants.LightdecalIntensity = new Vector3((float)MathsUtils.sRGBToLinear(tint.X), (float)MathsUtils.sRGBToLinear(tint.Y), (float)MathsUtils.sRGBToLinear(tint.Z)) * intensity;
                     }
                     break;
                 case FunctionType.NavMeshArea:
