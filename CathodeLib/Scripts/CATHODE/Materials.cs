@@ -8,6 +8,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using static CATHODE.Lights;
 using static CATHODE.Models;
 using static CATHODE.Movers;
 using static CATHODE.Shaders;
