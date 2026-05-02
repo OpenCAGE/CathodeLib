@@ -3080,7 +3080,7 @@ namespace CathodeLib
             lock (_resourcesLock)
             {
                 //NOTE: Because of 'is_shared', we get some differences with added resources instance IDs, since the first hit (which may differ) is always the one that's written, but hopefully that's fine.
-                _level.Resources.AddUniqueResource(GetResourceID(entity), entity.ThisCompositeInstance.InstanceID);
+                return _level.Resources.AddUniqueResource(GetResourceID(entity), entity.ThisCompositeInstance.InstanceID);
             }
         }
 

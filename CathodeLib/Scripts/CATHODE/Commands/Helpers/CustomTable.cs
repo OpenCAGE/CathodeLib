@@ -6,6 +6,8 @@ using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using static CathodeLib.CompositeFlowgraphTable;
+using static CathodeLib.CompositeFlowgraphTable.FlowgraphMeta;
 
 namespace CathodeLib
 {
@@ -39,6 +41,7 @@ namespace CathodeLib
                 ShortGuids = (GuidNameTable)ReadTable(content, CustomTableType.SHORT_GUIDS);
                 CathodeEntities = (CathodeEntityTable)ReadTable(content, CustomTableType.CATHODE_ENTITY_INFO);
                 CathodeEnums = (CathodeEnumTable)ReadTable(content, CustomTableType.CATHODE_ENUM_INFO);
+                MaterialMappings = (MaterialMappingTable)ReadTable(content, CustomTableType.MATERIAL_MAPPINGS);
             }
 
             public readonly CompositePathTable CompositePaths;
@@ -47,6 +50,7 @@ namespace CathodeLib
             public readonly GuidNameTable ShortGuids;
             public readonly CathodeEntityTable CathodeEntities;
             public readonly CathodeEnumTable CathodeEnums;
+            public readonly MaterialMappingTable MaterialMappings;
         }
 
         /// <summary>
@@ -1241,12 +1245,16 @@ namespace CathodeLib
 
         public class MappingAlias
         {
+            public bool AlwaysUse = false;
+            public SupportedLevel SupportedLevels; 
             public ShortGuid MappingID;
             public ShortGuid CompositeID;
             public List<ShortGuid> EntityPath = new List<ShortGuid>();
         }
         public class Mapping
         {
+            public bool AlwaysUse = false;
+            public SupportedLevel SupportedLevels;
             public ShortGuid MappingID;
             public ShortGuid CompositeID;
             public ShortGuid EntityID;
@@ -1260,8 +1268,11 @@ namespace CathodeLib
             int aliasCount = reader.ReadInt32();
             for (int i = 0; i < aliasCount; i++)
             {
+                bool alwaysUse = reader.ReadBoolean();
                 MappingAliases.Add(new MappingAlias()
                 {
+                    AlwaysUse = alwaysUse,
+                    SupportedLevels = alwaysUse ? 0 : (FlowgraphMeta.SupportedLevel)reader.ReadInt64(),
                     MappingID = Utilities.Consume<ShortGuid>(reader),
                     CompositeID = Utilities.Consume<ShortGuid>(reader)
                 });
@@ -1274,8 +1285,11 @@ namespace CathodeLib
             int nonAliasCount = reader.ReadInt32();
             for (int i = 0; i < nonAliasCount; i++)
             {
+                bool alwaysUse = reader.ReadBoolean();
                 Mappings.Add(new Mapping()
                 {
+                    AlwaysUse = alwaysUse,
+                    SupportedLevels = alwaysUse ? 0 : (FlowgraphMeta.SupportedLevel)reader.ReadInt64(),
                     MappingID = Utilities.Consume<ShortGuid>(reader),
                     CompositeID = Utilities.Consume<ShortGuid>(reader),
                     EntityID = Utilities.Consume<ShortGuid>(reader)
@@ -1288,6 +1302,9 @@ namespace CathodeLib
             writer.Write(MappingAliases.Count);
             foreach (MappingAlias map in MappingAliases)
             {
+                writer.Write(map.AlwaysUse);
+                if (!map.AlwaysUse)
+                    writer.Write((long)map.SupportedLevels);
                 Utilities.Write<ShortGuid>(writer, map.MappingID);
                 Utilities.Write<ShortGuid>(writer, map.CompositeID);
                 writer.Write(map.EntityPath.Count);
@@ -1299,6 +1316,9 @@ namespace CathodeLib
             writer.Write(Mappings.Count);
             foreach (Mapping map in Mappings)
             {
+                writer.Write(map.AlwaysUse);
+                if (!map.AlwaysUse)
+                    writer.Write((long)map.SupportedLevels);
                 Utilities.Write<ShortGuid>(writer, map.MappingID);
                 Utilities.Write<ShortGuid>(writer, map.CompositeID);
                 Utilities.Write<ShortGuid>(writer, map.EntityID);
