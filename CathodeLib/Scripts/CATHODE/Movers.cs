@@ -106,7 +106,7 @@ namespace CATHODE
                     mvr.EnvironmentMap = environmentMaps[i];
                     mvr.EmissiveTint = new Vector3(reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
                     mvr.EmissiveFlags = (EmissiveFlag)reader.ReadByte();
-                    mvr.EmisiveIntensityMultiplier = reader.ReadSingle();
+                    mvr.EmissiveIntensityMultiplier = reader.ReadSingle();
                     mvr.EmissiveRadiosityMultiplier = reader.ReadSingle();
                     mvr.PrimaryZoneID = Utilities.Consume<ShortGuid>(reader);
                     mvr.SecondaryZoneID = Utilities.Consume<ShortGuid>(reader);
@@ -218,7 +218,7 @@ namespace CATHODE
                 writer.Write((byte)entry.EmissiveTint.Z);
 #endif
                 writer.Write((byte)entry.EmissiveFlags);
-                writer.Write(entry.EmisiveIntensityMultiplier);
+                writer.Write(entry.EmissiveIntensityMultiplier);
                 writer.Write(entry.EmissiveRadiosityMultiplier);
                 Utilities.Write<ShortGuid>(writer, entry.PrimaryZoneID);
                 Utilities.Write<ShortGuid>(writer, entry.SecondaryZoneID);
@@ -309,7 +309,7 @@ namespace CATHODE
         };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct MoverFlag
+        public class MoverFlag
         {
             public bool RequiresScript
             {
@@ -349,10 +349,10 @@ namespace CATHODE
 
         public class MOVER_DESCRIPTOR : IEquatable<MOVER_DESCRIPTOR>
         {
-            public Matrix4x4 Transform;
+            public Matrix4x4 Transform = Matrix4x4.Identity;
 
-            public GPU_CONSTANTS GPUConstants; 
-            public RENDER_CONSTANTS RenderConstants;
+            public GPU_CONSTANTS GPUConstants = new GPU_CONSTANTS(); 
+            public RENDER_CONSTANTS RenderConstants = new RENDER_CONSTANTS();
 
             public List<RenderableElements.Element> RenderableElements = new List<RenderableElements.Element>(); 
 
@@ -365,14 +365,14 @@ namespace CATHODE
 
             public Vector3 EmissiveTint = new Vector3(255, 255, 255);
             public EmissiveFlag EmissiveFlags = EmissiveFlag.None;
-            public float EmisiveIntensityMultiplier = 1.0f;
+            public float EmissiveIntensityMultiplier = 1.0f;
             public float EmissiveRadiosityMultiplier = 0.0f;
 
-            public ShortGuid PrimaryZoneID; //zero is "unzoned"
-            public ShortGuid SecondaryZoneID; //zero is "unzoned"
+            public ShortGuid PrimaryZoneID = ShortGuid.Invalid; //zero is "unzoned"
+            public ShortGuid SecondaryZoneID = ShortGuid.Invalid; //zero is "unzoned"
             public int LightingMasterID = 0;
 
-            public MoverFlag Flags;
+            public MoverFlag Flags = new MoverFlag();
 
             [StructLayout(LayoutKind.Sequential, Pack = 1)]
             public class GPU_CONSTANTS : IEquatable<GPU_CONSTANTS>
@@ -820,7 +820,7 @@ namespace CATHODE
 #endif
 
                 if (EmissiveFlags != other.EmissiveFlags) return false;
-                if (Math.Abs(EmisiveIntensityMultiplier - other.EmisiveIntensityMultiplier) > float.Epsilon) return false;
+                if (Math.Abs(EmissiveIntensityMultiplier - other.EmissiveIntensityMultiplier) > float.Epsilon) return false;
                 if (Math.Abs(EmissiveRadiosityMultiplier - other.EmissiveRadiosityMultiplier) > float.Epsilon) return false;
 
                 if (PrimaryZoneID != other.PrimaryZoneID) return false;
@@ -880,7 +880,7 @@ namespace CATHODE
                     hash = hash * 23 + EmissiveTint.Z.GetHashCode();
 #endif
                     hash = hash * 23 + EmissiveFlags.GetHashCode();
-                    hash = hash * 23 + EmisiveIntensityMultiplier.GetHashCode();
+                    hash = hash * 23 + EmissiveIntensityMultiplier.GetHashCode();
                     hash = hash * 23 + EmissiveRadiosityMultiplier.GetHashCode();
                     hash = hash * 23 + PrimaryZoneID.GetHashCode();
                     hash = hash * 23 + SecondaryZoneID.GetHashCode();
