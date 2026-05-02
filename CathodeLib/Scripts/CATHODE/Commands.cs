@@ -49,13 +49,16 @@ namespace CATHODE
             _loaded = Load();
 
             //Overwrite loaded data with the data from BIN
-            if (Path.GetExtension(_filepath).ToUpper() == ".BIN")
+            switch  (Path.GetExtension(_filepath).ToUpper())
             {
-                foreach (var composites in CommandsBIN.EntityNames)
-                    foreach (var entities in composites.Value)
-                        Utils.SetEntityName(composites.Key, entities.Key, entities.Value);
-                foreach (var others in CommandsBIN.ParameterNames)
-                    ShortGuidUtils.Generate(others.Value); // do we even need to do this?
+                case ".BIN":
+                case ".BIN.GZ":
+                    foreach (var composites in CommandsBIN.EntityNames)
+                        foreach (var entities in composites.Value)
+                            Utils.SetEntityName(composites.Key, entities.Key, entities.Value);
+                    foreach (var others in CommandsBIN.ParameterNames)
+                        ShortGuidUtils.Generate(others.Value); // do we even need to do this?
+                    break;
             }
         }
 
