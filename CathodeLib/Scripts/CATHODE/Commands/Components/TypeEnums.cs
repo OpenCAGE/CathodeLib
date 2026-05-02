@@ -22,13 +22,13 @@ namespace CATHODE.Scripting
     [Flags]
     public enum ParameterVariant
     {
-        REFERENCE_PIN = 1 << 0,  
-        TARGET_PIN = 1 << 1, 
+        REFERENCE_PIN = 1 << 0,
+        TARGET_PIN = 1 << 1,
         STATE_PARAMETER = 1 << 2,
-        INPUT_PIN = 1 << 3, 
+        INPUT_PIN = 1 << 3,
         OUTPUT_PIN = 1 << 4,
         PARAMETER = 1 << 5,
-        INTERNAL = 1 << 6,  
+        INTERNAL = 1 << 6,
         METHOD_FUNCTION = 1 << 7,
         METHOD_PIN = 1 << 8
     }
@@ -919,7 +919,7 @@ namespace CATHODE.Scripting
         CATHODE_COVER_SEGMENT = 225801643,
         CHARACTER = 2829063887,
         CHARACTER_COMMAND_APPLICATOR = 4291368020,
-        CHOKE_POINT_RESOURCE = 3549285759, 
+        CHOKE_POINT_RESOURCE = 3549285759,
         COLLISION_MAPPING = 3468071607,  // Links to data in COLLISION.MAP
         DYNAMIC_PHYSICS_SYSTEM = 4226892125, // Links to data in PHYSICS.MAP
         EQUIPPABLE_ITEM_INSTANCE = 2535245826,
@@ -1154,7 +1154,7 @@ namespace CATHODE.Scripting
     }
 }
 namespace CATHODE.Scripting.Internal
-{ 
+{
     /// <summary>
     /// Blocks of data in each compiled composite
     /// </summary>
@@ -1197,6 +1197,8 @@ namespace CATHODE.Scripting.Internal
         CATHODE_ENUM_INFO,                      // Database of available Cathode enums
         COMPOSITE_PATHS,                        // Full properly-cased paths for vanilla composites
         COMPOSITE_PAGE_HISTORY,                 // Stores the previously opened flowgraph page for a composite
+        FLAGS,                                  // A table of generic flags that can store level modification metadata
+        MATERIAL_MAPPINGS,                      // Stores material mappings to populate as parameters or aliases
 
         //Add new entries here
 
@@ -1211,5 +1213,6 @@ namespace CATHODE.Scripting.Internal
         COMMANDS_PAK,
         COMMANDS_BIN,
         STANDALONE,
+        COMMANDS_COMPRESSED,
     }
 }
