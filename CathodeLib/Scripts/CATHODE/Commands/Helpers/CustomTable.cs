@@ -1265,6 +1265,10 @@ namespace CathodeLib
             if (reader == null)
                 return;
 
+            int totalCount = reader.ReadInt32();
+            if (totalCount == 0)
+                return;
+
             int aliasCount = reader.ReadInt32();
             for (int i = 0; i < aliasCount; i++)
             {
@@ -1299,6 +1303,8 @@ namespace CathodeLib
 
         public override void Write(BinaryWriter writer)
         {
+            writer.Write(MappingAliases.Count + Mappings.Count);
+
             writer.Write(MappingAliases.Count);
             foreach (MappingAlias map in MappingAliases)
             {
