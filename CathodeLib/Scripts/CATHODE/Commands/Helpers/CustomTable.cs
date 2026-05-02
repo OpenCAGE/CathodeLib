@@ -2,13 +2,10 @@ using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using System;
 using System.Collections.Generic;
-using System.Data.Common;
 using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Runtime.InteropServices.ComTypes;
-using static CATHODE.SkeleDB;
 
 namespace CathodeLib
 {
@@ -148,6 +145,9 @@ namespace CathodeLib
                             case CustomTableType.FLAGS:
                                 ((FlagTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomTableType.MATERIAL_MAPPINGS:
+                                ((MaterialMappingTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
 #if DEBUG
                         if (tableType == table)
@@ -240,6 +240,9 @@ namespace CathodeLib
                         break;
                     case CustomTableType.FLAGS:
                         data = new FlagTable(reader);
+                        break;
+                    case CustomTableType.MATERIAL_MAPPINGS:
+                        data = new MaterialMappingTable(reader);
                         break;
                 }
             }
@@ -1224,6 +1227,82 @@ namespace CathodeLib
         {
             writer.Write(1);
             writer.Write(HasBeenModified);
+        }
+    }
+    public class MaterialMappingTable : CustomTable.Table
+    {
+        public MaterialMappingTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.MATERIAL_MAPPINGS;
+        }
+
+        public List<MappingAlias> MappingAliases = new List<MappingAlias>();
+        public List<Mapping> Mappings = new List<Mapping>();
+
+        public class MappingAlias
+        {
+            public ShortGuid MappingID;
+            public ShortGuid CompositeID;
+            public List<ShortGuid> EntityPath = new List<ShortGuid>();
+        }
+        public class Mapping
+        {
+            public ShortGuid MappingID;
+            public ShortGuid CompositeID;
+            public ShortGuid EntityID;
+        }
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+                return;
+
+            int aliasCount = reader.ReadInt32();
+            for (int i = 0; i < aliasCount; i++)
+            {
+                MappingAliases.Add(new MappingAlias()
+                {
+                    MappingID = Utilities.Consume<ShortGuid>(reader),
+                    CompositeID = Utilities.Consume<ShortGuid>(reader)
+                });
+                int pathLength = reader.ReadInt32();
+                for (int x = 0; x < pathLength; x++)
+                {
+                    MappingAliases[MappingAliases.Count - 1].EntityPath.Add(Utilities.Consume<ShortGuid>(reader));
+                }
+            }
+            int nonAliasCount = reader.ReadInt32();
+            for (int i = 0; i < nonAliasCount; i++)
+            {
+                Mappings.Add(new Mapping()
+                {
+                    MappingID = Utilities.Consume<ShortGuid>(reader),
+                    CompositeID = Utilities.Consume<ShortGuid>(reader),
+                    EntityID = Utilities.Consume<ShortGuid>(reader)
+                });
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(MappingAliases.Count);
+            foreach (MappingAlias map in MappingAliases)
+            {
+                Utilities.Write<ShortGuid>(writer, map.MappingID);
+                Utilities.Write<ShortGuid>(writer, map.CompositeID);
+                writer.Write(map.EntityPath.Count);
+                foreach (ShortGuid entry in map.EntityPath)
+                {
+                    Utilities.Write<ShortGuid>(writer, entry);
+                }
+            }
+            writer.Write(Mappings.Count);
+            foreach (Mapping map in Mappings)
+            {
+                Utilities.Write<ShortGuid>(writer, map.MappingID);
+                Utilities.Write<ShortGuid>(writer, map.CompositeID);
+                Utilities.Write<ShortGuid>(writer, map.EntityID);
+            }
         }
     }
 }

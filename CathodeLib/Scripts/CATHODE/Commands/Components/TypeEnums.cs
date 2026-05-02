@@ -1198,6 +1198,7 @@ namespace CATHODE.Scripting.Internal
         COMPOSITE_PATHS,                        // Full properly-cased paths for vanilla composites
         COMPOSITE_PAGE_HISTORY,                 // Stores the previously opened flowgraph page for a composite
         FLAGS,                                  // A table of generic flags that can store level modification metadata
+        MATERIAL_MAPPINGS,                      // Stores material mappings to populate as parameters or aliases
 
         //Add new entries here
 
