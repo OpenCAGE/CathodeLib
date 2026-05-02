@@ -3,6 +3,7 @@ using CATHODE.Enums;
 using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using CATHODE.ShaderTypes;
+using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -10,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
+using System.Windows.Media.Animation;
 using static CATHODE.Lights;
 using static CATHODE.MaterialMappings.MaterialMapping;
 using static CATHODE.Movers.MOVER_DESCRIPTOR;
@@ -367,6 +369,7 @@ namespace CathodeLib
         public Parameters<int> EnumIndexes = new Parameters<int>();
         public Parameters<Vector3> Vectors = new Parameters<Vector3>();
         public Parameters<Transform> Transforms = new Parameters<Transform>();
+        public Parameters<cResource> Resources = new Parameters<cResource>();
 
         public Level Level = null;
         public Entity Entity = null;
@@ -647,6 +650,20 @@ namespace CathodeLib
                             Transforms.Values.Add(guid, value);
                         }
                         break;
+                    case DataType.RESOURCE:
+                        {
+                            cResource value = new cResource();
+                            Parameter p = entity.GetParameter(guid);
+                            switch (p?.content?.dataType)
+                            {
+                                case DataType.RESOURCE:
+                                    value = (cResource)p.content;
+                                    break;
+                            }
+
+                            Resources.Values.Add(guid, value);
+                        }
+                        break;
                 }
             }
 
@@ -711,6 +728,9 @@ namespace CathodeLib
                         case DataType.TRANSFORM:
                             Transforms.AddLinks(guid, linksParsed);
                             break;
+                        case DataType.RESOURCE:
+                            Resources.AddLinks(guid, linksParsed);
+                            break;
                     }
                 }
                 _parameters = null;
@@ -730,6 +750,7 @@ namespace CathodeLib
                     EnumIndexes.PopulateVariableParentInfo(ParentCompositeInstanceEntity.EnumIndexes, varGuid);
                     Vectors.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Vectors, varGuid);
                     Transforms.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Transforms, varGuid);
+                    Resources.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Resources, varGuid);
                 }
             }
         }
@@ -742,6 +763,7 @@ namespace CathodeLib
             EnumIndexes.PopulateAliasInfo(alias.InstancedInfo.EnumIndexes);
             Vectors.PopulateAliasInfo(alias.InstancedInfo.Vectors);
             Transforms.PopulateAliasInfo(alias.InstancedInfo.Transforms);
+            Resources.PopulateAliasInfo(alias.InstancedInfo.Resources);
         }
 
         public T GetAs<T>(string name = "reference")
@@ -828,6 +850,11 @@ namespace CathodeLib
                                 if (typeof(T) == typeof(Transform))
                                     return (T)(object)t;
                                 break;
+                            case DataType.RESOURCE:
+                                cResource r = Resources.Get(var.name);
+                                if (typeof(T) == typeof(cResource))
+                                    return (T)(object)r;
+                                break;
                         }
                     }
                     break;
@@ -856,6 +883,8 @@ namespace CathodeLib
                 else
                     return (T)(object)new Transform();
             }
+            else if (typeof(T) == typeof(cResource))
+                return (T)(object)new cResource();
             else
             {
                 throw new Exception("Unhandled");
@@ -896,6 +925,11 @@ namespace CathodeLib
                 else if (Transforms.Has(guid))
                 {
                     Transform value = Transforms.Get(guid);
+                    return GetValueAs<T>(value);
+                }
+                else if (Resources.Has(guid))
+                {
+                    cResource value = Resources.Get(guid);
                     return GetValueAs<T>(value);
                 }
             }
@@ -2605,7 +2639,38 @@ namespace CathodeLib
                         {
                             Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
                             mvr.Transform = entity.CalculateWorldTransformMatrix();
-                            List<RenderableElements.Element> reds = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                            List<RenderableElements.Element> ogReds = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                            List<RenderableElements.Element> reds = new List<RenderableElements.Element>();
+                            cResource remapping = entity.Resources.Get(ShortGuidUtils.Generate("mapping"));
+                            if (remapping != null && remapping.shortGUID != ShortGuid.Invalid)
+                            {
+                                var map = _level.MaterialMappings.Entries.FirstOrDefault(o => ShortGuidUtils.Generate(o.Name.Replace("/", "\\").ToUpper()) == remapping.shortGUID);
+                                if (map != null)
+                                {
+                                    foreach (RenderableElements.Element element in ogReds)
+                                    {
+                                        MaterialMappings.MaterialMapping.Mapping remap = map.Mappings.FirstOrDefault(o => o.from == element.Material.Name);
+                                        if (remap != null)
+                                        {
+                                            reds.Add(element.Copy());
+                                            reds[reds.Count - 1].Material = _level.Materials.Entries.FirstOrDefault(o => o.Name == remap.to);
+                                            //TODO - if modifying the material here, i need to update the REDS that gets written
+                                        }
+                                        else
+                                        {
+                                            reds.Add(element);
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    reds = ogReds;
+                                }
+                            }
+                            else
+                            {
+                                reds = ogReds;
+                            }
                             if (reds != null && reds.Count > 0 && reds[0].Material != null && reds[0].Material.Shader != null)
                             {
                                 switch (reds[0].Material.Shader.Ubershader)
