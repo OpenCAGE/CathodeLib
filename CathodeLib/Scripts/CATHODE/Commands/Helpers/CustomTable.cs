@@ -6,8 +6,10 @@ using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using static CATHODE.Lights;
 using static CathodeLib.CompositeFlowgraphTable;
 using static CathodeLib.CompositeFlowgraphTable.FlowgraphMeta;
+using static CathodeLib.CompositeFlowgraphTable.FlowgraphMeta.NodeMeta;
 
 namespace CathodeLib
 {
@@ -1243,21 +1245,71 @@ namespace CathodeLib
         public List<MappingAlias> MappingAliases = new List<MappingAlias>();
         public List<Mapping> Mappings = new List<Mapping>();
 
-        public class MappingAlias
+        public class MappingAlias : IEquatable<MappingAlias>
         {
             public bool AlwaysUse = false;
             public SupportedLevel SupportedLevels; 
             public ShortGuid MappingID;
             public ShortGuid CompositeID;
             public List<ShortGuid> EntityPath = new List<ShortGuid>();
+
+            public bool Equals(MappingAlias other)
+            {
+                if (other is null) return false;
+                if (ReferenceEquals(this, other)) return true;
+
+                return AlwaysUse == other.AlwaysUse &&
+                       SupportedLevels == other.SupportedLevels &&
+                       MappingID == other.MappingID &&
+                       CompositeID == other.CompositeID &&
+                       EntityPath == other.EntityPath;
+            }
+
+            public override bool Equals(object obj) => Equals(obj as MappingAlias);
+
+            public override int GetHashCode()
+            {
+                int hashCode = 1308473823;
+                hashCode = hashCode * -1521134295 + AlwaysUse.GetHashCode();
+                hashCode = hashCode * -1521134295 + SupportedLevels.GetHashCode();
+                hashCode = hashCode * -1521134295 + MappingID.GetHashCode();
+                hashCode = hashCode * -1521134295 + CompositeID.GetHashCode();
+                hashCode = hashCode * -1521134295 + EqualityComparer<List<ShortGuid>>.Default.GetHashCode(EntityPath);
+                return hashCode;
+            }
         }
-        public class Mapping
+        public class Mapping : IEquatable<Mapping>
         {
             public bool AlwaysUse = false;
             public SupportedLevel SupportedLevels;
             public ShortGuid MappingID;
             public ShortGuid CompositeID;
             public ShortGuid EntityID;
+
+            public bool Equals(Mapping other)
+            {
+                if (other is null) return false;
+                if (ReferenceEquals(this, other)) return true;
+
+                return AlwaysUse == other.AlwaysUse &&
+                       SupportedLevels == other.SupportedLevels &&
+                       MappingID == other.MappingID &&
+                       CompositeID == other.CompositeID &&
+                       EntityID == other.EntityID;
+            }
+
+            public override bool Equals(object obj) => Equals(obj as Mapping);
+
+            public override int GetHashCode()
+            {
+                int hashCode = -107168883;
+                hashCode = hashCode * -1521134295 + AlwaysUse.GetHashCode();
+                hashCode = hashCode * -1521134295 + SupportedLevels.GetHashCode();
+                hashCode = hashCode * -1521134295 + MappingID.GetHashCode();
+                hashCode = hashCode * -1521134295 + CompositeID.GetHashCode();
+                hashCode = hashCode * -1521134295 + EntityID.GetHashCode();
+                return hashCode;
+            }
         }
 
         public override void Read(BinaryReader reader)
