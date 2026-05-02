@@ -3,6 +3,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
+using CATHODE.Enums;
+
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
@@ -161,5 +163,22 @@ namespace CATHODE
             public LightFeature feature_flags;
         }
         #endregion
+    }
+
+    public static class LightTypeUtils
+    {
+        public static Lights.LightType AsLightType(this LIGHT_TYPE type)
+        {
+            switch (type)
+            {
+                case LIGHT_TYPE.OMNI:
+                    return Lights.LightType.Point;
+                case LIGHT_TYPE.SPOT:
+                    return Lights.LightType.Spot;
+                case LIGHT_TYPE.STRIP:
+                    return Lights.LightType.Strip;
+            }
+            throw new Exception("Unexpected!");
+        }
     }
 }

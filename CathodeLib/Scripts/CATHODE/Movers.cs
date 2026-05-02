@@ -193,7 +193,7 @@ namespace CATHODE
                 Utilities.Write<Matrix4x4>(writer, entry.Transform);
                 Utilities.Write<MOVER_DESCRIPTOR.GPU_CONSTANTS>(writer, entry.GPUConstants);
                 Utilities.Write<MOVER_DESCRIPTOR.RENDER_CONSTANTS>(writer, entry.RenderConstants);
-                if (entry.RenderableElements.Count == 0)
+                if (entry.RenderableElements == null || entry.RenderableElements.Count == 0)
                 {
                     writer.Write(-1);
                     writer.Write(-1);
@@ -378,7 +378,7 @@ namespace CATHODE
             public class GPU_CONSTANTS : IEquatable<GPU_CONSTANTS>
             {
                 [MarshalAs(UnmanagedType.ByValArray, SizeConst = 96)]
-                private byte[] buffer;
+                private byte[] buffer = new byte[96];
 
                 public T GetAs<T>()
                 {
@@ -561,7 +561,7 @@ namespace CATHODE
             public class RENDER_CONSTANTS : IEquatable<RENDER_CONSTANTS>
             {
                 [MarshalAs(UnmanagedType.ByValArray, SizeConst = 84)]
-                private byte[] buffer;
+                private byte[] buffer = new byte[84];
 
                 public T GetAs<T>()
                 {
@@ -734,8 +734,7 @@ namespace CATHODE
                     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 12)]
                     private byte[] _unused;
 
-                    public ShortGuid EntityGuid;
-                    public ShortGuid ParentGuid;
+                    public EntityHandle Entity;
 
                     private int _unused2 = -1;
                 }
@@ -747,8 +746,8 @@ namespace CATHODE
                     public float NumVerts;
                     public float PrimitiveCount;
                     public float VertexOffset;
-                    public ShortGuid EntityGuid;
-                    public ShortGuid ParentGuid;
+
+                    public EntityHandle Entity;
 
                     public Vector3 BoundingBoxMin;
                     public Vector3 BoundingBoxMax;
