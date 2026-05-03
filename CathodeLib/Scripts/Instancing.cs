@@ -2148,6 +2148,21 @@ namespace CathodeLib
             if (Root?.Composite == null)
                 throw new Exception("Call GenerateInstances first");
 
+            //First 12 are required assets used by various things like particle systems, etc - keep them!
+            //If building a level from scratch I'll need to add these somehow - store them? They're the same everywhere.
+            List<Movers.MOVER_DESCRIPTOR> requiredAssets = new List<Movers.MOVER_DESCRIPTOR>();
+            for (int i = 0; i < 12; i++)
+                requiredAssets.Add(_level.Movers.Entries[i]);
+            _level.Movers.Entries = requiredAssets;
+
+            //We will rebuild these completely
+            _level.Resources.Entries.Clear();
+            _level.PhysicsMaps.Entries.Clear();
+            _level.CollisionMaps.Entries.Clear();
+            // should probably completely rebuild REDS here too using composite/instanced data
+            // also, what about LIGHTS and some others?
+
+            //First 18 hull mappings are empty, reserved for characters
             for (int i = 0; i < 18; i++)
                 _level.CollisionMaps.Entries.Add(new CollisionMaps.COLLISION_MAPPING());
 
