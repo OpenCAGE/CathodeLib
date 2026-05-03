@@ -60,5 +60,6 @@ namespace CathodeLib
         public static readonly ShortGuid ANIM_TRACK_TYPE = ShortGuidUtils.Generate("ANIM_TRACK_TYPE");
         public static readonly ShortGuid PhysicsSystem = ShortGuidUtils.Generate("PhysicsSystem");
         public static readonly ShortGuid name = ShortGuidUtils.Generate("name");
+        public static readonly ShortGuid mapping = ShortGuidUtils.Generate("mapping");
     }
 }

@@ -54,6 +54,17 @@ namespace CathodeLib
                 if (Values.TryGetValue(guid, out T val))
                     return val;
 
+                if (guid == ShortGuids.mapping)
+                {
+                    //This is a bodge for 'mapping' parameters, their type is actual FileType, but we handle them as cResource
+                    //As such, their default value won't be populated, so return one here if it hasn't been set directly or via link
+#if DEBUG
+                    if (typeof(T) != typeof(cResource))
+                        throw new Exception("Unexpected!");
+#endif
+                    return (T)(object)new cResource();
+                }
+
                 throw new Exception("Failed to find param.");
             }
 
@@ -370,6 +381,7 @@ namespace CathodeLib
         public Parameters<Vector3> Vectors = new Parameters<Vector3>();
         public Parameters<Transform> Transforms = new Parameters<Transform>();
         public Parameters<cResource> Resources = new Parameters<cResource>();
+        public Parameters<string> Strings = new Parameters<string>();
 
         public Level Level = null;
         public Entity Entity = null;
@@ -664,6 +676,39 @@ namespace CathodeLib
                             Resources.Values.Add(guid, value);
                         }
                         break;
+                    case DataType.ENUM_STRING:
+                    case DataType.STRING:
+                        {
+                            string value = "";
+                            Parameter p = entity.GetParameter(guid);
+                            switch (p?.content?.dataType)
+                            {
+                                case DataType.FILEPATH:
+                                case DataType.STRING:
+                                case DataType.ENUM_STRING:
+                                    value = ((cString)p.content).value;
+                                    break;
+                                case DataType.ENUM:
+                                    value = Level.Commands.Utils.GetEnum(((cEnum)p.content).enumID).Entries.FirstOrDefault(o => o.Index == ((cEnum)p.content).enumIndex).ToString(); //todo is this right?
+                                    break;
+                                case DataType.INTEGER:
+                                    value = ((cInteger)p.content).value.ToString();
+                                    break;
+                                case DataType.FLOAT:
+                                    value = ((cFloat)p.content).value.ToString();
+                                    break;
+                                case DataType.BOOL:
+                                    value = ((cBool)p.content).value ? "TRUE" : "FALSE";
+                                    break;
+                                default:
+                                    cString sD = (cString)Level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid);
+                                    value = sD.value;
+                                    break;
+                            }
+
+                            Strings.Values.Add(guid, value);
+                        }
+                        break;
                 }
             }
 
@@ -731,6 +776,10 @@ namespace CathodeLib
                         case DataType.RESOURCE:
                             Resources.AddLinks(guid, linksParsed);
                             break;
+                        case DataType.ENUM_STRING:
+                        case DataType.STRING:
+                            Strings.AddLinks(guid, linksParsed);
+                            break;
                     }
                 }
                 _parameters = null;
@@ -751,6 +800,7 @@ namespace CathodeLib
                     Vectors.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Vectors, varGuid);
                     Transforms.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Transforms, varGuid);
                     Resources.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Resources, varGuid);
+                    Strings.PopulateVariableParentInfo(ParentCompositeInstanceEntity.Strings, varGuid);
                 }
             }
         }
@@ -764,6 +814,7 @@ namespace CathodeLib
             Vectors.PopulateAliasInfo(alias.InstancedInfo.Vectors);
             Transforms.PopulateAliasInfo(alias.InstancedInfo.Transforms);
             Resources.PopulateAliasInfo(alias.InstancedInfo.Resources);
+            Strings.PopulateAliasInfo(alias.InstancedInfo.Strings);
         }
 
         public T GetAs<T>(string name = "reference")
@@ -855,6 +906,17 @@ namespace CathodeLib
                                 if (typeof(T) == typeof(cResource))
                                     return (T)(object)r;
                                 break;
+                            case DataType.STRING:
+                                string s = Strings.Get(var.name);
+                                if (typeof(T) == typeof(int) && int.TryParse(s, out int sI))
+                                    return (T)(object)(int)sI;
+                                if (typeof(T) == typeof(float) && float.TryParse(s, out float sF))
+                                    return (T)(object)(float)sF;
+                                if (typeof(T) == typeof(bool))
+                                    return (T)(object)(bool)(s.ToUpper() == "TRUE");
+                                if (typeof(T) == typeof(string))
+                                    return (T)(object)s;
+                                break;
                         }
                     }
                     break;
@@ -930,6 +992,11 @@ namespace CathodeLib
                 else if (Resources.Has(guid))
                 {
                     cResource value = Resources.Get(guid);
+                    return GetValueAs<T>(value);
+                }
+                else if (Strings.Has(guid))
+                {
+                    string value = Strings.Get(guid);
                     return GetValueAs<T>(value);
                 }
             }
@@ -1657,8 +1724,8 @@ namespace CathodeLib
                             return GetValueAs<T>(result);
                         }
                     case FunctionType.RegisterCharacterModel:
-                        //if (typeof(T) == typeof(string))
-                        //    return (T)(object)Strings.Get("display_model");
+                        if (typeof(T) == typeof(string))
+                            return (T)(object)Strings.Get(ShortGuidUtils.Generate("display_model"));
                         break;
                     case FunctionType.SetBool:
                         {
@@ -1681,8 +1748,8 @@ namespace CathodeLib
                             return GetValueAs<T>(result);
                         }
                     case FunctionType.SetString:
-                        //if (typeof(T) == typeof(string))
-                        //    return (T)(object)Strings.Get("initial_value");
+                        if (typeof(T) == typeof(string))
+                            return (T)(object)Strings.Get(ShortGuidUtils.Generate("initial_value"));
                         break;
                     case FunctionType.SetVector:
                         {
@@ -1745,8 +1812,8 @@ namespace CathodeLib
                             return GetValueAs<T>(result);
                         }
                     case FunctionType.VariableString:
-                        //if (typeof(T) == typeof(string))
-                        //    return (T)(object)Strings.Get("initial_value");
+                        if (typeof(T) == typeof(string))
+                            return (T)(object)Strings.Get(ShortGuidUtils.Generate("initial_value"));
                         break;
                     case FunctionType.VariableVector:
                         {
@@ -1795,6 +1862,10 @@ namespace CathodeLib
                     else
                         return (T)(object)new Transform();
                 }
+                else if (typeof(T) == typeof(cResource))
+                    return (T)(object)new cResource();
+                else if (typeof(T) == typeof(string))
+                    return (T)(object)""; //NULL_STRING
                 else
                 {
                     throw new Exception("Unhandled");
@@ -1816,6 +1887,8 @@ namespace CathodeLib
                     return (T)(object)new Vector3(0, 0, 0);
                 else if (typeof(T) == typeof(Transform))
                     return (T)(object)new Transform();
+                else if (typeof(T) == typeof(cResource))
+                    return (T)(object)new cResource();
                 else if (typeof(T) == typeof(string))
                     return (T)(object)"";
                 else
@@ -2641,7 +2714,7 @@ namespace CathodeLib
                             mvr.Transform = entity.CalculateWorldTransformMatrix();
                             List<RenderableElements.Element> ogReds = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
                             List<RenderableElements.Element> reds = new List<RenderableElements.Element>();
-                            cResource remapping = entity.Resources.Get(ShortGuidUtils.Generate("mapping"));
+                            cResource remapping = entity?.ParentCompositeInstanceEntity?.Resources?.Get(ShortGuidUtils.Generate("mapping")); //todo - does this actually affect nested composite instances, or just the modelreferences within the composite? i suspect the latter but if the former i'd need to go up the whole hierarchy...
                             if (remapping != null && remapping.shortGUID != ShortGuid.Invalid)
                             {
                                 var map = _level.MaterialMappings.Entries.FirstOrDefault(o => ShortGuidUtils.Generate(o.Name.Replace("/", "\\").ToUpper()) == remapping.shortGUID);
@@ -2670,6 +2743,20 @@ namespace CathodeLib
                             else
                             {
                                 reds = ogReds;
+                            }
+                            if (reds != null && reds.Count == 1)
+                            {
+                                string materialName = entity.Strings.Get(ShortGuidUtils.Generate("material"));
+                                if (materialName != "")
+                                {
+                                    if (!materialName.Contains("->")) materialName = materialName + "->" + materialName;
+                                    Materials.Material material = _level.Materials.Entries.FirstOrDefault(o => o.Name == materialName);
+                                    if (material != null)
+                                    {
+                                        reds[0].Material = material;
+                                        //again, need to update the REDS bin file if this changes!
+                                    }
+                                }
                             }
                             if (reds != null && reds.Count > 0 && reds[0].Material != null && reds[0].Material.Shader != null)
                             {
