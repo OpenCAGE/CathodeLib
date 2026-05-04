@@ -879,8 +879,9 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     cResource r = (cResource)paramEntry.content;
                                     Utilities.Write<ShortGuid>(bufferWriter, r.shortGUID);
                                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-                                    for (int x = 0; x < r.value.Count; x++)
-                                        AddResourceCommand(commands, bufferWriter, composite, r.value[x], envAnims, colMaps, reds);
+                                    if (r.value != null)
+                                        for (int x = 0; x < r.value.Count; x++)
+                                            AddResourceCommand(commands, bufferWriter, composite, r.value[x], envAnims, colMaps, reds);
                                     break;
                                 case DataType.VECTOR:
                                     cVector3 v = (cVector3)paramEntry.content;
