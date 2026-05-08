@@ -52,7 +52,7 @@ namespace CATHODE
             switch  (Path.GetExtension(_filepath).ToUpper())
             {
                 case ".BIN":
-                case ".BIN.GZ":
+                case ".GZ":
                     foreach (var composites in CommandsBIN.EntityNames)
                         foreach (var entities in composites.Value)
                             Utils.SetEntityName(composites.Key, entities.Key, entities.Value);
