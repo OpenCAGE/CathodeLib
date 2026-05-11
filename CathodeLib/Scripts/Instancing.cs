@@ -11,7 +11,6 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
-using System.Windows.Media.Animation;
 using static CATHODE.Lights;
 using static CATHODE.MaterialMappings.MaterialMapping;
 using static CATHODE.Movers.MOVER_DESCRIPTOR;
