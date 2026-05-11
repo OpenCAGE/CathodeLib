@@ -3,13 +3,15 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
+using CATHODE.Enums;
+
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
 #else
 using System.Numerics;
 #endif
 
-namespace CATHODE.EXPERIMENTAL
+namespace CATHODE
 {
     /// <summary>
     /// DATA/ENV/x/WORLD/LIGHTS.BIN
@@ -105,6 +107,7 @@ namespace CATHODE.EXPERIMENTAL
         #endregion
 
         #region STRUCTURES
+        [Flags]
         public enum LightFeature : ushort
         {
             SoftDiffuse = 1 << 0,
@@ -119,10 +122,26 @@ namespace CATHODE.EXPERIMENTAL
             SquareLight = 1 << 9,
             Flashlight = 1 << 10,
             PhysicalAttenuation = 1 << 11,
-            Distance_Mip_Selection_Gobo = 1 << 12,
+            DistanceMipSelectionGobo = 1 << 12,
             Volume = 1 << 13,
             NoAlphaLight = 1 << 14,
             HorizontalGoboFlip = 1 << 15
+        };
+
+        public enum LightType
+        {
+            Ambient,
+            Strip,
+            Point,
+            Spot,
+            Directional
+        };
+
+        public enum LightFadeType
+        {
+            None,
+            Shadow,
+            Light,
         };
 
         public class Node
@@ -144,5 +163,22 @@ namespace CATHODE.EXPERIMENTAL
             public LightFeature feature_flags;
         }
         #endregion
+    }
+
+    public static class LightTypeUtils
+    {
+        public static Lights.LightType AsLightType(this LIGHT_TYPE type)
+        {
+            switch (type)
+            {
+                case LIGHT_TYPE.OMNI:
+                    return Lights.LightType.Point;
+                case LIGHT_TYPE.SPOT:
+                    return Lights.LightType.Spot;
+                case LIGHT_TYPE.STRIP:
+                    return Lights.LightType.Strip;
+            }
+            throw new Exception("Unexpected!");
+        }
     }
 }

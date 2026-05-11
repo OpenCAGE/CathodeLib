@@ -10,6 +10,8 @@ using System.Runtime.InteropServices;
 using static CATHODE.Movers;
 using static CATHODE.Models;
 using CathodeLib.ObjectExtensions;
+using System.IO.Compression;
+
 
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
@@ -28,11 +30,14 @@ namespace CATHODE
         public List<WeightedCollision> Entries = new List<WeightedCollision>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
+
+        private List<WeightedCollision> _writeList = new List<WeightedCollision>();
+
         public Collisions(string path) : base(path) { }
         public Collisions(MemoryStream stream, string path = "") : base(stream, path) { }
         public Collisions(byte[] data, string path = "") : base(data, path) { }
-
-        private List<WeightedCollision> _writeList = new List<WeightedCollision>();
 
         ~Collisions()
         {
@@ -43,7 +48,9 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
-            using (var reader = new BinaryReader(stream))
+            _compressed = _filepath != null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
+
+            using (var reader = new BinaryReader(_compressed ? Utilities.GZIPDecompress(stream) : stream))
             {
                 //remove these if exceptions dont throw
                 byte[] magic = reader.ReadBytes(4);
@@ -109,12 +116,18 @@ namespace CATHODE
                     }
                 }
             }
+
             _writeList.AddRange(Entries);
             return true;
         }
 
         override protected bool SaveInternal()
         {
+            if (_compressed && Path.GetExtension(_filepath).ToLower() != ".gz")
+                _filepath += ".gz";
+            else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
+                _filepath = _filepath.Substring(0, _filepath.Length - 3);
+
             var collisionData = new List<WeightedCollisionData>();
             var boneData = new List<BoneData>();
             var vertexData = new List<VertexData>();
@@ -177,7 +190,8 @@ namespace CATHODE
                 }
             }
 
-            using (var writer = new BinaryWriter(File.OpenWrite(_filepath)))
+            using (Stream stream = File.OpenWrite(_filepath))
+            using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 writer.BaseStream.SetLength(0);
                 writer.Write(new byte[4] { 0x0C, 0xA0, 0xFE, 0xEF });
@@ -200,6 +214,10 @@ namespace CATHODE
                 vertexData.ForEach(v => Utilities.Write(writer, v));
                 indexData.ForEach(i => writer.Write(i));
             }
+
+            if (_compressed)
+                Utilities.GZIPCompress(_filepath);
+
             _writeList.Clear();
             _writeList.AddRange(Entries);
             return true;

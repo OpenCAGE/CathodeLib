@@ -4,8 +4,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using CathodeLib.ObjectExtensions;
+
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
 #else
@@ -26,6 +28,9 @@ namespace CATHODE
         private Materials _materials;
         private Collisions _collisions;
         private MorphTargets _morphTargets;
+
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
 
         private List<CS2.Component.LOD.Submesh> _writeList = new List<CS2.Component.LOD.Submesh>();
 
@@ -77,18 +82,19 @@ namespace CATHODE
             if (_filepath == "")
                 return false;
 
-            string filepathBIN = GetBinPath();
-            if (!File.Exists(filepathBIN)) 
+            _compressed = Path.GetExtension(_filepath).ToLower() == ".fzip";
+
+            if (!File.Exists(GetBinPath())) 
                 return false;
 
             Dictionary<CS2.Component.LOD.Submesh, int> boneOffsets = new Dictionary<CS2.Component.LOD.Submesh, int>();
             List<(CS2.Component.LOD.Submesh submesh, int childModelIndex, int childLODIndex, string cs2Name, string submeshName)> submeshMetadata = new List<(CS2.Component.LOD.Submesh, int, int, string, string)>();
-            using (BinaryReader bin = new BinaryReader(File.OpenRead(filepathBIN)))
+            using (MemoryStream binStream = _compressed ? Utilities.GZIPDecompress(new MemoryStream(File.ReadAllBytes(GetBinPath()))) : new MemoryStream(File.ReadAllBytes(GetBinPath())))
+            using (BinaryReader bin = new BinaryReader(binStream))
             {
                 bin.BaseStream.Position += 4;
                 int modelCount = bin.ReadInt32();
-                if ((FileIdentifiers)bin.ReadInt16() != FileIdentifiers.HEADER_FILE) return false;
-                if ((FileIdentifiers)bin.ReadInt16() != FileIdentifiers.MODEL_DATA) return false;
+                bin.BaseStream.Position += 4;
                 int vbfCount = bin.ReadInt32();
 
                 //Read vertex buffer formats
@@ -145,8 +151,8 @@ namespace CATHODE
                     submesh.MaxBounds = Utilities.Consume<Vector3>(bin);
                     submesh.MaxLODRange = bin.ReadSingle();
 
-                    int childModelIndex = bin.ReadInt32(); 
-                    int childLODIndex = bin.ReadInt32(); 
+                    int childModelIndex = bin.ReadInt32();
+                    int childLODIndex = bin.ReadInt32();
                     submesh.Material = _materials.GetAtWriteIndex(bin.ReadInt32());
 
                     submesh.RenderFlags = (CS2.Component.LOD.RenderingFlag)bin.ReadUInt32();
@@ -184,13 +190,11 @@ namespace CATHODE
                 }
             }
 
-            using (BinaryReader pak = new BinaryReader(File.OpenRead(_filepath)))
+            using (Stream pakStream = _compressed ? Utilities.FZipDecompressPAK(_filepath) : new MemoryStream(File.ReadAllBytes(_filepath)))
+            using (BinaryReader pak = new BinaryReader(pakStream))
             {
                 //Read & check the header info from the PAK
-                pak.BaseStream.Position += 4;
-                if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.ASSET_FILE) return false;
-                if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.MODEL_DATA) return false;
-                pak.BaseStream.Position += 4;
+                pak.BaseStream.Position += 16;
                 int entryCount = BigEndianUtils.ReadInt32(pak);
                 pak.BaseStream.Position += 12;
 
@@ -269,6 +273,11 @@ namespace CATHODE
         /// </summary>
         override protected bool SaveInternal()
         {
+            if (_compressed && Path.GetExtension(_filepath).ToLower() != ".fzip")
+                _filepath += ".fzip";
+            else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".fzip")
+                _filepath = _filepath.Substring(0, _filepath.Length - 5);
+
             int submeshCount = 0;
             for (int i = 0; i < Entries.Count; i++)
                 for (int z = 0; z < Entries[i].Components.Count; z++)
@@ -293,7 +302,8 @@ namespace CATHODE
                 }
             }
 
-            using (BinaryWriter bin = new BinaryWriter(File.OpenWrite(GetBinPath())))
+            using (Stream binStream = File.OpenWrite(GetBinPath()))
+            using (BinaryWriter bin = new BinaryWriter(binStream))
             {
                 bin.BaseStream.SetLength(0);
                 _writeList.Clear();
@@ -301,8 +311,8 @@ namespace CATHODE
                 //Write header
                 Utilities.WriteString("XMDB", bin);
                 bin.Write(submeshCount);
-                bin.Write((Int16)FileIdentifiers.HEADER_FILE);
-                bin.Write((Int16)FileIdentifiers.MODEL_DATA);
+                bin.Write((Int16)96);
+                bin.Write((Int16)19);
                 bin.Write(vertexFormats.Count);
 
                 //Write vertex buffers
@@ -411,20 +421,20 @@ namespace CATHODE
                 for (int idx = 0; idx < submeshList.Count; idx++)
                 {
                     var (entry, component, lod, mesh, entryIdx, componentIdx, lodIdx, submeshIdx) = submeshList[idx];
-                    
+
                     byte[] buffer = metadataBuffers[idx];
-                    
+
                     int nextSubmeshIndex = (submeshIdx < lod.Submeshes.Count - 1) ? _writeList.Count + 1 : -1;
                     byte[] nextSubmeshBytes = BitConverter.GetBytes(nextSubmeshIndex);
                     Array.Copy(nextSubmeshBytes, 0, buffer, 48, 4);
-                    
+
                     int nextLODIndex = (submeshIdx == 0 && lodIdx < component.LODs.Count - 1) ? _writeList.Count + lod.Submeshes.Count : -1;
                     byte[] nextLODBytes = BitConverter.GetBytes(nextLODIndex);
                     Array.Copy(nextLODBytes, 0, buffer, 52, 4);
-                    
+
                     byte[] boneOffsetBytes = BitConverter.GetBytes(boneOffset);
                     Array.Copy(boneOffsetBytes, 0, buffer, 76, 4);
-                    
+
                     bin.Write(buffer);
                     boneOffset += mesh.Bones.Count;
                     _writeList.Add(mesh);
@@ -445,7 +455,11 @@ namespace CATHODE
                 }
             }
 
-            using (BinaryWriter pak = new BinaryWriter(File.OpenWrite(_filepath)))
+            if (_compressed)
+                Utilities.GZIPCompress(GetBinPath());
+
+            using (Stream pakStream = File.OpenWrite(_filepath))
+            using (BinaryWriter pak = new BinaryWriter(pakStream))
             {
                 int componentCount = 0;
                 for (int i = 0; i < Entries.Count; i++)
@@ -515,14 +529,18 @@ namespace CATHODE
                 //Write header
                 pak.BaseStream.Position = 0;
                 pak.Write(new byte[4]);
-                pak.Write(BigEndianUtils.FlipEndian((int)FileIdentifiers.ASSET_FILE));
-                pak.Write(BigEndianUtils.FlipEndian((int)FileIdentifiers.MODEL_DATA));
+                pak.Write(BigEndianUtils.FlipEndian(14));
+                pak.Write(BigEndianUtils.FlipEndian(19));
                 pak.Write(BigEndianUtils.FlipEndian(componentCount));
                 pak.Write(BigEndianUtils.FlipEndian(submeshCount));
                 pak.Write(BigEndianUtils.FlipEndian(16));
                 pak.Write(BigEndianUtils.FlipEndian(1));
                 pak.Write(BigEndianUtils.FlipEndian(1));
             }
+
+            if (_compressed)
+                Utilities.FZipCompressPAK(_filepath);
+
             return true;
         }
 
@@ -608,15 +626,36 @@ namespace CATHODE
 
         private string GetBinPath()
         {
-            return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "MODELS_" + Path.GetFileName(_filepath).Substring(0, Path.GetFileName(_filepath).Length - 11) + ".BIN";
+            return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "MODELS_" + Path.GetFileName(_filepath).Split('_')[0] + ".BIN" + (_compressed ? ".GZ" : "");
         }
         #endregion
 
         #region HELPERS
         /// <summary>
+        /// Find a model for a component
+        /// </summary>
+        public CS2 FindModel(CS2.Component component)
+        {
+            for (int i = 0; i < Entries.Count; i++)
+                if (Entries[i].Components.Contains(component))
+                    return Entries[i];
+            return null;
+        }
+        /// <summary>
+        /// Find a model that contains a given LOD
+        /// </summary>
+        public CS2 FindModel(CS2.Component.LOD lod)
+        {
+            for (int i = 0; i < Entries.Count; i++)
+                for (int z = 0; z < Entries[i].Components.Count; z++)
+                    if (Entries[i].Components[z].LODs.Contains(lod))
+                        return Entries[i];
+            return null;
+        }
+        /// <summary>
         /// Find a model that contains a given submesh
         /// </summary>
-        public CS2 FindModelForSubmesh(CS2.Component.LOD.Submesh submesh)
+        public CS2 FindModel(CS2.Component.LOD.Submesh submesh)
         {
             for (int i = 0; i < Entries.Count; i++)
                 for (int z = 0; z < Entries[i].Components.Count; z++)
@@ -626,9 +665,20 @@ namespace CATHODE
             return null;
         }
         /// <summary>
+        /// Find a component of a model that contains the given LOD
+        /// </summary>
+        public CS2.Component FindModelComponent(CS2.Component.LOD lod)
+        {
+            for (int i = 0; i < Entries.Count; i++)
+                for (int z = 0; z < Entries[i].Components.Count; z++)
+                    if (Entries[i].Components[z].LODs.Contains(lod))
+                        return Entries[i].Components[z];
+            return null;
+        }
+        /// <summary>
         /// Find a component of a model that contains a submesh
         /// </summary>
-        public CS2.Component FindModelComponentForSubmesh(CS2.Component.LOD.Submesh submesh)
+        public CS2.Component FindModelComponent(CS2.Component.LOD.Submesh submesh)
         {
             for (int i = 0; i < Entries.Count; i++)
                 for (int z = 0; z < Entries[i].Components.Count; z++)
@@ -638,19 +688,9 @@ namespace CATHODE
             return null;
         }
         /// <summary>
-        /// Find a model for a component
-        /// </summary>
-        public CS2 FindModelForComponent(CS2.Component component)
-        {
-            for (int i = 0; i < Entries.Count; i++)
-                if (Entries[i].Components.Contains(component))
-                    return Entries[i];
-            return null;
-        }
-        /// <summary>
         /// Find a LOD that contains a given submesh
         /// </summary>
-        public CS2.Component.LOD FindModelLODForSubmesh(CS2.Component.LOD.Submesh submesh)
+        public CS2.Component.LOD FindModelLOD(CS2.Component.LOD.Submesh submesh)
         {
             for (int i = 0; i < Entries.Count; i++)
                 for (int z = 0; z < Entries[i].Components.Count; z++)

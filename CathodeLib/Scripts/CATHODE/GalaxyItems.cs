@@ -72,8 +72,8 @@ namespace CATHODE
                 totalFrequency += Math.Max(0f, t.Frequency);
             if (totalFrequency <= 0f)
                 totalFrequency = 1f;
-
-            var rng = new Random();
+            
+            var rng = new System.Random();
             for (int i = 0; i < definition.StarCount; i++)
             {
                 float roll = (float)rng.NextDouble() * totalFrequency;

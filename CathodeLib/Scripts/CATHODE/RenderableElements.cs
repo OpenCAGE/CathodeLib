@@ -4,6 +4,7 @@ using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
 using static CATHODE.Resources;
@@ -18,11 +19,14 @@ namespace CATHODE
         public List<Element> Entries = new List<Element>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
-        private List<Element> _writeList = new List<Element>();
-
         protected override bool HandlesLoadingManually => true;
         private Models _models;
         private Materials _materials;
+
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
+
+        private List<Element> _writeList = new List<Element>();
 
         public RenderableElements(string path, Models models, Materials materials) : base(path)
         {
@@ -48,7 +52,9 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(stream))
+            _compressed = _filepath != null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
+
+            using (BinaryReader reader = new BinaryReader(_compressed ? Utilities.GZIPDecompress(stream) : stream))
             {
                 List<Tuple<int, byte>> lods = new List<Tuple<int, byte>>();
                 int entryCount = reader.ReadInt32();
@@ -68,24 +74,36 @@ namespace CATHODE
                     for (int x = 0; x < lods[i].Item2; x++)
                         Entries[i].LODs.Add(Entries[lods[i].Item1 + x]);
             }
+
             _writeList.AddRange(Entries);
             return true;
         }
 
         override protected bool SaveInternal()
         {
+            if (_compressed && Path.GetExtension(_filepath).ToLower() != ".gz")
+                _filepath += ".gz";
+            else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
+                _filepath = _filepath.Substring(0, _filepath.Length - 3);
+
             byte[][] entryBuffers = new byte[Entries.Count][];
             Parallel.For(0, Entries.Count, i =>
             {
                 entryBuffers[i] = SerializeElement(Entries[i]);
             });
-            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
+
+            using (Stream stream = File.OpenWrite(_filepath))
+            using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 writer.BaseStream.SetLength(0);
                 writer.Write(Entries.Count);
                 for (int i = 0; i < entryBuffers.Length; i++)
                     writer.Write(entryBuffers[i]);
             }
+
+            if (_compressed)
+                Utilities.GZIPCompress(_filepath);
+
             _writeList.Clear();
             _writeList.AddRange(Entries);
             return true;
@@ -176,7 +194,7 @@ namespace CATHODE
                 if (newElement.ModelLocation == PakLocation.GLOBAL || newElement.MaterialLocation == PakLocation.GLOBAL)
                     throw new Exception("Unexpected model/material location - GLOBAL is unsupported.");
                 
-                Models.CS2 cs2 = _models.ImportEntry(sourceModels.FindModelForSubmesh(elements[i].Model)); //We add the WHOLE cs2, if it doesn't exist, even though we only point to a submesh of it
+                Models.CS2 cs2 = _models.ImportEntry(sourceModels.FindModel(elements[i].Model)); //We add the WHOLE cs2, if it doesn't exist, even though we only point to a submesh of it
                 newElement.Model = cs2.GetSubmesh(newElement.Model);
                 newElement.Material = _materials.ImportEntry(newElement.Material);
 
@@ -207,7 +225,6 @@ namespace CATHODE
 
             public List<Element> LODs = new List<Element>();
 
-            //see RenderableElementCache::process_renderable_element_descriptors_for_movers
             public static bool operator ==(Element x, Element y)
             {
                 if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);

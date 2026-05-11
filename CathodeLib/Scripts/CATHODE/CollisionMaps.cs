@@ -4,6 +4,7 @@ using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -24,6 +25,9 @@ namespace CATHODE
         protected override bool HandlesLoadingManually => true;
         private Materials _materials;
         private MaterialMappings _materialMaps;
+
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
 
         private List<COLLISION_MAPPING> _writeList = new List<COLLISION_MAPPING>();
 
@@ -51,7 +55,9 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(stream))
+            _compressed = _filepath != null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
+
+            using (BinaryReader reader = new BinaryReader(_compressed ? Utilities.GZIPDecompress(stream) : stream))
             {
                 //The way this works:
                 // - First 18 entries are empty
@@ -76,12 +82,18 @@ namespace CATHODE
                     Entries.Add(entry);
                 }
             }
+
             _writeList.AddRange(Entries);
             return true;
         }
 
         override protected bool SaveInternal()
         {
+            if (_compressed && Path.GetExtension(_filepath).ToLower() != ".gz")
+                _filepath += ".gz";
+            else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
+                _filepath = _filepath.Substring(0, _filepath.Length - 3);
+
             //composite_instance_id defo has something to do with the ordering as all the zeros are first
 
             //Entries = Entries.OrderBy(o => o.entity.entity_id.ToUInt32() + o.id.ToUInt32()).ThenBy(o => o.entity.composite_instance_id.ToUInt32()).ThenBy(o => o.zone_id.ToUInt32()).ToList();
@@ -92,7 +104,8 @@ namespace CATHODE
                 entryBuffers[i] = SerializeEntry(Entries[i]);
             });
 
-            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
+            using (Stream stream = File.OpenWrite(_filepath))
+            using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 writer.BaseStream.SetLength(0);
                 writer.Write((Entries.Count) * 48);
@@ -100,6 +113,10 @@ namespace CATHODE
                 for (int i = 0; i < entryBuffers.Length; i++)
                     writer.Write(entryBuffers[i]);
             }
+
+            if (_compressed)
+                Utilities.GZIPCompress(_filepath);
+
             _writeList.Clear();
             _writeList.AddRange(Entries);
             return true;

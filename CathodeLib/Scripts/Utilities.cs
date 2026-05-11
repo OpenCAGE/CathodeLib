@@ -1,16 +1,24 @@
 using CATHODE;
 using CATHODE.Scripting;
+using CATHODE.ShaderTypes;
 using CathodeLib.ArrayExtensions;
+using K4os.Compression.LZ4;
+using K4os.Compression.LZ4.Internal;
+using K4os.Compression.LZ4.Streams;
 using System;
+using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
+using static CATHODE.RenderableElements;
 
 namespace CathodeLib
 {
@@ -231,6 +239,197 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// Compress a PAK file using FZIP
+        /// </summary>
+        public static void FZipCompressPAK(string filepath, bool appendExtension = false)
+        {
+            int origUnpackedSize;
+            List<byte[]> uncompressedContent = new List<byte[]>();
+            {
+                using (BinaryReader reader = new BinaryReader(File.OpenRead(filepath)))
+                {
+                    origUnpackedSize = (int)reader.BaseStream.Length;
+
+                    reader.BaseStream.Position += 16;
+                    int MaxEntryCount = BinaryPrimitives.ReverseEndianness(reader.ReadInt32());
+                    reader.BaseStream.Position += 12;
+
+                    List<Tuple<int, int>> offsetAndLengths = new List<Tuple<int, int>>();
+                    for (int i = 0; i < MaxEntryCount; i++)
+                    {
+                        reader.BaseStream.Position += 12;
+                        int length = BinaryPrimitives.ReverseEndianness(reader.ReadInt32());
+                        int offset = BinaryPrimitives.ReverseEndianness(reader.ReadInt32());
+                        reader.BaseStream.Position += 28;
+
+                        if (length > 0)
+                            offsetAndLengths.Add(new Tuple<int, int>(offset, length));
+                    }
+
+                    long origHeaderSize = reader.BaseStream.Position;
+                    reader.BaseStream.Position = 0;
+                    uncompressedContent.Insert(0, reader.ReadBytes((int)origHeaderSize));
+
+                    int endOfHeaders = 32 + (MaxEntryCount * 48);
+
+                    foreach (Tuple<int, int> offsetAndLength in offsetAndLengths)
+                    {
+                        reader.BaseStream.Position = offsetAndLength.Item1 + endOfHeaders;
+                        uncompressedContent.Add(reader.ReadBytes(offsetAndLength.Item2));
+                    }
+                }
+            }
+
+            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(filepath + (appendExtension ? ".fzip" : ""))))
+            {
+                writer.BaseStream.SetLength(0);
+
+                writer.Write(new char[] { 'F', 'Z', 'I', 'P' });
+                writer.Write((Int16)2);
+                writer.Write((Int16)0);
+                writer.Write(uncompressedContent.Count);
+                writer.Write(origUnpackedSize);
+
+                int newPakHeaderSize = 16 + (20 * uncompressedContent.Count);
+                int offsetTrackerCompressed = newPakHeaderSize;
+                int offsetTrackerOriginal = 0;
+
+                List<byte[]> compressedContent = new List<byte[]>();
+                for (int i = 0; i < uncompressedContent.Count; i++)
+                {
+                    int uncompressedSize = uncompressedContent[i].Length;
+                    if (uncompressedSize < 0) uncompressedSize = 0;
+                    int compressedSize = 0;
+
+                    if (uncompressedSize != 0)
+                    {
+                        using (var output = new MemoryStream())
+                        {
+                            var settings = new LZ4EncoderSettings
+                            {
+                                BlockSize = uncompressedSize <= 64 * 1024 ? Mem.K64 : uncompressedSize <= 256 * 1024 ? Mem.K256 : uncompressedSize <= 1024 * 1024 ? Mem.M1 : Mem.M4,
+                                ContentChecksum = true,
+                                BlockChecksum = false,
+                                ChainBlocks = true,
+                                CompressionLevel = LZ4Level.L12_MAX
+                            };
+
+                            using (var lz4 = LZ4Stream.Encode(output, settings, leaveOpen: true))
+                            {
+                                lz4.Write(uncompressedContent[i], 0, uncompressedContent[i].Length);
+                            }
+
+                            byte[] bytes = output.ToArray();
+                            compressedSize = bytes.Length;
+                            compressedContent.Add(bytes);
+                        }
+                    }
+                    else
+                    {
+                        compressedContent.Add(new byte[] { });
+                    }
+
+                    writer.Write(offsetTrackerCompressed);
+                    writer.Write(compressedSize);
+                    writer.Write(offsetTrackerOriginal);
+                    writer.Write(uncompressedSize);
+                    writer.Write((Int16)4);
+                    writer.Write((Int16)0);
+
+                    offsetTrackerCompressed += compressedSize;
+                    offsetTrackerOriginal += uncompressedSize;
+                }
+                for (int i = 0; i < uncompressedContent.Count; i++)
+                {
+                    writer.Write(compressedContent[i]);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Decompress a FZIP PAK
+        /// </summary>
+        public static MemoryStream FZipDecompressPAK(string filepath)
+        {
+            MemoryStream outStream = new MemoryStream();
+            using (BinaryWriter outWriter = new BinaryWriter(outStream, Encoding.UTF8, leaveOpen: true))
+            {
+                using (Stream stream = File.OpenRead(filepath))
+                using (BinaryReader reader = new BinaryReader(stream))
+                {
+                    reader.BaseStream.Position += 8;
+                    int count = reader.ReadInt32();
+                    reader.BaseStream.Position += 4;
+
+                    Dictionary<int, Tuple<int, int>> offsetLengthPairs = new Dictionary<int, Tuple<int, int>>();
+                    for (int i = 0; i < count; i++)
+                    {
+                        int offset = reader.ReadInt32();
+                        int compressedLength = reader.ReadInt32();
+                        reader.BaseStream.Position += 4;
+                        int uncompressedLength = reader.ReadInt32();
+                        offsetLengthPairs.Add(offset, new Tuple<int, int>(compressedLength, uncompressedLength));
+                        reader.BaseStream.Position += 4;
+                    }
+
+                    foreach (KeyValuePair<int, Tuple<int, int>> pair in offsetLengthPairs.OrderBy(p => p.Key))
+                    {
+                        int compressedLength = pair.Value.Item1;
+                        int uncompressedLength = pair.Value.Item2;
+                        reader.BaseStream.Position = pair.Key;
+
+                        if (uncompressedLength == 0)
+                            continue;
+
+                        using (MemoryStream compressedStream = new MemoryStream(reader.ReadBytes(compressedLength)))
+                        using (Stream lz4 = LZ4Stream.Decode(compressedStream))
+                        {
+                            byte[] content = new byte[uncompressedLength];
+                            int totalRead = 0;
+                            while (totalRead < content.Length)
+                            {
+                                int read = lz4.Read(content, totalRead, content.Length - totalRead);
+                                totalRead += read;
+                            }
+                            outWriter.Write(content);
+                        }
+                    }
+                }
+
+                outStream.Position = 0;
+                return outStream;
+            }
+        }
+
+        /// <summary>
+        /// GZIP compress
+        /// </summary>
+        public static void GZIPCompress(string filepath, bool appendExtension = false)
+        {
+            byte[] content = File.ReadAllBytes(filepath);
+            using (FileStream fs = File.Create(filepath))
+            {
+                using (GZipStream stream = new GZipStream(fs, CompressionLevel.Optimal))
+                {
+                    stream.Write(content, 0, content.Length);
+                    stream.Flush();
+                }
+            }
+        }
+
+        /// <summary>
+        /// GZIP decompress 
+        /// </summary>
+        public static MemoryStream GZIPDecompress(MemoryStream stream)
+        {
+            MemoryStream decompressed = new MemoryStream();
+            using (var gzip = new GZipStream(stream, CompressionMode.Decompress, leaveOpen: true))
+                gzip.CopyTo(decompressed);
+            decompressed.Position = 0;
+            return decompressed;
+        }
+
+        /// <summary>
         /// Convert a model component to a renderable element using its default materials
         /// </summary>
         public static List<RenderableElements.Element> ToRenderableElements(this Models.CS2.Component model)
@@ -275,110 +474,61 @@ namespace CathodeLib
         }
 
         /// <summary>
-        /// Read a PAK
+        /// Given a set of renderable elements, figure out the renderable instance's type - this metadata can be used to decipher things such as MVR constants.
         /// </summary>
-        public static List<PAKContent> ReadPAK(string path, FileIdentifiers type)
+        public static RenderableInstanceType CalculateRenderableType(this List<Element> elements)
         {
-            List<PAKContent> content = new List<PAKContent>();
-            bool e = type == FileIdentifiers.MODEL_DATA;
-
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(path)))
+            if ((elements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.DEFERRED_LIGHTING)) != 0)
             {
-                reader.BaseStream.Position += 4;
-                if ((FileIdentifiers)BigEndianUtils.ReadInt32(reader, e) != FileIdentifiers.ASSET_FILE) return null;
-                if ((FileIdentifiers)BigEndianUtils.ReadInt32(reader, e) != type) return null;
-                int entryCount = BigEndianUtils.ReadInt32(reader, e);
-                int entryCountActual = BigEndianUtils.ReadInt32(reader, e);
-                reader.BaseStream.Position += 12;
-
-                int endOfHeaders = 32 + (entryCountActual * 48);
-
-                List<OffsetPair> info = new List<OffsetPair>();
-                for (int i = 0; i < entryCount; i++)
+                return RenderableInstanceType.LIGHT; 
+            }
+            else if ((elements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.PARTICLE)) != 0 ||
+                     (elements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.RIBBON)) != 0)
+            {
+                if (elements[0].Material.OfflineLightFeatures == 1)
                 {
-                    reader.BaseStream.Position += 8;
-                    int length = BigEndianUtils.ReadInt32(reader, e);
-                    reader.BaseStream.Position += 4;
-                    int offset = BigEndianUtils.ReadInt32(reader, e);
-                    reader.BaseStream.Position += 12;
-                    int binIndex = BigEndianUtils.ReadInt32(reader, e);
-                    reader.BaseStream.Position += 12;
-
-                    info.Add(new OffsetPair() { GlobalOffset = offset + endOfHeaders, EntryCount = length });
-                    content.Add(new PAKContent() { BinIndex = binIndex });
+                    return RenderableInstanceType.DYNAMICFX_UNIQUE_MAT;
                 }
-
-                for (int i = 0; i < entryCount; i++)
+                else
                 {
-                    reader.BaseStream.Position = info[i].GlobalOffset;
-                    content[i].Data = reader.ReadBytes(info[i].EntryCount);
+                    return RenderableInstanceType.DYNAMICFX;
                 }
             }
-
-            return content;
-        }
-
-        /// <summary>
-        /// Write a PAK
-        /// </summary>
-        public static void WritePAK(string path, FileIdentifiers type, List<PAKContent> content)
-        {
-            bool e = type == FileIdentifiers.MODEL_DATA;
-
-            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(path)))
+            else if ((elements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.CHARACTER)) != 0)
             {
-                //Write content
-                int contentOffset = 32 + (content.Count * 48);
-                writer.BaseStream.SetLength(contentOffset);
-                writer.BaseStream.Position = contentOffset;
-                List<int> offsets = new List<int>();
-                List<int> lengths = new List<int>();
-                List<int> lengthsAligned = new List<int>();
-                for (int i = 0; i < content.Count; i++)
-                {
-                    offsets.Add((int)writer.BaseStream.Position - contentOffset);
-                    writer.Write(content[i].Data);
-                    lengths.Add((int)writer.BaseStream.Position - contentOffset - offsets[offsets.Count - 1]);
-                    Align(writer, 16);
-                    lengthsAligned.Add((int)writer.BaseStream.Position - contentOffset - offsets[offsets.Count - 1]);
-                }
-
-                //Write model headers
-                writer.BaseStream.Position = 32;
-                for (int i = 0; i < content.Count; i++)
-                {
-                    writer.Write(new byte[8]);
-                    writer.Write(e ? BigEndianUtils.FlipEndian((Int32)lengths[i]) : BitConverter.GetBytes((Int32)lengths[i]));
-                    writer.Write(e ? BigEndianUtils.FlipEndian((Int32)lengthsAligned[i]) : BitConverter.GetBytes((Int32)lengthsAligned[i]));
-                    writer.Write(e ? BigEndianUtils.FlipEndian((Int32)offsets[i]) : BitConverter.GetBytes((Int32)offsets[i]));
-
-                    writer.Write(new byte[5]);
-                    writer.Write(type == FileIdentifiers.MODEL_DATA ? new byte[2] { 0x01, 0x01 } : new byte[2] { 0x00, 0x01 });
-                    writer.Write(new byte[5]);
-
-                    writer.Write(e ? BigEndianUtils.FlipEndian((Int32)content[i].BinIndex) : BitConverter.GetBytes((Int32)content[i].BinIndex));
-                    writer.Write(new byte[12]);
-                }
-
-                //Write header
-                writer.BaseStream.Position = 0;
-                writer.Write(new byte[4]);
-                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)FileIdentifiers.ASSET_FILE) : BitConverter.GetBytes((Int32)FileIdentifiers.ASSET_FILE));
-                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)type) : BitConverter.GetBytes((Int32)type));
-                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)content.Count) : BitConverter.GetBytes((Int32)content.Count));
-                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)content.Count) : BitConverter.GetBytes((Int32)content.Count));
-                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)16) : BitConverter.GetBytes((Int32)16));
-                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)1) : BitConverter.GetBytes((Int32)1));
-
-                int unk = type == FileIdentifiers.MODEL_DATA ? 1 : 0;
-                writer.Write(e ? BigEndianUtils.FlipEndian((Int32)unk) : BitConverter.GetBytes((Int32)unk));
+                return RenderableInstanceType.CHARACTER;
             }
-        }
+            else if (elements[0].Material.Shader.Ubershader == SHADER_LIST.CA_ENVIRONMENT)
+            {
+                if ((elements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.APPROXIMATE_LIGHTING)) != 0 ||
+                    (elements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.DECAL)) != 0)
+                {
+                    return RenderableInstanceType.ENVIRONMENT_EXTRA;
+                }
 
-        public class PAKContent
-        {
-            public int BinIndex = 0;
-            public byte[] Data;
+                foreach (Element e in elements)
+                {
+                    if (e?.Material?.Shader?.Ubershader == SHADER_LIST.CA_ENVIRONMENT &&
+                        (e?.Material?.Shader?.UbershaderFeatureFlags & (1L << (int)CA_ENVIRONMENT.FEATURES.EMISSIVE)) != 0)
+                    {
+                        return RenderableInstanceType.ENVIRONMENT_EXTRA;
+                    }
+                }
+
+                return RenderableInstanceType.ENVIRONMENT;
+            }
+            else if (elements[0].Material.Shader.Ubershader == SHADER_LIST.CA_PLANET)
+            {
+                return RenderableInstanceType.PLANET; 
+            }
+            else if (elements[0].Material.Shader.Ubershader == SHADER_LIST.CA_FOGSPHERE)
+            {
+                return RenderableInstanceType.FOGSPHERE;
+            }
+            else
+            {
+                return RenderableInstanceType.MISC;
+            }
         }
     }
 
@@ -453,6 +603,24 @@ namespace CathodeLib
                 angle += 360;
             }
             return angle;
+        }
+
+        public static double Deg2Rad(double degrees)
+        {
+            return degrees * (Math.PI / 180.0);
+        }
+
+        public static double sRGBToLinear(float x)
+        {
+            const float a = 0.055f;
+            if (x <= 0.04045f)
+            {
+                return x * (1.0f / 12.92f);
+            }
+            else
+            {
+                return Math.Pow((x + a) * (1.0f / (1.0f + a)), 2.4f);
+            }
         }
     }
 
@@ -532,20 +700,6 @@ namespace CathodeLib
     {
         LEVEL,
         GLOBAL
-    }
-
-    public enum FileIdentifiers
-    {
-        HEADER_FILE = 96,
-        ASSET_FILE = 14,
-
-        SHADER_DATA = 3,
-        MODEL_DATA = 19,
-        TEXTURE_DATA = 45,
-
-        //From ABOUT.TXT (unsure where used)
-        STRING_FILE_VERSION = 6,
-        ENTITY_FILE_VERSION = 171,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

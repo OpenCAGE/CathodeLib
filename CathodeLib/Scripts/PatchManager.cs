@@ -20,10 +20,48 @@ namespace CathodeLib
     {
         public enum Platform
         {
+            //Windows
             STEAM,
             EPIC_GAMES_STORE,
             GOG,
             WINDOWS_STORE,
+
+            //Others
+            SWITCH,
+            IOS_ANDROID,
+            MAC_LINUX,
+
+            UNKNOWN
+        }
+
+        /// <summary>
+        /// Figure out the current platform for the game
+        /// </summary>
+        public static Platform GetPlatform(string pathToAI)
+        {
+            if (File.Exists(pathToAI + "/STEAM_API.DLL"))
+                return Platform.STEAM;
+
+            else if (File.Exists(pathToAI + "/EOSSDK-Win32-Shipping.dll"))
+                return Platform.EPIC_GAMES_STORE;
+
+            else if (File.Exists(pathToAI + "/GALAXY.DLL"))
+                return Platform.GOG;
+
+            else if (File.Exists(pathToAI + "/MicrosoftGame.config"))
+                return Platform.WINDOWS_STORE;
+
+            else if (File.Exists(pathToAI + "/data/global/animation_switch.pak"))
+                return Platform.SWITCH;
+
+            else if (File.Exists(pathToAI + "/data/font_config_switch.xml"))
+                return Platform.IOS_ANDROID;
+
+            else if (Directory.Exists(pathToAI + "/data/havok"))
+                return Platform.MAC_LINUX;
+
+            else
+                return Platform.UNKNOWN;
         }
 
         /// <summary>
@@ -58,6 +96,8 @@ namespace CathodeLib
                     hashPatches.Add(new PatchBytes(4043525, new byte[] { 0x97, 0x90, 0xf9, 0xff }, new byte[] { 0xb7, 0x29, 0x25, 0x00 }));
                     hashPatches.Add(new PatchBytes(6193443, new byte[] { 0x79, 0xc2, 0xd8, 0xff }, new byte[] { 0x99, 0x5b, 0x04, 0x00 }));
                     break;
+                default:
+                    return false;
             }
             try
             {
@@ -131,6 +171,8 @@ namespace CathodeLib
                 case Platform.GOG:
                     noUIPatches.Add(new PatchBytes(3842929, new byte[] { 0x6b, 0x43, 0x04 }, new byte[] { 0xeb, 0x29, 0x0b }));
                     break;
+                default:
+                    return false;
             }
             try
             {
@@ -172,6 +214,8 @@ namespace CathodeLib
                     skipFEPatches.Add(new PatchBytes(3843022, new byte[] { 0x0e, 0x43, 0x04 }, new byte[] { 0x8e, 0x29, 0x0b }));
                     skipFEPatches.Add(new PatchBytes(4047514, new byte[] { 0x42, 0x24, 0x01 }, new byte[] { 0xc2, 0x0a, 0x08 }));
                     break;
+                default:
+                    return false;
             }
             try
             {
@@ -210,6 +254,8 @@ namespace CathodeLib
                 case Platform.GOG:
                     memReplayPatches.Add(new PatchBytes(4039167, new byte[] { 0xdd, 0x44, 0x01 }, new byte[] { 0x5d, 0x2b, 0x08 }));
                     break;
+                default:
+                    return false;
             }
             try
             {
@@ -248,6 +294,8 @@ namespace CathodeLib
                 case Platform.GOG:
                     memReplayPatches.Add(new PatchBytes(5074918, new byte[] { 0xb6, 0x8c, 0xd5 }, new byte[] { 0x76, 0x5d, 0xf8 }));
                     break;
+                default:
+                    return false;
             }
             try
             {
@@ -274,22 +322,27 @@ namespace CathodeLib
         /// </summary>
         public static bool PatchUIPerfFlag(Platform platform, string pathToAI, bool shouldShow)
         {
+            int offset = 0;
+            switch (platform)
+            {
+                case Platform.STEAM:
+                    offset = 4430526;
+                    break;
+                case Platform.EPIC_GAMES_STORE:
+                    offset = 4500590;
+                    break;
+                case Platform.GOG:
+                    offset = 4431006;
+                    break;
+                default:
+                    return false;
+            }
+
             try
             {
                 using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(pathToAI + "/AI.exe")))
                 {
-                    switch (platform)
-                    {
-                        case Platform.STEAM:
-                            writer.BaseStream.Position = 4430526;
-                            break;
-                        case Platform.EPIC_GAMES_STORE:
-                            writer.BaseStream.Position = 4500590;
-                            break;
-                        case Platform.GOG:
-                            writer.BaseStream.Position = 4431006;
-                            break;
-                    }
+                    writer.BaseStream.Position = offset;
                     writer.Write((shouldShow) ? (byte)0x01 : (byte)0x00);
                 }
                 return true;
@@ -306,25 +359,28 @@ namespace CathodeLib
         /// </summary>
         public static bool PatchPopupMessage(Platform platform, string pathToAI)
         {
+            int offset = 0;
+            switch (platform)
+            {
+                case Platform.STEAM:
+                    offset = 14687164;
+                    break;
+                case Platform.EPIC_GAMES_STORE:
+                    offset = 14783204;
+                    break;
+                case Platform.GOG:
+                    offset = 14784108;
+                    break;
+                default:
+                    return false;
+            }
+
             try
             {
                 using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(pathToAI + "/AI.exe")))
                 {
-                    switch (platform)
-                    {
-                        case Platform.STEAM:
-                            writer.BaseStream.Position = 14687164;
-                            break;
-                        case Platform.EPIC_GAMES_STORE:
-                            writer.BaseStream.Position = 14783204;
-                            break;
-                        case Platform.GOG:
-                            writer.BaseStream.Position = 14784108;
-                            break;
-                    }
-
-                    //%s, replacing TEXT_%s
-                    writer.Write(new byte[] { 0x25, 0x73, 0x00, 0x00, 0x00, 0x00, 0x00 });
+                    writer.BaseStream.Position = offset;
+                    writer.Write(new byte[] { 0x25, 0x73, 0x00, 0x00, 0x00, 0x00, 0x00 }); //%s, replacing TEXT_%s
                 }
                 return true;
             }
@@ -368,6 +424,8 @@ namespace CathodeLib
                     //benchmarkPatches.Add(new PatchBytes(3843022, new byte[] { 0x0e, 0x43, 0x04 }, new byte[] { 0x8e, 0x29, 0x0b })); //skip_frontend
                     //benchmarkPatches.Add(new PatchBytes(4047514, new byte[] { 0x42, 0x24, 0x01 }, new byte[] { 0xc2, 0x0a, 0x08 })); //skip_frontend
                     break;
+                default:
+                    return false;
             }
 
             //Frontend acts as a reset

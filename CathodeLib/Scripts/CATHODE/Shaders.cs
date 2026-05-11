@@ -18,11 +18,14 @@ namespace CATHODE
     /// </summary>
     public class Shaders : CathodeFile
     {
+        public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public List<Shader> Entries = new List<Shader>();
+
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
 
         private List<Shader> _writeList = new List<Shader>();
 
-        public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
         public Shaders(string path) : base(path) { }
 
         ~Shaders()
@@ -50,8 +53,10 @@ namespace CATHODE
             if (_filepath == "")
                 return false;
 
-            string filepathBIN = _filepath.Substring(0, _filepath.Length - 4) + "_BIN.PAK";
-            if (!File.Exists(filepathBIN)) return false;
+            _compressed = Path.GetExtension(_filepath).ToLower() == ".gz";
+
+            if (!File.Exists(GetBinPath()))
+                return false;
 
             List<byte[]> VertexShaders = new List<byte[]>();
             List<byte[]> PixelShaders = new List<byte[]>();
@@ -61,7 +66,9 @@ namespace CATHODE
             List<byte[]> ComputeShaders = new List<byte[]>();
 
             //This is all the raw shader data
-            List<Utilities.PAKContent> content = Utilities.ReadPAK(filepathBIN, FileIdentifiers.SHADER_DATA);
+            List<ShaderPakEntry> content = Read(GetBinPath());
+            if (content == null)
+                return false;
             {
                 int[] counts = new int[6];
                 using (BinaryReader reader = new BinaryReader(new MemoryStream(content[0].Data)))
@@ -100,7 +107,9 @@ namespace CATHODE
             }
 
             //This is additional metadata
-            content = Utilities.ReadPAK(_filepath, FileIdentifiers.SHADER_DATA);
+            content = Read(_filepath);
+            if (content == null)
+                return false;
             for (int i = 0; i < content.Count; i++)
             {
                 if (content[i].BinIndex != i) return false;
@@ -164,8 +173,10 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            string filepathBIN = _filepath.Substring(0, _filepath.Length - 4) + "_BIN.PAK";
-            string filepathIDX = _filepath.Substring(0, _filepath.Length - 4) + "_IDX_REMAP.PAK";
+            if (_compressed && Path.GetExtension(_filepath).ToLower() != ".gz")
+                _filepath += ".gz";
+            else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
+                _filepath = _filepath.Substring(0, _filepath.Length - 3);
 
             //Compile all shader data
             List<byte[]> VertexShaders = new List<byte[]>();
@@ -191,7 +202,7 @@ namespace CATHODE
             }
 
             //Write out all shader data
-            List<Utilities.PAKContent> content = new List<Utilities.PAKContent>();
+            List<ShaderPakEntry> content = new List<ShaderPakEntry>();
             {
                 List<byte> bytes = new List<byte>();
                 bytes.AddRange(BitConverter.GetBytes(VertexShaders.Count));
@@ -200,7 +211,7 @@ namespace CATHODE
                 bytes.AddRange(BitConverter.GetBytes(DomainShaders.Count));
                 bytes.AddRange(BitConverter.GetBytes(GeometryShaders.Count));
                 bytes.AddRange(BitConverter.GetBytes(ComputeShaders.Count));
-                content.Add(new Utilities.PAKContent() { Data = bytes.ToArray() });
+                content.Add(new ShaderPakEntry() { Data = bytes.ToArray() });
             }
             List<byte[]> AllShaders = new List<byte[]>();
             AllShaders.AddRange(VertexShaders);
@@ -211,25 +222,28 @@ namespace CATHODE
             AllShaders.AddRange(ComputeShaders);
             for (int i = 0; i < AllShaders.Count; i++)
             {
-                content.Add(new Utilities.PAKContent()
+                content.Add(new ShaderPakEntry()
                 {
                     BinIndex = i + 1,
                     Data = AllShaders[i]
                 });
             }
-            Utilities.WritePAK(filepathBIN, FileIdentifiers.SHADER_DATA, content);
+            Write(GetBinPath(), content);
+
+            if (_compressed)
+                Utilities.GZIPCompress(GetBinPath());
 
             //Write out indexes
-            content = new List<Utilities.PAKContent>();
+            content = new List<ShaderPakEntry>();
             for (int i = 0; i < Entries.Count; i++)
             {
-                content.Add(new Utilities.PAKContent()
+                content.Add(new ShaderPakEntry()
                 {
                     BinIndex = i,
                     Data = BitConverter.GetBytes((Int32)i)
                 });
             }
-            Utilities.WritePAK(filepathIDX, FileIdentifiers.SHADER_DATA, content);
+            Write(GetIdxRemapPath(), content);
 
             //Write out metadata
             byte[][] shaderBuffers = new byte[Entries.Count][];
@@ -237,16 +251,19 @@ namespace CATHODE
             {
                 shaderBuffers[i] = SerializeShaderMetadata(Entries[i], i, VertexShaders, PixelShaders, HullShaders, DomainShaders, GeometryShaders, ComputeShaders);
             });
-            content = new List<Utilities.PAKContent>();
+            content = new List<ShaderPakEntry>();
             for (int i = 0; i < shaderBuffers.Length; i++)
             {
-                content.Add(new Utilities.PAKContent()
+                content.Add(new ShaderPakEntry()
                 {
                     BinIndex = i,
                     Data = shaderBuffers[i]
                 });
             }
-            Utilities.WritePAK(_filepath, FileIdentifiers.SHADER_DATA, content);
+            Write(_filepath, content);
+
+            if (_compressed)
+                Utilities.GZIPCompress(_filepath);
 
             _writeList.Clear();
             _writeList.AddRange(Entries);
@@ -305,6 +322,106 @@ namespace CATHODE
                 writer.Write(shader.ComputeShader == null ? -1 : computeShaders.IndexOf(shader.ComputeShader));
 
                 return data.ToArray();
+            }
+        }
+
+        private string GetBinPath()
+        {
+            return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + Path.GetFileName(_filepath).Split('.')[0] + "_BIN.PAK" + (_compressed ? ".GZ" : "");
+        }
+
+        private string GetIdxRemapPath()
+        {
+            return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + Path.GetFileName(_filepath).Split('.')[0] + "_IDX_REMAP.PAK";
+        }
+
+        private class ShaderPakEntry
+        {
+            public int BinIndex;
+            public byte[] Data;
+        }
+
+        private List<ShaderPakEntry> Read(string path)
+        {
+            List<ShaderPakEntry> content = new List<ShaderPakEntry>();
+            using (MemoryStream stream = _compressed ? Utilities.GZIPDecompress(new MemoryStream(File.ReadAllBytes(path))) : new MemoryStream(File.ReadAllBytes(path)))
+            using (BinaryReader reader = new BinaryReader(stream))
+            {
+                reader.BaseStream.Position += 12;
+                int entryCount = reader.ReadInt32();
+                int entryCountActual = reader.ReadInt32();
+                reader.BaseStream.Position += 12;
+
+                int endOfHeaders = 32 + (entryCountActual * 48);
+
+                List<(int globalOffset, int length)> info = new List<(int, int)>();
+                for (int i = 0; i < entryCount; i++)
+                {
+                    reader.BaseStream.Position += 8;
+                    int length = reader.ReadInt32();
+                    reader.BaseStream.Position += 4;
+                    int offset = reader.ReadInt32();
+                    reader.BaseStream.Position += 12;
+                    int binIndex = reader.ReadInt32();
+                    reader.BaseStream.Position += 12;
+
+                    info.Add((offset + endOfHeaders, length));
+                    content.Add(new ShaderPakEntry { BinIndex = binIndex });
+                }
+
+                for (int i = 0; i < entryCount; i++)
+                {
+                    reader.BaseStream.Position = info[i].globalOffset;
+                    content[i].Data = reader.ReadBytes(info[i].length);
+                }
+            }
+            return content;
+        }
+
+        private void Write(string path, List<ShaderPakEntry> content)
+        {
+            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(path)))
+            {
+                int contentOffset = 32 + (content.Count * 48);
+                writer.BaseStream.SetLength(contentOffset);
+                writer.BaseStream.Position = contentOffset;
+                List<int> offsets = new List<int>();
+                List<int> lengths = new List<int>();
+                List<int> lengthsAligned = new List<int>();
+                for (int i = 0; i < content.Count; i++)
+                {
+                    offsets.Add((int)writer.BaseStream.Position - contentOffset);
+                    writer.Write(content[i].Data);
+                    lengths.Add((int)writer.BaseStream.Position - contentOffset - offsets[offsets.Count - 1]);
+                    Utilities.Align(writer, 16);
+                    lengthsAligned.Add((int)writer.BaseStream.Position - contentOffset - offsets[offsets.Count - 1]);
+                }
+
+                writer.BaseStream.Position = 32;
+                for (int i = 0; i < content.Count; i++)
+                {
+                    writer.Write(new byte[8]);
+                    writer.Write(BitConverter.GetBytes(lengths[i]));
+                    writer.Write(BitConverter.GetBytes(lengthsAligned[i]));
+                    writer.Write(BitConverter.GetBytes(offsets[i]));
+
+                    writer.Write(new byte[5]);
+                    writer.Write(new byte[2] { 0x00, 0x01 });
+                    writer.Write(new byte[5]);
+
+                    writer.Write(BitConverter.GetBytes(content[i].BinIndex));
+                    writer.Write(new byte[12]);
+                }
+
+                writer.BaseStream.Position = 0;
+                writer.Write(new byte[4]);
+                writer.Write(BitConverter.GetBytes(14));
+                writer.Write(BitConverter.GetBytes(3));
+                writer.Write(BitConverter.GetBytes(content.Count));
+                writer.Write(BitConverter.GetBytes(content.Count));
+                writer.Write(BitConverter.GetBytes(16));
+                writer.Write(BitConverter.GetBytes(1));
+                writer.Write(BitConverter.GetBytes(0));
             }
         }
         #endregion
@@ -406,14 +523,12 @@ namespace CATHODE
                 if (RegisterCount != other.RegisterCount) return false;
                 if (PermutationHash != other.PermutationHash) return false;
 
-                // Compare Samplers list
                 if (Samplers.Count != other.Samplers.Count) return false;
                 for (int i = 0; i < Samplers.Count; i++)
                 {
                     if (!Samplers[i].Equals(other.Samplers[i])) return false;
                 }
 
-                // Compare integer lists
                 if (!ListsEqual(SamplerStageBindings, other.SamplerStageBindings)) return false;
                 if (!ListsEqual(SamplerRemaps, other.SamplerRemaps)) return false;
                 if (!ListsEqual(EngineParameterRemaps, other.EngineParameterRemaps)) return false;
@@ -422,7 +537,6 @@ namespace CATHODE
                 if (!ListsEqual(HullShaderParameterRemaps, other.HullShaderParameterRemaps)) return false;
                 if (!ListsEqual(DomainShaderParameterRemaps, other.DomainShaderParameterRemaps)) return false;
 
-                // Compare RenderStates
                 if (RenderStates == null && other.RenderStates != null) return false;
                 if (RenderStates != null && other.RenderStates == null) return false;
                 if (RenderStates != null && other.RenderStates != null)
@@ -430,7 +544,6 @@ namespace CATHODE
                     if (!RenderStates.Equals(other.RenderStates)) return false;
                 }
 
-                // Compare shader byte arrays
                 if (!ByteArraysEqual(VertexShader, other.VertexShader)) return false;
                 if (!ByteArraysEqual(PixelShader, other.PixelShader)) return false;
                 if (!ByteArraysEqual(HullShader, other.HullShader)) return false;

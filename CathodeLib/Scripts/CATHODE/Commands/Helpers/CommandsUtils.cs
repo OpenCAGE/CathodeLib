@@ -6,8 +6,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using static CathodeLib.CompositeModificationInfoTable;
 using System.IO;
+
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
@@ -29,6 +29,9 @@ namespace CATHODE.Scripting
         private CompositeModificationInfoTable _modificationInfo = new CompositeModificationInfoTable();
         private CompositePinInfoTable _pinInfo = new CompositePinInfoTable();
 
+        public FlagTable Flags => _flagTable;
+        private FlagTable _flagTable = new FlagTable();
+
         private static uint _nameID; //We remove the "name" param on every entity except Zone, since that is handled by EntityUtils.
 
         private Commands _commands = null;
@@ -37,6 +40,9 @@ namespace CATHODE.Scripting
         {
             _nameID = ShortGuidUtils.Generate("name").AsUInt32;
             _commands = commands;
+
+            if (_commands == null)
+                return;
 
             _commands.OnLoadSuccess += LoadInfo;
             _commands.OnSaveSuccess += SaveInfo;
@@ -57,7 +63,7 @@ namespace CATHODE.Scripting
             _entityNames?.names?.Clear();
             _modificationInfo?.modification_info?.Clear();
             _pinInfo?.composite_pin_infos?.Clear();
-                
+
             _commands = null;
         }
 
@@ -422,9 +428,9 @@ namespace CATHODE.Scripting
             foreach (var kvp in composite.functions_dictionary)
             {
                 var function = kvp.Value;
-                switch (ShortGuidUtils.FindString(function.function))
+                switch (function.function.AsFunctionType)
                 {
-                    case "TriggerSequence":
+                    case FunctionType.TriggerSequence:
                         // TriggerSequence sequences must point to entities that still exist
                         TriggerSequence trig = (TriggerSequence)function;
                         var sequenceToRemove = new List<TriggerSequence.SequenceEntry>();
@@ -442,7 +448,7 @@ namespace CATHODE.Scripting
                             trig.sequence.Remove(entry);
                         }
                         break;
-                    case "CAGEAnimation":
+                    case FunctionType.CAGEAnimation:
                         // CAGEAnimation connections must point to entities that still exist
                         CAGEAnimation anim = (CAGEAnimation)function;
                         var connectionsToRemove = new List<CAGEAnimation.Connection>();
@@ -1376,6 +1382,53 @@ namespace CATHODE.Scripting
             if (_entityNames.names.ContainsKey(compositeID))
                 _entityNames.names[compositeID].Remove(entityID);
         }
+
+        /// <summary>
+        /// Get all custom entity names for a composite
+        /// </summary>
+        public Dictionary<ShortGuid, string> GetAllCustomEntityNames(Composite composite) => GetAllCustomEntityNames(composite.shortGUID);
+        public Dictionary<ShortGuid, string> GetAllCustomEntityNames(ShortGuid compositeID)
+        {
+            Dictionary<ShortGuid, string> names = new Dictionary<ShortGuid, string>();
+            if (_entityNames.names.TryGetValue(compositeID, out Dictionary<ShortGuid, string> customNames))
+                foreach (KeyValuePair<ShortGuid, string> entry in customNames)
+                    names[entry.Key] = entry.Value;
+            return names;
+        }
+
+        /// <summary>
+        /// Bulk add custom entity names for a composite - note this will overwrite any that are already set with the same guids!
+        /// </summary>
+        public void AddCustomEntityNames(Composite composite, Dictionary<ShortGuid, string> names) => AddCustomEntityNames(composite.shortGUID, names);
+        public void AddCustomEntityNames(ShortGuid compositeID, Dictionary<ShortGuid, string> names)
+        {
+            Dictionary<ShortGuid, string> customNames = null;
+            if (!_entityNames.names.TryGetValue(compositeID, out customNames))
+            {
+                customNames = new Dictionary<ShortGuid, string>();
+                _entityNames.names.Add(compositeID, customNames);
+            }
+            foreach (KeyValuePair<ShortGuid, string> entry in names)
+            {
+                if (customNames.ContainsKey(entry.Key))
+                    customNames[entry.Key] = entry.Value;
+                else
+                    customNames.Add(entry.Key, entry.Value);
+            }
+        }
+
+        /// <summary>
+        /// Overwrites all Composite names with 'pretty' versions that aren't fully capitalised, as they are by default for PAK files.
+        /// </summary>
+        public void SetPrettyNames()
+        {
+            foreach (Composite composite in _commands.Entries)
+            {
+                string prettyPath = CustomTable.Vanilla.CompositePaths.GetPrettyPath(composite.shortGUID);
+                if (prettyPath != "") composite.name = prettyPath;
+                composite.name = composite.name.Replace("/", "\\");
+            }
+        }
         #endregion
 
         #region Composite Modification Info
@@ -1384,6 +1437,9 @@ namespace CATHODE.Scripting
         /// </summary>
         public void SetModificationInfo(CompositeModificationInfoTable.ModificationInfo info)
         {
+            if (info == null)
+                return;
+
             _modificationInfo.modification_info.RemoveAll(o => o.composite_id == info.composite_id);
             _modificationInfo.modification_info.Add(info);
         }
@@ -1430,6 +1486,36 @@ namespace CATHODE.Scripting
             if (CustomTable.Vanilla.CompositePinInfos.composite_pin_infos.TryGetValue(composite, out List<CompositePinInfoTable.PinInfo> vanillaInfos))
                 info = vanillaInfos.FirstOrDefault(o => o.VariableGUID == variableEnt);
             return info;
+        }
+
+        /// <summary>
+        /// Get all custom pin info for a composite
+        /// </summary>
+        public List<CompositePinInfoTable.PinInfo> GetAllCustomPinInfo(Composite composite) => GetAllCustomPinInfo(composite.shortGUID);
+        public List<CompositePinInfoTable.PinInfo> GetAllCustomPinInfo(ShortGuid compositeID)
+        {
+            if (_pinInfo.composite_pin_infos.TryGetValue(compositeID, out List<CompositePinInfoTable.PinInfo> customPins))
+                return customPins;
+            return new List<CompositePinInfoTable.PinInfo>();
+        }
+
+        /// <summary>
+        /// Bulk add custom entity pin info for a composite
+        /// </summary>
+        public void AddCustomPinInfos(Composite composite, List<CompositePinInfoTable.PinInfo> infos) => AddCustomPinInfos(composite.shortGUID, infos);
+        public void AddCustomPinInfos(ShortGuid compositeID, List<CompositePinInfoTable.PinInfo> infos)
+        {
+            if (_pinInfo.composite_pin_infos.TryGetValue(compositeID, out List<CompositePinInfoTable.PinInfo> customInfos))
+            {
+                HashSet<CompositePinInfoTable.PinInfo> newInfos = new HashSet<CompositePinInfoTable.PinInfo>();
+                foreach (CompositePinInfoTable.PinInfo info in customInfos) newInfos.Add(info);
+                foreach (CompositePinInfoTable.PinInfo info in infos) newInfos.Add(info);
+                _pinInfo.composite_pin_infos[compositeID] = new List<CompositePinInfoTable.PinInfo>(newInfos);
+            }
+            else
+            {
+                _pinInfo.composite_pin_infos.Add(compositeID, infos);
+            }
         }
 
         /// <summary>
@@ -1514,6 +1600,9 @@ namespace CATHODE.Scripting
                 _pinInfo = new CompositePinInfoTable();
             else
                 Console.WriteLine("Loaded custom pin info for " + _pinInfo.composite_pin_infos.Count + " composites!");
+
+            _flagTable = (FlagTable)CustomTable.ReadTable(filepath, CustomTableType.FLAGS);
+            if (_flagTable == null) _flagTable = new FlagTable();
         }
         private void SaveInfo(string filepath)
         {
@@ -1530,6 +1619,8 @@ namespace CATHODE.Scripting
 
             CustomTable.WriteTable(filepath, CustomTableType.COMPOSITE_PIN_INFO, _pinInfo);
             Console.WriteLine("Saved custom pin info for " + _pinInfo.composite_pin_infos.Count + " composites!");
+
+            CustomTable.WriteTable(filepath, CustomTableType.FLAGS, _flagTable);
         }
         #endregion
     }

@@ -7,6 +7,10 @@ using CATHODE.Scripting;
 using CathodeLib;
 using CathodeLib.ObjectExtensions;
 using System.Linq;
+using System.Collections.Concurrent;
+using static CATHODE.Lights;
+
+
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
@@ -27,13 +31,18 @@ namespace CATHODE
         protected override bool HandlesLoadingManually => true;
         private RenderableElements _reds;
         private Resources _resources;
+        private Textures _textures;
+
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
 
         private List<MOVER_DESCRIPTOR> _writeList = new List<MOVER_DESCRIPTOR>();
 
-        public Movers(string path, RenderableElements reds, Resources resources) : base(path)
+        public Movers(string path, RenderableElements reds, Resources resources, Textures textures) : base(path)
         {
             _reds = reds;
             _resources = resources;
+            _textures = textures;
 
             _loaded = Load();
         }
@@ -42,6 +51,7 @@ namespace CATHODE
         {
             _reds = null;
             _resources = null;
+            _textures = null;
         }
 
         ~Movers()
@@ -54,37 +64,55 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
+            //NOTE: Loading via byte[] or MemoryStream is not currently supported. Must be loaded via disk from a filepath!
+            if (_filepath == "")
+                return false;
+
+            _compressed = _filepath != null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
+
             //note: first 12 always renderable but not linked to commands -> they are always the same models across every level. is it the content of GLOBAL?
 
-            using (BinaryReader reader = new BinaryReader(stream))
+            using (BinaryReader reader = new BinaryReader(_compressed ? Utilities.GZIPDecompress(stream) : stream))
             {
                 reader.BaseStream.Position += 4;
                 int entryCount = reader.ReadInt32();
                 reader.BaseStream.Position += 24;
-                
+
+                Textures.TEX4[] environmentMaps = new Textures.TEX4[entryCount]; 
+                using (BinaryReader envMapReader = new BinaryReader(File.OpenRead(GetEnvMapPath())))
+                {
+                    envMapReader.BaseStream.Position += 8;
+                    int envMapEntryCount = envMapReader.ReadInt32();
+                    for (int i = 0; i < envMapEntryCount; i++)
+                    {
+                        environmentMaps[envMapReader.ReadInt32()] = _textures.GetAtWriteIndex(envMapReader.ReadInt32());
+                    }
+                }
+
                 for (int i = 0; i < entryCount; i++)
                 {
                     MOVER_DESCRIPTOR mvr = new MOVER_DESCRIPTOR();
-                    mvr.transform = Utilities.Consume<Matrix4x4>(reader);
-                    mvr.gpu_constants = Utilities.ConsumeArray<float>(reader, 24);
-                    mvr.render_constants = Utilities.ConsumeArray<float>(reader, 21);
+                    mvr.Transform = Utilities.Consume<Matrix4x4>(reader);
+                    mvr.GPUConstants = Utilities.Consume<MOVER_DESCRIPTOR.GPU_CONSTANTS>(reader);
+                    mvr.RenderConstants = Utilities.Consume<MOVER_DESCRIPTOR.RENDER_CONSTANTS>(reader);
                     int redsIndex = reader.ReadInt32();
                     int redsCount = reader.ReadInt32();
-                    mvr.renderable_elements = _reds.GetAtWriteIndex(redsIndex, redsCount);
-                    mvr.resource = _resources.GetAtWriteIndex(reader.ReadInt32());
+                    mvr.RenderableElements = _reds.GetAtWriteIndex(redsIndex, redsCount);
+                    mvr.Resource = _resources.GetAtWriteIndex(reader.ReadInt32());
                     reader.BaseStream.Position += 12;
-                    mvr.cull_flags = (CullFlag)reader.ReadInt32();
-                    mvr.entity = Utilities.Consume<EntityHandle>(reader);
-                    mvr.environment_map_index = reader.ReadInt32();
-                    mvr.emissive_tint = new Vector3(reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
-                    mvr.emissive_flags = (EmissiveFlag)reader.ReadByte();
-                    mvr.emissive_intensity_multiplier = reader.ReadSingle();
-                    mvr.emissive_radiosity_multiplier = reader.ReadSingle();
-                    mvr.primary_zone_id = Utilities.Consume<ShortGuid>(reader);
-                    mvr.secondary_zone_id = Utilities.Consume<ShortGuid>(reader);
-                    mvr.lighting_master_id = reader.ReadInt32();
+                    mvr.CullFlags = (CullFlag)reader.ReadInt32();
+                    mvr.Entity = Utilities.Consume<EntityHandle>(reader);
+                    reader.BaseStream.Position += 4;
+                    mvr.EnvironmentMap = environmentMaps[i];
+                    mvr.EmissiveTint = new Vector3(reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
+                    mvr.EmissiveFlags = (EmissiveFlag)reader.ReadByte();
+                    mvr.EmissiveIntensityMultiplier = reader.ReadSingle();
+                    mvr.EmissiveRadiosityMultiplier = reader.ReadSingle();
+                    mvr.PrimaryZoneID = Utilities.Consume<ShortGuid>(reader);
+                    mvr.SecondaryZoneID = Utilities.Consume<ShortGuid>(reader);
+                    mvr.LightingMasterID = reader.ReadInt32();
                     reader.BaseStream.Position += 2;
-                    mvr.flags = Utilities.Consume<MoverFlag>(reader);
+                    mvr.Flags = Utilities.Consume<MoverFlag>(reader);
                     reader.BaseStream.Position += 8;
                     Entries.Add(mvr);
                 }
@@ -96,77 +124,107 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            int non_stationary = 0;
+            if (_compressed && Path.GetExtension(_filepath).ToLower() != ".gz")
+                _filepath += ".gz";
+            else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
+                _filepath = _filepath.Substring(0, _filepath.Length - 3);
+
+            int totalEnvMaps = 0;
+            foreach (Textures.TEX4 tex in _textures.Entries)
+            {
+                if (tex.StateFlags.HasFlag(Textures.TextureStateFlag.CUBE))
+                    totalEnvMaps++;
+            }
+
+            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(GetEnvMapPath())))
+            {
+                writer.BaseStream.SetLength(0);
+                Utilities.WriteString("envm", writer);
+                writer.Write(1);
+                writer.Write(Entries.Count);
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    writer.Write(i);
+                    writer.Write(Entries[i].EnvironmentMap == null ? -1 : _textures.GetWriteIndexForEnvMap(Entries[i].EnvironmentMap));
+                }
+                writer.Write(totalEnvMaps);
+            }
+
+            int nonStationary = 0;
             for (int i = 0; i < Entries.Count; i++)
-                if (!Entries[i].flags.stationary)
-                    non_stationary++;
+                if (!Entries[i].Flags.Stationary)
+                    nonStationary++;
 
             byte[][] entryBuffers = new byte[Entries.Count][];
             Parallel.For(0, Entries.Count, i =>
             {
-                entryBuffers[i] = SerializeEntry(Entries[i]);
+                entryBuffers[i] = SerializeEntry(Entries[i], i);
             });
-            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
+
+            using (Stream stream = File.OpenWrite(_filepath))
+            using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 writer.BaseStream.SetLength(0);
                 writer.Write((Entries.Count * 320) + 32);
                 writer.Write(Entries.Count);
-                writer.Write(non_stationary);
+                writer.Write(nonStationary);
                 writer.Write(0);
                 writer.Write(320);
-                writer.Write(0); 
-                writer.Write(0); 
+                writer.Write(0);
+                writer.Write(0);
                 writer.Write(0);
                 for (int i = 0; i < entryBuffers.Length; i++)
                     writer.Write(entryBuffers[i]);
             }
+
+            if (_compressed)
+                Utilities.GZIPCompress(_filepath);
+
             _writeList.Clear();
             _writeList.AddRange(Entries);
             return true;
         }
 
-        private byte[] SerializeEntry(MOVER_DESCRIPTOR entry)
+        private byte[] SerializeEntry(MOVER_DESCRIPTOR entry, int index)
         {
             using (MemoryStream stream = new MemoryStream(320))
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
-                Utilities.Write<Matrix4x4>(writer, entry.transform);
-                for (int x = 0; x < 24; x++)
-                    writer.Write(entry.gpu_constants[x]);
-                for (int x = 0; x < 21; x++)
-                    writer.Write(entry.render_constants[x]);
-                if (entry.renderable_elements.Count == 0)
+                Utilities.Write<Matrix4x4>(writer, entry.Transform);
+                Utilities.Write<MOVER_DESCRIPTOR.GPU_CONSTANTS>(writer, entry.GPUConstants);
+                Utilities.Write<MOVER_DESCRIPTOR.RENDER_CONSTANTS>(writer, entry.RenderConstants);
+                if (entry.RenderableElements == null || entry.RenderableElements.Count == 0)
                 {
                     writer.Write(-1);
                     writer.Write(-1);
                 }
                 else
                 {
-                    writer.Write(_reds.GetWriteIndex(entry.renderable_elements));
-                    writer.Write(entry.renderable_elements.Count);
+                    writer.Write(_reds.GetWriteIndex(entry.RenderableElements));
+                    writer.Write(entry.RenderableElements.Count);
                 }
-                writer.Write(_resources.GetWriteIndex(entry.resource));
+                writer.Write(_resources.GetWriteIndex(entry.Resource));
                 writer.Write(new byte[12]);
-                writer.Write((int)entry.cull_flags);
-                Utilities.Write<EntityHandle>(writer, entry.entity);
-                writer.Write(entry.environment_map_index);
+                writer.Write((int)entry.CullFlags);
+                Utilities.Write<EntityHandle>(writer, entry.Entity);
+                writer.Write(index);
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
                 writer.Write((byte)entry.emissive_tint.x);
                 writer.Write((byte)entry.emissive_tint.y);
                 writer.Write((byte)entry.emissive_tint.z);
 #else
-                writer.Write((byte)entry.emissive_tint.X);
-                writer.Write((byte)entry.emissive_tint.Y);
-                writer.Write((byte)entry.emissive_tint.Z);
+                writer.Write((byte)entry.EmissiveTint.X);
+                writer.Write((byte)entry.EmissiveTint.Y);
+                writer.Write((byte)entry.EmissiveTint.Z);
 #endif
-                writer.Write((byte)entry.emissive_flags);
-                writer.Write(entry.emissive_intensity_multiplier);
-                writer.Write(entry.emissive_radiosity_multiplier);
-                Utilities.Write<ShortGuid>(writer, entry.primary_zone_id);
-                Utilities.Write<ShortGuid>(writer, entry.secondary_zone_id);
-                writer.Write(entry.lighting_master_id);
+                writer.Write((byte)entry.EmissiveFlags);
+                writer.Write(entry.EmissiveIntensityMultiplier);
+                writer.Write(entry.EmissiveRadiosityMultiplier);
+                Utilities.Write<ShortGuid>(writer, entry.PrimaryZoneID);
+                Utilities.Write<ShortGuid>(writer, entry.SecondaryZoneID);
+                writer.Write(entry.LightingMasterID);
                 writer.Write((Int16)(-1)); //todo - sanity check this is actually -1 not 0
-                Utilities.Write<MoverFlag>(writer, entry.flags);
+                Utilities.Write<MoverFlag>(writer, entry.Flags);
                 writer.Write(new byte[8]);
 
                 return stream.ToArray();
@@ -205,8 +263,8 @@ namespace CATHODE
 
             MOVER_DESCRIPTOR newMover = mover.Copy();
 
-            newMover.renderable_elements = _reds.ImportEntry(newMover.renderable_elements, models);
-            newMover.resource = _resources.ImportEntry(newMover.resource);
+            newMover.RenderableElements = _reds.ImportEntry(newMover.RenderableElements, models);
+            newMover.Resource = _resources.ImportEntry(newMover.Resource);
 
             //todo: do something with entity reference
 
@@ -220,6 +278,11 @@ namespace CATHODE
 
             Entries.Add(newMover);
             return newMover;
+        }
+
+        private string GetEnvMapPath()
+        {
+            return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + "ENVIRONMENTMAP.BIN";
         }
         #endregion
 
@@ -246,9 +309,9 @@ namespace CATHODE
         };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct MoverFlag
+        public class MoverFlag
         {
-            public bool requires_script
+            public bool RequiresScript
             {
                 get
                 {
@@ -259,7 +322,7 @@ namespace CATHODE
                     flags |= 0x0004;
                 }
             }
-            public bool visible
+            public bool Visible
             {
                 get
                 {
@@ -270,7 +333,7 @@ namespace CATHODE
                     flags |= 0x0001;
                 }
             }
-            public bool stationary
+            public bool Stationary
             {
                 get
                 {
@@ -286,30 +349,415 @@ namespace CATHODE
 
         public class MOVER_DESCRIPTOR : IEquatable<MOVER_DESCRIPTOR>
         {
-            public Matrix4x4 transform;
+            public Matrix4x4 Transform = Matrix4x4.Identity;
 
-            public float[] gpu_constants; 
-            public float[] render_constants; // see struct MODEL_PARAMS, etc
+            public GPU_CONSTANTS GPUConstants = new GPU_CONSTANTS(); 
+            public RENDER_CONSTANTS RenderConstants = new RENDER_CONSTANTS();
 
-            public List<RenderableElements.Element> renderable_elements = new List<RenderableElements.Element>(); 
+            public List<RenderableElements.Element> RenderableElements = new List<RenderableElements.Element>(); 
 
-            public Resources.Resource resource = null; //Resources.bin index value
+            public Resources.Resource Resource = null;
 
-            public CullFlag cull_flags = CullFlag.DEFAULT;
+            public CullFlag CullFlags = CullFlag.DEFAULT;
 
-            public EntityHandle entity; //The entity in the Commands file
-            public int environment_map_index = -1; //environment_map.bin index
+            public EntityHandle Entity;
+            public Textures.TEX4 EnvironmentMap = null;
 
-            public Vector3 emissive_tint = new Vector3(255, 255, 255); // sRGB
-            public EmissiveFlag emissive_flags = EmissiveFlag.None;
-            public float emissive_intensity_multiplier = 1.0f;
-            public float emissive_radiosity_multiplier = 0.0f;
+            public Vector3 EmissiveTint = new Vector3(255, 255, 255);
+            public EmissiveFlag EmissiveFlags = EmissiveFlag.None;
+            public float EmissiveIntensityMultiplier = 1.0f;
+            public float EmissiveRadiosityMultiplier = 0.0f;
 
-            public ShortGuid primary_zone_id; //zero is "unzoned"
-            public ShortGuid secondary_zone_id; //zero is "unzoned"
-            public int lighting_master_id = 0;
+            public ShortGuid PrimaryZoneID = ShortGuid.Invalid; //zero is "unzoned"
+            public ShortGuid SecondaryZoneID = ShortGuid.Invalid; //zero is "unzoned"
+            public int LightingMasterID = 0;
 
-            public MoverFlag flags;
+            public MoverFlag Flags = new MoverFlag();
+
+            [StructLayout(LayoutKind.Sequential, Pack = 1)]
+            public class GPU_CONSTANTS : IEquatable<GPU_CONSTANTS>
+            {
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = 96)]
+                private byte[] buffer = new byte[96];
+
+                public T GetAs<T>()
+                {
+                    using (MemoryStream stream = new MemoryStream(buffer))
+                    using (BinaryReader reader = new BinaryReader(stream))
+                    {
+                        return Utilities.Consume<T>(reader);
+                    }
+                }
+
+                public void SetAs<T>(T value)
+                {
+                    using (MemoryStream stream = new MemoryStream())
+                    using (BinaryWriter writer = new BinaryWriter(stream))
+                    {
+                        writer.Write(new byte[96]);
+                        writer.BaseStream.Position = 0;
+                        Utilities.Write<T>(writer, value);
+                        buffer = stream.ToArray();
+                    }
+                }
+
+                public bool Equals(GPU_CONSTANTS other)
+                {
+                    if (other == null) return false;
+                    return other.buffer.SequenceEqual(buffer);
+                }
+
+                public override bool Equals(object obj)
+                {
+                    return Equals(obj as GPU_CONSTANTS);
+                }
+
+                public static bool operator ==(GPU_CONSTANTS x, GPU_CONSTANTS y)
+                {
+                    if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                    if (ReferenceEquals(y, null)) return false;
+                    return x.Equals(y);
+                }
+
+                public static bool operator !=(GPU_CONSTANTS x, GPU_CONSTANTS y)
+                {
+                    return !(x == y);
+                }
+
+                public override int GetHashCode()
+                {
+                    return 143091379 + EqualityComparer<byte[]>.Default.GetHashCode(buffer);
+                }
+
+                [StructLayout(LayoutKind.Sequential, Pack = 1)]
+                public class DEFERRED_GPU_CONSTANTS
+                {
+                    public Vector3 Colour;
+                    private float _unused1;
+
+                    public float AttenuationDefocus;
+	                public float AttenuationBegin;
+	                public float NearDist;
+
+	                public float Softness;
+	                public float DiffuseBias;
+	                public float OuterAngle; // length, if strip light
+                    public float InnerAngle;
+
+                    public float ArealightRadius;
+                    private float _unused2;
+                    public float AttenuationEnd;
+                    private float _unused3;
+                    public float NearDistShadowOffset;
+
+                    public Vector3 VolumeColour;
+                    public float VolumeDensity;
+                    public float VolumeAttenuationEnd; 
+
+	                public float AspectRatio;
+                    public float GlossinessScale;
+                }
+
+                [StructLayout(LayoutKind.Sequential, Pack = 1)]
+                public class PARTICLE_GPU_CONSTANTS //GPU Particles
+                {
+	                public float ExpiryTime;
+                    private float _unused1;
+                    public float RandomNumber;
+                    private float _unused2;
+
+                    public float AspectRatio;
+	                public float FadeAtDistance;
+	                public float AlphaIn;
+	                public float AlphaOut;
+
+	                public float SizeStartMin;
+	                public float SizeStartMax;
+	                public float SizeEndMin;
+	                public float SizeEndMax;
+
+	                public float MaskAmountMin;
+	                public float MaskAmountMax;
+	                public float MaskAmountMidpoint;
+	                public float AlphaRefValue;
+
+	                public float ParticleExpiryTimeMin;
+	                public float ParticleExpiryTimeMax;
+	                public float ColourScaleMin;
+	                public float ColourScaleMax;
+
+                    public Vector3 Wind;
+                }
+
+                [StructLayout(LayoutKind.Sequential, Pack = 1)]
+                public class DYNAMIC_FX_GPU_CONSTANTS //CPU Particles
+                {
+	                public float ExpiryTime;
+                    private float _unused;
+                    public float RandomNumber;
+                }
+
+                [StructLayout(LayoutKind.Sequential, Pack = 1)]
+                public class ENVIRONMENT_GPU_CONSTANTS
+                {
+                    public Vector4 VertexColourScalars = new Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+                    public Vector4 DiffuseColourScalars = new Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+
+                    public float AlphaBlendNoisePowerScale = 1.0f;
+                    public float AlphaBlendNoiseUvScale = 1.0f;
+                    public Vector2 AlphaBlendNoiseUvOffset = new Vector2(0.0f, 0.0f);
+
+                    public Vector2 AtlasOffset = new Vector2(0.0f, 0.0f);
+                    public Vector2 AtlasBias = new Vector2(1.0f, 1.0f);
+
+                    public float DirtMultiplyBlendSpecPowerScale = 1.0f;
+                    public float DirtMapUvScale = 1.0f;
+                }
+
+                [StructLayout(LayoutKind.Sequential, Pack = 1)]
+                public class FOGSPHERE_GPU_CONSTANTS
+                {
+                    public Vector3 ColourTint;
+	                public float Intensity;
+	                public float Opacity;
+	                public float Density;
+	                public float FresnelPower;
+	                public float SoftnessEdge;
+	                public float FarBlendDistance;
+	                public float NearBlendDistance;
+	                public float SecondaryFarBlendDistance;
+	                public float SecondaryNearBlendDistance;
+	                public float Radius;
+                    public Vector3 DepthIntersectionColour;
+                    public float DepthIntersectionAlpha;
+                    public float DepthIntersectionRange;
+                }
+
+                [StructLayout(LayoutKind.Sequential, Pack = 1)]
+                public class FOGPLANE_GPU_CONSTANTS
+                {
+	                public float StartDistanceFadeScalar = 1.0f;
+	                public float DistanceFadeScalar = 1.0f;
+	                public float AngleFadeScalar = 1.0f;
+	                public float FresnelPowerScalar = 1.0f;
+	                public float HeightMaxDensityScalar = 1.0f;
+                    public Vector3 ColourTint = new Vector3(1.0f, 1.0f, 1.0f);
+                    public float ThicknessScalar = 1.0f;
+	                public float EdgeSoftnessScalar = 1.0f;
+	                public float DiffuseMap0_UvScalar = 1.0f;
+	                public float DiffuseMap0_SpeedScalar = 1.0f;
+	                public float DiffuseMap1_UvScalar = 1.0f;
+	                public float DiffuseMap1_SpeedScalar = 1.0f;
+                }
+
+                [StructLayout(LayoutKind.Sequential, Pack = 1)]
+                public class LIGHTDECAL_GPU_CONSTANTS
+                {
+                    public Vector3 LightdecalIntensity;
+                }
+            }
+
+            [StructLayout(LayoutKind.Sequential, Pack = 1)]
+            public class RENDER_CONSTANTS : IEquatable<RENDER_CONSTANTS>
+            {
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = 84)]
+                private byte[] buffer = new byte[84];
+
+                public T GetAs<T>()
+                {
+                    using (MemoryStream stream = new MemoryStream(buffer))
+                    using (BinaryReader reader = new BinaryReader(stream))
+                    {
+                        return Utilities.Consume<T>(reader);
+                    }
+                }
+
+                public void SetAs<T>(T value)
+                {
+                    using (MemoryStream stream = new MemoryStream())
+                    using (BinaryWriter writer = new BinaryWriter(stream))
+                    {
+                        writer.Write(new byte[84]);
+                        writer.BaseStream.Position = 0;
+                        Utilities.Write<T>(writer, value);
+                        buffer = stream.ToArray();
+                    }
+                }
+
+                public bool Equals(RENDER_CONSTANTS other)
+                {
+                    if (other == null) return false;
+                    return other.buffer.SequenceEqual(buffer);
+                }
+
+                public override bool Equals(object obj)
+                {
+                    return Equals(obj as RENDER_CONSTANTS);
+                }
+
+                public static bool operator ==(RENDER_CONSTANTS x, RENDER_CONSTANTS y)
+                {
+                    if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
+                    if (ReferenceEquals(y, null)) return false;
+                    return x.Equals(y);
+                }
+
+                public static bool operator !=(RENDER_CONSTANTS x, RENDER_CONSTANTS y)
+                {
+                    return !(x == y);
+                }
+
+                public override int GetHashCode()
+                {
+                    return 143091379 + EqualityComparer<byte[]>.Default.GetHashCode(buffer);
+                }
+
+                [StructLayout(LayoutKind.Sequential, Pack = 1)]
+                public class DEFERRED_PARAMS
+                {
+                    public float Visibility
+                    {
+                        get
+                        {
+                            return (float)_visibility * (1.0f / 255.0f);
+                        }
+                        set
+                        {
+                            _visibility = (byte)(255.0f * Math.Min(1.0f, Math.Max(0.0f, value)));
+                        }
+                    }
+                    private byte _visibility;
+
+                    public float FlareIntensityScale
+                    {
+                        get
+                        {
+                            float x = (float)_flareIntensityScale * (1.0f / 255.0f);
+                            return x * x * 100.0f;
+                        }
+                        set
+                        {
+                            _flareIntensityScale = (byte)(255.0f * Math.Min(1.0f, Math.Sqrt(Math.Max(0.0f, value / 100.0f))));
+                        }
+                    }
+                    private byte _flareIntensityScale;
+
+                    public bool UsesRadiosity => _radiosityFraction != 0;
+                    public float RadiosityFraction
+                    {
+                        get
+                        {
+                            float x = (float)_radiosityFraction * (1.0f / 255.0f);
+                            return x * x * 4.0f;
+                        }
+                        set
+                        {
+                            _radiosityFraction = (byte)(255.0f * Math.Min(1.0f, Math.Sqrt(Math.Max(0.0f, value / 4.0f))));
+                        }
+                    }
+                    private byte _radiosityFraction;
+
+                    public LightType Type
+                    {
+                        get
+                        {
+                            return (LightType)_type;
+                        }
+                        set
+                        {
+                            _type = (byte)value;
+                        }
+                    }
+                    private byte _type;
+
+                    public byte ShadowPriorityOffset;
+                    public byte SlopeScaleDepthBias;
+
+                    public LightFeature Features;
+
+                    private byte _unused;
+
+                    public LightFadeType LightFadeType
+                    {
+                        get
+                        {
+                            return (LightFadeType)_lightFadeType;
+                        }
+                        set
+                        {
+                            _lightFadeType = (byte)value;
+                        }
+                    }
+                    private byte _lightFadeType;
+
+                    public float FlareOccluderRadius
+                    {
+                        get
+                        {
+                            return (float)_flareOccluderRadius * (1.0f / 255.0f);
+                        }
+                        set
+                        {
+                            _flareOccluderRadius = (byte)(255.0f * Math.Max(0.0f, Math.Min(1.0f, value)));
+                        }
+                    }
+                    private byte _flareOccluderRadius;
+
+                    public float FlareSpotOffset
+                    {
+                        get
+                        {
+                            return (float)_flareSpotOffset * (1.0f / 255.0f) - 0.5f;
+                        }
+                        set
+                        {
+                            _flareSpotOffset = (byte)(255.0f * Math.Max(0.0f, Math.Min(1.0f, value + 0.5f)));
+                        }
+                    }
+                    private byte _flareSpotOffset;
+
+                    public float DepthBias;
+                }
+
+                [StructLayout(LayoutKind.Sequential, Pack = 1)]
+                public class MODEL_PARAMS
+                {
+                    public Vector3 CustomPositionArray1;
+                    public Vector3 CustomPositionArray2;
+                }
+
+                [StructLayout(LayoutKind.Sequential, Pack = 1)]
+                public class DYNAMIC_PFX_PARAMS //CPU Particles
+                {
+                    public float DrawPass;
+
+                    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 12)]
+                    private byte[] _unused;
+
+                    public EntityHandle Entity;
+
+                    private int _unused2 = -1;
+                }
+
+                [StructLayout(LayoutKind.Sequential, Pack = 1)]
+                public class PARTICLE_PARAMS //GPU Particles
+                {
+                    public float DrawPass;
+                    public float NumVerts;
+                    public float PrimitiveCount;
+                    public float VertexOffset;
+
+                    public EntityHandle Entity;
+
+                    public Vector3 BoundingBoxMin;
+                    public Vector3 BoundingBoxMax;
+                }
+            }
+
+            public RenderableInstanceType GetRenderableType()
+            {
+                return RenderableElements.CalculateRenderableType();
+            }
 
             public static bool operator ==(MOVER_DESCRIPTOR x, MOVER_DESCRIPTOR y)
             {
@@ -328,7 +776,6 @@ namespace CATHODE
                 if (other == null) return false;
                 if (ReferenceEquals(this, other)) return true;
 
-                // Compare Matrix4x4
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
                 for (int i = 0; i < 16; i++)
                 {
@@ -336,82 +783,52 @@ namespace CATHODE
                         return false;
                 }
 #else
-                if (transform != other.transform) return false;
+                if (Transform != other.Transform) return false;
 #endif
 
-                // Compare gpu_constants array (24 elements)
-                if (gpu_constants == null && other.gpu_constants != null) return false;
-                if (gpu_constants != null && other.gpu_constants == null) return false;
-                if (gpu_constants != null && other.gpu_constants != null)
+                if (GPUConstants != other.GPUConstants) return false;
+                if (RenderConstants != other.RenderConstants) return false;
+
+                if (RenderableElements == null && other.RenderableElements != null) return false;
+                if (RenderableElements != null && other.RenderableElements == null) return false;
+                if (RenderableElements != null && other.RenderableElements != null)
                 {
-                    if (gpu_constants.Length != other.gpu_constants.Length) return false;
-                    for (int i = 0; i < gpu_constants.Length; i++)
+                    if (RenderableElements.Count != other.RenderableElements.Count) return false;
+                    for (int i = 0; i < RenderableElements.Count; i++)
                     {
-                        if (Math.Abs(gpu_constants[i] - other.gpu_constants[i]) > float.Epsilon)
-                            return false;
+                        if (RenderableElements[i] != other.RenderableElements[i]) return false;
                     }
                 }
 
-                // Compare render_constants array (21 elements)
-                if (render_constants == null && other.render_constants != null) return false;
-                if (render_constants != null && other.render_constants == null) return false;
-                if (render_constants != null && other.render_constants != null)
+                if (Resource == null && other.Resource != null) return false;
+                if (Resource != null && other.Resource == null) return false;
+                if (Resource != null && other.Resource != null)
                 {
-                    if (render_constants.Length != other.render_constants.Length) return false;
-                    for (int i = 0; i < render_constants.Length; i++)
-                    {
-                        if (Math.Abs(render_constants[i] - other.render_constants[i]) > float.Epsilon)
-                            return false;
-                    }
+                    if (Resource.composite_instance_id != other.Resource.composite_instance_id) return false;
+                    if (Resource.resource_id != other.Resource.resource_id) return false;
                 }
 
-                // Compare renderable_elements list
-                if (renderable_elements == null && other.renderable_elements != null) return false;
-                if (renderable_elements != null && other.renderable_elements == null) return false;
-                if (renderable_elements != null && other.renderable_elements != null)
-                {
-                    if (renderable_elements.Count != other.renderable_elements.Count) return false;
-                    for (int i = 0; i < renderable_elements.Count; i++)
-                    {
-                        if (renderable_elements[i] != other.renderable_elements[i]) return false;
-                    }
-                }
+                if (CullFlags != other.CullFlags) return false;
+                if (Entity != other.Entity) return false;
+                if (EnvironmentMap != other.EnvironmentMap) return false;
 
-                // Compare resource
-                if (resource == null && other.resource != null) return false;
-                if (resource != null && other.resource == null) return false;
-                if (resource != null && other.resource != null)
-                {
-                    if (resource.composite_instance_id != other.resource.composite_instance_id) return false;
-                    if (resource.resource_id != other.resource.resource_id) return false;
-                }
-
-                if (cull_flags != other.cull_flags) return false;
-
-                // Compare entity
-                if (entity != other.entity) return false;
-
-                if (environment_map_index != other.environment_map_index) return false;
-
-                // Compare emissive_tint
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
                 if (emissive_tint != other.emissive_tint) return false;
 #else
-                if (emissive_tint != other.emissive_tint) return false;
+                if (EmissiveTint != other.EmissiveTint) return false;
 #endif
 
-                if (emissive_flags != other.emissive_flags) return false;
-                if (Math.Abs(emissive_intensity_multiplier - other.emissive_intensity_multiplier) > float.Epsilon) return false;
-                if (Math.Abs(emissive_radiosity_multiplier - other.emissive_radiosity_multiplier) > float.Epsilon) return false;
+                if (EmissiveFlags != other.EmissiveFlags) return false;
+                if (Math.Abs(EmissiveIntensityMultiplier - other.EmissiveIntensityMultiplier) > float.Epsilon) return false;
+                if (Math.Abs(EmissiveRadiosityMultiplier - other.EmissiveRadiosityMultiplier) > float.Epsilon) return false;
 
-                if (primary_zone_id != other.primary_zone_id) return false;
-                if (secondary_zone_id != other.secondary_zone_id) return false;
-                if (lighting_master_id != other.lighting_master_id) return false;
+                if (PrimaryZoneID != other.PrimaryZoneID) return false;
+                if (SecondaryZoneID != other.SecondaryZoneID) return false;
+                if (LightingMasterID != other.LightingMasterID) return false;
 
-                // Compare MoverFlag struct
-                if (flags.requires_script != other.flags.requires_script) return false;
-                if (flags.visible != other.flags.visible) return false;
-                if (flags.stationary != other.flags.stationary) return false;
+                if (Flags.RequiresScript != other.Flags.RequiresScript) return false;
+                if (Flags.Visible != other.Flags.Visible) return false;
+                if (Flags.Stationary != other.Flags.Stationary) return false;
 
                 return true;
             }
@@ -432,67 +849,68 @@ namespace CATHODE
                         hash = hash * 23 + transform[i].GetHashCode();
                     }
 #else
-                    hash = hash * 23 + transform.GetHashCode();
+                    hash = hash * 23 + Transform.GetHashCode();
 #endif
-                    if (gpu_constants != null)
+                    hash = hash * 23 + GPUConstants.GetHashCode();
+                    hash = hash * 23 + RenderConstants.GetHashCode();
+                    if (RenderableElements != null)
                     {
-                        for (int i = 0; i < gpu_constants.Length; i++)
-                        {
-                            hash = hash * 23 + gpu_constants[i].GetHashCode();
-                        }
-                    }
-                    if (render_constants != null)
-                    {
-                        for (int i = 0; i < render_constants.Length; i++)
-                        {
-                            hash = hash * 23 + render_constants[i].GetHashCode();
-                        }
-                    }
-                    if (renderable_elements != null)
-                    {
-                        hash = hash * 23 + renderable_elements.Count.GetHashCode();
-                        foreach (var element in renderable_elements)
+                        hash = hash * 23 + RenderableElements.Count.GetHashCode();
+                        foreach (var element in RenderableElements)
                         {
                             hash = hash * 23 + (element?.GetHashCode() ?? 0);
                         }
                     }
-                    if (resource != null)
+                    if (Resource != null)
                     {
-                        hash = hash * 23 + resource.composite_instance_id.GetHashCode();
-                        hash = hash * 23 + resource.resource_id.GetHashCode();
+                        hash = hash * 23 + Resource.composite_instance_id.GetHashCode();
+                        hash = hash * 23 + Resource.resource_id.GetHashCode();
                     }
-                    hash = hash * 23 + cull_flags.GetHashCode();
-                    hash = hash * 23 + (entity?.GetHashCode() ?? 0);
-                    hash = hash * 23 + environment_map_index.GetHashCode();
+                    hash = hash * 23 + CullFlags.GetHashCode();
+                    hash = hash * 23 + (Entity?.GetHashCode() ?? 0);
+                    hash = hash * 23 + (EnvironmentMap?.GetHashCode() ?? 0);
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
                     hash = hash * 23 + emissive_tint.x.GetHashCode();
                     hash = hash * 23 + emissive_tint.y.GetHashCode();
                     hash = hash * 23 + emissive_tint.z.GetHashCode();
 #else
-                    hash = hash * 23 + emissive_tint.X.GetHashCode();
-                    hash = hash * 23 + emissive_tint.Y.GetHashCode();
-                    hash = hash * 23 + emissive_tint.Z.GetHashCode();
+                    hash = hash * 23 + EmissiveTint.X.GetHashCode();
+                    hash = hash * 23 + EmissiveTint.Y.GetHashCode();
+                    hash = hash * 23 + EmissiveTint.Z.GetHashCode();
 #endif
-                    hash = hash * 23 + emissive_flags.GetHashCode();
-                    hash = hash * 23 + emissive_intensity_multiplier.GetHashCode();
-                    hash = hash * 23 + emissive_radiosity_multiplier.GetHashCode();
-                    hash = hash * 23 + primary_zone_id.GetHashCode();
-                    hash = hash * 23 + secondary_zone_id.GetHashCode();
-                    hash = hash * 23 + lighting_master_id.GetHashCode();
-                    hash = hash * 23 + flags.requires_script.GetHashCode();
-                    hash = hash * 23 + flags.visible.GetHashCode();
-                    hash = hash * 23 + flags.stationary.GetHashCode();
+                    hash = hash * 23 + EmissiveFlags.GetHashCode();
+                    hash = hash * 23 + EmissiveIntensityMultiplier.GetHashCode();
+                    hash = hash * 23 + EmissiveRadiosityMultiplier.GetHashCode();
+                    hash = hash * 23 + PrimaryZoneID.GetHashCode();
+                    hash = hash * 23 + SecondaryZoneID.GetHashCode();
+                    hash = hash * 23 + LightingMasterID.GetHashCode();
+                    hash = hash * 23 + Flags.RequiresScript.GetHashCode();
+                    hash = hash * 23 + Flags.Visible.GetHashCode();
+                    hash = hash * 23 + Flags.Stationary.GetHashCode();
                     return hash;
                 }
             }
 
             ~MOVER_DESCRIPTOR()
             {
-                gpu_constants = null;
-                render_constants = null;
-                entity = null;
+                GPUConstants = null;
+                RenderConstants = null;
+                Entity = null;
             }
         };
         #endregion
+    }
+
+    public enum RenderableInstanceType
+    {
+        LIGHT,
+        DYNAMICFX,
+        DYNAMICFX_UNIQUE_MAT,
+        ENVIRONMENT,
+        CHARACTER,
+        MISC,
+        PLANET,
+        ENVIRONMENT_EXTRA, //Supports alphalight, emissives, and decals
+        FOGSPHERE,
     }
 }

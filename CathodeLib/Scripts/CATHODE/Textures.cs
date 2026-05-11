@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using static CATHODE.Models;
 using static CATHODE.Shaders;
+using static CATHODE.Textures.TEX4;
 
 namespace CATHODE
 {
@@ -20,9 +21,12 @@ namespace CATHODE
         public List<TEX4> Entries = new List<TEX4>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
-        public Textures(string path) : base(path) { }
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
 
         public List<TEX4> _writeList = new List<TEX4>();
+
+        public Textures(string path) : base(path) { }
 
         ~Textures()
         {
@@ -44,15 +48,16 @@ namespace CATHODE
             if (_filepath == "")
                 return false;
 
-            string filepathBIN = GetBinPath();
-            if (!File.Exists(filepathBIN)) 
+            _compressed = Path.GetExtension(_filepath).ToLower() == ".fzip";
+
+            if (!File.Exists(GetBinPath())) 
                 return false;
 
-            using (BinaryReader bin = new BinaryReader(File.OpenRead(filepathBIN)))
+            using (Stream binStream = File.OpenRead(GetBinPath()))
+            using (BinaryReader bin = new BinaryReader(binStream))
             {
                 //Read the header info from the BIN
-                if ((FileIdentifiers)bin.ReadInt32() != FileIdentifiers.TEXTURE_DATA)
-                    return false;
+                bin.BaseStream.Position += 4;
                 int entryCount = bin.ReadInt32();
                 if (entryCount == 0)
                     return true;
@@ -93,12 +98,11 @@ namespace CATHODE
                 }
             }
 
-            using (BinaryReader pak = new BinaryReader(File.OpenRead(_filepath)))
+            using (Stream pakStream = _compressed ? Utilities.FZipDecompressPAK(_filepath) : new MemoryStream(File.ReadAllBytes(_filepath)))
+            using (BinaryReader pak = new BinaryReader(pakStream))
             {
                 //Read & check the header info from the PAK
-                pak.BaseStream.Position += 4; //Skip unused
-                if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.ASSET_FILE) return false;
-                if ((FileIdentifiers)BigEndianUtils.ReadInt32(pak) != FileIdentifiers.TEXTURE_DATA) return false;
+                pak.BaseStream.Position += 12;
                 int entryCount = BigEndianUtils.ReadInt32(pak);
                 pak.BaseStream.Position += 16;
 
@@ -128,9 +132,14 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            //Write BIN file
+            if (_compressed && Path.GetExtension(_filepath).ToLower() != ".fzip")
+                _filepath += ".fzip";
+            else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".fzip")
+                _filepath = _filepath.Substring(0, _filepath.Length - 5);
+
             _writeList.Clear();
-            using (BinaryWriter bin = new BinaryWriter(File.OpenWrite(GetBinPath())))
+            using (Stream binStream = File.OpenWrite(GetBinPath()))
+            using (BinaryWriter bin = new BinaryWriter(binStream))
             {
                 bin.BaseStream.SetLength(0);
                 bin.Write(new byte[12]);
@@ -156,13 +165,13 @@ namespace CATHODE
                     _writeList.Add(Entries[i]);
                 }
                 bin.BaseStream.Position = 0;
-                bin.Write((int)FileIdentifiers.TEXTURE_DATA);
+                bin.Write(45);
                 bin.Write(entryCount);
                 bin.Write(headerListBegin);
             }
 
-            //Update headers in PAK for all entries
-            using (BinaryWriter pak = new BinaryWriter(File.OpenWrite(_filepath)))
+            using (Stream pakStream = File.OpenWrite(_filepath))
+            using (BinaryWriter pak = new BinaryWriter(pakStream))
             {
                 //Figure out number of non-null contents
                 int writeCount = 0;
@@ -226,14 +235,18 @@ namespace CATHODE
                 //Write main header
                 pak.BaseStream.Position = 0;
                 pak.Write(0);
-                pak.Write(BigEndianUtils.FlipEndian((int)FileIdentifiers.ASSET_FILE));
-                pak.Write(BigEndianUtils.FlipEndian((int)FileIdentifiers.TEXTURE_DATA));
+                pak.Write(BigEndianUtils.FlipEndian(14));
+                pak.Write(BigEndianUtils.FlipEndian(45));
                 pak.Write(BigEndianUtils.FlipEndian(writeCount));
                 pak.Write(BigEndianUtils.FlipEndian(writeCount));
                 pak.Write(BigEndianUtils.FlipEndian(1));
                 pak.Write(BigEndianUtils.FlipEndian(1));
                 pak.Write(BigEndianUtils.FlipEndian(1));
             }
+
+            if (_compressed)
+                Utilities.FZipCompressPAK(_filepath);
+
             return true;
         }
 
@@ -302,6 +315,25 @@ namespace CATHODE
         }
 
         /// <summary>
+        /// Get the current index for a EnvironmentMap texture (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public int GetWriteIndexForEnvMap(TEX4 texture)
+        {
+            int i = 0;
+            foreach (TEX4 tex in _writeList)
+            {
+                if (!tex.StateFlags.HasFlag(TextureStateFlag.CUBE))
+                    continue;
+
+                if (tex == texture)
+                    return i;
+                i++;
+            }
+            return -1;
+        }
+
+        /// <summary>
         /// Get a texture by its current index (useful for cross-ref'ing with compiled binaries)
         /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>
@@ -309,6 +341,25 @@ namespace CATHODE
         {
             if (index < 0 || _writeList.Count <= index) return null;
             return _writeList[index];
+        }
+
+        /// <summary>
+        /// Get a environment map by its current index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
+        public TEX4 GetAtWriteIndexForEnvMap(int index)
+        {
+            int i = 0;
+            foreach (TEX4 tex in _writeList)
+            {
+                if (!tex.StateFlags.HasFlag(TextureStateFlag.CUBE))
+                    continue;
+
+                if (i == index)
+                    return tex;
+                i++;
+            }
+            return null;
         }
 
         /// <summary>

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using CathodeLib;
 using System.IO;
 using System.Linq;
+using System.Xml.Linq;
+
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
@@ -14,30 +16,13 @@ namespace CATHODE.Scripting.Internal.Parsers
 {
     public static class CommandsBIN
     {
-        private static ShortGuid NAME_GUID;
-        private static ShortGuid ANIM_TRACK_TYPE_GUID;
-        private static ShortGuid PHYSICS_SYSTEM_GUID;
-        private static ShortGuid RESOURCE_GUID;
-
-#if COMPILE_NAME_LIST
         public static Dictionary<ShortGuid, Dictionary<ShortGuid, string>> EntityNames = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>();
         public static Dictionary<ShortGuid, string> ParameterNames = new Dictionary<ShortGuid, string>();
-#endif
-
-        static CommandsBIN()
-        {
-            NAME_GUID = ShortGuidUtils.Generate("name");
-            ANIM_TRACK_TYPE_GUID = ShortGuidUtils.Generate("ANIM_TRACK_TYPE");
-            PHYSICS_SYSTEM_GUID = ShortGuidUtils.Generate("PhysicsSystem");
-            RESOURCE_GUID = ShortGuidUtils.Generate("resource");
-        }
 
         public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
         {
-#if COMPILE_NAME_LIST
             EntityNames.Clear();
             ParameterNames.Clear();
-#endif
 
             EntryPoints = new ShortGuid[3];
             Entries = new List<Composite>();
@@ -78,6 +63,13 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         Entries.Add(composite);
                                         entityCache.Add(composite.shortGUID, new Tuple<Composite, Dictionary<ShortGuid, Entity>>(composite, new Dictionary<ShortGuid, Entity>()));
                                     }
+                                    else
+                                    {
+                                        string formattedName = 
+                                            composite.name.Contains("\\Build\\Library\\") ? composite.name.Split(new string[] { "\\Build\\Library\\" }, StringSplitOptions.None)[1] :
+                                            composite.name.Contains("\\Build\\Levels\\") ? Path.GetFileName(composite.name) : composite.name;
+                                        Entries.FirstOrDefault(o => o.shortGUID == composite.shortGUID).name = formattedName;
+                                    }
                                 }
                                 break;
                             case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_ROOT:
@@ -104,12 +96,10 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     func.shortGUID = guid;
                                     func.function = function;
                                     string name = Utilities.ReadString(reader, command_entries[i + 4].Item2);
-#if COMPILE_NAME_LIST
                                     if (!EntityNames.ContainsKey(cache.Item1.shortGUID))
                                         EntityNames.Add(cache.Item1.shortGUID, new Dictionary<ShortGuid, string>());
                                     if (!EntityNames[cache.Item1.shortGUID].ContainsKey(guid) && name != "")
                                         EntityNames[cache.Item1.shortGUID].Add(guid, name);
-#endif
                                     if (!cache.Item2.ContainsKey(func.shortGUID))
                                     {
                                         cache.Item1.functions_dictionary.Add(func.shortGUID, func);
@@ -158,10 +148,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         name = Utilities.Consume<ShortGuid>(reader, command_entries[i + 4].Item2)
                                     };
                                     string name = Utilities.ReadString(reader, command_entries[i + 5].Item2);
-#if COMPILE_NAME_LIST
                                     if (!ParameterNames.ContainsKey(var.name) && name != "")
                                         ParameterNames.Add(var.name, name);
-#endif
                                     if (!cache.Item2.ContainsKey(var.shortGUID))
                                     {
                                         cache.Item1.variables_dictionary.Add(var.shortGUID, var);
@@ -202,7 +190,6 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         cache.Item1.functions_dictionary.Add(trig.shortGUID, trig);
                                     }
                                     string name = Utilities.ReadString(reader, command_entries[i + 4].Item2);
-#if COMPILE_NAME_LIST
                                     ShortGuid guid = ShortGuidUtils.Generate(name);
                                     if (!ParameterNames.ContainsKey(guid) && name != "")
                                     {
@@ -210,7 +197,6 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         ParameterNames.Add(ShortGuidUtils.Generate(name + "_relay"), name + "_relay");
                                         ParameterNames.Add(ShortGuidUtils.Generate(name + "_finished"), name + "_finished");
                                     }
-#endif
                                     trig.methods.Add(new TriggerSequence.MethodEntry(name));
                                 }
                                 break;
@@ -369,6 +355,13 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_FILE_PATH:
                                         case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_STRING:
                                             paramData = new cString(Utilities.ReadString(reader)); // ((cString)paramData).value.Length + 1 == length
+                                            if (paramName == ShortGuids.name)
+                                            {
+                                                if (!EntityNames.ContainsKey(cache.Item1.shortGUID))
+                                                    EntityNames.Add(cache.Item1.shortGUID, new Dictionary<ShortGuid, string>());
+                                                if (!EntityNames[cache.Item1.shortGUID].ContainsKey(entityID) && ((cString)paramData).value != "")
+                                                    EntityNames[cache.Item1.shortGUID].Add(entityID, ((cString)paramData).value);
+                                            }
                                             break;
                                         case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_BOOL:
                                             paramData = new cBool(reader.ReadBoolean());
@@ -406,7 +399,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     if (cache.Item2.TryGetValue(entityID, out Entity ent))
                                     {
                                         if (paramData != null) //Skipping nulls: links seem to get added as null parameters
-                                            if (paramName != NAME_GUID || (ent.variant == EntityVariant.FUNCTION && ((FunctionEntity)ent).function.AsFunctionType == FunctionType.Zone)) //Skipping "name" parameter as this is handled by our name table
+                                            if (paramName != ShortGuids.name || (ent.variant == EntityVariant.FUNCTION && ((FunctionEntity)ent).function.AsFunctionType == FunctionType.Zone)) //Skipping "name" parameter as this is handled by our name table
                                                 ent.AddParameter(paramName, paramData);
                                     }
                                 }
@@ -480,7 +473,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         {
                                             foreach (Parameter parameter in entity.parameters)
                                             {
-                                                if (parameter.name != RESOURCE_GUID) continue;
+                                                if (parameter.name != ShortGuids.resource) continue;
                                                 if (((cResource)parameter.content).shortGUID == resource.resource_id)
                                                 {
                                                     ((cResource)parameter.content).value.Add(resource);
@@ -493,7 +486,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         {
                                             if (resource.resource_type == ResourceType.DYNAMIC_PHYSICS_SYSTEM)
                                             {
-                                                FunctionEntity physEnt = cache.Item1.functions.FirstOrDefault(o => o.function == PHYSICS_SYSTEM_GUID);
+                                                FunctionEntity physEnt = cache.Item1.functions.FirstOrDefault(o => o.function == ShortGuids.PhysicsSystem);
                                                 if (physEnt != null)
                                                 {
                                                     physEnt.resources.Add(resource);
@@ -742,7 +735,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                 commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
 
                                 offset = (int)bufferWriter.BaseStream.Position;
-                                Utilities.Write<ShortGuid>(bufferWriter, ANIM_TRACK_TYPE_GUID);
+                                Utilities.Write<ShortGuid>(bufferWriter, ShortGuids.ANIM_TRACK_TYPE);
                                 bufferWriter.Write((int)CAGEAnimation.TrackType.FLOAT);
                                 commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_ENUM | 8, offset));
 
@@ -788,7 +781,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                 commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
 
                                 offset = (int)bufferWriter.BaseStream.Position;
-                                Utilities.Write<ShortGuid>(bufferWriter, ANIM_TRACK_TYPE_GUID);
+                                Utilities.Write<ShortGuid>(bufferWriter, ShortGuids.ANIM_TRACK_TYPE);
                                 bufferWriter.Write((int)(eventTrack.keyframes.Count == 0 ? CAGEAnimation.TrackType.INVALID : eventTrack.keyframes[0].track_type));
                                 commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_ENUM | 8, offset));
 
@@ -886,8 +879,9 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     cResource r = (cResource)paramEntry.content;
                                     Utilities.Write<ShortGuid>(bufferWriter, r.shortGUID);
                                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
-                                    for (int x = 0; x < r.value.Count; x++)
-                                        AddResourceCommand(commands, bufferWriter, composite, r.value[x], envAnims, colMaps, reds);
+                                    if (r.value != null)
+                                        for (int x = 0; x < r.value.Count; x++)
+                                            AddResourceCommand(commands, bufferWriter, composite, r.value[x], envAnims, colMaps, reds);
                                     break;
                                 case DataType.VECTOR:
                                     cVector3 v = (cVector3)paramEntry.content;

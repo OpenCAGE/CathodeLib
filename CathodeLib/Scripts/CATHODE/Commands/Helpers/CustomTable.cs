@@ -2,13 +2,14 @@ using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using System;
 using System.Collections.Generic;
-using System.Data.Common;
 using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Runtime.InteropServices.ComTypes;
-using static CATHODE.SkeleDB;
+using static CATHODE.Lights;
+using static CathodeLib.CompositeFlowgraphTable;
+using static CathodeLib.CompositeFlowgraphTable.FlowgraphMeta;
+using static CathodeLib.CompositeFlowgraphTable.FlowgraphMeta.NodeMeta;
 
 namespace CathodeLib
 {
@@ -25,8 +26,8 @@ namespace CathodeLib
                 byte[] content = File.ReadAllBytes(UnityEngine.Application.streamingAssetsPath + "/info.dat");
 #else
                 byte[] content = CathodeLib.Properties.Resources.info;
-                if (File.Exists("LocalDB\\info.dat"))
-                    content = File.ReadAllBytes("LocalDB\\info.dat");
+                if (File.Exists("data/info.dat"))
+                    content = File.ReadAllBytes("data/info.dat");
 #endif
 
                 using (MemoryStream stream = new MemoryStream())
@@ -42,6 +43,7 @@ namespace CathodeLib
                 ShortGuids = (GuidNameTable)ReadTable(content, CustomTableType.SHORT_GUIDS);
                 CathodeEntities = (CathodeEntityTable)ReadTable(content, CustomTableType.CATHODE_ENTITY_INFO);
                 CathodeEnums = (CathodeEnumTable)ReadTable(content, CustomTableType.CATHODE_ENUM_INFO);
+                MaterialMappings = (MaterialMappingTable)ReadTable(content, CustomTableType.MATERIAL_MAPPINGS);
             }
 
             public readonly CompositePathTable CompositePaths;
@@ -50,6 +52,7 @@ namespace CathodeLib
             public readonly GuidNameTable ShortGuids;
             public readonly CathodeEntityTable CathodeEntities;
             public readonly CathodeEnumTable CathodeEnums;
+            public readonly MaterialMappingTable MaterialMappings;
         }
 
         /// <summary>
@@ -58,6 +61,9 @@ namespace CathodeLib
         public static void WriteTable(string filepath, CustomTableType table, Table content)
         {
             //TODO: Perhaps we should write to a buffer, and then gzip the buffer, and then append that, instead?
+
+            if (File.Exists(filepath + ".META"))
+                filepath = filepath + ".META";
 
             if (!File.Exists(filepath))
                 File.WriteAllBytes(filepath, new byte[0]);
@@ -142,6 +148,12 @@ namespace CathodeLib
                             case CustomTableType.COMPOSITE_PAGE_HISTORY:
                                 ((CompositePageHistoryTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomTableType.FLAGS:
+                                ((FlagTable)toWrite[tableType]).Write(writer);
+                                break;
+                            case CustomTableType.MATERIAL_MAPPINGS:
+                                ((MaterialMappingTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
 #if DEBUG
                         if (tableType == table)
@@ -161,6 +173,9 @@ namespace CathodeLib
         /// </summary>
         public static Table ReadTable(string filepath, CustomTableType table)
         {
+            if (File.Exists(filepath + ".META"))
+                filepath = filepath + ".META";
+
             if (!File.Exists(filepath))
                 return null;
             return ReadTable(File.ReadAllBytes(filepath), table, GetFileType(filepath));
@@ -229,6 +244,12 @@ namespace CathodeLib
                     case CustomTableType.COMPOSITE_PAGE_HISTORY:
                         data = new CompositePageHistoryTable(reader);
                         break;
+                    case CustomTableType.FLAGS:
+                        data = new FlagTable(reader);
+                        break;
+                    case CustomTableType.MATERIAL_MAPPINGS:
+                        data = new MaterialMappingTable(reader);
+                        break;
                 }
             }
             return data;
@@ -242,6 +263,8 @@ namespace CathodeLib
                     return CustomTableFileType.COMMANDS_PAK;
                 case "COMMANDS.BIN":
                     return CustomTableFileType.COMMANDS_BIN;
+                case "COMMANDS.BIN.GZ":
+                    return CustomTableFileType.COMMANDS_COMPRESSED;
             }
             return CustomTableFileType.STANDALONE;
         }
@@ -497,6 +520,10 @@ namespace CathodeLib
 
                 flowgraph.SupportedLevels = (FlowgraphMeta.SupportedLevel)reader.ReadInt64();
 
+                //Bit of a bodge: since the flag is never gonna be big enough for 64, use the last byte as a separate flag
+                reader.BaseStream.Position -= 1;
+                flowgraph.AlwaysUse = reader.ReadBoolean();
+
                 int nodeMetaCount = reader.ReadInt32();
                 for (int x = 0; x < nodeMetaCount; x++)
                 {
@@ -551,6 +578,9 @@ namespace CathodeLib
 
                 writer.Write((long)flowgraphs[i].SupportedLevels);
 
+                writer.BaseStream.Position -= 1;
+                writer.Write(flowgraphs[i].AlwaysUse);
+
                 writer.Write(flowgraphs[i].Nodes.Count);
                 for (int x = 0; x < flowgraphs[i].Nodes.Count; x++)
                 {
@@ -598,7 +628,9 @@ namespace CathodeLib
             public PointF CanvasPosition;
             public float CanvasScale;
 
-            public SupportedLevel SupportedLevels; //NOTE: Only used on vanilla layouts
+            //NOTE: Only used on vanilla layouts
+            public SupportedLevel SupportedLevels; //Defines flags for supported levels
+            public bool AlwaysUse = false; //If this is true, ignore the flag, it can apply to any
 
             public List<NodeMeta> Nodes = new List<NodeMeta>();
 
@@ -1168,6 +1200,186 @@ namespace CathodeLib
             {
                 Utilities.Write<ShortGuid>(writer, composites.Key);
                 writer.Write(composites.Value);
+            }
+        }
+    }
+    public class FlagTable : CustomTable.Table
+    {
+        public FlagTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.FLAGS;
+        }
+
+        public bool HasBeenModified = false;
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+                return;
+
+            int metadataCount = reader.ReadInt32();
+            for (int i = 0; i < metadataCount; i++)
+            {
+                switch (i)
+                {
+                    case 0:
+                        HasBeenModified = reader.ReadBoolean();
+                        break;
+                }
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(1);
+            writer.Write(HasBeenModified);
+        }
+    }
+    public class MaterialMappingTable : CustomTable.Table
+    {
+        public MaterialMappingTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.MATERIAL_MAPPINGS;
+        }
+
+        public List<MappingAlias> MappingAliases = new List<MappingAlias>();
+        public List<Mapping> Mappings = new List<Mapping>();
+
+        public class MappingAlias : IEquatable<MappingAlias>
+        {
+            public bool AlwaysUse = false;
+            public SupportedLevel SupportedLevels; 
+            public ShortGuid MappingID;
+            public ShortGuid CompositeID;
+            public List<ShortGuid> EntityPath = new List<ShortGuid>();
+
+            public bool Equals(MappingAlias other)
+            {
+                if (other is null) return false;
+                if (ReferenceEquals(this, other)) return true;
+
+                return AlwaysUse == other.AlwaysUse &&
+                       SupportedLevels == other.SupportedLevels &&
+                       MappingID == other.MappingID &&
+                       CompositeID == other.CompositeID &&
+                       EntityPath == other.EntityPath;
+            }
+
+            public override bool Equals(object obj) => Equals(obj as MappingAlias);
+
+            public override int GetHashCode()
+            {
+                int hashCode = 1308473823;
+                hashCode = hashCode * -1521134295 + AlwaysUse.GetHashCode();
+                hashCode = hashCode * -1521134295 + SupportedLevels.GetHashCode();
+                hashCode = hashCode * -1521134295 + MappingID.GetHashCode();
+                hashCode = hashCode * -1521134295 + CompositeID.GetHashCode();
+                hashCode = hashCode * -1521134295 + EqualityComparer<List<ShortGuid>>.Default.GetHashCode(EntityPath);
+                return hashCode;
+            }
+        }
+        public class Mapping : IEquatable<Mapping>
+        {
+            public bool AlwaysUse = false;
+            public SupportedLevel SupportedLevels;
+            public ShortGuid MappingID;
+            public ShortGuid CompositeID;
+            public ShortGuid EntityID;
+
+            public bool Equals(Mapping other)
+            {
+                if (other is null) return false;
+                if (ReferenceEquals(this, other)) return true;
+
+                return AlwaysUse == other.AlwaysUse &&
+                       SupportedLevels == other.SupportedLevels &&
+                       MappingID == other.MappingID &&
+                       CompositeID == other.CompositeID &&
+                       EntityID == other.EntityID;
+            }
+
+            public override bool Equals(object obj) => Equals(obj as Mapping);
+
+            public override int GetHashCode()
+            {
+                int hashCode = -107168883;
+                hashCode = hashCode * -1521134295 + AlwaysUse.GetHashCode();
+                hashCode = hashCode * -1521134295 + SupportedLevels.GetHashCode();
+                hashCode = hashCode * -1521134295 + MappingID.GetHashCode();
+                hashCode = hashCode * -1521134295 + CompositeID.GetHashCode();
+                hashCode = hashCode * -1521134295 + EntityID.GetHashCode();
+                return hashCode;
+            }
+        }
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+                return;
+
+            int totalCount = reader.ReadInt32();
+            if (totalCount == 0)
+                return;
+
+            int aliasCount = reader.ReadInt32();
+            for (int i = 0; i < aliasCount; i++)
+            {
+                bool alwaysUse = reader.ReadBoolean();
+                MappingAliases.Add(new MappingAlias()
+                {
+                    AlwaysUse = alwaysUse,
+                    SupportedLevels = alwaysUse ? 0 : (FlowgraphMeta.SupportedLevel)reader.ReadInt64(),
+                    MappingID = Utilities.Consume<ShortGuid>(reader),
+                    CompositeID = Utilities.Consume<ShortGuid>(reader)
+                });
+                int pathLength = reader.ReadInt32();
+                for (int x = 0; x < pathLength; x++)
+                {
+                    MappingAliases[MappingAliases.Count - 1].EntityPath.Add(Utilities.Consume<ShortGuid>(reader));
+                }
+            }
+            int nonAliasCount = reader.ReadInt32();
+            for (int i = 0; i < nonAliasCount; i++)
+            {
+                bool alwaysUse = reader.ReadBoolean();
+                Mappings.Add(new Mapping()
+                {
+                    AlwaysUse = alwaysUse,
+                    SupportedLevels = alwaysUse ? 0 : (FlowgraphMeta.SupportedLevel)reader.ReadInt64(),
+                    MappingID = Utilities.Consume<ShortGuid>(reader),
+                    CompositeID = Utilities.Consume<ShortGuid>(reader),
+                    EntityID = Utilities.Consume<ShortGuid>(reader)
+                });
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(MappingAliases.Count + Mappings.Count);
+
+            writer.Write(MappingAliases.Count);
+            foreach (MappingAlias map in MappingAliases)
+            {
+                writer.Write(map.AlwaysUse);
+                if (!map.AlwaysUse)
+                    writer.Write((long)map.SupportedLevels);
+                Utilities.Write<ShortGuid>(writer, map.MappingID);
+                Utilities.Write<ShortGuid>(writer, map.CompositeID);
+                writer.Write(map.EntityPath.Count);
+                foreach (ShortGuid entry in map.EntityPath)
+                {
+                    Utilities.Write<ShortGuid>(writer, entry);
+                }
+            }
+            writer.Write(Mappings.Count);
+            foreach (Mapping map in Mappings)
+            {
+                writer.Write(map.AlwaysUse);
+                if (!map.AlwaysUse)
+                    writer.Write((long)map.SupportedLevels);
+                Utilities.Write<ShortGuid>(writer, map.MappingID);
+                Utilities.Write<ShortGuid>(writer, map.CompositeID);
+                Utilities.Write<ShortGuid>(writer, map.EntityID);
             }
         }
     }

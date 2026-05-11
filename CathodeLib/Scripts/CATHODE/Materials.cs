@@ -4,9 +4,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using static CATHODE.Lights;
 using static CATHODE.Models;
 using static CATHODE.Movers;
 using static CATHODE.Shaders;
@@ -27,6 +29,9 @@ namespace CATHODE
         private Textures _globalTextures;
         private Textures _levelTextures;
         private Shaders _shaders;
+
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
 
         private List<Material> _writeList = new List<Material>();
 
@@ -60,73 +65,82 @@ namespace CATHODE
             if (_filepath == "")
                 return false;
 
-            string filepathCST = _filepath.Substring(0, _filepath.Length - 3) + "CST";
-            if (!File.Exists(filepathCST)) return false;
+            _compressed = Path.GetExtension(_filepath).ToLower() == ".gz";
 
-            using (BinaryReader readerCST = new BinaryReader(File.OpenRead(filepathCST)))
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(_filepath)))
+            if (!File.Exists(GetCstPath())) 
+                return false;
+
+            using (MemoryStream cstStream = new MemoryStream(File.ReadAllBytes(GetCstPath())))
+            using (BinaryReader cst = new BinaryReader(_compressed ? Utilities.GZIPDecompress(cstStream) : cstStream))
+            using (BinaryReader mtl = new BinaryReader(_compressed ? Utilities.GZIPDecompress(stream) : stream))
             {
-                reader.BaseStream.Position += 8;
-                int materialOffset = reader.ReadInt32();
+                mtl.BaseStream.Position += 8;
+                int materialOffset = mtl.ReadInt32();
 
                 //base CST offsets
-                int engineConstantsOffset = reader.ReadInt32();
-                int vertexConstantsOffset = reader.ReadInt32();
-                int pixelConstantsOffset = reader.ReadInt32();
-                int hullConstantsOffset = reader.ReadInt32();
-                int domainConstantsOffset = reader.ReadInt32();
+                int engineConstantsOffset = mtl.ReadInt32();
+                int vertexConstantsOffset = mtl.ReadInt32();
+                int pixelConstantsOffset = mtl.ReadInt32();
+                int hullConstantsOffset = mtl.ReadInt32();
+                int domainConstantsOffset = mtl.ReadInt32();
 
-                reader.BaseStream.Position += 8;
-                int materialCount = reader.ReadInt16();
-                reader.BaseStream.Position += 2;
+                mtl.BaseStream.Position += 8;
+                int materialCount = mtl.ReadInt16();
+                mtl.BaseStream.Position += 2;
 
                 List<string> materialNames = new List<string>(materialCount);
-                for (int i = 0; i < materialCount; ++i) materialNames.Add(Utilities.ReadString(reader));
+                for (int i = 0; i < materialCount; ++i) materialNames.Add(Utilities.ReadString(mtl));
 
-                reader.BaseStream.Position = materialOffset + 4;
+                mtl.BaseStream.Position = materialOffset + 4;
                 for (int i = 0; i < materialCount; i++)
                 {
                     Material material = new Material();
                     for (int x = 0; x < 12; x++)
                     {
-                        TexturePtr texRef = new TexturePtr(reader, _globalTextures, _levelTextures);
+                        TexturePtr texRef = new TexturePtr(mtl, _globalTextures, _levelTextures);
                         if (texRef.Location == TexturePtr.Source.NONE)
                             continue;
                         material.TextureReferences.Add(texRef);
                     }
-                    reader.BaseStream.Position += 8;
+                    mtl.BaseStream.Position += 8;
 
-                    int[] ubershaderConstantOffset = Utilities.ConsumeArray<int>(reader, 5);
-                    byte[] ubershaderConstantCount = Utilities.ConsumeArray<byte>(reader, 5);
-                    material.EngineConstants = ReadCSTData(engineConstantsOffset + (ubershaderConstantOffset[0] * 4), ubershaderConstantCount[0], readerCST);
-                    material.VertexShaderConstants = ReadCSTData(vertexConstantsOffset + (ubershaderConstantOffset[1] * 4), ubershaderConstantCount[1], readerCST);
-                    material.PixelShaderConstants = ReadCSTData(pixelConstantsOffset + (ubershaderConstantOffset[2] * 4), ubershaderConstantCount[2], readerCST);
-                    material.HullShaderConstants = ReadCSTData(hullConstantsOffset + (ubershaderConstantOffset[3] * 4), ubershaderConstantCount[3], readerCST);
-                    material.DomainShaderConstants = ReadCSTData(domainConstantsOffset + (ubershaderConstantOffset[4] * 4), ubershaderConstantCount[4], readerCST);
+                    int[] ubershaderConstantOffset = Utilities.ConsumeArray<int>(mtl, 5);
+                    byte[] ubershaderConstantCount = Utilities.ConsumeArray<byte>(mtl, 5);
+                    material.EngineConstants = ReadCSTData(engineConstantsOffset + (ubershaderConstantOffset[0] * 4), ubershaderConstantCount[0], cst);
+                    material.VertexShaderConstants = ReadCSTData(vertexConstantsOffset + (ubershaderConstantOffset[1] * 4), ubershaderConstantCount[1], cst);
+                    material.PixelShaderConstants = ReadCSTData(pixelConstantsOffset + (ubershaderConstantOffset[2] * 4), ubershaderConstantCount[2], cst);
+                    material.HullShaderConstants = ReadCSTData(hullConstantsOffset + (ubershaderConstantOffset[3] * 4), ubershaderConstantCount[3], cst);
+                    material.DomainShaderConstants = ReadCSTData(domainConstantsOffset + (ubershaderConstantOffset[4] * 4), ubershaderConstantCount[4], cst);
 
-                    reader.BaseStream.Position += 11;
+                    mtl.BaseStream.Position += 11;
                     material.Name = materialNames[i]; 
-                    material.Shader = _shaders.GetAtWriteIndex(reader.ReadInt32());
-                    reader.BaseStream.Position += 128;
-                    int lightFlags = reader.ReadInt32();
+                    material.Shader = _shaders.GetAtWriteIndex(mtl.ReadInt32());
+                    mtl.BaseStream.Position += 128;
+                    int lightFlags = mtl.ReadInt32();
                     if (lightFlags != 0) material.OfflineLightFeatures = new LightFlags(lightFlags);
-                    reader.BaseStream.Position += 54;
-                    material.PhysicalMaterialIndex = reader.ReadByte(); 
-                    material.EnvironmentMapIndex = reader.ReadByte(); 
-                    material.Priority = reader.ReadByte();
+                    mtl.BaseStream.Position += 54;
+                    material.PhysicalMaterialIndex = mtl.ReadByte(); 
+                    material.EnvironmentMapIndex = mtl.ReadByte(); 
+                    material.Priority = mtl.ReadByte();
 
 
-                    reader.BaseStream.Position += 11;
+                    mtl.BaseStream.Position += 11;
 
                     Entries.Add(material);
                     _writeList.Add(material);
                 }
             }
+
             return true;
         }
 
         override protected bool SaveInternal()
         {
+            if (_compressed && Path.GetExtension(_filepath).ToLower() != ".gz")
+                _filepath += ".gz";
+            else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
+                _filepath = _filepath.Substring(0, _filepath.Length - 3);
+
             //Write constants
             int[] offsets = new int[5];
             List<int>[] matOffsets = new List<int>[5];
@@ -136,13 +150,14 @@ namespace CATHODE
                 matOffsets[i] = new List<int>();
                 matCounts[i] = new List<int>();
             }
-            using (BinaryWriter writerCST = new BinaryWriter(File.OpenWrite(_filepath.Substring(0, _filepath.Length - 3) + "CST")))
+            using (Stream cstStream = File.OpenWrite(GetCstPath()))
+            using (BinaryWriter cst = new BinaryWriter(cstStream))
             {
-                writerCST.BaseStream.SetLength(0);
+                cst.BaseStream.SetLength(0);
                 for (int i = 0; i < 5; i++)
                 {
-                    offsets[i] = (int)writerCST.BaseStream.Position;
-                    
+                    offsets[i] = (int)cst.BaseStream.Position;
+
                     for (int x = 0; x < Entries.Count; x++)
                     {
                         List<float> constants = null;
@@ -154,41 +169,45 @@ namespace CATHODE
                             case 3: constants = Entries[x].HullShaderConstants; break;
                             case 4: constants = Entries[x].DomainShaderConstants; break;
                         }
-                        matOffsets[i].Add(constants.Count == 0 ? 0 : ((int)writerCST.BaseStream.Position - offsets[i]) / 4);
+                        matOffsets[i].Add(constants.Count == 0 ? 0 : ((int)cst.BaseStream.Position - offsets[i]) / 4);
                         matCounts[i].Add(constants.Count);
-                        
+
                         for (int z = 0; z < constants.Count; z++)
-                            writerCST.Write(constants[z]);
+                            cst.Write(constants[z]);
                     }
                 }
             }
 
+            if (_compressed)
+                Utilities.GZIPCompress(GetCstPath());
+
             _writeList.Clear();
-            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
+            using (Stream mtlStream = File.OpenWrite(_filepath))
+            using (BinaryWriter mtl = new BinaryWriter(mtlStream))
             {
-                writer.BaseStream.SetLength(0);
+                mtl.BaseStream.SetLength(0);
 
                 //Write header
-                writer.Write(0); //placeholder file length (-4)
-                writer.Write(40);
-                writer.Write(0); //placeholder material offset
-                writer.Write(offsets[0]);
-                writer.Write(offsets[1]);
-                writer.Write(offsets[2]);
-                writer.Write(offsets[3]);
-                writer.Write(offsets[4]);
-                writer.Write(44);
-                writer.Write(0); //placeholder material name size
-                writer.Write((Int16)Entries.Count);
-                writer.Write((Int16)296);
+                mtl.Write(0); //placeholder file length (-4)
+                mtl.Write(40);
+                mtl.Write(0); //placeholder material offset
+                mtl.Write(offsets[0]);
+                mtl.Write(offsets[1]);
+                mtl.Write(offsets[2]);
+                mtl.Write(offsets[3]);
+                mtl.Write(offsets[4]);
+                mtl.Write(44);
+                mtl.Write(0); //placeholder material name size
+                mtl.Write((Int16)Entries.Count);
+                mtl.Write((Int16)296);
 
                 //Write material names
-                int preNamesLength = (int)writer.BaseStream.Position;
-                for (int i = 0; i < Entries.Count; ++i) Utilities.WriteString(Entries[i].Name, writer, true);
-                int namesLength = (int)writer.BaseStream.Position - preNamesLength;
-                int misalignment = 16 - (((int)writer.BaseStream.Position - 4) & 0xf);
+                int preNamesLength = (int)mtl.BaseStream.Position;
+                for (int i = 0; i < Entries.Count; ++i) Utilities.WriteString(Entries[i].Name, mtl, true);
+                int namesLength = (int)mtl.BaseStream.Position - preNamesLength;
+                int misalignment = 16 - (((int)mtl.BaseStream.Position - 4) & 0xf);
                 if (misalignment != 16)
-                    writer.Write(new byte[misalignment]);
+                    mtl.Write(new byte[misalignment]);
 
                 bool isGlobal = Path.GetFileName(_filepath).ToLower() == "global_models.mtl";
 
@@ -209,21 +228,25 @@ namespace CATHODE
                 });
 
                 //Write material data
-                int materialOffset = (int)writer.BaseStream.Position;
+                int materialOffset = (int)mtl.BaseStream.Position;
                 for (int i = 0; i < materialBuffers.Length; i++)
                 {
-                    writer.Write(materialBuffers[i]);
+                    mtl.Write(materialBuffers[i]);
                     _writeList.Add(Entries[i]);
                 }
 
                 //Correct placeholders
-                writer.BaseStream.Position = 0;
-                writer.Write((int)writer.BaseStream.Length - 4);
-                writer.BaseStream.Position = 8;
-                writer.Write(materialOffset - 4);
-                writer.BaseStream.Position = 36;
-                writer.Write(namesLength);
+                mtl.BaseStream.Position = 0;
+                mtl.Write((int)mtl.BaseStream.Length - 4);
+                mtl.BaseStream.Position = 8;
+                mtl.Write(materialOffset - 4);
+                mtl.BaseStream.Position = 36;
+                mtl.Write(namesLength);
             }
+
+            if (_compressed)
+                Utilities.GZIPCompress(_filepath);
+
             return true;
         }
 
@@ -271,6 +294,11 @@ namespace CATHODE
 
                 return stream.ToArray();
             }
+        }
+
+        private string GetCstPath()
+        {
+            return _filepath.Substring(0, _filepath.Length - Path.GetFileName(_filepath).Length) + Path.GetFileName(_filepath).Split('.')[0] + ".CST" + (_compressed ? ".GZ" : "");
         }
         #endregion
 
@@ -437,14 +465,6 @@ namespace CATHODE
                 get { return (LightType)(flags & 0xFF); }
                 set { flags = (flags & ~0xFF) | ((int)value & 0xFF); }
             }
-            public enum LightType
-            {
-                Ambient = 0,
-                Strip = 1,
-                Point = 2,
-                Spot = 3,
-                Directional = 4
-            };
 
             //Light features
             public bool SoftDiffuse
@@ -548,7 +568,18 @@ namespace CATHODE
                 return x.flags == y.flags;
             }
 
+            public static bool operator ==(LightFlags x, int y)
+            {
+                if (x == null) return false;
+                return x.flags == y;
+            }
+
             public static bool operator !=(LightFlags x, LightFlags y)
+            {
+                return !(x == y);
+            }
+
+            public static bool operator !=(LightFlags x, int y)
             {
                 return !(x == y);
             }

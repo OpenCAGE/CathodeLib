@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -1197,6 +1197,8 @@ namespace CATHODE.Scripting.Internal
         CATHODE_ENUM_INFO,                      // Database of available Cathode enums
         COMPOSITE_PATHS,                        // Full properly-cased paths for vanilla composites
         COMPOSITE_PAGE_HISTORY,                 // Stores the previously opened flowgraph page for a composite
+        FLAGS,                                  // A table of generic flags that can store level modification metadata
+        MATERIAL_MAPPINGS,                      // Stores material mappings to populate as parameters or aliases
 
         //Add new entries here
 
@@ -1211,5 +1213,6 @@ namespace CATHODE.Scripting.Internal
         COMMANDS_PAK,
         COMMANDS_BIN,
         STANDALONE,
+        COMMANDS_COMPRESSED,
     }
 }
