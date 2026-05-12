@@ -195,6 +195,46 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// Patch the render_constant_ambient option in game binary
+        /// </summary>
+        public static bool PatchRenderConstantAmbientFlag(Platform platform, string pathToAI, bool constantAmbient)
+        {
+            List<PatchBytes> constantAmbPatches = new List<PatchBytes>();
+            switch (platform)
+            {
+                case Platform.STEAM:
+                    constantAmbPatches.Add(new PatchBytes(6158004, new byte[] { 0x08, 0x06, 0xc7, 0xff }, new byte[] { 0x38, 0x6e, 0x4c, 0x00 }));
+                    break;
+                case Platform.EPIC_GAMES_STORE:
+                    constantAmbPatches.Add(new PatchBytes(5445908, new byte[] { 0xb8, 0xb9, 0xc8 }, new byte[] { 0xc8, 0xf3, 0xdb }));
+                    break;
+                case Platform.GOG:
+                    constantAmbPatches.Add(new PatchBytes(6158500, new byte[] { 0x08, 0x6c, 0xbc }, new byte[] { 0xb8, 0xd4, 0xe7 }));
+                    break;
+                default:
+                    return false;
+            }
+            try
+            {
+                using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(pathToAI + "/AI.exe")))
+                {
+                    for (int i = 0; i < constantAmbPatches.Count; i++)
+                    {
+                        writer.BaseStream.Position = constantAmbPatches[i].offset;
+                        if (constantAmbient) writer.Write(constantAmbPatches[i].patched);
+                        else writer.Write(constantAmbPatches[i].original);
+                    }
+                }
+                return true;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("PatchManager::PatchRenderConstantAmbientFlag - " + e.ToString());
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Patch the skip_frontend option in game binary
         /// </summary>
         public static bool PatchSkipFrontendFlag(Platform platform, string pathToAI, bool skipFrontend)
