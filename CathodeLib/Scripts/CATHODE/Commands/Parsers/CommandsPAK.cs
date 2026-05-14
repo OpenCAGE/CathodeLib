@@ -396,7 +396,12 @@ namespace CATHODE.Scripting.Internal.Parsers
 
                         //Apply connections between entities
                         for (int x = 0; x < entityLinks.Count; x++)
-                            composite.GetEntityByID(entityLinks[x].parentID)?.childLinks.AddRange(entityLinks[x].childLinks);
+                        {
+                            Entity e = composite.GetEntityByID(entityLinks[x].parentID);
+                            if (e == null) continue;
+                            e.childLinks.AddRange(entityLinks[x].childLinks);
+                            e.childLinks = e.childLinks.Distinct().ToList();
+                        }
 
                         //Clone parameter data to entities
                         for (int x = 0; x < paramRefSets.Count; x++)
