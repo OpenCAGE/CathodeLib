@@ -224,7 +224,7 @@ namespace CathodeLib
                 () => { GalaxyDefinition = new GalaxyDefinition(renderable + "GALAXY/GALAXY.DEFINITION_BIN"); OnLoadTick?.Invoke(); } //Not used at runtime, but useful to regenerate GalaxyItems.
             );
 
-            Commands = new Commands(world + "COMMANDS" + (compressed ? ".BIN.GZ" : File.Exists(world + "COMMANDS.BIN") ? ".BIN" : ".PAK"), EnvironmentAnimations, CollisionMaps, RenderableElements); OnLoadTick?.Invoke();
+            Commands = new Commands(world + "COMMANDS" + (compressed ? ".BIN.GZ" : File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements); OnLoadTick?.Invoke();
 
             //The following files are used by the game, but not handled yet:
             // - RENDERABLE/RADIOSITY_RUNTIME.BIN (and .GZ)
