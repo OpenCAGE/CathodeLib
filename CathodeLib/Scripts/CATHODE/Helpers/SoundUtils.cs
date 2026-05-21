@@ -18,7 +18,7 @@ namespace CathodeLib
         static SoundUtils()
         {
 #if UNITY_EDITOR || UNITY_STANDALONE
-            byte[] content = File.OpenRead(Application.streamingAssetsPath + "/sound_names.bin");
+            byte[] content = File.ReadAllBytes(Application.streamingAssetsPath + "/sound_names.bin");
 #else
             byte[] content = CathodeLib.Properties.Resources.sound_names;
 #endif
