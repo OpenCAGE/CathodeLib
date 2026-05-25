@@ -24,6 +24,8 @@ namespace CathodeLib
             {
 #if UNITY_EDITOR || UNITY_STANDALONE
                 byte[] content = File.ReadAllBytes(UnityEngine.Application.streamingAssetsPath + "/info.dat");
+#elif GODOT
+                byte[] content = Utilities.ReadStreamingAsset("info.dat");
 #else
                 byte[] content = CathodeLib.Properties.Resources.info;
                 if (File.Exists("data/info.dat"))

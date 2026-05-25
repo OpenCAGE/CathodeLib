@@ -530,6 +530,42 @@ namespace CathodeLib
                 return RenderableInstanceType.MISC;
             }
         }
+
+#if GODOT
+        /// <summary>
+        /// Loads lookup tables from streaming_assets/ beside the running app (Godot project root when played from the editor).
+        /// </summary>
+        internal static byte[] ReadStreamingAsset(string fileName)
+        {
+            foreach (string directory in GetStreamingAssetSearchDirectories())
+            {
+                string path = Path.Combine(directory, fileName);
+                if (File.Exists(path))
+                    return File.ReadAllBytes(path);
+            }
+
+            throw new FileNotFoundException();
+        }
+
+        private static IEnumerable<string> GetStreamingAssetSearchDirectories()
+        {
+            string cwd = Directory.GetCurrentDirectory();
+            yield return Path.Combine(cwd, "streaming_assets");
+            yield return Path.Combine(AppContext.BaseDirectory, "streaming_assets");
+            yield return Path.Combine(AppContext.BaseDirectory, "data");
+
+            string godotProject = Environment.GetEnvironmentVariable("GODOT_PROJECT_PATH");
+            if (!string.IsNullOrWhiteSpace(godotProject))
+            {
+                yield return Path.Combine(godotProject, "streaming_assets");
+            }
+
+            yield return Path.GetFullPath(Path.Combine(cwd, "Source", "CathodeLib", "CathodeLib", "Resources"));
+            yield return Path.GetFullPath(Path.Combine(cwd, "..", "..", "..", "CathodeLib", "CathodeLib", "Resources"));
+            yield return Path.GetFullPath(Path.Combine(cwd, "..", "CathodeEditorUnity", "Assets", "StreamingAssets"));
+            yield return Path.GetFullPath(Path.Combine(cwd, "Source", "Dependencies", "LevelViewer", "CathodeEditorUnity", "Assets", "StreamingAssets"));
+        }
+#endif
     }
 
     public static class MathsUtils

@@ -18,7 +18,7 @@ using static CATHODE.Movers.MOVER_DESCRIPTOR.GPU_CONSTANTS;
 using static CATHODE.Movers.MOVER_DESCRIPTOR.RENDER_CONSTANTS;
 using static CATHODE.Resources;
 
-#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN)
+#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
 namespace CathodeLib
 {
     public class InstancedEntity : IComparable<InstancedEntity>

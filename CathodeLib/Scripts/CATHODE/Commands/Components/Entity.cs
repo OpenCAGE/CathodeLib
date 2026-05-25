@@ -2,18 +2,22 @@ using CATHODE.Scripting.Internal;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
-using System.Data;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Xml.Linq;
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
+#elif GODOT
+using Godot;
+using System.Numerics;
+using Matrix4x4 = System.Numerics.Matrix4x4;
+using Quaternion = System.Numerics.Quaternion;
+using Vector2 = Godot.Vector2;
+using Vector3 = Godot.Vector3;
+using Vector4 = Godot.Vector4;
+using Color = Godot.Color;
 #else
 using System.Numerics;
-using System.IO;
-using CathodeLib;
-using CathodeLib.Properties;
 #endif
 
 namespace CATHODE.Scripting.Internal

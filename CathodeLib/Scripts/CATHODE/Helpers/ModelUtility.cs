@@ -5,6 +5,15 @@ using CATHODE;
 
 #if UNITY_EDITOR || UNITY_STANDALONE
 using UnityEngine;
+#elif GODOT
+using Godot;
+using System.Numerics;
+using Matrix4x4 = System.Numerics.Matrix4x4;
+using Quaternion = System.Numerics.Quaternion;
+using Vector2 = Godot.Vector2;
+using Vector3 = Godot.Vector3;
+using Vector4 = Godot.Vector4;
+using Color = Godot.Color;
 #else
 using System.Numerics;
 using System.Drawing;
@@ -218,6 +227,8 @@ namespace CathodeLib
                                 case Models.VertexFormat.Usage.Color:
 #if UNITY_EDITOR || UNITY_STANDALONE
                                     mesh.Colours.Add(v);
+#elif GODOT
+                                    mesh.Colours.Add(new Color(v.X, v.Y, v.Z, v.W));
 #else
                                     mesh.Colours.Add(Color.FromArgb((int)(v.W * 255.0f), (int)(v.X * 255.0f), (int)(v.Y * 255.0f), (int)(v.Z * 255.0f))); // TODO: is this correct?
 #endif
@@ -370,6 +381,8 @@ namespace CathodeLib
                         Color c = mesh.Colours[vertexIndex];
 #if UNITY_EDITOR || UNITY_STANDALONE
                         return new Vector4(c.r / 255.0f, c.g / 255.0f, c.b / 255.0f, c.a / 255.0f);
+#elif GODOT
+                        return new Vector4(c.R, c.G, c.B, c.A);
 #else
                         return new Vector4(c.R / 255.0f, c.G / 255.0f, c.B / 255.0f, c.A / 255.0f);
 #endif
