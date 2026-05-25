@@ -19,6 +19,16 @@ using System.Runtime.InteropServices.ComTypes;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
 using static CATHODE.RenderableElements;
+#if GODOT
+using Godot;
+using System.Numerics;
+using Matrix4x4 = System.Numerics.Matrix4x4;
+using Quaternion = System.Numerics.Quaternion;
+using Vector2 = Godot.Vector2;
+using Vector3 = Godot.Vector3;
+using Vector4 = Godot.Vector4;
+using Color = Godot.Color;
+#endif
 
 namespace CathodeLib
 {
@@ -533,37 +543,188 @@ namespace CathodeLib
 
 #if GODOT
         /// <summary>
-        /// Loads lookup tables from streaming_assets/ beside the running app (Godot project root when played from the editor).
+        /// Loads lookup tables from streaming_assets/ (or data/) beside the exported exe, .NET output folder, or Godot project root.
         /// </summary>
         internal static byte[] ReadStreamingAsset(string fileName)
         {
+            List<string> searchedPaths = new List<string>();
             foreach (string directory in GetStreamingAssetSearchDirectories())
             {
                 string path = Path.Combine(directory, fileName);
+                searchedPaths.Add(path);
                 if (File.Exists(path))
                     return File.ReadAllBytes(path);
             }
 
-            throw new FileNotFoundException();
+            if (TryReadEmbeddedStreamingAsset(fileName, out byte[] embedded))
+                return embedded;
+
+            throw new FileNotFoundException(
+                $"Streaming asset '{fileName}' was not found on disk or as an embedded resource. Checked:\n{string.Join(System.Environment.NewLine, searchedPaths)}");
+        }
+
+        internal static bool TryReadEmbeddedStreamingAsset(string fileName, out byte[] content)
+        {
+            content = null;
+            try
+            {
+                switch (fileName)
+                {
+                    case "info.dat":
+                        content = Properties.Resources.info;
+                        break;
+                    case "sound_names.bin":
+                        content = Properties.Resources.sound_names;
+                        break;
+                }
+            }
+            catch
+            {
+                content = null;
+            }
+
+            return content != null && content.Length > 0;
         }
 
         private static IEnumerable<string> GetStreamingAssetSearchDirectories()
         {
-            string cwd = Directory.GetCurrentDirectory();
-            yield return Path.Combine(cwd, "streaming_assets");
-            yield return Path.Combine(AppContext.BaseDirectory, "streaming_assets");
-            yield return Path.Combine(AppContext.BaseDirectory, "data");
+            HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            string godotProject = Environment.GetEnvironmentVariable("GODOT_PROJECT_PATH");
-            if (!string.IsNullOrWhiteSpace(godotProject))
+            foreach (string root in GetStreamingAssetSearchRoots())
             {
-                yield return Path.Combine(godotProject, "streaming_assets");
+                foreach (string directory in ExpandStreamingAssetFolders(root))
+                {
+                    if (seen.Add(directory))
+                        yield return directory;
+                }
+            }
+        }
+
+        private static IEnumerable<string> ExpandStreamingAssetFolders(string root)
+        {
+            if (string.IsNullOrWhiteSpace(root))
+                yield break;
+
+            yield return Path.Combine(root, "streaming_assets");
+            yield return Path.Combine(root, "data");
+
+            if (!Directory.Exists(root))
+                yield break;
+
+            string[] dataDirectories;
+            try
+            {
+                dataDirectories = Directory.GetDirectories(root, "data_*");
+            }
+            catch
+            {
+                yield break;
             }
 
-            yield return Path.GetFullPath(Path.Combine(cwd, "Source", "CathodeLib", "CathodeLib", "Resources"));
-            yield return Path.GetFullPath(Path.Combine(cwd, "..", "..", "..", "CathodeLib", "CathodeLib", "Resources"));
-            yield return Path.GetFullPath(Path.Combine(cwd, "..", "CathodeEditorUnity", "Assets", "StreamingAssets"));
-            yield return Path.GetFullPath(Path.Combine(cwd, "Source", "Dependencies", "LevelViewer", "CathodeEditorUnity", "Assets", "StreamingAssets"));
+            for (int i = 0; i < dataDirectories.Length; i++)
+            {
+                yield return Path.Combine(dataDirectories[i], "streaming_assets");
+                yield return Path.Combine(dataDirectories[i], "data");
+            }
+        }
+
+        private static List<string> GetStreamingAssetSearchRoots()
+        {
+            List<string> roots = new List<string>();
+            HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void AddRoot(string path)
+            {
+                if (string.IsNullOrWhiteSpace(path))
+                    return;
+
+                try
+                {
+                    path = Path.GetFullPath(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                }
+                catch
+                {
+                    return;
+                }
+
+                if (seen.Add(path))
+                    roots.Add(path);
+            }
+
+            AddGodotRuntimeSearchRoots(AddRoot);
+
+            AddRoot(Directory.GetCurrentDirectory());
+
+            string godotProject = System.Environment.GetEnvironmentVariable("GODOT_PROJECT_PATH");
+            if (!string.IsNullOrWhiteSpace(godotProject))
+                AddRoot(godotProject);
+
+            string cwd = Directory.GetCurrentDirectory();
+            AddRoot(Path.GetFullPath(Path.Combine(cwd, "Source", "CathodeLib", "CathodeLib", "Resources")));
+            AddRoot(Path.GetFullPath(Path.Combine(cwd, "..", "..", "..", "CathodeLib", "CathodeLib", "Resources")));
+            AddRoot(Path.GetFullPath(Path.Combine(cwd, "..", "CathodeEditorUnity", "Assets", "StreamingAssets")));
+            AddRoot(Path.GetFullPath(Path.Combine(cwd, "Source", "Dependencies", "LevelViewer", "CathodeEditorUnity", "Assets", "StreamingAssets")));
+
+            return roots;
+        }
+
+        private static void AddGodotRuntimeSearchRoots(Action<string> addRoot)
+        {
+            try
+            {
+                if (Engine.IsEditorHint())
+                {
+                    string projectDirectory = ProjectSettings.GlobalizePath("res://");
+                    if (!string.IsNullOrWhiteSpace(projectDirectory))
+                        addRoot(projectDirectory);
+                    return;
+                }
+
+                // Exported .NET builds load CathodeLib from data_<project>_<platform>/ next to the exe.
+                string assemblyPath = typeof(Utilities).Assembly.Location;
+                if (!string.IsNullOrWhiteSpace(assemblyPath))
+                    addRoot(Path.GetDirectoryName(assemblyPath));
+
+                addRoot(AppContext.BaseDirectory);
+
+                string executablePath = OS.GetExecutablePath();
+                if (!string.IsNullOrWhiteSpace(executablePath))
+                {
+                    string executableDirectory = Path.GetDirectoryName(executablePath);
+                    addRoot(executableDirectory);
+                    AddGodotDataSubdirectoryRoots(executableDirectory, addRoot);
+                }
+
+                string baseDirectory = AppContext.BaseDirectory;
+                if (!string.IsNullOrWhiteSpace(baseDirectory))
+                {
+                    string parentDirectory = Path.GetDirectoryName(baseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                    if (!string.IsNullOrWhiteSpace(parentDirectory))
+                    {
+                        addRoot(parentDirectory);
+                        AddGodotDataSubdirectoryRoots(parentDirectory, addRoot);
+                    }
+                }
+            }
+            catch
+            {
+                // Godot API not available yet; other search roots still apply.
+            }
+        }
+
+        private static void AddGodotDataSubdirectoryRoots(string root, Action<string> addRoot)
+        {
+            if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+                return;
+
+            try
+            {
+                foreach (string dataDirectory in Directory.GetDirectories(root, "data_*"))
+                    addRoot(dataDirectory);
+            }
+            catch
+            {
+            }
         }
 #endif
     }
