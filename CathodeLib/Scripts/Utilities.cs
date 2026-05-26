@@ -662,8 +662,8 @@ namespace CathodeLib
             string cwd = Directory.GetCurrentDirectory();
             AddRoot(Path.GetFullPath(Path.Combine(cwd, "Source", "CathodeLib", "CathodeLib", "Resources")));
             AddRoot(Path.GetFullPath(Path.Combine(cwd, "..", "..", "..", "CathodeLib", "CathodeLib", "Resources")));
-            AddRoot(Path.GetFullPath(Path.Combine(cwd, "..", "CathodeEditorUnity", "Assets", "StreamingAssets")));
-            AddRoot(Path.GetFullPath(Path.Combine(cwd, "Source", "Dependencies", "LevelViewer", "CathodeEditorUnity", "Assets", "StreamingAssets")));
+            AddRoot(Path.GetFullPath(Path.Combine(cwd, "streaming_assets")));
+            AddRoot(Path.GetFullPath(Path.Combine(cwd, "Source", "Dependencies", "LevelViewer", "CathodeEditorGodot", "streaming_assets")));
 
             return roots;
         }
