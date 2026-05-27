@@ -43,6 +43,7 @@ namespace CathodeLib
                 CathodeEntities = (CathodeEntityTable)ReadTable(content, CustomTableType.CATHODE_ENTITY_INFO);
                 CathodeEnums = (CathodeEnumTable)ReadTable(content, CustomTableType.CATHODE_ENUM_INFO);
                 MaterialMappings = (MaterialMappingTable)ReadTable(content, CustomTableType.MATERIAL_MAPPINGS);
+                MaterialNames = (MaterialNameTable)ReadTable(content, CustomTableType.MATERIAL_NAMES);
             }
 
             public readonly CompositePathTable CompositePaths;
@@ -52,6 +53,7 @@ namespace CathodeLib
             public readonly CathodeEntityTable CathodeEntities;
             public readonly CathodeEnumTable CathodeEnums;
             public readonly MaterialMappingTable MaterialMappings;
+            public readonly MaterialNameTable MaterialNames;
         }
 
         /// <summary>
@@ -153,6 +155,9 @@ namespace CathodeLib
                             case CustomTableType.MATERIAL_MAPPINGS:
                                 ((MaterialMappingTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomTableType.MATERIAL_NAMES:
+                                ((MaterialNameTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
 #if DEBUG
                         if (tableType == table)
@@ -248,6 +253,9 @@ namespace CathodeLib
                         break;
                     case CustomTableType.MATERIAL_MAPPINGS:
                         data = new MaterialMappingTable(reader);
+                        break;
+                    case CustomTableType.MATERIAL_NAMES:
+                        data = new MaterialNameTable(reader);
                         break;
                 }
             }
@@ -1379,6 +1387,39 @@ namespace CathodeLib
                 Utilities.Write<ShortGuid>(writer, map.MappingID);
                 Utilities.Write<ShortGuid>(writer, map.CompositeID);
                 Utilities.Write<ShortGuid>(writer, map.EntityID);
+            }
+        }
+    }
+    public class MaterialNameTable : CustomTable.Table
+    {
+        public MaterialNameTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.MATERIAL_NAMES;
+        }
+
+        public Dictionary<string, string> material_names;
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+            {
+                material_names = new Dictionary<string, string>();
+                return;
+            }
+
+            int count = reader.ReadInt32();
+            material_names = new Dictionary<string, string>(count);
+            for (int i = 0; i < count; i++)
+                material_names.Add(reader.ReadString(), reader.ReadString());
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(material_names.Count);
+            foreach (KeyValuePair<string, string> composites in material_names)
+            {
+                writer.Write(composites.Key);
+                writer.Write(composites.Value);
             }
         }
     }
