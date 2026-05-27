@@ -1199,6 +1199,7 @@ namespace CATHODE.Scripting.Internal
         COMPOSITE_PAGE_HISTORY,                 // Stores the previously opened flowgraph page for a composite
         FLAGS,                                  // A table of generic flags that can store level modification metadata
         MATERIAL_MAPPINGS,                      // Stores material mappings to populate as parameters or aliases
+        MATERIAL_NAMES,                         // Neat material names translated from LongGuid
 
         //Add new entries here
 

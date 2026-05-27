@@ -324,6 +324,20 @@ namespace CATHODE
         }
 
         /// <summary>
+        /// Returns the material name, while looking up any particle texture GUIDs - this should be used for any UI displays of material names
+        /// </summary>
+        public string GetMaterialName(Material material)
+        {
+            if (material == null)
+                return null;
+            if (material.Name.Length == 32 && CustomTable.Vanilla.MaterialNames.material_names.TryGetValue(material.Name, out string name))
+                return name;
+            if (material.Name.Length >= 33 && material.Name[32] == '_' && CustomTable.Vanilla.MaterialNames.material_names.TryGetValue(material.Name.Substring(0, 32), out string nameVariant))
+                return nameVariant + material.Name.Substring(32);
+            return material.Name;
+        }
+
+        /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
         public Material ImportEntry(Material material)
