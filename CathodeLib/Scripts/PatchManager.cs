@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Xml.Linq;
@@ -533,44 +533,46 @@ namespace CathodeLib
                 List<string> levels = Level.GetLevels(pathToAI);
                 foreach (string level in levels)
                 {
+                    string lvlName = level.Replace("/", "\\").ToUpper();
+
                     //Ignore maps included in the base game or other PKGs
-                    if (level.ToUpper() == "BSP_LV426_PT01" ||
-                        level.ToUpper() == "BSP_LV426_PT02" ||
-                        level.ToUpper() == "BSP_TORRENS" ||
-                        level.ToUpper() == @"DLC\BSPNOSTROMO_RIPLEY" ||
-                        level.ToUpper() == @"DLC\BSPNOSTROMO_RIPLEY_PATCH" ||
-                        level.ToUpper() == @"DLC\BSPNOSTROMO_TWOTEAMS" ||
-                        level.ToUpper() == @"DLC\BSPNOSTROMO_TWOTEAMS_PATCH" ||
-                        level.ToUpper() == @"DLC\CHALLENGEMAP1" ||
-                        level.ToUpper() == @"DLC\CHALLENGEMAP11" ||
-                        level.ToUpper() == @"DLC\CHALLENGEMAP12" ||
-                        level.ToUpper() == @"DLC\CHALLENGEMAP14" ||
-                        level.ToUpper() == @"DLC\CHALLENGEMAP3" ||
-                        level.ToUpper() == @"DLC\CHALLENGEMAP4" ||
-                        level.ToUpper() == @"DLC\CHALLENGEMAP5" ||
-                        level.ToUpper() == @"DLC\CHALLENGEMAP7" ||
-                        level.ToUpper() == @"DLC\CHALLENGEMAP9" ||
-                        level.ToUpper() == @"DLC\SALVAGEMODE1" ||
-                        level.ToUpper() == @"DLC\SALVAGEMODE2" ||
-                        level.ToUpper() == "ENG_ALIEN_NEST" ||
-                        level.ToUpper() == "ENG_REACTORCORE" ||
-                        level.ToUpper() == "ENG_TOWPLATFORM" ||
-                        level.ToUpper() == "HAB_AIRPORT" ||
-                        level.ToUpper() == "HAB_CORPORATEPENT" ||
-                        level.ToUpper() == "HAB_SHOPPINGCENTRE" ||
-                        level.ToUpper() == "SCI_ANDROIDLAB" ||
-                        level.ToUpper() == "SCI_HOSPITALLOWER" ||
-                        level.ToUpper() == "SCI_HOSPITALUPPER" ||
-                        level.ToUpper() == "SCI_HUB" ||
-                        level.ToUpper() == "SOLACE" ||
-                        level.ToUpper() == "TECH_COMMS" ||
-                        level.ToUpper() == "TECH_HUB" ||
-                        level.ToUpper() == "TECH_MUTHRCORE" ||
-                        level.ToUpper() == "TECH_RND" ||
-                        level.ToUpper() == "TECH_RND_HZDLAB")
+                    if (lvlName == "PRODUCTION\\BSP_LV426_PT01" ||
+                        lvlName == "PRODUCTION\\BSP_LV426_PT02" ||
+                        lvlName == "PRODUCTION\\BSP_TORRENS" ||
+                        lvlName == "PRODUCTION\\DLC\\BSPNOSTROMO_RIPLEY" ||
+                        lvlName == "PRODUCTION\\DLC\\BSPNOSTROMO_RIPLEY_PATCH" ||
+                        lvlName == "PRODUCTION\\DLC\\BSPNOSTROMO_TWOTEAMS" ||
+                        lvlName == "PRODUCTION\\DLC\\BSPNOSTROMO_TWOTEAMS_PATCH" ||
+                        lvlName == "PRODUCTION\\DLC\\CHALLENGEMAP1" ||
+                        lvlName == "PRODUCTION\\DLC\\CHALLENGEMAP11" ||
+                        lvlName == "PRODUCTION\\DLC\\CHALLENGEMAP12" ||
+                        lvlName == "PRODUCTION\\DLC\\CHALLENGEMAP14" ||
+                        lvlName == "PRODUCTION\\DLC\\CHALLENGEMAP3" ||
+                        lvlName == "PRODUCTION\\DLC\\CHALLENGEMAP4" ||
+                        lvlName == "PRODUCTION\\DLC\\CHALLENGEMAP5" ||
+                        lvlName == "PRODUCTION\\DLC\\CHALLENGEMAP7" ||
+                        lvlName == "PRODUCTION\\DLC\\CHALLENGEMAP9" ||
+                        lvlName == "PRODUCTION\\DLC\\SALVAGEMODE1" ||
+                        lvlName == "PRODUCTION\\DLC\\SALVAGEMODE2" ||
+                        lvlName == "PRODUCTION\\ENG_ALIEN_NEST" ||
+                        lvlName == "PRODUCTION\\ENG_REACTORCORE" ||
+                        lvlName == "PRODUCTION\\ENG_TOWPLATFORM" ||
+                        lvlName == "PRODUCTION\\HAB_AIRPORT" ||
+                        lvlName == "PRODUCTION\\HAB_CORPORATEPENT" ||
+                        lvlName == "PRODUCTION\\HAB_SHOPPINGCENTRE" ||
+                        lvlName == "PRODUCTION\\SCI_ANDROIDLAB" ||
+                        lvlName == "PRODUCTION\\SCI_HOSPITALLOWER" ||
+                        lvlName == "PRODUCTION\\SCI_HOSPITALUPPER" ||
+                        lvlName == "PRODUCTION\\SCI_HUB" ||
+                        lvlName == "PRODUCTION\\SOLACE" ||
+                        lvlName == "PRODUCTION\\TECH_COMMS" ||
+                        lvlName == "PRODUCTION\\TECH_HUB" ||
+                        lvlName == "PRODUCTION\\TECH_MUTHRCORE" ||
+                        lvlName == "PRODUCTION\\TECH_RND" ||
+                        lvlName == "PRODUCTION\\TECH_RND_HZDLAB")
                         continue;
 
-                    levelsRootNode.Add(XElement.Parse("<level id=\"Production\\" + level + "\" path=\"data\\ENV\\Production\\" + level + "\" />"));
+                    levelsRootNode.Add(XElement.Parse("<level id=\"" + lvlName + "\" path=\"DATA\\ENV\\" + lvlName + "\" />"));
                 }
                 File.WriteAllText(pathToPackages, packagesXML.ToString());
                 return true;
