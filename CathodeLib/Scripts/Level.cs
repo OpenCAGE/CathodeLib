@@ -257,34 +257,37 @@ namespace CathodeLib
             OnLoadTick?.Invoke();
 
             string pathDATA = _filepath.Replace('\\', '/').Split(new string[] { "/DATA/ENV" }, StringSplitOptions.None)[0] + "/DATA";
-            string levelName = Directory.GetParent(_filepath).Name;
-            XmlDocument doc = new XmlDocument();
-            doc.LoadXml(File.ReadAllText(pathDATA + "/LEVEL_TEXT_DATABASES.XML"));
-            XmlNodeList textDBsGlobal = doc.SelectNodes("//level_text_databases/level");
-            List<string> globalDBs = new List<string>();
-            for (int i = 0; i < textDBsGlobal.Count; i++)
-                if (textDBsGlobal[i].Attributes["name"].Value.ToUpper() == levelName.ToUpper() || textDBsGlobal[i].Attributes["name"].Value == "globals")
-                    for (int x = 0; x < textDBsGlobal[i].ChildNodes.Count; x++)
-                        globalDBs.Add(textDBsGlobal[i].ChildNodes[x].Attributes["name"].Value);
-            List<string> textList = Directory.GetFiles(pathDATA + "/TEXT/", "*.TXT", SearchOption.AllDirectories).ToList<string>();
-            List<string> levelDBs = new List<string>();
-            if (File.Exists(_filepath + "/TEXT/TEXT_DB_LIST.TXT"))
-            {
-                string[] textDBsLevel = File.ReadAllLines(_filepath + "/TEXT/TEXT_DB_LIST.TXT");
-                for (int i = 0; i < textDBsLevel.Length; i++)
-                    levelDBs.Add(textDBsLevel[i]);
-                textList.AddRange(Directory.GetFiles(_filepath + "/TEXT/", "*.TXT", SearchOption.AllDirectories));
-            }
-            textList.Reverse();
             Strings = new Dictionary<string, Dictionary<string, TextDB>>();
-            foreach (string textDB in textList)
+            if (File.Exists(pathDATA + "/LEVEL_TEXT_DATABASES.XML"))
             {
-                string lang = Path.GetFileName(Path.GetDirectoryName(textDB)).ToUpper();
-                string db = Path.GetFileNameWithoutExtension(textDB).ToUpper();
-                if (!globalDBs.Contains(db) && !levelDBs.Contains(db)) continue;
-                if (!Strings.ContainsKey(lang)) Strings.Add(lang, new Dictionary<string, TextDB>());
-                if (Strings[lang].ContainsKey(db)) continue;
-                Strings[lang].Add(db, new TextDB(textDB));
+                string levelName = Directory.GetParent(_filepath).Name;
+                XmlDocument doc = new XmlDocument();
+                doc.LoadXml(File.ReadAllText(pathDATA + "/LEVEL_TEXT_DATABASES.XML"));
+                XmlNodeList textDBsGlobal = doc.SelectNodes("//level_text_databases/level");
+                List<string> globalDBs = new List<string>();
+                for (int i = 0; i < textDBsGlobal.Count; i++)
+                    if (textDBsGlobal[i].Attributes["name"].Value.ToUpper() == levelName.ToUpper() || textDBsGlobal[i].Attributes["name"].Value == "globals")
+                        for (int x = 0; x < textDBsGlobal[i].ChildNodes.Count; x++)
+                            globalDBs.Add(textDBsGlobal[i].ChildNodes[x].Attributes["name"].Value);
+                List<string> textList = Directory.GetFiles(pathDATA + "/TEXT/", "*.TXT", SearchOption.AllDirectories).ToList<string>();
+                List<string> levelDBs = new List<string>();
+                if (File.Exists(_filepath + "/TEXT/TEXT_DB_LIST.TXT"))
+                {
+                    string[] textDBsLevel = File.ReadAllLines(_filepath + "/TEXT/TEXT_DB_LIST.TXT");
+                    for (int i = 0; i < textDBsLevel.Length; i++)
+                        levelDBs.Add(textDBsLevel[i]);
+                    textList.AddRange(Directory.GetFiles(_filepath + "/TEXT/", "*.TXT", SearchOption.AllDirectories));
+                }
+                textList.Reverse();
+                foreach (string textDB in textList)
+                {
+                    string lang = Path.GetFileName(Path.GetDirectoryName(textDB)).ToUpper();
+                    string db = Path.GetFileNameWithoutExtension(textDB).ToUpper();
+                    if (!globalDBs.Contains(db) && !levelDBs.Contains(db)) continue;
+                    if (!Strings.ContainsKey(lang)) Strings.Add(lang, new Dictionary<string, TextDB>());
+                    if (Strings[lang].ContainsKey(db)) continue;
+                    Strings[lang].Add(db, new TextDB(textDB));
+                }
             }
             OnLoadTick?.Invoke();
         }
