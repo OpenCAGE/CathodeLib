@@ -7,10 +7,21 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using System.IO;
+using static CathodeLib.CompositeFlowgraphTable;
+
 
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
+#elif GODOT
+using Godot;
+using System.Numerics;
+using Matrix4x4 = System.Numerics.Matrix4x4;
+using Quaternion = System.Numerics.Quaternion;
+using Vector2 = Godot.Vector2;
+using Vector3 = Godot.Vector3;
+using Vector4 = Godot.Vector4;
+using Color = Godot.Color;
 #else
 using System.Numerics;
 #endif
@@ -1603,9 +1614,70 @@ namespace CATHODE.Scripting
 
             _flagTable = (FlagTable)CustomTable.ReadTable(filepath, CustomTableType.FLAGS);
             if (_flagTable == null) _flagTable = new FlagTable();
+
+            if (!_flagTable.HasBeenModified)
+            {
+                //Tidy up composite names - only need to do this for PAK, BIN has this info
+                if (Path.GetFileName(_commands.Filepath.ToUpper()) == "COMMANDS.PAK")
+                    SetPrettyNames();
+
+                //Correct the root composite name - by default these are full paths which are ugly
+                string levelName = "";
+                if (_commands.EntryPoints[0] != null)
+                {
+                    try
+                    {
+                        string[] nameSplit = _commands.EntryPoints[0].name.Replace('\\', '/').Split('/');
+                        levelName = nameSplit[nameSplit.Length - 1];
+
+                        _commands.EntryPoints[0].name = levelName;
+                    }
+                    catch { }
+                }
+
+                //Apply material remappings
+                ShortGuid mapping = ShortGuidUtils.Generate("mapping");
+                FlowgraphMeta.SupportedLevel levelID;
+                bool hasLevelID = Enum.TryParse(levelName.ToUpper(), out levelID);
+                foreach (MaterialMappingTable.Mapping map in CustomTable.Vanilla.MaterialMappings.Mappings)
+                {
+                    if (!map.AlwaysUse && (!hasLevelID || !map.SupportedLevels.HasFlag(levelID)))
+                        continue;
+
+                    Composite comp = _commands.GetComposite(map.CompositeID);
+                    Entity ent = comp?.GetEntityByID(map.EntityID);
+                    ent?.AddParameter(mapping, new cResource(null, map.MappingID));
+                }
+                foreach (MaterialMappingTable.MappingAlias map in CustomTable.Vanilla.MaterialMappings.MappingAliases)
+                {
+                    if (!map.AlwaysUse && (!hasLevelID || !map.SupportedLevels.HasFlag(levelID)))
+                        continue;
+
+                    EntityPath path = new EntityPath(map.EntityPath.ToArray());
+                    Composite comp = _commands.GetComposite(map.CompositeID);
+                    if (comp == null)
+                        continue;
+                    bool didFind = false;
+                    foreach (KeyValuePair<ShortGuid, AliasEntity> alias in comp.aliases_dictionary)
+                    {
+                        if (alias.Value.alias == path)
+                        {
+                            didFind = true;
+                            alias.Value.AddParameter(mapping, new cResource(null, map.MappingID));
+                            break;
+                        }
+                    }
+                    if (!didFind)
+                    {
+                        comp.AddAlias(path.path).AddParameter(mapping, new cResource(null, map.MappingID));
+                    }
+                }
+            }
         }
         private void SaveInfo(string filepath)
         {
+            _flagTable.HasBeenModified = true;
+
             ShortGuidUtils.SaveCustomNames(_commands.Filepath);
 
             CustomTable.WriteTable(filepath, CustomTableType.COMPOSITE_PURGE_STATES, _compPurges);

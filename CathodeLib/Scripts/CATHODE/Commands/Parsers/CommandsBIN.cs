@@ -8,6 +8,15 @@ using System.Xml.Linq;
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
+#elif GODOT
+using Godot;
+using System.Numerics;
+using Matrix4x4 = System.Numerics.Matrix4x4;
+using Quaternion = System.Numerics.Quaternion;
+using Vector2 = Godot.Vector2;
+using Vector3 = Godot.Vector3;
+using Vector4 = Godot.Vector4;
+using Color = Godot.Color;
 #else
 using System.Numerics;
 #endif
@@ -509,6 +518,10 @@ namespace CATHODE.Scripting.Internal.Parsers
 
             EntryPoints[1] = Entries.FirstOrDefault(o => o.name.ToUpper() == "GLOBAL").shortGUID;
             EntryPoints[2] = Entries.FirstOrDefault(o => o.name.ToUpper() == "PAUSEMENU").shortGUID;
+
+            foreach (Composite c in Entries)
+                foreach (Entity e in c.GetEntities())
+                    e.childLinks = e.childLinks.Distinct().ToList();
         }
 
         public static void Write(ShortGuid[] EntryPoints, List<Composite> Entries, out byte[] content, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)

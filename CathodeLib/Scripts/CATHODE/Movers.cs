@@ -10,10 +10,18 @@ using System.Linq;
 using System.Collections.Concurrent;
 using static CATHODE.Lights;
 
-
-
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
+using LightType = CATHODE.Lights.LightType;
+#elif GODOT
+using Godot;
+using System.Numerics;
+using Matrix4x4 = System.Numerics.Matrix4x4;
+using Quaternion = System.Numerics.Quaternion;
+using Vector2 = Godot.Vector2;
+using Vector3 = Godot.Vector3;
+using Vector4 = Godot.Vector4;
+using Color = Godot.Color;
 #else
 using System.Numerics;
 #endif
@@ -209,9 +217,9 @@ namespace CATHODE
                 Utilities.Write<EntityHandle>(writer, entry.Entity);
                 writer.Write(index);
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
-                writer.Write((byte)entry.emissive_tint.x);
-                writer.Write((byte)entry.emissive_tint.y);
-                writer.Write((byte)entry.emissive_tint.z);
+                writer.Write((byte)entry.EmissiveTint.x);
+                writer.Write((byte)entry.EmissiveTint.y);
+                writer.Write((byte)entry.EmissiveTint.z);
 #else
                 writer.Write((byte)entry.EmissiveTint.X);
                 writer.Write((byte)entry.EmissiveTint.Y);
@@ -349,7 +357,11 @@ namespace CATHODE
 
         public class MOVER_DESCRIPTOR : IEquatable<MOVER_DESCRIPTOR>
         {
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+            public Matrix4x4 Transform = Matrix4x4.identity;
+#else
             public Matrix4x4 Transform = Matrix4x4.Identity;
+#endif
 
             public GPU_CONSTANTS GPUConstants = new GPU_CONSTANTS(); 
             public RENDER_CONSTANTS RenderConstants = new RENDER_CONSTANTS();
@@ -779,7 +791,7 @@ namespace CATHODE
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
                 for (int i = 0; i < 16; i++)
                 {
-                    if (Math.Abs(transform[i] - other.transform[i]) > float.Epsilon)
+                    if (Math.Abs(Transform[i] - other.Transform[i]) > float.Epsilon)
                         return false;
                 }
 #else
@@ -813,7 +825,7 @@ namespace CATHODE
                 if (EnvironmentMap != other.EnvironmentMap) return false;
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
-                if (emissive_tint != other.emissive_tint) return false;
+                if (EmissiveTint != other.EmissiveTint) return false;
 #else
                 if (EmissiveTint != other.EmissiveTint) return false;
 #endif
@@ -846,7 +858,7 @@ namespace CATHODE
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
                     for (int i = 0; i < 16; i++)
                     {
-                        hash = hash * 23 + transform[i].GetHashCode();
+                        hash = hash * 23 + Transform[i].GetHashCode();
                     }
 #else
                     hash = hash * 23 + Transform.GetHashCode();
@@ -870,9 +882,9 @@ namespace CATHODE
                     hash = hash * 23 + (Entity?.GetHashCode() ?? 0);
                     hash = hash * 23 + (EnvironmentMap?.GetHashCode() ?? 0);
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
-                    hash = hash * 23 + emissive_tint.x.GetHashCode();
-                    hash = hash * 23 + emissive_tint.y.GetHashCode();
-                    hash = hash * 23 + emissive_tint.z.GetHashCode();
+                    hash = hash * 23 + EmissiveTint.x.GetHashCode();
+                    hash = hash * 23 + EmissiveTint.y.GetHashCode();
+                    hash = hash * 23 + EmissiveTint.z.GetHashCode();
 #else
                     hash = hash * 23 + EmissiveTint.X.GetHashCode();
                     hash = hash * 23 + EmissiveTint.Y.GetHashCode();
@@ -898,7 +910,7 @@ namespace CATHODE
                 Entity = null;
             }
         };
-        #endregion
+#endregion
     }
 
     public enum RenderableInstanceType

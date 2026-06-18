@@ -8,6 +8,15 @@ using CATHODE.Enums;
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
+#elif GODOT
+using Godot;
+using System.Numerics;
+using Matrix4x4 = System.Numerics.Matrix4x4;
+using Quaternion = System.Numerics.Quaternion;
+using Vector2 = Godot.Vector2;
+using Vector3 = Godot.Vector3;
+using Vector4 = Godot.Vector4;
+using Color = Godot.Color;
 #else
 using System.Numerics;
 #endif

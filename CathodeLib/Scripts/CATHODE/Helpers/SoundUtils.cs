@@ -1,14 +1,10 @@
-﻿using CATHODE.Scripting;
+using CATHODE.Scripting;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
 using static CATHODE.AnimClipDB;
-#if UNITY_EDITOR || UNITY_STANDALONE
-using UnityEngine;
-#endif
-
 namespace CathodeLib
 {
     public static class SoundUtils
@@ -18,7 +14,9 @@ namespace CathodeLib
         static SoundUtils()
         {
 #if UNITY_EDITOR || UNITY_STANDALONE
-            byte[] content = File.OpenRead(Application.streamingAssetsPath + "/sound_names.bin");
+            byte[] content = File.ReadAllBytes(UnityEngine.Application.streamingAssetsPath + "/sound_names.bin");
+#elif GODOT
+            byte[] content = Utilities.ReadStreamingAsset("sound_names.bin");
 #else
             byte[] content = CathodeLib.Properties.Resources.sound_names;
 #endif

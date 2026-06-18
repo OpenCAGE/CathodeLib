@@ -8,6 +8,15 @@ using System.Runtime.InteropServices;
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
+#elif GODOT
+using Godot;
+using System.Numerics;
+using Matrix4x4 = System.Numerics.Matrix4x4;
+using Quaternion = System.Numerics.Quaternion;
+using Vector2 = Godot.Vector2;
+using Vector3 = Godot.Vector3;
+using Vector4 = Godot.Vector4;
+using Color = Godot.Color;
 #else
 using System.Numerics;
 #endif
@@ -396,7 +405,12 @@ namespace CATHODE.Scripting.Internal.Parsers
 
                         //Apply connections between entities
                         for (int x = 0; x < entityLinks.Count; x++)
-                            composite.GetEntityByID(entityLinks[x].parentID)?.childLinks.AddRange(entityLinks[x].childLinks);
+                        {
+                            Entity e = composite.GetEntityByID(entityLinks[x].parentID);
+                            if (e == null) continue;
+                            e.childLinks.AddRange(entityLinks[x].childLinks);
+                            e.childLinks = e.childLinks.Distinct().ToList();
+                        }
 
                         //Clone parameter data to entities
                         for (int x = 0; x < paramRefSets.Count; x++)
