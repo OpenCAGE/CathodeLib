@@ -19,6 +19,8 @@ namespace CathodeLib
             byte[] content = Utilities.ReadStreamingAsset("sound_names.bin");
 #else
             byte[] content = CathodeLib.Properties.Resources.sound_names;
+            if (File.Exists(Paths.CustomSoundBin))
+                content = File.ReadAllBytes(Paths.CustomSoundBin);
 #endif
             using (MemoryStream stream = new MemoryStream())
             using (GZipStream compressedStream = new GZipStream(new MemoryStream(content), CompressionMode.Decompress))
