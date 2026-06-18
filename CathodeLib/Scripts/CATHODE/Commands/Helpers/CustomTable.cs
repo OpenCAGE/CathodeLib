@@ -28,8 +28,8 @@ namespace CathodeLib
                 byte[] content = Utilities.ReadStreamingAsset("info.dat");
 #else
                 byte[] content = CathodeLib.Properties.Resources.info;
-                if (File.Exists("data/info.dat"))
-                    content = File.ReadAllBytes("data/info.dat");
+                if (File.Exists(Paths.CustomInfoDat))
+                    content = File.ReadAllBytes(Paths.CustomInfoDat);
 #endif
 
                 using (MemoryStream stream = new MemoryStream())
