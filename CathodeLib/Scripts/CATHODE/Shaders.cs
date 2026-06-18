@@ -24,6 +24,8 @@ namespace CATHODE
         public bool Compressed { get { return _compressed; } set { _compressed = value; } }
         private bool _compressed = false;
 
+        private bool _isBespoke = false;
+
         private List<Shader> _writeList = new List<Shader>();
 
         public Shaders(string path) : base(path) { }
@@ -54,6 +56,7 @@ namespace CATHODE
                 return false;
 
             _compressed = Path.GetExtension(_filepath).ToLower() == ".gz";
+            _isBespoke = Path.GetFileName(_filepath).ToLower().Contains("bespokeshaders");
 
             if (!File.Exists(GetBinPath()))
                 return false;
@@ -123,8 +126,16 @@ namespace CATHODE
                     int[] parameterRemapCount = Utilities.ConsumeArray<int>(reader, 5);
                     int samplerRemapCount = reader.ReadInt16();
 
-                    reader.BaseStream.Position += 40; 
-                    shader.Ubershader = (SHADER_LIST)reader.ReadInt16();
+                    shader.Technique = Utilities.ReadString(reader.ReadBytes(40));
+                    if (_isBespoke)
+                    {
+                        shader.Ubershader = SHADER_LIST.BESPOKE_SHADER;
+                        reader.BaseStream.Position += 2;
+                    }
+                    else
+                    {
+                        shader.Ubershader = (SHADER_LIST)reader.ReadInt16();
+                    }
                     shader.UbershaderFeatureFlags = reader.ReadInt64();
                     shader.UbershaderRequirementFlags = reader.ReadInt64();
                     shader.RequiredShaderModel = (SHADER_MODEL)reader.ReadByte();
@@ -286,9 +297,12 @@ namespace CATHODE
                 writer.Write(shader.DomainShaderParameterRemaps.Count);
                 writer.Write((Int16)shader.SamplerRemaps.Count);
 
-                Utilities.WriteString(shader.Ubershader.ToString(), writer);
-                writer.Write(new byte[40 - shader.Ubershader.ToString().Length]);
-                writer.Write((Int16)shader.Ubershader);
+                Utilities.WriteString(shader.Technique, writer);
+                writer.Write(new byte[40 - shader.Technique.Length]);
+                if (_isBespoke)
+                    writer.Write((Int16)index);
+                else
+                    writer.Write((Int16)shader.Ubershader);
                 writer.Write(shader.UbershaderFeatureFlags);
                 writer.Write(shader.UbershaderRequirementFlags);
                 writer.Write((byte)shader.RequiredShaderModel);
@@ -469,6 +483,7 @@ namespace CATHODE
 
         public class Shader : IEquatable<Shader>
         {
+            public string Technique;
             public SHADER_LIST Ubershader;
             public SHADER_MODEL RequiredShaderModel;
 

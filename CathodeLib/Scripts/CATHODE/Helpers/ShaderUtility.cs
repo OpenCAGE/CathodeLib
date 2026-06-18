@@ -17,6 +17,9 @@ namespace CATHODE.ShaderTypes
         /// </summary>
         public static List<string> GetShaderFunctionality(SHADER_LIST shaderType, ShaderIndexType indexType)
         {
+            if (shaderType == SHADER_LIST.BESPOKE_SHADER)
+                return null;
+
             string shaderTypeName = shaderType.ToString();
 
             try
@@ -70,6 +73,9 @@ namespace CATHODE.ShaderTypes
         /// </summary>
         public static int? GetShaderFunctionalityIndex(SHADER_LIST shaderType, ShaderIndexType indexType, string enumMemberName)
         {
+            if (shaderType == SHADER_LIST.BESPOKE_SHADER)
+                return null;
+
             string shaderTypeName = shaderType.ToString();
 
             try
@@ -103,6 +109,9 @@ namespace CATHODE.ShaderTypes
         /// </summary>
         public static UberShaderParameterType? GetParameterType(SHADER_LIST shaderType, string parameterName)
         {
+            if (shaderType == SHADER_LIST.BESPOKE_SHADER)
+                return null;
+
             string shaderTypeName = shaderType.ToString();
 
             try
