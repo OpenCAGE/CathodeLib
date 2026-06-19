@@ -46,12 +46,13 @@ namespace CATHODE
                 for (int x = 0; x < entryCount; x++)
                 {
                     MaterialMapping entry = new MaterialMapping();
-                    reader.BaseStream.Position += 4; //shortguid hash of filename (useful?)
+                    reader.BaseStream.Position += 4; //shortguid hash of filename - we use our own, calculated below
                     int count = reader.ReadInt32();
                     reader.BaseStream.Position += 4; //this is to->from id count, stored last, but always empty
                     int strLength = reader.ReadInt32();
                     entry.Name = Utilities.ReadString(reader.ReadBytes(strLength));
                     entry.Name = entry.Name.Substring(_path.Length, entry.Name.Length - 4 - _path.Length);
+                    entry.ID = ShortGuidUtils.Generate(entry.Name.Replace("/", "\\").ToUpper());
                     for (int p = 0; p < count; p++)
                     {
                         MaterialMapping.Mapping mapping = new MaterialMapping.Mapping();
@@ -141,6 +142,7 @@ namespace CATHODE
         #region STRUCTURES
         public class MaterialMapping : IEquatable<MaterialMapping>
         {
+            public ShortGuid ID;
             public string Name;
             public List<Mapping> Mappings = new List<Mapping>();
 

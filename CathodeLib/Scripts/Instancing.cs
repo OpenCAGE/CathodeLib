@@ -2731,7 +2731,7 @@ namespace CathodeLib
                             cResource remapping = entity?.ParentCompositeInstanceEntity?.Resources?.Get(ShortGuidUtils.Generate("mapping")); //todo - does this actually affect nested composite instances, or just the modelreferences within the composite? i suspect the latter but if the former i'd need to go up the whole hierarchy...
                             if (remapping != null && remapping.shortGUID != ShortGuid.Invalid)
                             {
-                                var map = _level.MaterialMappings.Entries.FirstOrDefault(o => ShortGuidUtils.Generate(o.Name.Replace("/", "\\").ToUpper()) == remapping.shortGUID);
+                                var map = _level.MaterialMappings.Entries.FirstOrDefault(o => o.ID == remapping.shortGUID);
                                 if (map != null)
                                 {
                                     foreach (RenderableElements.Element element in ogReds)
