@@ -326,18 +326,16 @@ namespace CathodeLib
             type = CustomTableType.ENTITY_NAMES;
         }
 
-        public Dictionary<ShortGuid, Dictionary<ShortGuid, string>> names;
+        public Dictionary<ShortGuid, Dictionary<ShortGuid, string>> names = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>();
 
         public override void Read(BinaryReader reader)
         {
+            names.Clear();
+
             if (reader == null)
-            {
-                names = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>();
                 return;
-            }
 
             int compositeCount = reader.ReadInt32();
-            names = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>(compositeCount);
             for (int i = 0; i < compositeCount; i++)
             {
                 ShortGuid compositeID = Utilities.Consume<ShortGuid>(reader);
@@ -377,21 +375,18 @@ namespace CathodeLib
             type = CustomTableType.SHORT_GUIDS;
         }
 
-        public Dictionary<string, ShortGuid> cache;
-        public Dictionary<ShortGuid, string> cacheReversed;
+        public Dictionary<string, ShortGuid> cache = new Dictionary<string, ShortGuid>();
+        public Dictionary<ShortGuid, string> cacheReversed = new Dictionary<ShortGuid, string>();
 
         public override void Read(BinaryReader reader)
         {
+            cache.Clear();
+            cacheReversed.Clear();
+
             if (reader == null)
-            {
-                cache = new Dictionary<string, ShortGuid>();
-                cacheReversed = new Dictionary<ShortGuid, string>();
                 return;
-            }
 
             int count = reader.ReadInt32();
-            cache = new Dictionary<string, ShortGuid>();
-            cacheReversed = new Dictionary<ShortGuid, string>();
             for (int i = 0; i < count; i++)
             {
                 ShortGuid id = Utilities.Consume<ShortGuid>(reader);
@@ -420,18 +415,16 @@ namespace CathodeLib
             type = CustomTableType.COMPOSITE_PURGE_STATES;
         }
 
-        public List<ShortGuid> purged;
+        public List<ShortGuid> purged = new List<ShortGuid>();
 
         public override void Read(BinaryReader reader)
         {
+            purged.Clear();
+
             if (reader == null)
-            {
-                purged = new List<ShortGuid>();
                 return;
-            }
 
             int count = reader.ReadInt32();
-            purged = new List<ShortGuid>(count);
             for (int i = 0; i < count; i++)
             {
                 ShortGuid compositeID = Utilities.Consume<ShortGuid>(reader);
@@ -455,18 +448,16 @@ namespace CathodeLib
             type = CustomTableType.COMPOSITE_MODIFICATION_INFO;
         }
 
-        public List<ModificationInfo> modification_info;
+        public List<ModificationInfo> modification_info = new List<ModificationInfo>();
 
         public override void Read(BinaryReader reader)
         {
+            modification_info.Clear();
+
             if (reader == null)
-            {
-                modification_info = new List<ModificationInfo>();
                 return;
-            }
 
             int count = reader.ReadInt32();
-            modification_info = new List<ModificationInfo>(count);
             for (int i = 0; i < count; i++)
             {
                 ModificationInfo info = new ModificationInfo();
@@ -502,11 +493,12 @@ namespace CathodeLib
             type = CustomTableType.COMPOSITE_FLOWGRAPHS;
         }
 
-        public List<FlowgraphMeta> flowgraphs;
+        public List<FlowgraphMeta> flowgraphs = new List<FlowgraphMeta>();
 
         public override void Read(BinaryReader reader)
         {
-            flowgraphs = new List<FlowgraphMeta>();
+            flowgraphs.Clear();
+
             if (reader == null)
                 return;
 
@@ -783,18 +775,16 @@ namespace CathodeLib
             type = CustomTableType.COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO;
         }
 
-        public List<CompatibilityInfo> compatibility_info;
+        public List<CompatibilityInfo> compatibility_info = new List<CompatibilityInfo>();
 
         public override void Read(BinaryReader reader)
         {
+            compatibility_info.Clear();
+
             if (reader == null)
-            {
-                compatibility_info = new List<CompatibilityInfo>();
                 return;
-            }
 
             int count = reader.ReadInt32();
-            compatibility_info = new List<CompatibilityInfo>(count);
             for (int i = 0; i < count; i++)
             {
                 CompatibilityInfo info = new CompatibilityInfo();
@@ -827,18 +817,16 @@ namespace CathodeLib
             type = CustomTableType.COMPOSITE_PARAMETER_MODIFICATION;
         }
 
-        public Dictionary<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>> modified_params;
+        public Dictionary<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>> modified_params = new Dictionary<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>>();
 
         public override void Read(BinaryReader reader)
         {
+            modified_params.Clear();
+
             if (reader == null)
-            {
-                modified_params = new Dictionary<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>>();
                 return;
-            }
 
             int count = reader.ReadInt32();
-            modified_params = new Dictionary<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>>(count);
             for (int i = 0; i < count; i++)
             {
                 Dictionary<ShortGuid, HashSet<ShortGuid>> entities = new Dictionary<ShortGuid, HashSet<ShortGuid>>();
@@ -883,18 +871,16 @@ namespace CathodeLib
             type = CustomTableType.ENTITY_APPLIED_DEFAULTS;
         }
 
-        public Dictionary<ShortGuid, HashSet<ShortGuid>> applied_defaults;
+        public Dictionary<ShortGuid, HashSet<ShortGuid>> applied_defaults = new Dictionary<ShortGuid, HashSet<ShortGuid>>();
 
         public override void Read(BinaryReader reader)
         {
+            applied_defaults.Clear();
+
             if (reader == null)
-            {
-                applied_defaults = new Dictionary<ShortGuid, HashSet<ShortGuid>>();
                 return;
-            }
 
             int count = reader.ReadInt32();
-            applied_defaults = new Dictionary<ShortGuid, HashSet<ShortGuid>>(count);
             for (int i = 0; i < count; i++)
             {
                 HashSet<ShortGuid> entities = new HashSet<ShortGuid>();
@@ -928,24 +914,20 @@ namespace CathodeLib
             type = CustomTableType.COMPOSITE_PIN_INFO;
         }
 
-        public Dictionary<ShortGuid, List<PinInfo>> composite_pin_infos;
+        public Dictionary<ShortGuid, List<PinInfo>> composite_pin_infos = new Dictionary<ShortGuid, List<PinInfo>>();
 
         public override void Read(BinaryReader reader)
         {
+            composite_pin_infos.Clear();
+
             if (reader == null)
-            {
-                composite_pin_infos = new Dictionary<ShortGuid, List<PinInfo>>();
                 return;
-            }
 
             byte version = reader.ReadByte();
             if (version == 0 || version == 1)
-            {
-                composite_pin_infos = new Dictionary<ShortGuid, List<PinInfo>>();
                 return;
-            }
+
             int count = reader.ReadInt32();
-            composite_pin_infos = new Dictionary<ShortGuid, List<PinInfo>>(count);
             for (int i = 0; i < count; i++)
             {
                 List<PinInfo> pin_infos = new List<PinInfo>();
@@ -1006,6 +988,9 @@ namespace CathodeLib
 
         public override void Read(BinaryReader reader)
         {
+            FunctionVariantOffsets.Clear();
+            FunctionBaseClasses.Clear();
+
             if (reader == null)
                 return;
 
@@ -1069,6 +1054,8 @@ namespace CathodeLib
 
         public override void Read(BinaryReader reader)
         {
+            enums.Clear();
+
             if (reader == null)
                 return;
 
@@ -1126,18 +1113,16 @@ namespace CathodeLib
             type = CustomTableType.COMPOSITE_PATHS;
         }
 
-        public Dictionary<ShortGuid, string> composite_paths;
+        public Dictionary<ShortGuid, string> composite_paths = new Dictionary<ShortGuid, string>();
 
         public override void Read(BinaryReader reader)
         {
+            composite_paths.Clear();
+
             if (reader == null)
-            {
-                composite_paths = new Dictionary<ShortGuid, string>();
                 return;
-            }
 
             int compositeCount = reader.ReadInt32();
-            composite_paths = new Dictionary<ShortGuid, string>(compositeCount);
             for (int i = 0; i < compositeCount; i++)
                 composite_paths.Add(Utilities.Consume<ShortGuid>(reader), reader.ReadString());
         }
@@ -1187,18 +1172,16 @@ namespace CathodeLib
             type = CustomTableType.COMPOSITE_PAGE_HISTORY;
         }
 
-        public Dictionary<ShortGuid, string> last_composite_page;
+        public Dictionary<ShortGuid, string> last_composite_page = new Dictionary<ShortGuid, string>();
 
         public override void Read(BinaryReader reader)
         {
+            last_composite_page.Clear();
+
             if (reader == null)
-            {
-                last_composite_page = new Dictionary<ShortGuid, string>();
                 return;
-            }
 
             int compositeCount = reader.ReadInt32();
-            last_composite_page = new Dictionary<ShortGuid, string>(compositeCount);
             for (int i = 0; i < compositeCount; i++)
                 last_composite_page.Add(Utilities.Consume<ShortGuid>(reader), reader.ReadString());
         }
@@ -1324,6 +1307,9 @@ namespace CathodeLib
 
         public override void Read(BinaryReader reader)
         {
+            MappingAliases.Clear();
+            Mappings.Clear();
+
             if (reader == null)
                 return;
 
@@ -1400,18 +1386,16 @@ namespace CathodeLib
             type = CustomTableType.MATERIAL_NAMES;
         }
 
-        public Dictionary<string, string> material_names;
+        public Dictionary<string, string> material_names = new Dictionary<string, string>();
 
         public override void Read(BinaryReader reader)
         {
+            material_names.Clear();
+
             if (reader == null)
-            {
-                material_names = new Dictionary<string, string>();
                 return;
-            }
 
             int count = reader.ReadInt32();
-            material_names = new Dictionary<string, string>(count);
             for (int i = 0; i < count; i++)
                 material_names.Add(reader.ReadString(), reader.ReadString());
         }
