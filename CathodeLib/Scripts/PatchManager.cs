@@ -572,6 +572,9 @@ namespace CathodeLib
                         lvlName == "PRODUCTION\\TECH_RND_HZDLAB")
                         continue;
 
+                    if (lvlName.ToUpper().StartsWith("PRODUCTION\\"))
+                        lvlName = "Production" + lvlName.Substring(10);
+
                     levelsRootNode.Add(XElement.Parse("<level id=\"" + lvlName + "\" path=\"DATA\\ENV\\" + lvlName + "\" />"));
                 }
                 File.WriteAllText(pathToPackages, packagesXML.ToString());
