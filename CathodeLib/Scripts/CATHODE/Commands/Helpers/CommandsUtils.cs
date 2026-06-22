@@ -1637,6 +1637,25 @@ namespace CATHODE.Scripting
 
                 //Apply material remappings
                 ShortGuid mapping = ShortGuidUtils.Generate("mapping");
+                Parallel.ForEach(_commands.Entries, (Composite c) =>
+                {
+                    List<Entity> entities = c.GetEntities(false, true, true, false);
+                    Parallel.ForEach(entities, (Entity e) =>
+                    {
+                        Parameter p = e.GetParameter(mapping);
+                        if (p != null && p.content != null)
+                        {
+                            switch (p.content.dataType)
+                            {
+                                case DataType.STRING:
+                                    e.AddParameter(mapping, new cResource(null, MaterialMappings.GenerateMappingID(((cString)p.content).value)));
+                                    break;
+                                default:
+                                    throw new Exception("Unexpected type...");
+                            }
+                        }
+                    });
+                });
                 FlowgraphMeta.SupportedLevel levelID;
                 bool hasLevelID = Enum.TryParse(levelName.ToUpper(), out levelID);
                 foreach (MaterialMappingTable.Mapping map in CustomTable.Vanilla.MaterialMappings.Mappings)
@@ -1646,7 +1665,7 @@ namespace CATHODE.Scripting
 
                     Composite comp = _commands.GetComposite(map.CompositeID);
                     Entity ent = comp?.GetEntityByID(map.EntityID);
-                    ent?.AddParameter(mapping, new cResource(null, map.MappingID));
+                    ent?.AddParameter(mapping, new cResource(null, map.MappingID), ParameterVariant.PARAMETER, false);
                 }
                 foreach (MaterialMappingTable.MappingAlias map in CustomTable.Vanilla.MaterialMappings.MappingAliases)
                 {

@@ -74,13 +74,17 @@ namespace CATHODE.Scripting
         /// <summary>
         /// Returns a collection of all entities in the composite
         /// </summary>
-        public List<Entity> GetEntities()
+        public List<Entity> GetEntities(bool includeVariables = true, bool includeFunctions = true, bool includeAliases = true, bool includeProxies = true)
         {
-            List<Entity> toReturn = new List<Entity>(variables_dictionary.Count + functions_dictionary.Count + aliases_dictionary.Count + proxies_dictionary.Count);
-            toReturn.AddRange(variables_dictionary.Values);
-            toReturn.AddRange(functions_dictionary.Values);
-            toReturn.AddRange(aliases_dictionary.Values);
-            toReturn.AddRange(proxies_dictionary.Values);
+            List <Entity> toReturn = new List<Entity>((includeVariables ? variables_dictionary.Count : 0) + (includeFunctions ? functions_dictionary.Count : 0) + (includeAliases ? aliases_dictionary.Count : 0) + (includeProxies ? proxies_dictionary.Count : 0));
+            if (includeVariables)
+                toReturn.AddRange(variables_dictionary.Values);
+            if (includeFunctions)
+                toReturn.AddRange(functions_dictionary.Values);
+            if (includeAliases)
+                toReturn.AddRange(aliases_dictionary.Values);
+            if (includeProxies)
+                toReturn.AddRange(proxies_dictionary.Values);
             return toReturn;
         }
 

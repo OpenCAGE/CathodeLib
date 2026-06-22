@@ -2728,7 +2728,7 @@ namespace CathodeLib
                             mvr.Transform = entity.CalculateWorldTransformMatrix();
                             List<RenderableElements.Element> ogReds = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
                             List<RenderableElements.Element> reds = new List<RenderableElements.Element>();
-                            cResource remapping = entity?.ParentCompositeInstanceEntity?.Resources?.Get(ShortGuidUtils.Generate("mapping")); //todo - does this actually affect nested composite instances, or just the modelreferences within the composite? i suspect the latter but if the former i'd need to go up the whole hierarchy...
+                            cResource remapping = entity?.ParentCompositeInstanceEntity?.Resources?.Get(ShortGuidUtils.Generate("mapping"));
                             if (remapping != null && remapping.shortGUID != ShortGuid.Invalid)
                             {
                                 var map = _level.MaterialMappings.Entries.FirstOrDefault(o => o.ID == remapping.shortGUID);
@@ -2736,6 +2736,7 @@ namespace CathodeLib
                                 {
                                     foreach (RenderableElements.Element element in ogReds)
                                     {
+                                        //todo use normalise name from godot
                                         MaterialMappings.MaterialMapping.Mapping remap = map.Mappings.FirstOrDefault(o => o.from == element.Material.Name);
                                         if (remap != null)
                                         {
@@ -2763,6 +2764,7 @@ namespace CathodeLib
                                 string materialName = entity.Strings.Get(ShortGuidUtils.Generate("material"));
                                 if (materialName != "")
                                 {
+                                    //todo use normalise name from godot
                                     if (!materialName.Contains("->")) materialName = materialName + "->" + materialName;
                                     Materials.Material material = _level.Materials.Entries.FirstOrDefault(o => o.Name == materialName);
                                     if (material != null)

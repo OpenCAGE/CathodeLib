@@ -50,9 +50,8 @@ namespace CATHODE
                     int count = reader.ReadInt32();
                     reader.BaseStream.Position += 4; //this is to->from id count, stored last, but always empty
                     int strLength = reader.ReadInt32();
-                    entry.Name = Utilities.ReadString(reader.ReadBytes(strLength));
-                    entry.Name = entry.Name.Substring(_path.Length, entry.Name.Length - 4 - _path.Length);
-                    entry.ID = ShortGuidUtils.Generate(entry.Name.Replace("/", "\\").ToUpper());
+                    entry.Name = TrimMappingString(Utilities.ReadString(reader.ReadBytes(strLength)));
+                    entry.ID = GenerateMappingID(entry.Name, true);
                     for (int p = 0; p < count; p++)
                     {
                         MaterialMapping.Mapping mapping = new MaterialMapping.Mapping();
@@ -136,6 +135,24 @@ namespace CATHODE
             MaterialMapping newMatMap = matMap.Copy();
             Entries.Add(newMatMap);
             return newMatMap;
+        }
+
+        /// <summary>
+        /// Trims a material mapping name to remove the absolute path and extension
+        /// </summary>
+        public static string TrimMappingString(string str)
+        {
+            if (str.ToLower().Replace("\\", "/").StartsWith(_path.ToLower()) && str.ToLower().EndsWith(".xml"))
+                return str.Substring(_path.Length, str.Length - 4 - _path.Length);
+            return str;
+        }
+
+        /// <summary>
+        /// Generates a material mapping ID from the mapping name (this logic differs to the game's id generation, but works better for us)
+        /// </summary>
+        public static ShortGuid GenerateMappingID(string str, bool alreadyTrimmed = false)
+        {
+            return ShortGuidUtils.Generate((alreadyTrimmed ? str : TrimMappingString(str)).Replace("/", "\\").ToUpper());
         }
         #endregion
 
