@@ -13,15 +13,13 @@ namespace CathodeLib
 
         static SoundUtils()
         {
-#if UNITY_EDITOR || UNITY_STANDALONE
-            byte[] content = File.ReadAllBytes(UnityEngine.Application.streamingAssetsPath + "/sound_names.bin");
-#elif GODOT
-            byte[] content = Utilities.ReadStreamingAsset("sound_names.bin");
-#else
-            byte[] content = CathodeLib.Properties.Resources.sound_names;
+            byte[] content = null;
             if (File.Exists(Paths.CustomSoundBin))
                 content = File.ReadAllBytes(Paths.CustomSoundBin);
-#endif
+
+            if (content == null)
+                return;
+
             using (MemoryStream stream = new MemoryStream())
             using (GZipStream compressedStream = new GZipStream(new MemoryStream(content), CompressionMode.Decompress))
             {

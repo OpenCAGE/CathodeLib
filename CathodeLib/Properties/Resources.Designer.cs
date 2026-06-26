@@ -59,25 +59,5 @@ namespace CathodeLib.Properties {
                 resourceCulture = value;
             }
         }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] info {
-            get {
-                object obj = ResourceManager.GetObject("info", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] sound_names {
-            get {
-                object obj = ResourceManager.GetObject("sound_names", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
     }
 }

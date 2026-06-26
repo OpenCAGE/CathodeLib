@@ -22,15 +22,12 @@ namespace CathodeLib
         {
             public VanillaData()
             {
-#if UNITY_EDITOR || UNITY_STANDALONE
-                byte[] content = File.ReadAllBytes(UnityEngine.Application.streamingAssetsPath + "/info.dat");
-#elif GODOT
-                byte[] content = Utilities.ReadStreamingAsset("info.dat");
-#else
-                byte[] content = CathodeLib.Properties.Resources.info;
+                byte[] content = null;
                 if (File.Exists(Paths.CustomInfoDat))
                     content = File.ReadAllBytes(Paths.CustomInfoDat);
-#endif
+
+                if (content == null)
+                    return;
 
                 using (MemoryStream stream = new MemoryStream())
                 using (GZipStream compressedStream = new GZipStream(new MemoryStream(content), CompressionMode.Decompress))
