@@ -1651,7 +1651,8 @@ namespace CATHODE.Scripting
                                     e.AddParameter(mapping, new cResource(null, MaterialMappings.GenerateMappingID(((cString)p.content).value)));
                                     break;
                                 default:
-                                    throw new Exception("Unexpected type...");
+                                    Console.WriteLine("Warning - encountered existing material remapping of type " + p.content.dataType + " - this is unexpected!");
+                                    break;
                             }
                         }
                     });
