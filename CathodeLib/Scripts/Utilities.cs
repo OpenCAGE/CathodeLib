@@ -440,6 +440,27 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// Checks a given filepath to see if it's a valid path to the Alien: Isolation root folder
+        /// </summary>
+        public static bool IsGameDirectoryValid(string directory)
+        {
+            //NOTE: No longer checking for AI.exe to support non-Windows versions of the game.
+
+            if (!Directory.Exists(directory + "/data"))
+                return false;
+            if (!File.Exists(directory + "/data/tasks.txt"))
+                return false;
+            if (!File.Exists(directory + "/data/gbl_item.xml"))
+                return false;
+            if (!File.Exists(directory + "/data/packages/main.pkg"))
+                return false;
+            if (!File.Exists(directory + "/data/env/global/world/global_textures.all.pak"))
+                return false;
+
+            return true;
+        }
+
+        /// <summary>
         /// Convert a model component to a renderable element using its default materials
         /// </summary>
         public static List<RenderableElements.Element> ToRenderableElements(this Models.CS2.Component model)
