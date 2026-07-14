@@ -317,13 +317,15 @@ namespace CATHODE.Scripting
             var sb = new StringBuilder();
             for (int i = 0; i < path.Count; i++)
             {
+                Composite composite = path[i]?.Item1;
+                Entity entity = path[i]?.Item2;
                 if (includeGuids) 
                 {
                     sb.Append('[');
-                    sb.Append(path[i].Item2.shortGUID.ToByteString());
+                    sb.Append(entity != null ? entity.shortGUID.ToByteString() : "????????");
                     sb.Append("] ");
                 }
-                sb.Append(GetEntityName(path[i].Item1, path[i].Item2));
+                sb.Append(GetEntityName(composite, entity));
                 if (i != path.Count - 1) 
                     sb.Append(" -> ");
             }
@@ -1357,15 +1359,26 @@ namespace CATHODE.Scripting
         /// <summary>
         /// Get the name of an entity contained within a composite
         /// </summary>
-        public string GetEntityName(Composite composite, Entity entity) => GetEntityName(composite.shortGUID, entity.shortGUID);
+        public string GetEntityName(Composite composite, Entity entity)
+        {
+            if (composite == null || entity == null)
+                return entity?.shortGUID.ToByteString() ?? "Unknown";
+            return GetEntityName(composite.shortGUID, entity.shortGUID);
+        }
         public string GetEntityName(ShortGuid compositeID, ShortGuid entityID)
         {
-            if (_entityNames.names.TryGetValue(compositeID, out Dictionary<ShortGuid, string> customComposite))
-                if (customComposite.TryGetValue(entityID, out string customName))
-                    return customName;
-            if (CustomTable.Vanilla.EntityNames.names.TryGetValue(compositeID, out Dictionary<ShortGuid, string> vanillaComposite))
-                if (vanillaComposite.TryGetValue(entityID, out string vanillaName))
-                    return vanillaName;
+            if (_entityNames?.names != null &&
+                _entityNames.names.TryGetValue(compositeID, out Dictionary<ShortGuid, string> customComposite) &&
+                customComposite != null &&
+                customComposite.TryGetValue(entityID, out string customName))
+                return customName;
+
+            if (CustomTable.Vanilla?.EntityNames?.names != null &&
+                CustomTable.Vanilla.EntityNames.names.TryGetValue(compositeID, out Dictionary<ShortGuid, string> vanillaComposite) &&
+                vanillaComposite != null &&
+                vanillaComposite.TryGetValue(entityID, out string vanillaName))
+                return vanillaName;
+
             return entityID.ToByteString();
         }
 
