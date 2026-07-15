@@ -446,7 +446,12 @@ namespace CathodeLib
         {
             //NOTE: No longer checking for AI.exe to support non-Windows versions of the game.
 
+            if (string.IsNullOrWhiteSpace(directory))
+                return false;
+
             if (!Directory.Exists(directory + "/data"))
+                return false;
+            if (!Directory.Exists(directory + "/data/env"))
                 return false;
             if (!File.Exists(directory + "/data/tasks.txt"))
                 return false;

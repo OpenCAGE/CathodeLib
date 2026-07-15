@@ -394,7 +394,11 @@ namespace CathodeLib
         /// </summary>
         public static List<string> GetLevels(string gameDirectory)
         {
-            string[] galaxyBins = Directory.GetFiles(gameDirectory + "/DATA/ENV/", "GALAXY.DEFINITION_BIN", SearchOption.AllDirectories);
+            string envDirectory = gameDirectory + "/DATA/ENV/";
+            if (!Directory.Exists(envDirectory))
+                return new List<string>();
+
+            string[] galaxyBins = Directory.GetFiles(envDirectory, "GALAXY.DEFINITION_BIN", SearchOption.AllDirectories);
             List<string> mapList = new List<string>();
             for (int i = 0; i < galaxyBins.Length; i++)
             {
