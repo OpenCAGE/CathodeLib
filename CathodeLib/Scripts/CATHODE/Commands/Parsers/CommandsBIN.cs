@@ -316,7 +316,6 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                 {
                                                     track.keyframes.Add(new CAGEAnimation.EventTrack.Keyframe()
                                                     {
-                                                        mode = (CAGEAnimation.InterpolationMode)Utilities.Consume<int>(reader, command_entries[i + 5].Item2 + (24 * x)),
                                                         time = Utilities.Consume<float>(reader, command_entries[i + 5].Item2 + 4 + (24 * x)),
                                                         forward = Utilities.Consume<ShortGuid>(reader, command_entries[i + 5].Item2 + 8 + (24 * x)),
                                                         reverse = Utilities.Consume<ShortGuid>(reader, command_entries[i + 5].Item2 + 12 + (24 * x)),
@@ -801,7 +800,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                 offset = (int)bufferWriter.BaseStream.Position;
                                 foreach (var keyframe in eventTrack.keyframes)
                                 {
-                                    bufferWriter.Write((int)keyframe.mode);
+                                    bufferWriter.Write((int)CAGEAnimation.InterpolationMode.Linear);
                                     bufferWriter.Write(keyframe.time);
                                     Utilities.Write<ShortGuid>(bufferWriter, keyframe.forward);
                                     Utilities.Write<ShortGuid>(bufferWriter, keyframe.reverse);

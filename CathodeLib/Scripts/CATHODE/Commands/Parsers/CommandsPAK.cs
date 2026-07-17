@@ -343,7 +343,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                 for (int m = 0; m < keyframeCount; m++)
                                                 {
                                                     CAGEAnimation.EventTrack.Keyframe keyframe = new CAGEAnimation.EventTrack.Keyframe();
-                                                    keyframe.mode = (CAGEAnimation.InterpolationMode)reader_parallel.ReadInt32();
+                                                    reader_parallel.BaseStream.Position += 4;
                                                     keyframe.time = reader_parallel.ReadSingle();
                                                     keyframe.forward = Utilities.Consume<ShortGuid>(reader_parallel);
                                                     keyframe.reverse = Utilities.Consume<ShortGuid>(reader_parallel);
@@ -932,7 +932,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                 for (int ppp = 0; ppp < cageAnimationEntities[i][p].events[pp].keyframes.Count; ppp++)
                                                 {
                                                     CAGEAnimation.EventTrack.Keyframe key = cageAnimationEntities[i][p].events[pp].keyframes[ppp];
-                                                    writer.Write((Int32)key.mode);
+                                                    writer.Write((Int32)CAGEAnimation.InterpolationMode.Linear);
                                                     writer.Write(key.time);
                                                     Utilities.Write<ShortGuid>(writer, key.forward);
                                                     Utilities.Write<ShortGuid>(writer, key.reverse);

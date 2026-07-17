@@ -598,7 +598,6 @@ namespace CATHODE.Scripting
                     reverse = ShortGuidUtils.Generate("reverse_" + event_name);
                 }
 
-                public InterpolationMode mode;
                 public float time = 0.0f;
 
                 public ShortGuid forward;
