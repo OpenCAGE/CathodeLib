@@ -546,10 +546,8 @@ namespace CATHODE.Scripting
 
         public enum InterpolationMode
         {
-            Invalid,
-            Flat,
-            Linear,
-            Bezier,
+            Linear = 1,
+            Bezier = 2,
         };
 
         public enum TrackType
