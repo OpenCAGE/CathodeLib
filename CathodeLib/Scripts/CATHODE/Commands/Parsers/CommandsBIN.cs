@@ -4,6 +4,8 @@ using CathodeLib;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
+using CATHODE.Enums;
+
 
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
@@ -279,13 +281,13 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     uint keyframes = (command_entries[i + 5].Item1 & (uint)CommandTypes.COMMAND_SIZE_MASK);
                                     switch (trackType.enumIndex)
                                     {
-                                        case (int)CAGEAnimation.TrackType.FLOAT:
+                                        case (int)ANIM_TRACK_TYPE.T_FLOAT:
                                             {
-                                                CAGEAnimation.FloatTrack track = cageAnim.animations.FirstOrDefault(o => o.shortGUID == trackID);
+                                                CAGEAnimation.FloatTrack track = cageAnim.floatTracks.FirstOrDefault(o => o.shortGUID == trackID);
                                                 if (track == null)
                                                 {
                                                     track = new CAGEAnimation.FloatTrack() { shortGUID = trackID };
-                                                    cageAnim.animations.Add(track);
+                                                    cageAnim.floatTracks.Add(track);
                                                 }
                                                 keyframes /= 32;
                                                 for (int x = 0; x < keyframes - 1; x++)
@@ -301,15 +303,15 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                 }
                                             }
                                             break;
-                                        case (int)CAGEAnimation.TrackType.GUID: 
-                                        case (int)CAGEAnimation.TrackType.STRING: 
-                                        case (int)CAGEAnimation.TrackType.MASTERING:
+                                        case (int)ANIM_TRACK_TYPE.T_GUID: 
+                                        case (int)ANIM_TRACK_TYPE.T_STRING: 
+                                        case (int)ANIM_TRACK_TYPE.T_MASTERING:
                                             {
-                                                CAGEAnimation.EventTrack track = cageAnim.events.FirstOrDefault(o => o.shortGUID == trackID);
+                                                CAGEAnimation.EventTrack track = cageAnim.eventTracks.FirstOrDefault(o => o.shortGUID == trackID);
                                                 if (track == null)
                                                 {
                                                     track = new CAGEAnimation.EventTrack() { shortGUID = trackID };
-                                                    cageAnim.events.Add(track);
+                                                    cageAnim.eventTracks.Add(track);
                                                 }
                                                 keyframes /= 24;
                                                 for (int x = 0; x < keyframes - 1; x++)
@@ -319,7 +321,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                         time = Utilities.Consume<float>(reader, command_entries[i + 5].Item2 + 4 + (24 * x)),
                                                         forward = Utilities.Consume<ShortGuid>(reader, command_entries[i + 5].Item2 + 8 + (24 * x)),
                                                         reverse = Utilities.Consume<ShortGuid>(reader, command_entries[i + 5].Item2 + 12 + (24 * x)),
-                                                        track_type = (CAGEAnimation.TrackType)Utilities.Consume<int>(reader, command_entries[i + 5].Item2 + 16 + (24 * x)),
+                                                        track_type = (ANIM_TRACK_TYPE)Utilities.Consume<int>(reader, command_entries[i + 5].Item2 + 16 + (24 * x)),
                                                         duration = Utilities.Consume<float>(reader, command_entries[i + 5].Item2 + 20 + (24 * x)),
                                                     });
                                                 }
@@ -730,7 +732,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                 commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_PATH | (uint)(connection.connectedEntity.path.Length * 4), offset));
                             }
 
-                            foreach (var floatTrack in cageAnim.animations)
+                            foreach (var floatTrack in cageAnim.floatTracks)
                             {
                                 int offset = (int)bufferWriter.BaseStream.Position;
                                 commands.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_TRACK | CommandTypes.COMMAND_ADD), offset));
@@ -748,7 +750,7 @@ namespace CATHODE.Scripting.Internal.Parsers
 
                                 offset = (int)bufferWriter.BaseStream.Position;
                                 Utilities.Write<ShortGuid>(bufferWriter, ShortGuids.ANIM_TRACK_TYPE);
-                                bufferWriter.Write((int)CAGEAnimation.TrackType.FLOAT);
+                                bufferWriter.Write((int)ANIM_TRACK_TYPE.T_FLOAT);
                                 commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_ENUM | 8, offset));
 
                                 offset = (int)bufferWriter.BaseStream.Position;
@@ -776,7 +778,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                 commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_FLOAT_TRACK | (uint)(32 * (floatTrack.keyframes.Count + 1)), offset));
                             }
 
-                            foreach (var eventTrack in cageAnim.events)
+                            foreach (var eventTrack in cageAnim.eventTracks)
                             {
                                 int offset = (int)bufferWriter.BaseStream.Position;
                                 commands.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_TRACK | CommandTypes.COMMAND_ADD), offset));
@@ -794,7 +796,7 @@ namespace CATHODE.Scripting.Internal.Parsers
 
                                 offset = (int)bufferWriter.BaseStream.Position;
                                 Utilities.Write<ShortGuid>(bufferWriter, ShortGuids.ANIM_TRACK_TYPE);
-                                bufferWriter.Write((int)(eventTrack.keyframes.Count == 0 ? CAGEAnimation.TrackType.INVALID : eventTrack.keyframes[0].track_type));
+                                bufferWriter.Write((int)(eventTrack.keyframes.Count == 0 ? ANIM_TRACK_TYPE.UNKNOWN_ANIM_TRACK_TYPE : eventTrack.keyframes[0].track_type));
                                 commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_ENUM | 8, offset));
 
                                 offset = (int)bufferWriter.BaseStream.Position;

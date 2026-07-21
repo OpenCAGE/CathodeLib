@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
+using CATHODE.Enums;
+
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
@@ -326,7 +328,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     keyframe.tan_out = Utilities.Consume<Vector2>(reader_parallel);
                                                     animation.keyframes.Add(keyframe);
                                                 }
-                                                animEntity.animations.Add(animation);
+                                                animEntity.floatTracks.Add(animation);
                                             }
 
                                             reader_parallel.BaseStream.Position = eventOffset;
@@ -347,11 +349,11 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     keyframe.time = reader_parallel.ReadSingle();
                                                     keyframe.forward = Utilities.Consume<ShortGuid>(reader_parallel);
                                                     keyframe.reverse = Utilities.Consume<ShortGuid>(reader_parallel);
-                                                    keyframe.track_type = (CAGEAnimation.TrackType)reader_parallel.ReadInt32();
+                                                    keyframe.track_type = (ANIM_TRACK_TYPE)reader_parallel.ReadInt32();
                                                     keyframe.duration = reader_parallel.ReadSingle();
                                                     thisParamSet.keyframes.Add(keyframe);
                                                 }
-                                                animEntity.events.Add(thisParamSet);
+                                                animEntity.eventTracks.Add(thisParamSet);
                                             }
                                             break;
                                         }
@@ -526,7 +528,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                     if (function.function == FunctionType.CAGEAnimation)
                     {
                         CAGEAnimation thisEntity = (CAGEAnimation)function;
-                        if (thisEntity.connections.Count == 0 && thisEntity.animations.Count == 0 && thisEntity.events.Count == 0) continue;
+                        if (thisEntity.connections.Count == 0 && thisEntity.floatTracks.Count == 0 && thisEntity.eventTracks.Count == 0) continue;
                         cageAnimationEntities[i].Add(thisEntity);
                     }
                     else if (function.function == FunctionType.TriggerSequence)
@@ -887,14 +889,14 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                 writer.Write(header.connectedEntity.path.Length);
                                             }
 
-                                            List<int> internalOffsets = new List<int>(cageAnimationEntities[i][p].animations.Count);
-                                            for (int pp = 0; pp < cageAnimationEntities[i][p].animations.Count; pp++)
+                                            List<int> internalOffsets = new List<int>(cageAnimationEntities[i][p].floatTracks.Count);
+                                            for (int pp = 0; pp < cageAnimationEntities[i][p].floatTracks.Count; pp++)
                                             {
                                                 int toPointTo = (int)writer.BaseStream.Position;
-                                                cageAnimationEntities[i][p].animations[pp].keyframes = cageAnimationEntities[i][p].animations[pp].keyframes.OrderBy(o => o.time).ToList();
-                                                for (int ppp = 0; ppp < cageAnimationEntities[i][p].animations[pp].keyframes.Count; ppp++)
+                                                cageAnimationEntities[i][p].floatTracks[pp].keyframes = cageAnimationEntities[i][p].floatTracks[pp].keyframes.OrderBy(o => o.time).ToList();
+                                                for (int ppp = 0; ppp < cageAnimationEntities[i][p].floatTracks[pp].keyframes.Count; ppp++)
                                                 {
-                                                    CAGEAnimation.FloatTrack.Keyframe key = cageAnimationEntities[i][p].animations[pp].keyframes[ppp];
+                                                    CAGEAnimation.FloatTrack.Keyframe key = cageAnimationEntities[i][p].floatTracks[pp].keyframes[ppp];
                                                     writer.Write((Int32)key.mode);
                                                     writer.Write(key.time);
                                                     Utilities.Write<Vector2>(writer, key.value);
@@ -906,32 +908,32 @@ namespace CATHODE.Scripting.Internal.Parsers
 
                                                 float minSeconds = 0;
                                                 float maxSeconds = 0;
-                                                if (cageAnimationEntities[i][p].animations[pp].keyframes.Count != 0)
+                                                if (cageAnimationEntities[i][p].floatTracks[pp].keyframes.Count != 0)
                                                 {
-                                                    minSeconds = cageAnimationEntities[i][p].animations[pp].keyframes[0].time;
-                                                    maxSeconds = cageAnimationEntities[i][p].animations[pp].keyframes[cageAnimationEntities[i][p].animations[pp].keyframes.Count - 1].time;
+                                                    minSeconds = cageAnimationEntities[i][p].floatTracks[pp].keyframes[0].time;
+                                                    maxSeconds = cageAnimationEntities[i][p].floatTracks[pp].keyframes[cageAnimationEntities[i][p].floatTracks[pp].keyframes.Count - 1].time;
                                                 }
                                                 writer.Write(minSeconds);
                                                 writer.Write(maxSeconds);
 
-                                                Utilities.Write(writer, cageAnimationEntities[i][p].animations[pp].shortGUID);
+                                                Utilities.Write(writer, cageAnimationEntities[i][p].floatTracks[pp].shortGUID);
 
                                                 writer.Write(toPointTo / 4);
-                                                writer.Write(cageAnimationEntities[i][p].animations[pp].keyframes.Count);
+                                                writer.Write(cageAnimationEntities[i][p].floatTracks[pp].keyframes.Count);
                                             }
 
                                             int animationOffset = (int)writer.BaseStream.Position;
                                             Utilities.Write<int>(writer, internalOffsets);
 
-                                            internalOffsets = new List<int>(cageAnimationEntities[i][p].events.Count);
-                                            for (int pp = 0; pp < cageAnimationEntities[i][p].events.Count; pp++)
+                                            internalOffsets = new List<int>(cageAnimationEntities[i][p].eventTracks.Count);
+                                            for (int pp = 0; pp < cageAnimationEntities[i][p].eventTracks.Count; pp++)
                                             {
                                                 int toPointTo = (int)writer.BaseStream.Position;
-                                                List<CAGEAnimation.Connection> keyframeRefs = cageAnimationEntities[i][p].connections.FindAll(o => o.target_track == cageAnimationEntities[i][p].events[pp].shortGUID);
-                                                cageAnimationEntities[i][p].events[pp].keyframes = cageAnimationEntities[i][p].events[pp].keyframes.OrderBy(o => o.time).ToList();
-                                                for (int ppp = 0; ppp < cageAnimationEntities[i][p].events[pp].keyframes.Count; ppp++)
+                                                List<CAGEAnimation.Connection> keyframeRefs = cageAnimationEntities[i][p].connections.FindAll(o => o.target_track == cageAnimationEntities[i][p].eventTracks[pp].shortGUID);
+                                                cageAnimationEntities[i][p].eventTracks[pp].keyframes = cageAnimationEntities[i][p].eventTracks[pp].keyframes.OrderBy(o => o.time).ToList();
+                                                for (int ppp = 0; ppp < cageAnimationEntities[i][p].eventTracks[pp].keyframes.Count; ppp++)
                                                 {
-                                                    CAGEAnimation.EventTrack.Keyframe key = cageAnimationEntities[i][p].events[pp].keyframes[ppp];
+                                                    CAGEAnimation.EventTrack.Keyframe key = cageAnimationEntities[i][p].eventTracks[pp].keyframes[ppp];
                                                     writer.Write((Int32)CAGEAnimation.InterpolationMode.Linear);
                                                     writer.Write(key.time);
                                                     Utilities.Write<ShortGuid>(writer, key.forward);
@@ -944,18 +946,18 @@ namespace CATHODE.Scripting.Internal.Parsers
 
                                                 float minSeconds = 0;
                                                 float maxSeconds = 0;
-                                                if (cageAnimationEntities[i][p].events[pp].keyframes.Count != 0)
+                                                if (cageAnimationEntities[i][p].eventTracks[pp].keyframes.Count != 0)
                                                 {
-                                                    minSeconds = cageAnimationEntities[i][p].events[pp].keyframes[0].time;
-                                                    maxSeconds = cageAnimationEntities[i][p].events[pp].keyframes[cageAnimationEntities[i][p].events[pp].keyframes.Count - 1].time;
+                                                    minSeconds = cageAnimationEntities[i][p].eventTracks[pp].keyframes[0].time;
+                                                    maxSeconds = cageAnimationEntities[i][p].eventTracks[pp].keyframes[cageAnimationEntities[i][p].eventTracks[pp].keyframes.Count - 1].time;
                                                 }
                                                 writer.Write(minSeconds);
                                                 writer.Write(maxSeconds);
 
-                                                Utilities.Write(writer, cageAnimationEntities[i][p].events[pp].shortGUID);
+                                                Utilities.Write(writer, cageAnimationEntities[i][p].eventTracks[pp].shortGUID);
 
                                                 writer.Write(toPointTo / 4);
-                                                writer.Write(cageAnimationEntities[i][p].events[pp].keyframes.Count);
+                                                writer.Write(cageAnimationEntities[i][p].eventTracks[pp].keyframes.Count);
                                             }
 
                                             int eventOffset = (int)writer.BaseStream.Position;
@@ -966,9 +968,9 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             writer.Write(headerOffset / 4);
                                             writer.Write(cageAnimationEntities[i][p].connections.Count);
                                             writer.Write(animationOffset / 4);
-                                            writer.Write(cageAnimationEntities[i][p].animations.Count);
+                                            writer.Write(cageAnimationEntities[i][p].floatTracks.Count);
                                             writer.Write(eventOffset / 4);
-                                            writer.Write(cageAnimationEntities[i][p].events.Count);
+                                            writer.Write(cageAnimationEntities[i][p].eventTracks.Count);
                                         }
 
                                         scriptPointerOffsetInfo[(int)CompositeFileData.CAGEANIMATION_DATA] = new OffsetPair(writer.BaseStream.Position, globalOffsets.Count);

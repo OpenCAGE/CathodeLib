@@ -4,6 +4,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using CATHODE.Enums;
+
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
@@ -524,8 +526,8 @@ namespace CATHODE.Scripting
         public CAGEAnimation(ShortGuid id) : base(id, FunctionType.CAGEAnimation) { }
 
         public List<Connection> connections = new List<Connection>();
-        public List<FloatTrack> animations = new List<FloatTrack>();
-        public List<EventTrack> events = new List<EventTrack>();
+        public List<FloatTrack> floatTracks = new List<FloatTrack>();
+        public List<EventTrack> eventTracks = new List<EventTrack>();
 
         [Serializable]
         public class Connection
@@ -548,18 +550,6 @@ namespace CATHODE.Scripting
         {
             Linear = 1,
             Bezier = 2,
-        };
-
-        public enum TrackType
-        {
-            FLOAT,
-            FLOAT3,
-            POSITION,
-            STRING,
-            GUID,
-            MASTERING,
-
-            INVALID = -1
         };
 
         [Serializable]
@@ -596,6 +586,14 @@ namespace CATHODE.Scripting
                     this.time = time;
                     forward = ShortGuidUtils.Generate(event_name);
                     reverse = ShortGuidUtils.Generate("reverse_" + event_name);
+                    track_type = ANIM_TRACK_TYPE.T_STRING;
+                }
+                public Keyframe(float time, FunctionEntity entity)
+                {
+                    this.time = time;
+                    forward = entity.shortGUID;
+                    // how do we calculate reverse?
+                    track_type = ANIM_TRACK_TYPE.T_GUID;
                 }
 
                 public float time = 0.0f;
@@ -603,7 +601,7 @@ namespace CATHODE.Scripting
                 public ShortGuid forward;
                 public ShortGuid reverse; //"reverse_" + forward
 
-                public TrackType track_type;
+                public ANIM_TRACK_TYPE track_type;
                 public float duration;
             }
         }
