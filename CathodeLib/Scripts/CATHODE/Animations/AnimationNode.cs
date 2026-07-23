@@ -85,6 +85,121 @@ namespace CATHODE.Animations
                 _byName[newNode.Name] = newNode;
         }
 
+        public void RemoveNode(AnimationNode node)
+        {
+            if (node == null)
+                return;
+
+            Nodes.Remove(node);
+            Children.Remove(node);
+
+            if (!string.IsNullOrEmpty(node.Name))
+            {
+                if (_byName.TryGetValue(node.Name, out AnimationNode mapped) && ReferenceEquals(mapped, node))
+                    _byName.Remove(node.Name);
+                _byNameAndType.Remove((node.Name, node.Type));
+            }
+
+            foreach (AnimationNode other in Nodes)
+                ClearReferencesTo(other, node);
+            ClearReferencesTo(this, node);
+        }
+
+        private static void ClearReferencesTo(AnimationNode owner, AnimationNode target)
+        {
+            if (owner == null || target == null)
+                return;
+
+            owner.Children.Remove(target);
+
+            switch (owner)
+            {
+                case LeafNode leaf:
+                    if (ReferenceEquals(leaf.Callback, target)) leaf.Callback = null;
+                    if (ReferenceEquals(leaf.OptionalContextParam, target)) leaf.OptionalContextParam = null;
+                    if (ReferenceEquals(leaf.OptionalConvergeVector, target)) leaf.OptionalConvergeVector = null;
+                    if (ReferenceEquals(leaf.OptionalConvergeFloat, target)) leaf.OptionalConvergeFloat = null;
+                    break;
+                case FloatInterpolatorNode interp:
+                    if (ReferenceEquals(interp.SourceParameter, target)) interp.SourceParameter = null;
+                    break;
+                case PropertyListenerNode listener:
+                    if (ReferenceEquals(listener.LeafNode, target)) listener.LeafNode = null;
+                    break;
+                case SelectorNode selector:
+                    if (ReferenceEquals(selector.ParameterBinding, target)) selector.ParameterBinding = null;
+                    if (selector.States != null)
+                    {
+                        foreach (var state in selector.States)
+                        {
+                            if (state != null && ReferenceEquals(state.Node, target))
+                                state.Node = null;
+                        }
+                    }
+                    break;
+                case ParametricNode parametric:
+                    if (ReferenceEquals(parametric.ParameterBinding, target)) parametric.ParameterBinding = null;
+                    if (parametric.States != null)
+                    {
+                        foreach (var state in parametric.States)
+                        {
+                            if (state != null && ReferenceEquals(state.Node, target))
+                                state.Node = null;
+                        }
+                    }
+                    break;
+                case Parametric2DNode parametric2D:
+                    if (ReferenceEquals(parametric2D.ParameterBindingX, target)) parametric2D.ParameterBindingX = null;
+                    if (ReferenceEquals(parametric2D.ParameterBindingY, target)) parametric2D.ParameterBindingY = null;
+                    if (ReferenceEquals(parametric2D.OverflowCallback, target)) parametric2D.OverflowCallback = null;
+                    if (parametric2D is Parametric3DNode parametric3D)
+                    {
+                        if (ReferenceEquals(parametric3D.ParameterBindingZ, target)) parametric3D.ParameterBindingZ = null;
+                        if (parametric3D is Parametric4DNode parametric4D)
+                        {
+                            if (ReferenceEquals(parametric4D.ParameterBindingW, target)) parametric4D.ParameterBindingW = null;
+                        }
+                    }
+                    break;
+                case AdditiveBlendNode additive:
+                    if (ReferenceEquals(additive.BaseNode, target)) additive.BaseNode = null;
+                    if (ReferenceEquals(additive.AdditiveNode, target)) additive.AdditiveNode = null;
+                    if (additive is ParametricAdditiveBlendNode parametricAdditive
+                        && ReferenceEquals(parametricAdditive.WeightControlParameter, target))
+                        parametricAdditive.WeightControlParameter = null;
+                    break;
+                case RangedSelectorNode ranged:
+                    if (ReferenceEquals(ranged.ParameterBinding, target)) ranged.ParameterBinding = null;
+                    if (ranged.States != null)
+                    {
+                        foreach (var state in ranged.States)
+                        {
+                            if (state != null && ReferenceEquals(state.Node, target))
+                                state.Node = null;
+                        }
+                    }
+                    break;
+                case FootSyncSelectorNode footSync:
+                    if (ReferenceEquals(footSync.LeftStrikeChild, target)) footSync.LeftStrikeChild = null;
+                    if (ReferenceEquals(footSync.RightStrikeChild, target)) footSync.RightStrikeChild = null;
+                    break;
+                case IkNode ik:
+                    if (ReferenceEquals(ik.IkEffector, target)) ik.IkEffector = null;
+                    break;
+                case WeightedNode weighted:
+                    if (ReferenceEquals(weighted.Parameter, target)) weighted.Parameter = null;
+                    if (ReferenceEquals(weighted.Child, target)) weighted.Child = null;
+                    break;
+                case RandomisedLeafNode randomised:
+                    if (ReferenceEquals(randomised.Callback, target)) randomised.Callback = null;
+                    if (ReferenceEquals(randomised.RandomCallback, target)) randomised.RandomCallback = null;
+                    if (ReferenceEquals(randomised.OptionalAnimationContext, target)) randomised.OptionalAnimationContext = null;
+                    if (ReferenceEquals(randomised.OptionalConvergeVector, target)) randomised.OptionalConvergeVector = null;
+                    if (ReferenceEquals(randomised.OptionalConvergeFloat, target)) randomised.OptionalConvergeFloat = null;
+                    break;
+            }
+        }
+
         public bool TryGetNode(string name, out AnimationNode node, NodeType? type = null)
         {
             node = null;
