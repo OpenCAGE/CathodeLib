@@ -14,14 +14,17 @@ namespace CathodeLib
     {
         public Textures Textures;
 
+        public PAK2 Animations;
+
         public AnimationStrings AnimationStrings;
         public AnimationStrings AnimationStrings_Debug;
 
-        public Global(string path, PAK2 animPAK)
+        public Global(string path)
         {
             Textures = new Textures(path + "\\WORLD\\GLOBAL_TEXTURES.ALL.PAK");
-            AnimationStrings = new AnimationStrings(animPAK.Entries.FirstOrDefault(o => o.Filename.Contains("ANIM_STRING_DB.BIN")).Content);
-            AnimationStrings_Debug = new AnimationStrings(animPAK.Entries.FirstOrDefault(o => o.Filename.Contains("ANIM_STRING_DB_DEBUG.BIN")).Content);
+            Animations = new PAK2(path + "..\\..\\GLOBAL\\ANIMATION.PAK");
+            AnimationStrings = new AnimationStrings(Animations.Entries.FirstOrDefault(o => o.Filename.Contains("ANIM_STRING_DB.BIN")).Content);
+            AnimationStrings_Debug = new AnimationStrings(Animations.Entries.FirstOrDefault(o => o.Filename.Contains("ANIM_STRING_DB_DEBUG.BIN")).Content);
         }
 
         ~Global()

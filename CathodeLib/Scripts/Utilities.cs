@@ -504,9 +504,7 @@ namespace CathodeLib
         /// </summary>
         public static Level LoadLevel(string pathToAI, string level)
         {
-            PAK2 animPAK = new PAK2(pathToAI + "\\DATA\\GLOBAL\\ANIMATION.PAK");
-            Global global = new Global(pathToAI + "\\DATA\\ENV\\GLOBAL\\", animPAK);
-            return new Level(pathToAI + "\\DATA\\ENV\\" + level, global);
+            return new Level(pathToAI + "\\DATA\\ENV\\" + level, new Global(pathToAI + "\\DATA\\ENV\\GLOBAL\\"));
         }
 
         /// <summary>
