@@ -691,6 +691,8 @@ namespace CATHODE
 
                 writer.Write(66);
 
+                writer.Write(Entries.Count);
+                writer.Write(Entries.Count);
                 for (int i = 0; i < Entries.Count; i++)
                 {
                     writer.Write(_strings.GetID(Entries[i].Name));
