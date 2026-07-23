@@ -1011,7 +1011,7 @@ namespace CATHODE
                         writer.Write(data.RandomCallback == null ? 0 : _strings.GetID(data.RandomCallback.Name));
                         writer.Write(data.Looping);
                         writer.Write(data.NewSelectionOnLoop);
-                        RandomisedLeafNode.Animation[] anims = data.AnimationPool.Where(o => o.AnimationName != "").ToArray();
+                        RandomisedLeafNode.Animation[] anims = data.AnimationPool.Where(o => o != null && o.AnimationName != "").ToArray();
                         writer.Write(anims.Length);
                         foreach (var anim in anims)
                             writer.Write(anim.Mirrored);
