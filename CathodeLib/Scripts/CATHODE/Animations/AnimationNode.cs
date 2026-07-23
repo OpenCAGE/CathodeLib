@@ -9,6 +9,11 @@ namespace CATHODE.Animations
         public NodeType Type; // ANIM_Base
         public string Name = "";
 
+        /// <summary>
+        /// Binary nesting under this node (from ANIM_TREE_DB). Distinct from name-based references like BlendSet/States.
+        /// </summary>
+        public List<AnimationNode> Children = new List<AnimationNode>();
+
         public override bool Equals(object obj)
         {
             return obj is AnimationNode node && Name == node.Name && Type == node.Type;
@@ -42,7 +47,6 @@ namespace CATHODE.Animations
         public float MaxInitialPlayspeed = 1.0f;
 
         public HashSet<AnimationNode> Nodes = new HashSet<AnimationNode>(); //All nodes contained within this tree
-        public HashSet<AnimationNode> Children = new HashSet<AnimationNode>(); //Direct children of this top level node
 
         public AnimationTree()
         {

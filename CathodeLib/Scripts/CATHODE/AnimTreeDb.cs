@@ -346,7 +346,7 @@ namespace CATHODE
                     break;
                 case NodeType.ANIM_2DParametric:
                     {
-                        string BlendSet = _strings.GetString(reader.ReadUInt32());
+                        uint blendSetId = reader.ReadUInt32();
 
                         uint XParameter = reader.ReadUInt32();
                         uint YParameter = reader.ReadUInt32();
@@ -371,6 +371,8 @@ namespace CATHODE
                             };
                         }
 
+                        if (blendSetId != 0)
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(blendSetId), (n, found) => ((Parametric2DNode)n).BlendSet = found);
                         if (XParameter != 0)
                             _nodeResolver.RegisterLookup(node, _strings.GetString(XParameter), (n, found) => ((Parametric2DNode)n).ParameterBindingX = found is ParameterNode ? (ParameterNode)found : null);
                         if (YParameter != 0)
@@ -399,6 +401,10 @@ namespace CATHODE
                             SyncBlendSet = reader.ReadBoolean()
                         };
 
+                        if (BlendSet != 0)
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(BlendSet), (n, found) => ((Parametric4DNode)n).BlendSet = found);
+                        if (BlendSetExtra != 0)
+                            _nodeResolver.RegisterLookup(node, _strings.GetString(BlendSetExtra), (n, found) => ((Parametric4DNode)n).ExtraBlendSet = found);
                         if (XParameter != 0)
                             _nodeResolver.RegisterLookup(node, _strings.GetString(XParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingX = found is ParameterNode ? (ParameterNode)found : null);
                         if (YParameter != 0)
@@ -433,7 +439,7 @@ namespace CATHODE
                             Target = (IkControlTarget)reader.ReadUInt32(),
                             EffectorFullyEffectiveRadius = reader.ReadSingle(),
                             EffectorLeastEffectiveRadius = reader.ReadSingle(),
-                            FalloffRate = reader.ReadUInt32(),
+                            FalloffRate = reader.ReadSingle(),
                             EnforceTranslation = reader.ReadByte() == 1,
                             EnforceEndBoneRotation = reader.ReadByte() == 1
                         };
@@ -672,6 +678,7 @@ namespace CATHODE
             {
                 var childNode = ReadNode(reader, tree);
                 tree.Nodes.Add(childNode);
+                node.Children.Add(childNode);
 
                 if (node.Type == NodeType.ANIM_Weighted)
                 {
@@ -843,6 +850,8 @@ namespace CATHODE
         {
             writer.Write((uint)(node.Type == NodeType.ANIM_3DParametric ? NodeType.ANIM_2DParametric : node.Type));
             writer.Write(_strings.GetID(node.Name));
+
+            writer.Write(node.Children.Count);
 
             switch (node.Type)
             {
@@ -1033,106 +1042,8 @@ namespace CATHODE
                     break;
             }
 
-            // Write children count and recursively write child nodes
-            var children = GetChildrenForNode(node);
-            writer.Write(children.Count);
-            foreach (var child in children)
+            foreach (var child in node.Children)
                 WriteNode(writer, child);
-        }
-
-        /// <summary>
-        /// Get the children for a given node based on its type
-        /// </summary>
-        private List<AnimationNode> GetChildrenForNode(AnimationNode node)
-        {
-            var children = new List<AnimationNode>();
-
-            switch (node.Type)
-            {
-                case NodeType.ANIM_Selector:
-                case NodeType.ANIM_Enumerated_Selector:
-                    {
-                        SelectorNode selector = (SelectorNode)node;
-                        foreach (var state in selector.States)
-                        {
-                            if (state.Node != null)
-                                children.Add(state.Node);
-                        }
-                    }
-                    break;
-                case NodeType.ANIM_Parametric:
-                    {
-                        ParametricNode parametric = (ParametricNode)node;
-                        foreach (var state in parametric.States)
-                        {
-                            if (state.Node != null)
-                                children.Add(state.Node);
-                        }
-                    }
-                    break;
-                case NodeType.ANIM_2DParametric:
-                case NodeType.ANIM_3DParametric:
-                case NodeType.ANIM_4DParametric:
-                    {
-                        Parametric2DNode parametric2D = (Parametric2DNode)node;
-                        if (parametric2D.BlendSet != null)
-                            children.Add(parametric2D.BlendSet);
-                        
-                        if (node.Type == NodeType.ANIM_4DParametric)
-                        {
-                            Parametric4DNode parametric4D = (Parametric4DNode)node;
-                            if (parametric4D.ExtraBlendSet != null)
-                                children.Add(parametric4D.ExtraBlendSet);
-                        }
-                    }
-                    break;
-                case NodeType.ANIM_Additive_Blend:
-                    {
-                        AdditiveBlendNode additive = (AdditiveBlendNode)node;
-                        if (additive.BaseNode != null)
-                            children.Add(additive.BaseNode);
-                        if (additive.AdditiveNode != null)
-                            children.Add(additive.AdditiveNode);
-                    }
-                    break;
-                case NodeType.ANIM_Parametric_Additive_Blend:
-                    {
-                        ParametricAdditiveBlendNode parametricAdditive = (ParametricAdditiveBlendNode)node;
-                        if (parametricAdditive.BaseNode != null)
-                            children.Add(parametricAdditive.BaseNode);
-                        if (parametricAdditive.AdditiveNode != null)
-                            children.Add(parametricAdditive.AdditiveNode);
-                    }
-                    break;
-                case NodeType.ANIM_Ranged_Selector:
-                    {
-                        RangedSelectorNode ranged = (RangedSelectorNode)node;
-                        foreach (var state in ranged.States)
-                        {
-                            if (state.Node != null)
-                                children.Add(state.Node);
-                        }
-                    }
-                    break;
-                case NodeType.ANIM_Foot_Sync_Selector:
-                    {
-                        FootSyncSelectorNode footSync = (FootSyncSelectorNode)node;
-                        if (footSync.LeftStrikeChild != null)
-                            children.Add(footSync.LeftStrikeChild);
-                        if (footSync.RightStrikeChild != null)
-                            children.Add(footSync.RightStrikeChild);
-                    }
-                    break;
-                case NodeType.ANIM_Weighted:
-                    {
-                        WeightedNode weighted = (WeightedNode)node;
-                        if (weighted.Child != null)
-                            children.Add(weighted.Child);
-                    }
-                    break;
-            }
-
-            return children;
         }
         #endregion
 
