@@ -200,6 +200,28 @@ namespace CATHODE.Animations
             }
         }
 
+        public void RenameNode(AnimationNode node, string newName)
+        {
+            if (node == null || string.IsNullOrEmpty(newName) || node.Name == newName)
+                return;
+
+            if (TryGetNode(newName, out AnimationNode existing) && !ReferenceEquals(existing, node))
+                throw new InvalidOperationException($"A node named '{newName}' already exists in this tree.");
+
+            string oldName = node.Name;
+            if (!string.IsNullOrEmpty(oldName))
+            {
+                if (_byName.TryGetValue(oldName, out AnimationNode mapped) && ReferenceEquals(mapped, node))
+                    _byName.Remove(oldName);
+                _byNameAndType.Remove((oldName, node.Type));
+            }
+
+            node.Name = newName;
+            if (!_byName.ContainsKey(newName))
+                _byName[newName] = node;
+            _byNameAndType[(newName, node.Type)] = node;
+        }
+
         public bool TryGetNode(string name, out AnimationNode node, NodeType? type = null)
         {
             node = null;
