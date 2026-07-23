@@ -8,10 +8,6 @@ namespace CATHODE.Animations
     {
         public NodeType Type; // ANIM_Base
         public string Name = "";
-
-        /// <summary>
-        /// Binary nesting under this node (from ANIM_TREE_DB). Distinct from name-based references like BlendSet/States.
-        /// </summary>
         public List<AnimationNode> Children = new List<AnimationNode>();
 
         public override bool Equals(object obj)
@@ -46,11 +42,64 @@ namespace CATHODE.Animations
         public float MinInitialPlayspeed = 1.0f;
         public float MaxInitialPlayspeed = 1.0f;
 
-        public HashSet<AnimationNode> Nodes = new HashSet<AnimationNode>(); //All nodes contained within this tree
+        public List<AnimationNode> Nodes { get; } = new List<AnimationNode>();
+
+        private readonly Dictionary<string, AnimationNode> _byName = new Dictionary<string, AnimationNode>();
+        private readonly Dictionary<(string Name, NodeType Type), AnimationNode> _byNameAndType = new Dictionary<(string, NodeType), AnimationNode>();
 
         public AnimationTree()
         {
             Type = NodeType.ANIM_Tree_Top_Level;
+        }
+
+        public void AddNode(AnimationNode node)
+        {
+            if (node == null || string.IsNullOrEmpty(node.Name))
+                return;
+            Nodes.Add(node);
+            if (!_byName.ContainsKey(node.Name))
+                _byName[node.Name] = node;
+            var key = (node.Name, node.Type);
+            if (!_byNameAndType.ContainsKey(key))
+                _byNameAndType[key] = node;
+        }
+
+        public void ReplaceNode(AnimationNode oldNode, AnimationNode newNode)
+        {
+            if (oldNode == null || newNode == null || string.IsNullOrEmpty(newNode.Name))
+                return;
+            int idx = Nodes.IndexOf(oldNode);
+            if (idx >= 0)
+                Nodes[idx] = newNode;
+            else
+                Nodes.Add(newNode);
+
+            _byNameAndType.Remove((oldNode.Name, oldNode.Type));
+            _byNameAndType[(newNode.Name, newNode.Type)] = newNode;
+
+            if (_byName.TryGetValue(oldNode.Name, out AnimationNode mapped) && ReferenceEquals(mapped, oldNode))
+                _byName.Remove(oldNode.Name);
+            if (!_byName.ContainsKey(newNode.Name))
+                _byName[newNode.Name] = newNode;
+            else if (ReferenceEquals(_byName[newNode.Name], oldNode))
+                _byName[newNode.Name] = newNode;
+        }
+
+        public bool TryGetNode(string name, out AnimationNode node, NodeType? type = null)
+        {
+            node = null;
+            if (string.IsNullOrEmpty(name))
+                return false;
+            if (type.HasValue)
+                return _byNameAndType.TryGetValue((name, type.Value), out node);
+            return _byName.TryGetValue(name, out node);
+        }
+
+        public T GetNode<T>(string name, NodeType? type = null) where T : AnimationNode
+        {
+            if (TryGetNode(name, out AnimationNode node, type) && node is T typed)
+                return typed;
+            return null;
         }
     }
 
@@ -197,7 +246,7 @@ namespace CATHODE.Animations
         public bool SyncBlendSet = true;
         public bool LoopBlendSet = true;
 
-        public AnimationNode BlendSet = null; // is this right type? i think it mgiht be string
+        public string BlendSet = "";
         public AnimationNode OverflowCallback = null;
 
         public Parametric2DNode()
@@ -220,7 +269,7 @@ namespace CATHODE.Animations
     {
         public ParameterNode ParameterBindingW = null;
 
-        public AnimationNode ExtraBlendSet = null; // is this right type? i think it mgiht be string
+        public string ExtraBlendSet = "";
 
         public Parametric4DNode()
         {

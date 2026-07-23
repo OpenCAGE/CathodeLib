@@ -60,22 +60,22 @@ namespace CATHODE
                 int usedSize = reader.ReadInt32();
                 if (hashTableSize != usedSize) throw new Exception("");
 
-                //todo: does this index matter? is it some priority order?
                 var treeHashToIndex = new Dictionary<uint, int>();
                 for (int i = 0; i < hashTableSize; i++)
                 {
                     uint treeHash = reader.ReadUInt32();
-                    //string treeHashStr = _strings.Entries[treeHash];
                     int index = reader.ReadInt32();
                     treeHashToIndex[treeHash] = index;
                 }
+
+                int[] logicalToFile = new int[hashTableSize];
                 for (int i = 0; i < hashTableSize; i++)
-                    reader.ReadUInt32();
+                    logicalToFile[i] = (int)reader.ReadUInt32();
 
                 int treeCount = reader.ReadInt32();
+                var fileOrderTrees = new AnimationTree[treeCount];
                 for (int i = 0; i < treeCount; i++)
                 {
-                    // Clear resolver for each new tree
                     _nodeResolver.Clear();
                     
                     uint treeVersion = reader.ReadUInt32();
@@ -117,10 +117,16 @@ namespace CATHODE
                     for (int x = 0; x < NumberOfBindings; x++)
                         bindingType.Add(reader.ReadUInt32());
                     for (int x = 0; x < NumberOfBindings; x++)
-                        treeDef.Nodes.Add(new ParameterNode() { Name = bindingNames[x], ParameterType = bindingParamTypes[x] });
+                    {
+                        var param = new ParameterNode() { Name = bindingNames[x], ParameterType = bindingParamTypes[x] };
+                        treeDef.AddNode(param);
+                    }
 
                     for (int x = 0; x < NumberOfCallbacks; x++)
-                        treeDef.Nodes.Add(new AnimationNode() { Type = NodeType.ANIM_Callback, Name = _strings.GetString(reader.ReadUInt32()) });
+                    {
+                        var cb = new AnimationNode() { Type = NodeType.ANIM_Callback, Name = _strings.GetString(reader.ReadUInt32()) };
+                        treeDef.AddNode(cb);
+                    }
 
                     List<string> metaListNames = new List<string>();
                     for (int x = 0; x < NumberOfMetadataListeners; x++)
@@ -135,11 +141,17 @@ namespace CATHODE
                     for (int x = 0; x < NumberOfMetadataListeners; x++)
                         metaListFilterTimes.Add(reader.ReadSingle());
                     for (int x = 0; x < NumberOfMetadataListeners; x++)
-                        treeDef.Nodes.Add(new MetadataListenerNode() { Name = metaListNames[x], EventName = metaListEvents[x], WeightThreshold = metaListWeights[x], FilterTime = metaListFilterTimes[x] });
+                    {
+                        var meta = new MetadataListenerNode() { Name = metaListNames[x], EventName = metaListEvents[x], WeightThreshold = metaListWeights[x], FilterTime = metaListFilterTimes[x] };
+                        treeDef.AddNode(meta);
+                    }
 
                     uint NumberOfAutoFloatBindings = reader.ReadUInt32();
                     for (int x = 0; x < NumberOfAutoFloatBindings; x++)
-                        treeDef.Nodes.Add(new AnimationNode() { Type = NodeType.ANIM_AutoFloatParameter, Name = _strings.GetString(reader.ReadUInt32()) });
+                    {
+                        var autoFloat = new AnimationNode() { Type = NodeType.ANIM_AutoFloatParameter, Name = _strings.GetString(reader.ReadUInt32()) };
+                        treeDef.AddNode(autoFloat);
+                    }
 
                     List<string> propListenerNames = new List<string>();
                     for (int x = 0; x < NumberOfPropertyListeners; x++)
@@ -153,7 +165,7 @@ namespace CATHODE
                     for (int x = 0; x < NumberOfPropertyListeners; x++)
                     {
                         PropertyListenerNode node = new PropertyListenerNode() { Name = propListenerNames[x], AnimProperty = propListenerPropNames[x], LeafNode = null };
-                        treeDef.Nodes.Add(node);
+                        treeDef.AddNode(node);
                         _nodeResolver.RegisterLookup(node, propListenerLeafNodes[x], (n, found) => n.LeafNode = found);
                     }
 
@@ -162,69 +174,12 @@ namespace CATHODE
                         propertyNames.Add(_strings.GetString(reader.ReadUInt32()));
                     List<AnimationMetadataValue> propertyValues = new List<AnimationMetadataValue>();
                     for (int x = 0; x < NumberOfPropertyValues; x++)
-                    {
-                        ulong valueUnion = reader.ReadUInt64();
-                        uint valueType = reader.ReadUInt32();
-                        ushort flags = reader.ReadUInt16();
-                        byte requiresConvert = reader.ReadByte();
-                        byte canMirror = reader.ReadByte();
-                        byte canModulateByPlayspeed = reader.ReadByte();
-                        reader.BaseStream.Position += 15;
-
-                        //TODO : This is wrong! Doesn't look up in string db either. 
-                        Console.WriteLine(((MetadataValueType)valueType).ToString());
-
-                        AnimationMetadataValue metadataValue;
-                        switch ((MetadataValueType)valueType)
-                        {
-                            case MetadataValueType.UINT32:
-                                metadataValue = new UIntMetadataValue((uint)valueUnion);
-                                break;
-                            case MetadataValueType.INT32:
-                                metadataValue = new IntMetadataValue((int)valueUnion);
-                                break;
-                            case MetadataValueType.UINT64:
-                                metadataValue = new ULongMetadataValue(valueUnion);
-                                break;
-                            case MetadataValueType.INT64:
-                                metadataValue = new LongMetadataValue((long)valueUnion);
-                                break;
-                            case MetadataValueType.FLOAT32:
-                                metadataValue = new FloatMetadataValue(BitConverter.ToSingle(BitConverter.GetBytes(valueUnion), 0));
-                                break;
-                            case MetadataValueType.FLOAT64:
-                                metadataValue = new Float64MetadataValue(BitConverter.ToDouble(BitConverter.GetBytes(valueUnion), 0));
-                                break;
-                            case MetadataValueType.BOOL:
-                                metadataValue = new BoolMetadataValue(valueUnion != 0);
-                                break;
-                            case MetadataValueType.STRING:
-                                metadataValue = new StringMetadataValue();
-                                break;
-                            case MetadataValueType.VECTOR:
-                                metadataValue = new VectorMetadataValue();
-                                break;
-                            case MetadataValueType.AUDIO:
-                                metadataValue = new AudioMetadataValue();
-                                break;
-                            case MetadataValueType.PROPERTY_REFERENCE:
-                                metadataValue = new PropertyReferenceMetadataValue();
-                                break;
-                            case MetadataValueType.SCRIPT_INTERFACE:
-                                metadataValue = new ScriptInterfaceMetadataValue();
-                                break;
-                            default:
-                                metadataValue = new UIntMetadataValue((uint)valueUnion);
-                                break;
-                        }
-                        metadataValue.Flags = flags;
-                        metadataValue.RequiresConvert = requiresConvert != 0;
-                        metadataValue.CanMirror = canMirror != 0;
-                        metadataValue.CanModulateByPlayspeed = canModulateByPlayspeed != 0;
-                        propertyValues.Add(metadataValue);
-                    }
+                        propertyValues.Add(ReadMetadataValue(reader));
                     for (int x = 0; x < NumberOfPropertyValues; x++)
-                        treeDef.Nodes.Add(new PropertyNode() { Name = propertyNames[x], Value = propertyValues[x] });
+                    {
+                        var prop = new PropertyNode() { Name = propertyNames[x], Value = propertyValues[x] };
+                        treeDef.AddNode(prop);
+                    }
 
                     uint NumberOfFloatInterpolators = reader.ReadUInt32();
                     List<string> floatInterpSources = new List<string>();
@@ -241,27 +196,32 @@ namespace CATHODE
                         floatInterpStartUPS.Add(reader.ReadSingle());
                     for (int x = 0; x < NumberOfFloatInterpolators; x++)
                     {
-                        ParameterNode floatInterpNodeOrig = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Name == floatInterpNames[x]);
+                        ParameterNode floatInterpNodeOrig = treeDef.GetNode<ParameterNode>(floatInterpNames[x], NodeType.ANIM_Parameter);
                         FloatInterpolatorNode floatInterpNode = new FloatInterpolatorNode() { Name = floatInterpNodeOrig.Name, ParameterType = floatInterpNodeOrig.ParameterType, Type = NodeType.ANIM_FloatInterpolator };
-                        floatInterpNode.SourceParameter = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == floatInterpSources[x]);
+                        ParameterNode source = treeDef.GetNode<ParameterNode>(floatInterpSources[x], NodeType.ANIM_Parameter);
+                        floatInterpNode.SourceParameter = source;
                         floatInterpNode.InitialValue = floatInterpStartVals[x];
                         floatInterpNode.UnitsPerSecond = floatInterpStartUPS[x];
-                        treeDef.Nodes.Add(floatInterpNode);
-                        treeDef.Nodes.Remove(floatInterpNodeOrig);
+                        treeDef.ReplaceNode(floatInterpNodeOrig, floatInterpNode);
                     }
 
                     for (int x = 0; x < numChildren; x++)
                     {
                         var childNode = ReadNode(reader, treeDef);
-                        treeDef.Nodes.Add(childNode);
+                        treeDef.AddNode(childNode);
                         treeDef.Children.Add(childNode);
                     }
 
                     // Resolve all deferred node lookups
-                    _nodeResolver.ResolveAll(treeDef.Nodes);
+                    _nodeResolver.ResolveAll(treeDef);
 
-                    Entries.Add(treeDef);
+                    fileOrderTrees[i] = treeDef;
                 }
+
+                //Reorder into logical index order
+                Entries = new List<AnimationTree>(treeCount);
+                for (int logicalIdx = 0; logicalIdx < treeCount; logicalIdx++)
+                    Entries.Add(fileOrderTrees[logicalToFile[logicalIdx]]);
             }
             return true;
         }
@@ -358,6 +318,7 @@ namespace CATHODE
                         {
                             node = new Parametric2DNode()
                             {
+                                BlendSet = blendSetId == 0 ? "" : _strings.GetString(blendSetId),
                                 LoopBlendSet = reader.ReadBoolean(),
                                 SyncBlendSet = reader.ReadBoolean()
                             };
@@ -366,13 +327,12 @@ namespace CATHODE
                         {
                             node = new Parametric3DNode
                             {
+                                BlendSet = blendSetId == 0 ? "" : _strings.GetString(blendSetId),
                                 LoopBlendSet = reader.ReadBoolean(),
                                 SyncBlendSet = reader.ReadBoolean()
                             };
                         }
 
-                        if (blendSetId != 0)
-                            _nodeResolver.RegisterLookup(node, _strings.GetString(blendSetId), (n, found) => ((Parametric2DNode)n).BlendSet = found);
                         if (XParameter != 0)
                             _nodeResolver.RegisterLookup(node, _strings.GetString(XParameter), (n, found) => ((Parametric2DNode)n).ParameterBindingX = found is ParameterNode ? (ParameterNode)found : null);
                         if (YParameter != 0)
@@ -397,14 +357,12 @@ namespace CATHODE
 
                         node = new Parametric4DNode
                         {
+                            BlendSet = BlendSet == 0 ? "" : _strings.GetString(BlendSet),
+                            ExtraBlendSet = BlendSetExtra == 0 ? "" : _strings.GetString(BlendSetExtra),
                             LoopBlendSet = reader.ReadBoolean(),
                             SyncBlendSet = reader.ReadBoolean()
                         };
 
-                        if (BlendSet != 0)
-                            _nodeResolver.RegisterLookup(node, _strings.GetString(BlendSet), (n, found) => ((Parametric4DNode)n).BlendSet = found);
-                        if (BlendSetExtra != 0)
-                            _nodeResolver.RegisterLookup(node, _strings.GetString(BlendSetExtra), (n, found) => ((Parametric4DNode)n).ExtraBlendSet = found);
                         if (XParameter != 0)
                             _nodeResolver.RegisterLookup(node, _strings.GetString(XParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingX = found is ParameterNode ? (ParameterNode)found : null);
                         if (YParameter != 0)
@@ -677,7 +635,7 @@ namespace CATHODE
             for (int i = 0; i < numChildren; i++)
             {
                 var childNode = ReadNode(reader, tree);
-                tree.Nodes.Add(childNode);
+                tree.AddNode(childNode);
                 node.Children.Add(childNode);
 
                 if (node.Type == NodeType.ANIM_Weighted)
@@ -700,11 +658,18 @@ namespace CATHODE
 
                 writer.Write(Entries.Count);
                 writer.Write(Entries.Count);
+
+                var hashEntries = new List<(uint hash, int index)>(Entries.Count);
                 for (int i = 0; i < Entries.Count; i++)
+                    hashEntries.Add((_strings.GetID(Entries[i].Name), i));
+                hashEntries.Sort((a, b) => b.hash.CompareTo(a.hash));
+
+                for (int slot = 0; slot < hashEntries.Count; slot++)
                 {
-                    writer.Write(_strings.GetID(Entries[i].Name));
-                    writer.Write(i);
+                    writer.Write(hashEntries[slot].hash);
+                    writer.Write(hashEntries[slot].index);
                 }
+
                 for (int i = 0; i < Entries.Count; i++)
                     writer.Write(i);
 
@@ -726,18 +691,23 @@ namespace CATHODE
                     writer.Write(tree.GaitSyncOnStart);
                     writer.Write(tree.UseLinearBlend);
 
-                    //note to self - these sorting methods are untested
-                    List<AnimationNode> nodes = tree.Nodes.ToList();
-                    List<ParameterNode> parameterNodes = nodes.FindAll(o => o is ParameterNode).Cast<ParameterNode>().ToList();
-                    List<AnimationNode> callbackNodes = nodes.FindAll(o => o.Type == NodeType.ANIM_Callback).Cast<AnimationNode>().ToList();
-                    List<MetadataListenerNode> metaListenerNodes = nodes.FindAll(o => o.Type == NodeType.ANIM_Metadata_Event_Listener).Cast<MetadataListenerNode>().ToList();
-                    List<AnimationNode> autoFloatNodes = nodes.FindAll(o => o.Type == NodeType.ANIM_AutoFloatParameter).Cast<AnimationNode>().ToList();
-                    List<PropertyListenerNode> propListenerNodes = nodes.FindAll(o => o.Type == NodeType.ANIM_Property_Listener).Cast<PropertyListenerNode>().ToList();
-                    List<PropertyNode> propNodes = nodes.FindAll(o => o.Type == NodeType.ANIM_Property).Cast<PropertyNode>().ToList();
-                    List<FloatInterpolatorNode> floatInterpolatorNodes = nodes.FindAll(o => o.Type == NodeType.ANIM_FloatInterpolator).Cast<FloatInterpolatorNode>().ToList();
+                    List<ParameterNode> parameterNodes = tree.Nodes.OfType<ParameterNode>().ToList();
+                    List<AnimationNode> callbackNodes = tree.Nodes.Where(n => n.Type == NodeType.ANIM_Callback).ToList();
+                    List<MetadataListenerNode> metaListenerNodes = tree.Nodes.OfType<MetadataListenerNode>().ToList();
+                    List<AnimationNode> autoFloatNodes = tree.Nodes.Where(n => n.Type == NodeType.ANIM_AutoFloatParameter).ToList();
+                    List<PropertyListenerNode> propListenerNodes = tree.Nodes.OfType<PropertyListenerNode>().ToList();
+                    List<PropertyNode> propNodes = tree.Nodes.OfType<PropertyNode>().ToList();
+                    List<FloatInterpolatorNode> floatInterpolatorNodes = tree.Nodes.OfType<FloatInterpolatorNode>().ToList();
 
                     writer.Write(parameterNodes.Count);
-                    writer.Write(new byte[20]);
+                    int[] typeCounts = new int[5];
+                    foreach (var param in parameterNodes)
+                        typeCounts[(int)param.ParameterType]++;
+                    writer.Write(typeCounts[(int)AnimTreeParameterType.FLOAT]);
+                    writer.Write(typeCounts[(int)AnimTreeParameterType.STRING]);
+                    writer.Write(typeCounts[(int)AnimTreeParameterType.MATRIX]);
+                    writer.Write(typeCounts[(int)AnimTreeParameterType.VECTOR]);
+                    writer.Write(typeCounts[(int)AnimTreeParameterType.CARD32]);
                     writer.Write(callbackNodes.Count);
                     writer.Write(metaListenerNodes.Count);
                     writer.Write(propListenerNodes.Count);
@@ -782,52 +752,7 @@ namespace CATHODE
                     foreach (var prop in propNodes)
                         writer.Write(_strings.GetID(prop.Name));
                     foreach (var prop in propNodes)
-                    {
-                        ulong valueUnion = 0;
-                        switch (prop.Value.ValueType)
-                        {
-                            case MetadataValueType.UINT32:
-                                valueUnion = ((UIntMetadataValue)prop.Value).Value;
-                                break;
-                            case MetadataValueType.INT32:
-                                valueUnion = (ulong)((IntMetadataValue)prop.Value).Value;
-                                break;
-                            case MetadataValueType.FLOAT32:
-                                valueUnion = BitConverter.ToUInt64(BitConverter.GetBytes(((FloatMetadataValue)prop.Value).Value), 0);
-                                break;
-                            case MetadataValueType.BOOL:
-                                valueUnion = ((BoolMetadataValue)prop.Value).Value ? 1ul : 0ul;
-                                break;
-                            case MetadataValueType.UINT64:
-                                valueUnion = ((ULongMetadataValue)prop.Value).Value;
-                                break;
-                            case MetadataValueType.INT64:
-                                valueUnion = (ulong)((LongMetadataValue)prop.Value).Value;
-                                break;
-                            case MetadataValueType.FLOAT64:
-                                valueUnion = BitConverter.ToUInt64(BitConverter.GetBytes(((Float64MetadataValue)prop.Value).Value), 0);
-                                break;
-                            case MetadataValueType.STRING:
-                            case MetadataValueType.VECTOR:
-                            case MetadataValueType.AUDIO:
-                            case MetadataValueType.PROPERTY_REFERENCE:
-                            case MetadataValueType.SCRIPT_INTERFACE:
-                                //These types don't store their values in the union, they're stored separately
-                                valueUnion = 0;
-                                break;
-                            default:
-                                valueUnion = 0;
-                                break;
-                        }
-
-                        writer.Write(valueUnion);
-                        writer.Write((uint)prop.Value.ValueType);
-                        writer.Write(prop.Value.Flags);
-                        writer.Write((byte)(prop.Value.RequiresConvert ? 1 : 0));
-                        writer.Write((byte)(prop.Value.CanMirror ? 1 : 0));
-                        writer.Write((byte)(prop.Value.CanModulateByPlayspeed ? 1 : 0));
-                        writer.Write(new byte[15]);
-                    }
+                        WriteMetadataValue(writer, prop.Value);
 
                     writer.Write(floatInterpolatorNodes.Count);
                     foreach (var floatInterp in floatInterpolatorNodes)
@@ -914,9 +839,9 @@ namespace CATHODE
                 case NodeType.ANIM_4DParametric:
                     {
                         Parametric2DNode data = (Parametric2DNode)node;
-                        writer.Write(data.BlendSet == null ? 0 : _strings.GetID(data.BlendSet.Name));
+                        writer.Write(string.IsNullOrEmpty(data.BlendSet) ? 0 : _strings.GetID(data.BlendSet));
                         if (node.Type == NodeType.ANIM_4DParametric)
-                            writer.Write(((Parametric4DNode)node).ExtraBlendSet == null ? 0 : _strings.GetID(((Parametric4DNode)node).ExtraBlendSet.Name));
+                            writer.Write(string.IsNullOrEmpty(((Parametric4DNode)node).ExtraBlendSet) ? 0 : _strings.GetID(((Parametric4DNode)node).ExtraBlendSet));
                         writer.Write(data.ParameterBindingX == null ? 0 : _strings.GetID(data.ParameterBindingX.Name));
                         writer.Write(data.ParameterBindingY == null ? 0 : _strings.GetID(data.ParameterBindingY.Name));
                         writer.Write(node.Type == NodeType.ANIM_3DParametric || node.Type == NodeType.ANIM_4DParametric ? ((Parametric3DNode)node).ParameterBindingZ == null ? 0 : _strings.GetID(((Parametric3DNode)node).ParameterBindingZ.Name) : 0);
@@ -1045,83 +970,208 @@ namespace CATHODE
             foreach (var child in node.Children)
                 WriteNode(writer, child);
         }
+
+        private AnimationMetadataValue ReadMetadataValue(BinaryReader reader)
+        {
+            reader.BaseStream.Position += 8;
+            byte[] union = reader.ReadBytes(16);
+            MetadataValueType valueType = (MetadataValueType)reader.ReadUInt32();
+            ushort requiresConvert = reader.ReadUInt16();
+            byte canMirror = reader.ReadByte();
+            byte canModulate = reader.ReadByte();
+
+            AnimationMetadataValue metadataValue;
+            if (AnimationMetadataValue.Is64BitType(valueType))
+            {
+                ulong as64 = BitConverter.ToUInt64(union, 0);
+                switch (valueType)
+                {
+                    case MetadataValueType.UINT64:
+                        metadataValue = new ULongMetadataValue(as64);
+                        break;
+                    case MetadataValueType.INT64:
+                        metadataValue = new LongMetadataValue((long)as64);
+                        break;
+                    case MetadataValueType.FLOAT64:
+                        metadataValue = new Float64MetadataValue(BitConverter.ToDouble(union, 0));
+                        break;
+                    default:
+                        metadataValue = new ULongMetadataValue(as64);
+                        break;
+                }
+            }
+            else if (AnimationMetadataValue.IsVectorType(valueType))
+            {
+                metadataValue = new VectorMetadataValue(new Vector3(
+                    BitConverter.ToSingle(union, 0),
+                    BitConverter.ToSingle(union, 4),
+                    BitConverter.ToSingle(union, 8)));
+            }
+            else
+            {
+                uint as32 = BitConverter.ToUInt32(union, 0);
+                switch (valueType)
+                {
+                    case MetadataValueType.UINT32:
+                        metadataValue = new UIntMetadataValue(as32);
+                        break;
+                    case MetadataValueType.INT32:
+                        metadataValue = new IntMetadataValue((int)as32);
+                        break;
+                    case MetadataValueType.FLOAT32:
+                        metadataValue = new FloatMetadataValue(BitConverter.ToSingle(union, 0));
+                        break;
+                    case MetadataValueType.BOOL:
+                        metadataValue = new BoolMetadataValue(as32 != 0);
+                        break;
+                    case MetadataValueType.STRING:
+                        metadataValue = new StringMetadataValue(_strings.GetString(as32));
+                        break;
+                    case MetadataValueType.AUDIO:
+                        metadataValue = new AudioMetadataValue(_strings.GetString(as32));
+                        break;
+                    case MetadataValueType.PROPERTY_REFERENCE:
+                        metadataValue = new PropertyReferenceMetadataValue(_strings.GetString(as32));
+                        break;
+                    case MetadataValueType.SCRIPT_INTERFACE:
+                        metadataValue = new ScriptInterfaceMetadataValue(_strings.GetString(as32));
+                        break;
+                    default:
+                        metadataValue = new UIntMetadataValue(as32);
+                        break;
+                }
+            }
+
+            metadataValue.RequiresConvert = requiresConvert != 0;
+            metadataValue.CanMirror = canMirror != 0;
+            metadataValue.CanModulateByPlayspeed = canModulate != 0;
+            return metadataValue;
+        }
+
+        private void WriteMetadataValue(BinaryWriter writer, AnimationMetadataValue value)
+        {
+            writer.Write((ulong)0); 
+
+            if (AnimationMetadataValue.Is64BitType(value.ValueType))
+            {
+                ulong as64 = 0;
+                switch (value.ValueType)
+                {
+                    case MetadataValueType.UINT64:
+                        as64 = ((ULongMetadataValue)value).Value;
+                        break;
+                    case MetadataValueType.INT64:
+                        as64 = (ulong)((LongMetadataValue)value).Value;
+                        break;
+                    case MetadataValueType.FLOAT64:
+                        as64 = BitConverter.ToUInt64(BitConverter.GetBytes(((Float64MetadataValue)value).Value), 0);
+                        break;
+                }
+                writer.Write(as64);
+                writer.Write((ulong)0);
+            }
+            else if (AnimationMetadataValue.IsVectorType(value.ValueType))
+            {
+                Vector3 v = ((VectorMetadataValue)value).Value;
+                writer.Write(v.X);
+                writer.Write(v.Y);
+                writer.Write(v.Z);
+                writer.Write((uint)0);
+            }
+            else
+            {
+                uint as32 = 0;
+                switch (value.ValueType)
+                {
+                    case MetadataValueType.UINT32:
+                        as32 = ((UIntMetadataValue)value).Value;
+                        break;
+                    case MetadataValueType.INT32:
+                        as32 = (uint)((IntMetadataValue)value).Value;
+                        break;
+                    case MetadataValueType.FLOAT32:
+                        as32 = BitConverter.ToUInt32(BitConverter.GetBytes(((FloatMetadataValue)value).Value), 0);
+                        break;
+                    case MetadataValueType.BOOL:
+                        as32 = ((BoolMetadataValue)value).Value ? 1u : 0u;
+                        break;
+                    case MetadataValueType.STRING:
+                        as32 = string.IsNullOrEmpty(((StringMetadataValue)value).Value) ? 0 : _strings.GetID(((StringMetadataValue)value).Value);
+                        break;
+                    case MetadataValueType.AUDIO:
+                        as32 = string.IsNullOrEmpty(((AudioMetadataValue)value).Value) ? 0 : _strings.GetID(((AudioMetadataValue)value).Value);
+                        break;
+                    case MetadataValueType.PROPERTY_REFERENCE:
+                        as32 = string.IsNullOrEmpty(((PropertyReferenceMetadataValue)value).Value) ? 0 : _strings.GetID(((PropertyReferenceMetadataValue)value).Value);
+                        break;
+                    case MetadataValueType.SCRIPT_INTERFACE:
+                        as32 = string.IsNullOrEmpty(((ScriptInterfaceMetadataValue)value).Value) ? 0 : _strings.GetID(((ScriptInterfaceMetadataValue)value).Value);
+                        break;
+                }
+                writer.Write(as32);
+                writer.Write((uint)0);
+                writer.Write((ulong)0);
+            }
+
+            writer.Write((uint)value.ValueType);
+            writer.Write((ushort)(value.RequiresConvert ? 1 : 0));
+            writer.Write((byte)(value.CanMirror ? 1 : 0));
+            writer.Write((byte)(value.CanModulateByPlayspeed ? 1 : 0));
+        }
         #endregion
 
         private class NodeResolver
         {
-            private HashSet<Action<HashSet<AnimationNode>>> _deferredLookups = new HashSet<Action<HashSet<AnimationNode>>>();
+            private List<Action<AnimationTree>> _deferredLookups = new List<Action<AnimationTree>>();
 
-            /// <summary>
-            /// Register a deferred lookup that will be resolved later
-            /// </summary>
+            private static AnimationNode Find(AnimationTree tree, string nodeName, NodeType? nodeType)
+            {
+                if (string.IsNullOrEmpty(nodeName))
+                    return null;
+                if (tree.TryGetNode(nodeName, out AnimationNode found, nodeType))
+                    return found;
+                return null;
+            }
+
             public void RegisterLookup<T>(T target, string nodeName, Action<T, AnimationNode> setter, NodeType? nodeType = null) where T : class
             {
-                _deferredLookups.Add(nodes =>
-                {
-                    var foundNode = nodeType.HasValue
-                        ? nodes.FirstOrDefault(o => o.Type == nodeType.Value && o.Name == nodeName)
-                        : nodes.FirstOrDefault(o => o.Name == nodeName);
-                    setter(target, foundNode);
-                });
+                _deferredLookups.Add(tree => setter(target, Find(tree, nodeName, nodeType)));
             }
 
-            /// <summary>
-            /// Register a deferred lookup for a list of node names
-            /// </summary>
             public void RegisterLookupList<T>(T target, List<string> nodeNames, Action<T, List<AnimationNode>> setter, NodeType? nodeType = null) where T : class
             {
-                _deferredLookups.Add(nodes =>
+                _deferredLookups.Add(tree =>
                 {
-                    var foundNodes = nodeType.HasValue
-                        ? nodeNames.Select(name => nodes.FirstOrDefault(o => o.Type == nodeType.Value && o.Name == name)).Where(o => o != null).ToList()
-                        : nodeNames.Select(name => nodes.FirstOrDefault(o => o.Name == name)).Where(o => o != null).ToList();
-                    setter(target, foundNodes);
+                    setter(target, nodeNames
+                        .Select(name => Find(tree, name, nodeType))
+                        .Where(o => o != null)
+                        .ToList());
                 });
             }
 
-            /// <summary>
-            /// Register a deferred lookup for an array of node names
-            /// </summary>
             public void RegisterLookupArray<T>(T target, string[] nodeNames, Action<T, AnimationNode[]> setter, NodeType? nodeType = null) where T : class
             {
-                _deferredLookups.Add(nodes =>
+                _deferredLookups.Add(tree =>
                 {
-                    var foundNodes = nodeType.HasValue
-                        ? nodeNames.Select(name => nodes.FirstOrDefault(o => o.Type == nodeType.Value && o.Name == name)).Where(o => o != null).ToArray()
-                        : nodeNames.Select(name => nodes.FirstOrDefault(o => o.Name == name)).Where(o => o != null).ToArray();
-                    setter(target, foundNodes);
+                    setter(target, nodeNames
+                        .Select(name => Find(tree, name, nodeType))
+                        .Where(o => o != null)
+                        .ToArray());
                 });
             }
 
-            /// <summary>
-            /// Register a deferred lookup for a specific state object
-            /// </summary>
             public void RegisterStateLookup<T>(T target, string nodeName, Action<T, AnimationNode> setter, NodeType? nodeType = null) where T : class
             {
-                _deferredLookups.Add(nodes =>
-                {
-                    var foundNode = nodeType.HasValue
-                        ? nodes.FirstOrDefault(o => o.Type == nodeType.Value && o.Name == nodeName)
-                        : nodes.FirstOrDefault(o => o.Name == nodeName);
-                    setter(target, foundNode);
-                });
+                _deferredLookups.Add(tree => setter(target, Find(tree, nodeName, nodeType)));
             }
 
-            /// <summary>
-            /// Resolve all deferred lookups using the provided node list
-            /// </summary>
-            public void ResolveAll(HashSet<AnimationNode> nodes)
+            public void ResolveAll(AnimationTree tree)
             {
                 foreach (var lookup in _deferredLookups)
-                {
-                    lookup(nodes);
-                }
+                    lookup(tree);
                 _deferredLookups.Clear();
             }
 
-            /// <summary>
-            /// Clear all pending lookups
-            /// </summary>
             public void Clear()
             {
                 _deferredLookups.Clear();
