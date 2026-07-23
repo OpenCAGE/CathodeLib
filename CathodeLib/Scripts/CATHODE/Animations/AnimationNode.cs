@@ -551,6 +551,9 @@ namespace CATHODE.Animations
         public RandomisedLeafNode()
         {
             Type = NodeType.ANIM_Randomised_Animation;
+            AnimationPool = new Animation[8];
+            for (int i = 0; i < AnimationPool.Length; i++)
+                AnimationPool[i] = new Animation();
         }
 
         public class Animation
