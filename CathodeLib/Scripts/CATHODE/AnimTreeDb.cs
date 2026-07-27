@@ -207,8 +207,7 @@ namespace CATHODE
 
                     for (int x = 0; x < numChildren; x++)
                     {
-                        var childNode = ReadNode(reader, treeDef);
-                        treeDef.AddNode(childNode);
+                        var childNode = treeDef.AddNode(ReadNode(reader, treeDef));
                         treeDef.Children.Add(childNode);
                     }
 
@@ -627,6 +626,9 @@ namespace CATHODE
             }
             node.Name = NodeName;
 
+            bool alreadyExists = tree.TryGetNode(NodeName, out AnimationNode existing, node.Type)
+                && !ReferenceEquals(existing, node);
+
             if (node.Type == NodeType.ANIM_Weighted && numChildren > 1)
             {
                 throw new Exception("unexpected");
@@ -634,8 +636,10 @@ namespace CATHODE
 
             for (int i = 0; i < numChildren; i++)
             {
-                var childNode = ReadNode(reader, tree);
-                tree.AddNode(childNode);
+                var childNode = tree.AddNode(ReadNode(reader, tree));
+                if (alreadyExists)
+                    continue;
+
                 node.Children.Add(childNode);
 
                 if (node.Type == NodeType.ANIM_Weighted)
@@ -645,7 +649,7 @@ namespace CATHODE
                 }
             }
 
-            return node;
+            return alreadyExists ? existing : node;
         }
 
         override protected bool SaveInternal()

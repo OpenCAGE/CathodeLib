@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -52,16 +52,20 @@ namespace CATHODE.Animations
             Type = NodeType.ANIM_Tree_Top_Level;
         }
 
-        public void AddNode(AnimationNode node)
+        public AnimationNode AddNode(AnimationNode node)
         {
             if (node == null || string.IsNullOrEmpty(node.Name))
-                return;
+                return node;
+
+            var key = (node.Name, node.Type);
+            if (_byNameAndType.TryGetValue(key, out AnimationNode existing))
+                return existing;
+
             Nodes.Add(node);
             if (!_byName.ContainsKey(node.Name))
                 _byName[node.Name] = node;
-            var key = (node.Name, node.Type);
-            if (!_byNameAndType.ContainsKey(key))
-                _byNameAndType[key] = node;
+            _byNameAndType[key] = node;
+            return node;
         }
 
         public void ReplaceNode(AnimationNode oldNode, AnimationNode newNode)
