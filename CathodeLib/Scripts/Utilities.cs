@@ -455,7 +455,7 @@ namespace CathodeLib
                 return false;
             if (!File.Exists(directory + "/data/tasks.txt"))
                 return false;
-            if (!File.Exists(directory + "/data/gbl_item.xml"))
+            if (!File.Exists(directory + "/data/gbl_item.bml"))
                 return false;
             if (!File.Exists(directory + "/data/packages/main.pkg"))
                 return false;
