@@ -80,6 +80,45 @@ namespace CATHODE.Scripting
 
         #region Generic Utility Functions
         /// <summary>
+        /// True if adding an instance of <paramref name="compositeToInstance"/> inside
+        /// <paramref name="parentComposite"/> would create a circular instance chain
+        /// (A→A or A→B→…→A).
+        /// </summary>
+        public bool WouldCreateCompositeInstanceCycle(Composite parentComposite, Composite compositeToInstance)
+        {
+            if (parentComposite == null || compositeToInstance == null || _commands == null)
+                return false;
+
+            if (parentComposite.shortGUID == compositeToInstance.shortGUID)
+                return true;
+
+            // Instancing compositeToInstance inside parent closes a cycle if
+            // compositeToInstance already reaches parent through nested instances.
+            return CompositeTransitivelyInstances(compositeToInstance, parentComposite.shortGUID, new HashSet<ShortGuid>());
+        }
+
+        private bool CompositeTransitivelyInstances(Composite composite, ShortGuid targetId, HashSet<ShortGuid> visited)
+        {
+            if (composite == null || !visited.Add(composite.shortGUID))
+                return false;
+
+            foreach (FunctionEntity function in composite.functions)
+            {
+                if (function.function.IsFunctionType)
+                    continue;
+
+                if (function.function == targetId)
+                    return true;
+
+                Composite child = _commands.GetComposite(function.function);
+                if (child != null && CompositeTransitivelyInstances(child, targetId, visited))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Gets the composite that contains the entity
         /// </summary>
         public Composite GetContainedComposite(Entity entity)
