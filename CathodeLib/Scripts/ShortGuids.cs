@@ -6,7 +6,7 @@ using System.Text;
 namespace CathodeLib
 {
     //A collection of common ShortGuids for faster lookup
-    internal static class ShortGuids
+    public static class ShortGuids
     {
         public static readonly ShortGuid DYNAMIC_PHYSICS_SYSTEM = ShortGuidUtils.Generate("DYNAMIC_PHYSICS_SYSTEM");
         public static readonly ShortGuid reference = ShortGuidUtils.Generate("reference");
@@ -61,5 +61,49 @@ namespace CathodeLib
         public static readonly ShortGuid PhysicsSystem = ShortGuidUtils.Generate("PhysicsSystem");
         public static readonly ShortGuid name = ShortGuidUtils.Generate("name");
         public static readonly ShortGuid mapping = ShortGuidUtils.Generate("mapping");
+        public static readonly ShortGuid trigger = ShortGuidUtils.Generate("trigger");
+        public static readonly ShortGuid value = ShortGuidUtils.Generate("value");
+        public static readonly ShortGuid NODES = ShortGuidUtils.Generate("NODES");
+        public static readonly ShortGuid base_node = ShortGuidUtils.Generate("base_node");
+        public static readonly ShortGuid additive_node = ShortGuidUtils.Generate("additive_node");
+        public static readonly ShortGuid child = ShortGuidUtils.Generate("child");
+        public static readonly ShortGuid LeftStrikeChild = ShortGuidUtils.Generate("LeftStrikeChild");
+        public static readonly ShortGuid RightStrikeChild = ShortGuidUtils.Generate("RightStrikeChild");
+        public static readonly ShortGuid Callback = ShortGuidUtils.Generate("Callback");
+        public static readonly ShortGuid RandomCallback = ShortGuidUtils.Generate("RandomCallback");
+        public static readonly ShortGuid ParameterBinding = ShortGuidUtils.Generate("ParameterBinding");
+        public static readonly ShortGuid ParameterBindingX = ShortGuidUtils.Generate("ParameterBindingX");
+        public static readonly ShortGuid ParameterBindingY = ShortGuidUtils.Generate("ParameterBindingY");
+        public static readonly ShortGuid ParameterBindingZ = ShortGuidUtils.Generate("ParameterBindingZ");
+        public static readonly ShortGuid OverflowCallback = ShortGuidUtils.Generate("OverflowCallback");
+        public static readonly ShortGuid IkEffector = ShortGuidUtils.Generate("IkEffector");
+        public static readonly ShortGuid WeightControlParameter = ShortGuidUtils.Generate("WeightControlParameter");
+        public static readonly ShortGuid Parameter = ShortGuidUtils.Generate("Parameter");
+        public static readonly ShortGuid SourceParameter = ShortGuidUtils.Generate("SourceParameter");
+        public static readonly ShortGuid LeafNode = ShortGuidUtils.Generate("LeafNode");
+        public static readonly ShortGuid State_01 = ShortGuidUtils.Generate("State_01");
+        public static readonly ShortGuid State_02 = ShortGuidUtils.Generate("State_02");
+        public static readonly ShortGuid State_03 = ShortGuidUtils.Generate("State_03");
+        public static readonly ShortGuid State_04 = ShortGuidUtils.Generate("State_04");
+        public static readonly ShortGuid State_05 = ShortGuidUtils.Generate("State_05");
+        public static readonly ShortGuid State_06 = ShortGuidUtils.Generate("State_06");
+        public static readonly ShortGuid State_07 = ShortGuidUtils.Generate("State_07");
+        public static readonly ShortGuid State_08 = ShortGuidUtils.Generate("State_08");
+        public static readonly ShortGuid State_09 = ShortGuidUtils.Generate("State_09");
+        public static readonly ShortGuid State_10 = ShortGuidUtils.Generate("State_10");
+        public static readonly ShortGuid State_11 = ShortGuidUtils.Generate("State_11");
+        public static readonly ShortGuid State_12 = ShortGuidUtils.Generate("State_12");
+        public static readonly ShortGuid State_13 = ShortGuidUtils.Generate("State_13");
+        public static readonly ShortGuid State_14 = ShortGuidUtils.Generate("State_14");
+        public static readonly ShortGuid State_15 = ShortGuidUtils.Generate("State_15");
+        public static readonly ShortGuid State_16 = ShortGuidUtils.Generate("State_16");
+
+        public static readonly ShortGuid[] States = new ShortGuid[]
+        {
+            State_01, State_02, State_03, State_04,
+            State_05, State_06, State_07, State_08,
+            State_09, State_10, State_11, State_12,
+            State_13, State_14, State_15, State_16,
+        };
     }
 }
