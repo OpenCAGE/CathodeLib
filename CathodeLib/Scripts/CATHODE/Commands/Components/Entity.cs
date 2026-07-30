@@ -926,14 +926,31 @@ namespace CATHODE.Scripting
 
     public static class PathUtils
     {
-                 /// <summary>
-         /// Generate the instance ID used to identify the instanced composite we're executed in
-         /// </summary>
-         public static ShortGuid GenerateCompositeInstanceID(this ShortGuid[] path, bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
+        /// <summary>
+        /// Generate the instance ID used to identify the instanced composite we're executed in
+        /// </summary>
+        public static ShortGuid GenerateCompositeInstanceID(this ShortGuid[] path, bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
+        {
+            return path.GenerateCompositeInstanceID(hasInternalEntityID, ShortGuid.InstanceGuid);
+        }
+        /// <summary>
+        /// Generate the instance ID used to identify the instanced composite we're executed in
+        /// </summary>
+        public static ShortGuid GenerateCompositeInstanceID(this List<ShortGuid> path, bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
+        {
+            return path.GenerateCompositeInstanceID(hasInternalEntityID, ShortGuid.InstanceGuid);
+        }
+
+        /// <summary>
+        /// Generate a composite instance ID using a custom terminal guid instead of InstanceGuid.
+        /// </summary>
+        public static ShortGuid GenerateCompositeInstanceID(this ShortGuid[] path, bool hasInternalEntityID, ShortGuid terminalGuid)
         {
             bool hasTrailingInvalid = (path.Length > 0 && path[path.Length - 1] == ShortGuid.Invalid);
             ShortGuid[] values = new ShortGuid[hasInternalEntityID ? (hasTrailingInvalid ? path.Length - 1 : path.Length) : (hasTrailingInvalid ? path.Length : path.Length + 1)];
-            values[values.Length - 1] = ShortGuid.InstanceGuid;
+            if (values.Length == 0)
+                return terminalGuid;
+            values[values.Length - 1] = terminalGuid;
             int x = 0;
             for (int i = values.Length - 2; i >= 0; i--)
             {
@@ -948,14 +965,17 @@ namespace CATHODE.Scripting
             }
             return instanceGenerated;
         }
-                 /// <summary>
-         /// Generate the instance ID used to identify the instanced composite we're executed in
-         /// </summary>
-         public static ShortGuid GenerateCompositeInstanceID(this List<ShortGuid> path, bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
+
+        /// <summary>
+        /// Generate a composite instance ID using a custom terminal guid instead of InstanceGuid.
+        /// </summary>
+        public static ShortGuid GenerateCompositeInstanceID(this List<ShortGuid> path, bool hasInternalEntityID, ShortGuid terminalGuid)
         {
             bool hasTrailingInvalid = (path.Count > 0 && path[path.Count - 1] == ShortGuid.Invalid);
             ShortGuid[] values = new ShortGuid[hasInternalEntityID ? (hasTrailingInvalid ? path.Count - 1 : path.Count) : (hasTrailingInvalid ? path.Count : path.Count + 1)];
-            values[values.Length - 1] = ShortGuid.InstanceGuid;
+            if (values.Length == 0)
+                return terminalGuid;
+            values[values.Length - 1] = terminalGuid;
             int x = 0;
             for (int i = values.Length - 2; i >= 0; i--)
             {

@@ -2120,10 +2120,21 @@ namespace CathodeLib
             _globalGUID = _level.Commands.EntryPoints[1].shortGUID;
 
             List<Composite> requiredAssets = new List<Composite>();
-            requiredAssets.Add(_level.Commands.Entries.FirstOrDefault(o => o.name.ToUpper() == "GLOBAL"));
-            requiredAssets.Add(_level.Commands.Entries.FirstOrDefault(o => o.name.ToUpper() == "PAUSEMENU"));
-            //requiredAssets.Add(_level.Commands.Entries.FirstOrDefault(o => o.name.ToUpper().Replace("/", "\\") == "REQUIRED_ASSETS\\JOBS\\INTERNAL\\SEARCHTARGETJOB\\SEARCHTARGETJOB"));
-            requiredAssets.AddRange(_level.Commands.Entries.FindAll(o => o.name.ToUpper().Replace("/", "\\").StartsWith("REQUIRED_ASSETS\\")));
+            void AddRequired(Composite composite)
+            {
+                if (composite != null && !requiredAssets.Contains(composite))
+                    requiredAssets.Add(composite);
+            }
+
+            AddRequired(_level.Commands.Entries.FirstOrDefault(o => o.name.ToUpper() == "GLOBAL"));
+            AddRequired(_level.Commands.Entries.FirstOrDefault(o => o.name.ToUpper() == "PAUSEMENU"));
+            AddRequired(_level.Commands.Entries.FirstOrDefault(o => o.name.ToUpper().Replace("/", "\\") == "REQUIRED_ASSETS\\JOBS\\INTERNAL\\SEARCHTARGETJOB\\SEARCHTARGETJOB"));
+            foreach (Composite composite in _level.Commands.Entries)
+            {
+                if (composite.name.ToUpper().Replace("/", "\\").StartsWith("REQUIRED_ASSETS\\"))
+                    AddRequired(composite);
+            }
+
             foreach (Composite requiredAsset in requiredAssets)
             {
                 InstancedComposite instancedRequiredAsset = new InstancedComposite()
@@ -2132,7 +2143,7 @@ namespace CathodeLib
                     InstanceID = requiredAsset.shortGUID
                 };
                 RequiredAssets.Add(instancedRequiredAsset);
-                GenerateInstances(requiredAsset, new EntityPath(), instancedRequiredAsset, null, null, new List<InstancedAlias>());
+                GenerateInstances(requiredAsset, new EntityPath(), instancedRequiredAsset, null, null, new List<InstancedAlias>(), false, null);
             }
 
             Root = new InstancedComposite()
@@ -2140,7 +2151,7 @@ namespace CathodeLib
                 Composite = _level.Commands.EntryPoints[0],
                 InstanceID = ShortGuid.InstanceGuid
             };
-            GenerateInstances(Root.Composite, new EntityPath(), Root, null, null, new List<InstancedAlias>());
+            GenerateInstances(Root.Composite, new EntityPath(), Root, null, null, new List<InstancedAlias>(), false, null);
         }
         public void ProcessInstances()
         {
@@ -2165,16 +2176,12 @@ namespace CathodeLib
             for (int i = 0; i < 18; i++)
                 _level.CollisionMaps.Entries.Add(new CollisionMaps.COLLISION_MAPPING());
 
-            _sharedComposites.Clear(); // i think we shouldn't populate shared things for required, OR, should do Root first?
-            foreach (InstancedComposite instancedRequiredAsset in RequiredAssets)
-            {
-                //ProcessInstances(instancedRequiredAsset, false, false, true, false, false);
-            }
+            _sharedComposites.Clear();
             _sharedComposites.Clear();
             ProcessInstances(Root, false, false, false, false, false);
         }
 
-        private void GenerateInstances(Composite composite, EntityPath path, InstancedComposite compositeInstance, InstancedComposite parentCompositeInstance, InstancedEntity parentCompositeInstanceEntity, List<InstancedAlias> aliases)
+        private void GenerateInstances(Composite composite, EntityPath path, InstancedComposite compositeInstance, InstancedComposite parentCompositeInstance, InstancedEntity parentCompositeInstanceEntity, List<InstancedAlias> aliases, bool underShared, List<ShortGuid> sharedRelativePath)
         {
             //todo - when this logic is more complete, i need to add a whitelist which means that unused entity and parameter types are ignored to save on memory overhead
 
@@ -2261,7 +2268,7 @@ namespace CathodeLib
             AllComposites.Add(compositeInstance);
 
             //Now, traverse down in to any child composites, and rinse and repeat
-            List<(FunctionEntity function, Composite child, List<InstancedAlias> childAliases, EntityPath newPath, InstancedEntity instancedEnt)> childComposites = new List<(FunctionEntity, Composite, List<InstancedAlias>, EntityPath, InstancedEntity)>();
+            List<(FunctionEntity function, Composite child, List<InstancedAlias> childAliases, EntityPath newPath, InstancedEntity instancedEnt, bool childUnderShared, List<ShortGuid> childSharedPath)> childComposites = new List<(FunctionEntity, Composite, List<InstancedAlias>, EntityPath, InstancedEntity, bool, List<ShortGuid>)>();
             foreach (FunctionEntity function in composite.functions)
             {
                 if (function.function.IsFunctionType)
@@ -2276,20 +2283,45 @@ namespace CathodeLib
 
                 EntityPath newPath = path.Copy();
                 newPath.AddNextStep(function);
-                InstancedComposite newInstance = new InstancedComposite();
-                newInstance.InstanceID = newPath.GenerateCompositeInstanceID(false);
-                newInstance.Composite = child;
 
                 if (!entityByGuid.TryGetValue(function.shortGUID, out InstancedEntity instancedEnt))
                     continue;
 
+                //Once an is_shared entity is hit, instance IDs are re-rooted at that entity
+                bool thisIsShared = instancedEnt.Bools.Get(ShortGuids.is_shared);
+                bool childUnderShared;
+                List<ShortGuid> childSharedPath;
+                if (thisIsShared)
+                {
+                    childUnderShared = true;
+                    childSharedPath = new List<ShortGuid> { function.shortGUID };
+                }
+                else if (underShared)
+                {
+                    childUnderShared = true;
+                    childSharedPath = new List<ShortGuid>(sharedRelativePath);
+                    childSharedPath.Add(function.shortGUID);
+                }
+                else
+                {
+                    childUnderShared = false;
+                    childSharedPath = null;
+                }
+
+                InstancedComposite newInstance = new InstancedComposite();
+                if (childUnderShared)
+                    newInstance.InstanceID = childSharedPath.GenerateCompositeInstanceID(false, ShortGuid.Invalid);
+                else
+                    newInstance.InstanceID = newPath.GenerateCompositeInstanceID(false);
+                newInstance.Composite = child;
+
                 instancedEnt.ChildCompositeInstance = newInstance;
-                childComposites.Add((function, child, childAliases, newPath, instancedEnt));
+                childComposites.Add((function, child, childAliases, newPath, instancedEnt, childUnderShared, childSharedPath));
             }
             Parallel.ForEach(childComposites, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, childInfo =>
             {
                 GenerateInstances(childInfo.child, childInfo.newPath, childInfo.instancedEnt.ChildCompositeInstance,
-                    compositeInstance, childInfo.instancedEnt, childInfo.childAliases);
+                    compositeInstance, childInfo.instancedEnt, childInfo.childAliases, childInfo.childUnderShared, childInfo.childSharedPath);
             });
         }
 
@@ -2318,7 +2350,13 @@ namespace CathodeLib
                         _sharedComposites.Add(entity.ChildCompositeInstance.Composite.shortGUID);
                     }
 
-                    ProcessInstances(entity.ChildCompositeInstance, isTemplate || entity.Bools.Get(ShortGuids.is_template), isRequiredAssets ? false : isShared || thisIsShared, isRequiredAssets, deleteStandardCollision || entity.Bools.Get(ShortGuids.delete_standard_collision), thisIsDeleted);
+                    ProcessInstances(
+                        entity.ChildCompositeInstance,
+                        isTemplate || entity.Bools.Get(ShortGuids.is_template),
+                        isRequiredAssets ? false : (isShared || thisIsShared),
+                        isRequiredAssets,
+                        deleteStandardCollision || entity.Bools.Get(ShortGuids.delete_standard_collision),
+                        thisIsDeleted);
                 }
             }
         }
@@ -2706,7 +2744,6 @@ namespace CathodeLib
                     }
                     break;
                 case FunctionType.ModelReference:
-                    //if (!isDeleted && !isTemplate && !isRequiredAssets)
                     {
                         Resources.Resource resource = null;
                         if (!isDeleted && !isRequiredAssets)
@@ -2834,35 +2871,8 @@ namespace CathodeLib
                             }
 
                             ResourceReference collisionMapping = function.GetResource(ResourceType.COLLISION_MAPPING, true);
-                            if (collisionMapping?.CollisionMapping != null)
+                            if (collisionMapping?.CollisionMapping != null && !isTemplate && !isRequiredAssets)
                             {
-                                if (collisionMapping.CollisionMapping.ZoneID != ShortGuid.Invalid)
-                                {
-                                    string gsdfsf = "";
-                                }
-                                if (collisionMapping.CollisionMapping.Index != -1)
-                                {
-                                    string fsdfsd = "";
-                                }
-                                if (collisionMapping.CollisionMapping.MaterialMapping != null)
-                                {
-                                    string fsdfsd = "";
-                                }
-                                if (collisionMapping.CollisionMapping.Entity.composite_instance_id != ShortGuid.Invalid)
-                                {
-                                    string fsdfsd = "";
-                                }
-
-                                var otherMaps = _level.CollisionMaps.Entries.FindAll(o => o != null && o.Entity.entity_id == collisionMapping.CollisionMapping.Entity.entity_id);
-                                foreach (var map in otherMaps)
-                                {
-                                    if (map.Flags != collisionMapping.CollisionMapping.Flags)
-                                    {
-                                        string fdsf = "";
-                                    }
-                                }
-
-
                                 CollisionMaps.COLLISION_MAPPING newMap = new CollisionMaps.COLLISION_MAPPING()
                                 {
                                     Flags = collisionMapping.CollisionMapping.Flags,
@@ -2872,18 +2882,16 @@ namespace CathodeLib
                                     Material = collisionMapping.CollisionMapping.Material,
                                     CollisionProxyIndex = collisionMapping.CollisionMapping.CollisionProxyIndex,
                                     MaterialMapping = collisionMapping.CollisionMapping.MaterialMapping, //this is tricky
-                                    ZoneID = collisionMapping.CollisionMapping.ZoneID //need to work this out
+                                    ZoneID = entity.PrimaryZone != ShortGuid.Invalid ? entity.PrimaryZone : collisionMapping.CollisionMapping.ZoneID
                                 };
                                 lock (_collisionMapsLock)
                                 {
                                     if (_level.CollisionMaps.Entries.FirstOrDefault(o => o.Entity.entity_id == collisionMapping.CollisionMapping.Entity.entity_id) == null)
-                                        _level.CollisionMaps.Entries.Add(collisionMapping.CollisionMapping); 
-                                    if (!isDeleted /*&& !!deleteStandardCollision && !isTemplate && !isRequiredAssets*/) 
+                                        _level.CollisionMaps.Entries.Add(collisionMapping.CollisionMapping);
+                                    if (!isDeleted && !deleteStandardCollision)
                                         _level.CollisionMaps.Entries.Add(newMap);
                                 }
                             }
-
-                            
                         }
                     }
                     break;
@@ -2917,11 +2925,12 @@ namespace CathodeLib
                     break;
                 case FunctionType.ParticleEmitterReference:
                     {
+                        if (isDeleted || isTemplate)
+                            break;
+
                         bool uniqueMaterial = entity.Bools.Get(ShortGuids.unique_material);
                         //string material = entity.Strings.Get(ShortGuids.material);
 
-                        //if (!isDeleted && !isTemplate && !isRequiredAssets)
-                            
                         Resources.Resource resource = AddResourceEntry(entity);
 
                         Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
@@ -3247,7 +3256,6 @@ namespace CathodeLib
         {
             lock (_resourcesLock)
             {
-                //NOTE: Because of 'is_shared', we get some differences with added resources instance IDs, since the first hit (which may differ) is always the one that's written, but hopefully that's fine.
                 return _level.Resources.AddUniqueResource(GetResourceID(entity), entity.ThisCompositeInstance.InstanceID);
             }
         }
