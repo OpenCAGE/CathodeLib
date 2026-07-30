@@ -3270,7 +3270,20 @@ namespace CathodeLib
                             features |= CA_EFFECT_OVERLAY.FEATURES.ENVMAP;
                     }
                     break;
+                case FunctionType.TRAV_1ShotClimbUnder:
+                case FunctionType.TRAV_1ShotFloorVentEntrance:
+                case FunctionType.TRAV_1ShotFloorVentExit:
+                case FunctionType.TRAV_1ShotLeap:
                 case FunctionType.TRAV_1ShotSpline:
+                case FunctionType.TRAV_1ShotVentEntrance:
+                case FunctionType.TRAV_1ShotVentExit:
+                case FunctionType.TRAV_ContinuousBalanceBeam:
+                case FunctionType.TRAV_ContinuousCinematicSidle:
+                case FunctionType.TRAV_ContinuousClimbingWall:
+                case FunctionType.TRAV_ContinuousLadder:
+                case FunctionType.TRAV_ContinuousLedge:
+                case FunctionType.TRAV_ContinuousPipe:
+                case FunctionType.TRAV_ContinuousTightGap:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
                     break;
