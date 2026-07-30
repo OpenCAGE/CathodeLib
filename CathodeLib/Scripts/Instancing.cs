@@ -1724,7 +1724,7 @@ namespace CathodeLib
                         }
                     case FunctionType.RegisterCharacterModel:
                         if (typeof(T) == typeof(string))
-                            return (T)(object)Strings.Get(ShortGuidUtils.Generate("display_model"));
+                            return (T)(object)Strings.Get(ShortGuids.display_model);
                         break;
                     case FunctionType.SetBool:
                         {
@@ -1748,7 +1748,7 @@ namespace CathodeLib
                         }
                     case FunctionType.SetString:
                         if (typeof(T) == typeof(string))
-                            return (T)(object)Strings.Get(ShortGuidUtils.Generate("initial_value"));
+                            return (T)(object)Strings.Get(ShortGuids.initial_value);
                         break;
                     case FunctionType.SetVector:
                         {
@@ -1812,7 +1812,7 @@ namespace CathodeLib
                         }
                     case FunctionType.VariableString:
                         if (typeof(T) == typeof(string))
-                            return (T)(object)Strings.Get(ShortGuidUtils.Generate("initial_value"));
+                            return (T)(object)Strings.Get(ShortGuids.initial_value);
                         break;
                     case FunctionType.VariableVector:
                         {
@@ -2404,26 +2404,26 @@ namespace CathodeLib
                 case FunctionType.FogBox:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                     {
-                        FOG_BOX_TYPE type = (FOG_BOX_TYPE)entity.EnumIndexes.Get(ShortGuidUtils.Generate("GEOMETRY_TYPE")); //defines the model to use
+                        FOG_BOX_TYPE type = (FOG_BOX_TYPE)entity.EnumIndexes.Get(ShortGuids.GEOMETRY_TYPE); //defines the model to use
 
                         CA_FOGPLANE.FEATURES features = 0;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("BILLBOARD")))
+                        if (entity.Bools.Get(ShortGuids.BILLBOARD))
                             features |= CA_FOGPLANE.FEATURES.BILLBOARD;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("LOW_RES")) & !entity.Bools.Get(ShortGuidUtils.Generate("EARLY_ALPHA")))
+                        if (entity.Bools.Get(ShortGuids.LOW_RES) & !entity.Bools.Get(ShortGuids.EARLY_ALPHA))
                             features |= CA_FOGPLANE.FEATURES.LOW_RES;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("EARLY_ALPHA")))
+                        if (entity.Bools.Get(ShortGuids.EARLY_ALPHA))
                             features |= CA_FOGPLANE.FEATURES.EARLY_ALPHA;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("CONVEX_GEOM")))
+                        if (entity.Bools.Get(ShortGuids.CONVEX_GEOM))
                             features |= CA_FOGPLANE.FEATURES.CONVEX_GEOM;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("START_DISTANT_CLIP")))
+                        if (entity.Bools.Get(ShortGuids.START_DISTANT_CLIP))
                             features |= CA_FOGPLANE.FEATURES.START_DISTANT_CLIP;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("SOFTNESS")))
+                        if (entity.Bools.Get(ShortGuids.SOFTNESS))
                             features |= CA_FOGPLANE.FEATURES.SOFTNESS;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("LINEAR_HEIGHT_DENSITY")))
+                        if (entity.Bools.Get(ShortGuids.LINEAR_HEIGHT_DENSITY))
                             features |= CA_FOGPLANE.FEATURES.LINEAR_HEIGHT_DENSITY;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("FRESNEL_FALLOFF")))
+                        if (entity.Bools.Get(ShortGuids.FRESNEL_FALLOFF))
                             features |= CA_FOGPLANE.FEATURES.FRESNEL_FALLOFF;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("DEPTH_INTERSECT_COLOUR")))
+                        if (entity.Bools.Get(ShortGuids.DEPTH_INTERSECT_COLOUR))
                             features |= CA_FOGPLANE.FEATURES.DEPTH_INTERSECT_COLOUR;
 
                         //materials
@@ -2439,13 +2439,13 @@ namespace CathodeLib
                             {
                                 case SHADER_LIST.CA_FOGPLANE:
                                     FOGPLANE_GPU_CONSTANTS gpuConstants = new FOGPLANE_GPU_CONSTANTS();
-                                    gpuConstants.StartDistanceFadeScalar = entity.Bools.Get(ShortGuidUtils.Generate("START_DISTANT_CLIP")) ? entity.Floats.Get(ShortGuidUtils.Generate("START_DISTANCE_FADE")) : 0.0f;
-                                    gpuConstants.DistanceFadeScalar = entity.Floats.Get(ShortGuidUtils.Generate("DISTANCE_FADE")) + 1.192092896e-07F;
-                                    gpuConstants.AngleFadeScalar = entity.Floats.Get(ShortGuidUtils.Generate("ANGLE_FADE"));
-                                    gpuConstants.FresnelPowerScalar = entity.Floats.Get(ShortGuidUtils.Generate("FRESNEL_POWER"));
-                                    gpuConstants.HeightMaxDensityScalar = entity.Floats.Get(ShortGuidUtils.Generate("HEIGHT_MAX_DENSITY"));
-                                    gpuConstants.ThicknessScalar = entity.Floats.Get(ShortGuidUtils.Generate("THICKNESS"));
-                                    gpuConstants.ColourTint = entity.Vectors.Get(ShortGuidUtils.Generate("COLOUR_TINT")) / 255.0f;
+                                    gpuConstants.StartDistanceFadeScalar = entity.Bools.Get(ShortGuids.START_DISTANT_CLIP) ? entity.Floats.Get(ShortGuids.START_DISTANCE_FADE) : 0.0f;
+                                    gpuConstants.DistanceFadeScalar = entity.Floats.Get(ShortGuids.DISTANCE_FADE) + 1.192092896e-07F;
+                                    gpuConstants.AngleFadeScalar = entity.Floats.Get(ShortGuids.ANGLE_FADE);
+                                    gpuConstants.FresnelPowerScalar = entity.Floats.Get(ShortGuids.FRESNEL_POWER);
+                                    gpuConstants.HeightMaxDensityScalar = entity.Floats.Get(ShortGuids.HEIGHT_MAX_DENSITY);
+                                    gpuConstants.ThicknessScalar = entity.Floats.Get(ShortGuids.THICKNESS);
+                                    gpuConstants.ColourTint = entity.Vectors.Get(ShortGuids.COLOUR_TINT) / 255.0f;
                                     mvr.GPUConstants.SetAs<FOGPLANE_GPU_CONSTANTS>(gpuConstants);
                                     break;
                             }
@@ -2477,18 +2477,18 @@ namespace CathodeLib
                             {
                                 case SHADER_LIST.CA_FOGPLANE:
                                     FOGPLANE_GPU_CONSTANTS gpuConstants = new FOGPLANE_GPU_CONSTANTS();
-                                    gpuConstants.StartDistanceFadeScalar = entity.Floats.Get(ShortGuidUtils.Generate("start_distance_fade_scalar"));
-                                    gpuConstants.DistanceFadeScalar = entity.Floats.Get(ShortGuidUtils.Generate("distance_fade_scalar")) + 1.192092896e-07F;
-                                    gpuConstants.AngleFadeScalar = entity.Floats.Get(ShortGuidUtils.Generate("angle_fade_scalar"));
-                                    gpuConstants.FresnelPowerScalar = entity.Floats.Get(ShortGuidUtils.Generate("linear_height_density_fresnel_power_scalar"));
-                                    gpuConstants.HeightMaxDensityScalar = entity.Floats.Get(ShortGuidUtils.Generate("linear_heigth_density_max_scalar"));
-                                    gpuConstants.ThicknessScalar = entity.Floats.Get(ShortGuidUtils.Generate("thickness_scalar"));
-                                    gpuConstants.EdgeSoftnessScalar = entity.Floats.Get(ShortGuidUtils.Generate("edge_softness_scalar"));
-                                    gpuConstants.DiffuseMap0_UvScalar = entity.Floats.Get(ShortGuidUtils.Generate("diffuse_0_uv_scalar"));
-                                    gpuConstants.DiffuseMap0_SpeedScalar = entity.Floats.Get(ShortGuidUtils.Generate("diffuse_0_speed_scalar"));
-                                    gpuConstants.DiffuseMap1_UvScalar = entity.Floats.Get(ShortGuidUtils.Generate("diffuse_1_uv_scalar"));
-                                    gpuConstants.DiffuseMap1_SpeedScalar = entity.Floats.Get(ShortGuidUtils.Generate("diffuse_1_speed_scalar"));
-                                    gpuConstants.ColourTint = entity.Vectors.Get(ShortGuidUtils.Generate("tint")) / 255.0f;
+                                    gpuConstants.StartDistanceFadeScalar = entity.Floats.Get(ShortGuids.start_distance_fade_scalar);
+                                    gpuConstants.DistanceFadeScalar = entity.Floats.Get(ShortGuids.distance_fade_scalar) + 1.192092896e-07F;
+                                    gpuConstants.AngleFadeScalar = entity.Floats.Get(ShortGuids.angle_fade_scalar);
+                                    gpuConstants.FresnelPowerScalar = entity.Floats.Get(ShortGuids.linear_height_density_fresnel_power_scalar);
+                                    gpuConstants.HeightMaxDensityScalar = entity.Floats.Get(ShortGuids.linear_heigth_density_max_scalar);
+                                    gpuConstants.ThicknessScalar = entity.Floats.Get(ShortGuids.thickness_scalar);
+                                    gpuConstants.EdgeSoftnessScalar = entity.Floats.Get(ShortGuids.edge_softness_scalar);
+                                    gpuConstants.DiffuseMap0_UvScalar = entity.Floats.Get(ShortGuids.diffuse_0_uv_scalar);
+                                    gpuConstants.DiffuseMap0_SpeedScalar = entity.Floats.Get(ShortGuids.diffuse_0_speed_scalar);
+                                    gpuConstants.DiffuseMap1_UvScalar = entity.Floats.Get(ShortGuids.diffuse_1_uv_scalar);
+                                    gpuConstants.DiffuseMap1_SpeedScalar = entity.Floats.Get(ShortGuids.diffuse_1_speed_scalar);
+                                    gpuConstants.ColourTint = entity.Vectors.Get(ShortGuids.tint) / 255.0f;
                                     mvr.GPUConstants.SetAs<FOGPLANE_GPU_CONSTANTS>(gpuConstants);
                                     break;
                             }
@@ -2509,33 +2509,33 @@ namespace CathodeLib
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                     {
                         CA_FOGSPHERE.FEATURES features = 0;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("EXPONENTIAL_DENSITY")))
+                        if (entity.Bools.Get(ShortGuids.EXPONENTIAL_DENSITY))
                             features |= CA_FOGSPHERE.FEATURES.EXPONENTIAL_DENSITY;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("SCENE_DEPENDANT_DENSITY")))
+                        if (entity.Bools.Get(ShortGuids.SCENE_DEPENDANT_DENSITY))
                             features |= CA_FOGSPHERE.FEATURES.SCENE_DEPENDANT_DENSITY;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("FRESNEL_TERM")))
+                        if (entity.Bools.Get(ShortGuids.FRESNEL_TERM))
                             features |= CA_FOGSPHERE.FEATURES.FRESNEL_TERM;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("SOFTNESS")))
+                        if (entity.Bools.Get(ShortGuids.SOFTNESS))
                             features |= CA_FOGSPHERE.FEATURES.SOFTNESS;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("LOW_RES_ALPHA")) & !entity.Bools.Get(ShortGuidUtils.Generate("EARLY_ALPHA")))
+                        if (entity.Bools.Get(ShortGuids.LOW_RES_ALPHA) & !entity.Bools.Get(ShortGuids.EARLY_ALPHA))
                             features |= CA_FOGSPHERE.FEATURES.LOW_RES_ALPHA;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("EARLY_ALPHA")))
+                        if (entity.Bools.Get(ShortGuids.EARLY_ALPHA))
                             features |= CA_FOGSPHERE.FEATURES.EARLY_ALPHA;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("BLEND_ALPHA_OVER_DISTANCE")))
+                        if (entity.Bools.Get(ShortGuids.BLEND_ALPHA_OVER_DISTANCE))
                             features |= CA_FOGSPHERE.FEATURES.BLEND_ALPHA_OVER_DISTANCE;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("SECONDARY_BLEND_ALPHA_OVER_DISTANCE")))
+                        if (entity.Bools.Get(ShortGuids.SECONDARY_BLEND_ALPHA_OVER_DISTANCE))
                             features |= CA_FOGSPHERE.FEATURES.SECONDARY_BLEND_ALPHA_OVER_DISTANCE;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("CONVEX_GEOM")))
+                        if (entity.Bools.Get(ShortGuids.CONVEX_GEOM))
                             features |= CA_FOGSPHERE.FEATURES.CONVEX_GEOM;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("ALPHA_LIGHTING")))
+                        if (entity.Bools.Get(ShortGuids.ALPHA_LIGHTING))
                         {
                             features |= CA_FOGSPHERE.FEATURES.ALPHA_LIGHTING;
-                            if (entity.Bools.Get(ShortGuidUtils.Generate("DYNAMIC_ALPHA_LIGHTING")))
+                            if (entity.Bools.Get(ShortGuids.DYNAMIC_ALPHA_LIGHTING))
                                 features |= CA_FOGSPHERE.FEATURES.DYNAMIC_ALPHA_LIGHTING;
                         }
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("DEPTH_INTERSECT_COLOUR")))
+                        if (entity.Bools.Get(ShortGuids.DEPTH_INTERSECT_COLOUR))
                             features |= CA_FOGSPHERE.FEATURES.DEPTH_INTERSECT_COLOUR;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("NO_CLIP")))
+                        if (entity.Bools.Get(ShortGuids.NO_CLIP))
                             features |= CA_FOGSPHERE.FEATURES.NO_CLIP;
 
                         // generate mat
@@ -2553,20 +2553,20 @@ namespace CathodeLib
                             {
                                 case SHADER_LIST.CA_FOGSPHERE:
                                     FOGSPHERE_GPU_CONSTANTS gpuConstants = new FOGSPHERE_GPU_CONSTANTS();
-                                    gpuConstants.ColourTint = entity.Vectors.Get(ShortGuidUtils.Generate("COLOUR_TINT")) / 255.0f;
-                                    gpuConstants.Intensity = entity.Floats.Get(ShortGuidUtils.Generate("INTENSITY"));
-                                    gpuConstants.Opacity = entity.Floats.Get(ShortGuidUtils.Generate("OPACITY"));
-                                    gpuConstants.Density = entity.Floats.Get(ShortGuidUtils.Generate("DENSITY"));
-                                    gpuConstants.FresnelPower = entity.Floats.Get(ShortGuidUtils.Generate("FRESNEL_POWER"));
-                                    gpuConstants.SoftnessEdge = entity.Floats.Get(ShortGuidUtils.Generate("SOFTNESS_EDGE"));
-                                    gpuConstants.FarBlendDistance = entity.Floats.Get(ShortGuidUtils.Generate("FAR_BLEND_DISTANCE"));
-                                    gpuConstants.NearBlendDistance = entity.Floats.Get(ShortGuidUtils.Generate("NEAR_BLEND_DISTANCE"));
-                                    gpuConstants.SecondaryFarBlendDistance = entity.Floats.Get(ShortGuidUtils.Generate("SECONDARY_FAR_BLEND_DISTANCE"));
-                                    gpuConstants.SecondaryNearBlendDistance = entity.Floats.Get(ShortGuidUtils.Generate("SECONDARY_NEAR_BLEND_DISTANCE"));
-                                    gpuConstants.Radius = entity.Floats.Get(ShortGuidUtils.Generate("radius"));
-                                    gpuConstants.DepthIntersectionColour = entity.Vectors.Get(ShortGuidUtils.Generate("DEPTH_INTERSECT_COLOUR_VALUE")) / 255.0f;
-                                    gpuConstants.DepthIntersectionAlpha = entity.Floats.Get(ShortGuidUtils.Generate("DEPTH_INTERSECT_ALPHA_VALUE"));
-                                    gpuConstants.DepthIntersectionRange = entity.Floats.Get(ShortGuidUtils.Generate("DEPTH_INTERSECT_RANGE")); 
+                                    gpuConstants.ColourTint = entity.Vectors.Get(ShortGuids.COLOUR_TINT) / 255.0f;
+                                    gpuConstants.Intensity = entity.Floats.Get(ShortGuids.INTENSITY);
+                                    gpuConstants.Opacity = entity.Floats.Get(ShortGuids.OPACITY);
+                                    gpuConstants.Density = entity.Floats.Get(ShortGuids.DENSITY);
+                                    gpuConstants.FresnelPower = entity.Floats.Get(ShortGuids.FRESNEL_POWER);
+                                    gpuConstants.SoftnessEdge = entity.Floats.Get(ShortGuids.SOFTNESS_EDGE);
+                                    gpuConstants.FarBlendDistance = entity.Floats.Get(ShortGuids.FAR_BLEND_DISTANCE);
+                                    gpuConstants.NearBlendDistance = entity.Floats.Get(ShortGuids.NEAR_BLEND_DISTANCE);
+                                    gpuConstants.SecondaryFarBlendDistance = entity.Floats.Get(ShortGuids.SECONDARY_FAR_BLEND_DISTANCE);
+                                    gpuConstants.SecondaryNearBlendDistance = entity.Floats.Get(ShortGuids.SECONDARY_NEAR_BLEND_DISTANCE);
+                                    gpuConstants.Radius = entity.Floats.Get(ShortGuids.radius);
+                                    gpuConstants.DepthIntersectionColour = entity.Vectors.Get(ShortGuids.DEPTH_INTERSECT_COLOUR_VALUE) / 255.0f;
+                                    gpuConstants.DepthIntersectionAlpha = entity.Floats.Get(ShortGuids.DEPTH_INTERSECT_ALPHA_VALUE);
+                                    gpuConstants.DepthIntersectionRange = entity.Floats.Get(ShortGuids.DEPTH_INTERSECT_RANGE); 
                                     mvr.GPUConstants.SetAs<FOGSPHERE_GPU_CONSTANTS>(gpuConstants); 
                                     break;
                             }
@@ -2602,52 +2602,52 @@ namespace CathodeLib
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
                         DEFERRED_PARAMS cpuConstants = new DEFERRED_PARAMS();
                         cpuConstants.Visibility = 1.0f;
-                        cpuConstants.FlareIntensityScale = entity.Floats.Get(ShortGuidUtils.Generate("flare_intensity_scale"));
-                        cpuConstants.RadiosityFraction = entity.Floats.Get(ShortGuidUtils.Generate("radiosity_multiplier"));
-                        cpuConstants.Type = ((LIGHT_TYPE)entity.EnumIndexes.Get(ShortGuidUtils.Generate("type"))).AsLightType();
-                        cpuConstants.ShadowPriorityOffset = (byte)entity.Integers.Get(ShortGuidUtils.Generate("shadow_priority"));
-                        cpuConstants.SlopeScaleDepthBias = (byte)entity.Integers.Get(ShortGuidUtils.Generate("slope_scale_depth_bias"));
-                        if (entity.Floats.Get(ShortGuidUtils.Generate("diffuse_bias")) > 1.0f)
+                        cpuConstants.FlareIntensityScale = entity.Floats.Get(ShortGuids.flare_intensity_scale);
+                        cpuConstants.RadiosityFraction = entity.Floats.Get(ShortGuids.radiosity_multiplier);
+                        cpuConstants.Type = ((LIGHT_TYPE)entity.EnumIndexes.Get(ShortGuids.type)).AsLightType();
+                        cpuConstants.ShadowPriorityOffset = (byte)entity.Integers.Get(ShortGuids.shadow_priority);
+                        cpuConstants.SlopeScaleDepthBias = (byte)entity.Integers.Get(ShortGuids.slope_scale_depth_bias);
+                        if (entity.Floats.Get(ShortGuids.diffuse_bias) > 1.0f)
                             cpuConstants.Features |= LightFeature.DiffuseBias;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("is_flash_light")))
+                        if (entity.Bools.Get(ShortGuids.is_flash_light))
                             cpuConstants.Features |= LightFeature.Flashlight;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("has_lens_flare")))
+                        if (entity.Bools.Get(ShortGuids.has_lens_flare))
                             cpuConstants.Features |= LightFeature.LensFlare;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("has_noclip")))
+                        if (entity.Bools.Get(ShortGuids.has_noclip))
                             cpuConstants.Features |= LightFeature.NoClip;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("physical_attenuation")))
+                        if (entity.Bools.Get(ShortGuids.physical_attenuation))
                             cpuConstants.Features |= LightFeature.PhysicalAttenuation;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("horizontal_gobo_flip")))
+                        if (entity.Bools.Get(ShortGuids.horizontal_gobo_flip))
                             cpuConstants.Features |= LightFeature.HorizontalGoboFlip;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("is_specular")))
+                        if (entity.Bools.Get(ShortGuids.is_specular))
                             cpuConstants.Features |= LightFeature.Specular;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("no_alphalight")))
+                        if (entity.Bools.Get(ShortGuids.no_alphalight))
                             cpuConstants.Features |= LightFeature.NoAlphaLight;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("volume")) && cpuConstants.Type == LightType.Spot)
+                        if (entity.Bools.Get(ShortGuids.volume) && cpuConstants.Type == LightType.Spot)
                             cpuConstants.Features |= LightFeature.Volume;
-                        //if (entity.Strings.Get(ShortGuidUtils.Generate("gobo_texture")) && cpuConstants.Type == LightType.Spot)
+                        //if (entity.Strings.Get(ShortGuids.gobo_texture) && cpuConstants.Type == LightType.Spot)
                         //    cpuConstants.Features |= LightFeature.Gobo;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("cast_shadow")) && cpuConstants.Type == LightType.Spot)
+                        if (entity.Bools.Get(ShortGuids.cast_shadow) && cpuConstants.Type == LightType.Spot)
                             cpuConstants.Features |= LightFeature.Shadow;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("is_square_light")) && cpuConstants.Type == LightType.Spot)
+                        if (entity.Bools.Get(ShortGuids.is_square_light) && cpuConstants.Type == LightType.Spot)
                             cpuConstants.Features |= LightFeature.SquareLight;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("distance_mip_selection_gobo")) && cpuConstants.Type == LightType.Spot)
+                        if (entity.Bools.Get(ShortGuids.distance_mip_selection_gobo) && cpuConstants.Type == LightType.Spot)
                             cpuConstants.Features |= LightFeature.DistanceMipSelectionGobo;
-                        float areaLightRadius = entity.Floats.Get(ShortGuidUtils.Generate("area_light_radius"));
+                        float areaLightRadius = entity.Floats.Get(ShortGuids.area_light_radius);
                         if (areaLightRadius > 0.0001f)
                             cpuConstants.Features |= LightFeature.AreaLight;
-                        cpuConstants.LightFadeType = (LightFadeType)(LIGHT_FADE_TYPE)entity.EnumIndexes.Get(ShortGuidUtils.Generate("fade_type"));
-                        cpuConstants.FlareOccluderRadius = entity.Floats.Get(ShortGuidUtils.Generate("flare_occluder_radius"));
-                        cpuConstants.FlareSpotOffset = entity.Floats.Get(ShortGuidUtils.Generate("flare_spot_offset"));
-                        cpuConstants.DepthBias = entity.Floats.Get(ShortGuidUtils.Generate("depth_bias"));
+                        cpuConstants.LightFadeType = (LightFadeType)(LIGHT_FADE_TYPE)entity.EnumIndexes.Get(ShortGuids.fade_type);
+                        cpuConstants.FlareOccluderRadius = entity.Floats.Get(ShortGuids.flare_occluder_radius);
+                        cpuConstants.FlareSpotOffset = entity.Floats.Get(ShortGuids.flare_spot_offset);
+                        cpuConstants.DepthBias = entity.Floats.Get(ShortGuids.depth_bias);
                         mvr.RenderConstants.SetAs<DEFERRED_PARAMS>(cpuConstants);
                         DEFERRED_GPU_CONSTANTS gpuConstants = new DEFERRED_GPU_CONSTANTS();
-                        float endAttenuation = entity.Floats.Get(ShortGuidUtils.Generate("end_attenuation"));
-                        float startAttenuation = Math.Min(entity.Floats.Get(ShortGuidUtils.Generate("start_attenuation")), endAttenuation - 0.05f);
+                        float endAttenuation = entity.Floats.Get(ShortGuids.end_attenuation);
+                        float startAttenuation = Math.Min(entity.Floats.Get(ShortGuids.start_attenuation), endAttenuation - 0.05f);
                         gpuConstants.AttenuationBegin = Math.Max(Math.Min(startAttenuation, endAttenuation), 0.00001f); //not sure if these start/ends are correct
                         gpuConstants.AttenuationEnd = Math.Max(Math.Min(startAttenuation, endAttenuation), 0.00001f);
-                        Vector3 colour = entity.Vectors.Get(ShortGuidUtils.Generate("colour"));
-                        gpuConstants.Colour = Math.Max(0.0f, entity.Floats.Get(ShortGuidUtils.Generate("intensity_multiplier"))) * new Vector3((float)MathsUtils.sRGBToLinear(colour.X / 255.0f), (float)MathsUtils.sRGBToLinear(colour.Y / 255.0f), (float)MathsUtils.sRGBToLinear(colour.Z / 255.0f));
+                        Vector3 colour = entity.Vectors.Get(ShortGuids.colour);
+                        gpuConstants.Colour = Math.Max(0.0f, entity.Floats.Get(ShortGuids.intensity_multiplier)) * new Vector3((float)MathsUtils.sRGBToLinear(colour.X / 255.0f), (float)MathsUtils.sRGBToLinear(colour.Y / 255.0f), (float)MathsUtils.sRGBToLinear(colour.Z / 255.0f));
                         if (cpuConstants.Features.HasFlag(LightFeature.PhysicalAttenuation))
                         {
                             gpuConstants.VolumeColour = gpuConstants.Colour;
@@ -2659,15 +2659,15 @@ namespace CathodeLib
                         }
                         if (cpuConstants.Features.HasFlag(LightFeature.Volume))
                         {
-                            Vector3 volumeColourFactor = entity.Vectors.Get(ShortGuidUtils.Generate("volume_colour_factor"));
+                            Vector3 volumeColourFactor = entity.Vectors.Get(ShortGuids.volume_colour_factor);
                             gpuConstants.VolumeColour *= new Vector3((float)MathsUtils.sRGBToLinear(volumeColourFactor.X / 255.0f), (float)MathsUtils.sRGBToLinear(volumeColourFactor.Y / 255.0f), (float)MathsUtils.sRGBToLinear(volumeColourFactor.Z / 255.0f));
                         }
-                        gpuConstants.NearDist = Math.Min(entity.Floats.Get(ShortGuidUtils.Generate("near_dist")), gpuConstants.AttenuationEnd - 0.00001f);
-                        gpuConstants.Softness = entity.Floats.Get(ShortGuidUtils.Generate("diffuse_softness"));
-                        gpuConstants.DiffuseBias = entity.Floats.Get(ShortGuidUtils.Generate("diffuse_bias"));
-                        gpuConstants.GlossinessScale = Math.Max(0.0f, Math.Min(1.0f, entity.Floats.Get(ShortGuidUtils.Generate("glossiness_scale"))));
-                        gpuConstants.OuterAngle = (float)Math.Min(Math.Min(Math.Max(Math.Cos(MathsUtils.Deg2Rad(entity.Floats.Get(ShortGuidUtils.Generate("outer_cone_angle"))) / 2.0f), 0.0f), 1.0f), 0.999f);
-                        gpuConstants.InnerAngle = (float)Math.Min(Math.Min(Math.Max(Math.Cos(MathsUtils.Deg2Rad(entity.Floats.Get(ShortGuidUtils.Generate("inner_cone_angle"))) / 2.0f), 0.0f), 1.0f), 0.999f);
+                        gpuConstants.NearDist = Math.Min(entity.Floats.Get(ShortGuids.near_dist), gpuConstants.AttenuationEnd - 0.00001f);
+                        gpuConstants.Softness = entity.Floats.Get(ShortGuids.diffuse_softness);
+                        gpuConstants.DiffuseBias = entity.Floats.Get(ShortGuids.diffuse_bias);
+                        gpuConstants.GlossinessScale = Math.Max(0.0f, Math.Min(1.0f, entity.Floats.Get(ShortGuids.glossiness_scale)));
+                        gpuConstants.OuterAngle = (float)Math.Min(Math.Min(Math.Max(Math.Cos(MathsUtils.Deg2Rad(entity.Floats.Get(ShortGuids.outer_cone_angle)) / 2.0f), 0.0f), 1.0f), 0.999f);
+                        gpuConstants.InnerAngle = (float)Math.Min(Math.Min(Math.Max(Math.Cos(MathsUtils.Deg2Rad(entity.Floats.Get(ShortGuids.inner_cone_angle)) / 2.0f), 0.0f), 1.0f), 0.999f);
                         if (!cpuConstants.Features.HasFlag(LightFeature.SquareLight))
                         {
                             gpuConstants.InnerAngle = Math.Min(Math.Max(gpuConstants.OuterAngle + 0.01f, gpuConstants.InnerAngle), 0.999f);
@@ -2677,17 +2677,17 @@ namespace CathodeLib
                             gpuConstants.InnerAngle = Math.Min(gpuConstants.OuterAngle + 0.01f, 0.999f);
                         }
                         gpuConstants.ArealightRadius = areaLightRadius;
-                        gpuConstants.NearDistShadowOffset = entity.Floats.Get(ShortGuidUtils.Generate("near_dist_shadow_offset"));
-                        gpuConstants.AspectRatio = cpuConstants.Features.HasFlag(LightFeature.SquareLight) ? Math.Max(entity.Floats.Get(ShortGuidUtils.Generate("aspect_ratio")), 0.001f) : 1.0f;
-                        gpuConstants.VolumeDensity = entity.Floats.Get(ShortGuidUtils.Generate("volume_density"));
-                        float volumeEndAttenuation = entity.Floats.Get(ShortGuidUtils.Generate("volume_end_attenuation"));
-                        gpuConstants.VolumeAttenuationEnd = volumeEndAttenuation > 0.0f ? volumeEndAttenuation : entity.Floats.Get(ShortGuidUtils.Generate("end_attenuation"));
+                        gpuConstants.NearDistShadowOffset = entity.Floats.Get(ShortGuids.near_dist_shadow_offset);
+                        gpuConstants.AspectRatio = cpuConstants.Features.HasFlag(LightFeature.SquareLight) ? Math.Max(entity.Floats.Get(ShortGuids.aspect_ratio), 0.001f) : 1.0f;
+                        gpuConstants.VolumeDensity = entity.Floats.Get(ShortGuids.volume_density);
+                        float volumeEndAttenuation = entity.Floats.Get(ShortGuids.volume_end_attenuation);
+                        gpuConstants.VolumeAttenuationEnd = volumeEndAttenuation > 0.0f ? volumeEndAttenuation : entity.Floats.Get(ShortGuids.end_attenuation);
                         mvr.GPUConstants.SetAs<DEFERRED_GPU_CONSTANTS>(gpuConstants);
                         mvr.RenderableElements = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
                         mvr.Resource = resource;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("include_in_planar_reflections")))
+                        if (entity.Bools.Get(ShortGuids.include_in_planar_reflections))
                             mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
-                        else if (entity.ParentCompositeInstanceEntity != null && entity.ParentCompositeInstanceEntity.Bools.Get(ShortGuidUtils.Generate("include_in_planar_reflections")))
+                        else if (entity.ParentCompositeInstanceEntity != null && entity.ParentCompositeInstanceEntity.Bools.Get(ShortGuids.include_in_planar_reflections))
                             mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
                         mvr.Entity = entity.Handle;
                         mvr.EnvironmentMap = entity.EnvironmentMap;
@@ -2728,7 +2728,7 @@ namespace CathodeLib
                             mvr.Transform = entity.CalculateWorldTransformMatrix();
                             List<RenderableElements.Element> ogReds = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
                             List<RenderableElements.Element> reds = new List<RenderableElements.Element>();
-                            cResource remapping = entity?.ParentCompositeInstanceEntity?.Resources?.Get(ShortGuidUtils.Generate("mapping"));
+                            cResource remapping = entity?.ParentCompositeInstanceEntity?.Resources?.Get(ShortGuids.mapping);
                             if (remapping != null && remapping.shortGUID != ShortGuid.Invalid)
                             {
                                 var map = _level.MaterialMappings.Entries.FirstOrDefault(o => o.ID == remapping.shortGUID);
@@ -2761,7 +2761,7 @@ namespace CathodeLib
                             }
                             if (reds != null && reds.Count == 1)
                             {
-                                string materialName = entity.Strings.Get(ShortGuidUtils.Generate("material"));
+                                string materialName = entity.Strings.Get(ShortGuids.material);
                                 if (materialName != "")
                                 {
                                     //todo use normalise name from godot
@@ -2781,23 +2781,23 @@ namespace CathodeLib
                                     case SHADER_LIST.CA_ENVIRONMENT:
                                         {
                                             ENVIRONMENT_GPU_CONSTANTS gpuConstants = new ENVIRONMENT_GPU_CONSTANTS();
-                                            Vector3 vertColourScale = entity.Vectors.Get(ShortGuidUtils.Generate("vertex_colour_scale"));
-                                            gpuConstants.VertexColourScalars = new Vector4(vertColourScale.X, vertColourScale.Y, vertColourScale.Z, entity.Floats.Get(ShortGuidUtils.Generate("vertex_opacity_scale")));
-                                            Vector3 diffColourScale = entity.Vectors.Get(ShortGuidUtils.Generate("diffuse_colour_scale")) / 255.0f;
-                                            gpuConstants.DiffuseColourScalars = new Vector4(vertColourScale.X, vertColourScale.Y, vertColourScale.Z, entity.Floats.Get(ShortGuidUtils.Generate("diffuse_opacity_scale")));
-                                            gpuConstants.AlphaBlendNoisePowerScale = entity.Floats.Get(ShortGuidUtils.Generate("alpha_blend_noise_power_scale"));
-                                            gpuConstants.AlphaBlendNoiseUvScale = entity.Floats.Get(ShortGuidUtils.Generate("alpha_blend_noise_uv_scale"));
-                                            gpuConstants.AlphaBlendNoiseUvOffset = new Vector2(entity.Floats.Get(ShortGuidUtils.Generate("alpha_blend_noise_uv_offset_X")), entity.Floats.Get(ShortGuidUtils.Generate("alpha_blend_noise_uv_offset_Y")));
-                                            gpuConstants.DirtMultiplyBlendSpecPowerScale = entity.Floats.Get(ShortGuidUtils.Generate("dirt_multiply_blend_spec_power_scale"));
-                                            gpuConstants.DirtMapUvScale = entity.Floats.Get(ShortGuidUtils.Generate("dirt_map_uv_scale"));
+                                            Vector3 vertColourScale = entity.Vectors.Get(ShortGuids.vertex_colour_scale);
+                                            gpuConstants.VertexColourScalars = new Vector4(vertColourScale.X, vertColourScale.Y, vertColourScale.Z, entity.Floats.Get(ShortGuids.vertex_opacity_scale));
+                                            Vector3 diffColourScale = entity.Vectors.Get(ShortGuids.diffuse_colour_scale) / 255.0f;
+                                            gpuConstants.DiffuseColourScalars = new Vector4(vertColourScale.X, vertColourScale.Y, vertColourScale.Z, entity.Floats.Get(ShortGuids.diffuse_opacity_scale));
+                                            gpuConstants.AlphaBlendNoisePowerScale = entity.Floats.Get(ShortGuids.alpha_blend_noise_power_scale);
+                                            gpuConstants.AlphaBlendNoiseUvScale = entity.Floats.Get(ShortGuids.alpha_blend_noise_uv_scale);
+                                            gpuConstants.AlphaBlendNoiseUvOffset = new Vector2(entity.Floats.Get(ShortGuids.alpha_blend_noise_uv_offset_X), entity.Floats.Get(ShortGuids.alpha_blend_noise_uv_offset_Y));
+                                            gpuConstants.DirtMultiplyBlendSpecPowerScale = entity.Floats.Get(ShortGuids.dirt_multiply_blend_spec_power_scale);
+                                            gpuConstants.DirtMapUvScale = entity.Floats.Get(ShortGuids.dirt_map_uv_scale);
                                             mvr.GPUConstants.SetAs<ENVIRONMENT_GPU_CONSTANTS>(gpuConstants);
                                         }
                                         break;
                                     case SHADER_LIST.CA_LIGHT_DECAL:
                                         {
                                             LIGHTDECAL_GPU_CONSTANTS gpuConstants = new LIGHTDECAL_GPU_CONSTANTS();
-                                            Vector3 tint = entity.Vectors.Get(ShortGuidUtils.Generate("lightdecal_tint")) / 255.0f;
-                                            float intensity = entity.Floats.Get(ShortGuidUtils.Generate("lightdecal_intensity"));
+                                            Vector3 tint = entity.Vectors.Get(ShortGuids.lightdecal_tint) / 255.0f;
+                                            float intensity = entity.Floats.Get(ShortGuids.lightdecal_intensity);
                                             gpuConstants.LightdecalIntensity = new Vector3((float)MathsUtils.sRGBToLinear(tint.X), (float)MathsUtils.sRGBToLinear(tint.Y), (float)MathsUtils.sRGBToLinear(tint.Z)) * intensity;
                                             mvr.GPUConstants.SetAs<LIGHTDECAL_GPU_CONSTANTS>(gpuConstants);
                                         }
@@ -2806,25 +2806,25 @@ namespace CathodeLib
                             }
                             mvr.RenderableElements = reds;
                             mvr.Resource = resource;
-                            if (entity.Bools.Get(ShortGuidUtils.Generate("disable_size_culling")))
+                            if (entity.Bools.Get(ShortGuids.disable_size_culling))
                                 mvr.CullFlags |= Movers.CullFlag.NO_SIZE_CULLING;
-                            if (!entity.Bools.Get(ShortGuidUtils.Generate("cast_shadows")))
+                            if (!entity.Bools.Get(ShortGuids.cast_shadows))
                                 mvr.CullFlags |= Movers.CullFlag.NO_CAST_SHADOWS;
-                            if (!entity.Bools.Get(ShortGuidUtils.Generate("cast_shadows_in_torch")))
+                            if (!entity.Bools.Get(ShortGuids.cast_shadows_in_torch))
                                 mvr.CullFlags |= Movers.CullFlag.NO_CAST_TORCH_SHADOW;
-                            if (entity.Bools.Get(ShortGuidUtils.Generate("include_in_planar_reflections")))
+                            if (entity.Bools.Get(ShortGuids.include_in_planar_reflections))
                                 mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
-                            else if (entity.ParentCompositeInstanceEntity != null && entity.ParentCompositeInstanceEntity.Bools.Get(ShortGuidUtils.Generate("include_in_planar_reflections")))
+                            else if (entity.ParentCompositeInstanceEntity != null && entity.ParentCompositeInstanceEntity.Bools.Get(ShortGuids.include_in_planar_reflections))
                                 mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
                             mvr.Entity = entity.Handle;
                             mvr.EnvironmentMap = entity.EnvironmentMap;
-                            mvr.EmissiveTint = entity.Vectors.Get(ShortGuidUtils.Generate("emissive_tint"));
-                            if (entity.Bools.Get(ShortGuidUtils.Generate("replace_intensity")))
+                            mvr.EmissiveTint = entity.Vectors.Get(ShortGuids.emissive_tint);
+                            if (entity.Bools.Get(ShortGuids.replace_intensity))
                                 mvr.EmissiveFlags |= Movers.EmissiveFlag.ReplaceIntensity;
-                            if (entity.Bools.Get(ShortGuidUtils.Generate("replace_tint")))
+                            if (entity.Bools.Get(ShortGuids.replace_tint))
                                 mvr.EmissiveFlags |= Movers.EmissiveFlag.ReplaceTint;
-                            mvr.EmissiveIntensityMultiplier = Math.Max(0.0f, entity.Floats.Get(ShortGuidUtils.Generate("intensity_multiplier"))); //depends on if it's switched on?
-                            mvr.EmissiveRadiosityMultiplier = Math.Max(0.0f, entity.Floats.Get(ShortGuidUtils.Generate("radiosity_multiplier")));
+                            mvr.EmissiveIntensityMultiplier = Math.Max(0.0f, entity.Floats.Get(ShortGuids.intensity_multiplier)); //depends on if it's switched on?
+                            mvr.EmissiveRadiosityMultiplier = Math.Max(0.0f, entity.Floats.Get(ShortGuids.radiosity_multiplier));
                             mvr.PrimaryZoneID = entity.PrimaryZone;
                             mvr.SecondaryZoneID = entity.SecondaryZone;
                             mvr.LightingMasterID = entity.LightingMaster;
@@ -2917,8 +2917,8 @@ namespace CathodeLib
                     break;
                 case FunctionType.ParticleEmitterReference:
                     {
-                        bool uniqueMaterial = entity.Bools.Get(ShortGuidUtils.Generate("unique_material"));
-                        //string material = entity.Strings.Get(ShortGuidUtils.Generate("material"));
+                        bool uniqueMaterial = entity.Bools.Get(ShortGuids.unique_material);
+                        //string material = entity.Strings.Get(ShortGuids.material);
 
                         //if (!isDeleted && !isTemplate && !isRequiredAssets)
                             
@@ -2926,7 +2926,7 @@ namespace CathodeLib
 
                         Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
-                        if (entity.Integers.Get(ShortGuidUtils.Generate("CPU")) == 1)
+                        if (entity.Integers.Get(ShortGuids.CPU) == 1)
                         {
                             //model is CPU_PARTICLE_MODEL
 
@@ -2934,12 +2934,12 @@ namespace CathodeLib
 
                             mvr.GPUConstants.SetAs<DYNAMIC_FX_GPU_CONSTANTS>(new DYNAMIC_FX_GPU_CONSTANTS()
                             {
-                                 ExpiryTime = entity.Floats.Get(ShortGuidUtils.Generate("SYSTEM_EXPIRY_TIME")),
+                                 ExpiryTime = entity.Floats.Get(ShortGuids.SYSTEM_EXPIRY_TIME),
                                  //generate random number
                             });
                             mvr.RenderConstants.SetAs<DYNAMIC_PFX_PARAMS>(new DYNAMIC_PFX_PARAMS()
                             {
-                                DrawPass = entity.Integers.Get(ShortGuidUtils.Generate("DRAW_PASS")),
+                                DrawPass = entity.Integers.Get(ShortGuids.DRAW_PASS),
                                 Entity = entity.Handle
                             });
                         }
@@ -2949,34 +2949,34 @@ namespace CathodeLib
 
                             PARTICLE_GPU_CONSTANTS gpuConstants = new PARTICLE_GPU_CONSTANTS();
                             //gpuConstants.RandomNumber <- random number, is this important?
-                            gpuConstants.ExpiryTime = entity.Floats.Get(ShortGuidUtils.Generate("SYSTEM_EXPIRY_TIME"));
-                            gpuConstants.AspectRatio = entity.Floats.Get(ShortGuidUtils.Generate("ASPECT_RATIO"));
-                            gpuConstants.FadeAtDistance = entity.Floats.Get(ShortGuidUtils.Generate("FADE_AT_DISTANCE"));
-                            gpuConstants.AlphaIn = entity.Floats.Get(ShortGuidUtils.Generate("ALPHA_IN")) * 0.01f;
-                            gpuConstants.AlphaOut = entity.Floats.Get(ShortGuidUtils.Generate("ALPHA_OUT")) * 0.01f;
-                            gpuConstants.AlphaRefValue = entity.Floats.Get(ShortGuidUtils.Generate("ALPHA_REF_VALUE"));
-                            gpuConstants.SizeStartMin = entity.Floats.Get(ShortGuidUtils.Generate("SIZE_START_MIN"));
-                            gpuConstants.SizeStartMax = entity.Floats.Get(ShortGuidUtils.Generate("SIZE_START_MAX"));
-                            gpuConstants.SizeEndMin = entity.Floats.Get(ShortGuidUtils.Generate("SIZE_END_MIN"));
-                            gpuConstants.SizeEndMax = entity.Floats.Get(ShortGuidUtils.Generate("SIZE_END_MAX"));
-                            gpuConstants.MaskAmountMin = entity.Floats.Get(ShortGuidUtils.Generate("MASK_AMOUNT_MIN"));
-                            gpuConstants.MaskAmountMax = entity.Floats.Get(ShortGuidUtils.Generate("MASK_AMOUNT_MAX"));
-                            gpuConstants.MaskAmountMidpoint = entity.Floats.Get(ShortGuidUtils.Generate("MASK_AMOUNT_MIDPOINT"));
-                            gpuConstants.ColourScaleMin = entity.Floats.Get(ShortGuidUtils.Generate("COLOUR_SCALE_MIN"));
-                            gpuConstants.ColourScaleMax = entity.Floats.Get(ShortGuidUtils.Generate("COLOUR_SCALE_MAX"));
-                            gpuConstants.ParticleExpiryTimeMin = entity.Floats.Get(ShortGuidUtils.Generate("PARTICLE_EXPIRY_TIME_MIN"));
-                            gpuConstants.ParticleExpiryTimeMax = entity.Floats.Get(ShortGuidUtils.Generate("PARTICLE_EXPIRY_TIME_MAX"));
-                            gpuConstants.Wind = new Vector3(entity.Floats.Get(ShortGuidUtils.Generate("WIND_X")), entity.Floats.Get(ShortGuidUtils.Generate("WIND_Y")), entity.Floats.Get(ShortGuidUtils.Generate("WIND_Z")));
+                            gpuConstants.ExpiryTime = entity.Floats.Get(ShortGuids.SYSTEM_EXPIRY_TIME);
+                            gpuConstants.AspectRatio = entity.Floats.Get(ShortGuids.ASPECT_RATIO);
+                            gpuConstants.FadeAtDistance = entity.Floats.Get(ShortGuids.FADE_AT_DISTANCE);
+                            gpuConstants.AlphaIn = entity.Floats.Get(ShortGuids.ALPHA_IN) * 0.01f;
+                            gpuConstants.AlphaOut = entity.Floats.Get(ShortGuids.ALPHA_OUT) * 0.01f;
+                            gpuConstants.AlphaRefValue = entity.Floats.Get(ShortGuids.ALPHA_REF_VALUE);
+                            gpuConstants.SizeStartMin = entity.Floats.Get(ShortGuids.SIZE_START_MIN);
+                            gpuConstants.SizeStartMax = entity.Floats.Get(ShortGuids.SIZE_START_MAX);
+                            gpuConstants.SizeEndMin = entity.Floats.Get(ShortGuids.SIZE_END_MIN);
+                            gpuConstants.SizeEndMax = entity.Floats.Get(ShortGuids.SIZE_END_MAX);
+                            gpuConstants.MaskAmountMin = entity.Floats.Get(ShortGuids.MASK_AMOUNT_MIN);
+                            gpuConstants.MaskAmountMax = entity.Floats.Get(ShortGuids.MASK_AMOUNT_MAX);
+                            gpuConstants.MaskAmountMidpoint = entity.Floats.Get(ShortGuids.MASK_AMOUNT_MIDPOINT);
+                            gpuConstants.ColourScaleMin = entity.Floats.Get(ShortGuids.COLOUR_SCALE_MIN);
+                            gpuConstants.ColourScaleMax = entity.Floats.Get(ShortGuids.COLOUR_SCALE_MAX);
+                            gpuConstants.ParticleExpiryTimeMin = entity.Floats.Get(ShortGuids.PARTICLE_EXPIRY_TIME_MIN);
+                            gpuConstants.ParticleExpiryTimeMax = entity.Floats.Get(ShortGuids.PARTICLE_EXPIRY_TIME_MAX);
+                            gpuConstants.Wind = new Vector3(entity.Floats.Get(ShortGuids.WIND_X), entity.Floats.Get(ShortGuids.WIND_Y), entity.Floats.Get(ShortGuids.WIND_Z));
                             mvr.GPUConstants.SetAs<PARTICLE_GPU_CONSTANTS>(gpuConstants);
 
                             PARTICLE_PARAMS cpuConstants = new PARTICLE_PARAMS();
-                            int particleCount = entity.Integers.Get(ShortGuidUtils.Generate("PARTICLE_COUNT"));
+                            int particleCount = entity.Integers.Get(ShortGuids.PARTICLE_COUNT);
                             cpuConstants.NumVerts = 2 * particleCount * 4;
                             cpuConstants.PrimitiveCount = 2 * particleCount;
                             cpuConstants.VertexOffset = (int)(gpuConstants.RandomNumber * (float)(1000 - particleCount)) * 4;
-                            cpuConstants.DrawPass = entity.Integers.Get(ShortGuidUtils.Generate("DRAW_PASS"));
-                            cpuConstants.BoundingBoxMax = entity.Vectors.Get(ShortGuidUtils.Generate("bounds_max"));
-                            cpuConstants.BoundingBoxMin = entity.Vectors.Get(ShortGuidUtils.Generate("bounds_min"));
+                            cpuConstants.DrawPass = entity.Integers.Get(ShortGuids.DRAW_PASS);
+                            cpuConstants.BoundingBoxMax = entity.Vectors.Get(ShortGuids.bounds_max);
+                            cpuConstants.BoundingBoxMin = entity.Vectors.Get(ShortGuids.bounds_min);
                             cpuConstants.Entity = entity.Handle;
                             mvr.RenderConstants.SetAs<PARTICLE_PARAMS>(cpuConstants);
                         }
@@ -2987,9 +2987,9 @@ namespace CathodeLib
                             if ((mvr.RenderableElements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.APPROXIMATE_LIGHTING)) == 0)
                             {
                                 // todo - is this correct?
-                                if (entity.Bools.Get(ShortGuidUtils.Generate("include_in_planar_reflections")))
+                                if (entity.Bools.Get(ShortGuids.include_in_planar_reflections))
                                     mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
-                                else if (entity.ParentCompositeInstanceEntity != null && entity.ParentCompositeInstanceEntity.Bools.Get(ShortGuidUtils.Generate("include_in_planar_reflections")))
+                                else if (entity.ParentCompositeInstanceEntity != null && entity.ParentCompositeInstanceEntity.Bools.Get(ShortGuids.include_in_planar_reflections))
                                     mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
                             }
                         }
@@ -3059,9 +3059,9 @@ namespace CathodeLib
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
                         mvr.RenderableElements = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
                         mvr.Resource = AddResourceEntry(entity);
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("include_in_planar_reflections")))
+                        if (entity.Bools.Get(ShortGuids.include_in_planar_reflections))
                             mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
-                        else if (entity.ParentCompositeInstanceEntity != null && entity.ParentCompositeInstanceEntity.Bools.Get(ShortGuidUtils.Generate("include_in_planar_reflections")))
+                        else if (entity.ParentCompositeInstanceEntity != null && entity.ParentCompositeInstanceEntity.Bools.Get(ShortGuids.include_in_planar_reflections))
                             mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
                         mvr.Entity = entity.Handle;
                         mvr.PrimaryZoneID = entity.PrimaryZone;
@@ -3112,12 +3112,12 @@ namespace CathodeLib
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
                         mvr.GPUConstants.SetAs<DYNAMIC_FX_GPU_CONSTANTS>(new DYNAMIC_FX_GPU_CONSTANTS()
                         {
-                            ExpiryTime = entity.Floats.Get(ShortGuidUtils.Generate("SYSTEM_EXPIRY_TIME")),
+                            ExpiryTime = entity.Floats.Get(ShortGuids.SYSTEM_EXPIRY_TIME),
                             //generate a random number
                         });
                         mvr.RenderConstants.SetAs<DYNAMIC_PFX_PARAMS>(new DYNAMIC_PFX_PARAMS()
                         {
-                            DrawPass = entity.Integers.Get(ShortGuidUtils.Generate("DRAW_PASS")),
+                            DrawPass = entity.Integers.Get(ShortGuids.DRAW_PASS),
                             Entity = entity.Handle
                         });
                         mvr.RenderableElements = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
@@ -3127,9 +3127,9 @@ namespace CathodeLib
                             if ((mvr.RenderableElements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.APPROXIMATE_LIGHTING)) == 0)
                             {
                                 // todo - is this correct?
-                                if (entity.Bools.Get(ShortGuidUtils.Generate("include_in_planar_reflections")))
+                                if (entity.Bools.Get(ShortGuids.include_in_planar_reflections))
                                     mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
-                                else if (entity.ParentCompositeInstanceEntity != null && entity.ParentCompositeInstanceEntity.Bools.Get(ShortGuidUtils.Generate("include_in_planar_reflections")))
+                                else if (entity.ParentCompositeInstanceEntity != null && entity.ParentCompositeInstanceEntity.Bools.Get(ShortGuids.include_in_planar_reflections))
                                     mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
                             }
                         }
@@ -3149,13 +3149,13 @@ namespace CathodeLib
                     {
 
                         CA_SIMPLE_REFRACTION.FEATURES features = 0;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("SECONDARY_NORMAL_MAPPING")))
+                        if (entity.Bools.Get(ShortGuids.SECONDARY_NORMAL_MAPPING))
                             features |= CA_SIMPLE_REFRACTION.FEATURES.SECONDARY_NORMAL_MAPPING;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("ALPHA_MASKING")))
+                        if (entity.Bools.Get(ShortGuids.ALPHA_MASKING))
                             features |= CA_SIMPLE_REFRACTION.FEATURES.ALPHA_MASKING;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("DISTORTION_OCCLUSION")))
+                        if (entity.Bools.Get(ShortGuids.DISTORTION_OCCLUSION))
                             features |= CA_SIMPLE_REFRACTION.FEATURES.DISTORTION_OCCLUSION;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("FLOW_UV_ANIMATION")))
+                        if (entity.Bools.Get(ShortGuids.FLOW_UV_ANIMATION))
                             features |= CA_SIMPLE_REFRACTION.FEATURES.FLOW_UV_ANIMATION;
                         AddResourceEntry(entity);
                     }
@@ -3165,21 +3165,21 @@ namespace CathodeLib
                         AddResourceEntry(entity);
                     {
                         CA_SIMPLEWATER.FEATURES features = 0;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("SECONDARY_NORMAL_MAPPING")))
+                        if (entity.Bools.Get(ShortGuids.SECONDARY_NORMAL_MAPPING))
                             features |= CA_SIMPLEWATER.FEATURES.SECONDARY_NORMAL_MAPPING;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("LOW_RES_ALPHA_PASS")))
+                        if (entity.Bools.Get(ShortGuids.LOW_RES_ALPHA_PASS))
                             features |= CA_SIMPLEWATER.FEATURES.LOW_RES_ALPHA_PASS;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("ALPHA_MASKING")))
+                        if (entity.Bools.Get(ShortGuids.ALPHA_MASKING))
                             features |= CA_SIMPLEWATER.FEATURES.ALPHA_MASKING;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("FLOW_MAPPING")))
+                        if (entity.Bools.Get(ShortGuids.FLOW_MAPPING))
                             features |= CA_SIMPLEWATER.FEATURES.FLOW_UV_ANIMATION;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("ENVIRONMENT_MAPPING")))
+                        if (entity.Bools.Get(ShortGuids.ENVIRONMENT_MAPPING))
                             features |= CA_SIMPLEWATER.FEATURES.ENVIRONMENT_MAPPING;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("LOCALISED_ENVIRONMENT_MAPPING")))
+                        if (entity.Bools.Get(ShortGuids.LOCALISED_ENVIRONMENT_MAPPING))
                             features |= CA_SIMPLEWATER.FEATURES.LOCALISED_ENVIRONMENT_MAPPING;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("LOCALISED_ENVMAP_BOX_PROJECTION")))
+                        if (entity.Bools.Get(ShortGuids.LOCALISED_ENVMAP_BOX_PROJECTION))
                             features |= CA_SIMPLEWATER.FEATURES.LOCALISED_ENVMAP_BOX_PROJECTION;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("REFLECTIVE_MAPPING")))
+                        if (entity.Bools.Get(ShortGuids.REFLECTIVE_MAPPING))
                             features |= CA_SIMPLEWATER.FEATURES.REFLECTIVE_MAPPING;
                     }
                     break;
@@ -3216,9 +3216,9 @@ namespace CathodeLib
                         AddResourceEntry(entity);
                     {
                         CA_EFFECT_OVERLAY.FEATURES features = CA_EFFECT_OVERLAY.FEATURES.BOX;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("WS_LOCKED")))
+                        if (entity.Bools.Get(ShortGuids.WS_LOCKED))
                             features |= CA_EFFECT_OVERLAY.FEATURES.WS_LOCKED;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("ENVMAP")))
+                        if (entity.Bools.Get(ShortGuids.ENVMAP))
                             features |= CA_EFFECT_OVERLAY.FEATURES.ENVMAP;
                     }
                     break;
@@ -3227,9 +3227,9 @@ namespace CathodeLib
                         AddResourceEntry(entity);
                     {
                         CA_EFFECT_OVERLAY.FEATURES features = CA_EFFECT_OVERLAY.FEATURES.SPHERE;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("WS_LOCKED")))
+                        if (entity.Bools.Get(ShortGuids.WS_LOCKED))
                             features |= CA_EFFECT_OVERLAY.FEATURES.WS_LOCKED;
-                        if (entity.Bools.Get(ShortGuidUtils.Generate("ENVMAP")))
+                        if (entity.Bools.Get(ShortGuids.ENVMAP))
                             features |= CA_EFFECT_OVERLAY.FEATURES.ENVMAP;
                     }
                     break;
