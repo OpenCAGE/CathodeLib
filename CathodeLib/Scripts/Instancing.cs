@@ -64,7 +64,10 @@ namespace CathodeLib
                     return (T)(object)new cResource();
                 }
 
-                throw new Exception("Failed to find param.");
+                //Fall back to type defaults
+                if (typeof(T) == typeof(cResource))
+                    return (T)(object)new cResource();
+                return default(T);
             }
 
             public List<InstancedEntity> GetLinks(ShortGuid guid)
@@ -921,7 +924,32 @@ namespace CathodeLib
                     break;
 
                 case EntityVariant.ALIAS:
-                    throw new Exception("unexpected");
+                    if (typeof(T) == typeof(bool) && Bools.Has(guid))
+                        return (T)(object)Bools.Get(guid);
+                    if (typeof(T) == typeof(int) && Integers.Has(guid))
+                        return (T)(object)Integers.Get(guid);
+                    if (typeof(T) == typeof(float) && Floats.Has(guid))
+                        return (T)(object)Floats.Get(guid);
+                    if (typeof(T) == typeof(Vector3) && Vectors.Has(guid))
+                        return (T)(object)Vectors.Get(guid);
+                    if (typeof(T) == typeof(Transform) && Transforms.Has(guid))
+                        return (T)(object)Transforms.Get(guid);
+                    if (typeof(T) == typeof(cResource) && Resources.Has(guid))
+                        return (T)(object)Resources.Get(guid);
+                    if (typeof(T) == typeof(string) && Strings.Has(guid))
+                        return (T)(object)Strings.Get(guid);
+                    try
+                    {
+                        if (typeof(T) == typeof(bool)) return (T)(object)Bools.Get(guid);
+                        if (typeof(T) == typeof(int)) return (T)(object)Integers.Get(guid);
+                        if (typeof(T) == typeof(float)) return (T)(object)Floats.Get(guid);
+                        if (typeof(T) == typeof(Vector3)) return (T)(object)Vectors.Get(guid);
+                        if (typeof(T) == typeof(Transform)) return (T)(object)Transforms.Get(guid);
+                        if (typeof(T) == typeof(cResource)) return (T)(object)Resources.Get(guid);
+                        if (typeof(T) == typeof(string)) return (T)(object)Strings.Get(guid);
+                    }
+                    catch { /* fall through to defaults */ }
+                    break;
 
                 case EntityVariant.PROXY:
                     //resolve the proxy and forward (?)
