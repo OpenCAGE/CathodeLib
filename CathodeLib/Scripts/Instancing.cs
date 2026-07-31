@@ -2489,6 +2489,13 @@ namespace CathodeLib
             if (deleteBallistic)
                 flags |= CollisionMaps.CollisionFlags.STANDARD_ONLY;
 
+            //Bit of a bodge - I'm not sure what is causing these rogue bits
+            CollisionMaps.CollisionFlags storage = flags & CollisionMaps.CollisionFlags.STORAGE_TYPE_MASK;
+            if (storage == CollisionMaps.CollisionFlags.BALLISTIC)
+                flags |= (CollisionMaps.CollisionFlags)0x9;
+            else if (storage == CollisionMaps.CollisionFlags.WORLD)
+                flags |= (CollisionMaps.CollisionFlags)0x3;
+
             return flags;
         }
 
