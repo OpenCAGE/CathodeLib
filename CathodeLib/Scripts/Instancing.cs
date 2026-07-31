@@ -2457,44 +2457,54 @@ namespace CathodeLib
         }
 
         //WIP way of figuring out collision flags - not quite right yet. Lots of mismatches.
-        private static CollisionMaps.CollisionFlags BuildInstanceCollisionFlags(InstancedEntity entity, CollisionMaps.CollisionFlags templateFlags, bool deleteStandard, bool deleteBallistic, bool forceGhosted)
+        private static CollisionMaps.CollisionFlags BuildInstanceCollisionFlags(InstancedEntity entity, bool deleteStandard, bool deleteBallistic, bool forceGhosted, Materials.Material material = null)
         {
-            CollisionMaps.CollisionFlags flags = templateFlags;
-            flags &= ~CollisionMaps.CollisionFlags.SOURCE_TYPE_MASK;
-            flags &= ~CollisionMaps.CollisionFlags.STATE_MASK;
-            flags |= CollisionMaps.CollisionFlags.PREBUILT;
-            flags |= CollisionMaps.CollisionFlags.FROZEN;
-            flags |= CollisionMaps.CollisionFlags.PRE_FROZEN;
+            CollisionMaps.CollisionFlags flags = CollisionMaps.CollisionFlags.FIXED | CollisionMaps.CollisionFlags.PREBUILT;
 
-            if ((flags & CollisionMaps.CollisionFlags.MOTION_TYPE_MASK) == 0)
-                flags |= CollisionMaps.CollisionFlags.FIXED;
-
-            bool show = !entity.Bools.Has(ShortGuids.show_on_reset) || entity.Bools.Get(ShortGuids.show_on_reset);
             bool enable = !entity.Bools.Has(ShortGuids.enable_on_reset) || entity.Bools.Get(ShortGuids.enable_on_reset);
-            if (forceGhosted || !show || !enable)
+            if (forceGhosted || !enable)
             {
                 flags |= CollisionMaps.CollisionFlags.GHOSTED;
                 flags |= CollisionMaps.CollisionFlags.PRE_GHOSTED;
             }
 
-            if (entity.Bools.Has(ShortGuids.force_keyframed) && entity.Bools.Get(ShortGuids.force_keyframed))
-                flags |= CollisionMaps.CollisionFlags.FORCE_KEYFRAMED;
-            if (entity.Bools.Has(ShortGuids.soft_collision) && entity.Bools.Get(ShortGuids.soft_collision))
-                flags |= CollisionMaps.CollisionFlags.SOFT_COLLISION;
             if (entity.Bools.Has(ShortGuids.report_sliding) && entity.Bools.Get(ShortGuids.report_sliding))
                 flags |= CollisionMaps.CollisionFlags.REPORT_SLIDING;
+            if (entity.Bools.Has(ShortGuids.soft_collision) && entity.Bools.Get(ShortGuids.soft_collision))
+                flags |= CollisionMaps.CollisionFlags.SOFT_COLLISION;
+            if (entity.Bools.Has(ShortGuids.force_keyframed) && entity.Bools.Get(ShortGuids.force_keyframed))
+                flags |= CollisionMaps.CollisionFlags.FORCE_KEYFRAMED;
+            if (entity.Bools.Has(ShortGuids.force_transparent) && entity.Bools.Get(ShortGuids.force_transparent))
+                flags |= CollisionMaps.CollisionFlags.FORCE_TRANSPARENT;
+
+            //These seem like they're related to animated objects. Need to figure out how to flag them as animated (via CAGEAnim links?)
+            flags |= CollisionMaps.CollisionFlags.FROZEN;
+            flags |= CollisionMaps.CollisionFlags.PRE_FROZEN;
 
             if (deleteStandard)
                 flags |= CollisionMaps.CollisionFlags.BALLISTIC_ONLY;
             if (deleteBallistic)
                 flags |= CollisionMaps.CollisionFlags.STANDARD_ONLY;
 
-            //Bit of a bodge - I'm not sure what is causing these rogue bits
-            CollisionMaps.CollisionFlags storage = flags & CollisionMaps.CollisionFlags.STORAGE_TYPE_MASK;
-            if (storage == CollisionMaps.CollisionFlags.BALLISTIC)
-                flags |= (CollisionMaps.CollisionFlags)0x9;
-            else if (storage == CollisionMaps.CollisionFlags.WORLD)
-                flags |= (CollisionMaps.CollisionFlags)0x3;
+            //Okay so this looks like the bodge of the century, but there's no properties on the materials to help us out here, sooooo...
+            if (material?.Name == "Collision->Collision" ||
+                material?.Name == "AudioCollision->AudioCollision" ||
+                material?.Name == "WindowCollision->WindowCollision" ||
+                material?.Name == "COLLISION_ONLY")
+            {
+                flags |= CollisionMaps.CollisionFlags.WORLD;
+                if (material?.Name == "WindowCollision->WindowCollision")
+                    flags |= (CollisionMaps.CollisionFlags)CollisionMaps.CollisionType.TRANSPARENT;
+                else if (material?.Name == "AudioCollision->AudioCollision")
+                    flags |= (CollisionMaps.CollisionFlags)CollisionMaps.CollisionType.SOUND;
+                else
+                    flags |= (CollisionMaps.CollisionFlags)CollisionMaps.CollisionType.STANDARD;
+            }
+            else if (material?.Name != null && material.Name.Length != 0)
+            {
+                flags |= CollisionMaps.CollisionFlags.BALLISTIC;
+                flags |= (CollisionMaps.CollisionFlags)CollisionMaps.CollisionType.BALLISTICS;
+            }
 
             return flags;
         }
@@ -2728,12 +2738,38 @@ namespace CathodeLib
                     }
                     if (!isDeleted && !isTemplate && static_collision && !deleteStandardCollision)
                     {
+                        CollisionMaps.CollisionType collisionType = CollisionMaps.CollisionType.STANDARD;
+                        switch ((COLLISION_TYPE)entity.EnumIndexes.Get(ShortGuids.collision_type))
+                        {
+                            case COLLISION_TYPE.CAMERA_COL:
+                                collisionType = CollisionMaps.CollisionType.CAMERA;
+                                break;
+                            case COLLISION_TYPE.LINE_OF_SIGHT_COL:
+                                collisionType = CollisionMaps.CollisionType.PATH_CLOSED;
+                                break;
+                            case COLLISION_TYPE.UI:
+                                collisionType = CollisionMaps.CollisionType.UI;
+                                break;
+                            case COLLISION_TYPE.PLAYER_COL:
+                                collisionType = CollisionMaps.CollisionType.PLAYER_ONLY;
+                                break;
+                            case COLLISION_TYPE.PHYSICS_COL:
+                                collisionType = CollisionMaps.CollisionType.AGAINST_DYNAMIC_SIMULATED;
+                                break;
+                            case COLLISION_TYPE.TRANSPARENT_COL:
+                                collisionType = CollisionMaps.CollisionType.TRANSPARENT;
+                                break;
+                        }
+
                         CollisionMaps.COLLISION_MAPPING newMap = new CollisionMaps.COLLISION_MAPPING()
                         {
                             Entity = entity.Handle,
-                            Flags = CollisionMaps.CollisionFlags.FIXED |
+                            Flags = CollisionMaps.CollisionFlags.WORLD |
+                                    CollisionMaps.CollisionFlags.FIXED |
                                     CollisionMaps.CollisionFlags.PREBUILT |
-                                    CollisionMaps.CollisionFlags.SCRIPT |
+                                    (CollisionMaps.CollisionFlags)collisionType |
+
+                                    //These seem like they're related to animated objects. Need to figure out how to flag them as animated (via CAGEAnim links?)
                                     CollisionMaps.CollisionFlags.FROZEN |
                                     CollisionMaps.CollisionFlags.PRE_FROZEN,
                             ResourceGUID = GetResourceID(entity),
@@ -2743,6 +2779,11 @@ namespace CathodeLib
                         {
                             if (!isTemplate && !isRequiredAssets)
                                 _level.CollisionMaps.Entries.Add(newMap);
+                        }
+
+                        if (collisionType == CollisionMaps.CollisionType.STANDARD || collisionType == CollisionMaps.CollisionType.TRANSPARENT)
+                        {
+                            //static box collision
                         }
                     }
                     break;
@@ -3083,9 +3124,15 @@ namespace CathodeLib
                                 CollisionMaps.COLLISION_MAPPING template = ((FunctionEntity)entity.Entity).GetResource(ResourceType.COLLISION_MAPPING, true)?.CollisionMapping;
                                 if (template != null)
                                 {
+                                    //REQUIRED_ASSETS composites keep GHOSTED (seems odd?)
+                                    bool forceGhosted = isTemplate;
+                                    string compositeName = entity.Composite?.name?.Replace('/', '\\') ?? string.Empty;
+                                    if (compositeName.StartsWith("Required_Assets\\", StringComparison.OrdinalIgnoreCase))
+                                        forceGhosted = true;
+
                                     CollisionMaps.COLLISION_MAPPING newMap = new CollisionMaps.COLLISION_MAPPING()
                                     {
-                                        Flags = BuildInstanceCollisionFlags(entity, template.Flags, deleteStandard, deleteBallistic, isTemplate),
+                                        Flags = BuildInstanceCollisionFlags(entity, deleteStandard, deleteBallistic, forceGhosted, template.Material),
                                         Index = template.Index, //todo - pretty sure this is incorrect
                                         ResourceGUID = template.ResourceGUID != ShortGuid.Invalid ? template.ResourceGUID : GetResourceID(entity),
                                         Entity = entity.Handle,
@@ -3224,12 +3271,12 @@ namespace CathodeLib
                         CollisionMaps.COLLISION_MAPPING newMap = new CollisionMaps.COLLISION_MAPPING()
                         {
                             Entity = entity.Handle,
-                            Flags = CollisionMaps.CollisionFlags.PATHFINDING |
+                            Flags = (CollisionMaps.CollisionFlags)CollisionMaps.CollisionType.PATH_CLOSED |
+                                    CollisionMaps.CollisionFlags.WORLD |
                                     CollisionMaps.CollisionFlags.FIXED |
-                                    CollisionMaps.CollisionFlags.PREBUILT |
-                                    CollisionMaps.CollisionFlags.FROZEN |
-                                    CollisionMaps.CollisionFlags.PRE_FROZEN,
-                            ResourceGUID = GetResourceID(entity)
+                                    CollisionMaps.CollisionFlags.PREBUILT,
+                            ResourceGUID = GetResourceID(entity),
+                            ZoneID = ResolveCollisionZoneId(entity, isShared)
                         };
                         lock (_collisionMapsLock)
                         {
@@ -3530,14 +3577,15 @@ namespace CathodeLib
                         AddResourceEntry(entity);
                     if (!isDeleted && !isTemplate)
                     {
+                        bool bandAid = entity.Bools.Get(ShortGuids.band_aid);
+
                         CollisionMaps.COLLISION_MAPPING newMap = new CollisionMaps.COLLISION_MAPPING()
                         {
-                            Entity = entity.Handle,
-                            Flags = CollisionMaps.CollisionFlags.SOUND |
+                            Entity = entity.Handle, 
+                            Flags = (CollisionMaps.CollisionFlags)(bandAid ? CollisionMaps.CollisionType.SOUND : CollisionMaps.CollisionType.SOUND_BARRIER) |
+                                    CollisionMaps.CollisionFlags.WORLD |
                                     CollisionMaps.CollisionFlags.FIXED |
-                                    CollisionMaps.CollisionFlags.PREBUILT |
-                                    CollisionMaps.CollisionFlags.FROZEN |
-                                    CollisionMaps.CollisionFlags.PRE_FROZEN,
+                                    CollisionMaps.CollisionFlags.PREBUILT,
                             ResourceGUID = GetResourceID(entity),
                             ZoneID = ResolveCollisionZoneId(entity, isShared)
                         };

@@ -253,14 +253,14 @@ namespace CATHODE
         public enum CollisionFlags : uint
         {
             //Type of collider
-            STANDARD = 0x00000010,
-            PHANTOM = 0x00000020, //trigger volume
-            DYNAMIC = 0x00000030,
-            PATHFINDING = 0x00000040,
-            CAMERA = 0x00000050,
-            SOUND = 0x00000060,
-            USER_INTERFACE = 0x00000070,
-            PLAYER = 0x00000080,
+            //STANDARD = 0x00000010,
+            //PHANTOM = 0x00000020, 
+            //DYNAMIC = 0x00000030,
+            //PATHFINDING = 0x00000040,
+            //CAMERA = 0x00000050,
+            //SOUND = 0x00000060,
+            //USER_INTERFACE = 0x00000070,
+            //PLAYER = 0x00000080,
             COLLISION_TYPE_MASK = 0x0000001F,
 
             //Way the collider is stored 
@@ -301,6 +301,42 @@ namespace CATHODE
             HIGH_PRIORITY = 0x00080000, //priority ui collision
             STATE_MASK = 0xFFFF0000,
         };
+
+        public enum CollisionType
+        {
+            EVERYTHING,
+            TRIGGERS,
+            CAMERA,
+            STANDARD,
+            TRANSPARENT,
+            REAL_CHAR,
+            AGAINST_DYNAMIC_SIMULATED,
+            DYNAMIC_TRANSPARENT,
+            DEBRIS,
+            BALLISTICS,
+            LINE_OF_SIGHT,
+            BALLISTIC_TEST,
+            PATH_OPEN,
+            PATH_CLOSED,
+            DYNAMIC_SIMULATED,
+            RAGDOLL,
+            WATER,
+            SOUND,
+            NOTHING,
+            GHOSTED,
+            UI,
+            UI_TEST,
+            MATERIAL_TEST,
+            SUPPORT_TEST,
+            SOUND_BARRIER,
+            PLAYER,
+            THROWN,
+            PLAYER_ONLY,
+            HIGH_PRIORITY_UI,
+            HIGH_PRIORITY_UI_TEST,
+            CHARACTER_TRIGGERS,
+            DYNAMIC_KEYFRAMED,
+        }
         #endregion
     }
 }
