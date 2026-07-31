@@ -4,7 +4,6 @@ using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using CATHODE.ShaderTypes;
 using CathodeLib.ObjectExtensions;
-using CathodeLib.Scripts.CATHODE.Commands.Helpers;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -676,8 +675,42 @@ namespace CathodeLib
                                     value = (cResource)p.content;
                                     break;
                             }
-
                             Resources.Values.Add(guid, value);
+                        }
+                        break;
+                    case DataType.FILEPATH:
+                        {
+                            Parameter p = entity.GetParameter(guid);
+                            //I have bodged material remappings in as a guid that points to the remapping, rather than storing it as a filepath.
+                            //However since it's actually down as a filepath internally, I need to add a special case to convert it back here (and down below).
+                            if (guid == ShortGuids.mapping && p?.content?.dataType == DataType.RESOURCE)
+                            {
+                                cResource value = new cResource();
+                                switch (p?.content?.dataType)
+                                {
+                                    case DataType.RESOURCE:
+                                        value = (cResource)p.content;
+                                        break;
+                                }
+                                Resources.Values.Add(guid, value);
+                            }
+                            else
+                            {
+                                string value = "";
+                                switch (p?.content?.dataType)
+                                {
+                                    case DataType.FILEPATH:
+                                    case DataType.STRING:
+                                    case DataType.ENUM_STRING:
+                                        value = ((cString)p.content).value;
+                                        break;
+                                    default:
+                                        cString sD = (cString)Level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid);
+                                        value = sD?.value ?? "";
+                                        break;
+                                }
+                                Strings.Values.Add(guid, value);
+                            }
                         }
                         break;
                     case DataType.ENUM_STRING:
@@ -779,6 +812,12 @@ namespace CathodeLib
                             break;
                         case DataType.RESOURCE:
                             Resources.AddLinks(guid, linksParsed);
+                            break;
+                        case DataType.FILEPATH:
+                            if (guid == ShortGuids.mapping) //pt2 of the material mapping change
+                                Resources.AddLinks(guid, linksParsed);
+                            else
+                                Strings.AddLinks(guid, linksParsed);
                             break;
                         case DataType.ENUM_STRING:
                         case DataType.STRING:

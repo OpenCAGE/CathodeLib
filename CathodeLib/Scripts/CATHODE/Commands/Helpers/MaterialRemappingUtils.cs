@@ -34,17 +34,30 @@ namespace CathodeLib
         public static bool TryGetMappingResource(InstancedEntity compositeInstanceEntity, out cResource mapping)
         {
             mapping = null;
-            if (compositeInstanceEntity?.Resources == null)
+            if (compositeInstanceEntity == null)
                 return false;
 
-            InstancedEntity.Parameters<cResource> resources = compositeInstanceEntity.Resources;
-            bool hasValue = resources.Has(ShortGuids.mapping);
-            bool hasLink = resources.Links != null && resources.Links.ContainsKey(ShortGuids.mapping);
-            if (!hasValue && !hasLink)
-                return false;
+            if (compositeInstanceEntity.Resources != null)
+            {
+                InstancedEntity.Parameters<cResource> resources = compositeInstanceEntity.Resources;
+                bool hasValue = resources.Has(ShortGuids.mapping);
+                bool hasLink = resources.Links != null && resources.Links.ContainsKey(ShortGuids.mapping);
+                if (hasValue || hasLink)
+                {
+                    mapping = resources.Get(ShortGuids.mapping);
+                    if (mapping != null && mapping.shortGUID != ShortGuid.Invalid)
+                        return true;
+                }
+            }
 
-            mapping = resources.Get(ShortGuids.mapping);
-            return mapping != null && mapping.shortGUID != ShortGuid.Invalid;
+            Parameter parameter = compositeInstanceEntity.Entity?.GetParameter(ShortGuids.mapping);
+            if (parameter?.content is cResource resource && resource.shortGUID != ShortGuid.Invalid)
+            {
+                mapping = resource;
+                return true;
+            }
+
+            return false;
         }
 
         public static List<RenderableElements.Element> ApplyMapping(Level level, MaterialMappings.MaterialMapping mapping, IReadOnlyList<RenderableElements.Element> source)
