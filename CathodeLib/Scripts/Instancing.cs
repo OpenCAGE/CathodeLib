@@ -4,6 +4,7 @@ using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using CATHODE.ShaderTypes;
 using CathodeLib.ObjectExtensions;
+using CathodeLib.Scripts.CATHODE.Commands.Helpers;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -3115,6 +3116,22 @@ namespace CathodeLib
                             }
                         }
 
+                        //Handle remapping the materials using the 'mapping' parameter.
+                        MaterialMappings.MaterialMapping mapping = null;
+                        List<RenderableElements.Element> reds = null;
+                        if (!(isDeleted || isRequiredAssets) || resource != null)
+                        {
+                            List<RenderableElements.Element> ogReds = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                            mapping = MaterialRemappingUtils.TryResolveMappingForModelReference(_level, entity);
+                            reds = MaterialRemappingUtils.ApplyMapping(_level, mapping, ogReds);
+                            if (entity.Strings.Has(ShortGuids.material))
+                            {
+                                string materialOverride = entity.Strings.Get(ShortGuids.material);
+                                if (materialOverride != "" && materialOverride != null)
+                                    reds = MaterialRemappingUtils.ApplyMaterialParameterOverride(_level, materialOverride, reds);
+                            }
+                        }
+
                         if (!(isDeleted || isRequiredAssets))
                         {
                             bool deleteStandard = deleteStandardCollision || (entity.Bools.Has(ShortGuids.delete_standard_collision) && entity.Bools.Get(ShortGuids.delete_standard_collision));
@@ -3130,15 +3147,23 @@ namespace CathodeLib
                                     if (compositeName.StartsWith("Required_Assets\\", StringComparison.OrdinalIgnoreCase))
                                         forceGhosted = true;
 
+                                    //Work out the material to assign - since we don't always have an associated renderable, we sometimes derive this from the collision mapping template.
+                                    //Deriving it from the template isn't ideal, but I can allow editing of it in instances where there's no renderable in the UI (TODO - do that!) so it's fine.
+                                    Materials.Material material = null;
+                                    if (reds == null || reds.Count == 0 || reds[0]?.Material == null)
+                                        material = template.Material;
+                                    else
+                                        material = reds[0].Material;
+
                                     CollisionMaps.COLLISION_MAPPING newMap = new CollisionMaps.COLLISION_MAPPING()
                                     {
                                         Flags = BuildInstanceCollisionFlags(entity, deleteStandard, deleteBallistic, forceGhosted, template.Material),
                                         Index = template.Index, //todo - pretty sure this is incorrect
                                         ResourceGUID = template.ResourceGUID != ShortGuid.Invalid ? template.ResourceGUID : GetResourceID(entity),
                                         Entity = entity.Handle,
-                                        Material = template.Material, //todo - generate this from instance
+                                        Material = material,
                                         CollisionProxyIndex = template.CollisionProxyIndex,
-                                        MaterialMapping = template.MaterialMapping, //todo - generate this from instance
+                                        MaterialMapping = mapping, //todo - if this has no renderable maybe we discard the remapping? i guess it doesn't matter.
                                         ZoneID = ResolveCollisionZoneId(entity, isShared)
                                     };
 
@@ -3154,54 +3179,6 @@ namespace CathodeLib
                         {
                             Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
                             mvr.Transform = entity.CalculateWorldTransformMatrix();
-                            List<RenderableElements.Element> ogReds = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
-                            List<RenderableElements.Element> reds = new List<RenderableElements.Element>();
-                            cResource remapping = entity?.ParentCompositeInstanceEntity?.Resources?.Get(ShortGuids.mapping);
-                            if (remapping != null && remapping.shortGUID != ShortGuid.Invalid)
-                            {
-                                var map = _level.MaterialMappings.Entries.FirstOrDefault(o => o.ID == remapping.shortGUID);
-                                if (map != null)
-                                {
-                                    foreach (RenderableElements.Element element in ogReds)
-                                    {
-                                        //todo use normalise name from godot
-                                        MaterialMappings.MaterialMapping.Mapping remap = map.Mappings.FirstOrDefault(o => o.from == element.Material.Name);
-                                        if (remap != null)
-                                        {
-                                            reds.Add(element.Copy());
-                                            reds[reds.Count - 1].Material = _level.Materials.Entries.FirstOrDefault(o => o.Name == remap.to);
-                                            //TODO - if modifying the material here, i need to update the REDS that gets written
-                                        }
-                                        else
-                                        {
-                                            reds.Add(element);
-                                        }
-                                    }
-                                }
-                                else
-                                {
-                                    reds = ogReds;
-                                }
-                            }
-                            else
-                            {
-                                reds = ogReds;
-                            }
-                            if (reds != null && reds.Count == 1)
-                            {
-                                string materialName = entity.Strings.Get(ShortGuids.material);
-                                if (materialName != "")
-                                {
-                                    //todo use normalise name from godot
-                                    if (!materialName.Contains("->")) materialName = materialName + "->" + materialName;
-                                    Materials.Material material = _level.Materials.Entries.FirstOrDefault(o => o.Name == materialName);
-                                    if (material != null)
-                                    {
-                                        reds[0].Material = material;
-                                        //again, need to update the REDS bin file if this changes!
-                                    }
-                                }
-                            }
                             if (reds != null && reds.Count > 0 && reds[0].Material != null && reds[0].Material.Shader != null)
                             {
                                 switch (reds[0].Material.Shader.Ubershader)
