@@ -2275,12 +2275,15 @@ namespace CathodeLib
         //This finds every Zone entity and applies itself to any entities connected to it via the 'composites' pin.
         private void CalculateZones()
         {
-            foreach (InstancedEntity entity in AllEntities)
+            ParallelOptions opts = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+
+            Parallel.ForEach(AllEntities, opts, entity =>
             {
                 entity.PrimaryZone = ShortGuid.Invalid;
                 entity.SecondaryZone = ShortGuid.Invalid;
-            }
+            });
 
+            List<InstancedEntity> zones = new List<InstancedEntity>();
             foreach (InstancedEntity entity in AllEntities)
             {
                 if (entity.Entity.variant != EntityVariant.FUNCTION)
@@ -2292,24 +2295,36 @@ namespace CathodeLib
                 if (entity.ThisCompositeInstance == null)
                     continue;
 
+                zones.Add(entity);
+            }
+
+            Parallel.ForEach(zones, opts, entity =>
+            {
+                FunctionEntity function = (FunctionEntity)entity.Entity;
                 ShortGuid zoneId = entity.Path.GenerateZoneID();
                 if (zoneId == ShortGuid.Invalid)
-                    continue;
+                    return;
+
+                Dictionary<ShortGuid, InstancedEntity> siblings = null;
+                InstancedEntity FindSibling(ShortGuid id)
+                {
+                    if (siblings == null)
+                    {
+                        List<InstancedEntity> list = entity.ThisCompositeInstance.Entities;
+                        siblings = new Dictionary<ShortGuid, InstancedEntity>(list.Count);
+                        foreach (InstancedEntity sibling in list)
+                            siblings[sibling.Entity.shortGUID] = sibling;
+                    }
+                    siblings.TryGetValue(id, out InstancedEntity found);
+                    return found;
+                }
 
                 foreach (EntityConnector link in function.childLinks)
                 {
                     if (link.thisParamID != ShortGuids.composites)
                         continue;
 
-                    InstancedEntity linkedEnt = null;
-                    foreach (InstancedEntity sibling in entity.ThisCompositeInstance.Entities)
-                    {
-                        if (sibling.Entity.shortGUID == link.linkedEntityID)
-                        {
-                            linkedEnt = sibling;
-                            break;
-                        }
-                    }
+                    InstancedEntity linkedEnt = FindSibling(link.linkedEntityID);
                     if (linkedEnt?.Entity == null)
                         continue;
 
@@ -2333,7 +2348,7 @@ namespace CathodeLib
                             AssignZone(linkedEnt.ChildCompositeInstance, zoneId);
                     }
                 }
-            }
+            });
         }
 
         //Assign a zone to a composite instance and all its children
@@ -2356,15 +2371,19 @@ namespace CathodeLib
         {
             if (entity == null || zoneId == ShortGuid.Invalid)
                 return;
-            if (entity.PrimaryZone == zoneId || entity.SecondaryZone == zoneId)
-                return;
 
-            if (entity.PrimaryZone == ShortGuid.Invalid)
-                entity.PrimaryZone = zoneId;
-            else if (entity.SecondaryZone == ShortGuid.Invalid)
-                entity.SecondaryZone = zoneId;
-            else
-                Console.WriteLine("WARNING: An entity tried to apply itself to more than two zones!");
+            lock (entity)
+            {
+                if (entity.PrimaryZone == zoneId || entity.SecondaryZone == zoneId)
+                    return;
+
+                if (entity.PrimaryZone == ShortGuid.Invalid)
+                    entity.PrimaryZone = zoneId;
+                else if (entity.SecondaryZone == ShortGuid.Invalid)
+                    entity.SecondaryZone = zoneId;
+                else
+                    Console.WriteLine("WARNING: An entity tried to apply itself to more than two zones!");
+            }
         }
 
         //Look up an entity in the current composite instance by following the path
