@@ -57,6 +57,14 @@ namespace CathodeLib
         public static readonly ShortGuid static_collision = ShortGuidUtils.Generate("static_collision");
         public static readonly ShortGuid delete_me = ShortGuidUtils.Generate("delete_me");
         public static readonly ShortGuid delete_standard_collision = ShortGuidUtils.Generate("delete_standard_collision");
+        public static readonly ShortGuid delete_ballistic_collision = ShortGuidUtils.Generate("delete_ballistic_collision");
+        public static readonly ShortGuid show_on_reset = ShortGuidUtils.Generate("show_on_reset");
+        public static readonly ShortGuid enable_on_reset = ShortGuidUtils.Generate("enable_on_reset");
+        public static readonly ShortGuid simulate_on_reset = ShortGuidUtils.Generate("simulate_on_reset");
+        public static readonly ShortGuid force_keyframed = ShortGuidUtils.Generate("force_keyframed");
+        public static readonly ShortGuid soft_collision = ShortGuidUtils.Generate("soft_collision");
+        public static readonly ShortGuid report_sliding = ShortGuidUtils.Generate("report_sliding");
+        public static readonly ShortGuid composites = ShortGuidUtils.Generate("composites");
         public static readonly ShortGuid ANIM_TRACK_TYPE = ShortGuidUtils.Generate("ANIM_TRACK_TYPE");
         public static readonly ShortGuid PhysicsSystem = ShortGuidUtils.Generate("PhysicsSystem");
         public static readonly ShortGuid name = ShortGuidUtils.Generate("name");
