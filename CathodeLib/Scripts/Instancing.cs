@@ -3176,6 +3176,7 @@ namespace CathodeLib
                             bool deleteStandard = deleteStandardCollision || (entity.Bools.Has(ShortGuids.delete_standard_collision) && entity.Bools.Get(ShortGuids.delete_standard_collision));
                             bool deleteBallistic = deleteBallisticCollision || (entity.Bools.Has(ShortGuids.delete_ballistic_collision) && entity.Bools.Get(ShortGuids.delete_ballistic_collision));
                             if (!(deleteStandard || deleteBallistic))
+                            if (!(deleteStandard && deleteBallistic))
                             {
                                 CollisionMaps.COLLISION_MAPPING template = ((FunctionEntity)entity.Entity).GetResource(ResourceType.COLLISION_MAPPING, true)?.CollisionMapping;
                                 if (template != null)
