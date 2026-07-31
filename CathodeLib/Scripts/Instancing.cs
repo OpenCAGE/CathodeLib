@@ -13,6 +13,7 @@ using System.Numerics;
 using System.Threading.Tasks;
 using static CATHODE.Lights;
 using static CATHODE.MaterialMappings.MaterialMapping;
+using static CATHODE.MorphTargets.MorphTarget;
 using static CATHODE.Movers.MOVER_DESCRIPTOR;
 using static CATHODE.Movers.MOVER_DESCRIPTOR.GPU_CONSTANTS;
 using static CATHODE.Movers.MOVER_DESCRIPTOR.RENDER_CONSTANTS;
@@ -2138,8 +2139,6 @@ namespace CathodeLib
         private List<ShortGuid> _sharedComposites = new List<ShortGuid>();
         private ShortGuid _globalGUID;
 
-        //TEMPORARY! I will improve this to assign it to InstancedEntity shortly.
-        private Dictionary<ShortGuid, (ShortGuid Primary, ShortGuid Secondary)> _tempZoneCache = new Dictionary<ShortGuid, (ShortGuid, ShortGuid)>();
         private static readonly ShortGuid GlobalZoneId = new ShortGuid("01-00-00-00");
 
         public Instancing(Level level)
@@ -2156,13 +2155,36 @@ namespace CathodeLib
         public InstancedComposite LevelRoot => Root;
         public Dictionary<ShortGuid, (ShortGuid Primary, ShortGuid Secondary)> GetDualZoneAssignmentsByCompositeInstance()
         {
-            return new Dictionary<ShortGuid, (ShortGuid Primary, ShortGuid Secondary)>(_tempZoneCache);
+            var result = new Dictionary<ShortGuid, (ShortGuid Primary, ShortGuid Secondary)>();
+            foreach (InstancedComposite composite in AllComposites)
+            {
+                if (composite.Entities == null)
+                    continue;
+                foreach (InstancedEntity entity in composite.Entities)
+                {
+                    if (entity.PrimaryZone == ShortGuid.Invalid && entity.SecondaryZone == ShortGuid.Invalid)
+                        continue;
+                    result[composite.InstanceID] = (entity.PrimaryZone, entity.SecondaryZone);
+                    break;
+                }
+            }
+            return result;
         }
         public Dictionary<ShortGuid, ShortGuid> GetZoneAssignmentsByCompositeInstance()
         {
-            var result = new Dictionary<ShortGuid, ShortGuid>(_tempZoneCache.Count);
-            foreach (KeyValuePair<ShortGuid, (ShortGuid Primary, ShortGuid Secondary)> kv in _tempZoneCache)
-                result[kv.Key] = kv.Value.Primary;
+            var result = new Dictionary<ShortGuid, ShortGuid>();
+            foreach (InstancedComposite composite in AllComposites)
+            {
+                if (composite.Entities == null)
+                    continue;
+                foreach (InstancedEntity entity in composite.Entities)
+                {
+                    if (entity.PrimaryZone == ShortGuid.Invalid)
+                        continue;
+                    result[composite.InstanceID] = entity.PrimaryZone;
+                    break;
+                }
+            }
             return result;
         }
         // -----
@@ -2250,9 +2272,15 @@ namespace CathodeLib
             ProcessInstances(Root, false, false, false, false, false, false);
         }
 
+        //This finds every Zone entity and applies itself to any entities connected to it via the 'composites' pin.
         private void CalculateZones()
         {
-            _tempZoneCache = new Dictionary<ShortGuid, (ShortGuid, ShortGuid)>();
+            foreach (InstancedEntity entity in AllEntities)
+            {
+                entity.PrimaryZone = ShortGuid.Invalid;
+                entity.SecondaryZone = ShortGuid.Invalid;
+            }
+
             foreach (InstancedEntity entity in AllEntities)
             {
                 if (entity.Entity.variant != EntityVariant.FUNCTION)
@@ -2273,41 +2301,73 @@ namespace CathodeLib
                     if (link.thisParamID != ShortGuids.composites)
                         continue;
 
-                    InstancedEntity trigInst = null;
+                    InstancedEntity linkedEnt = null;
                     foreach (InstancedEntity sibling in entity.ThisCompositeInstance.Entities)
                     {
                         if (sibling.Entity.shortGUID == link.linkedEntityID)
                         {
-                            trigInst = sibling;
+                            linkedEnt = sibling;
                             break;
                         }
                     }
-                    if (!(trigInst?.Entity is TriggerSequence trig))
+                    if (linkedEnt?.Entity == null)
                         continue;
 
-                    foreach (TriggerSequence.SequenceEntry entry in trig.sequence)
+                    if (linkedEnt.Entity is TriggerSequence trig)
                     {
-                        InstancedEntity target = ResolvePathInComposite(entity.ThisCompositeInstance, entry.connectedEntity);
-                        if (target?.ChildCompositeInstance != null)
-                            AssignZone(target.ChildCompositeInstance.InstanceID, zoneId);
+                        foreach (TriggerSequence.SequenceEntry entry in trig.sequence)
+                        {
+                            InstancedEntity target = ResolvePathInComposite(entity.ThisCompositeInstance, entry.connectedEntity);
+                            if (target == null)
+                                continue;
+
+                            AssignZone(target, zoneId);
+                            if (target.ChildCompositeInstance != null)
+                                AssignZone(target.ChildCompositeInstance, zoneId);
+                        }
+                    }
+                    else
+                    {
+                        AssignZone(linkedEnt, zoneId);
+                        if (linkedEnt.ChildCompositeInstance != null)
+                            AssignZone(linkedEnt.ChildCompositeInstance, zoneId);
                     }
                 }
             }
         }
 
-        private void AssignZone(ShortGuid instanceId, ShortGuid zoneId)
+        //Assign a zone to a composite instance and all its children
+        private static void AssignZone(InstancedComposite composite, ShortGuid zoneId)
         {
-            if (!_tempZoneCache.TryGetValue(instanceId, out (ShortGuid Primary, ShortGuid Secondary) existing))
+            if (composite?.Entities == null)
+                return;
+
+            foreach (InstancedEntity entity in composite.Entities)
             {
-                _tempZoneCache[instanceId] = (zoneId, ShortGuid.Invalid);
-                return;
+                AssignZone(entity, zoneId);
+
+                if (entity.ChildCompositeInstance != null)
+                    AssignZone(entity.ChildCompositeInstance, zoneId);
             }
-            if (existing.Primary == zoneId || existing.Secondary == zoneId)
-                return;
-            if (existing.Secondary == ShortGuid.Invalid)
-                _tempZoneCache[instanceId] = (existing.Primary, zoneId);
         }
 
+        //Assign a zone to an entity (we can have up to two!)
+        private static void AssignZone(InstancedEntity entity, ShortGuid zoneId)
+        {
+            if (entity == null || zoneId == ShortGuid.Invalid)
+                return;
+            if (entity.PrimaryZone == zoneId || entity.SecondaryZone == zoneId)
+                return;
+
+            if (entity.PrimaryZone == ShortGuid.Invalid)
+                entity.PrimaryZone = zoneId;
+            else if (entity.SecondaryZone == ShortGuid.Invalid)
+                entity.SecondaryZone = zoneId;
+            else
+                Console.WriteLine("WARNING: An entity tried to apply itself to more than two zones!");
+        }
+
+        //Look up an entity in the current composite instance by following the path
         private static InstancedEntity ResolvePathInComposite(InstancedComposite start, EntityPath path)
         {
             if (start?.Entities == null || path?.path == null || path.path.Length == 0)
@@ -2348,69 +2408,19 @@ namespace CathodeLib
             return last;
         }
 
-        //This looks up our already pre-calculated zone info to return it for the instanced entity.
-        //Really I should just store this info as members on InstancedEntity, it'd be nicer (see comment below, related).
-        private (ShortGuid Primary, ShortGuid Secondary) ResolveZonesForEntity(InstancedEntity entity)
+        //Utility to get the correct zone ID for a collision map entry
+        private ShortGuid ResolveCollisionZoneId(InstancedEntity entity, bool isShared)
         {
-            ShortGuid primary = ShortGuid.Invalid;
-            ShortGuid secondary = ShortGuid.Invalid;
-
-            void Consider(ShortGuid zoneId)
-            {
-                if (zoneId == ShortGuid.Invalid)
-                    return;
-                if (primary == ShortGuid.Invalid)
-                    primary = zoneId;
-                else if (primary != zoneId && secondary == ShortGuid.Invalid)
-                    secondary = zoneId;
-            }
-
-            for (InstancedEntity walk = entity; walk != null; walk = walk.ParentCompositeInstanceEntity)
-            {
-                if (walk.ThisCompositeInstance == null)
-                    continue;
-                if (!_tempZoneCache.TryGetValue(walk.ThisCompositeInstance.InstanceID, out (ShortGuid Primary, ShortGuid Secondary) zones))
-                    continue;
-                Consider(zones.Primary);
-                Consider(zones.Secondary);
-                if (primary != ShortGuid.Invalid && secondary != ShortGuid.Invalid)
-                    break;
-            }
-            return (primary, secondary);
-        }
-
-        //A somewhat convoluted way of generating the zone ID for the collision mappings.
-        //Currently I'm assigning primary/secondary zones back to the instanced entity here, I should come up with a neater way of doing this, and then just query that when doing the collision zone ID generation.
-        private ShortGuid ResolveCollisionZoneId(InstancedEntity entity, bool isShared, bool forceZeroZone = false)
-        {
-            (ShortGuid primary, ShortGuid secondary) = ResolveZonesForEntity(entity);
-
             if (isShared)
-            {
-                entity.PrimaryZone = GlobalZoneId;
-                entity.SecondaryZone = ShortGuid.Invalid;
                 return GlobalZoneId;
-            }
 
-            bool dualZoned = primary != ShortGuid.Invalid && secondary != ShortGuid.Invalid && primary != secondary;
+            if (entity.PrimaryZone != ShortGuid.Invalid && entity.SecondaryZone != ShortGuid.Invalid && entity.PrimaryZone != entity.SecondaryZone)
+                return ShortGuid.Invalid;
 
-            if (forceZeroZone || dualZoned)
-            {
-                entity.PrimaryZone = dualZoned ? primary : (primary != ShortGuid.Invalid ? primary : GlobalZoneId);
-                entity.SecondaryZone = dualZoned ? secondary : ShortGuid.Invalid;
-                return ShortGuid.Invalid; // ZERO
-            }
-
-            if (primary == ShortGuid.Invalid)
-            {
-                entity.PrimaryZone = GlobalZoneId;
-                entity.SecondaryZone = ShortGuid.Invalid;
+            if (entity.PrimaryZone == ShortGuid.Invalid)
                 return GlobalZoneId;
-            }
 
-            entity.PrimaryZone = primary;
-            entity.SecondaryZone = ShortGuid.Invalid;
-            return primary;
+            return entity.PrimaryZone;
         }
 
         //WIP way of figuring out collision flags - not quite right yet. Lots of mismatches.
@@ -3196,7 +3206,7 @@ namespace CathodeLib
                                     CollisionMaps.CollisionFlags.FROZEN |
                                     CollisionMaps.CollisionFlags.PRE_FROZEN,
                             ResourceGUID = GetResourceID(entity),
-                            ZoneID = ResolveCollisionZoneId(entity, isShared, forceZeroZone: true)
+                            ZoneID = ShortGuid.Invalid
                         };
                         lock (_collisionMapsLock)
                         {
