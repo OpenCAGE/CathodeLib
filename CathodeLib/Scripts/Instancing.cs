@@ -3086,7 +3086,7 @@ namespace CathodeLib
                                     CollisionMaps.COLLISION_MAPPING newMap = new CollisionMaps.COLLISION_MAPPING()
                                     {
                                         Flags = BuildInstanceCollisionFlags(entity, template.Flags, deleteStandard, deleteBallistic, isTemplate),
-                                        Index = -1,
+                                        Index = template.Index, //todo - pretty sure this is incorrect
                                         ResourceGUID = template.ResourceGUID != ShortGuid.Invalid ? template.ResourceGUID : GetResourceID(entity),
                                         Entity = entity.Handle,
                                         Material = template.Material, //todo - generate this from instance
@@ -3325,6 +3325,24 @@ namespace CathodeLib
                                 else if (entity.ParentCompositeInstanceEntity != null && entity.ParentCompositeInstanceEntity.Bools.Get(ShortGuids.include_in_planar_reflections))
                                     mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
                             }
+                            if (mvr.RenderableElements[0].Material.Priority >= 59 && mvr.RenderableElements[0].Material.Priority <= 80)
+                            {
+                                mvr.CullFlags |= Movers.CullFlag.NO_CAST_SHADOWS;
+                            }
+                            if ((mvr.RenderableElements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.RIBBON)) == 0 ||
+                                ((mvr.RenderableElements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.PARTICLE)) == 0 && (mvr.RenderableElements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.CPU)) == 0))
+                            {
+                                //dynamic geometry
+                                mvr.CullFlags |= Movers.CullFlag.NO_CAST_SHADOWS;
+                            }
+                            if ((mvr.RenderableElements[0].Material.Shader.UbershaderRequirementFlags & (1L << (int)SHADER_REQUIREMENTS.STREAMER)) == 0)
+                            {
+                                mvr.CullFlags |= Movers.CullFlag.NO_CAST_SHADOWS;
+                            }
+                        }
+                        if (entity.Integers.Get(ShortGuids.CPU) != 1)
+                        {
+                            mvr.CullFlags |= Movers.CullFlag.NO_CAST_SHADOWS;
                         }
                         mvr.Entity = entity.Handle;
                         mvr.PrimaryZoneID = entity.PrimaryZone;
