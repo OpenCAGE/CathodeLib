@@ -2231,7 +2231,7 @@ namespace CathodeLib
                 foreach (FunctionEntity function in composite.functions)
                 {
                     ResourceReference resource = function.GetResource(ResourceType.COLLISION_MAPPING, true);
-                    if (resource == null)
+                    if (resource?.CollisionMapping == null)
                         continue;
 
                     _level.CollisionMaps.Entries.Add(resource.CollisionMapping);
@@ -2612,10 +2612,6 @@ namespace CathodeLib
                     bool thisIsTemplate = isTemplate || entity.Bools.Get(ShortGuids.is_template);
 
                     bool thisIsShared = entity.Bools.Get(ShortGuids.is_shared);
-                    // During required-asset initialisation, shared skipping is deferred so init can
-                    // visit each required parent; Root traversal then owns shared selection.
-                    // Only a non-template shared placement "claims" the composite ÔÇö otherwise a
-                    // template-first hit would suppress later live placements (e.g. Alien Leap TRAVs).
                     if (thisIsShared && !isRequiredAssets && !thisIsDeleted)
                     {
                         if (_sharedComposites.Contains(entity.ChildCompositeInstance.Composite.shortGUID))
@@ -3544,9 +3540,6 @@ namespace CathodeLib
                             features |= CA_EFFECT_OVERLAY.FEATURES.ENVMAP;
                     }
                     break;
-                // One-shot traversal segments appear in RESOURCES.BIN. Continuous TRAV_* types
-                // attach TRAVERSAL_SEGMENT at Commands load time but are not written to RESOURCES
-                // (emitting them produces extras vs retail, e.g. Ladder2M on TECH_HUB).
                 case FunctionType.TRAV_1ShotClimbUnder:
                 case FunctionType.TRAV_1ShotFloorVentEntrance:
                 case FunctionType.TRAV_1ShotFloorVentExit:
@@ -3554,6 +3547,13 @@ namespace CathodeLib
                 case FunctionType.TRAV_1ShotSpline:
                 case FunctionType.TRAV_1ShotVentEntrance:
                 case FunctionType.TRAV_1ShotVentExit:
+                case FunctionType.TRAV_ContinuousBalanceBeam:
+                case FunctionType.TRAV_ContinuousCinematicSidle:
+                case FunctionType.TRAV_ContinuousClimbingWall:
+                case FunctionType.TRAV_ContinuousLadder:
+                case FunctionType.TRAV_ContinuousLedge:
+                case FunctionType.TRAV_ContinuousPipe:
+                case FunctionType.TRAV_ContinuousTightGap:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                         AddResourceEntry(entity);
                     break;
