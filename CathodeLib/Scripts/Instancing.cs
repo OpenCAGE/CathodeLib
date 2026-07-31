@@ -2427,6 +2427,20 @@ namespace CathodeLib
             return last;
         }
 
+        private void AddMover(InstancedEntity entity, Movers.MOVER_DESCRIPTOR mvr)
+        {
+            if (mvr == null || mvr.RenderableElements == null || mvr.RenderableElements.Count == 0)
+                return;
+
+            if (entity != null)
+                entity.Mover = mvr;
+
+            lock (_mvrLock)
+            {
+                _level.Movers.Entries.Add(mvr);
+            }
+        }
+
         //Utility to get the correct zone ID for a collision map entry
         private ShortGuid ResolveCollisionZoneId(InstancedEntity entity, bool isShared)
         {
@@ -2802,10 +2816,7 @@ namespace CathodeLib
                         mvr.SecondaryZoneID = entity.SecondaryZone;
                         mvr.LightingMasterID = entity.LightingMaster;
                         //requires script etc?
-                        lock (_mvrLock)
-                        {
-                            _level.Movers.Entries.Add(mvr);
-                        }
+                        AddMover(entity, mvr);
                     }
                     break;
                 case FunctionType.FogPlane:
@@ -2844,10 +2855,7 @@ namespace CathodeLib
                         mvr.SecondaryZoneID = entity.SecondaryZone;
                         mvr.LightingMasterID = entity.LightingMaster;
                         //requires script etc?
-                        lock (_mvrLock)
-                        {
-                            _level.Movers.Entries.Add(mvr);
-                        }
+                        AddMover(entity, mvr);
                     }
                     break;
                 case FunctionType.FogSphere:
@@ -2923,10 +2931,7 @@ namespace CathodeLib
                         mvr.SecondaryZoneID = entity.SecondaryZone;
                         mvr.LightingMasterID = entity.LightingMaster;
                         //requires script etc?
-                        lock (_mvrLock)
-                        {
-                            _level.Movers.Entries.Add(mvr);
-                        }
+                        AddMover(entity, mvr);
                     }
                     break;
                 case FunctionType.JOB_Assault:
@@ -3043,11 +3048,7 @@ namespace CathodeLib
                         mvr.PrimaryZoneID = entity.PrimaryZone;
                         mvr.SecondaryZoneID = entity.SecondaryZone;
                         mvr.LightingMasterID = entity.LightingMaster;
-                        lock (_mvrLock)
-                        {
-                            _level.Movers.Entries.Add(mvr);
-                        }
-
+                        AddMover(entity, mvr);
                     }
                     break;
                 case FunctionType.ModelReference:
@@ -3081,9 +3082,9 @@ namespace CathodeLib
                                         Index = -1,
                                         ResourceGUID = template.ResourceGUID != ShortGuid.Invalid ? template.ResourceGUID : GetResourceID(entity),
                                         Entity = entity.Handle,
-                                        Material = template.Material,
+                                        Material = template.Material, //todo - generate this from instance
                                         CollisionProxyIndex = template.CollisionProxyIndex,
-                                        MaterialMapping = template.MaterialMapping,
+                                        MaterialMapping = template.MaterialMapping, //todo - generate this from instance
                                         ZoneID = ResolveCollisionZoneId(entity, isShared)
                                     };
 
@@ -3201,10 +3202,7 @@ namespace CathodeLib
                             mvr.PrimaryZoneID = entity.PrimaryZone;
                             mvr.SecondaryZoneID = entity.SecondaryZone;
                             mvr.LightingMasterID = entity.LightingMaster;
-                            lock (_mvrLock)
-                            {
-                                _level.Movers.Entries.Add(mvr);
-                            }
+                            AddMover(entity, mvr);
                         }
                     }
                     break;
@@ -3224,8 +3222,7 @@ namespace CathodeLib
                                     CollisionMaps.CollisionFlags.PREBUILT |
                                     CollisionMaps.CollisionFlags.FROZEN |
                                     CollisionMaps.CollisionFlags.PRE_FROZEN,
-                            ResourceGUID = GetResourceID(entity),
-                            ZoneID = ShortGuid.Invalid
+                            ResourceGUID = GetResourceID(entity)
                         };
                         lock (_collisionMapsLock)
                         {
@@ -3327,10 +3324,7 @@ namespace CathodeLib
                         mvr.SecondaryZoneID = entity.SecondaryZone;
                         mvr.LightingMasterID = entity.LightingMaster;
                         //flags?
-                        lock (_mvrLock)
-                        {
-                            _level.Movers.Entries.Add(mvr);
-                        }
+                        AddMover(entity, mvr);
                     }
                     break;
                 case FunctionType.PathfindingAlienBackstageNode:
@@ -3396,10 +3390,7 @@ namespace CathodeLib
                         mvr.PrimaryZoneID = entity.PrimaryZone;
                         mvr.SecondaryZoneID = entity.SecondaryZone;
                         mvr.LightingMasterID = entity.LightingMaster;
-                        lock (_mvrLock)
-                        {
-                            _level.Movers.Entries.Add(mvr);
-                        }
+                        AddMover(entity, mvr);
                     }
                     break;
                 case FunctionType.RadiosityIsland:
@@ -3467,10 +3458,7 @@ namespace CathodeLib
                         mvr.SecondaryZoneID = entity.SecondaryZone;
                         mvr.LightingMasterID = entity.LightingMaster;
                         //flags?
-                        lock (_mvrLock)
-                        {
-                            _level.Movers.Entries.Add(mvr);
-                        }
+                        AddMover(entity, mvr);
                     }
                     break;
                 case FunctionType.SimpleRefraction:
