@@ -334,6 +334,25 @@ namespace CATHODE
         }
 
         /// <summary>
+        /// Get all environment maps (cubemaps) in this texture database
+        /// </summary>
+        public List<TEX4> GetEnvironmentMaps()
+        {
+            return Entries.Where(o => o.StateFlags.HasFlag(TextureStateFlag.CUBE)).ToList();
+        }
+
+        /// <summary>
+        /// Get an environment map (cubemap) by its path (used for Texture parameters on the EnvironmentMap entity)
+        /// </summary>
+        public TEX4 GetEnvironmentMapByPath(string path)
+        {
+            string normalised = path.ToUpper().Replace("/", "\\");
+            if (!normalised.Contains("CONTENT\\BUILD\\TEXTURES\\"))
+                return Entries.FirstOrDefault(o => o.Name.ToUpper().Replace("/", "\\") == normalised);
+            return Entries.FirstOrDefault(o => o.Name.ToUpper().Replace("/", "\\") == normalised.Split(new string[] { "CONTENT\\BUILD\\TEXTURES\\" }, StringSplitOptions.None)[1]);
+        }
+
+        /// <summary>
         /// Get a texture by its current index (useful for cross-ref'ing with compiled binaries)
         /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>

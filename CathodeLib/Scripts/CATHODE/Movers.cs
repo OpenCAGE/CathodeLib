@@ -78,8 +78,6 @@ namespace CATHODE
 
             _compressed = _filepath != null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
 
-            //note: first 12 always renderable but not linked to commands -> they are always the same models across every level. is it the content of GLOBAL?
-
             using (BinaryReader reader = new BinaryReader(_compressed ? Utilities.GZIPDecompress(stream) : stream))
             {
                 reader.BaseStream.Position += 4;
@@ -93,7 +91,7 @@ namespace CATHODE
                     int envMapEntryCount = envMapReader.ReadInt32();
                     for (int i = 0; i < envMapEntryCount; i++)
                     {
-                        environmentMaps[envMapReader.ReadInt32()] = _textures.GetAtWriteIndex(envMapReader.ReadInt32());
+                        environmentMaps[envMapReader.ReadInt32()] = _textures.GetAtWriteIndexForEnvMap(envMapReader.ReadInt32());
                     }
                 }
 
@@ -327,7 +325,8 @@ namespace CATHODE
                 }
                 set
                 {
-                    flags |= 0x0004;
+                    if (value) flags |= 0x0004;
+                    else flags = (short)(flags & ~0x0004);
                 }
             }
             public bool Visible
@@ -338,7 +337,8 @@ namespace CATHODE
                 }
                 set
                 {
-                    flags |= 0x0001;
+                    if (value) flags |= 0x0001;
+                    else flags = (short)(flags & ~0x0001);
                 }
             }
             public bool Stationary
@@ -349,7 +349,8 @@ namespace CATHODE
                 }
                 set
                 {
-                    flags |= 0x0002;
+                    if (value) flags |= 0x0002;
+                    else flags = (short)(flags & ~0x0002);
                 }
             }
             private short flags;
@@ -834,8 +835,8 @@ namespace CATHODE
                 if (Math.Abs(EmissiveIntensityMultiplier - other.EmissiveIntensityMultiplier) > float.Epsilon) return false;
                 if (Math.Abs(EmissiveRadiosityMultiplier - other.EmissiveRadiosityMultiplier) > float.Epsilon) return false;
 
-                if (PrimaryZoneID != other.PrimaryZoneID) return false;
-                if (SecondaryZoneID != other.SecondaryZoneID) return false;
+                if (!SameZonePair(PrimaryZoneID, SecondaryZoneID, other.PrimaryZoneID, other.SecondaryZoneID))
+                    return false;
                 if (LightingMasterID != other.LightingMasterID) return false;
 
                 if (Flags.RequiresScript != other.Flags.RequiresScript) return false;
@@ -843,6 +844,40 @@ namespace CATHODE
                 if (Flags.Stationary != other.Flags.Stationary) return false;
 
                 return true;
+            }
+
+            public static bool SameZonePair(ShortGuid aPri, ShortGuid aSec, ShortGuid bPri, ShortGuid bSec)
+            {
+                bool aHasPri = aPri != ShortGuid.Invalid;
+                bool aHasSec = aSec != ShortGuid.Invalid && aSec != aPri;
+                bool bHasPri = bPri != ShortGuid.Invalid;
+                bool bHasSec = bSec != ShortGuid.Invalid && bSec != bPri;
+
+                int aCount = (aHasPri ? 1 : 0) + (aHasSec ? 1 : 0);
+                int bCount = (bHasPri ? 1 : 0) + (bHasSec ? 1 : 0);
+                if (aCount != bCount) return false;
+                if (aCount == 0) return true;
+                if (aCount == 1)
+                {
+                    ShortGuid a = aHasPri ? aPri : aSec;
+                    ShortGuid b = bHasPri ? bPri : bSec;
+                    return a == b;
+                }
+                return (aPri == bPri && aSec == bSec) || (aPri == bSec && aSec == bPri);
+            }
+
+            static int ZonePairHash(ShortGuid pri, ShortGuid sec)
+            {
+                uint a = pri == ShortGuid.Invalid ? 0u : pri.AsUInt32;
+                uint b = (sec == ShortGuid.Invalid || sec == pri) ? 0u : sec.AsUInt32;
+                if (b != 0 && (a == 0 || b < a))
+                {
+                    uint t = a; a = b; b = t;
+                }
+                unchecked
+                {
+                    return (int)(a * 397u) ^ (int)b;
+                }
             }
 
             public override bool Equals(object obj)
@@ -893,8 +928,7 @@ namespace CATHODE
                     hash = hash * 23 + EmissiveFlags.GetHashCode();
                     hash = hash * 23 + EmissiveIntensityMultiplier.GetHashCode();
                     hash = hash * 23 + EmissiveRadiosityMultiplier.GetHashCode();
-                    hash = hash * 23 + PrimaryZoneID.GetHashCode();
-                    hash = hash * 23 + SecondaryZoneID.GetHashCode();
+                    hash = hash * 23 + ZonePairHash(PrimaryZoneID, SecondaryZoneID);
                     hash = hash * 23 + LightingMasterID.GetHashCode();
                     hash = hash * 23 + Flags.RequiresScript.GetHashCode();
                     hash = hash * 23 + Flags.Visible.GetHashCode();

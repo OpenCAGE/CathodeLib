@@ -50,6 +50,8 @@ namespace CathodeLib
         public RenderableElements RenderableElements;
         public Movers Movers;
         public PathBarrierResources PathBarrierResources;
+        public HavokPackfile CollisionHKX;
+        public HavokPackfile CollisionHKX64;
         public CollisionMaps CollisionMaps;
         public RadiosityInstanceMap RadInstanceMap;
         public AlphaLightLevel AlphaLight;
@@ -203,8 +205,31 @@ namespace CathodeLib
             Movers = new Movers(world + "MODELS.MVR" + (compressed ? ".GZ" : ""), RenderableElements, Resources, Textures); OnLoadTick?.Invoke();
 
             Parallel.Invoke(
+                () =>
+                {
+                    if (File.Exists(world + "COLLISION.HKX"))
+                    {
+                        CollisionHKX = new HavokPackfile(world + "COLLISION.HKX");
+                        if (!CollisionHKX.Loaded)
+                            CollisionHKX = null;
+                    }
+                    OnLoadTick?.Invoke();
+                },
+                () =>
+                {
+                    if (File.Exists(world + "COLLISION.HKX64"))
+                    {
+                        CollisionHKX64 = new HavokPackfile(world + "COLLISION.HKX64");
+                        if (!CollisionHKX64.Loaded)
+                            CollisionHKX64 = null;
+                    }
+                    OnLoadTick?.Invoke();
+                }
+            );
+
+            Parallel.Invoke(
                 () => { PathBarrierResources = new PathBarrierResources(world + "PATH_BARRIER_RESOURCES", Resources); OnLoadTick?.Invoke(); },
-                () => { CollisionMaps = new CollisionMaps(world + "COLLISION.MAP" + (compressed ? ".GZ" : ""), Materials, MaterialMappings); OnLoadTick?.Invoke(); }
+                () => { CollisionMaps = new CollisionMaps(world + "COLLISION.MAP" + (compressed ? ".GZ" : ""), Materials, MaterialMappings, CollisionHKX); OnLoadTick?.Invoke(); }
             );
 
             Parallel.Invoke(
@@ -229,11 +254,10 @@ namespace CathodeLib
 
             Commands = new Commands(world + "COMMANDS" + (compressed ? ".BIN.GZ" : File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements); OnLoadTick?.Invoke();
 
-            //The following files are used by the game, but not handled yet:
+            //The following files are used by the game, but not fully handled yet:
             // - RENDERABLE/RADIOSITY_RUNTIME.BIN (and .GZ)
             // - WORLD/RADIOSITY_COLLISION_MAPPING.BIN
-            // - WORLD/COLLISION.HKX / HKX64
-            // - WORLD/PHYSICS.HKX / HKX64
+            // - WORLD/PHYSICS.HKX / HKX64    (same packfile format as COLLISION.HKX)
             // - WORLD/OCCLUDER_TRIANGLE_BVH.BIN
 
             StateResources.Add(new State());
@@ -325,6 +349,8 @@ namespace CathodeLib
 
             Parallel.Invoke(
                 () => { PathBarrierResources.Save(); OnSaveTick?.Invoke(); },
+                () => { CollisionHKX?.Save(); OnSaveTick?.Invoke(); },
+                () => { CollisionHKX64?.Save(); OnSaveTick?.Invoke(); },
                 () => { CollisionMaps.Save(); OnSaveTick?.Invoke(); },
                 () => { RadInstanceMap.Save(); OnSaveTick?.Invoke(); },
                 () => { AlphaLight.Save(); OnSaveTick?.Invoke(); },

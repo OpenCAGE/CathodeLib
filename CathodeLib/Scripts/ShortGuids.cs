@@ -68,6 +68,9 @@ namespace CathodeLib
         public static readonly ShortGuid collision_type = ShortGuidUtils.Generate("collision_type");
         public static readonly ShortGuid half_dimensions = ShortGuidUtils.Generate("half_dimensions");
         public static readonly ShortGuid composites = ShortGuidUtils.Generate("composites");
+        public static readonly ShortGuid Entities = ShortGuidUtils.Generate("Entities");
+        public static readonly ShortGuid Texture = ShortGuidUtils.Generate("Texture");
+        public static readonly ShortGuid Priority = ShortGuidUtils.Generate("Priority");
         public static readonly ShortGuid ANIM_TRACK_TYPE = ShortGuidUtils.Generate("ANIM_TRACK_TYPE");
         public static readonly ShortGuid PhysicsSystem = ShortGuidUtils.Generate("PhysicsSystem");
         public static readonly ShortGuid name = ShortGuidUtils.Generate("name");
@@ -255,6 +258,7 @@ namespace CathodeLib
         public static readonly ShortGuid WIND_Z = ShortGuidUtils.Generate("WIND_Z");
         public static readonly ShortGuid WS_LOCKED = ShortGuidUtils.Generate("WS_LOCKED");
         public static readonly ShortGuid band_aid = ShortGuidUtils.Generate("band_aid");
+        public static readonly ShortGuid light_on_reset = ShortGuidUtils.Generate("light_on_reset");
 
         public static readonly ShortGuid[] States = new ShortGuid[]
         {

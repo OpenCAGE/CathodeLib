@@ -12,8 +12,6 @@ using static CATHODE.Movers;
 
 namespace CATHODE
 {
-    //This file defines additional info for entities with COLLISION_MAPPING resources.
-
     /// <summary>
     /// DATA/ENV/x/WORLD/COLLISION.MAP
     /// </summary>
@@ -25,16 +23,18 @@ namespace CATHODE
         protected override bool HandlesLoadingManually => true;
         private Materials _materials;
         private MaterialMappings _materialMaps;
+        private HavokPackfile _collisionHKX;
 
         public bool Compressed { get { return _compressed; } set { _compressed = value; } }
         private bool _compressed = false;
 
         private List<COLLISION_MAPPING> _writeList = new List<COLLISION_MAPPING>();
 
-        public CollisionMaps(string path, Materials materials, MaterialMappings materialMaps) : base(path)
+        public CollisionMaps(string path, Materials materials, MaterialMappings materialMaps, HavokPackfile collisionHKX = null) : base(path)
         {
             _materials = materials;
             _materialMaps = materialMaps;
+            _collisionHKX = collisionHKX;
 
             _loaded = Load();
         }
@@ -43,6 +43,7 @@ namespace CATHODE
         {
             _materials = null;
             _materialMaps = null;
+            _collisionHKX = null;
         }
 
         ~CollisionMaps()
@@ -59,26 +60,21 @@ namespace CATHODE
 
             using (BinaryReader reader = new BinaryReader(_compressed ? Utilities.GZIPDecompress(stream) : stream))
             {
-                //The way this works:
-                // - First 18 entries are empty
-                // - Next set of entries are all the COLLISION_MAPPING resources referenced by COMMANDS.PAK (hence they have no composite_instance_id, as the composites aren't instanced - but they do have entity_ids)
-                // - There are then a few entries that have composite_instance_ids set but I can't resolve them - perhaps these are things from GLOBAL?
-                // - Then there's all the instanced entities with resolvable composite_instance_ids
-
                 reader.BaseStream.Position = 4;
                 int entryCount = reader.ReadInt32();
                 for (int i = 0; i < entryCount; i++)
                 {
                     COLLISION_MAPPING entry = new COLLISION_MAPPING();
                     entry.Flags = (CollisionFlags)reader.ReadInt32();
-                    entry.Index = reader.ReadInt32();
+                    int instanceIndex = reader.ReadInt32();
                     entry.ResourceGUID = Utilities.Consume<ShortGuid>(reader);
                     entry.Entity = Utilities.Consume<EntityHandle>(reader);
                     entry.Material = _materials.GetAtWriteIndex(reader.ReadInt32());
-                    entry.CollisionProxyIndex = reader.ReadInt16();
+                    int proxyIndex = reader.ReadInt16();
                     entry.MaterialMapping = _materialMaps.GetAtWriteIndex(reader.ReadInt16());
                     entry.ZoneID = Utilities.Consume<ShortGuid>(reader);
                     reader.BaseStream.Position += 16;
+                    BindHavokRefs(entry, proxyIndex, instanceIndex);
                     Entries.Add(entry);
                 }
             }
@@ -93,10 +89,6 @@ namespace CATHODE
                 _filepath += ".gz";
             else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
                 _filepath = _filepath.Substring(0, _filepath.Length - 3);
-
-            //composite_instance_id defo has something to do with the ordering as all the zeros are first
-
-            //Entries = Entries.OrderBy(o => o.entity.entity_id.ToUInt32() + o.id.ToUInt32()).ThenBy(o => o.entity.composite_instance_id.ToUInt32()).ThenBy(o => o.zone_id.ToUInt32()).ToList();
 
             byte[][] entryBuffers = new byte[Entries.Count][];
             Parallel.For(0, Entries.Count, i =>
@@ -128,7 +120,7 @@ namespace CATHODE
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 writer.Write((int)entry.Flags);
-                writer.Write(entry.Index);
+                writer.Write(entry.CollisionInstanceIndex);
                 Utilities.Write<ShortGuid>(writer, entry.ResourceGUID);
                 Utilities.Write<EntityHandle>(writer, entry.Entity);
                 writer.Write(_materials.GetWriteIndex(entry.Material));
@@ -142,6 +134,18 @@ namespace CATHODE
         #endregion
 
         #region HELPERS
+        /// <summary>
+        /// Resolve the two Havok objects a row points at. The proxy is a template compound, but the
+        /// instance lives on a world host — which host is given by the row's WORLD flag.
+        /// </summary>
+        void BindHavokRefs(COLLISION_MAPPING entry, int proxyIndex, int instanceIndex)
+        {
+            entry.CollisionProxy = _collisionHKX?.GetCompound(proxyIndex);
+
+            HavokPackfile.StaticCompoundShape host = _collisionHKX?.WorldHostFor((entry.Flags & CollisionFlags.WORLD) != 0);
+            entry.CollisionInstance = host != null && instanceIndex >= 0 && instanceIndex < host.Instances.Count ? host.Instances[instanceIndex] : null;
+        }
+
         /// <summary>
         /// Get the write index (useful for cross-ref'ing with compiled binaries)
         /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
@@ -171,7 +175,8 @@ namespace CATHODE
                 return null;
 
             COLLISION_MAPPING newColMap = colMap.Copy();
-
+            newColMap.CollisionProxy = colMap.CollisionProxy;
+            newColMap.CollisionInstance = colMap.CollisionInstance;
             newColMap.Material = _materials.ImportEntry(newColMap.Material);
             newColMap.MaterialMapping = _materialMaps.ImportEntry(newColMap.MaterialMapping);
 
@@ -190,24 +195,28 @@ namespace CATHODE
         public class COLLISION_MAPPING : IEquatable<COLLISION_MAPPING>
         {
             public CollisionFlags Flags = 0;
-            public int Index = -1; //Compound shape index for static and ballistic collision 
 
-            public ShortGuid ResourceGUID = ShortGuid.Invalid; //This is the name of the entity hashed via ShortGuid
+            public HavokPackfile.CompoundInstance CollisionInstance = null;
+
+            public ShortGuid ResourceGUID = ShortGuid.Invalid; 
             public EntityHandle Entity = new EntityHandle();
 
             public Materials.Material Material = null;
 
-            public int CollisionProxyIndex = -1; // Index in COLLISION.HKX (hkpStaticCompoundShape)
-            public MaterialMappings.MaterialMapping MaterialMapping = null; //This remaps the material to the physics material for Havok
+            public HavokPackfile.StaticCompoundShape CollisionProxy = null;
+            public MaterialMappings.MaterialMapping MaterialMapping = null; 
 
-            public ShortGuid ZoneID = ShortGuid.Invalid; //this maps the entity to a zone ID. interestingly, this seems to be the point of truth for the zone rendering
+            public ShortGuid ZoneID = ShortGuid.Invalid;
+
+            public int CollisionInstanceIndex => CollisionInstance?.Index ?? -1;
+            public int CollisionProxyIndex => CollisionProxy?.ProxyIndex ?? -1;
 
             public static bool operator ==(COLLISION_MAPPING x, COLLISION_MAPPING y)
             {
                 if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
                 if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
                 if (x.Flags != y.Flags) return false;
-                if (x.Index != y.Index) return false;
+                if (x.CollisionInstanceIndex != y.CollisionInstanceIndex) return false;
                 if (x.ResourceGUID != y.ResourceGUID) return false;
                 if (x.Entity != y.Entity) return false;
                 if (x.Material != y.Material) return false;
@@ -237,7 +246,7 @@ namespace CATHODE
                 {
                     int hashCode = 1001543423;
                     hashCode = hashCode * -1521134295 + Flags.GetHashCode();
-                    hashCode = hashCode * -1521134295 + Index.GetHashCode();
+                    hashCode = hashCode * -1521134295 + CollisionInstanceIndex.GetHashCode();
                     hashCode = hashCode * -1521134295 + ResourceGUID.GetHashCode();
                     hashCode = hashCode * -1521134295 + (Entity?.GetHashCode() ?? 0);
                     hashCode = hashCode * -1521134295 + (Material?.GetHashCode() ?? 0);

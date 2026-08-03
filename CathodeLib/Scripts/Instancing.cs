@@ -410,7 +410,10 @@ namespace CathodeLib
         public Textures.TEX4 EnvironmentMap = null;
         public ShortGuid PrimaryZone = ShortGuid.Invalid;
         public ShortGuid SecondaryZone = ShortGuid.Invalid;
-        public int LightingMaster = 0;
+        public ShortGuid PrimaryZoneSourceInstance = ShortGuid.Invalid;
+        public bool PrimaryZoneWasDirect = false;
+        public ShortGuid PrimaryZoneDescentRoot = ShortGuid.Invalid;
+        public int LightingMaster = 0; //seems to be deprecated - remove?
 
         //The composite and entity one step back in the path, responsible for creating this instance: will be null if at root
         public InstancedEntity ParentCompositeInstanceEntity = null;
@@ -2181,6 +2184,56 @@ namespace CathodeLib
 
         private static readonly ShortGuid GlobalZoneId = new ShortGuid("01-00-00-00");
 
+        private HavokCollisionTarget _hkx;  
+        private HavokCollisionTarget _hkx64;
+        private readonly object _havokLock = new object();
+
+        private sealed class HavokCollisionTarget
+        {
+            public readonly HavokPackfile Packfile;
+            public readonly Dictionary<int, HavokPackfile.CompoundInstance> Prototypes;
+            public readonly HavokPackfile.CompoundInstance FlagsPrototype;
+
+            public HavokCollisionTarget(HavokPackfile packfile)
+            {
+                Packfile = packfile;
+                Prototypes = packfile.BeginInstanceRebuild();
+                FlagsPrototype = BuildFlagsPrototype(packfile.WorldHostPrimary);
+            }
+
+            public HavokPackfile.StaticCompoundShape PrimaryHost => Packfile.WorldHostPrimary;
+            public HavokPackfile.StaticCompoundShape SecondaryHost => Packfile.WorldHostSecondary;
+            public bool HasWorldHosts => PrimaryHost != null;
+
+            public HavokPackfile.StaticCompoundShape HostFor(CollisionMaps.CollisionFlags mapFlags) => Packfile.WorldHostFor((mapFlags & CollisionMaps.CollisionFlags.WORLD) != 0);
+
+            public void ClearWorldHosts()
+            {
+                if (PrimaryHost == null)
+                    return;
+                Packfile.PrepareCompoundForRebuild(PrimaryHost);
+                if (SecondaryHost != null && !ReferenceEquals(SecondaryHost, PrimaryHost))
+                    Packfile.PrepareCompoundForRebuild(SecondaryHost);
+            }
+
+            static HavokPackfile.CompoundInstance BuildFlagsPrototype(HavokPackfile.StaticCompoundShape host)
+            {
+                if (host == null || host.Instances.Count == 0)
+                    return null;
+                HavokPackfile.CompoundInstance src = host.Instances[0];
+                return new HavokPackfile.CompoundInstance
+                {
+                    Translation = src.Translation,
+                    Rotation = src.Rotation,
+                    Scale = src.Scale,
+                    FilterInfo = src.FilterInfo,
+                    ChildFilterInfoMask = 0xFFFFFFFFu,
+                    ShapeDataOffset = src.ShapeDataOffset,
+                    ShapeClassName = src.ShapeClassName,
+                };
+            }
+        }
+
         public Instancing(Level level)
         {
             _level = level;
@@ -2272,6 +2325,16 @@ namespace CathodeLib
             if (Root?.Composite == null)
                 throw new Exception("Call GenerateInstances first");
 
+            //TEMPORARY TEST CODE - need to actually figure out how frozen is applied rather than doing this best-guess
+            _applyDefaultFrozen = ShouldApplyFrozen(_level.CollisionMaps.Entries);
+
+            //Prep and clear Havok data
+            _hkx = _level.CollisionHKX != null && _level.CollisionHKX.Loaded ? new HavokCollisionTarget(_level.CollisionHKX) : null;
+            _hkx?.ClearWorldHosts();
+            _hkx64 = _level.CollisionHKX64 != null && _level.CollisionHKX64.Loaded ? new HavokCollisionTarget(_level.CollisionHKX64) : null;
+            _hkx64?.ClearWorldHosts();
+
+            //Clear other various bits we'll re-write
             _level.Resources.Entries.Clear();
             _level.PhysicsMaps.Entries.Clear();
 
@@ -2300,9 +2363,9 @@ namespace CathodeLib
                 }
             }
 
-            //Now we pre-calculate zone info. Really I should probably do this based off the connections in the instanced data, but it needs to happen first.
-            //Note to self to update the Zone entity code (and other associated zone stuff with MVR etc) below to account for that.
+            //Now calculate linked entity logic - zone and environment map assignment
             CalculateZones();
+            CalculateEnvironmentMaps();
 
             // should probably completely rebuild REDS here too using composite/instanced data
             // also, what about LIGHTS and some others?
@@ -2310,6 +2373,211 @@ namespace CathodeLib
             //Do the instancing!
             _sharedComposites.Clear();
             ProcessInstances(Root, false, false, false, false, false, false);
+
+            //Rebuild Havok data
+            ApplyHavokUserRows();
+            _hkx?.Packfile.CommitInstanceRebuild();
+            _hkx64?.Packfile.CommitInstanceRebuild();
+        }
+
+        //Havok 'user data' looks up the collision map, so write the indexes now its populated
+        void ApplyHavokUserRows()
+        {
+            List<CollisionMaps.COLLISION_MAPPING> rows = _level.CollisionMaps.Entries;
+            var stamped = new HashSet<HavokPackfile.CompoundInstance>();
+
+            for (int i = 0; i < rows.Count; i++)
+            {
+                HavokPackfile.CompoundInstance instance = rows[i].CollisionInstance;
+                if (instance == null)
+                    continue;
+
+                instance.UserData = (ulong)i;
+                stamped.Add(instance);
+
+                HavokPackfile.StaticCompoundShape host64 = _hkx64?.HostFor(rows[i].Flags);
+                int slot = instance.Index;
+                if (host64 != null && slot >= 0 && slot < host64.Instances.Count)
+                    host64.Instances[slot].UserData = (ulong)i;
+            }
+
+            //todo - i think maybe navmesh barrier uses a different id system?
+
+            int orphans = CountUnstamped(_hkx?.PrimaryHost, stamped) + CountUnstamped(_hkx?.SecondaryHost, stamped);
+            if (orphans > 0)
+                Console.WriteLine("  WARNING: {0} Havok instances have no COLLISION.MAP row (zone lookup will miss)", orphans);
+        }
+
+        static int CountUnstamped(HavokPackfile.StaticCompoundShape host, HashSet<HavokPackfile.CompoundInstance> stamped)
+        {
+            if (host == null)
+                return 0;
+            int count = 0;
+            for (int i = 0; i < host.Instances.Count; i++)
+                if (!stamped.Contains(host.Instances[i]))
+                    count++;
+            return count;
+        }
+
+        //Creates a new instance for a Havok proxy
+        HavokPackfile.CompoundInstance AllocateHavokCompoundInstance(InstancedEntity entity, HavokPackfile.StaticCompoundShape collisionProxy, CollisionMaps.CollisionFlags mapFlags)
+        {
+            if (_hkx == null || collisionProxy == null)
+                return null;
+
+            Matrix4x4 worldMatrix = entity.CalculateWorldTransformMatrix();
+            if (!Matrix4x4.Decompose(worldMatrix, out Vector3 scale, out Quaternion rotation, out Vector3 position))
+            {
+                position = Vector3.Zero;
+                rotation = Quaternion.Identity;
+                scale = Vector3.One;
+            }
+
+            if (Math.Abs(scale.X) < 1e-6f) scale.X = 1f;
+            if (Math.Abs(scale.Y) < 1e-6f) scale.Y = 1f;
+            if (Math.Abs(scale.Z) < 1e-6f) scale.Z = 1f;
+
+            float padding = Math.Max(0.25f, Math.Max(Math.Abs(scale.X), Math.Max(Math.Abs(scale.Y), Math.Abs(scale.Z))));
+
+            lock (_havokLock)
+            {
+                //Prefer world hosts: instance shape = the template compound object itself.
+                if (_hkx.HasWorldHosts)
+                {
+                    HavokPackfile.StaticCompoundShape host = _hkx.HostFor(mapFlags);
+                    HavokPackfile.CompoundInstance instance = EmitCompoundInstance(_hkx, host, collisionProxy, mapFlags, position, rotation, scale, padding);
+
+                    HavokPackfile.StaticCompoundShape host64 = _hkx64?.HostFor(mapFlags);
+                    if (host64 != null)
+                    {
+                        HavokPackfile.StaticCompoundShape proxy64 = _hkx64.Packfile.GetCompound(collisionProxy.ProxyIndex);
+                        if (proxy64 != null)
+                        {
+                            EmitCompoundInstance(_hkx64, host64, proxy64, mapFlags, position, rotation, scale, padding);
+                            if (host64.Instances.Count != host.Instances.Count)
+                                throw new InvalidOperationException(
+                                    "COLLISION.HKX / HKX64 world-host instance indexes diverged during rebuild.");
+                        }
+                    }
+                    return instance;
+                }
+
+                //Fallback for packs with no recognisable world host: enqueue onto the template compound.
+                int collisionProxyIndex = collisionProxy.ProxyIndex;
+                if (!_hkx.Prototypes.TryGetValue(collisionProxyIndex, out HavokPackfile.CompoundInstance prototype))
+                    return null;
+
+                HavokPackfile.CompoundInstance fallback = _hkx.Packfile.EnqueueInstance(collisionProxy, position, rotation, scale, prototype, padding);
+                if (_hkx64 != null && _hkx64.Prototypes.TryGetValue(collisionProxyIndex, out HavokPackfile.CompoundInstance prototype64))
+                {
+                    HavokPackfile.StaticCompoundShape proxy64 = _hkx64.Packfile.GetCompound(collisionProxyIndex);
+                    if (proxy64 != null)
+                        _hkx64.Packfile.EnqueueInstance(proxy64, position, rotation, scale, prototype64, padding);
+                }
+                return fallback;
+            }
+        }
+
+        static HavokPackfile.CompoundInstance EmitCompoundInstance(HavokCollisionTarget target, HavokPackfile.StaticCompoundShape host, HavokPackfile.StaticCompoundShape collisionProxy, CollisionMaps.CollisionFlags mapFlags, Vector3 position, Quaternion rotation, Vector3 scale, float padding)
+        {
+            HavokPackfile.CompoundInstance properties = BuildWorldHostInstanceProperties(collisionProxy.DataOffset, mapFlags, target.FlagsPrototype);
+            HavokPackfile.CompoundInstance instance = target.Packfile.EnqueueInstance(host, position, rotation, scale, properties, padding);
+            target.Packfile.ExpandDomainWithTransformedChild(host, collisionProxy, position, rotation, scale, padding);
+            return instance;
+        }
+
+        static HavokPackfile.CompoundInstance BuildWorldHostInstanceProperties(uint templateCompoundDataOffset, CollisionMaps.CollisionFlags mapFlags, HavokPackfile.CompoundInstance flagsPrototype)
+        {
+            uint filterInfo = (uint)mapFlags & (uint)CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK;
+            if ((mapFlags & CollisionMaps.CollisionFlags.GHOSTED) != 0)
+                filterInfo = 0x12;
+
+            uint flagBits = 0x3F000006u;
+            if (flagsPrototype != null)
+            {
+                uint proto = BitConverter.ToUInt32(BitConverter.GetBytes(flagsPrototype.Translation.W), 0);
+                flagBits = (proto & 0xFFFFFF80u) | 0x6u;
+            }
+
+            return new HavokPackfile.CompoundInstance
+            {
+                Translation = new Vector4(0, 0, 0, BitConverter.ToSingle(BitConverter.GetBytes(flagBits), 0)),
+                Rotation = Quaternion.Identity,
+                Scale = flagsPrototype != null ? flagsPrototype.Scale : new Vector4(1, 1, 1, BitConverter.ToSingle(BitConverter.GetBytes(0x3F000000u), 0)),
+                FilterInfo = filterInfo,
+                ChildFilterInfoMask = 0xFFFFFFFFu,
+                // note - userdata is populated at the end
+                ShapeDataOffset = templateCompoundDataOffset,
+                ShapeClassName = "hkpStaticCompoundShape",
+            };
+        }
+
+        //Adds a box shape to the Havok data (for CollisionBarriers, etc)
+        HavokPackfile.CompoundInstance AllocateHavokBoxInstance(InstancedEntity entity, CollisionMaps.CollisionFlags mapFlags)
+        {
+            if (_hkx == null)
+                return null;
+
+            HavokPackfile.StaticCompoundShape host = _hkx.HostFor(mapFlags);
+            if (host == null)
+                return null;
+
+            Matrix4x4 worldMatrix = entity.CalculateWorldTransformMatrix();
+            if (!Matrix4x4.Decompose(worldMatrix, out Vector3 lossyScale, out Quaternion rotation, out Vector3 position))
+            {
+                position = Vector3.Zero;
+                rotation = Quaternion.Identity;
+                lossyScale = Vector3.One;
+            }
+
+            Vector3 halfDim = entity.Vectors.Has(ShortGuids.half_dimensions) ? entity.Vectors.Get(ShortGuids.half_dimensions) : new Vector3(0.5f, 1f, 0.5f);
+            Vector3 halfExtents = new Vector3(Math.Abs(halfDim.X * lossyScale.X), Math.Abs(halfDim.Y * lossyScale.Y), Math.Abs(halfDim.Z * lossyScale.Z));
+            if (halfExtents.X < 1e-4f) halfExtents.X = 1e-4f;
+            if (halfExtents.Y < 1e-4f) halfExtents.Y = 1e-4f;
+            if (halfExtents.Z < 1e-4f) halfExtents.Z = 1e-4f;
+
+            Vector3 centre = position + Vector3.Transform(new Vector3(0f, halfExtents.Y, 0f), rotation);
+
+            uint filterInfo = (uint)mapFlags & (uint)CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK;
+            if ((mapFlags & CollisionMaps.CollisionFlags.GHOSTED) != 0)
+                filterInfo = 0x12;
+
+            const uint leafFlagBits = 0x3F000007u;
+            Vector3 unityScale = Vector3.One;
+
+            lock (_havokLock)
+            {
+                HavokPackfile.CompoundInstance instance = EmitBoxInstance(_hkx, host, centre, rotation, halfExtents, unityScale, filterInfo, leafFlagBits);
+
+                HavokPackfile.StaticCompoundShape host64 = _hkx64?.HostFor(mapFlags);
+                if (host64 != null)
+                {
+                    EmitBoxInstance(_hkx64, host64, centre, rotation, halfExtents, unityScale, filterInfo, leafFlagBits);
+                    if (host64.Instances.Count != host.Instances.Count)
+                        throw new InvalidOperationException("COLLISION.HKX / HKX64 world-host instance indexes diverged during box emit.");
+                }
+
+                return instance;
+            }
+        }
+
+        static HavokPackfile.CompoundInstance EmitBoxInstance(HavokCollisionTarget target, HavokPackfile.StaticCompoundShape host, Vector3 centre, Quaternion rotation, Vector3 halfExtents, Vector3 scale, uint filterInfo, uint leafFlagBits)
+        {
+            var properties = new HavokPackfile.CompoundInstance
+            {
+                Translation = new Vector4(0, 0, 0, BitConverter.ToSingle(BitConverter.GetBytes(leafFlagBits), 0)),
+                Rotation = Quaternion.Identity,
+                Scale = new Vector4(1, 1, 1, BitConverter.ToSingle(BitConverter.GetBytes(0x3F000000u), 0)),
+                FilterInfo = filterInfo,
+                ChildFilterInfoMask = 0,
+                // user data written at the end
+                ShapeDataOffset = target.Packfile.AppendBoxShape(halfExtents),
+                ShapeClassName = "hkpBoxShape",
+            };
+
+            HavokPackfile.CompoundInstance instance = target.Packfile.EnqueueInstance(host, centre, rotation, scale, properties, aabbPadding: 0.05f);
+            target.Packfile.ExpandDomainWithBox(host, centre, rotation, halfExtents, scale);
+            return instance;
         }
 
         //This finds every Zone entity and applies itself to any entities connected to it via the 'composites' pin.
@@ -2321,6 +2589,9 @@ namespace CathodeLib
             {
                 entity.PrimaryZone = ShortGuid.Invalid;
                 entity.SecondaryZone = ShortGuid.Invalid;
+                entity.PrimaryZoneSourceInstance = ShortGuid.Invalid;
+                entity.PrimaryZoneWasDirect = false;
+                entity.PrimaryZoneDescentRoot = ShortGuid.Invalid;
             });
 
             List<InstancedEntity> zones = new List<InstancedEntity>();
@@ -2340,75 +2611,338 @@ namespace CathodeLib
 
             Parallel.ForEach(zones, opts, entity =>
             {
-                FunctionEntity function = (FunctionEntity)entity.Entity;
-                ShortGuid zoneId = entity.Path.GenerateZoneID();
-                if (zoneId == ShortGuid.Invalid)
-                    return;
-
-                Dictionary<ShortGuid, InstancedEntity> siblings = null;
-                InstancedEntity FindSibling(ShortGuid id)
-                {
-                    if (siblings == null)
-                    {
-                        List<InstancedEntity> list = entity.ThisCompositeInstance.Entities;
-                        siblings = new Dictionary<ShortGuid, InstancedEntity>(list.Count);
-                        foreach (InstancedEntity sibling in list)
-                            siblings[sibling.Entity.shortGUID] = sibling;
-                    }
-                    siblings.TryGetValue(id, out InstancedEntity found);
-                    return found;
-                }
-
-                foreach (EntityConnector link in function.childLinks)
-                {
-                    if (link.thisParamID != ShortGuids.composites)
-                        continue;
-
-                    InstancedEntity linkedEnt = FindSibling(link.linkedEntityID);
-                    if (linkedEnt?.Entity == null)
-                        continue;
-
-                    if (linkedEnt.Entity is TriggerSequence trig)
-                    {
-                        foreach (TriggerSequence.SequenceEntry entry in trig.sequence)
-                        {
-                            InstancedEntity target = ResolvePathInComposite(entity.ThisCompositeInstance, entry.connectedEntity);
-                            if (target == null)
-                                continue;
-
-                            AssignZone(target, zoneId);
-                            if (target.ChildCompositeInstance != null)
-                                AssignZone(target.ChildCompositeInstance, zoneId);
-                        }
-                    }
-                    else
-                    {
-                        AssignZone(linkedEnt, zoneId);
-                        if (linkedEnt.ChildCompositeInstance != null)
-                            AssignZone(linkedEnt.ChildCompositeInstance, zoneId);
-                    }
-                }
+                ApplyZoneLinks(entity, variablePinsOnly: false);
+            });
+            Parallel.ForEach(zones, opts, entity =>
+            {
+                ApplyZoneLinks(entity, variablePinsOnly: true);
             });
         }
 
-        //Assign a zone to a composite instance and all its children
-        private static void AssignZone(InstancedComposite composite, ShortGuid zoneId)
+        //This finds every EnvironmentMap entity and applies itself to any entities connected to it via the 'Entities' pin
+        private void CalculateEnvironmentMaps()
+        {
+            ParallelOptions opts = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+
+            Parallel.ForEach(AllEntities, opts, entity =>
+            {
+                entity.EnvironmentMap = null;
+            });
+
+            List<(InstancedEntity Entity, Textures.TEX4 Texture, int Priority)> maps = new List<(InstancedEntity, Textures.TEX4, int)>();
+            foreach (InstancedEntity entity in AllEntities)
+            {
+                if (entity.Entity.variant != EntityVariant.FUNCTION)
+                    continue;
+
+                FunctionEntity function = (FunctionEntity)entity.Entity;
+                if (!function.function.IsFunctionType || function.function.AsFunctionType != FunctionType.EnvironmentMap)
+                    continue;
+                if (entity.ThisCompositeInstance == null)
+                    continue;
+
+                string texturePath = entity.Strings.Get(ShortGuids.Texture);
+                if (string.IsNullOrEmpty(texturePath))
+                    continue;
+
+                Textures.TEX4 tex = _level.Textures.GetEnvironmentMapByPath(texturePath);
+                if (tex == null && _level.Global?.Textures != null)
+                    tex = _level.Global.Textures.GetEnvironmentMapByPath(texturePath);
+                if (tex == null)
+                {
+                    Console.WriteLine("WARNING: EnvironmentMap texture not found: " + texturePath);
+                    continue;
+                }
+
+                int priority = entity.Integers.Has(ShortGuids.Priority) ? entity.Integers.Get(ShortGuids.Priority) : 100;
+                maps.Add((entity, tex, priority));
+            }
+
+            maps.Sort((a, b) => b.Priority.CompareTo(a.Priority));
+
+            foreach (var map in maps)
+                ApplyEnvironmentMapLinks(map.Entity, map.Texture, variablePinsOnly: false);
+            foreach (var map in maps)
+                ApplyEnvironmentMapLinks(map.Entity, map.Texture, variablePinsOnly: true);
+        }
+
+        private void ApplyEnvironmentMapLinks(InstancedEntity entity, Textures.TEX4 texture, bool variablePinsOnly)
+        {
+            FunctionEntity function = (FunctionEntity)entity.Entity;
+
+            Dictionary<ShortGuid, InstancedEntity> siblings = null;
+            InstancedEntity FindSibling(ShortGuid id)
+            {
+                if (siblings == null)
+                {
+                    List<InstancedEntity> list = entity.ThisCompositeInstance.Entities;
+                    siblings = new Dictionary<ShortGuid, InstancedEntity>(list.Count);
+                    foreach (InstancedEntity sibling in list)
+                        siblings[sibling.Entity.shortGUID] = sibling;
+                }
+                siblings.TryGetValue(id, out InstancedEntity found);
+                return found;
+            }
+
+            foreach (EntityConnector link in function.childLinks)
+            {
+                if (link.thisParamID != ShortGuids.Entities)
+                    continue;
+
+                InstancedEntity linkedEnt = FindSibling(link.linkedEntityID);
+                if (linkedEnt?.Entity == null)
+                    continue;
+
+                bool isVariable = linkedEnt.Entity is VariableEntity;
+                if (variablePinsOnly != isVariable)
+                    continue;
+
+                if (linkedEnt.Entity is TriggerSequence trig)
+                {
+                    foreach (TriggerSequence.SequenceEntry entry in trig.sequence)
+                    {
+                        InstancedEntity target = ResolvePathInComposite(entity.ThisCompositeInstance, entry.connectedEntity);
+                        if (target == null)
+                            continue;
+
+                        AssignEnvironmentMap(target, texture);
+                        AssignEnvironmentMapIntoChildComposite(target, texture, descendIntoShared: false);
+                    }
+                }
+                else if (linkedEnt.Entity is VariableEntity varEnt)
+                {
+                    InstancedEntity hostPlacement = entity.ParentCompositeInstanceEntity;
+                    InstancedComposite parentInst = entity.ParentCompositeInstance;
+                    if (hostPlacement?.Entity == null || parentInst?.Entities == null)
+                        continue;
+
+                    ShortGuid pinName = varEnt.name;
+                    ShortGuid pinGuid = varEnt.shortGUID;
+
+                    foreach (EntityConnector plink in hostPlacement.Entity.childLinks)
+                    {
+                        if (plink.thisParamID != pinName && plink.thisParamID != pinGuid)
+                            continue;
+
+                        InstancedEntity target = null;
+                        foreach (InstancedEntity sibling in parentInst.Entities)
+                        {
+                            if (sibling.Entity != null && sibling.Entity.shortGUID == plink.linkedEntityID)
+                            {
+                                target = sibling;
+                                break;
+                            }
+                        }
+                        if (target == null)
+                            continue;
+
+                        AssignEnvironmentMap(target, texture);
+                        AssignEnvironmentMapIntoChildComposite(target, texture, descendIntoShared: true);
+                    }
+                }
+                else
+                {
+                    AssignEnvironmentMap(linkedEnt, texture);
+                    AssignEnvironmentMapIntoChildComposite(linkedEnt, texture, descendIntoShared: false);
+                }
+            }
+        }
+
+        private static void AssignEnvironmentMapIntoChildComposite(InstancedEntity entity, Textures.TEX4 texture, bool descendIntoShared = false)
+        {
+            if (entity?.ChildCompositeInstance == null)
+                return;
+            if (!descendIntoShared && entity.Bools.Get(ShortGuids.is_shared))
+                return;
+            AssignEnvironmentMap(entity.ChildCompositeInstance, texture, descendIntoShared);
+        }
+
+        private static void AssignEnvironmentMap(InstancedComposite composite, Textures.TEX4 texture, bool descendIntoShared = false)
         {
             if (composite?.Entities == null)
                 return;
 
             foreach (InstancedEntity entity in composite.Entities)
             {
-                AssignZone(entity, zoneId);
-
-                if (entity.ChildCompositeInstance != null)
-                    AssignZone(entity.ChildCompositeInstance, zoneId);
+                AssignEnvironmentMap(entity, texture);
+                if (entity?.ChildCompositeInstance == null)
+                    continue;
+                if (!descendIntoShared && entity.Bools.Get(ShortGuids.is_shared))
+                    continue;
+                AssignEnvironmentMap(entity.ChildCompositeInstance, texture, descendIntoShared);
             }
         }
 
-        //Assign a zone to an entity (we can have up to two!)
-        private static void AssignZone(InstancedEntity entity, ShortGuid zoneId)
+        private static void AssignEnvironmentMap(InstancedEntity entity, Textures.TEX4 texture)
         {
+            if (entity == null || texture == null)
+                return;
+
+            //Only apply to some types (todo - is this correct?)
+            if (entity.Entity is FunctionEntity fe &&
+                fe.function.IsFunctionType &&
+                fe.function.AsFunctionType != FunctionType.ModelReference &&
+                fe.function.AsFunctionType != FunctionType.SurfaceEffectBox &&
+                fe.function.AsFunctionType != FunctionType.SurfaceEffectSphere)
+                return;
+
+            lock (entity)
+            {
+                if (entity.EnvironmentMap != null)
+                    return;
+                entity.EnvironmentMap = texture;
+            }
+        }
+
+        private void ApplyZoneLinks(InstancedEntity entity, bool variablePinsOnly)
+        {
+            FunctionEntity function = (FunctionEntity)entity.Entity;
+            ShortGuid zoneId = ResolveZoneId(entity);
+            if (zoneId == ShortGuid.Invalid)
+                return;
+
+            Dictionary<ShortGuid, InstancedEntity> siblings = null;
+            InstancedEntity FindSibling(ShortGuid id)
+            {
+                if (siblings == null)
+                {
+                    List<InstancedEntity> list = entity.ThisCompositeInstance.Entities;
+                    siblings = new Dictionary<ShortGuid, InstancedEntity>(list.Count);
+                    foreach (InstancedEntity sibling in list)
+                        siblings[sibling.Entity.shortGUID] = sibling;
+                }
+                siblings.TryGetValue(id, out InstancedEntity found);
+                return found;
+            }
+
+            ShortGuid zoneSourceInstance = entity.ThisCompositeInstance.InstanceID;
+
+            foreach (EntityConnector link in function.childLinks)
+            {
+                if (link.thisParamID != ShortGuids.composites)
+                    continue;
+
+                InstancedEntity linkedEnt = FindSibling(link.linkedEntityID);
+                if (linkedEnt?.Entity == null)
+                    continue;
+
+                bool isVariable = linkedEnt.Entity is VariableEntity;
+                if (variablePinsOnly != isVariable)
+                    continue;
+
+                if (linkedEnt.Entity is TriggerSequence trig)
+                {
+                    foreach (TriggerSequence.SequenceEntry entry in trig.sequence)
+                    {
+                        InstancedEntity target = ResolvePathInComposite(entity.ThisCompositeInstance, entry.connectedEntity);
+                        if (target == null)
+                            continue;
+
+                        AssignZone(target, zoneId, zoneSourceInstance, isDirect: true, descentRoot: ShortGuid.Invalid);
+                        AssignZoneIntoChildComposite(target, zoneId, zoneSourceInstance, descendIntoShared: false);
+                    }
+                }
+                else if (linkedEnt.Entity is VariableEntity varEnt)
+                {
+                    InstancedEntity hostPlacement = entity.ParentCompositeInstanceEntity;
+                    InstancedComposite parentInst = entity.ParentCompositeInstance;
+                    if (hostPlacement?.Entity == null || parentInst?.Entities == null)
+                        continue;
+
+                    ShortGuid pinName = varEnt.name;
+                    ShortGuid pinGuid = varEnt.shortGUID;
+
+                    foreach (EntityConnector plink in hostPlacement.Entity.childLinks)
+                    {
+                        if (plink.thisParamID != pinName && plink.thisParamID != pinGuid)
+                            continue;
+
+                        InstancedEntity target = null;
+                        foreach (InstancedEntity sibling in parentInst.Entities)
+                        {
+                            if (sibling.Entity != null && sibling.Entity.shortGUID == plink.linkedEntityID)
+                            {
+                                target = sibling;
+                                break;
+                            }
+                        }
+                        if (target == null)
+                            continue;
+
+                        AssignZoneIfUnzoned(target, zoneId, zoneSourceInstance);
+                        AssignZoneIntoChildCompositeIfUnzoned(target, zoneId, zoneSourceInstance, descendIntoShared: true);
+                    }
+                }
+                else
+                {
+                    AssignZone(linkedEnt, zoneId, zoneSourceInstance, isDirect: true, descentRoot: ShortGuid.Invalid);
+                    AssignZoneIntoChildComposite(linkedEnt, zoneId, zoneSourceInstance, descendIntoShared: false);
+                }
+            }
+        }
+
+        private static ShortGuid ResolveZoneId(InstancedEntity zoneEntity)
+        {
+            if (zoneEntity?.Entity == null || zoneEntity.ThisCompositeInstance == null)
+                return ShortGuid.Invalid;
+            uint instance = zoneEntity.ThisCompositeInstance.InstanceID.AsUInt32;
+            uint entityId = zoneEntity.Entity.shortGUID.AsUInt32;
+            if (instance == 0 && entityId == 0)
+                return ShortGuid.Invalid;
+            return new ShortGuid(instance + entityId + 1);
+        }
+
+        private static void AssignZoneIntoChildComposite(InstancedEntity entity, ShortGuid zoneId, ShortGuid zoneSourceInstance, bool descendIntoShared = false)
+        {
+            if (entity?.ChildCompositeInstance == null)
+                return;
+            if (!descendIntoShared && entity.Bools.Get(ShortGuids.is_shared))
+                return;
+            ShortGuid descentRoot = entity.ChildCompositeInstance.InstanceID;
+            AssignZone(entity.ChildCompositeInstance, zoneId, zoneSourceInstance, descentRoot, descendIntoShared);
+        }
+
+        private static void AssignZoneIntoChildCompositeIfUnzoned(InstancedEntity entity, ShortGuid zoneId, ShortGuid zoneSourceInstance, bool descendIntoShared = true)
+        {
+            if (entity?.ChildCompositeInstance == null)
+                return;
+            if (!descendIntoShared && entity.Bools.Get(ShortGuids.is_shared))
+                return;
+            AssignZoneIfUnzoned(entity.ChildCompositeInstance, zoneId, zoneSourceInstance, descendIntoShared);
+        }
+
+        private static void AssignZone(InstancedComposite composite, ShortGuid zoneId, ShortGuid zoneSourceInstance, ShortGuid descentRoot, bool descendIntoShared = false)
+        {
+            if (composite?.Entities == null)
+                return;
+
+            foreach (InstancedEntity entity in composite.Entities)
+            {
+                AssignZone(entity, zoneId, zoneSourceInstance, isDirect: false, descentRoot: descentRoot);
+                if (entity?.ChildCompositeInstance == null)
+                    continue;
+                if (!descendIntoShared && entity.Bools.Get(ShortGuids.is_shared))
+                    continue;
+                AssignZone(entity.ChildCompositeInstance, zoneId, zoneSourceInstance, descentRoot, descendIntoShared);
+            }
+        }
+
+        private static void AssignZoneIfUnzoned(InstancedComposite composite, ShortGuid zoneId, ShortGuid zoneSourceInstance, bool descendIntoShared = true)
+        {
+            if (composite?.Entities == null)
+                return;
+
+            foreach (InstancedEntity entity in composite.Entities)
+            {
+                AssignZoneIfUnzoned(entity, zoneId, zoneSourceInstance);
+                AssignZoneIntoChildCompositeIfUnzoned(entity, zoneId, zoneSourceInstance, descendIntoShared);
+            }
+        }
+
+        private static void AssignZone(InstancedEntity entity, ShortGuid zoneId, ShortGuid zoneSourceInstance, bool isDirect, ShortGuid descentRoot)
+        {
+            //The logic here is a result of a lot of trial and error. I'm not sure it's correct really given its so convoluted, but it seems to hold up.
+
             if (entity == null || zoneId == ShortGuid.Invalid)
                 return;
 
@@ -2418,11 +2952,118 @@ namespace CathodeLib
                     return;
 
                 if (entity.PrimaryZone == ShortGuid.Invalid)
+                {
                     entity.PrimaryZone = zoneId;
-                else if (entity.SecondaryZone == ShortGuid.Invalid)
+                    entity.PrimaryZoneSourceInstance = zoneSourceInstance;
+                    entity.PrimaryZoneWasDirect = isDirect;
+                    entity.PrimaryZoneDescentRoot = isDirect ? ShortGuid.Invalid : descentRoot;
+                    return;
+                }
+
+                if (!isDirect && !entity.PrimaryZoneWasDirect && descentRoot != ShortGuid.Invalid && entity.PrimaryZoneDescentRoot != ShortGuid.Invalid && descentRoot != entity.PrimaryZoneDescentRoot)
+                {
+                    if (IsCloserDescentRoot(entity, descentRoot, entity.PrimaryZoneDescentRoot))
+                    {
+                        entity.PrimaryZone = zoneId;
+                        entity.PrimaryZoneSourceInstance = zoneSourceInstance;
+                        entity.PrimaryZoneWasDirect = false;
+                        entity.PrimaryZoneDescentRoot = descentRoot;
+                        entity.SecondaryZone = ShortGuid.Invalid;
+                        return;
+                    }
+                    if (IsCloserDescentRoot(entity, entity.PrimaryZoneDescentRoot, descentRoot))
+                        return;
+                }
+
+                if (isDirect && !entity.PrimaryZoneWasDirect)
+                {
+                    ShortGuid demotedRoot = entity.PrimaryZoneDescentRoot;
+                    if (entity.SecondaryZone == ShortGuid.Invalid && IsPeerPackageDescentRoot(entity, demotedRoot))
+                    {
+                        entity.SecondaryZone = zoneId;
+                        return;
+                    }
+
+                    entity.PrimaryZone = zoneId;
+                    entity.PrimaryZoneSourceInstance = zoneSourceInstance;
+                    entity.PrimaryZoneWasDirect = true;
+                    entity.PrimaryZoneDescentRoot = ShortGuid.Invalid;
+                    entity.SecondaryZone = ShortGuid.Invalid;
+                    return;
+                }
+
+                if (entity.SecondaryZone != ShortGuid.Invalid)
+                {
+                    if (isDirect && entity.PrimaryZoneWasDirect)
+                        Console.WriteLine("WARNING: An entity tried to apply itself to more than two zones!");
+                    return;
+                }
+
+                bool bothDirect = isDirect && entity.PrimaryZoneWasDirect;
+                bool bothDescentSameRoot = !isDirect && !entity.PrimaryZoneWasDirect && descentRoot != ShortGuid.Invalid && descentRoot == entity.PrimaryZoneDescentRoot && zoneSourceInstance != entity.PrimaryZoneSourceInstance;
+                bool descentOntoDirect = !isDirect && entity.PrimaryZoneWasDirect && IsPeerPackageDescentRoot(entity, descentRoot);
+                bool siblingZoneSources = zoneSourceInstance != ShortGuid.Invalid && zoneSourceInstance == entity.PrimaryZoneSourceInstance && !(entity.PrimaryZoneWasDirect && !isDirect && !IsPeerPackageDescentRoot(entity, descentRoot));
+
+                if (bothDirect || bothDescentSameRoot || descentOntoDirect || siblingZoneSources)
                     entity.SecondaryZone = zoneId;
-                else
-                    Console.WriteLine("WARNING: An entity tried to apply itself to more than two zones!");
+            }
+        }
+
+        private static bool IsPeerPackageDescentRoot(InstancedEntity entity, ShortGuid descentRoot)
+        {
+            if (entity == null || descentRoot == ShortGuid.Invalid)
+                return false;
+
+            InstancedEntity walk = entity;
+            for (int hop = 0; walk != null && hop < 3; hop++)
+            {
+                if (walk.ThisCompositeInstance != null &&
+                    walk.ThisCompositeInstance.InstanceID == descentRoot)
+                    return true;
+                if (walk.ParentCompositeInstanceEntity?.ChildCompositeInstance != null &&
+                    walk.ParentCompositeInstanceEntity.ChildCompositeInstance.InstanceID == descentRoot)
+                    return true;
+                walk = walk.ParentCompositeInstanceEntity;
+            }
+            return false;
+        }
+
+        private static bool IsCloserDescentRoot(InstancedEntity entity, ShortGuid candidateRoot, ShortGuid incumbentRoot)
+        {
+            if (entity == null || candidateRoot == ShortGuid.Invalid || incumbentRoot == ShortGuid.Invalid)
+                return false;
+            if (candidateRoot == incumbentRoot)
+                return false;
+
+            InstancedEntity walkEnt = entity;
+            for (int guard = 0; walkEnt != null && guard < 64; guard++)
+            {
+                InstancedComposite comp = walkEnt.ThisCompositeInstance;
+                if (comp != null)
+                {
+                    if (comp.InstanceID == candidateRoot)
+                        return true;
+                    if (comp.InstanceID == incumbentRoot)
+                        return false;
+                }
+                walkEnt = walkEnt.ParentCompositeInstanceEntity;
+            }
+            return false;
+        }
+
+        private static void AssignZoneIfUnzoned(InstancedEntity entity, ShortGuid zoneId, ShortGuid zoneSourceInstance)
+        {
+            if (entity == null || zoneId == ShortGuid.Invalid)
+                return;
+
+            lock (entity)
+            {
+                if (entity.PrimaryZone != ShortGuid.Invalid)
+                    return;
+                entity.PrimaryZone = zoneId;
+                entity.PrimaryZoneSourceInstance = zoneSourceInstance;
+                entity.PrimaryZoneWasDirect = false;
+                entity.PrimaryZoneDescentRoot = ShortGuid.Invalid;
             }
         }
 
@@ -2473,7 +3114,10 @@ namespace CathodeLib
                 return;
 
             if (entity != null)
+            {
+                ApplyMoverFlags(mvr, entity);
                 entity.Mover = mvr;
+            }
 
             lock (_mvrLock)
             {
@@ -2482,11 +3126,8 @@ namespace CathodeLib
         }
 
         //Utility to get the correct zone ID for a collision map entry
-        private ShortGuid ResolveCollisionZoneId(InstancedEntity entity, bool isShared)
+        private ShortGuid ResolveCollisionZoneId(InstancedEntity entity)
         {
-            if (isShared)
-                return GlobalZoneId;
-
             if (entity.PrimaryZone != ShortGuid.Invalid && entity.SecondaryZone != ShortGuid.Invalid && entity.PrimaryZone != entity.SecondaryZone)
                 return ShortGuid.Invalid;
 
@@ -2496,16 +3137,78 @@ namespace CathodeLib
             return entity.PrimaryZone;
         }
 
-        //WIP way of figuring out collision flags - not quite right yet. Lots of mismatches.
-        private static CollisionMaps.CollisionFlags BuildInstanceCollisionFlags(InstancedEntity entity, bool deleteStandard, bool deleteBallistic, bool forceGhosted, Materials.Material material = null)
+        //Utility to get correct zone for Mover entry
+        private void ApplyMoverZones(Movers.MOVER_DESCRIPTOR mvr, InstancedEntity entity)
+        {
+            ShortGuid primary = entity.PrimaryZone;
+            ShortGuid secondary = entity.SecondaryZone;
+            if (primary == ShortGuid.Invalid)
+                primary = GlobalZoneId;
+            mvr.PrimaryZoneID = primary;
+            mvr.SecondaryZoneID = secondary;
+        }
+
+        //WIP method to figure out mover flags - NOT YET CORRECT by a long shot!
+        private static void ApplyMoverFlags(Movers.MOVER_DESCRIPTOR mvr, InstancedEntity entity)
+        {
+            if (mvr?.Flags == null || entity == null)
+                return;
+
+            mvr.Flags.Visible = entity.Bools.Get(ShortGuids.show_on_reset);
+
+            //todo - work this and visibility out properly!
+            mvr.Flags.RequiresScript = true;
+        }
+
+        //TEMP TEST CODE - remove this eventually - need to figure out how frozen actually works. this just goes for the most popular option.
+        private bool _applyDefaultFrozen = true;
+        public bool ApplyDefaultFrozen => _applyDefaultFrozen;
+        public static bool ShouldApplyFrozen(IList<CollisionMaps.COLLISION_MAPPING> retailRows)
+        {
+            int nonGhost = 0, nonGhostFrozen = 0;
+            if (retailRows == null)
+                return true;
+            foreach (CollisionMaps.COLLISION_MAPPING row in retailRows)
+            {
+                if (row?.Entity == null || row.Entity.composite_instance_id.AsUInt32 == 0)
+                    continue;
+                uint f = (uint)row.Flags;
+                if ((f & (uint)CollisionMaps.CollisionFlags.PREBUILT) == 0)
+                    continue;
+                if ((f & (uint)CollisionMaps.CollisionFlags.FIXED) == 0)
+                    continue;
+                if ((f & (uint)CollisionMaps.CollisionFlags.GHOSTED) != 0)
+                    continue;
+                nonGhost++;
+                if ((f & (uint)CollisionMaps.CollisionFlags.FROZEN) != 0)
+                    nonGhostFrozen++;
+            }
+            if (nonGhost < 10)
+                return true;
+            return nonGhostFrozen * 2 >= nonGhost;
+        }
+
+        //Calculate collision flags 
+        private CollisionMaps.CollisionFlags BuildInstanceCollisionFlags(InstancedEntity entity, bool deleteBallistic, bool forceGhosted, Materials.Material material = null, bool? applyDefaultFrozenOverride = null)
         {
             CollisionMaps.CollisionFlags flags = CollisionMaps.CollisionFlags.FIXED | CollisionMaps.CollisionFlags.PREBUILT;
 
+            if (deleteBallistic)
+                flags |= CollisionMaps.CollisionFlags.STANDARD_ONLY;
+
             bool enable = !entity.Bools.Has(ShortGuids.enable_on_reset) || entity.Bools.Get(ShortGuids.enable_on_reset);
-            if (forceGhosted || !enable)
+            bool ghosted = forceGhosted || !enable;
+            if (ghosted)
             {
                 flags |= CollisionMaps.CollisionFlags.GHOSTED;
                 flags |= CollisionMaps.CollisionFlags.PRE_GHOSTED;
+            }
+
+            bool applyDefaultFrozen = applyDefaultFrozenOverride ?? _applyDefaultFrozen;
+            if (ghosted || applyDefaultFrozen)
+            {
+                flags |= CollisionMaps.CollisionFlags.FROZEN;
+                flags |= CollisionMaps.CollisionFlags.PRE_FROZEN;
             }
 
             if (entity.Bools.Has(ShortGuids.report_sliding) && entity.Bools.Get(ShortGuids.report_sliding))
@@ -2517,16 +3220,7 @@ namespace CathodeLib
             if (entity.Bools.Has(ShortGuids.force_transparent) && entity.Bools.Get(ShortGuids.force_transparent))
                 flags |= CollisionMaps.CollisionFlags.FORCE_TRANSPARENT;
 
-            //These seem like they're related to animated objects. Need to figure out how to flag them as animated (via CAGEAnim links?)
-            flags |= CollisionMaps.CollisionFlags.FROZEN;
-            flags |= CollisionMaps.CollisionFlags.PRE_FROZEN;
-
-            if (deleteStandard)
-                flags |= CollisionMaps.CollisionFlags.BALLISTIC_ONLY;
-            if (deleteBallistic)
-                flags |= CollisionMaps.CollisionFlags.STANDARD_ONLY;
-
-            //Okay so this looks like the bodge of the century, but there's no properties on the materials to help us out here, sooooo...
+            //This is a bit of a bodge because I can't get any useful metadata from these materials, so just using their name for now.
             if (material?.Name == "Collision->Collision" ||
                 material?.Name == "AudioCollision->AudioCollision" ||
                 material?.Name == "WindowCollision->WindowCollision" ||
@@ -2698,38 +3392,68 @@ namespace CathodeLib
             if (composite.Composite.shortGUID == _globalGUID)
                 return;
 
-            var entitiesToProcess = composite.Entities.Where(e => e.Entity.variant == EntityVariant.FUNCTION && ((FunctionEntity)e.Entity).function.IsFunctionType).ToList();
-            Parallel.ForEach(entitiesToProcess, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, entity =>
-            {
-                ProcessEntity(entity, isTemplate, isRequiredAssets, deleteStandardCollision, deleteBallisticCollision, isDeleted, isShared);
-            });
+            //Handle root ordering a bit different to more closely match retail
+            bool isRoot = ReferenceEquals(composite, Root);
 
+            List<InstancedEntity> pakOrder = new List<InstancedEntity>();
+            List<InstancedEntity> composites = new List<InstancedEntity>();
+            List<InstancedEntity> functionTypes = new List<InstancedEntity>();
             foreach (InstancedEntity entity in composite.Entities)
             {
-                if (entity.ChildCompositeInstance != null)
-                {
-                    bool thisIsDeleted = isDeleted || entity.Bools.Get(ShortGuids.deleted) || (entity.Bools.Has(ShortGuids.delete_me) && entity.Bools.Get(ShortGuids.delete_me));
-                    bool thisIsTemplate = isTemplate || entity.Bools.Get(ShortGuids.is_template);
-
-                    bool thisIsShared = entity.Bools.Get(ShortGuids.is_shared);
-                    if (thisIsShared && !isRequiredAssets && !thisIsDeleted)
-                    {
-                        if (_sharedComposites.Contains(entity.ChildCompositeInstance.Composite.shortGUID))
-                            continue;
-                        if (!thisIsTemplate)
-                            _sharedComposites.Add(entity.ChildCompositeInstance.Composite.shortGUID);
-                    }
-
-                    ProcessInstances(
-                        entity.ChildCompositeInstance,
-                        thisIsTemplate,
-                        isRequiredAssets ? false : (isShared || thisIsShared),
-                        isRequiredAssets,
-                        deleteStandardCollision || entity.Bools.Get(ShortGuids.delete_standard_collision),
-                        deleteBallisticCollision || entity.Bools.Get(ShortGuids.delete_ballistic_collision),
-                        thisIsDeleted);
-                }
+                if (entity.Entity.variant != EntityVariant.FUNCTION)
+                    continue;
+                pakOrder.Add(entity);
+                FunctionEntity fe = (FunctionEntity)entity.Entity;
+                if (fe.function.IsFunctionType)
+                    functionTypes.Add(entity);
+                else
+                    composites.Add(entity);
             }
+
+            if (isRoot)
+            {
+                composites = composites.OrderByDescending(e => e.Entity.shortGUID.AsUInt32).ToList();
+                foreach (InstancedEntity entity in composites)
+                    ProcessInstanceEntityAndChildren(entity, isTemplate, isShared, isRequiredAssets, deleteStandardCollision, deleteBallisticCollision, isDeleted);
+                foreach (InstancedEntity entity in functionTypes)
+                    ProcessInstanceEntityAndChildren(entity, isTemplate, isShared, isRequiredAssets, deleteStandardCollision, deleteBallisticCollision, isDeleted);
+            }
+            else
+            {
+                foreach (InstancedEntity entity in pakOrder)
+                    ProcessInstanceEntityAndChildren(entity, isTemplate, isShared, isRequiredAssets, deleteStandardCollision, deleteBallisticCollision, isDeleted);
+            }
+        }
+
+        private void ProcessInstanceEntityAndChildren(InstancedEntity entity, bool isTemplate, bool isShared, bool isRequiredAssets, bool deleteStandardCollision, bool deleteBallisticCollision, bool isDeleted)
+        {
+            FunctionEntity function = (FunctionEntity)entity.Entity;
+            if (function.function.IsFunctionType)
+                ProcessEntity(entity, isTemplate, isRequiredAssets, deleteStandardCollision, deleteBallisticCollision, isDeleted, isShared);
+
+            if (entity.ChildCompositeInstance == null)
+                return;
+
+            bool thisIsDeleted = isDeleted || entity.Bools.Get(ShortGuids.deleted) || (entity.Bools.Has(ShortGuids.delete_me) && entity.Bools.Get(ShortGuids.delete_me));
+            bool thisIsTemplate = isTemplate || entity.Bools.Get(ShortGuids.is_template);
+
+            bool thisIsShared = entity.Bools.Get(ShortGuids.is_shared);
+            if (thisIsShared && !isRequiredAssets && !thisIsDeleted)
+            {
+                if (_sharedComposites.Contains(entity.ChildCompositeInstance.Composite.shortGUID))
+                    return;
+                if (!thisIsTemplate)
+                    _sharedComposites.Add(entity.ChildCompositeInstance.Composite.shortGUID);
+            }
+
+            ProcessInstances(
+                entity.ChildCompositeInstance,
+                thisIsTemplate,
+                isRequiredAssets ? false : (isShared || thisIsShared),
+                isRequiredAssets,
+                deleteStandardCollision || entity.Bools.Get(ShortGuids.delete_standard_collision),
+                deleteBallisticCollision || entity.Bools.Get(ShortGuids.delete_ballistic_collision),
+                thisIsDeleted);
         }
 
         private void ProcessEntity(InstancedEntity entity, bool isTemplate, bool isRequiredAssets, bool deleteStandardCollision, bool deleteBallisticCollision, bool isDeleted, bool isShared)
@@ -2776,7 +3500,7 @@ namespace CathodeLib
                         }
 
                     }
-                    if (!isDeleted && !isTemplate && static_collision && !deleteStandardCollision)
+                    if (!isDeleted && !isTemplate && static_collision)
                     {
                         CollisionMaps.CollisionType collisionType = CollisionMaps.CollisionType.STANDARD;
                         switch ((COLLISION_TYPE)entity.EnumIndexes.Get(ShortGuids.collision_type))
@@ -2801,29 +3525,33 @@ namespace CathodeLib
                                 break;
                         }
 
+                        CollisionMaps.CollisionFlags barrierFlags = CollisionMaps.CollisionFlags.WORLD | CollisionMaps.CollisionFlags.FIXED | CollisionMaps.CollisionFlags.PREBUILT | (CollisionMaps.CollisionFlags)collisionType;
+                        bool barrierEnable = !entity.Bools.Has(ShortGuids.enable_on_reset) || entity.Bools.Get(ShortGuids.enable_on_reset);
+                        bool barrierGhosted = !barrierEnable;
+                        if (barrierGhosted)
+                        {
+                            barrierFlags |= CollisionMaps.CollisionFlags.GHOSTED;
+                            barrierFlags |= CollisionMaps.CollisionFlags.PRE_GHOSTED;
+                        }
+
+                        //Barriers are frozen in retail on essentially all levels
+                        barrierFlags |= CollisionMaps.CollisionFlags.FROZEN;
+                        barrierFlags |= CollisionMaps.CollisionFlags.PRE_FROZEN;
+
                         CollisionMaps.COLLISION_MAPPING newMap = new CollisionMaps.COLLISION_MAPPING()
                         {
                             Entity = entity.Handle,
-                            Flags = CollisionMaps.CollisionFlags.WORLD |
-                                    CollisionMaps.CollisionFlags.FIXED |
-                                    CollisionMaps.CollisionFlags.PREBUILT |
-                                    (CollisionMaps.CollisionFlags)collisionType |
-
-                                    //These seem like they're related to animated objects. Need to figure out how to flag them as animated (via CAGEAnim links?)
-                                    CollisionMaps.CollisionFlags.FROZEN |
-                                    CollisionMaps.CollisionFlags.PRE_FROZEN,
+                            Flags = barrierFlags,
                             ResourceGUID = GetResourceID(entity),
-                            ZoneID = ResolveCollisionZoneId(entity, isShared)
+                            ZoneID = ResolveCollisionZoneId(entity)
                         };
-                        lock (_collisionMapsLock)
+                        if (!isRequiredAssets)
                         {
-                            if (!isTemplate && !isRequiredAssets)
+                            newMap.CollisionInstance = AllocateHavokBoxInstance(entity, barrierFlags);
+                            lock (_collisionMapsLock)
+                            {
                                 _level.CollisionMaps.Entries.Add(newMap);
-                        }
-
-                        if (collisionType == CollisionMaps.CollisionType.STANDARD || collisionType == CollisionMaps.CollisionType.TRANSPARENT)
-                        {
-                            //static box collision
+                            }
                         }
                     }
                     break;
@@ -2900,10 +3628,10 @@ namespace CathodeLib
                         mvr.RenderableElements = reds;
                         mvr.Resource = resource;
                         mvr.Entity = entity.Handle;
-                        mvr.PrimaryZoneID = entity.PrimaryZone;
-                        mvr.SecondaryZoneID = entity.SecondaryZone;
+                        //Retail FogBox movers always seem to have NO_CAST_SHADOWS
+                        mvr.CullFlags |= Movers.CullFlag.NO_CAST_SHADOWS;
+                        ApplyMoverZones(mvr, entity);
                         mvr.LightingMasterID = entity.LightingMaster;
-                        //requires script etc?
                         AddMover(entity, mvr);
                     }
                     break;
@@ -2939,10 +3667,8 @@ namespace CathodeLib
                         }
                         mvr.RenderableElements = reds;
                         mvr.Entity = entity.Handle;
-                        mvr.PrimaryZoneID = entity.PrimaryZone;
-                        mvr.SecondaryZoneID = entity.SecondaryZone;
+                        ApplyMoverZones(mvr, entity);
                         mvr.LightingMasterID = entity.LightingMaster;
-                        //requires script etc?
                         AddMover(entity, mvr);
                     }
                     break;
@@ -3015,10 +3741,8 @@ namespace CathodeLib
                         mvr.RenderableElements = reds;
                         mvr.Resource = resource;
                         mvr.Entity = entity.Handle;
-                        mvr.PrimaryZoneID = entity.PrimaryZone;
-                        mvr.SecondaryZoneID = entity.SecondaryZone;
+                        ApplyMoverZones(mvr, entity);
                         mvr.LightingMasterID = entity.LightingMaster;
-                        //requires script etc?
                         AddMover(entity, mvr);
                     }
                     break;
@@ -3128,13 +3852,12 @@ namespace CathodeLib
                         else if (entity.ParentCompositeInstanceEntity != null && entity.ParentCompositeInstanceEntity.Bools.Get(ShortGuids.include_in_planar_reflections))
                             mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
                         mvr.Entity = entity.Handle;
-                        mvr.EnvironmentMap = entity.EnvironmentMap;
+                        //mvr.EnvironmentMap = entity.EnvironmentMap;
                         //mvr.EmissiveTint
                         //mvr.EmissiveFlags
                         //mvr.EmissiveIntensityMultiplier =
                         // mvr.EmissiveRadiosityMultiplier
-                        mvr.PrimaryZoneID = entity.PrimaryZone;
-                        mvr.SecondaryZoneID = entity.SecondaryZone;
+                        ApplyMoverZones(mvr, entity);
                         mvr.LightingMasterID = entity.LightingMaster;
                         AddMover(entity, mvr);
                     }
@@ -3175,36 +3898,42 @@ namespace CathodeLib
                         {
                             bool deleteStandard = deleteStandardCollision || (entity.Bools.Has(ShortGuids.delete_standard_collision) && entity.Bools.Get(ShortGuids.delete_standard_collision));
                             bool deleteBallistic = deleteBallisticCollision || (entity.Bools.Has(ShortGuids.delete_ballistic_collision) && entity.Bools.Get(ShortGuids.delete_ballistic_collision));
-                            if (!(deleteStandard || deleteBallistic))
-                            if (!(deleteStandard && deleteBallistic))
+
+                            CollisionMaps.COLLISION_MAPPING template = ((FunctionEntity)entity.Entity).GetResource(ResourceType.COLLISION_MAPPING, true)?.CollisionMapping;
+                            if (template != null)
                             {
-                                CollisionMaps.COLLISION_MAPPING template = ((FunctionEntity)entity.Entity).GetResource(ResourceType.COLLISION_MAPPING, true)?.CollisionMapping;
-                                if (template != null)
+                                //REQUIRED_ASSETS composites keep GHOSTED (seems odd?)
+                                bool forceGhosted = isTemplate;
+                                string compositeName = entity.Composite?.name?.Replace('/', '\\') ?? string.Empty;
+                                if (compositeName.StartsWith("Required_Assets\\", StringComparison.OrdinalIgnoreCase))
+                                    forceGhosted = true;
+
+                                bool emit = true;
+                                if (deleteStandard && deleteBallistic)
                                 {
-                                    //REQUIRED_ASSETS composites keep GHOSTED (seems odd?)
-                                    bool forceGhosted = isTemplate;
-                                    string compositeName = entity.Composite?.name?.Replace('/', '\\') ?? string.Empty;
-                                    if (compositeName.StartsWith("Required_Assets\\", StringComparison.OrdinalIgnoreCase))
-                                        forceGhosted = true;
-
-                                    //Work out the material to assign - since we don't always have an associated renderable, we sometimes derive this from the collision mapping template.
-                                    //Deriving it from the template isn't ideal, but I can allow editing of it in instances where there's no renderable in the UI (TODO - do that!) so it's fine.
-                                    Materials.Material material = null;
-                                    if (reds == null || reds.Count == 0 || reds[0]?.Material == null)
-                                        material = template.Material;
+                                    if (!forceGhosted)
+                                        emit = false;
                                     else
-                                        material = reds[0].Material;
+                                    {
+                                        //Ghosted shell only — do not set BALLISTIC_ONLY|STANDARD_ONLY.
+                                        deleteStandard = false;
+                                        deleteBallistic = false;
+                                    }
+                                }
 
+                                if (emit)
+                                {
+                                    CollisionMaps.CollisionFlags flags = BuildInstanceCollisionFlags(entity, deleteBallistic, forceGhosted, template.Material);
                                     CollisionMaps.COLLISION_MAPPING newMap = new CollisionMaps.COLLISION_MAPPING()
                                     {
-                                        Flags = BuildInstanceCollisionFlags(entity, deleteStandard, deleteBallistic, forceGhosted, template.Material),
-                                        Index = template.Index, //todo - pretty sure this is incorrect
+                                        Flags = flags,
+                                        CollisionProxy = template.CollisionProxy,
+                                        CollisionInstance = AllocateHavokCompoundInstance(entity, template.CollisionProxy, flags),
                                         ResourceGUID = template.ResourceGUID != ShortGuid.Invalid ? template.ResourceGUID : GetResourceID(entity),
                                         Entity = entity.Handle,
-                                        Material = material,
-                                        CollisionProxyIndex = template.CollisionProxyIndex,
+                                        Material = template.Material, // note - this is a physics material, not the renderable one. it's only stored in the template collision mapping!
                                         MaterialMapping = mapping, //todo - if this has no renderable maybe we discard the remapping? i guess it doesn't matter.
-                                        ZoneID = ResolveCollisionZoneId(entity, isShared)
+                                        ZoneID = ResolveCollisionZoneId(entity)
                                     };
 
                                     lock (_collisionMapsLock)
@@ -3262,16 +3991,16 @@ namespace CathodeLib
                             else if (entity.ParentCompositeInstanceEntity != null && entity.ParentCompositeInstanceEntity.Bools.Get(ShortGuids.include_in_planar_reflections))
                                 mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
                             mvr.Entity = entity.Handle;
-                            mvr.EnvironmentMap = entity.EnvironmentMap;
+                            if (MaterialUsesMoverEnvironmentMap(reds))
+                                mvr.EnvironmentMap = entity.EnvironmentMap;
                             mvr.EmissiveTint = entity.Vectors.Get(ShortGuids.emissive_tint);
                             if (entity.Bools.Get(ShortGuids.replace_intensity))
                                 mvr.EmissiveFlags |= Movers.EmissiveFlag.ReplaceIntensity;
                             if (entity.Bools.Get(ShortGuids.replace_tint))
                                 mvr.EmissiveFlags |= Movers.EmissiveFlag.ReplaceTint;
-                            mvr.EmissiveIntensityMultiplier = Math.Max(0.0f, entity.Floats.Get(ShortGuids.intensity_multiplier)); //depends on if it's switched on?
+                            mvr.EmissiveIntensityMultiplier = ResolveModelReferenceEmissiveIntensity(entity, isTemplate);
                             mvr.EmissiveRadiosityMultiplier = Math.Max(0.0f, entity.Floats.Get(ShortGuids.radiosity_multiplier));
-                            mvr.PrimaryZoneID = entity.PrimaryZone;
-                            mvr.SecondaryZoneID = entity.SecondaryZone;
+                            ApplyMoverZones(mvr, entity);
                             mvr.LightingMasterID = entity.LightingMaster;
                             AddMover(entity, mvr);
                         }
@@ -3293,12 +4022,15 @@ namespace CathodeLib
                                     CollisionMaps.CollisionFlags.FIXED |
                                     CollisionMaps.CollisionFlags.PREBUILT,
                             ResourceGUID = GetResourceID(entity),
-                            ZoneID = ResolveCollisionZoneId(entity, isShared)
+                            ZoneID = ShortGuid.Invalid
                         };
-                        lock (_collisionMapsLock)
+                        if (!isRequiredAssets)
                         {
-                            if (!isTemplate && !isRequiredAssets)
+                            newMap.CollisionInstance = AllocateHavokBoxInstance(entity, newMap.Flags);
+                            lock (_collisionMapsLock)
+                            {
                                 _level.CollisionMaps.Entries.Add(newMap);
+                            }
                         }
                     }
                     break;
@@ -3409,10 +4141,8 @@ namespace CathodeLib
                             mvr.CullFlags |= Movers.CullFlag.NO_CAST_SHADOWS;
                         }
                         mvr.Entity = entity.Handle;
-                        mvr.PrimaryZoneID = entity.PrimaryZone;
-                        mvr.SecondaryZoneID = entity.SecondaryZone;
+                        ApplyMoverZones(mvr, entity);
                         mvr.LightingMasterID = entity.LightingMaster;
-                        //flags?
                         AddMover(entity, mvr);
                     }
                     break;
@@ -3465,8 +4195,6 @@ namespace CathodeLib
                 case FunctionType.ProjectiveDecal:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                     {
-
-
                         Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
                         mvr.RenderableElements = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
@@ -3476,8 +4204,7 @@ namespace CathodeLib
                         else if (entity.ParentCompositeInstanceEntity != null && entity.ParentCompositeInstanceEntity.Bools.Get(ShortGuids.include_in_planar_reflections))
                             mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
                         mvr.Entity = entity.Handle;
-                        mvr.PrimaryZoneID = entity.PrimaryZone;
-                        mvr.SecondaryZoneID = entity.SecondaryZone;
+                        ApplyMoverZones(mvr, entity);
                         mvr.LightingMasterID = entity.LightingMaster;
                         AddMover(entity, mvr);
                     }
@@ -3509,10 +4236,8 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.RibbonEmitterReference:
-
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                     {
-
                         Resources.Resource resource = AddResourceEntry(entity);
 
                         //same thing about early exiting - ENTITY2 resource happens above the exit, i'm confused what each do - need to investigate
@@ -3543,17 +4268,16 @@ namespace CathodeLib
                             }
                         }
                         mvr.Entity = entity.Handle;
-                        mvr.PrimaryZoneID = entity.PrimaryZone;
-                        mvr.SecondaryZoneID = entity.SecondaryZone;
+                        //RibbonEmitterReference movers seem to always have NO_CAST_SHADOWS
+                        mvr.CullFlags |= Movers.CullFlag.NO_CAST_SHADOWS;
+                        ApplyMoverZones(mvr, entity);
                         mvr.LightingMasterID = entity.LightingMaster;
-                        //flags?
                         AddMover(entity, mvr);
                     }
                     break;
                 case FunctionType.SimpleRefraction:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                     {
-
                         CA_SIMPLE_REFRACTION.FEATURES features = 0;
                         if (entity.Bools.Get(ShortGuids.SECONDARY_NORMAL_MAPPING))
                             features |= CA_SIMPLE_REFRACTION.FEATURES.SECONDARY_NORMAL_MAPPING;
@@ -3604,12 +4328,15 @@ namespace CathodeLib
                                     CollisionMaps.CollisionFlags.FIXED |
                                     CollisionMaps.CollisionFlags.PREBUILT,
                             ResourceGUID = GetResourceID(entity),
-                            ZoneID = ResolveCollisionZoneId(entity, isShared)
+                            ZoneID = ShortGuid.Invalid
                         };
-                        lock (_collisionMapsLock)
+                        if (!isRequiredAssets)
                         {
-                            if (!isTemplate && !isRequiredAssets)
+                            newMap.CollisionInstance = AllocateHavokBoxInstance(entity, newMap.Flags);
+                            lock (_collisionMapsLock)
+                            {
                                 _level.CollisionMaps.Entries.Add(newMap);
+                            }
                         }
                     }
                     break;
@@ -3627,24 +4354,52 @@ namespace CathodeLib
                     break;
                 case FunctionType.SurfaceEffectBox:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
-                        AddResourceEntry(entity);
                     {
                         CA_EFFECT_OVERLAY.FEATURES features = CA_EFFECT_OVERLAY.FEATURES.BOX;
                         if (entity.Bools.Get(ShortGuids.WS_LOCKED))
                             features |= CA_EFFECT_OVERLAY.FEATURES.WS_LOCKED;
                         if (entity.Bools.Get(ShortGuids.ENVMAP))
                             features |= CA_EFFECT_OVERLAY.FEATURES.ENVMAP;
+                        _ = features; //material feature bits not yet written back to REDS shader
+
+                        Resources.Resource resource = AddResourceEntry(entity);
+                        Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
+                        mvr.Transform = entity.CalculateWorldTransformMatrix();
+                        mvr.RenderableElements = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                        mvr.Resource = resource;
+                        mvr.Entity = entity.Handle;
+                        mvr.CullFlags |= Movers.CullFlag.NO_CAST_SHADOWS; // i think?
+                        mvr.Flags.Stationary = true; // i think?
+                        if (entity.Bools.Get(ShortGuids.ENVMAP))
+                            mvr.EnvironmentMap = entity.EnvironmentMap;
+                        ApplyMoverZones(mvr, entity);
+                        mvr.LightingMasterID = entity.LightingMaster;
+                        AddMover(entity, mvr);
                     }
                     break;
                 case FunctionType.SurfaceEffectSphere:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
-                        AddResourceEntry(entity);
                     {
                         CA_EFFECT_OVERLAY.FEATURES features = CA_EFFECT_OVERLAY.FEATURES.SPHERE;
                         if (entity.Bools.Get(ShortGuids.WS_LOCKED))
                             features |= CA_EFFECT_OVERLAY.FEATURES.WS_LOCKED;
                         if (entity.Bools.Get(ShortGuids.ENVMAP))
                             features |= CA_EFFECT_OVERLAY.FEATURES.ENVMAP;
+                        _ = features;
+
+                        Resources.Resource resource = AddResourceEntry(entity);
+                        Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
+                        mvr.Transform = entity.CalculateWorldTransformMatrix();
+                        mvr.RenderableElements = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                        mvr.Resource = resource;
+                        mvr.Entity = entity.Handle;
+                        mvr.CullFlags |= Movers.CullFlag.NO_CAST_SHADOWS;
+                        mvr.Flags.Stationary = true;
+                        if (entity.Bools.Get(ShortGuids.ENVMAP))
+                            mvr.EnvironmentMap = entity.EnvironmentMap;
+                        ApplyMoverZones(mvr, entity);
+                        mvr.LightingMasterID = entity.LightingMaster;
+                        AddMover(entity, mvr);
                     }
                     break;
                 case FunctionType.TRAV_1ShotClimbUnder:
@@ -3676,6 +4431,52 @@ namespace CathodeLib
             {
                 return _level.Resources.AddUniqueResource(GetResourceID(entity), entity.ThisCompositeInstance.InstanceID);
             }
+        }
+
+        // Materials with EnvironmentMapIndex 255 do not sample a cubemap from the mover.
+        private static bool MaterialUsesMoverEnvironmentMap(List<RenderableElements.Element> reds)
+        {
+            if (reds == null)
+                return false;
+            foreach (RenderableElements.Element red in reds)
+            {
+                if (red?.Material != null && red.Material.EnvironmentMapIndex != 255)
+                    return true;
+            }
+            return false;
+        }
+
+        //Utility for working out the emissive intensity multiplier for mover - not quite right yet, but a good match
+        private static float ResolveModelReferenceEmissiveIntensity(InstancedEntity entity, bool isTemplate)
+        {
+            if (isTemplate || entity.Bools.Get(ShortGuids.is_template))
+                return 0.0f;
+            if (!entity.Bools.Get(ShortGuids.light_on_reset))
+                return 0.0f;
+
+            float intensity;
+            if (entity.Floats.Links.TryGetValue(ShortGuids.intensity_multiplier, out List<Tuple<ShortGuid, InstancedEntity>> links) && links.Count > 0 && IsStaticFloatIntensityLink(links[0].Item2))
+            {
+                intensity = entity.Floats.Get(ShortGuids.intensity_multiplier);
+            }
+            else if (entity.Floats.Values.TryGetValue(ShortGuids.intensity_multiplier, out float value))
+            {
+                intensity = value;
+            }
+            else
+            {
+                intensity = 1.0f;
+            }
+            return Math.Max(0.0f, intensity);
+        }
+
+        private static bool IsStaticFloatIntensityLink(InstancedEntity source)
+        {
+            if (source?.Entity is VariableEntity variable)
+                return variable.type == DataType.FLOAT;
+            if (source?.Entity is FunctionEntity function && function.function.IsFunctionType)
+                return function.function.AsFunctionType == FunctionType.VariableFloat;
+            return false;
         }
 
         private static ShortGuid GetResourceID(InstancedEntity entity)
