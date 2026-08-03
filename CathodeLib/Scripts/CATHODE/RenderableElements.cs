@@ -179,6 +179,35 @@ namespace CATHODE
         }
 
         /// <summary>
+        /// Ensure a sequence of renderable elements are registered.
+        /// </summary>
+        public List<Element> EnsureRegistered(List<Element> elements)
+        {
+            if (elements == null || elements.Count == 0)
+                return elements ?? new List<Element>();
+
+            if (GetWriteIndex(elements) >= 0)
+                return elements;
+
+            for (int i = 0; i < elements.Count; i++)
+            {
+                Element el = elements[i];
+                if (el?.LODs == null || el.LODs.Count == 0)
+                    continue;
+                el.LODs = EnsureRegistered(el.LODs);
+            }
+
+            for (int i = 0; i < elements.Count; i++)
+            {
+                Element el = elements[i];
+                if (el != null)
+                    Entries.Add(el);
+            }
+
+            return elements;
+        }
+
+        /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
         public List<Element> ImportEntry(List<Element> elements, Models sourceModels)

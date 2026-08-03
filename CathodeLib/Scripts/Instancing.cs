@@ -2395,6 +2395,7 @@ namespace CathodeLib
                 instance.UserData = (ulong)i;
                 stamped.Add(instance);
 
+                //todo - this assumes that we are writing everything to 32 and copying to 64, but that might not be the case
                 HavokPackfile.StaticCompoundShape host64 = _hkx64?.HostFor(rows[i].Flags);
                 int slot = instance.Index;
                 if (host64 != null && slot >= 0 && slot < host64.Instances.Count)
@@ -3121,6 +3122,7 @@ namespace CathodeLib
 
             lock (_mvrLock)
             {
+                mvr.RenderableElements = _level.RenderableElements.EnsureRegistered(mvr.RenderableElements);
                 _level.Movers.Entries.Add(mvr);
             }
         }
@@ -3958,7 +3960,7 @@ namespace CathodeLib
                                             Vector3 vertColourScale = entity.Vectors.Get(ShortGuids.vertex_colour_scale);
                                             gpuConstants.VertexColourScalars = new Vector4(vertColourScale.X, vertColourScale.Y, vertColourScale.Z, entity.Floats.Get(ShortGuids.vertex_opacity_scale));
                                             Vector3 diffColourScale = entity.Vectors.Get(ShortGuids.diffuse_colour_scale) / 255.0f;
-                                            gpuConstants.DiffuseColourScalars = new Vector4(vertColourScale.X, vertColourScale.Y, vertColourScale.Z, entity.Floats.Get(ShortGuids.diffuse_opacity_scale));
+                                            gpuConstants.DiffuseColourScalars = new Vector4(diffColourScale.X, diffColourScale.Y, diffColourScale.Z, entity.Floats.Get(ShortGuids.diffuse_opacity_scale));
                                             gpuConstants.AlphaBlendNoisePowerScale = entity.Floats.Get(ShortGuids.alpha_blend_noise_power_scale);
                                             gpuConstants.AlphaBlendNoiseUvScale = entity.Floats.Get(ShortGuids.alpha_blend_noise_uv_scale);
                                             gpuConstants.AlphaBlendNoiseUvOffset = new Vector2(entity.Floats.Get(ShortGuids.alpha_blend_noise_uv_offset_X), entity.Floats.Get(ShortGuids.alpha_blend_noise_uv_offset_Y));
