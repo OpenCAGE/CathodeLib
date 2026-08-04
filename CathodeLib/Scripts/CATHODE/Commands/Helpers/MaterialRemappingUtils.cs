@@ -108,7 +108,17 @@ namespace CathodeLib
                 }
 
                 if (!lodsChanged)
+                {
                     remappedLods = null;
+                }
+                else
+                {
+                    for (int i = 0; i < remappedLods.Count; i++)
+                    {
+                        if (ReferenceEquals(remappedLods[i], element.LODs[i]))
+                            remappedLods[i] = element.LODs[i].Copy();
+                    }
+                }
             }
 
             if (!materialChanged && remappedLods == null)
@@ -156,6 +166,16 @@ namespace CathodeLib
 
             RenderableElements.Element copy = renderables[0].Copy();
             copy.Material = material;
+            if (copy.LODs != null)
+            {
+                for (int i = 0; i < copy.LODs.Count; i++)
+                {
+                    if (copy.LODs[i] == null)
+                        continue;
+                    RenderableElements.Element lodCopy = copy.LODs[i];
+                    lodCopy.Material = material;
+                }
+            }
             return new List<RenderableElements.Element> { copy };
         }
 

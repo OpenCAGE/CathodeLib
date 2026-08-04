@@ -120,8 +120,8 @@ namespace CATHODE
                 writer.Write((int)element.MaterialLocation);
                 writer.Write(_materials.GetWriteIndex(element.Material));
                 writer.Write(element.MaterialSubplatformDependent);
-                writer.Write(element.LODs.Count == 0 ? -1 : Entries.IndexOf(element.LODs[0]));
-                writer.Write((byte)element.LODs.Count);
+                writer.Write((element.LODs == null || element.LODs.Count == 0) ? -1 : GetWriteIndex(element.LODs));
+                writer.Write((byte)(element.LODs?.Count ?? 0));
                 return stream.ToArray();
             }
         }
@@ -153,7 +153,7 @@ namespace CATHODE
                 {
                     for (int x = 1; x < element.Count; x++)
                     {
-                        if (Entries[i + x] != element[x])
+                        if (i + x >= Entries.Count || Entries[i + x] != element[x])
                             break;
                         if (x == element.Count - 1)
                             return i;

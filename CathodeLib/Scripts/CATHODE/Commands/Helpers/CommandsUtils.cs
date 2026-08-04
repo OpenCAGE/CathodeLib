@@ -804,9 +804,12 @@ namespace CATHODE.Scripting
                             }
                         }
                         Composite compositeInstance = _commands.GetComposite((functionEntity).function);
-                        foreach (VariableEntity variable in compositeInstance.variables)
+                        if (compositeInstance != null)
                         {
-                            parameters.AddRange(GetAllParameters(variable, compositeInstance, includeInherited));
+                            foreach (VariableEntity variable in compositeInstance.variables)
+                            {
+                                parameters.AddRange(GetAllParameters(variable, compositeInstance, includeInherited));
+                            }
                         }
                     }
                     break;
@@ -1185,7 +1188,7 @@ namespace CATHODE.Scripting
                     {
                         ParameterData data;
                         Composite comp = _commands.GetComposite(functionEntity.function);
-                        if (composite != null)
+                        if (comp != null)
                         {
                             VariableEntity var = comp.variables.FirstOrDefault(o => o.name == parameter);
                             if (var != null)

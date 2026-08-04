@@ -17,6 +17,25 @@ namespace CathodeLib
         public static readonly ShortGuid is_door = ShortGuidUtils.Generate("is_door");
         public static readonly ShortGuid filter = ShortGuidUtils.Generate("filter");
         public static readonly ShortGuid Input = ShortGuidUtils.Generate("Input");
+        public static readonly ShortGuid index = ShortGuidUtils.Generate("index");
+        public static readonly ShortGuid Seed = ShortGuidUtils.Generate("Seed");
+        public static readonly ShortGuid Object_0 = ShortGuidUtils.Generate("Object_0");
+        public static readonly ShortGuid Object_1 = ShortGuidUtils.Generate("Object_1");
+        public static readonly ShortGuid Object_2 = ShortGuidUtils.Generate("Object_2");
+        public static readonly ShortGuid Object_3 = ShortGuidUtils.Generate("Object_3");
+        public static readonly ShortGuid Object_4 = ShortGuidUtils.Generate("Object_4");
+        public static readonly ShortGuid Object_5 = ShortGuidUtils.Generate("Object_5");
+        public static readonly ShortGuid Object_6 = ShortGuidUtils.Generate("Object_6");
+        public static readonly ShortGuid Object_7 = ShortGuidUtils.Generate("Object_7");
+        public static readonly ShortGuid Object_8 = ShortGuidUtils.Generate("Object_8");
+        public static readonly ShortGuid Object_9 = ShortGuidUtils.Generate("Object_9");
+        public static readonly ShortGuid Object_10 = ShortGuidUtils.Generate("Object_10");
+        public static readonly ShortGuid Object_11 = ShortGuidUtils.Generate("Object_11");
+        public static readonly ShortGuid Object_12 = ShortGuidUtils.Generate("Object_12");
+        public static readonly ShortGuid Object_13 = ShortGuidUtils.Generate("Object_13");
+        public static readonly ShortGuid Object_14 = ShortGuidUtils.Generate("Object_14");
+        public static readonly ShortGuid Object_15 = ShortGuidUtils.Generate("Object_15");
+        public static readonly ShortGuid Object_16 = ShortGuidUtils.Generate("Object_16");
         public static readonly ShortGuid LHS = ShortGuidUtils.Generate("LHS");
         public static readonly ShortGuid RHS = ShortGuidUtils.Generate("RHS");
         public static readonly ShortGuid Threshold = ShortGuidUtils.Generate("Threshold");
@@ -60,6 +79,7 @@ namespace CathodeLib
         public static readonly ShortGuid delete_ballistic_collision = ShortGuidUtils.Generate("delete_ballistic_collision");
         public static readonly ShortGuid show_on_reset = ShortGuidUtils.Generate("show_on_reset");
         public static readonly ShortGuid enable_on_reset = ShortGuidUtils.Generate("enable_on_reset");
+        public static readonly ShortGuid disable_display = ShortGuidUtils.Generate("disable_display");
         public static readonly ShortGuid simulate_on_reset = ShortGuidUtils.Generate("simulate_on_reset");
         public static readonly ShortGuid force_keyframed = ShortGuidUtils.Generate("force_keyframed");
         public static readonly ShortGuid force_transparent = ShortGuidUtils.Generate("force_transparent");
@@ -241,6 +261,7 @@ namespace CathodeLib
         public static readonly ShortGuid START_DISTANCE_FADE = ShortGuidUtils.Generate("START_DISTANCE_FADE");
         public static readonly ShortGuid start_distance_fade_scalar = ShortGuidUtils.Generate("start_distance_fade_scalar");
         public static readonly ShortGuid START_DISTANT_CLIP = ShortGuidUtils.Generate("START_DISTANT_CLIP");
+        public static readonly ShortGuid strip_length = ShortGuidUtils.Generate("strip_length");
         public static readonly ShortGuid SYSTEM_EXPIRY_TIME = ShortGuidUtils.Generate("SYSTEM_EXPIRY_TIME");
         public static readonly ShortGuid THICKNESS = ShortGuidUtils.Generate("THICKNESS");
         public static readonly ShortGuid thickness_scalar = ShortGuidUtils.Generate("thickness_scalar");
@@ -266,6 +287,15 @@ namespace CathodeLib
             State_05, State_06, State_07, State_08,
             State_09, State_10, State_11, State_12,
             State_13, State_14, State_15, State_16,
+        };
+
+        public static readonly ShortGuid[] TriggerSelectObjectPins =
+        {
+            Object_0, Object_1, Object_2, Object_3,
+            Object_4, Object_5, Object_6, Object_7,
+            Object_8, Object_9, Object_10, Object_11,
+            Object_12, Object_13, Object_14, Object_15,
+            Object_16
         };
     }
 }
