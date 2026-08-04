@@ -322,8 +322,13 @@ namespace CathodeLib
         /// <summary>
         /// Save all data for the level
         /// </summary>
-        public void Save()
+        public void Save(bool doInstancing = false)
         {
+            if (doInstancing)
+            { 
+                new Instancing(this);
+            }
+
             //TODO: if we haven't pulled GLOBAL texture data into our texture pak, do so, and update sources.
 
             string renderable = _filepath + "/RENDERABLE/";

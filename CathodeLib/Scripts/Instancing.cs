@@ -2373,6 +2373,9 @@ namespace CathodeLib
         public Instancing(Level level)
         {
             _level = level;
+
+            GenerateInstances();
+            ProcessInstances();
         }
 
         // -----
@@ -2418,7 +2421,7 @@ namespace CathodeLib
         }
         // -----
 
-        public void GenerateInstances()
+        private void GenerateInstances()
         {
             _globalGUID = _level.Commands.EntryPoints[1].shortGUID;
 
@@ -2456,7 +2459,8 @@ namespace CathodeLib
             };
             GenerateInstances(Root.Composite, new EntityPath(), Root, null, null, new List<InstancedAlias>(), false, null);
         }
-        public void ProcessInstances()
+
+        private void ProcessInstances()
         {
             if (Root?.Composite == null)
                 throw new Exception("Call GenerateInstances first");
