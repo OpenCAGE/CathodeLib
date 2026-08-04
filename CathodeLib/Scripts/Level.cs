@@ -52,6 +52,8 @@ namespace CathodeLib
         public PathBarrierResources PathBarrierResources;
         public HavokPackfile CollisionHKX;
         public HavokPackfile CollisionHKX64;
+        public HavokPackfile PhysicsHKX;
+        public HavokPackfile PhysicsHKX64;
         public CollisionMaps CollisionMaps;
         public RadiosityInstanceMap RadInstanceMap;
         public AlphaLightLevel AlphaLight;
@@ -112,7 +114,7 @@ namespace CathodeLib
         /// </summary>
         public Action OnSaveTick;
 
-        public const int NumberOfTicks = 29;
+        public const int NumberOfTicks = 31;
 
         /// <summary>
         /// A container for data related to a level in the game's "ENV" folder
@@ -136,6 +138,7 @@ namespace CathodeLib
             Movers?.ClearReferences();
             PathBarrierResources?.ClearReferences();
             CollisionMaps?.ClearReferences();
+            PhysicsMaps?.ClearReferences();
             Commands?.ClearReferences();
             EnvironmentAnimations?.ClearReferences();
 
@@ -149,6 +152,10 @@ namespace CathodeLib
             RenderableElements = null;
             Movers = null;
             PathBarrierResources = null;
+            CollisionHKX = null;
+            CollisionHKX64 = null;
+            PhysicsHKX = null;
+            PhysicsHKX64 = null;
             CollisionMaps = null;
             RadInstanceMap = null; //todo - can this be removed?
             AlphaLight = null;
@@ -224,6 +231,26 @@ namespace CathodeLib
                             CollisionHKX64 = null;
                     }
                     OnLoadTick?.Invoke();
+                },
+                () =>
+                {
+                    if (File.Exists(world + "PHYSICS.HKX"))
+                    {
+                        PhysicsHKX = new HavokPackfile(world + "PHYSICS.HKX");
+                        if (!PhysicsHKX.Loaded)
+                            PhysicsHKX = null;
+                    }
+                    OnLoadTick?.Invoke();
+                },
+                () =>
+                {
+                    if (File.Exists(world + "PHYSICS.HKX64"))
+                    {
+                        PhysicsHKX64 = new HavokPackfile(world + "PHYSICS.HKX64");
+                        if (!PhysicsHKX64.Loaded)
+                            PhysicsHKX64 = null;
+                    }
+                    OnLoadTick?.Invoke();
                 }
             );
 
@@ -238,7 +265,7 @@ namespace CathodeLib
                 () => { AccessorySets = new CharacterAccessorySets(world + "CHARACTERACCESSORYSETS.BIN"); OnLoadTick?.Invoke(); },
                 () => { EnvironmentAnimations = new EnvironmentAnimations(world + "ENVIRONMENT_ANIMATION.DAT", _global.AnimationStrings_Debug); OnLoadTick?.Invoke(); },
                 () => { Lights = new Lights(world + "LIGHTS.BIN"); OnLoadTick?.Invoke(); },
-                () => { PhysicsMaps = new PhysicsMaps(world + "PHYSICS.MAP"); OnLoadTick?.Invoke(); },
+                () => { PhysicsMaps = new PhysicsMaps(world + "PHYSICS.MAP", PhysicsHKX); OnLoadTick?.Invoke(); },
                 () => { SoundNodeNetwork = new SoundNodeNetwork(world + "SNDNODENETWORK.DAT"); OnLoadTick?.Invoke(); },
                 () => { SoundBankData = new SoundBankData(world + "SOUNDBANKDATA.DAT"); OnLoadTick?.Invoke(); },
                 () => { SoundDialogueLookups = new SoundDialogueLookups(world + "SOUNDDIALOGUELOOKUPS.DAT"); OnLoadTick?.Invoke(); },
@@ -252,12 +279,11 @@ namespace CathodeLib
                 () => { GalaxyDefinition = new GalaxyDefinition(renderable + "GALAXY/GALAXY.DEFINITION_BIN"); OnLoadTick?.Invoke(); } //Not used at runtime, but useful to regenerate GalaxyItems.
             );
 
-            Commands = new Commands(world + "COMMANDS" + (compressed ? ".BIN.GZ" : File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements); OnLoadTick?.Invoke();
+            Commands = new Commands(world + "COMMANDS" + (compressed ? ".BIN.GZ" : File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements, PhysicsHKX); OnLoadTick?.Invoke();
 
             //The following files are used by the game, but not fully handled yet:
             // - RENDERABLE/RADIOSITY_RUNTIME.BIN (and .GZ)
             // - WORLD/RADIOSITY_COLLISION_MAPPING.BIN
-            // - WORLD/PHYSICS.HKX / HKX64    (same packfile format as COLLISION.HKX)
             // - WORLD/OCCLUDER_TRIANGLE_BVH.BIN
 
             StateResources.Add(new State());
@@ -356,6 +382,8 @@ namespace CathodeLib
                 () => { PathBarrierResources.Save(); OnSaveTick?.Invoke(); },
                 () => { CollisionHKX?.Save(); OnSaveTick?.Invoke(); },
                 () => { CollisionHKX64?.Save(); OnSaveTick?.Invoke(); },
+                () => { PhysicsHKX?.Save(); OnSaveTick?.Invoke(); },
+                () => { PhysicsHKX64?.Save(); OnSaveTick?.Invoke(); },
                 () => { CollisionMaps.Save(); OnSaveTick?.Invoke(); },
                 () => { RadInstanceMap.Save(); OnSaveTick?.Invoke(); },
                 () => { AlphaLight.Save(); OnSaveTick?.Invoke(); },

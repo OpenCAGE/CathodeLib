@@ -27,7 +27,7 @@ namespace CATHODE.Scripting.Internal.Parsers
 {
     public static class CommandsPAK
     {
-        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
+        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds, HavokPackfile physicsHKX = null)
         {
             byte[] content = stream.ToArray();
 
@@ -266,8 +266,12 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     reader_parallel.BaseStream.Position += 4;
                                                     break;
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                    resource.PhysicsSystemIndex = reader_parallel.ReadInt32();
-                                                    reader_parallel.BaseStream.Position += 4;
+                                                    {
+                                                        int systemIndex = reader_parallel.ReadInt32();
+                                                        resource.PhysicsSystem = physicsHKX?.GetPhysicsSystem(systemIndex);
+                                                        resource.PhysicsSystemIndex = systemIndex;
+                                                        reader_parallel.BaseStream.Position += 4;
+                                                    }
                                                     break;
                                                 default:
                                                     reader_parallel.BaseStream.Position += 8;

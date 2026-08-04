@@ -4468,19 +4468,21 @@ namespace CathodeLib
                             break;
                         }
 
+                        HavokPackfile.PhysicsSystem template = physicsSystem.PhysicsSystem ?? _level.PhysicsHKX?.GetPhysicsSystem(physicsSystem.PhysicsSystemIndex);
+                        if (template == null)
+                        {
+                            //Should warn here!
+                            break;
+                        }
+
                         (Vector3 position, Quaternion rotation) = entity.CalculateWorldPositionRotation();
                         lock (_physicsMapsLock)
                         {
                             _level.PhysicsMaps.Entries.Add(new PhysicsMaps.DYNAMIC_PHYSICS_SYSTEM()
                             {
-                                physics_system_index = physicsSystem.PhysicsSystemIndex,
+                                PhysicsSystem = template,
                                 composite_instance_id = entity.ThisCompositeInstance.InstanceID,
-                                //entity = new EntityHandle()
-                                //{
-                                //    entity_id = entity.ParentCompositeInstanceEntity.Entity.shortGUID,
-                                //    composite_instance_id = entity.ParentCompositeInstance.InstanceID
-                                //},
-                                entity = entity.ParentCompositeInstanceEntity.Handle, //does this actually work and match above?
+                                entity = entity.ParentCompositeInstanceEntity.Handle,
                                 Position = position,
                                 Rotation = rotation
                             });

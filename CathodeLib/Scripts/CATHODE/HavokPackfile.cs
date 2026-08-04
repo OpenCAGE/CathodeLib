@@ -42,6 +42,9 @@ namespace CATHODE
         /// <summary>Typed hkpStaticCompoundShape views in CollisionProxyIndex order.</summary>
         public List<StaticCompoundShape> StaticCompoundShapes = new List<StaticCompoundShape>();
 
+        /// <summary>Typed hkpPhysicsSystem views in <c>hkpPhysicsData.systems[]</c> / SystemIndex order.</summary>
+        public List<PhysicsSystem> PhysicsSystems = new List<PhysicsSystem>();
+
         public HavokPackfile(string path) : base(path) { }
         public HavokPackfile(MemoryStream stream, string path = "") : base(stream, path) { }
         public HavokPackfile(byte[] data, string path = "") : base(data, path) { }
@@ -135,6 +138,19 @@ namespace CATHODE
                     Instances[i].Owner = null;
                 Instances.Clear();
             }
+        }
+
+        /// <summary>
+        /// A hkpPhysicsSystem template in PHYSICS.HKX / HKX64.
+        /// PHYSICS.MAP and Commands DYNAMIC_PHYSICS_SYSTEM use <see cref="SystemIndex"/> —
+        /// the index into <c>hkpPhysicsData.systems[]</c> (not packfile appearance order).
+        /// </summary>
+        public class PhysicsSystem
+        {
+            public int SystemIndex;
+            public uint DataOffset;
+            public string Name;
+            public PackfileObject Object;
         }
 
         public class CompoundInstance
@@ -631,6 +647,14 @@ namespace CATHODE
             return null;
         }
 
+        /// <summary>Find the physics system for a PHYSICS.MAP / DYNAMIC_PHYSICS_SYSTEM SystemIndex, or null.</summary>
+        public PhysicsSystem GetPhysicsSystem(int systemIndex)
+        {
+            if (systemIndex < 0 || systemIndex >= PhysicsSystems.Count)
+                return null;
+            return PhysicsSystems[systemIndex];
+        }
+
         StaticCompoundShape FindCompound(int proxyIndex) => GetCompound(proxyIndex);
 
         StaticCompoundShape _worldHostPrimary;
@@ -686,6 +710,7 @@ namespace CATHODE
         {
             Objects.Clear();
             StaticCompoundShapes.Clear();
+            PhysicsSystems.Clear();
             LocalFixups.Clear();
             GlobalFixups.Clear();
             VirtualFixups.Clear();
@@ -744,6 +769,7 @@ namespace CATHODE
                 Dictionary<int, string> classNames = ParseClassNames(ClassnamesData);
                 BuildObjectList(classNames);
                 ParseStaticCompoundInstances(classNames);
+                ParsePhysicsSystemIndexes();
             }
 
             return Objects.Count > 0;
@@ -975,6 +1001,7 @@ namespace CATHODE
         void BuildObjectList(Dictionary<int, string> classNames)
         {
             int compoundOrdinal = 0;
+            PhysicsSystems.Clear();
             for (int i = 0; i < VirtualFixups.Count; i++)
             {
                 VirtualFixup vf = VirtualFixups[i];
@@ -990,8 +1017,148 @@ namespace CATHODE
                 {
                     obj.ProxyIndex = compoundOrdinal++;
                 }
+                else if (obj.Class == ObjectClass.PhysicsSystem)
+                {
+                    // SystemIndex assigned later from hkpPhysicsData.systems[] order.
+                    PhysicsSystems.Add(new PhysicsSystem
+                    {
+                        SystemIndex = -1,
+                        DataOffset = obj.DataOffset,
+                        Object = obj,
+                    });
+                }
                 Objects.Add(obj);
             }
+        }
+
+        /// <summary>
+        /// Assign <see cref="PhysicsSystem.SystemIndex"/> from <c>hkpPhysicsData.systems[]</c>
+        /// (the order Commands / PHYSICS.MAP use). Falls back to appearance order if PhysicsData
+        /// is missing.
+        /// </summary>
+        void ParsePhysicsSystemIndexes()
+        {
+            if (PhysicsSystems.Count == 0)
+                return;
+
+            var byOffset = new Dictionary<uint, PhysicsSystem>(PhysicsSystems.Count);
+            int nameFieldOffset = Header.PointerSize == 8 ? 80 : 56; // hkArray packing differs 32 vs 64
+            for (int i = 0; i < PhysicsSystems.Count; i++)
+            {
+                PhysicsSystem ps = PhysicsSystems[i];
+                byOffset[ps.DataOffset] = ps;
+                ps.Name = ReadStringPtr(ps.DataOffset + (uint)nameFieldOffset);
+            }
+
+            PackfileObject physicsData = null;
+            for (int i = 0; i < Objects.Count; i++)
+            {
+                if (Objects[i].Class == ObjectClass.PhysicsData)
+                {
+                    physicsData = Objects[i];
+                    break;
+                }
+            }
+
+            List<PhysicsSystem> ordered = null;
+            if (physicsData != null)
+            {
+                int ptrSize = Header.PointerSize;
+                // hkpPhysicsData: hkReferencedObject (16) + worldCinfo ptr + systems hkArray
+                uint systemsField = physicsData.DataOffset + 16 + (uint)ptrSize;
+                if (TryReadPointerArray(systemsField, out List<uint> systemOffsets) && systemOffsets.Count > 0)
+                {
+                    ordered = new List<PhysicsSystem>(systemOffsets.Count);
+                    for (int i = 0; i < systemOffsets.Count; i++)
+                    {
+                        if (!byOffset.TryGetValue(systemOffsets[i], out PhysicsSystem ps))
+                            continue;
+                        ordered.Add(ps);
+                    }
+                    if (ordered.Count != PhysicsSystems.Count)
+                        ordered = null; // incomplete — fall back
+                }
+            }
+
+            if (ordered == null)
+            {
+                // Appearance / virtual-fixup order (stable but not the game index).
+                ordered = new List<PhysicsSystem>(PhysicsSystems);
+            }
+
+            PhysicsSystems.Clear();
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                PhysicsSystem ps = ordered[i];
+                ps.SystemIndex = i;
+                if (ps.Object != null)
+                    ps.Object.ProxyIndex = i;
+                PhysicsSystems.Add(ps);
+            }
+        }
+
+        /// <summary>
+        /// Resolve an hkArray&lt;T*&gt; field: local fixup to storage, global fixups for each element.
+        /// </summary>
+        bool TryReadPointerArray(uint arrayFieldOffset, out List<uint> elementOffsets)
+        {
+            elementOffsets = null;
+            int ptrSize = Header.PointerSize;
+            int sizePos = (int)arrayFieldOffset + ptrSize;
+            if (sizePos + 4 > DataPayload.Length)
+                return false;
+
+            int count = BitConverter.ToInt32(DataPayload, sizePos);
+            if (count < 0)
+                return false;
+
+            uint arrayDataOffset = 0;
+            bool foundLocal = false;
+            for (int f = 0; f < LocalFixups.Count; f++)
+            {
+                if (LocalFixups[f].Src == arrayFieldOffset)
+                {
+                    arrayDataOffset = LocalFixups[f].Dst;
+                    foundLocal = true;
+                    break;
+                }
+            }
+            if (!foundLocal && count > 0)
+                return false;
+
+            elementOffsets = new List<uint>(count);
+            if (count == 0)
+                return true;
+
+            var globalBySrc = new Dictionary<uint, uint>(GlobalFixups.Count);
+            for (int i = 0; i < GlobalFixups.Count; i++)
+                globalBySrc[GlobalFixups[i].Src] = GlobalFixups[i].Dst;
+
+            for (int n = 0; n < count; n++)
+            {
+                uint slot = arrayDataOffset + (uint)(n * ptrSize);
+                if (!globalBySrc.TryGetValue(slot, out uint dst))
+                    return false;
+                elementOffsets.Add(dst);
+            }
+            return true;
+        }
+
+        string ReadStringPtr(uint stringPtrFieldOffset)
+        {
+            for (int f = 0; f < LocalFixups.Count; f++)
+            {
+                if (LocalFixups[f].Src != stringPtrFieldOffset)
+                    continue;
+                int off = (int)LocalFixups[f].Dst;
+                if (off < 0 || off >= DataPayload.Length)
+                    return null;
+                int end = off;
+                while (end < DataPayload.Length && DataPayload[end] != 0)
+                    end++;
+                return Encoding.ASCII.GetString(DataPayload, off, end - off);
+            }
+            return null;
         }
 
         void ParseStaticCompoundInstances(Dictionary<int, string> classNames)

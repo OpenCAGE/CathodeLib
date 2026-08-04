@@ -43,15 +43,17 @@ namespace CATHODE
         private EnvironmentAnimations _envAnims;
         private CollisionMaps _colMaps;
         private RenderableElements _reds;
+        private HavokPackfile _physicsHKX;
 
         public bool Compressed { get { return _compressed; } set { _compressed = value; } }
         private bool _compressed = false;
 
-        public Commands(string path, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds) : base(path)
+        public Commands(string path, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds, HavokPackfile physicsHKX = null) : base(path)
         {
             _envAnims = envAnims;
             _colMaps = colMaps;
             _reds = reds;
+            _physicsHKX = physicsHKX;
 
             Utils = new CommandsUtils(this);
 
@@ -76,6 +78,7 @@ namespace CATHODE
             _envAnims = null;
             _colMaps = null;
             _reds = null;
+            _physicsHKX = null;
         }
 
         ~Commands()
@@ -105,11 +108,11 @@ namespace CATHODE
             switch (Path.GetExtension(_filepath).ToUpper())
             {
                 case ".PAK":
-                    CommandsPAK.Read(stream, out _entryPoints, out Entries, _envAnims, _colMaps, _reds);
+                    CommandsPAK.Read(stream, out _entryPoints, out Entries, _envAnims, _colMaps, _reds, _physicsHKX);
                     break;
                 case ".GZ":
                 case ".BIN":
-                    CommandsBIN.Read(_compressed ? Utilities.GZIPDecompress(stream) : stream, out _entryPoints, out Entries, _envAnims, _colMaps, _reds);
+                    CommandsBIN.Read(_compressed ? Utilities.GZIPDecompress(stream) : stream, out _entryPoints, out Entries, _envAnims, _colMaps, _reds, _physicsHKX);
                     break;
                 default:
                     return false;
@@ -202,7 +205,9 @@ namespace CATHODE
                                     function.parameters.Add(dps_index);
                                 }
                                 ResourceReference physSystem = function.AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
-                                physSystem.PhysicsSystemIndex = ((cInteger)dps_index.content).value;
+                                int systemIndex = ((cInteger)dps_index.content).value;
+                                physSystem.PhysicsSystem = _physicsHKX?.GetPhysicsSystem(systemIndex);
+                                physSystem.PhysicsSystemIndex = systemIndex;
                                 Parameter position = function.GetParameter("position");
                                 if (position?.content?.dataType == DataType.TRANSFORM)
                                 {

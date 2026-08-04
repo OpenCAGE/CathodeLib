@@ -30,7 +30,7 @@ namespace CATHODE.Scripting.Internal.Parsers
         public static Dictionary<ShortGuid, Dictionary<ShortGuid, string>> EntityNames = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>();
         public static Dictionary<ShortGuid, string> ParameterNames = new Dictionary<ShortGuid, string>();
 
-        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
+        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds, HavokPackfile physicsHKX = null)
         {
             EntityNames.Clear();
             ParameterNames.Clear();
@@ -469,7 +469,11 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             resource.AnimatedModel = envAnims.Entries.FirstOrDefault(o => o.ID == animModelIndex);
                                             break;
                                         case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                            resource.PhysicsSystemIndex = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
+                                            {
+                                                int systemIndex = Utilities.Consume<int>(reader, command_entries[i + 4].Item2);
+                                                resource.PhysicsSystem = physicsHKX?.GetPhysicsSystem(systemIndex);
+                                                resource.PhysicsSystemIndex = systemIndex;
+                                            }
                                             break;
                                     }
                                     if (cache.Item2.TryGetValue(resource.resource_id, out Entity ent))
