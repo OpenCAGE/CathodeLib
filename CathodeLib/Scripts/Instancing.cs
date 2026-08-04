@@ -2376,6 +2376,19 @@ namespace CathodeLib
 
             GenerateInstances();
             ProcessInstances();
+
+            //The following things reference MVR but we don't support updating them yet, so just clear them out for now
+            File.WriteAllBytes(_level.Filepath + "/WORLD/RADIOSITY_COLLISION_MAPPING.BIN", new byte[4]);
+            File.WriteAllBytes(_level.Filepath + "/RENDERABLE/RADIOSITY_RUNTIME.BIN", new byte[0]);
+            File.Delete(_level.Filepath + "/RENDERABLE/RADIOSITY_INSTANCE_MAP.TXT");
+            if (_level.Patched)
+            {
+                File.WriteAllBytes(_level.Filepath.TrimEnd('/').TrimEnd('\\') + "_PATCH/WORLD/RADIOSITY_COLLISION_MAPPING.BIN", new byte[4]);
+                File.WriteAllBytes(_level.Filepath.TrimEnd('/').TrimEnd('\\') + "_PATCH/RENDERABLE/RADIOSITY_RUNTIME.BIN", new byte[0]);
+                File.Delete(_level.Filepath.TrimEnd('/').TrimEnd('\\') + "_PATCH/RENDERABLE/RADIOSITY_INSTANCE_MAP.TXT");
+            }
+            _level.Lights.Indexes.Clear();
+            _level.Lights.Values.Clear();
         }
 
         // -----
