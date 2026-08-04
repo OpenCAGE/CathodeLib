@@ -262,7 +262,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
                                                     int animModelIndex = reader_parallel.ReadInt32();
-                                                    resource.AnimatedModel = envAnims.Entries.FirstOrDefault(o => o.ResourceIndex == animModelIndex); //TODO: why is this not write index? we should probs order by this on read
+                                                    resource.AnimatedModel = envAnims.Entries.FirstOrDefault(o => o.ID == animModelIndex); //TODO: why is this not write index? we should probs order by this on read
                                                     reader_parallel.BaseStream.Position += 4;
                                                     break;
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
@@ -846,7 +846,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
                                                     //writer.Write(envAnims.GetWriteIndex(resourceReferences[i][p].AnimatedModel));
-                                                    writer.Write(resourceReferences[i][p].AnimatedModel.ResourceIndex);
+                                                    writer.Write(resourceReferences[i][p].AnimatedModel.ID);
                                                     writer.Write(-1);
                                                     break;
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
