@@ -682,7 +682,13 @@ namespace CATHODE.Scripting
             {
                 if (!variants.HasFlag(variant)) continue;
                 ParameterData defaultValue = baseEntity.GetParameter(guid)?.content;
-                targetEntity.AddParameter(guid, defaultValue != null ? defaultValue : CreateDefaultParameterData(function, guid, variant), variant, overwrite);
+                if (defaultValue is cResource existingResource && (existingResource.value == null || existingResource.value.Count == 0))
+                    defaultValue = null;
+                if (defaultValue == null)
+                    defaultValue = CreateDefaultParameterData(function, guid, variant);
+                else if (!ReferenceEquals(baseEntity, targetEntity) && defaultValue is cResource)
+                    defaultValue = (ParameterData)defaultValue.Clone();
+                targetEntity.AddParameter(guid, defaultValue, variant, overwrite);
             }
         }
         private void ApplyDefaultVariable(VariableEntity baseEntity, Entity targetEntity, Composite composite, ParameterVariant variants, bool overwrite)
@@ -750,6 +756,8 @@ namespace CATHODE.Scripting
                     functionType = GetInheritedFunction(functionType.Value);
                     if (functionType == null) break;
                 }
+                ApplyDefaultResourceParameter(baseEntity, targetEntity, overwrite, includeInherited);
+                ApplyDefaultEntityResources(baseEntity, targetEntity);
             }
             else
             {
@@ -766,6 +774,97 @@ namespace CATHODE.Scripting
                 {
                     ApplyDefaultVariable(variable, targetEntity, compositeInstance, variants, overwrite);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Populate the default resources for the entity (via 'resources' parameter)
+        /// </summary>
+        private void ApplyDefaultResourceParameter(FunctionEntity baseEntity, Entity targetEntity, bool overwrite, bool includeInherited)
+        {
+            if (baseEntity == null || !baseEntity.function.IsFunctionType)
+                return;
+
+            FunctionType? functionType = baseEntity.function.AsFunctionType;
+            while (functionType != null)
+            {
+                ParameterData defaultValue = baseEntity.GetParameter(ShortGuids.resource)?.content;
+                if (defaultValue is cResource existingResource && (existingResource.value == null || existingResource.value.Count == 0))
+                    defaultValue = null;
+                if (defaultValue == null)
+                    defaultValue = CreateDefaultParameterData(functionType.Value, ShortGuids.resource, ParameterVariant.INTERNAL);
+
+                if (defaultValue is cResource)
+                {
+                    if (!ReferenceEquals(baseEntity, targetEntity))
+                        defaultValue = (ParameterData)defaultValue.Clone();
+
+                    bool forceOverwrite = overwrite;
+                    if (!forceOverwrite && targetEntity.GetParameter(ShortGuids.resource)?.content is cResource targetResource
+                        && (targetResource.value == null || targetResource.value.Count == 0))
+                        forceOverwrite = true;
+
+                    targetEntity.AddParameter(ShortGuids.resource, defaultValue, ParameterVariant.INTERNAL, forceOverwrite);
+                    return;
+                }
+
+                if (!includeInherited) break;
+                functionType = GetInheritedFunction(functionType.Value);
+            }
+        }
+
+        /// <summary>
+        /// Populate the default resources for the entity (via on-entity resources)
+        /// </summary>
+        private void ApplyDefaultEntityResources(FunctionEntity baseEntity, Entity targetEntity)
+        {
+            if (!(targetEntity is FunctionEntity functionEntity) || baseEntity == null)
+                return;
+            if (baseEntity.function != functionEntity.function)
+                return;
+
+            if (baseEntity.function == FunctionType.PhysicsSystem)
+            {
+                functionEntity.AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
+                return;
+            }
+            if (baseEntity.function == FunctionType.ExclusiveMaster)
+            {
+                functionEntity.AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE);
+                return;
+            }
+            if (baseEntity.function == FunctionType.NavMeshBarrier)
+            {
+                functionEntity.AddResource(ResourceType.NAV_MESH_BARRIER_RESOURCE);
+                return;
+            }
+            if (IsTraversalSegmentFunction(baseEntity.function))
+                functionEntity.AddResource(ResourceType.TRAVERSAL_SEGMENT);
+        }
+
+        static bool IsTraversalSegmentFunction(ShortGuid function)
+        {
+            if (!function.IsFunctionType)
+                return false;
+            switch (function.AsFunctionType)
+            {
+                case FunctionType.TRAV_1ShotClimbUnder:
+                case FunctionType.TRAV_1ShotFloorVentEntrance:
+                case FunctionType.TRAV_1ShotFloorVentExit:
+                case FunctionType.TRAV_1ShotLeap:
+                case FunctionType.TRAV_1ShotSpline:
+                case FunctionType.TRAV_1ShotVentEntrance:
+                case FunctionType.TRAV_1ShotVentExit:
+                case FunctionType.TRAV_ContinuousBalanceBeam:
+                case FunctionType.TRAV_ContinuousCinematicSidle:
+                case FunctionType.TRAV_ContinuousClimbingWall:
+                case FunctionType.TRAV_ContinuousLadder:
+                case FunctionType.TRAV_ContinuousLedge:
+                case FunctionType.TRAV_ContinuousPipe:
+                case FunctionType.TRAV_ContinuousTightGap:
+                    return true;
+                default:
+                    return false;
             }
         }
 

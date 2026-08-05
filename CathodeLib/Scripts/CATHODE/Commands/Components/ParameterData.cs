@@ -268,8 +268,9 @@ namespace CATHODE.Scripting
         }
         public cResource(ResourceType type)
         {
-            this.shortGUID = new ShortGuid((UInt32)type);
+            this.shortGUID = ShortGuidUtils.GenerateRandom();
             dataType = DataType.RESOURCE;
+            AddResource(type);
         }
         public cResource(ShortGuid resourceID)
         {

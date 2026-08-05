@@ -90,9 +90,12 @@ namespace CathodeLib
         public static readonly ShortGuid composites = ShortGuidUtils.Generate("composites");
         public static readonly ShortGuid Entities = ShortGuidUtils.Generate("Entities");
         public static readonly ShortGuid Texture = ShortGuidUtils.Generate("Texture");
+        public static readonly ShortGuid Texture_Index = ShortGuidUtils.Generate("Texture_Index");
+        public static readonly ShortGuid environmentmap_index = ShortGuidUtils.Generate("environmentmap_index");
         public static readonly ShortGuid Priority = ShortGuidUtils.Generate("Priority");
         public static readonly ShortGuid ANIM_TRACK_TYPE = ShortGuidUtils.Generate("ANIM_TRACK_TYPE");
         public static readonly ShortGuid PhysicsSystem = ShortGuidUtils.Generate("PhysicsSystem");
+        public static readonly ShortGuid system_index = ShortGuidUtils.Generate("system_index");
         public static readonly ShortGuid name = ShortGuidUtils.Generate("name");
         public static readonly ShortGuid mapping = ShortGuidUtils.Generate("mapping");
         public static readonly ShortGuid trigger = ShortGuidUtils.Generate("trigger");

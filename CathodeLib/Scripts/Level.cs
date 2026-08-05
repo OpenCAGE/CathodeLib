@@ -1,5 +1,7 @@
 using CATHODE;
 using CATHODE.EXPERIMENTAL;
+using CATHODE.Scripting;
+using CATHODE.Scripting.Internal;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -74,13 +76,18 @@ namespace CathodeLib
 
         public class State
         {
-            public Resources.Resource Resource = null; //TODO: this gives you the instance of the ExclusiveMaster entity - use it. Can be null if it's default (0).
+            //The entity that defines this state (invalid if state 0, as that's the default)
+            public Entity ExclusiveMaster = null;
+            public ShortGuid CompositeInstanceId = ShortGuid.Invalid;
+            public Resources.Resource Resource = null;
 
+            //Generated resources within this state
             public Cover Cover;
             public NavigationMesh NavMesh;
 
             ~State()
             {
+                ExclusiveMaster = null;
                 Resource = null;
                 Cover = null;
                 NavMesh = null;
@@ -279,7 +286,7 @@ namespace CathodeLib
                 () => { GalaxyDefinition = new GalaxyDefinition(renderable + "GALAXY/GALAXY.DEFINITION_BIN"); OnLoadTick?.Invoke(); } //Not used at runtime, but useful to regenerate GalaxyItems.
             );
 
-            Commands = new Commands(world + "COMMANDS" + (compressed ? ".BIN.GZ" : File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements, PhysicsHKX); OnLoadTick?.Invoke();
+            Commands = new Commands(world + "COMMANDS" + (compressed ? ".BIN.GZ" : File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements, PhysicsHKX, Textures, _global?.Textures); OnLoadTick?.Invoke();
 
             //The following files are used by the game, but not fully handled yet:
             // - RENDERABLE/RADIOSITY_RUNTIME.BIN (and .GZ)
@@ -294,7 +301,13 @@ namespace CathodeLib
                 for (int i = 0; i < states; i++)
                 {
                     int resourceIndex = reader.ReadInt32();
-                    StateResources.Add(new State() { Resource = Resources.Entries[resourceIndex] });
+                    Resources.Resource resource = Resources.Entries[resourceIndex];
+                    StateResources.Add(new State()
+                    {
+                        Resource = resource,
+                        CompositeInstanceId = resource.composite_instance_id,
+                        ExclusiveMaster = FindExclusiveMaster(resource.resource_id)
+                    });
                 }
             }
             for (int i = 0; i < StateResources.Count; i++)
@@ -449,6 +462,28 @@ namespace CathodeLib
             //Import global textures referenced by sound flash models
             //for (int i = 0; i < SoundFlashModels.Entries.Count; i++)
             //    SoundFlashModels.Entries[i].Texture?.RemapToLevel(this);
+        }
+
+        /// <summary>
+        /// Find an ExclusiveMaster by ShortGuid
+        /// </summary>
+        private Entity FindExclusiveMaster(ShortGuid entityId)
+        {
+            if (Commands?.Entries == null)
+                return null;
+
+            foreach (Composite composite in Commands.Entries)
+            {
+                if (composite?.functions == null)
+                    continue;
+
+                foreach (FunctionEntity function in composite.GetFunctionEntitiesOfType(FunctionType.ExclusiveMaster))
+                {
+                    if (function.shortGUID == entityId)
+                        return function;
+                }
+            }
+            return null;
         }
 
         /// <summary>

@@ -2314,6 +2314,7 @@ namespace CathodeLib
         private readonly object _physicsMapsLock = new object();
         private readonly object _collisionMapsLock = new object();
         private readonly object _mvrLock = new object();
+        private readonly ConcurrentBag<InstancedEntity> _exclusiveMasters = new ConcurrentBag<InstancedEntity>();
 
         private List<ShortGuid> _sharedComposites = new List<ShortGuid>();
         private ShortGuid _globalGUID;
@@ -2491,6 +2492,8 @@ namespace CathodeLib
             _level.Resources.Entries.Clear();
             _level.PhysicsMaps.Entries.Clear();
             _level.RenderableElements.Entries.Clear();
+            while (!_exclusiveMasters.IsEmpty)
+                _exclusiveMasters.TryTake(out _);
 
             //First 12 movers are required assets used by various things like particle systems, etc - keep them!
             //If building a level from scratch I'll need to add these somehow - store them? They're the same everywhere.
@@ -2532,6 +2535,9 @@ namespace CathodeLib
             ApplyHavokUserRows();
             _hkx?.Packfile.CommitInstanceRebuild();
             _hkx64?.Packfile.CommitInstanceRebuild();
+
+            //Regenerate level states (navmesh, cover, etc)
+            BuildExclusiveMasterStates();
         }
 
         void PopulateCommandsREDs()
@@ -3858,7 +3864,10 @@ namespace CathodeLib
                     break;
                 case FunctionType.ExclusiveMaster:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
+                    {
                         AddResourceEntry(entity);
+                        _exclusiveMasters.Add(entity);
+                    }
                     break;
                 case FunctionType.FogBox:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
@@ -4462,13 +4471,14 @@ namespace CathodeLib
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                     {
                         ResourceReference physicsSystem = function.GetResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
-                        if (physicsSystem == null || physicsSystem.PhysicsSystemIndex == -1) //todo - this also maps to the index parameter, should consolidate
+                        int systemIndex = physicsSystem?.PhysicsSystem?.SystemIndex ?? physicsSystem?.PhysicsSystemIndex ?? -1;
+                        if (physicsSystem == null || systemIndex == -1)
                         {
                             //Should warn here!
                             break;
                         }
 
-                        HavokPackfile.PhysicsSystem template = physicsSystem.PhysicsSystem ?? _level.PhysicsHKX?.GetPhysicsSystem(physicsSystem.PhysicsSystemIndex);
+                        HavokPackfile.PhysicsSystem template = physicsSystem.PhysicsSystem ?? _level.PhysicsHKX?.GetPhysicsSystem(systemIndex);
                         if (template == null)
                         {
                             //Should warn here!
@@ -4730,7 +4740,109 @@ namespace CathodeLib
             }
         }
 
-        // Materials with EnvironmentMapIndex 255 do not sample a cubemap from the mover.
+        //Rebuild level states from the instanced ExclusiveMaster entities
+        private void BuildExclusiveMasterStates()
+        {
+            if (_level.StateResources == null)
+                _level.StateResources = new List<Level.State>();
+
+            Level.State state0 = _level.StateResources.Count > 0 ? _level.StateResources[0] : new Level.State();
+            if (_level.StateResources.Count == 0)
+                _level.StateResources.Add(state0);
+
+            List<InstancedEntity> masters = _exclusiveMasters.GroupBy(e => (e.ThisCompositeInstance.InstanceID.AsUInt32, GetResourceID(e).AsUInt32)).Select(g => g.First()).ToList();
+
+            var remaining = new Dictionary<(uint, uint), InstancedEntity>(masters.Count);
+            for (int i = 0; i < masters.Count; i++)
+            {
+                InstancedEntity master = masters[i];
+                remaining[(master.ThisCompositeInstance.InstanceID.AsUInt32, GetResourceID(master).AsUInt32)] = master;
+            }
+
+            var rebuilt = new List<Level.State>(_level.StateResources.Count);
+            rebuilt.Add(state0);
+
+            // THIS LOGIC IS TEMPORARY!!
+            // - If I can look up an existing ExclusiveMaster state, keep it
+            // - If I can't, copy from state 0 (the default state)
+            // This is really NOT IDEAL though - we should generate this data here instead. It includes navmesh and cover, and is built off the entities given to the masters.
+
+            for (int i = 1; i < _level.StateResources.Count; i++)
+            {
+                Level.State existing = _level.StateResources[i];
+                if (existing == null)
+                    continue;
+
+                InstancedEntity match = null;
+                (uint, uint) matchKey = default;
+
+                if (existing.ExclusiveMaster != null)
+                {
+                    foreach (var kvp in remaining)
+                    {
+                        InstancedEntity candidate = kvp.Value;
+                        if (candidate.Entity == existing.ExclusiveMaster &&
+                            candidate.ThisCompositeInstance.InstanceID == existing.CompositeInstanceId)
+                        {
+                            match = candidate;
+                            matchKey = kvp.Key;
+                            break;
+                        }
+                    }
+                }
+                else if (existing.Resource != null)
+                {
+                    matchKey = (existing.Resource.composite_instance_id.AsUInt32, existing.Resource.resource_id.AsUInt32);
+                    remaining.TryGetValue(matchKey, out match);
+                }
+
+                if (match == null)
+                    continue;
+
+                existing.ExclusiveMaster = match.Entity;
+                existing.CompositeInstanceId = match.ThisCompositeInstance.InstanceID;
+                existing.Resource = AddResourceEntry(match);
+                rebuilt.Add(existing);
+                remaining.Remove(matchKey);
+            }
+
+            string world = _level.Filepath + (_level.Patched ? "_PATCH" : "") + "/WORLD/";
+            foreach (InstancedEntity master in remaining.Values.OrderBy(e => e.ThisCompositeInstance.InstanceID.AsUInt32).ThenBy(e => GetResourceID(e).AsUInt32))
+            {
+                int stateIndex = rebuilt.Count;
+                string statePath = world + "STATE_" + stateIndex + "/";
+                rebuilt.Add(CreateStateFromState0(state0, statePath, master));
+            }
+
+            _level.StateResources = rebuilt;
+        }
+        private Level.State CreateStateFromState0(Level.State state0, string stateDirectory, InstancedEntity master)
+        {
+            Directory.CreateDirectory(stateDirectory);
+
+            string coverPath = Path.Combine(stateDirectory, "COVER");
+            string navMeshPath = Path.Combine(stateDirectory, "NAV_MESH");
+
+            TryCopyStateFile(state0?.Cover?.Filepath, coverPath);
+            TryCopyStateFile(state0?.NavMesh?.Filepath, navMeshPath);
+
+            return new Level.State()
+            {
+                ExclusiveMaster = master.Entity,
+                CompositeInstanceId = master.ThisCompositeInstance.InstanceID,
+                Resource = AddResourceEntry(master),
+                Cover = new Cover(coverPath),
+                NavMesh = new NavigationMesh(navMeshPath)
+            };
+        }
+        private static void TryCopyStateFile(string sourcePath, string destPath)
+        {
+            if (string.IsNullOrEmpty(sourcePath) || !File.Exists(sourcePath))
+                return;
+            File.Copy(sourcePath, destPath, true);
+        }
+
+        //Materials with EnvironmentMapIndex 255 do not sample a cubemap from the mover.
         private static bool MaterialUsesMoverEnvironmentMap(List<RenderableElements.Element> reds)
         {
             if (reds == null)

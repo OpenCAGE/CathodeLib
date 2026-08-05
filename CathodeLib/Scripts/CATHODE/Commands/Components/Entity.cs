@@ -191,6 +191,9 @@ namespace CATHODE.Scripting.Internal
             if (data == null)
                 Console.WriteLine("WARNING: Entity " + this.shortGUID + " (" + this.variant + ") has null parameter data for " + id.ToString());
 
+            if (id == ShortGuids.resource && data is cResource resourceParam)
+                BindResourceParameterToEntity(resourceParam);
+
             Parameter param = GetParameter(id);
             //TODO: we should also take inputs and outputs into account here??
             if (param == null)
@@ -204,6 +207,20 @@ namespace CATHODE.Scripting.Internal
                 param.variant = variant;
             }
             return param;
+        }
+
+        void BindResourceParameterToEntity(cResource resourceParam)
+        {
+            if (resourceParam == null)
+                return;
+            resourceParam.shortGUID = shortGUID;
+            if (resourceParam.value == null)
+                return;
+            for (int i = 0; i < resourceParam.value.Count; i++)
+            {
+                if (resourceParam.value[i] != null)
+                    resourceParam.value[i].resource_id = shortGUID;
+            }
         }
 
         /// <summary>

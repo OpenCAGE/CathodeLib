@@ -269,19 +269,35 @@ namespace CATHODE
 
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
+        /// Dedupes by content (ignoring <see cref="EnvironmentAnimation.ID"/>); assigns a unique ID to new entries.
         /// </summary>
         public EnvironmentAnimation ImportEntry(EnvironmentAnimation envAnim)
         {
             if (envAnim == null)
                 return null;
 
-            var existing = Entries.FirstOrDefault(o => o == envAnim);
+            var existing = Entries.FirstOrDefault(o => o != null && o.ContentEquals(envAnim));
             if (existing != null)
                 return existing;
 
             EnvironmentAnimation newEnvAnim = envAnim.Copy();
+            newEnvAnim.ID = AllocateUniqueId();
             Entries.Add(newEnvAnim);
             return newEnvAnim;
+        }
+
+        /// <summary>
+        /// Next free ANIMATED_MODEL / EnvironmentAnimation ID for this level.
+        /// </summary>
+        public int AllocateUniqueId()
+        {
+            int max = -1;
+            for (int i = 0; i < Entries.Count; i++)
+            {
+                if (Entries[i].ID > max)
+                    max = Entries[i].ID;
+            }
+            return max + 1;
         }
 
         private List<T> PopulateArray<T>(BinaryReader reader, T[] array)
@@ -331,21 +347,30 @@ namespace CATHODE
             {
                 if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
                 if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
-                if (x.Matrix != y.Matrix) return false;
-                if (x.SkeletonName != y.SkeletonName) return false;
-                if (x.AnimationSet != y.AnimationSet) return false;
                 if (x.ID != y.ID) return false;
-                if (!ListsEqual(x.BoneMappings, y.BoneMappings)) return false;
-                if (!ListsEqual(x.MeshMappings, y.MeshMappings)) return false;
-                if (!ListsEqual(x.InverseBindPoses, y.InverseBindPoses)) return false;
-                if (!ListsEqual(x.HavokToCathodeMappings, y.HavokToCathodeMappings)) return false;
-                if (!WeightedHelperListsEqual(x.HelperMatrices, y.HelperMatrices)) return false;
-                return true;
+                return x.ContentEquals(y);
             }
 
             public static bool operator !=(EnvironmentAnimation x, EnvironmentAnimation y)
             {
                 return !(x == y);
+            }
+
+            /// <summary>
+            /// Compare payload fields used for port/import dedupe. Excludes <see cref="ID"/> (per-level Commands link).
+            /// </summary>
+            public bool ContentEquals(EnvironmentAnimation other)
+            {
+                if (ReferenceEquals(other, null)) return false;
+                if (Matrix != other.Matrix) return false;
+                if (SkeletonName != other.SkeletonName) return false;
+                if (AnimationSet != other.AnimationSet) return false;
+                if (!ListsEqual(BoneMappings, other.BoneMappings)) return false;
+                if (!ListsEqual(MeshMappings, other.MeshMappings)) return false;
+                if (!ListsEqual(InverseBindPoses, other.InverseBindPoses)) return false;
+                if (!ListsEqual(HavokToCathodeMappings, other.HavokToCathodeMappings)) return false;
+                if (!WeightedHelperListsEqual(HelperMatrices, other.HelperMatrices)) return false;
+                return true;
             }
 
             public bool Equals(EnvironmentAnimation other)

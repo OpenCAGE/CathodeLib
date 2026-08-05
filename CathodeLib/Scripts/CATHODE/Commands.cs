@@ -44,16 +44,20 @@ namespace CATHODE
         private CollisionMaps _colMaps;
         private RenderableElements _reds;
         private HavokPackfile _physicsHKX;
+        private Textures _textures;
+        private Textures _globalTextures;
 
         public bool Compressed { get { return _compressed; } set { _compressed = value; } }
         private bool _compressed = false;
 
-        public Commands(string path, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds, HavokPackfile physicsHKX = null) : base(path)
+        public Commands(string path, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds, HavokPackfile physicsHKX = null, Textures textures = null, Textures globalTextures = null) : base(path)
         {
             _envAnims = envAnims;
             _colMaps = colMaps;
             _reds = reds;
             _physicsHKX = physicsHKX;
+            _textures = textures;
+            _globalTextures = globalTextures;
 
             Utils = new CommandsUtils(this);
 
@@ -79,6 +83,8 @@ namespace CATHODE
             _colMaps = null;
             _reds = null;
             _physicsHKX = null;
+            _textures = null;
+            _globalTextures = null;
         }
 
         ~Commands()
@@ -161,6 +167,8 @@ namespace CATHODE
                 Console.WriteLine("WARNING: Entry point was not set! Defaulting to composite at index zero.");
                 _entryPoints[0] = Entries[0].shortGUID;
             }
+
+            SyncDerivedResourceParameters();
             RefreshEntryPointObjects();
 
             //Fix (& verify) entity-attached resource info
@@ -198,16 +206,19 @@ namespace CATHODE
 
                             //NOTE: Really, DYNAMIC_PHYSICS_SYSTEM isn't actually on the entity, it's on the composite
                             case FunctionType.PhysicsSystem:
-                                Parameter dps_index = function.GetParameter("system_index");
-                                if (dps_index == null)
-                                {
-                                    dps_index = new Parameter("system_index", new cInteger(0));
-                                    function.parameters.Add(dps_index);
-                                }
                                 ResourceReference physSystem = function.AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
-                                int systemIndex = ((cInteger)dps_index.content).value;
-                                physSystem.PhysicsSystem = _physicsHKX?.GetPhysicsSystem(systemIndex);
-                                physSystem.PhysicsSystemIndex = systemIndex;
+                                if (physSystem.PhysicsSystem != null)
+                                {
+                                    physSystem.PhysicsSystemIndex = physSystem.PhysicsSystem.SystemIndex;
+                                }
+                                else
+                                {
+                                    Parameter dps_index = function.GetParameter(ShortGuids.system_index);
+                                    int systemIndex = (dps_index?.content is cInteger idx) ? idx.value : 0;
+                                    physSystem.PhysicsSystem = _physicsHKX?.GetPhysicsSystem(systemIndex);
+                                    physSystem.PhysicsSystemIndex = systemIndex;
+                                }
+                                SyncPhysicsSystemIndexParameter(function);
                                 Parameter position = function.GetParameter("position");
                                 if (position?.content?.dataType == DataType.TRANSFORM)
                                 {
@@ -366,6 +377,87 @@ namespace CATHODE
                     });
                 });
             });
+        }
+
+        /// <summary>
+        /// Write entity parameters that mirror resource/object bindings (e.g. PhysicsSystem.system_index from the Havok system).
+        /// </summary>
+        private void SyncDerivedResourceParameters()
+        {
+            if (Entries == null) return;
+            Parallel.ForEach(Entries, comp =>
+            {
+                if (comp?.functions == null) return;
+                foreach (FunctionEntity function in comp.functions)
+                {
+                    SyncPhysicsSystemIndexParameter(function);
+                    SyncEnvironmentMapIndexParameters(function, _textures, _globalTextures);
+                }
+            });
+        }
+
+        /// <summary>
+        /// Sets PhysicsSystem.system_index from the bound DYNAMIC_PHYSICS_SYSTEM resource's Havok system index.
+        /// </summary>
+        private static void SyncPhysicsSystemIndexParameter(FunctionEntity function)
+        {
+            if (function == null || function.function != FunctionType.PhysicsSystem)
+                return;
+
+            ResourceReference resource = function.GetResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
+            if (resource == null)
+                return;
+
+            int index = resource.PhysicsSystem?.SystemIndex ?? resource.PhysicsSystemIndex;
+            if (index < 0)
+                return;
+
+            SetIntegerParameter(function, ShortGuids.system_index, index);
+        }
+
+        /// <summary>
+        /// Sets EnvironmentMap Texture_Index / environmentmap_index from the Texture path string.
+        /// </summary>
+        private static void SyncEnvironmentMapIndexParameters(FunctionEntity function, Textures levelTextures, Textures globalTextures = null)
+        {
+            if (function == null || function.function != FunctionType.EnvironmentMap)
+                return;
+
+            string path = (function.GetParameter(ShortGuids.Texture)?.content as cString)?.value;
+            Textures.TEX4 tex = null;
+            Textures db = null;
+            if (!string.IsNullOrEmpty(path))
+            {
+                tex = levelTextures?.GetEnvironmentMapByPath(path);
+                if (tex != null)
+                    db = levelTextures;
+                else
+                {
+                    tex = globalTextures?.GetEnvironmentMapByPath(path);
+                    if (tex != null)
+                        db = globalTextures;
+                }
+            }
+
+            int textureIndex = -1;
+            int envMapIndex = -1;
+            if (tex != null && db != null)
+            {
+                textureIndex = db.GetWriteIndex(tex);
+                envMapIndex = db.GetWriteIndexForEnvMap(tex);
+            }
+
+            SetIntegerParameter(function, ShortGuids.Texture_Index, textureIndex);
+            SetIntegerParameter(function, ShortGuids.environmentmap_index, envMapIndex);
+        }
+
+        private static void SetIntegerParameter(FunctionEntity function, ShortGuid id, int value)
+        {
+            Parameter param = function.GetParameter(id);
+            if (param?.content is cInteger integer)
+                integer.value = value;
+            else
+                function.AddParameter(id, new cInteger(value));
         }
         #endregion
     }
