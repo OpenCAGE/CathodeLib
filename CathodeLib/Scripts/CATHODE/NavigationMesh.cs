@@ -108,7 +108,7 @@ namespace CATHODE
             /// The layer of the tile within the dtNavMesh tile grid. (x, y, layer)
             public int layer;
             /// The user defined id of the tile.
-            public int userId;
+            public uint userId;
             /// The number of polygons in the tile.
             public int polyCount;
             /// The number of vertices in the tile.
@@ -394,7 +394,7 @@ namespace CATHODE
         public struct dtLink
         {
             /// Neighbour reference. (The neighbor that is linked to.)
-            public int polygonRef;
+            public uint polygonRef;
             /// Index of the next link.
             public int next;
             /// Index of the polygon edge that owns this link.
@@ -442,13 +442,16 @@ namespace CATHODE
             /// The radius of the endpoints. [Limit: >= 0]
             public float rad;
             /// The polygon reference of the connection within the tile.
-            public short poly;
+            public ushort poly_index_within_tile;
             /// Link flags. 
             /// @note These are not the connection's user defined flags. Those are assigned via the 
             /// connection's dtPoly definition. These are link flags used for internal purposes.
             public char flags;
             /// End point side.
             public char side;
+            /// The poly associated with this link. 
+            /// Each link is represented in the navmesh by a poly, which is treated differently to polys with a physical presence. 
+            public uint polygonRef;
             /// UID of connected traversal, if any. Use this to look up traversal data from elsewhere.
             public ShortGuid traversal_uid;
             /// The associated entity, for wait/manual nodes.
