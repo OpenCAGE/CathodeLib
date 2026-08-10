@@ -23,10 +23,22 @@ namespace CathodeLib
 
         public Global(string path)
         {
-            Textures = new Textures(path + "\\WORLD\\GLOBAL_TEXTURES.ALL.PAK");
-            Animations = new PAK2(path + "..\\..\\GLOBAL\\ANIMATION.PAK");
-            AnimationStrings = new AnimationStrings(Animations.Entries.FirstOrDefault(o => o.Filename.Contains("ANIM_STRING_DB.BIN")).Content);
-            AnimationStrings_Debug = new AnimationStrings(Animations.Entries.FirstOrDefault(o => o.Filename.Contains("ANIM_STRING_DB_DEBUG.BIN")).Content);
+            string root = (path ?? "").TrimEnd('\\', '/') + "\\";
+            Textures = new Textures(root + "WORLD\\GLOBAL_TEXTURES.ALL.PAK");
+            string animationPak = root + "..\\..\\GLOBAL\\ANIMATION.PAK";
+            Animations = new PAK2(animationPak);
+
+            PAK2.File animStrings = Animations?.Entries?.FirstOrDefault(o => o.Filename.Contains("ANIM_STRING_DB.BIN"));
+            PAK2.File animStringsDebug = Animations?.Entries?.FirstOrDefault(o => o.Filename.Contains("ANIM_STRING_DB_DEBUG.BIN"));
+            if (animStrings?.Content == null || animStringsDebug?.Content == null)
+            {
+                throw new FileNotFoundException(
+                    "Failed to load ANIMATION.PAK string tables from '" + animationPak + "'. "
+                    + "Entries=" + (Animations?.Entries?.Count ?? -1));
+            }
+
+            AnimationStrings = new AnimationStrings(animStrings.Content);
+            AnimationStrings_Debug = new AnimationStrings(animStringsDebug.Content);
         }
 
         ~Global()
