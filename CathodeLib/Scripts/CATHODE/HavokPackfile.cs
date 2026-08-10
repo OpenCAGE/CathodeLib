@@ -423,7 +423,8 @@ namespace CATHODE
             List<CompoundInstance> instances = compound.Instances;
             if (instances == null || instances.Count == 0)
             {
-                if (HasValidDomain(compound))
+                // Preview-only domain AABB when a compound has no instances.
+                if (convexHullOpenShells && HasValidDomain(compound))
                 {
                     AppendBox(mesh,
                         new Vector3(compound.DomainMin.X, compound.DomainMin.Y, compound.DomainMin.Z),
@@ -456,8 +457,10 @@ namespace CATHODE
                     AppendShapePreview(mesh, inst.ShapeDataOffset, inst.ShapeClassName ?? "", t, r, s, shapeCap, triCap, convexHullOpenShells);
             }
 
-            // Nothing decoded — fall back to compound domain AABB.
-            if (mesh.ShapeCount == beforeShapes && mesh.TriangleCount == beforeTris && HasValidDomain(compound))
+            // Preview only: fall back to compound domain AABB when nothing decoded.
+            // Bake skips this — huge domains invent walkable floors that blow Recast bounds.
+            if (convexHullOpenShells
+                && mesh.ShapeCount == beforeShapes && mesh.TriangleCount == beforeTris && HasValidDomain(compound))
             {
                 AppendBox(mesh,
                     new Vector3(compound.DomainMin.X, compound.DomainMin.Y, compound.DomainMin.Z),
@@ -504,7 +507,9 @@ namespace CATHODE
                     return;
             }
 
-            if (TryGetPreviewLocalAabb(shapeDataOffset, shapeClass, out Vector3 amin, out Vector3 amax))
+            // Preview-only AABB placeholder for undecoded shapes (bake must not invent solids).
+            if (convexHullOpenShells
+                && TryGetPreviewLocalAabb(shapeDataOffset, shapeClass, out Vector3 amin, out Vector3 amax))
                 AppendBox(mesh, amin, amax, translation, rotation, scale);
         }
 

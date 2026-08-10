@@ -3,6 +3,7 @@ using CATHODE.Enums;
 using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using CATHODE.ShaderTypes;
+using CathodeLib.NavMesh;
 using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Concurrent;
@@ -2371,12 +2372,33 @@ namespace CathodeLib
             }
         }
 
+        private readonly List<StateProperties> _states = new List<StateProperties>();
+        private readonly List<string> _stateNotes = new List<string>();
+
+        public IReadOnlyList<StateProperties> States => _states;
+        public IReadOnlyList<string> StateNotes => _stateNotes;
+
+        public sealed class StateProperties
+        {
+            public int StateIndex;
+            public Level.State State;
+
+            public Entity ExclusiveMaster;
+            public ShortGuid CompositeInstanceId = ShortGuid.Invalid;
+            public Resources.Resource Resource;
+
+            public HashSet<HavokPackfile.CompoundInstance> ExcludedCollision = new HashSet<HavokPackfile.CompoundInstance>();
+
+            public string Summary;
+        }
+
         public Instancing(Level level)
         {
             _level = level;
 
             GenerateInstances();
             ProcessInstances();
+            BuildStateProperties();
 
             //The following things reference MVR but we don't support updating them yet, so just clear them out for now
             File.WriteAllBytes(_level.Filepath + "/WORLD/RADIOSITY_COLLISION_MAPPING.BIN", new byte[4]);
@@ -2538,6 +2560,33 @@ namespace CathodeLib
 
             //Regenerate level states (navmesh, cover, etc)
             BuildExclusiveMasterStates();
+        }
+
+        private void BuildStateProperties()
+        {
+            _states.Clear();
+            _stateNotes.Clear();
+            if (_level?.StateResources == null)
+                return;
+
+            ExclusiveMasterNavFilter filter = ExclusiveMasterNavFilter.Build(_level);
+            _stateNotes.AddRange(filter.Notes);
+
+            for (int i = 0; i < _level.StateResources.Count; i++)
+            {
+                Level.State state = _level.StateResources[i];
+                ExclusiveMasterNavFilter.StateSkipSet skip = filter.GetSkipSetForState(i, state);
+                _states.Add(new StateProperties
+                {
+                    StateIndex = i,
+                    State = state,
+                    ExclusiveMaster = state?.ExclusiveMaster,
+                    CompositeInstanceId = state?.CompositeInstanceId ?? ShortGuid.Invalid,
+                    Resource = state?.Resource,
+                    ExcludedCollision = skip.Exclude,
+                    Summary = skip.Summary
+                });
+            }
         }
 
         void PopulateCommandsREDs()

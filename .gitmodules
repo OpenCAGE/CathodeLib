@@ -1,3 +1,6 @@
 [submodule "AlienBML"]
 	path = AlienBML
 	url = https://github.com/OpenCAGE/AlienBML
+[submodule "DotRecast"]
+	path = DotRecast
+	url = https://github.com/OpenCAGE/DotRecast

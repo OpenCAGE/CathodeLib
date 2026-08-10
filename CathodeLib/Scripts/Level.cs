@@ -2,6 +2,7 @@ using CATHODE;
 using CATHODE.EXPERIMENTAL;
 using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
+using CathodeLib.NavMesh;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -361,11 +362,12 @@ namespace CathodeLib
         /// <summary>
         /// Save all data for the level
         /// </summary>
-        public void Save(bool doInstancing = false)
+        public void Save(bool doInstancing = false, NavMeshBakeSettings navMeshSettings = null)
         {
             if (doInstancing)
-            { 
-                new Instancing(this);
+            {
+                Instancing instancing = new Instancing(this);
+                NavMeshBaker.BakeLevel(this, instancing, navMeshSettings);
             }
 
             //TODO: if we haven't pulled GLOBAL texture data into our texture pak, do so, and update sources.
@@ -431,9 +433,14 @@ namespace CathodeLib
             }
             Parallel.For(0, StateResources.Count, (i) =>
             {
-                StateResources[i].Cover.Save();
-                //StateResources[i].NavMesh.Save(); TODO: Not saving this as it's wrong!
-                File.WriteAllBytes(world + "STATE_" + i + "/TRAVERSAL", new byte[] { 0x74, 0x72, 0x61, 0x76, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x3F, 0x00, 0x00 });
+                string statePath = world + "STATE_" + i + "/";
+
+                //ASSAULT_POSITIONS
+                StateResources[i].Cover.Save(statePath + "COVER");
+                //CRAWL_SPACE_SPOTTING_POSITIONS
+                StateResources[i].NavMesh?.Save(statePath + "NAV_MESH");
+                //SPOTTING_POSITIONS
+                File.WriteAllBytes(statePath + "TRAVERSAL", new byte[] { 0x74, 0x72, 0x61, 0x76, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x3F, 0x00, 0x00 });
             });
             OnSaveTick?.Invoke();
 

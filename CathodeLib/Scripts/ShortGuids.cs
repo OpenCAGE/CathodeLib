@@ -283,6 +283,20 @@ namespace CathodeLib
         public static readonly ShortGuid WS_LOCKED = ShortGuidUtils.Generate("WS_LOCKED");
         public static readonly ShortGuid band_aid = ShortGuidUtils.Generate("band_aid");
         public static readonly ShortGuid light_on_reset = ShortGuidUtils.Generate("light_on_reset");
+        public static readonly ShortGuid build_into_navmesh = ShortGuidUtils.Generate("build_into_navmesh");
+        public static readonly ShortGuid destination = ShortGuidUtils.Generate("destination");
+        public static readonly ShortGuid DestinationIsBackstage = ShortGuidUtils.Generate("DestinationIsBackstage");
+        public static readonly ShortGuid Waypoint = ShortGuidUtils.Generate("Waypoint");
+        public static readonly ShortGuid MoveTarget = ShortGuidUtils.Generate("MoveTarget");
+        public static readonly ShortGuid CoverPoint = ShortGuidUtils.Generate("CoverPoint");
+        public static readonly ShortGuid extra_cost = ShortGuidUtils.Generate("extra_cost");
+        public static readonly ShortGuid character_classes = ShortGuidUtils.Generate("character_classes");
+        public static readonly ShortGuid open_on_reset = ShortGuidUtils.Generate("open_on_reset");
+        public static readonly ShortGuid EntrancePath = ShortGuidUtils.Generate("EntrancePath");
+        public static readonly ShortGuid active_objects = ShortGuidUtils.Generate("active_objects");
+        public static readonly ShortGuid inactive_objects = ShortGuidUtils.Generate("inactive_objects");
+        public static readonly ShortGuid allowed_character_classes_when_open = ShortGuidUtils.Generate("allowed_character_classes_when_open");
+        public static readonly ShortGuid allowed_character_classes_when_closed = ShortGuidUtils.Generate("allowed_character_classes_when_closed");
 
         public static readonly ShortGuid[] States = new ShortGuid[]
         {

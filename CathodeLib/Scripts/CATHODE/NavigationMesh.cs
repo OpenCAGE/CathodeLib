@@ -28,7 +28,7 @@ namespace CATHODE
     /// </summary>
     public class NavigationMesh : CathodeFile
     {
-        dtMeshHeader Header;
+        public dtMeshHeader Header;
 
         public Vector3[] Vertices;
         public dtPoly[] Polygons;
@@ -51,14 +51,13 @@ namespace CATHODE
             using (BinaryReader reader = new BinaryReader(stream))
             {
                 reader.BaseStream.Position += 8;
-
                 Header = Utilities.Consume<dtMeshHeader>(reader);
 
                 Vertices = Utilities.ConsumeArray<Vector3>(reader, Header.vertCount);
                 Polygons = Utilities.ConsumeArray<dtPoly>(reader, Header.polyCount);
                 Links = Utilities.ConsumeArray<dtLink>(reader, Header.maxLinkCount);
                 DetailMeshes = Utilities.ConsumeArray<dtPolyDetail>(reader, Header.detailMeshCount);
-                DetailVertices = Utilities.ConsumeArray<Vector3>(reader, Header.vertCount);
+                DetailVertices = Utilities.ConsumeArray<Vector3>(reader, Header.detailVertCount);
                 DetailIndices = Utilities.ConsumeArray<byte>(reader, Header.detailTriCount * 4);
                 BoundingVolumeTree = Utilities.ConsumeArray<dtBVNode>(reader, Header.bvNodeCount);
                 OffMeshConnections = Utilities.ConsumeArray<dtOffMeshConnection>(reader, Header.offMeshConCount);
@@ -90,6 +89,32 @@ namespace CATHODE
                 
                 return true;
             }
+        }
+        #endregion
+
+        #region HELPERS
+        public void SetTileData(dtMeshHeader header, Vector3[] vertices, dtPoly[] polygons, dtLink[] links, dtPolyDetail[] detailMeshes, Vector3[] detailVertices, byte[] detailIndices, dtBVNode[] boundingVolumeTree, dtOffMeshConnection[] offMeshConnections = null)
+        {
+            Header = header;
+            Vertices = vertices ?? Array.Empty<Vector3>();
+            Polygons = polygons ?? Array.Empty<dtPoly>();
+            Links = links ?? Array.Empty<dtLink>();
+            DetailMeshes = detailMeshes ?? Array.Empty<dtPolyDetail>();
+            DetailVertices = detailVertices ?? Array.Empty<Vector3>();
+            DetailIndices = detailIndices ?? Array.Empty<byte>();
+            BoundingVolumeTree = boundingVolumeTree ?? Array.Empty<dtBVNode>();
+            OffMeshConnections = offMeshConnections ?? Array.Empty<dtOffMeshConnection>();
+        }
+
+        public static dt_area_t CreateDefaultGroundArea()
+        {
+            dt_area_t area = new dt_area_t(true);
+            area.SetPolyType(dtPolyTypes.DT_POLYTYPE_GROUND);
+            area.SetId(0);
+            area.SetAdmittanceFlags(CATHODE.Enums.NAVIGATION_CHARACTER_CLASS_COMBINATION.ALL);
+            area.SetHeightLimitedAmount(AreaHeight.Standing);
+            area.SetMarkupFlags((NavMeshAreaType)1);
+            return area;
         }
         #endregion
 
@@ -157,6 +182,9 @@ namespace CATHODE
             public UInt16[] neis;
             /// The number of vertices in the polygon.
             public byte vertCount;
+            public byte _pad0;
+            public byte _pad1;
+            public byte _pad2;
             /// The bit packed type/id/flags.
             public dt_area_t area;
         };
@@ -310,6 +338,17 @@ namespace CATHODE
             INVALID
         }
 
+        public enum OffMeshLinkTypeCombination
+        {
+            Manual = 1 << OffMeshLinkType.Manual,
+            Teleport = 1 << OffMeshLinkType.Teleport,
+            Traversal = 1 << OffMeshLinkType.Traversal,
+            Wait = 1 << OffMeshLinkType.Wait,
+            Backstage = 1 << OffMeshLinkType.Backstage,
+            None = 0,
+            All = Manual | Teleport | Traversal | Wait | Backstage
+        };
+
         public enum AreaHeight
         {
             Standing,
@@ -398,13 +437,13 @@ namespace CATHODE
             /// Index of the next link.
             public int next;
             /// Index of the polygon edge that owns this link.
-            public char edge;
+            public byte edge;
             /// If a boundary link, defines on which side the link is.
-            public char side;
+            public byte side;
             /// If a boundary link, defines the minimum sub-edge area.
-            public char bmin;
+            public byte bmin;
             /// If a boundary link, defines the maximum sub-edge area.
-            public char bmax;				
+            public byte bmax;				
         };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -415,9 +454,11 @@ namespace CATHODE
             /// The offset of the triangles in the dtMeshTile::detailTris array.
             public int triBase;
             /// The number of vertices in the sub-mesh.
-            public char vertCount;
+            public byte vertCount;
             /// The number of triangles in the sub-mesh.
-            public char triCount;			
+            public byte triCount;
+            public byte _pad0;
+            public byte _pad1;
         };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -434,6 +475,22 @@ namespace CATHODE
         };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct dtOffMeshEntityHandle
+        {
+            public ShortGuid entity_id;
+            public ShortGuid composite_instance_id;
+
+            public EntityHandle ToEntityHandle()
+            {
+                return new EntityHandle()
+                {
+                    entity_id = entity_id,
+                    composite_instance_id = composite_instance_id
+                };
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public struct dtOffMeshConnection
         {
             /// The endpoints of the connection. [(ax, ay, az, bx, by, bz)]
@@ -446,16 +503,16 @@ namespace CATHODE
             /// Link flags. 
             /// @note These are not the connection's user defined flags. Those are assigned via the 
             /// connection's dtPoly definition. These are link flags used for internal purposes.
-            public char flags;
+            public byte flags;
             /// End point side.
-            public char side;
+            public byte side;
             /// The poly associated with this link. 
             /// Each link is represented in the navmesh by a poly, which is treated differently to polys with a physical presence. 
             public uint polygonRef;
             /// UID of connected traversal, if any. Use this to look up traversal data from elsewhere.
             public ShortGuid traversal_uid;
             /// The associated entity, for wait/manual nodes.
-            public EntityHandle entity;
+            public dtOffMeshEntityHandle entity;
             /// Extra cost for using this link.
         	public float extra_cost;
             /// Link should only be used by characters travelling at or above this speed.

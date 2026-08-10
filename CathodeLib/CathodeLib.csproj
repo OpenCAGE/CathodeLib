@@ -14,7 +14,8 @@
     <OutputType>Library</OutputType>
     <AssemblyVersion>0.12.2.0</AssemblyVersion>
     <FileVersion>0.12.2.0</FileVersion>
-    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>alien, modding, alien isolation, mod tool, file utility</PackageTags>
     <Title>CathodeLib</Title>
@@ -49,6 +50,12 @@
 
   <ItemGroup>
     <Compile Include="..\AlienBML\BML.cs" Link="Scripts\CATHODE\BML.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\DotRecast\src\DotRecast.Core\**\*.cs" Exclude="..\DotRecast\src\DotRecast.Core\bin\**;..\DotRecast\src\DotRecast.Core\obj\**" Link="Dependencies\DotRecast\Core\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\DotRecast\src\DotRecast.Recast\**\*.cs" Exclude="..\DotRecast\src\DotRecast.Recast\bin\**;..\DotRecast\src\DotRecast.Recast\obj\**" Link="Dependencies\DotRecast\Recast\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\DotRecast\src\DotRecast.Detour\**\*.cs" Exclude="..\DotRecast\src\DotRecast.Detour\bin\**;..\DotRecast\src\DotRecast.Detour\obj\**" Link="Dependencies\DotRecast\Detour\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
