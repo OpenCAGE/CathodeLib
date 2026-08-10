@@ -50,8 +50,6 @@ namespace CATHODE
             {
                 reader.BaseStream.Position += 8;
 
-                //TODO: how do the indexes map to the nodes?
-
                 int numInstances = reader.ReadInt32();
                 for (int i = 0; i < numInstances; i++)
                 {
@@ -112,6 +110,160 @@ namespace CATHODE
                 writer.Write((ushort)Sun.feature_flags);
             }
             return true;
+        }
+        #endregion
+
+        #region HELPERS
+        /// <summary>
+        /// Rebuild Indexes/Values with the current data from Movers.
+        /// </summary>
+        public void RebuildFromMovers(Movers movers)
+        {
+            Indexes.Clear();
+            Values.Clear();
+
+            if (movers?.Entries == null || movers.Entries.Count == 0)
+                return;
+
+            var lights = new List<LightBounds>(256);
+            for (int i = 0; i < movers.Entries.Count; i++)
+            {
+                Movers.MOVER_DESCRIPTOR mvr = movers.Entries[i];
+                if (mvr?.RenderableElements == null || mvr.RenderableElements.Count == 0)
+                    continue;
+                Materials.Material material = mvr.RenderableElements[0]?.Material;
+                if (material?.OfflineLightFeatures == null)
+                    continue;
+
+                if (!TryComputeBounds(mvr, out Vector3 min, out Vector3 max))
+                    continue;
+
+                lights.Add(new LightBounds
+                {
+                    MoverIndex = i,
+                    Min = min,
+                    Max = max,
+                    Center = (min + max) * 0.5f
+                });
+            }
+
+            if (lights.Count == 0)
+                return;
+
+            if (lights.Count > short.MaxValue)
+                throw new InvalidOperationException("LIGHTS.BIN cannot represent more than " + short.MaxValue + " lights.");
+
+            BuildNode(lights, 0, lights.Count);
+        }
+
+        private int BuildNode(List<LightBounds> lights, int start, int count)
+        {
+            int nodeIndex = Values.Count;
+            Values.Add(new Node());
+
+            if (count == 1)
+            {
+                LightBounds light = lights[start];
+                short first = (short)Indexes.Count;
+                Indexes.Add(light.MoverIndex);
+                Values[nodeIndex] = new Node
+                {
+                    min = light.Min,
+                    max = light.Max,
+                    childA = -6004,
+                    childB = -6004,
+                    first = first,
+                    count = 1,
+                    is_leaf = true
+                };
+                return nodeIndex;
+            }
+
+            Vector3 unionMin = lights[start].Min;
+            Vector3 unionMax = lights[start].Max;
+            for (int i = 1; i < count; i++)
+            {
+                unionMin = Vector3.Min(unionMin, lights[start + i].Min);
+                unionMax = Vector3.Max(unionMax, lights[start + i].Max);
+            }
+
+            Vector3 extent = unionMax - unionMin;
+            int axis = extent.X >= extent.Y && extent.X >= extent.Z ? 0 : (extent.Y >= extent.Z ? 1 : 2);
+
+            lights.Sort(start, count, Comparer<LightBounds>.Create((a, b) =>
+            {
+                float ca = axis == 0 ? a.Center.X : (axis == 1 ? a.Center.Y : a.Center.Z);
+                float cb = axis == 0 ? b.Center.X : (axis == 1 ? b.Center.Y : b.Center.Z);
+                int cmp = ca.CompareTo(cb);
+                return cmp != 0 ? cmp : a.MoverIndex.CompareTo(b.MoverIndex);
+            }));
+
+            int leftCount = count / 2;
+            if (leftCount <= 0) leftCount = 1;
+            if (leftCount >= count) leftCount = count - 1;
+
+            int childA = BuildNode(lights, start, leftCount);
+            int childB = BuildNode(lights, start + leftCount, count - leftCount);
+
+            Node left = Values[childA];
+            Node right = Values[childB];
+            Values[nodeIndex] = new Node
+            {
+                min = Vector3.Min(left.min, right.min),
+                max = Vector3.Max(left.max, right.max),
+                childA = (short)childA,
+                childB = (short)childB,
+                first = left.first,
+                count = (short)(left.count + right.count),
+                is_leaf = false
+            };
+            return nodeIndex;
+        }
+
+        private static bool TryComputeBounds(Movers.MOVER_DESCRIPTOR mvr, out Vector3 min, out Vector3 max)
+        {
+            min = default;
+            max = default;
+            Movers.MOVER_DESCRIPTOR.GPU_CONSTANTS.DEFERRED_GPU_CONSTANTS gpu;
+            Movers.MOVER_DESCRIPTOR.RENDER_CONSTANTS.DEFERRED_PARAMS cpu;
+            try
+            {
+                gpu = mvr.GPUConstants.GetAs<Movers.MOVER_DESCRIPTOR.GPU_CONSTANTS.DEFERRED_GPU_CONSTANTS>();
+                cpu = mvr.RenderConstants.GetAs<Movers.MOVER_DESCRIPTOR.RENDER_CONSTANTS.DEFERRED_PARAMS>();
+            }
+            catch
+            {
+                return false;
+            }
+            if (gpu == null || cpu == null)
+                return false;
+
+            float radius = Math.Max(gpu.AttenuationEnd, 0.00001f);
+            Vector3 position = mvr.Transform.Translation;
+
+            if (cpu.Type == LightType.Strip)
+            {
+                float halfLength = Math.Max(gpu.OuterAngle, 0.0f);
+                Vector3 endA = Vector3.Transform(new Vector3(0.0f, 0.0f, -halfLength), mvr.Transform);
+                Vector3 endB = Vector3.Transform(new Vector3(0.0f, 0.0f, halfLength), mvr.Transform);
+                Vector3 pad = new Vector3(radius);
+                min = Vector3.Min(endA, endB) - pad;
+                max = Vector3.Max(endA, endB) + pad;
+                return true;
+            }
+
+            Vector3 extent = new Vector3(radius);
+            min = position - extent;
+            max = position + extent;
+            return true;
+        }
+
+        private struct LightBounds
+        {
+            public int MoverIndex;
+            public Vector3 Min;
+            public Vector3 Max;
+            public Vector3 Center;
         }
         #endregion
 

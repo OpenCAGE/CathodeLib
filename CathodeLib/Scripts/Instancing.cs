@@ -2410,8 +2410,6 @@ namespace CathodeLib
                 File.WriteAllBytes(_level.Filepath.TrimEnd('/').TrimEnd('\\') + "_PATCH/RENDERABLE/RADIOSITY_RUNTIME.BIN", new byte[0]);
                 File.Delete(_level.Filepath.TrimEnd('/').TrimEnd('\\') + "_PATCH/RENDERABLE/RADIOSITY_INSTANCE_MAP.TXT");
             }
-            _level.Lights.Indexes.Clear();
-            _level.Lights.Values.Clear();
         }
 
         // -----
@@ -2560,6 +2558,9 @@ namespace CathodeLib
 
             //Regenerate level states (navmesh, cover, etc)
             BuildExclusiveMasterStates();
+
+            //Rebuild the BVH for lighs
+            _level.Lights.RebuildFromMovers(_level.Movers);
         }
 
         private void BuildStateProperties()
