@@ -222,6 +222,33 @@ namespace CATHODE
         /// </summary>
         public PreviewMesh BuildPreviewMesh(StaticCompoundShape compound)
         {
+            // Preview solidifies open authored shells via convex hulls so colliders read as volumes.
+            return BuildTriangleMesh(compound, PreviewShapeCap, PreviewTriangleCap, capRootInstances: true,
+                skipInstances: null, convexHullOpenShells: true);
+        }
+
+        /// <summary>
+        /// Full uncapped triangle extract for navmesh baking.
+        /// Uses authored BvCompressed primitives (not convex-hull solidification) so Recast
+        /// sees real floors/walls instead of invented hull tops on open shells.
+        /// </summary>
+        /// <param name="skipInstances">
+        /// Optional instances to omit (e.g. PATH_CLOSED NavMeshBarrier boxes stamped as area ids instead).
+        /// </param>
+        public PreviewMesh BuildBakeMesh(StaticCompoundShape compound, ISet<CompoundInstance> skipInstances = null)
+        {
+            return BuildTriangleMesh(compound, int.MaxValue, int.MaxValue, capRootInstances: false,
+                skipInstances, convexHullOpenShells: false);
+        }
+
+        PreviewMesh BuildTriangleMesh(
+            StaticCompoundShape compound,
+            int shapeCap,
+            int triCap,
+            bool capRootInstances,
+            ISet<CompoundInstance> skipInstances = null,
+            bool convexHullOpenShells = true)
+        {
             var mesh = new PreviewMesh();
             if (compound == null)
                 return mesh;
@@ -241,7 +268,12 @@ namespace CATHODE
                 Vector3.Zero,
                 Quaternion.Identity,
                 Vector3.One,
-                depth: 0);
+                depth: 0,
+                shapeCap,
+                triCap,
+                capRootInstances,
+                skipInstances,
+                convexHullOpenShells);
             return mesh;
         }
 
@@ -378,9 +410,14 @@ namespace CATHODE
             Vector3 translation,
             Quaternion rotation,
             Vector3 scale,
-            int depth)
+            int depth,
+            int shapeCap = PreviewShapeCap,
+            int triCap = PreviewTriangleCap,
+            bool capRootInstances = true,
+            ISet<CompoundInstance> skipInstances = null,
+            bool convexHullOpenShells = true)
         {
-            if (compound == null || mesh.ShapeCount >= PreviewShapeCap || mesh.TriangleCount >= PreviewTriangleCap || depth > 12)
+            if (compound == null || mesh.ShapeCount >= shapeCap || mesh.TriangleCount >= triCap || depth > 12)
                 return;
 
             List<CompoundInstance> instances = compound.Instances;
@@ -396,14 +433,17 @@ namespace CATHODE
                 return;
             }
 
-            // Huge world hosts: prefer real leaf geometry, but cap fan-out.
-            int maxInstances = depth == 0 && instances.Count > 512 ? 512 : instances.Count;
+            // Huge world hosts: prefer real leaf geometry, but cap fan-out for UI preview only.
+            int maxInstances = (capRootInstances && depth == 0 && instances.Count > 512) ? 512 : instances.Count;
             int beforeShapes = mesh.ShapeCount;
             int beforeTris = mesh.TriangleCount;
 
-            for (int i = 0; i < maxInstances && mesh.ShapeCount < PreviewShapeCap && mesh.TriangleCount < PreviewTriangleCap; i++)
+            for (int i = 0; i < maxInstances && mesh.ShapeCount < shapeCap && mesh.TriangleCount < triCap; i++)
             {
                 CompoundInstance inst = instances[i];
+                if (skipInstances != null && skipInstances.Contains(inst))
+                    continue;
+
                 Vector3 t = translation + Vector3.Transform(
                     new Vector3(inst.Translation.X, inst.Translation.Y, inst.Translation.Z) * scale,
                     rotation);
@@ -411,9 +451,9 @@ namespace CATHODE
                 Vector3 s = scale * new Vector3(inst.Scale.X, inst.Scale.Y, inst.Scale.Z);
 
                 if (shapeByOffset.TryGetValue(inst.ShapeDataOffset, out StaticCompoundShape child))
-                    EmitCompoundPreview(mesh, child, shapeByOffset, t, r, s, depth + 1);
+                    EmitCompoundPreview(mesh, child, shapeByOffset, t, r, s, depth + 1, shapeCap, triCap, capRootInstances, skipInstances, convexHullOpenShells);
                 else
-                    AppendShapePreview(mesh, inst.ShapeDataOffset, inst.ShapeClassName ?? "", t, r, s);
+                    AppendShapePreview(mesh, inst.ShapeDataOffset, inst.ShapeClassName ?? "", t, r, s, shapeCap, triCap, convexHullOpenShells);
             }
 
             // Nothing decoded — fall back to compound domain AABB.
@@ -432,14 +472,17 @@ namespace CATHODE
             string shapeClass,
             Vector3 translation,
             Quaternion rotation,
-            Vector3 scale)
+            Vector3 scale,
+            int shapeCap = PreviewShapeCap,
+            int triCap = PreviewTriangleCap,
+            bool convexHullOpenShells = true)
         {
-            if (mesh.ShapeCount >= PreviewShapeCap || mesh.TriangleCount >= PreviewTriangleCap)
+            if (mesh.ShapeCount >= shapeCap || mesh.TriangleCount >= triCap)
                 return;
 
             if (string.Equals(shapeClass, "hkpBvCompressedMeshShape", StringComparison.Ordinal))
             {
-                if (TryAppendBvCompressedMesh(mesh, shapeDataOffset, translation, rotation, scale))
+                if (TryAppendBvCompressedMesh(mesh, shapeDataOffset, translation, rotation, scale, convexHullOpenShells))
                     return;
             }
             else if (string.Equals(shapeClass, "hkpBoxShape", StringComparison.Ordinal))
@@ -457,7 +500,7 @@ namespace CATHODE
             }
             else if (string.Equals(shapeClass, "hkpListShape", StringComparison.Ordinal))
             {
-                if (TryAppendListShape(mesh, shapeDataOffset, translation, rotation, scale))
+                if (TryAppendListShape(mesh, shapeDataOffset, translation, rotation, scale, convexHullOpenShells))
                     return;
             }
 
@@ -467,15 +510,16 @@ namespace CATHODE
 
         /// <summary>
         /// Decode <c>hkpBvCompressedMeshShape</c> leaf geometry from the embedded
-        /// <c>hkcdStaticMeshTree&lt;..., 11, 21&gt;</c>. Authored shells are often open, so
-        /// each section is previewed as the convex hull of its packed/shared verts.
+        /// <c>hkcdStaticMeshTree&lt;..., 11, 21&gt;</c>.
+        /// Preview may solidify open shells as convex hulls; bake keeps authored primitives.
         /// </summary>
         bool TryAppendBvCompressedMesh(
             PreviewMesh mesh,
             uint shapeOffset,
             Vector3 translation,
             Quaternion rotation,
-            Vector3 scale)
+            Vector3 scale,
+            bool convexHullOpenShells = true)
         {
             if (!TryGetBvMeshArrays(shapeOffset,
                     out uint treeBase,
@@ -566,45 +610,43 @@ namespace CATHODE
                 if (!sectionOk)
                     continue;
 
-                // Authored collision shells are often open (half-frustums, missing caps). Preview each
-                // section as the convex hull of its verts so volumes read as solid colliders.
-                if (!TryAppendConvexHull(mesh, local, translation, rotation, scale))
+                // Preview: solidify open shells as convex hulls so colliders read as volumes.
+                // Bake: keep authored triangles/quads — hull tops invent false walkable floors.
+                if (convexHullOpenShells && TryAppendConvexHull(mesh, local, translation, rotation, scale))
+                    continue;
+
+                int baseIndex = mesh.Positions.Count;
+                for (int i = 0; i < local.Length; i++)
+                    mesh.Positions.Add(translation + Vector3.Transform(local[i] * scale, rotation));
+
+                // Odd number of negative scale axes flips triangle winding for Recast.
+                bool flipWinding = (scale.X * scale.Y * scale.Z) < 0f;
+
+                int sectionTris = 0;
+                for (int p = 0; p < numPrim && mesh.TriangleCount < PreviewTriangleCap; p++)
                 {
-                    // Fall back to raw triangles/quads if hull fails (degenerate / collinear).
-                    int baseIndex = mesh.Positions.Count;
-                    for (int i = 0; i < local.Length; i++)
-                        mesh.Positions.Add(translation + Vector3.Transform(local[i] * scale, rotation));
+                    int o = (int)primitivesOff + (firstPrim + p) * 4;
+                    if (o + 4 > DataPayload.Length)
+                        break;
+                    int i0 = DataPayload[o];
+                    int i1 = DataPayload[o + 1];
+                    int i2 = DataPayload[o + 2];
+                    int i3 = DataPayload[o + 3];
+                    if (i0 >= localCount || i1 >= localCount || i2 >= localCount)
+                        continue;
 
-                    int sectionTris = 0;
-                    for (int p = 0; p < numPrim && mesh.TriangleCount < PreviewTriangleCap; p++)
+                    AddTriangle(mesh, baseIndex, i0, i1, i2, flipWinding);
+                    sectionTris++;
+
+                    if (i3 != i2 && i3 < localCount)
                     {
-                        int o = (int)primitivesOff + (firstPrim + p) * 4;
-                        if (o + 4 > DataPayload.Length)
-                            break;
-                        int i0 = DataPayload[o];
-                        int i1 = DataPayload[o + 1];
-                        int i2 = DataPayload[o + 2];
-                        int i3 = DataPayload[o + 3];
-                        if (i0 >= localCount || i1 >= localCount || i2 >= localCount)
-                            continue;
-
-                        mesh.Indices.Add(baseIndex + i0);
-                        mesh.Indices.Add(baseIndex + i1);
-                        mesh.Indices.Add(baseIndex + i2);
+                        AddTriangle(mesh, baseIndex, i0, i2, i3, flipWinding);
                         sectionTris++;
-
-                        if (i3 != i2 && i3 < localCount)
-                        {
-                            mesh.Indices.Add(baseIndex + i0);
-                            mesh.Indices.Add(baseIndex + i2);
-                            mesh.Indices.Add(baseIndex + i3);
-                            sectionTris++;
-                        }
                     }
-
-                    if (sectionTris == 0)
-                        mesh.Positions.RemoveRange(baseIndex, mesh.Positions.Count - baseIndex);
                 }
+
+                if (sectionTris == 0)
+                    mesh.Positions.RemoveRange(baseIndex, mesh.Positions.Count - baseIndex);
             }
 
             if (mesh.TriangleCount <= trisBefore)
@@ -728,12 +770,17 @@ namespace CATHODE
             return numPacked > 0 && numPrim > 0;
         }
 
+        /// <summary>
+        /// Shared verts are 21/21/21 in a uint64 as <c>x:21 y:21 pad:1 z:21</c>
+        /// (Z starts at bit 43). Bit 42 is unused padding — shifting Z from 42
+        /// places weld verts in the gaps between section AABBs and creates spikes.
+        /// </summary>
         static Vector3 DecompressSharedVertex21(ulong packed, Vector3 domainMin, Vector3 domainMax)
         {
             const ulong mask = (1UL << 21) - 1UL;
             ulong qx = packed & mask;
             ulong qy = (packed >> 21) & mask;
-            ulong qz = (packed >> 42) & mask;
+            ulong qz = (packed >> 43) & mask;
             return new Vector3(
                 domainMin.X + (domainMax.X - domainMin.X) * qx / mask,
                 domainMin.Y + (domainMax.Y - domainMin.Y) * qy / mask,
@@ -1102,7 +1149,8 @@ namespace CATHODE
             uint shapeOffset,
             Vector3 translation,
             Quaternion rotation,
-            Vector3 scale)
+            Vector3 scale,
+            bool convexHullOpenShells = true)
         {
             // childInfo hkArray at +40 (64-bit) / +28 (32-bit approx).
             uint childField = shapeOffset + (Header.PointerSize == 8 ? 40u : 28u);
@@ -1125,7 +1173,8 @@ namespace CATHODE
                 if (!globalBySrc.TryGetValue(slot, out uint childShape))
                     continue;
                 classAtOffset.TryGetValue(childShape, out string childClass);
-                AppendShapePreview(mesh, childShape, childClass ?? "", translation, rotation, scale);
+                AppendShapePreview(mesh, childShape, childClass ?? "", translation, rotation, scale,
+                    PreviewShapeCap, PreviewTriangleCap, convexHullOpenShells);
             }
             return mesh.ShapeCount > before;
         }
@@ -1198,6 +1247,22 @@ namespace CATHODE
                 && !(float.IsInfinity(compound.DomainMin.X) || float.IsInfinity(compound.DomainMax.X));
         }
 
+        static void AddTriangle(PreviewMesh mesh, int baseIndex, int i0, int i1, int i2, bool flipWinding)
+        {
+            if (flipWinding)
+            {
+                mesh.Indices.Add(baseIndex + i0);
+                mesh.Indices.Add(baseIndex + i2);
+                mesh.Indices.Add(baseIndex + i1);
+            }
+            else
+            {
+                mesh.Indices.Add(baseIndex + i0);
+                mesh.Indices.Add(baseIndex + i1);
+                mesh.Indices.Add(baseIndex + i2);
+            }
+        }
+
         static void AppendBox(
             PreviewMesh mesh,
             Vector3 localMin,
@@ -1229,8 +1294,9 @@ namespace CATHODE
                 0, 4, 6, 0, 6, 2,
                 1, 3, 7, 1, 7, 5,
             };
-            for (int i = 0; i < tris.Length; i++)
-                mesh.Indices.Add(baseIndex + tris[i]);
+            bool flipWinding = (scale.X * scale.Y * scale.Z) < 0f;
+            for (int i = 0; i + 2 < tris.Length; i += 3)
+                AddTriangle(mesh, baseIndex, tris[i], tris[i + 1], tris[i + 2], flipWinding);
             mesh.ShapeCount++;
         }
 
