@@ -4127,7 +4127,7 @@ namespace CathodeLib
                             cpuConstants.Features |= LightFeature.PhysicalAttenuation;
                         if (entity.Bools.Get(ShortGuids.horizontal_gobo_flip))
                             cpuConstants.Features |= LightFeature.HorizontalGoboFlip;
-                        if (entity.Bools.Get(ShortGuids.is_specular))
+                        if (entity.Bools.Values.TryGetValue(ShortGuids.is_specular, out bool specularLocal) ? specularLocal : entity.Bools.Get(ShortGuids.is_specular))
                             cpuConstants.Features |= LightFeature.Specular;
                         if (entity.Bools.Get(ShortGuids.no_alphalight))
                             cpuConstants.Features |= LightFeature.NoAlphaLight;
@@ -4164,6 +4164,7 @@ namespace CathodeLib
                         Vector3 linearColour = Math.Max(0.0f, intensity) * new Vector3((float)MathsUtils.sRGBToLinear(colour.X / 255.0f), (float)MathsUtils.sRGBToLinear(colour.Y / 255.0f), (float)MathsUtils.sRGBToLinear(colour.Z / 255.0f));
                         if (cpuConstants.Features.HasFlag(LightFeature.PhysicalAttenuation))
                         {
+                            gpuConstants.AttenuationDefocus = entity.Floats.Get(ShortGuids.defocus_attenuation);
                             gpuConstants.Colour = linearColour;
                             gpuConstants.VolumeColour = linearColour;
                         }
@@ -4934,9 +4935,6 @@ namespace CathodeLib
 
         private static float ResolveLightIntensityMultiplier(InstancedEntity entity)
         {
-            if (entity.Bools.Has(ShortGuids.light_on_reset) && !entity.Bools.Get(ShortGuids.light_on_reset))
-                return 0.0f;
-
             if (entity.Floats.Links.TryGetValue(ShortGuids.intensity_multiplier, out List<Tuple<ShortGuid, InstancedEntity>> links) && links.Count > 0)
             {
                 if (IsStaticFloatIntensityLink(links[0].Item2))

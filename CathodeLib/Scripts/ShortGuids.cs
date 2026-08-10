@@ -168,6 +168,7 @@ namespace CathodeLib
         public static readonly ShortGuid DEPTH_INTERSECT_COLOUR = ShortGuidUtils.Generate("DEPTH_INTERSECT_COLOUR");
         public static readonly ShortGuid DEPTH_INTERSECT_COLOUR_VALUE = ShortGuidUtils.Generate("DEPTH_INTERSECT_COLOUR_VALUE");
         public static readonly ShortGuid DEPTH_INTERSECT_RANGE = ShortGuidUtils.Generate("DEPTH_INTERSECT_RANGE");
+        public static readonly ShortGuid defocus_attenuation = ShortGuidUtils.Generate("defocus_attenuation");
         public static readonly ShortGuid diffuse_0_speed_scalar = ShortGuidUtils.Generate("diffuse_0_speed_scalar");
         public static readonly ShortGuid diffuse_0_uv_scalar = ShortGuidUtils.Generate("diffuse_0_uv_scalar");
         public static readonly ShortGuid diffuse_1_speed_scalar = ShortGuidUtils.Generate("diffuse_1_speed_scalar");
