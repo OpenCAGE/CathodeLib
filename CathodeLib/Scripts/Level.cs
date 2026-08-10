@@ -363,17 +363,13 @@ namespace CathodeLib
         /// Save all data for the level
         /// </summary>
 #if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
-        public void Save(bool doInstancing = false, NavMesh.NavMeshBakeSettings navMeshSettings = null)
+        public void Save(bool doInstancing = false, NavMesh.NavMeshBakeSettings navMeshSettings = null, NavMesh.CoverBakeSettings coverSettings = null)
+        {
+            if (doInstancing)
+                new Instancing(this, navMeshSettings, coverSettings);
 #else
         public void Save()
-#endif
         {
-#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
-            if (doInstancing)
-            {
-                Instancing instancing = new Instancing(this);
-                NavMesh.NavMeshBaker.BakeLevel(this, instancing, navMeshSettings);
-            }
 #endif
 
             //TODO: if we haven't pulled GLOBAL texture data into our texture pak, do so, and update sources.

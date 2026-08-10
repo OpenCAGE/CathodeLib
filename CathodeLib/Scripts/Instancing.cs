@@ -2392,13 +2392,16 @@ namespace CathodeLib
             public string Summary;
         }
 
-        public Instancing(Level level)
+        public Instancing(Level level, NavMeshBakeSettings navMeshSettings = null, CoverBakeSettings coverSettings = null)
         {
             _level = level;
 
             GenerateInstances();
             ProcessInstances();
             BuildStateProperties();
+
+            NavMeshBaker.BakeLevel(level, this, navMeshSettings);
+            CoverBaker.BakeLevel(level, this, coverSettings);
 
             //The following things reference MVR but we don't support updating them yet, so just clear them out for now
             File.WriteAllBytes(_level.Filepath + "/WORLD/RADIOSITY_COLLISION_MAPPING.BIN", new byte[4]);
