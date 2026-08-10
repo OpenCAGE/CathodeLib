@@ -7,8 +7,8 @@ using CATHODE.Scripting;
 using CathodeLib;
 using CathodeLib.ObjectExtensions;
 using System.Linq;
-using System.Collections.Concurrent;
 using static CATHODE.Lights;
+
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;

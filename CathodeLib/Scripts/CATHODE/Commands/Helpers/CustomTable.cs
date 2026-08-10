@@ -6,7 +6,6 @@ using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using static CATHODE.Lights;
 using static CathodeLib.CompositeFlowgraphTable;
 using static CathodeLib.CompositeFlowgraphTable.FlowgraphMeta;
 using static CathodeLib.CompositeFlowgraphTable.FlowgraphMeta.NodeMeta;

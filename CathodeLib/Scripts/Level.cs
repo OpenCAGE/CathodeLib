@@ -2,7 +2,6 @@ using CATHODE;
 using CATHODE.EXPERIMENTAL;
 using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
-using CathodeLib.NavMesh;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -362,13 +361,19 @@ namespace CathodeLib
         /// <summary>
         /// Save all data for the level
         /// </summary>
-        public void Save(bool doInstancing = false, NavMeshBakeSettings navMeshSettings = null)
+#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
+        public void Save(bool doInstancing = false, NavMesh.NavMeshBakeSettings navMeshSettings = null)
+#else
+        public void Save()
+#endif
         {
+#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
             if (doInstancing)
             {
                 Instancing instancing = new Instancing(this);
-                NavMeshBaker.BakeLevel(this, instancing, navMeshSettings);
+                NavMesh.NavMeshBaker.BakeLevel(this, instancing, navMeshSettings);
             }
+#endif
 
             //TODO: if we haven't pulled GLOBAL texture data into our texture pak, do so, and update sources.
 

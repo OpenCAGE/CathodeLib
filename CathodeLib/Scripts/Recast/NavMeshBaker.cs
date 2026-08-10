@@ -1,3 +1,4 @@
+#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -1398,3 +1399,4 @@ namespace CathodeLib.NavMesh
         }
     }
 }
+#endif

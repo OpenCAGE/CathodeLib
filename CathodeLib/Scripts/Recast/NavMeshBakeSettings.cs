@@ -1,3 +1,4 @@
+#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
 namespace CathodeLib.NavMesh
 {
     public sealed class NavMeshBakeSettings
@@ -87,3 +88,4 @@ namespace CathodeLib.NavMesh
         public static NavMeshBakeSettings CreateDefault() => new NavMeshBakeSettings();
     }
 }
+#endif

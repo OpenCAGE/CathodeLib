@@ -30,7 +30,7 @@ namespace CATHODE
         public List<int> Indexes = new List<int>();
         public List<Node> Values = new List<Node>();
         public DirectionalLight Sun = new DirectionalLight();
-        public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
+        public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE | Implementation.CREATE;
 
         public Lights(string path) : base(path) { }
         public Lights(MemoryStream stream, string path = "") : base(stream, path) { }
@@ -183,8 +183,8 @@ namespace CATHODE
             Vector3 unionMax = lights[start].Max;
             for (int i = 1; i < count; i++)
             {
-                unionMin = Vector3.Min(unionMin, lights[start + i].Min);
-                unionMax = Vector3.Max(unionMax, lights[start + i].Max);
+                unionMin = ComponentMin(unionMin, lights[start + i].Min);
+                unionMax = ComponentMax(unionMax, lights[start + i].Max);
             }
 
             Vector3 extent = unionMax - unionMin;
@@ -209,8 +209,8 @@ namespace CATHODE
             Node right = Values[childB];
             Values[nodeIndex] = new Node
             {
-                min = Vector3.Min(left.min, right.min),
-                max = Vector3.Max(left.max, right.max),
+                min = ComponentMin(left.min, right.min),
+                max = ComponentMax(left.max, right.max),
                 childA = (short)childA,
                 childB = (short)childB,
                 first = left.first,
@@ -239,24 +239,52 @@ namespace CATHODE
                 return false;
 
             float radius = Math.Max(gpu.AttenuationEnd, 0.00001f);
-            Vector3 position = mvr.Transform.Translation;
+            Vector3 position = GetTranslation(mvr.Transform);
 
             if (cpu.Type == LightType.Strip)
             {
                 float halfLength = Math.Max(gpu.OuterAngle, 0.0f);
-                Vector3 endA = Vector3.Transform(new Vector3(0.0f, 0.0f, -halfLength), mvr.Transform);
-                Vector3 endB = Vector3.Transform(new Vector3(0.0f, 0.0f, halfLength), mvr.Transform);
-                Vector3 pad = new Vector3(radius);
-                min = Vector3.Min(endA, endB) - pad;
-                max = Vector3.Max(endA, endB) + pad;
+                Vector3 endA = TransformPoint(new Vector3(0.0f, 0.0f, -halfLength), mvr.Transform);
+                Vector3 endB = TransformPoint(new Vector3(0.0f, 0.0f, halfLength), mvr.Transform);
+                Vector3 pad = Splat(radius);
+                min = ComponentMin(endA, endB) - pad;
+                max = ComponentMax(endA, endB) + pad;
                 return true;
             }
 
-            Vector3 extent = new Vector3(radius);
+            Vector3 extent = Splat(radius);
             min = position - extent;
             max = position + extent;
             return true;
         }
+
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+        private static Vector3 ComponentMin(Vector3 a, Vector3 b) => Vector3.Min(a, b);
+        private static Vector3 ComponentMax(Vector3 a, Vector3 b) => Vector3.Max(a, b);
+        private static Vector3 TransformPoint(Vector3 point, Matrix4x4 matrix) => matrix.MultiplyPoint3x4(point);
+        private static Vector3 GetTranslation(Matrix4x4 matrix) => matrix.MultiplyPoint3x4(Vector3.zero);
+        private static Vector3 Splat(float v) => new Vector3(v, v, v);
+#elif GODOT
+        private static Vector3 ComponentMin(Vector3 a, Vector3 b) => new Vector3(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Min(a.Z, b.Z));
+        private static Vector3 ComponentMax(Vector3 a, Vector3 b) => new Vector3(Math.Max(a.X, b.X), Math.Max(a.Y, b.Y), Math.Max(a.Z, b.Z));
+        private static Vector3 TransformPoint(Vector3 point, Matrix4x4 matrix)
+        {
+            System.Numerics.Vector3 n = System.Numerics.Vector3.Transform(new System.Numerics.Vector3(point.X, point.Y, point.Z), matrix);
+            return new Vector3(n.X, n.Y, n.Z);
+        }
+        private static Vector3 GetTranslation(Matrix4x4 matrix)
+        {
+            System.Numerics.Vector3 t = matrix.Translation;
+            return new Vector3(t.X, t.Y, t.Z);
+        }
+        private static Vector3 Splat(float v) => new Vector3(v, v, v);
+#else
+        private static Vector3 ComponentMin(Vector3 a, Vector3 b) => Vector3.Min(a, b);
+        private static Vector3 ComponentMax(Vector3 a, Vector3 b) => Vector3.Max(a, b);
+        private static Vector3 TransformPoint(Vector3 point, Matrix4x4 matrix) => Vector3.Transform(point, matrix);
+        private static Vector3 GetTranslation(Matrix4x4 matrix) => matrix.Translation;
+        private static Vector3 Splat(float v) => new Vector3(v);
+#endif
 
         private struct LightBounds
         {

@@ -9,11 +9,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using static CATHODE.Lights;
-using static CATHODE.Models;
-using static CATHODE.Movers;
-using static CATHODE.Shaders;
 using static CATHODE.TexturePtr;
-using static CATHODE.Textures.TEX4;
 
 namespace CATHODE
 {
