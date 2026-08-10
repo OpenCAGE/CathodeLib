@@ -69,7 +69,9 @@ namespace CathodeLib
         public HavokPackfile PhysicsHKX;
         public HavokPackfile PhysicsHKX64;
         public CollisionMaps CollisionMaps;
-        public RadiosityInstanceMap RadInstanceMap;
+        public RadiosityInstanceMap RadiosityInstanceMap;
+        public RadiosityCollisionMap RadiosityCollisionMap;
+        public RadiosityRuntime RadiosityRuntime;
         public AlphaLightLevel AlphaLight;
         public CharacterAccessorySets AccessorySets;
         public Commands Commands;
@@ -134,7 +136,7 @@ namespace CathodeLib
         /// </summary>
         public Action OnSaveTick;
 
-        public const int NumberOfTicks = 33;
+        public const int NumberOfTicks = 35;
 
         /// <summary>
         /// A container for data related to a level in the game's "ENV" folder
@@ -177,7 +179,9 @@ namespace CathodeLib
             PhysicsHKX = null;
             PhysicsHKX64 = null;
             CollisionMaps = null;
-            RadInstanceMap = null; //todo - can this be removed?
+            RadiosityInstanceMap = null;
+            RadiosityCollisionMap = null;
+            RadiosityRuntime = null;
             AlphaLight = null;
             AccessorySets = null;
             Commands = null;
@@ -281,7 +285,7 @@ namespace CathodeLib
             );
 
             Parallel.Invoke(
-                () => { RadInstanceMap = new RadiosityInstanceMap(renderable + "RADIOSITY_INSTANCE_MAP.TXT"); OnLoadTick?.Invoke(); },
+                () => { RadiosityInstanceMap = new RadiosityInstanceMap(renderable + "RADIOSITY_INSTANCE_MAP.TXT"); OnLoadTick?.Invoke(); },
                 () => { AlphaLight = new AlphaLightLevel(world + "ALPHALIGHT_LEVEL.BIN"); OnLoadTick?.Invoke(); },
                 () => { AccessorySets = new CharacterAccessorySets(world + "CHARACTERACCESSORYSETS.BIN"); OnLoadTick?.Invoke(); },
                 () => { EnvironmentAnimations = new EnvironmentAnimations(world + "ENVIRONMENT_ANIMATION.DAT", _global.AnimationStrings_Debug); OnLoadTick?.Invoke(); },
@@ -303,9 +307,10 @@ namespace CathodeLib
 
             Commands = new Commands(world + "COMMANDS" + (compressed ? ".BIN.GZ" : File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements, PhysicsHKX, Textures, _global?.Textures); OnLoadTick?.Invoke();
 
-            //The following files are used by the game, but not fully handled yet:
-            // - RENDERABLE/RADIOSITY_RUNTIME.BIN (and .GZ)
-            // - WORLD/RADIOSITY_COLLISION_MAPPING.BIN
+            //todo - perhaps can do parallel. sort out order once working.
+            RadiosityCollisionMap = new RadiosityCollisionMap(world + "RADIOSITY_COLLISION_MAPPING.BIN"); OnLoadTick?.Invoke();
+            RadiosityRuntime = new RadiosityRuntime(renderable + "RADIOSITY_RUNTIME.BIN"); OnLoadTick?.Invoke();
+
             StateResources.Add(new State());
             using (BinaryReader reader = new BinaryReader(File.OpenRead(world + "EXCLUSIVE_MASTER_RESOURCE_INDICES")))
             {
@@ -414,7 +419,7 @@ namespace CathodeLib
                 () => { PhysicsHKX?.Save(); OnSaveTick?.Invoke(); },
                 () => { PhysicsHKX64?.Save(); OnSaveTick?.Invoke(); },
                 () => { CollisionMaps.Save(); OnSaveTick?.Invoke(); },
-                () => { RadInstanceMap.Save(); OnSaveTick?.Invoke(); },
+                () => { RadiosityInstanceMap.Save(); OnSaveTick?.Invoke(); },
                 () => { AlphaLight.Save(); OnSaveTick?.Invoke(); },
                 () => { AccessorySets.Save(); OnSaveTick?.Invoke(); },
                 () => { EnvironmentAnimations.Save(); OnSaveTick?.Invoke(); },
@@ -430,6 +435,10 @@ namespace CathodeLib
             );
 
             Commands.Save(); OnSaveTick?.Invoke();
+
+            //todo - sort out order when implemented
+            RadiosityCollisionMap?.Save(); OnSaveTick?.Invoke();
+            RadiosityRuntime?.Save(); OnSaveTick?.Invoke();
 
             Parallel.Invoke(
                 () => { GalaxyItems.Save(); OnSaveTick?.Invoke(); },
