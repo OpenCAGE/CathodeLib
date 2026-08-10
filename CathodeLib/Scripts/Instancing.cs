@@ -2559,8 +2559,11 @@ namespace CathodeLib
             //Regenerate level states (navmesh, cover, etc)
             BuildExclusiveMasterStates();
 
-            //Rebuild the BVH for lighs
+            //Rebuild the BVH for lights
             _level.Lights.RebuildFromMovers(_level.Movers);
+
+            //Rebuild the BVH for occluder triangles (CA_OCCLUSION_CULLING meshes)
+            _level.OccluderTriangleBVH.RebuildFromMovers(_level.Movers);
         }
 
         private void BuildStateProperties()

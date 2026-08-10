@@ -63,6 +63,7 @@ namespace CathodeLib
         public Commands Commands;
         public EnvironmentAnimations EnvironmentAnimations;
         public Lights Lights;
+        public OccluderTriangleBVH OccluderTriangleBVH;
         public MaterialMappings MaterialMappings;
         public PhysicsMaps PhysicsMaps;
         public SoundNodeNetwork SoundNodeNetwork;
@@ -121,7 +122,7 @@ namespace CathodeLib
         /// </summary>
         public Action OnSaveTick;
 
-        public const int NumberOfTicks = 31;
+        public const int NumberOfTicks = 33;
 
         /// <summary>
         /// A container for data related to a level in the game's "ENV" folder
@@ -170,6 +171,7 @@ namespace CathodeLib
             Commands = null;
             EnvironmentAnimations = null;
             Lights = null;
+            OccluderTriangleBVH = null;
             MaterialMappings = null;
             PhysicsMaps = null;
             SoundNodeNetwork = null;
@@ -272,6 +274,7 @@ namespace CathodeLib
                 () => { AccessorySets = new CharacterAccessorySets(world + "CHARACTERACCESSORYSETS.BIN"); OnLoadTick?.Invoke(); },
                 () => { EnvironmentAnimations = new EnvironmentAnimations(world + "ENVIRONMENT_ANIMATION.DAT", _global.AnimationStrings_Debug); OnLoadTick?.Invoke(); },
                 () => { Lights = new Lights(world + "LIGHTS.BIN"); OnLoadTick?.Invoke(); },
+                () => { OccluderTriangleBVH = new OccluderTriangleBVH(world + "OCCLUDER_TRIANGLE_BVH.BIN"); OnLoadTick?.Invoke(); },
                 () => { PhysicsMaps = new PhysicsMaps(world + "PHYSICS.MAP", PhysicsHKX); OnLoadTick?.Invoke(); },
                 () => { SoundNodeNetwork = new SoundNodeNetwork(world + "SNDNODENETWORK.DAT"); OnLoadTick?.Invoke(); },
                 () => { SoundBankData = new SoundBankData(world + "SOUNDBANKDATA.DAT"); OnLoadTick?.Invoke(); },
@@ -291,8 +294,6 @@ namespace CathodeLib
             //The following files are used by the game, but not fully handled yet:
             // - RENDERABLE/RADIOSITY_RUNTIME.BIN (and .GZ)
             // - WORLD/RADIOSITY_COLLISION_MAPPING.BIN
-            // - WORLD/OCCLUDER_TRIANGLE_BVH.BIN
-
             StateResources.Add(new State());
             using (BinaryReader reader = new BinaryReader(File.OpenRead(world + "EXCLUSIVE_MASTER_RESOURCE_INDICES")))
             {
@@ -410,6 +411,7 @@ namespace CathodeLib
                 () => { AccessorySets.Save(); OnSaveTick?.Invoke(); },
                 () => { EnvironmentAnimations.Save(); OnSaveTick?.Invoke(); },
                 () => { Lights.Save(); OnSaveTick?.Invoke(); },
+                () => { OccluderTriangleBVH?.Save(); OnSaveTick?.Invoke(); },
                 () => { PhysicsMaps.Save(); OnSaveTick?.Invoke(); },
                 () => { SoundNodeNetwork.Save(); OnSaveTick?.Invoke(); },
                 () => { SoundBankData.Save(); OnSaveTick?.Invoke(); },
