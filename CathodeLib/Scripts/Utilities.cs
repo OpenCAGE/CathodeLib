@@ -1087,6 +1087,58 @@ namespace CathodeLib
         }
     }
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public class ColourRGBA8
+    {
+        public byte R;
+        public byte G;
+        public byte B;
+        public byte A;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public class Vector2u8
+    {
+        public byte X;
+        public byte Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public class Vector4u8
+    {
+        public byte X;
+        public byte Y;
+        public byte Z;
+        public byte W;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public class Vector4u16
+    {
+        public ushort X;
+        public ushort Y;
+        public ushort Z;
+        public ushort W;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public class Vector3u32
+    {
+        public uint X;
+        public uint Y;
+        public uint Z;
+    }
+
+    /// <summary>
+    /// A ushort offset/count pair.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public class SliceU16
+    {
+        public ushort Offset;
+        public ushort Count;
+    }
+
 }
 
 namespace CathodeLib.ObjectExtensions
