@@ -2395,9 +2395,6 @@ namespace CathodeLib
         public IReadOnlyList<StateProperties> States => _states;
         public IReadOnlyList<string> StateNotes => _stateNotes;
 
-        public RenderableElementValidator.Report RenderableValidation => _renderableValidation;
-        private RenderableElementValidator.Report _renderableValidation = new RenderableElementValidator.Report();
-
         public IReadOnlyList<string> BakeWarnings => _bakeWarnings;
         private readonly List<string> _bakeWarnings = new List<string>();
 
@@ -2425,8 +2422,6 @@ namespace CathodeLib
 
             RunOptionalBake("navmesh", () => NavMeshBaker.BakeLevel(level, this, navMeshSettings));
             RunOptionalBake("cover", () => CoverBaker.BakeLevel(level, this, coverSettings));
-
-            _renderableValidation = RenderableElementValidator.Validate(level);
 
             if (radiositySettings != null)
             {
