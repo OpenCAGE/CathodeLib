@@ -183,25 +183,40 @@ namespace CATHODE
         /// </summary>
         public List<Element> EnsureRegistered(List<Element> elements)
         {
+            return EnsureRegistered(elements, 0);
+        }
+
+        /// <summary>
+        /// Ensure a sequence of renderable elements are registered as a contiguous run, with each
+        /// element's LOD chain placed after it.
+        /// </summary>
+        public List<Element> EnsureRegistered(List<Element> elements, int mustStartAfter)
+        {
             if (elements == null || elements.Count == 0)
                 return elements ?? new List<Element>();
 
-            if (GetWriteIndex(elements) >= 0)
-                return elements;
+            //if (GetWriteIndex(elements, mustStartAfter) >= 0)
+            //    return elements;
+            
+            var parentIndices = new List<int>(elements.Count);
+            for (int i = 0; i < elements.Count; i++)
+            {
+                Element el = elements[i];
+                if (el == null)
+                {
+                    parentIndices.Add(-1);
+                    continue;
+                }
+                parentIndices.Add(Entries.Count);
+                Entries.Add(el);
+            }
 
             for (int i = 0; i < elements.Count; i++)
             {
                 Element el = elements[i];
                 if (el?.LODs == null || el.LODs.Count == 0)
                     continue;
-                el.LODs = EnsureRegistered(el.LODs);
-            }
-
-            for (int i = 0; i < elements.Count; i++)
-            {
-                Element el = elements[i];
-                if (el != null)
-                    Entries.Add(el);
+                el.LODs = EnsureRegistered(el.LODs, parentIndices[i] + 1);
             }
 
             return elements;

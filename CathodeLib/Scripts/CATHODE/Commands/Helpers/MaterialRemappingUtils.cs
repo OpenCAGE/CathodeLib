@@ -139,18 +139,72 @@ namespace CathodeLib
 
             if (TryFindMappingTarget(mapping, material.Name, out string targetName))
             {
-                Materials.Material remapped = FindMaterialByName(level.Materials, targetName);
-                return remapped ?? material;
+                Materials.Material remapped = FindMaterialByName(level.Materials, targetName, material, level.Models);
+                return KeepIfRadiosityCompatible(remapped, material);
             }
 
             MaterialMappings.MaterialMapping.Mapping reverseEntry = FindMappingEntryByTarget(mapping, material.Name);
             if (reverseEntry != null && TryFindMappingTarget(mapping, reverseEntry.from, out string refreshedTargetName))
             {
-                Materials.Material remapped = FindMaterialByName(level.Materials, refreshedTargetName);
-                return remapped ?? material;
+                Materials.Material remapped = FindMaterialByName(level.Materials, refreshedTargetName, material, level.Models);
+                return KeepIfRadiosityCompatible(remapped, material);
             }
 
             return material;
+        }
+
+        private const long RadiosityStaticBit = 1L << (int)CATHODE.ShaderTypes.SHADER_REQUIREMENTS.RADIOSITY_STATIC;
+        private const long RadiosityDynamicBit = 1L << (int)CATHODE.ShaderTypes.SHADER_REQUIREMENTS.RADIOSITY_DYNAMIC;
+
+        private static long RadiosityClass(Materials.Material material) => (material?.Shader?.UbershaderRequirementFlags ?? 0) & (RadiosityStaticBit | RadiosityDynamicBit);
+
+        private static readonly Dictionary<CATHODE.ShaderTypes.SHADER_LIST, int> _alphaLightingBit = new Dictionary<CATHODE.ShaderTypes.SHADER_LIST, int>();
+
+        private static int GetAlphaLightingBit(CATHODE.ShaderTypes.SHADER_LIST ubershader)
+        {
+            lock (_alphaLightingBit)
+            {
+                if (_alphaLightingBit.TryGetValue(ubershader, out int cached))
+                    return cached;
+
+                int bit = -1;
+                Type shaderClass = typeof(CATHODE.ShaderTypes.SHADER_LIST).Assembly
+                    .GetType("CATHODE.ShaderTypes." + ubershader);
+                Type features = shaderClass?.GetNestedType("FEATURES");
+                if (features != null && features.IsEnum && Enum.IsDefined(features, "ALPHA_LIGHTING"))
+                    bit = Convert.ToInt32(Enum.Parse(features, "ALPHA_LIGHTING"));
+
+                _alphaLightingBit[ubershader] = bit;
+                return bit;
+            }
+        }
+
+        private static bool AlphaLightingMatches(Materials.Material a, Materials.Material b)
+        {
+            Shaders.Shader sa = a?.Shader, sb = b?.Shader;
+            if (sa == null || sb == null)
+                return true;
+            // Feature bits are only comparable within the same ubershader.
+            if (sa.Ubershader != sb.Ubershader)
+                return true;
+
+            int bit = GetAlphaLightingBit(sa.Ubershader);
+            if (bit < 0)
+                return true;
+
+            long mask = 1L << bit;
+            return (sa.UbershaderFeatureFlags & mask) == (sb.UbershaderFeatureFlags & mask);
+        }
+
+        private static Materials.Material KeepIfRadiosityCompatible(Materials.Material remapped, Materials.Material original)
+        {
+            if (remapped == null)
+                return original;
+            if (RadiosityClass(remapped) != RadiosityClass(original))
+                return original;
+            if (!AlphaLightingMatches(remapped, original))
+                return original;
+            return remapped;
         }
 
         public static List<RenderableElements.Element> ApplyMaterialParameterOverride(Level level, string materialName, List<RenderableElements.Element> renderables)
@@ -262,15 +316,107 @@ namespace CathodeLib
 
         public static Materials.Material FindMaterialByName(Materials materials, string name)
         {
+            return FindMaterialByName(materials, name, null);
+        }
+
+        public static Materials.Material FindMaterialByName(Materials materials, string name, Materials.Material preferLike)
+        {
+            return FindMaterialByName(materials, name, preferLike, null);
+        }
+
+        public static Materials.Material FindMaterialByName(Materials materials, string name, Materials.Material preferLike, Models models)
+        {
             if (materials?.Entries == null || string.IsNullOrEmpty(name))
                 return null;
 
-            Materials.Material exact = materials.Entries.FirstOrDefault(material => material.Name == name);
-            if (exact != null)
-                return exact;
+            long wanted = RadiosityClass(preferLike);
+            HashSet<string> wantedFormats = models != null ? VertexFormatsFor(models, preferLike) : null;
 
-            string normalizedName = NormalizeMaterialNameForLookup(name);
-            return materials.Entries.FirstOrDefault(material => material != null && !string.IsNullOrEmpty(material.Name) && NormalizeMaterialNameForLookup(material.Name) == normalizedName);
+            Materials.Material fallback = null;
+            Materials.Material flagMatch = null;
+
+            foreach (Materials.Material material in MatchesByName(materials, name))
+            {
+                fallback ??= material;
+                if (preferLike == null)
+                    return material;
+
+                if (RadiosityClass(material) != wanted || !AlphaLightingMatches(material, preferLike))
+                    continue;
+                flagMatch ??= material;
+
+                // Best case: flags line up and the candidate is known to work with the same
+                // vertex layout the original was authored against.
+                if (wantedFormats == null || wantedFormats.Count == 0)
+                    return material;
+                HashSet<string> candidateFormats = VertexFormatsFor(models, material);
+                if (candidateFormats.Count == 0 || candidateFormats.Overlaps(wantedFormats))
+                    return material;
+            }
+
+            return flagMatch ?? fallback;
+        }
+
+        private static IEnumerable<Materials.Material> MatchesByName(Materials materials, string name)
+        {
+            foreach (Materials.Material material in materials.Entries)
+                if (material?.Name == name)
+                    yield return material;
+
+            string normalized = NormalizeMaterialNameForLookup(name);
+            foreach (Materials.Material material in materials.Entries)
+            {
+                if (material == null || string.IsNullOrEmpty(material.Name) || material.Name == name)
+                    continue;
+                if (NormalizeMaterialNameForLookup(material.Name) == normalized)
+                    yield return material;
+            }
+        }
+
+        private static readonly Dictionary<Models, Dictionary<Materials.Material, HashSet<string>>> _vertexFormatCache = new Dictionary<Models, Dictionary<Materials.Material, HashSet<string>>>();
+
+        private static HashSet<string> VertexFormatsFor(Models models, Materials.Material material)
+        {
+            if (models == null || material == null)
+                return new HashSet<string>();
+
+            Dictionary<Materials.Material, HashSet<string>> map;
+            lock (_vertexFormatCache)
+            {
+                if (!_vertexFormatCache.TryGetValue(models, out map))
+                {
+                    map = new Dictionary<Materials.Material, HashSet<string>>();
+                    foreach (Models.CS2 cs2 in models.Entries)
+                        foreach (Models.CS2.Component component in cs2.Components)
+                            foreach (Models.CS2.Component.LOD lod in component.LODs)
+                                foreach (Models.CS2.Component.LOD.Submesh submesh in lod.Submeshes)
+                                {
+                                    if (submesh?.Material == null)
+                                        continue;
+                                    if (!map.TryGetValue(submesh.Material, out HashSet<string> set))
+                                        map[submesh.Material] = set = new HashSet<string>();
+                                    set.Add(DescribeVertexFormat(submesh.VertexFormatFull));
+                                }
+                    _vertexFormatCache[models] = map;
+                }
+            }
+
+            return map.TryGetValue(material, out HashSet<string> formats) ? formats : new HashSet<string>();
+        }
+
+        private static string DescribeVertexFormat(Models.VertexFormat format)
+        {
+            if (format?.Attributes == null)
+                return "";
+            var sb = new System.Text.StringBuilder();
+            foreach (List<Models.VertexFormat.Attribute> group in format.Attributes)
+            {
+                sb.Append('|');
+                if (group == null) continue;
+                foreach (Models.VertexFormat.Attribute attribute in group)
+                    sb.Append((int)attribute.Usage).Append(':').Append((int)attribute.Type).Append(':').Append(attribute.Index).Append(',');
+            }
+            return sb.ToString();
         }
     }
 }

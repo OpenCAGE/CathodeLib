@@ -443,6 +443,156 @@ namespace CathodeLib.NavMesh
         /// Dilation is masked to cells covered by kept nav polys so elevated junk
         /// spans cannot flood the floor with DeepCrouch.
         /// </summary>
+        /// <summary>
+        /// Wire each off-mesh connection into the link pool, the way Detour's
+        /// <c>baseOffMeshLinks</c> does and the way retail data ships: four links per connection -
+        /// ground-&gt;offmesh and offmesh-&gt;ground at each of the two endpoints.
+        /// </summary>
+        /// <remarks>
+        /// Without these the off-mesh polys exist but are unreachable, so ladders, vents and
+        /// traversals silently stop working. Retail Solace has 58 connections and exactly
+        /// 58 * 4 = 232 links beyond its 1728 internal ones.
+        /// </remarks>
+        static void ConnectOffMeshLinks(
+            NavigationMesh.dtPoly[] polys,
+            List<Vector3> verts,
+            NavigationMesh.dtOffMeshConnection[] connections,
+            int groundPolyCount,
+            uint polyRefBase,
+            List<NavigationMesh.dtLink> links)
+        {
+            if (connections == null || connections.Length == 0)
+                return;
+
+            for (int c = 0; c < connections.Length; c++)
+            {
+                NavigationMesh.dtOffMeshConnection con = connections[c];
+                int offPolyIndex = con.poly_index_within_tile;
+                if (offPolyIndex < 0 || offPolyIndex >= polys.Length)
+                    continue;
+
+                var start = new Vector3(con.pos[0], con.pos[1], con.pos[2]);
+                var end = new Vector3(con.pos[3], con.pos[4], con.pos[5]);
+
+                // Endpoint 0 sits on edge 0 of the off-mesh poly, endpoint 1 on edge 1.
+                LinkEndpoint(start, 0);
+                LinkEndpoint(end, 1);
+
+                void LinkEndpoint(Vector3 position, byte edge)
+                {
+                    int ground = FindNearestGroundPoly(polys, verts, groundPolyCount, position, con.rad);
+                    if (ground < 0)
+                        return;
+
+                    // ground -> off-mesh
+                    NavigationMesh.dtPoly gp = polys[ground];
+                    links.Add(new NavigationMesh.dtLink
+                    {
+                        polygonRef = polyRefBase | (uint)offPolyIndex,
+                        next = gp.firstLink,
+                        edge = 0xff,
+                        side = 0xff,
+                        bmin = 0,
+                        bmax = 0
+                    });
+                    gp.firstLink = links.Count - 1;
+                    polys[ground] = gp;
+
+                    // off-mesh -> ground
+                    NavigationMesh.dtPoly op = polys[offPolyIndex];
+                    links.Add(new NavigationMesh.dtLink
+                    {
+                        polygonRef = polyRefBase | (uint)ground,
+                        next = op.firstLink,
+                        edge = edge,
+                        side = 0xff,
+                        bmin = 0,
+                        bmax = 0
+                    });
+                    op.firstLink = links.Count - 1;
+                    polys[offPolyIndex] = op;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Ground poly whose polygon contains <paramref name="position"/> in XZ, preferring the
+        /// closest in height; falls back to the nearest vertex within <paramref name="radius"/>.
+        /// </summary>
+        static int FindNearestGroundPoly(
+            NavigationMesh.dtPoly[] polys, List<Vector3> verts, int groundPolyCount, Vector3 position, float radius)
+        {
+            int best = -1;
+            float bestScore = float.MaxValue;
+            float searchSq = Math.Max(radius, 1.0f);
+            searchSq *= searchSq;
+
+            for (int i = 0; i < groundPolyCount && i < polys.Length; i++)
+            {
+                NavigationMesh.dtPoly p = polys[i];
+                if (p.vertCount < 3)
+                    continue;
+
+                bool inside = PointInPolyXZ(position, p, verts);
+                float score = float.MaxValue;
+                for (int v = 0; v < p.vertCount; v++)
+                {
+                    Vector3 pv = verts[p.verts[v]];
+                    float dx = pv.X - position.X, dz = pv.Z - position.Z, dy = pv.Y - position.Y;
+                    float d = dx * dx + dz * dz + dy * dy;
+                    if (d < score) score = d;
+                }
+
+                // Containment wins outright; otherwise fall back on proximity.
+                if (inside) score *= 0.001f;
+                else if (score > searchSq) continue;
+
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    best = i;
+                }
+            }
+            return best;
+        }
+
+        static bool PointInPolyXZ(Vector3 point, NavigationMesh.dtPoly poly, List<Vector3> verts)
+        {
+            bool inside = false;
+            for (int i = 0, j = poly.vertCount - 1; i < poly.vertCount; j = i++)
+            {
+                Vector3 vi = verts[poly.verts[i]];
+                Vector3 vj = verts[poly.verts[j]];
+                if (((vi.Z > point.Z) != (vj.Z > point.Z)) &&
+                    (point.X < (vj.X - vi.X) * (point.Z - vi.Z) / (vj.Z - vi.Z) + vi.X))
+                    inside = !inside;
+            }
+            return inside;
+        }
+
+        /// <summary>
+        /// Grow the link array to leave runtime headroom, returning the pool size to advertise.
+        /// Padding entries are inert (polygonRef 0, next = DT_NULL_LINK).
+        /// </summary>
+        static int PadLinkPool(List<NavigationMesh.dtLink> links)
+        {
+            int used = links.Count;
+            int target = used + used / 2 + 64;
+            for (int i = used; i < target; i++)
+            {
+                links.Add(new NavigationMesh.dtLink
+                {
+                    polygonRef = 0,
+                    next = DT_NULL_LINK,
+                    edge = 0,
+                    side = 0,
+                    bmin = 0,
+                    bmax = 0
+                });
+            }
+            return links.Count;
+        }
+
         static void ApplyHeightLimitedMarkup(
             DtMeshTile tile,
             RcCompactHeightfield chf,
@@ -1151,6 +1301,8 @@ namespace CathodeLib.NavMesh
                     area.SetLinkType(draft.LinkType);
                     area.SetAdmittanceFlags(draft.CharacterClasses);
                     area.SetIsEnabled(draft.OpenOnReset);
+                    //Retail marks off-mesh polys Normal while ground stays Backstage.
+                    area.SetMarkupFlags(NavigationMesh.NavMeshAreaType.Normal);
 
                     var omPoly = new NavigationMesh.dtPoly
                     {
@@ -1162,8 +1314,9 @@ namespace CathodeLib.NavMesh
                     };
                     omPoly.verts[0] = (ushort)vertA;
                     omPoly.verts[1] = (ushort)(vertA + 1);
-                    omPoly.neis[0] = DtDetour.DT_EXT_LINK;
-                    omPoly.neis[1] = DtDetour.DT_EXT_LINK;
+                    //Leave neis at 0. DT_EXT_LINK means "crosses a tile boundary", and Cathode
+                    //levels are a single tile - retail writes 0 here on every off-mesh poly. The
+                    //connection is expressed through the link pool below, not through neis.
                     polyList.Add(omPoly);
                     dstDetail.Add(new NavigationMesh.dtPolyDetail());
 
@@ -1222,6 +1375,8 @@ namespace CathodeLib.NavMesh
                 dstPolys[i] = poly;
             }
 
+            ConnectOffMeshLinks(dstPolys, dstVerts, offMeshConnections, groundPolyCount, polyRefBase, links);
+
             // Rebuild BV tree over kept polys (quantized like Detour CreateBVTree).
             NavigationMesh.dtBVNode[] bvNodes = BuildBvTree(dstPolys, dstVerts, srcHeader.bmin, settings.CellSize);
 
@@ -1235,7 +1390,10 @@ namespace CathodeLib.NavMesh
                 userId = 0,
                 polyCount = dstPolyCount,
                 vertCount = dstVerts.Count,
-                maxLinkCount = links.Count,
+                //The pool has to have room for the links the runtime adds on load (doors opening,
+                //off-mesh connections being re-linked). Retail ships roughly 1.7x the used count;
+                //over-allocating only costs memory, under-allocating silently drops links.
+                maxLinkCount = PadLinkPool(links),
                 detailMeshCount = dstDetail.Count,
                 detailVertCount = dstDetailVerts.Count,
                 detailTriCount = dstDetailTris.Count / 4,

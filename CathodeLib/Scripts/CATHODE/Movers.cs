@@ -393,6 +393,8 @@ namespace CATHODE
                 [MarshalAs(UnmanagedType.ByValArray, SizeConst = 96)]
                 private byte[] buffer = new byte[96];
 
+                public byte[] RawBytes => (byte[])buffer.Clone();
+
                 public T GetAs<T>()
                 {
                     using (MemoryStream stream = new MemoryStream(buffer))
@@ -575,6 +577,16 @@ namespace CATHODE
             {
                 [MarshalAs(UnmanagedType.ByValArray, SizeConst = 84)]
                 private byte[] buffer = new byte[84];
+
+                public byte[] RawBytes => (byte[])buffer.Clone();
+
+                public void SetRawBytes(byte[] value)
+                {
+                    if (value == null) return;
+                    byte[] replacement = new byte[84];
+                    Array.Copy(value, replacement, Math.Min(84, value.Length));
+                    buffer = replacement;
+                }
 
                 public T GetAs<T>()
                 {

@@ -21,6 +21,8 @@ namespace CathodeLib.NavMesh
             public int SampleCount;
             public int SegmentCount;
             public int SlotCount;
+            public int SlotsWithoutLineOfSight;
+            public int SlotsOffNavMesh;
             public string Message;
         }
 
@@ -221,7 +223,15 @@ namespace CathodeLib.NavMesh
                 segments[i].TraversalUID = 0;
             }
             LinkCornersAndColinear(segments, settings);
-            PlaceSlots(segments, settings);
+
+            var aimSolver = new CoverAimSolver(soup, navMesh, settings);
+            PlaceSlots(segments, settings, aimSolver);
+
+            // A segment whose every slot was rejected is not usable cover.
+            segments = RemoveUnoccupiableSegments(segments);
+
+            result.SlotsWithoutLineOfSight = aimSolver.SlotsWithoutLineOfSight;
+            result.SlotsOffNavMesh = aimSolver.SlotsOffNavMesh;
 
             int slotUid = 0;
             int slotCount = 0;
@@ -745,10 +755,19 @@ namespace CathodeLib.NavMesh
             return keep;
         }
 
+        /// <summary>
+        /// Normal flattened onto XZ and renormalised. Scalar for the same reason as
+        /// <see cref="AngleBetweenNormalsDeg"/> - see the note there.
+        /// </summary>
         static Vector3 SafeXZ(Vector3 n)
         {
-            n.Y = 0;
-            return n.LengthSquared() > 1e-8f ? Vector3.Normalize(n) : new Vector3(0, 0, 1);
+            float x = n.X, z = n.Z;
+            float lenSq = x * x + z * z;
+            if (lenSq <= 1e-8f)
+                return new Vector3(0, 0, 1);
+
+            float len = (float)Math.Sqrt(lenSq);
+            return new Vector3(x / len, 0, z / len);
         }
 
         static void GetSoupBounds(CollisionNavMeshSoup soup, out Vector3 bmin, out Vector3 bmax)
@@ -1344,11 +1363,14 @@ namespace CathodeLib.NavMesh
             Vector3 na = SafeXZ(a.Normal);
             Vector3 nb = SafeXZ(b.Normal);
             float dot = Vector3.Dot(na, nb);
-            float ang = AngleBetweenNormalsDeg(a.Normal, b.Normal);
+
+            // Corners are measured as the signed turn from a's normal to b's normal about +Y,
+            // wrapped into 0..360. The unsigned 0..180 angle cannot express the configured
+            // LinkMaxExternalCornerAngle of 285 degrees, so an external corner never matched.
+            float turn = SignedTurnDeg(na, nb);
 
             bool corner = distSq <= cornerDist * cornerDist
-                && ang >= minCornerDeg && ang <= maxCornerDeg
-                && dot <= settings.LinkMaxDotProductForCorner + 0.05f;
+                && turn >= minCornerDeg && turn <= maxCornerDeg;
 
             bool colinear = distSq <= colinearDist * colinearDist
                 && Math.Abs(dot) >= settings.LinkColinearDotProductThreshold;
@@ -1365,18 +1387,78 @@ namespace CathodeLib.NavMesh
             }
         }
 
+        /// <summary>
+        /// Signed turn from <paramref name="from"/> to <paramref name="to"/> about +Y, in degrees
+        /// wrapped to 0..360. Distinguishes a convex corner from a concave one, which the unsigned
+        /// angle cannot.
+        /// </summary>
+        static float SignedTurnDeg(Vector3 from, Vector3 to)
+        {
+            float dot = from.X * to.X + from.Z * to.Z;
+            float cross = from.Z * to.X - from.X * to.Z;
+            float deg = (float)(Math.Atan2(cross, dot) * 180.0 / Math.PI);
+            return deg < 0 ? deg + 360f : deg;
+        }
+
+        /// <summary>
+        /// Angle between two normals projected onto XZ, in degrees.
+        /// </summary>
+        /// <remarks>
+        /// Kept in scalars on purpose. Writing to a field of a by-value <see cref="Vector3"/>
+        /// parameter (<c>a.Y = 0</c>) miscompiles under .NET Framework's RyuJIT and faults with an
+        /// AccessViolationException - which, being a corrupted-state exception, is not catchable
+        /// and takes the process down. The same code runs fine on .NET 8, so it only bites the
+        /// WinForms app. Do not "simplify" this back into Vector3 operations.
+        /// </remarks>
         static float AngleBetweenNormalsDeg(Vector3 a, Vector3 b)
         {
-            a.Y = 0; b.Y = 0;
-            if (a.LengthSquared() < 1e-8f || b.LengthSquared() < 1e-8f)
+            float ax = a.X, az = a.Z;
+            float bx = b.X, bz = b.Z;
+
+            float aLenSq = ax * ax + az * az;
+            float bLenSq = bx * bx + bz * bz;
+            if (aLenSq < 1e-8f || bLenSq < 1e-8f)
                 return 0;
-            a = Vector3.Normalize(a);
-            b = Vector3.Normalize(b);
-            float dot = Math.Max(-1f, Math.Min(1f, Vector3.Dot(a, b)));
+
+            float dot = (ax * bx + az * bz) / (float)Math.Sqrt(aLenSq * bLenSq);
+            dot = Math.Max(-1f, Math.Min(1f, dot));
             return (float)(Math.Acos(dot) * 180.0 / Math.PI);
         }
 
-        static void PlaceSlots(List<Cover.CoverSegment> segments, CoverBakeSettings settings)
+        /// <summary>
+        /// Drop segments that ended up with no occupancy slots, then renumber UIDs and rewrite the
+        /// corner / colinear links through an old-to-new map so surviving links are preserved.
+        /// </summary>
+        static List<Cover.CoverSegment> RemoveUnoccupiableSegments(List<Cover.CoverSegment> segments)
+        {
+            var kept = new List<Cover.CoverSegment>(segments.Count);
+            foreach (var s in segments)
+                if (s.OccupancySlots.Count > 0) kept.Add(s);
+
+            if (kept.Count == segments.Count)
+                return segments;
+
+            // Map the UIDs the linking pass used onto the UIDs we are about to assign.
+            var remap = new Dictionary<int, int>(kept.Count);
+            for (int i = 0; i < kept.Count; i++)
+                remap[kept[i].UID] = i + 1;
+
+            int Remap(int uid) => uid != 0 && remap.TryGetValue(uid, out int n) ? n : 0;
+
+            foreach (var s in kept)
+            {
+                s.LeftCornerUID = Remap(s.LeftCornerUID);
+                s.RightCornerUID = Remap(s.RightCornerUID);
+                s.LeftColinearUID = Remap(s.LeftColinearUID);
+                s.RightColinearUID = Remap(s.RightColinearUID);
+            }
+            for (int i = 0; i < kept.Count; i++)
+                kept[i].UID = i + 1;
+
+            return kept;
+        }
+
+        static void PlaceSlots(List<Cover.CoverSegment> segments, CoverBakeSettings settings, CoverAimSolver aimSolver = null)
         {
             float edgePad = settings.OccupancyMinSlotDistanceFromEdge;
             float spacing = settings.OccupancyDistanceBetweenSlots;
@@ -1415,16 +1497,38 @@ namespace CathodeLib.NavMesh
                 }
 
                 bool low = seg.Height < 1.2f;
+                Vector3 tangent = d / len;
+                Vector3 normal = SafeXZ(seg.Normal);
+
                 foreach (float pct in pcts)
                 {
-                    seg.OccupancySlots.Add(new Cover.CoverSegment.CoverSlot
+                    var slot = new Cover.CoverSegment.CoverSlot
                     {
                         PctAlongCoverSegment = pct,
                         Flags = low ? 24580 : 16385,
-                        // Placeholder aim cones (clear-aim ray bake not implemented yet).
+                        // Fallback cones, overwritten below when a solver is available.
                         ClearAimAnglesHorizontal = low ? 0x00FF : unchecked((short)0x800F),
                         ClearAimAnglesVertical = low ? 0x00690000 : unchecked(0x59000000)
-                    });
+                    };
+
+                    if (aimSolver != null)
+                    {
+                        Vector3 slotPos = seg.Left + d * pct;
+                        // Where the occupant actually stands: behind the cover line.
+                        Vector3 stand = slotPos - normal * settings.DistanceFromGeometry;
+
+                        if (aimSolver.HasNavMesh && !aimSolver.IsOnNavMesh(stand, settings.NavMeshProximity))
+                        {
+                            aimSolver.NoteSlotOffNavMesh();
+                            continue;
+                        }
+
+                        if (!aimSolver.SolveSlot(slot, slotPos, normal, tangent,
+                                                 len * pct, len * (1f - pct), seg.Height))
+                            continue;
+                    }
+
+                    seg.OccupancySlots.Add(slot);
                 }
             }
         }

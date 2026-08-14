@@ -285,7 +285,7 @@ namespace CathodeLib
             );
 
             Parallel.Invoke(
-                () => { RadiosityInstanceMap = new RadiosityInstanceMap(renderable + "RADIOSITY_INSTANCE_MAP.TXT"); OnLoadTick?.Invoke(); },
+                () => { RadiosityInstanceMap = new RadiosityInstanceMap(renderable + "RADIOSITY_INSTANCE_MAP.TXT", Resources); OnLoadTick?.Invoke(); },
                 () => { RadiosityCollisionMap = new RadiosityCollisionMap(world + "RADIOSITY_COLLISION_MAPPING.BIN"); OnLoadTick?.Invoke(); },
                 () => { AlphaLight = new AlphaLightLevel(world + "ALPHALIGHT_LEVEL.BIN"); OnLoadTick?.Invoke(); },
                 () => { AccessorySets = new CharacterAccessorySets(world + "CHARACTERACCESSORYSETS.BIN"); OnLoadTick?.Invoke(); },
@@ -309,7 +309,7 @@ namespace CathodeLib
             Commands = new Commands(world + "COMMANDS" + (compressed ? ".BIN.GZ" : File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements, PhysicsHKX, Textures, _global?.Textures); OnLoadTick?.Invoke();
 
             //todo - perhaps can do parallel. sort out order once working.
-            RadiosityRuntime = new RadiosityRuntime(renderable + "RADIOSITY_RUNTIME.BIN"); OnLoadTick?.Invoke();
+            RadiosityRuntime = new RadiosityRuntime(renderable + "RADIOSITY_RUNTIME.BIN", Resources); OnLoadTick?.Invoke();
 
             StateResources.Add(new State());
             using (BinaryReader reader = new BinaryReader(File.OpenRead(world + "EXCLUSIVE_MASTER_RESOURCE_INDICES")))
@@ -380,10 +380,10 @@ namespace CathodeLib
         /// Save all data for the level
         /// </summary>
 #if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
-        public void Save(bool doInstancing = false, NavMesh.NavMeshBakeSettings navMeshSettings = null, NavMesh.CoverBakeSettings coverSettings = null)
+        public void Save(bool doInstancing = false, NavMesh.NavMeshBakeSettings navMeshSettings = null, NavMesh.CoverBakeSettings coverSettings = null, Radiosity.RadiosityBakeSettings radiositySettings = null)
         {
             if (doInstancing)
-                new Instancing(this, navMeshSettings, coverSettings);
+                new Instancing(this, navMeshSettings, coverSettings, radiositySettings);
 #else
         public void Save()
         {
@@ -419,8 +419,6 @@ namespace CathodeLib
                 () => { PhysicsHKX?.Save(); OnSaveTick?.Invoke(); },
                 () => { PhysicsHKX64?.Save(); OnSaveTick?.Invoke(); },
                 () => { CollisionMaps.Save(); OnSaveTick?.Invoke(); },
-                () => { RadiosityInstanceMap.Save(); OnSaveTick?.Invoke(); },
-                () => { RadiosityCollisionMap.Save(); OnSaveTick?.Invoke(); },
                 () => { AlphaLight.Save(); OnSaveTick?.Invoke(); },
                 () => { AccessorySets.Save(); OnSaveTick?.Invoke(); },
                 () => { EnvironmentAnimations.Save(); OnSaveTick?.Invoke(); },
@@ -437,8 +435,14 @@ namespace CathodeLib
 
             Commands.Save(); OnSaveTick?.Invoke();
 
-            //todo - sort out order when implemented
-            RadiosityRuntime?.Save(); OnSaveTick?.Invoke();
+            if (radiositySettings != null)
+            {
+                Parallel.Invoke(
+                    () => { RadiosityInstanceMap.Save(); OnSaveTick?.Invoke(); },
+                    () => { RadiosityCollisionMap.Save(); OnSaveTick?.Invoke(); },
+                    () => { RadiosityRuntime?.Save(); OnSaveTick?.Invoke(); }
+                );
+            }
 
             Parallel.Invoke(
                 () => { GalaxyItems.Save(); OnSaveTick?.Invoke(); },

@@ -5,6 +5,7 @@ using CATHODE.Scripting.Internal;
 using CATHODE.ShaderTypes;
 using CathodeLib.NavMesh;
 using CathodeLib.ObjectExtensions;
+using CathodeLib.Radiosity;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -2138,6 +2139,8 @@ namespace CathodeLib
                     return (T)(object)(int)f;
                 if (typeof(T) == typeof(string))
                     return (T)(object)f.ToString();
+                if (typeof(T) == typeof(Vector3))
+                    return (T)(object)new Vector3(f, f, f);
             }
             else if (valueType == typeof(string))
             {
@@ -2238,7 +2241,7 @@ namespace CathodeLib
         public Matrix4x4 CalculateWorldTransformMatrix()
         {
             Transform localTransform = GetAs<Transform>(ShortGuids.position);
-            Matrix4x4 localMatrix = localTransform.AsMatrix();
+            Matrix4x4 localMatrix = localTransform?.AsMatrix() ?? Matrix4x4.Identity;
             if (ParentCompositeInstanceEntity != null)
             {
                 Matrix4x4 parentWorldMatrix = ParentCompositeInstanceEntity.CalculateWorldTransformMatrix();
@@ -2375,9 +2378,6 @@ namespace CathodeLib
         private readonly List<StateProperties> _states = new List<StateProperties>();
         private readonly List<string> _stateNotes = new List<string>();
 
-        public IReadOnlyList<StateProperties> States => _states;
-        public IReadOnlyList<string> StateNotes => _stateNotes;
-
         public sealed class StateProperties
         {
             public int StateIndex;
@@ -2392,7 +2392,30 @@ namespace CathodeLib
             public string Summary;
         }
 
-        public Instancing(Level level, NavMeshBakeSettings navMeshSettings = null, CoverBakeSettings coverSettings = null)
+        public IReadOnlyList<StateProperties> States => _states;
+        public IReadOnlyList<string> StateNotes => _stateNotes;
+
+        public RenderableElementValidator.Report RenderableValidation => _renderableValidation;
+        private RenderableElementValidator.Report _renderableValidation = new RenderableElementValidator.Report();
+
+        public IReadOnlyList<string> BakeWarnings => _bakeWarnings;
+        private readonly List<string> _bakeWarnings = new List<string>();
+
+        private void RunOptionalBake(string stage, Action bake)
+        {
+            try
+            {
+                bake();
+            }
+            catch (Exception e)
+            {
+                string message = stage + ": " + e.Message;
+                _bakeWarnings.Add(message);
+                Console.WriteLine("WARNING: skipped " + message);
+            }
+        }
+
+        public Instancing(Level level, NavMeshBakeSettings navMeshSettings = null, CoverBakeSettings coverSettings = null, RadiosityBakeSettings radiositySettings = null)
         {
             _level = level;
 
@@ -2400,18 +2423,47 @@ namespace CathodeLib
             ProcessInstances();
             BuildStateProperties();
 
-            NavMeshBaker.BakeLevel(level, this, navMeshSettings);
-            CoverBaker.BakeLevel(level, this, coverSettings);
+            RunOptionalBake("navmesh", () => NavMeshBaker.BakeLevel(level, this, navMeshSettings));
+            RunOptionalBake("cover", () => CoverBaker.BakeLevel(level, this, coverSettings));
 
-            //The following things reference MVR but we don't support updating them yet, so just clear them out for now
-            File.WriteAllBytes(_level.Filepath + "/WORLD/RADIOSITY_COLLISION_MAPPING.BIN", new byte[4]);
-            File.WriteAllBytes(_level.Filepath + "/RENDERABLE/RADIOSITY_RUNTIME.BIN", new byte[0]);
-            File.Delete(_level.Filepath + "/RENDERABLE/RADIOSITY_INSTANCE_MAP.TXT");
-            if (_level.Patched)
+            _renderableValidation = RenderableElementValidator.Validate(level);
+
+            if (radiositySettings != null)
             {
-                File.WriteAllBytes(_level.Filepath.TrimEnd('/').TrimEnd('\\') + "_PATCH/WORLD/RADIOSITY_COLLISION_MAPPING.BIN", new byte[4]);
-                File.WriteAllBytes(_level.Filepath.TrimEnd('/').TrimEnd('\\') + "_PATCH/RENDERABLE/RADIOSITY_RUNTIME.BIN", new byte[0]);
-                File.Delete(_level.Filepath.TrimEnd('/').TrimEnd('\\') + "_PATCH/RENDERABLE/RADIOSITY_INSTANCE_MAP.TXT");
+                RadiosityBaker.BakeLevel(level, this, radiositySettings);
+
+                if (_level.Patched)
+                    ClearRadiosityPatch();
+            }
+            else
+            {
+                ClearRadiosity();
+            }
+        }
+
+        private void ClearRadiosity()
+        {
+            ClearRadiosityAt(_level.Filepath);
+            if (_level.Patched)
+                ClearRadiosityPatch();
+        }
+
+        private void ClearRadiosityPatch()
+        {
+            ClearRadiosityAt(_level.Filepath.TrimEnd('/').TrimEnd('\\') + "_PATCH");
+        }
+
+        private static void ClearRadiosityAt(string root)
+        {
+            string world = root + "/WORLD/";
+            if (Directory.Exists(world))
+                File.WriteAllBytes(world + "RADIOSITY_COLLISION_MAPPING.BIN", new byte[4]);
+
+            string renderable = root + "/RENDERABLE/";
+            if (Directory.Exists(renderable))
+            {
+                File.WriteAllBytes(renderable + "RADIOSITY_RUNTIME.BIN", new byte[0]);
+                File.Delete(renderable + "RADIOSITY_INSTANCE_MAP.TXT");
             }
         }
 

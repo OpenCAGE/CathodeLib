@@ -56,6 +56,7 @@
     <Compile Include="..\DotRecast\src\DotRecast.Core\**\*.cs" Exclude="..\DotRecast\src\DotRecast.Core\bin\**;..\DotRecast\src\DotRecast.Core\obj\**" Link="Dependencies\DotRecast\Core\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\DotRecast\src\DotRecast.Recast\**\*.cs" Exclude="..\DotRecast\src\DotRecast.Recast\bin\**;..\DotRecast\src\DotRecast.Recast\obj\**" Link="Dependencies\DotRecast\Recast\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\DotRecast\src\DotRecast.Detour\**\*.cs" Exclude="..\DotRecast\src\DotRecast.Detour\bin\**;..\DotRecast\src\DotRecast.Detour\obj\**" Link="Dependencies\DotRecast\Detour\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\NanoRT\src\NanoRT\**\*.cs" Exclude="..\NanoRT\src\NanoRT\bin\**;..\NanoRT\src\NanoRT\obj\**" Link="Dependencies\NanoRT\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

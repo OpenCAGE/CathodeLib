@@ -1,4 +1,5 @@
 ﻿using CathodeLib;
+using CathodeLib.Properties;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -27,9 +28,25 @@ namespace CATHODE
 
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
 
-        public RadiosityRuntime(string path) : base(path) { }
-        public RadiosityRuntime(MemoryStream stream, string path = "") : base(stream, path) { }
-        public RadiosityRuntime(byte[] data, string path = "") : base(data, path) { }
+        private Resources _resources;
+
+        public RadiosityRuntime(string path, Resources resources) : base(path)
+        {
+            _resources = resources;
+        }
+        public RadiosityRuntime(MemoryStream stream, Resources resources, string path = "") : base(stream, path)
+        {
+            _resources = resources;
+        }
+        public RadiosityRuntime(byte[] data, Resources resources, string path = "") : base(data, path)
+        {
+            _resources = resources;
+        }
+
+        public void ClearReferences()
+        {
+            _resources = null;
+        }
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
@@ -97,6 +114,8 @@ namespace CATHODE
                 Utilities.Align(writer);
                 Utilities.Write(writer, InfluenceFixups);
 
+                ResolveSurfaceLightEntities();
+
                 int[] sliceOffsets = new int[Slices.Count];
                 for (int i = 0; i < Slices.Count; i++)
                 {
@@ -110,6 +129,33 @@ namespace CATHODE
                 writer.BaseStream.Position = endPos;
             }
             return true;
+        }
+
+        private void ResolveSurfaceLightEntities()
+        {
+            if (_resources == null)
+                return;
+
+            foreach (RuntimeDataSlice slice in Slices)
+            {
+                ResolveSlice(slice.SurfaceLights.LightSlices, slice.SurfaceLights.LightSliceEntities);
+                ResolveSlice(slice.LiveSurfaceLights, slice.LiveSurfaceLightEntities);
+            }
+
+            void ResolveSlice(List<RuntimeSurfaceLights.LightSlice> lightSlices, List<Resources.Resource> entities)
+            {
+                if (entities == null || entities.Count != lightSlices.Count)
+                    return;
+
+                for (int i = 0; i < lightSlices.Count; i++)
+                {
+                    if (entities[i] == null)
+                        continue;
+                    RuntimeSurfaceLights.LightSlice ls = lightSlices[i];
+                    ls.EntityInstanceIndex = _resources.GetWriteIndex(entities[i]);
+                    lightSlices[i] = ls;
+                }
+            }
         }
         #endregion
 
@@ -137,6 +183,12 @@ namespace CATHODE
             public TiledScatterData TiledScatter = new TiledScatterData();
             public TiledSurfaceLights TiledSurfaceLights = new TiledSurfaceLights();
             public List<RuntimeSurfaceLights.LightSlice> LiveSurfaceLights = new List<RuntimeSurfaceLights.LightSlice>();
+
+            /// <summary>
+            /// Optional, parallel to <see cref="LiveSurfaceLights"/>. Set by the baker so
+            /// EntityInstanceIndex can be resolved on save. Ignored when null or mismatched.
+            /// </summary>
+            public List<Resources.Resource> LiveSurfaceLightEntities = null;
             public DoorInfo Doors = new DoorInfo();
             public TiledDoorInfo TiledDoors = new TiledDoorInfo();
 
@@ -472,6 +524,12 @@ namespace CATHODE
         {
             public List<Light> Lights = new List<Light>();
             public List<LightSlice> LightSlices = new List<LightSlice>();
+
+            /// <summary>
+            /// Optional, parallel to <see cref="LightSlices"/>. Set by the baker so
+            /// EntityInstanceIndex can be resolved on save. Ignored when null or mismatched.
+            /// </summary>
+            public List<Resources.Resource> LightSliceEntities = null;
 
             public RuntimeSurfaceLights() { }
             public RuntimeSurfaceLights(BinaryReader reader) { Read(reader); }
