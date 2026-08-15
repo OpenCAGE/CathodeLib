@@ -2562,6 +2562,7 @@ namespace CathodeLib
             _level.Resources.Entries.Clear();
             _level.PhysicsMaps.Entries.Clear();
             _level.RenderableElements.Entries.Clear();
+            _level.SoundEnvironmentData.Entries.Clear();
             while (!_exclusiveMasters.IsEmpty)
                 _exclusiveMasters.TryTake(out _);
 
@@ -4754,7 +4755,8 @@ namespace CathodeLib
                     }
                     break;
                 case FunctionType.SoundEnvironmentMarker:
-
+                    if (entity.Strings.Has(ShortGuids.reverb_name))
+                        _level.SoundEnvironmentData.Entries.Add(entity.Strings.Get(ShortGuids.reverb_name));
                     break;
                 case FunctionType.SoundLevelInitialiser:
 

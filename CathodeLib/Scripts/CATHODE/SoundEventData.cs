@@ -15,7 +15,7 @@ namespace CATHODE
     /// </summary>
     public class SoundEventData : CathodeFile
     {
-        //This stores all available sound events within soundbanks, along with their associated max attenuation and metadata (parameters)
+        // note - this file is the same across all levels, so does not need to be regenerated unless adding in new sounds
 
         public List<Soundbank> Entries = new List<Soundbank>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;

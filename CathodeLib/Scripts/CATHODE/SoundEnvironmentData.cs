@@ -15,10 +15,33 @@ namespace CATHODE
     /// </summary>
     public class SoundEnvironmentData : CathodeFile
     {
-        //This stores the reverbs that are used within the level. Similar to SoundLoadZones, these can be stored with spatial zones, but this feature is unused.
-
-        public List<string> Entries = new List<string>();
+        public HashSet<string> Entries = new HashSet<string>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
+
+        //These are all the possible reverb names. Each level only uses a subset of them, defined by SoundEnvironmentMarker entities.
+        public readonly string[] PossibleEntries = new string[20]
+        {
+            "roomverb_corridor_padded",
+            "roomverb_medium_room",
+            "roomverb_detachable_lab",
+            "roomverb_vent",
+            "roomverb_corridor",
+            "Tannoy_Verb",
+            "Warehouse_Reverb",
+            "roomverb_huge_room",
+            "roomverb_Ladder_shaft",
+            "Locker_Reverb",
+            "roomverb_large_room",
+            "roomverb_multistory_largeroom",
+            "roomverb_long_hallway",
+            "roomverb_bathroom",
+            "OutSide_EVA_SUIT",
+            "roomverb_LV426_MainRoom",
+            "Planetview_Room_Reverb_01",
+            "Planetview_Room_Reverb",
+            "roomverb_staircase",
+            "roomverb_small_room"
+        };
 
         public SoundEnvironmentData(string path) : base(path) { }
         public SoundEnvironmentData(MemoryStream stream, string path = "") : base(stream, path) { }
@@ -56,10 +79,10 @@ namespace CATHODE
                 writer.BaseStream.SetLength(0);
                 writer.Write(2);
                 writer.Write(Entries.Count);
-                for (int i = 0; i < Entries.Count; i++)
+                foreach (string reverb in Entries)
                 {
-                    Utilities.WriteString(Entries[i], writer);
-                    writer.Write(new byte[100 - Entries[i].Length]);
+                    Utilities.WriteString(reverb, writer);
+                    writer.Write(new byte[100 - reverb.Length]);
                 }
                 writer.Write(0);
             }

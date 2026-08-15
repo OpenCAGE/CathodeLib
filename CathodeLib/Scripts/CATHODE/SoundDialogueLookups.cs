@@ -15,7 +15,7 @@ namespace CATHODE
     /// </summary>
     public class SoundDialogueLookups : CathodeFile
     {
-        //This stores the associated sound and animation hashes for soundbank entries
+        // note - this file is the same across all levels, so does not need to be regenerated unless adding in new sounds
 
         public List<Soundbank> Entries = new List<Soundbank>();
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE | Implementation.CREATE;
