@@ -101,13 +101,18 @@ namespace CathodeLib
             public NavigationMesh NavMesh;
             public SpottingPositions SpottingPositions;
             public SpottingPositions CrawlSpaceSpottingPositions;
+            public AssaultPositions AssaultPositions;
 
             ~State()
             {
                 ExclusiveMaster = null;
                 Resource = null;
+
                 Cover = null;
                 NavMesh = null;
+                SpottingPositions = null;
+                CrawlSpaceSpottingPositions = null;
+                AssaultPositions = null;
             }
         }
         public List<State> StateResources = new List<State>(); //State 0 loaded by default
@@ -332,11 +337,11 @@ namespace CathodeLib
             {
                 string statePath = world + "STATE_" + i + "/";
 
-                //ASSAULT_POSITIONS
                 StateResources[i].Cover = new Cover(statePath + "COVER");
                 StateResources[i].NavMesh = new NavigationMesh(statePath + "NAV_MESH");
                 StateResources[i].SpottingPositions = new SpottingPositions(statePath + "SPOTTING_POSITIONS");
                 StateResources[i].CrawlSpaceSpottingPositions = new SpottingPositions(statePath + "CRAWL_SPACE_SPOTTING_POSITIONS");
+                StateResources[i].AssaultPositions = new AssaultPositions(statePath + "ASSAULT_POSITIONS");
             }
             OnLoadTick?.Invoke();
 
@@ -463,11 +468,12 @@ namespace CathodeLib
             {
                 string statePath = world + "STATE_" + i + "/";
 
-                //ASSAULT_POSITIONS
                 StateResources[i].Cover.Save(statePath + "COVER");
                 StateResources[i].NavMesh?.Save(statePath + "NAV_MESH");
                 StateResources[i].SpottingPositions.Save(statePath + "SPOTTING_POSITIONS");
                 StateResources[i].CrawlSpaceSpottingPositions.Save(statePath + "CRAWL_SPACE_SPOTTING_POSITIONS");
+                StateResources[i].AssaultPositions.Save(statePath + "ASSAULT_POSITIONS");
+
                 File.WriteAllBytes(statePath + "TRAVERSAL", new byte[] { 0x74, 0x72, 0x61, 0x76, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x3F, 0x00, 0x00 });
             });
             OnSaveTick?.Invoke();
