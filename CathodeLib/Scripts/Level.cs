@@ -99,6 +99,8 @@ namespace CathodeLib
             //Generated resources within this state
             public Cover Cover;
             public NavigationMesh NavMesh;
+            public SpottingPositions SpottingPositions;
+            public SpottingPositions CrawlSpaceSpottingPositions;
 
             ~State()
             {
@@ -332,9 +334,9 @@ namespace CathodeLib
 
                 //ASSAULT_POSITIONS
                 StateResources[i].Cover = new Cover(statePath + "COVER");
-                //CRAWL_SPACE_SPOTTING_POSITIONS
                 StateResources[i].NavMesh = new NavigationMesh(statePath + "NAV_MESH");
-                //SPOTTING_POSITIONS
+                StateResources[i].SpottingPositions = new SpottingPositions(statePath + "SPOTTING_POSITIONS");
+                StateResources[i].CrawlSpaceSpottingPositions = new SpottingPositions(statePath + "CRAWL_SPACE_SPOTTING_POSITIONS");
             }
             OnLoadTick?.Invoke();
 
@@ -463,9 +465,9 @@ namespace CathodeLib
 
                 //ASSAULT_POSITIONS
                 StateResources[i].Cover.Save(statePath + "COVER");
-                //CRAWL_SPACE_SPOTTING_POSITIONS
                 StateResources[i].NavMesh?.Save(statePath + "NAV_MESH");
-                //SPOTTING_POSITIONS
+                StateResources[i].SpottingPositions.Save(statePath + "SPOTTING_POSITIONS");
+                StateResources[i].CrawlSpaceSpottingPositions.Save(statePath + "CRAWL_SPACE_SPOTTING_POSITIONS");
                 File.WriteAllBytes(statePath + "TRAVERSAL", new byte[] { 0x74, 0x72, 0x61, 0x76, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x3F, 0x00, 0x00 });
             });
             OnSaveTick?.Invoke();
