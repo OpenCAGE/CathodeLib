@@ -106,6 +106,9 @@ namespace CathodeLib.NavMesh
 
             var geom = new RcSampleInputGeomProvider(soup.Verts, soup.Tris);
             AddExclusionConvexVolumes(geom, soup.ExclusionAreas);
+            // Barriers are carved into the polygon layout rather than stamped over it, so their
+            // flags land on the footprint the designer drew. Has to happen before the build.
+            int[] barrierRecastAreas = AddBarrierConvexVolumes(geom, soup.Barriers, settings);
 
             RcVec3f bmin = geom.GetMeshBoundsMin();
             RcVec3f bmax = geom.GetMeshBoundsMax();
@@ -241,7 +244,8 @@ namespace CathodeLib.NavMesh
 
             int stamped = 0;
             int barriersWithCoverage = 0;
-            NavigationMesh.dt_area_t[] polyAreas = BuildPolyAreas(tile, soup.Barriers, settings, keep, out stamped, out barriersWithCoverage);
+            NavigationMesh.dt_area_t[] polyAreas = BuildPolyAreas(
+                tile, soup.Barriers, barrierRecastAreas, settings, keep, out stamped, out barriersWithCoverage);
 
             int crouchMarked = 0, deepCrouchMarked = 0;
             ApplyHeightLimitedMarkup(
@@ -290,7 +294,11 @@ namespace CathodeLib.NavMesh
             {
                 message = $"Filter removed {culled} polys (exclusion={exclusionCulled}, elevatedStrip={elevatedCulled}).";
             }
-            message += $" Barriers={soup.Barriers?.Count ?? 0} stampedPolys={stamped} covered={barriersWithCoverage}."
+            int carvedBarriers = 0;
+            for (int i = 0; i < barrierRecastAreas.Length; i++)
+                if (barrierRecastAreas[i] > 0) carvedBarriers++;
+
+            message += $" Barriers={soup.Barriers?.Count ?? 0} carved={carvedBarriers} stampedPolys={stamped} covered={barriersWithCoverage}."
                 + $" Platforms={soup.WalkablePlatforms?.Count ?? 0} exclusions={soup.ExclusionAreas?.Count ?? 0}."
                 + $" HeightLimited crouch={crouchMarked} deepCrouch={deepCrouchMarked}.";
 
@@ -334,15 +342,141 @@ namespace CathodeLib.NavMesh
             {
                 CollisionNavMeshSoup.AuthoringBoxVolume box = exclusions[i];
                 CollisionNavMeshSoup.OrientedBoxAabb(box.Centre, box.Rotation, box.HalfExtents, out Vector3 amin, out Vector3 amax);
-                float[] verts =
-                {
-                    amin.X, 0f, amin.Z,
-                    amax.X, 0f, amin.Z,
-                    amax.X, 0f, amax.Z,
-                    amin.X, 0f, amax.Z
-                };
-                geom.AddConvexVolume(verts, amin.Y, amax.Y, nullArea);
+                // The rotated footprint, not its axis-aligned bound - a volume turned 45 degrees
+                // would otherwise carve away twice the floor the designer drew.
+                geom.AddConvexVolume(FootprintXZ(box.Centre, box.Rotation, box.HalfExtents), amin.Y, amax.Y, nullArea);
             }
+        }
+
+        // Recast area ids are 6 bits (RcAreaModification.RC_AREA_FLAGS_MASK). 0 means unwalkable
+        // and RC_WALKABLE_AREA means plain floor, so barriers share what is left.
+        const int FirstBarrierRecastArea = 1;
+        const int LastBarrierRecastArea = RcRecast.RC_WALKABLE_AREA - 1;
+
+        /// <summary>
+        /// Give each barrier its own Recast area id and add its footprint to the geometry as a
+        /// convex volume, so the contour builder cuts the navmesh along the barrier's own outline.
+        /// Returns the id chosen per barrier, or -1 for one that could not be given a distinct id.
+        /// </summary>
+        /// <remarks>
+        /// This is what makes a barrier's flags apply to the shape the designer drew rather than to
+        /// whichever polygons happened to overlap it. Recast never lets a region span two area ids
+        /// (see RcRegions.CanMergeWithRegion), so a 1x1 barrier produces a 1x1 hole in the polygon
+        /// layout and the area stamp lands on exactly those polys.
+        ///
+        /// There are only 62 usable ids and levels carry more barriers than that - SCI_Hub has 77 -
+        /// so ids are reused between barriers whose padded bounds do not overlap. Same-id barriers
+        /// are therefore too far apart to end up in one region, and the stamping pass can tell them
+        /// apart by position.
+        /// </remarks>
+        static int[] AddBarrierConvexVolumes(
+            RcSampleInputGeomProvider geom,
+            List<CollisionNavMeshSoup.BarrierVolume> barriers,
+            NavMeshBakeSettings settings)
+        {
+            if (barriers == null || barriers.Count == 0)
+                return Array.Empty<int>();
+
+            int count = barriers.Count;
+            var mins = new Vector3[count];
+            var maxs = new Vector3[count];
+            var padded = new Vector3(Math.Max(0f, settings.BarrierAreaIdSeparation));
+            for (int i = 0; i < count; i++)
+            {
+                CollisionNavMeshSoup.BarrierVolume b = barriers[i];
+                CollisionNavMeshSoup.OrientedBoxAabb(b.Centre, b.Rotation, b.HalfExtents, out mins[i], out maxs[i]);
+                mins[i] -= padded;
+                maxs[i] += padded;
+            }
+
+            var areas = new int[count];
+            var taken = new HashSet<int>();
+            for (int i = 0; i < count; i++)
+            {
+                taken.Clear();
+                for (int j = 0; j < i; j++)
+                {
+                    if (areas[j] <= 0)
+                        continue;
+                    if (maxs[i].X < mins[j].X || mins[i].X > maxs[j].X
+                        || maxs[i].Y < mins[j].Y || mins[i].Y > maxs[j].Y
+                        || maxs[i].Z < mins[j].Z || mins[i].Z > maxs[j].Z)
+                        continue;
+                    taken.Add(areas[j]);
+                }
+
+                areas[i] = -1;
+                for (int a = FirstBarrierRecastArea; a <= LastBarrierRecastArea; a++)
+                {
+                    if (taken.Contains(a))
+                        continue;
+                    areas[i] = a;
+                    break;
+                }
+                if (areas[i] < 0)
+                    continue;
+
+                CollisionNavMeshSoup.BarrierVolume barrier = barriers[i];
+                CollisionNavMeshSoup.OrientedBoxAabb(
+                    barrier.Centre, barrier.Rotation, barrier.HalfExtents, out Vector3 bmin, out Vector3 bmax);
+                // Reach a little below the box: a barrier authored flush with the floor would
+                // otherwise miss the floor span it is meant to cover once heights are quantised.
+                geom.AddConvexVolume(
+                    FootprintXZ(barrier.Centre, barrier.Rotation, barrier.HalfExtents),
+                    bmin.Y - settings.WalkableClimb,
+                    bmax.Y,
+                    new RcAreaModification(areas[i]));
+            }
+            return areas;
+        }
+
+        /// <summary>The oriented box's footprint on the ground, as x/y/z triples with y unused.</summary>
+        static float[] FootprintXZ(Vector3 centre, Quaternion rotation, Vector3 halfExtents)
+        {
+            var corners = new Vector2[8];
+            for (int corner = 0; corner < 8; corner++)
+            {
+                var local = new Vector3(
+                    (corner & 1) == 0 ? -halfExtents.X : halfExtents.X,
+                    (corner & 2) == 0 ? -halfExtents.Y : halfExtents.Y,
+                    (corner & 4) == 0 ? -halfExtents.Z : halfExtents.Z);
+                Vector3 world = centre + Vector3.Transform(local, rotation);
+                corners[corner] = new Vector2(world.X, world.Z);
+            }
+
+            List<Vector2> hull = ConvexHullXZ(corners);
+            var verts = new float[hull.Count * 3];
+            for (int i = 0; i < hull.Count; i++)
+            {
+                verts[i * 3 + 0] = hull[i].X;
+                verts[i * 3 + 1] = 0f;
+                verts[i * 3 + 2] = hull[i].Y;
+            }
+            return verts;
+        }
+
+        /// <summary>Andrew's monotone chain, counter-clockwise, over a handful of points.</summary>
+        static List<Vector2> ConvexHullXZ(Vector2[] points)
+        {
+            Array.Sort(points, (a, b) => a.X != b.X ? a.X.CompareTo(b.X) : a.Y.CompareTo(b.Y));
+
+            var hull = new List<Vector2>(points.Length + 1);
+            for (int pass = 0; pass < 2; pass++)
+            {
+                int start = hull.Count;
+                for (int i = 0; i < points.Length; i++)
+                {
+                    Vector2 p = pass == 0 ? points[i] : points[points.Length - 1 - i];
+                    while (hull.Count - start >= 2 && Cross(hull[hull.Count - 2], hull[hull.Count - 1], p) <= 0f)
+                        hull.RemoveAt(hull.Count - 1);
+                    hull.Add(p);
+                }
+                hull.RemoveAt(hull.Count - 1);
+            }
+            return hull;
+
+            float Cross(Vector2 o, Vector2 a, Vector2 b) =>
+                (a.X - o.X) * (b.Y - o.Y) - (a.Y - o.Y) * (b.X - o.X);
         }
 
         static int CullPolysInsideExclusions(
@@ -375,9 +509,19 @@ namespace CathodeLib.NavMesh
             return culled;
         }
 
+        /// <summary>
+        /// Stamp each barrier's id and admittance onto the polygons Recast carved out for it.
+        /// </summary>
+        /// <remarks>
+        /// The polygons come pre-cut to the barrier footprint by
+        /// <see cref="AddBarrierConvexVolumes"/>, so this is a lookup by area id rather than a
+        /// geometric test. Only barriers that could not be given an id of their own still go
+        /// through the old "does the poly overlap the volume" path, which over-stamps.
+        /// </remarks>
         static NavigationMesh.dt_area_t[] BuildPolyAreas(
             DtMeshTile tile,
             List<CollisionNavMeshSoup.BarrierVolume> barriers,
+            int[] barrierRecastAreas,
             NavMeshBakeSettings settings,
             bool[] keep,
             out int stampedCount,
@@ -395,6 +539,21 @@ namespace CathodeLib.NavMesh
             if (barriers == null || barriers.Count == 0)
                 return areas;
 
+            var byRecastArea = new Dictionary<int, List<int>>();
+            var uncarved = new List<int>();
+            for (int b = 0; b < barriers.Count; b++)
+            {
+                int recastArea = barrierRecastAreas != null && b < barrierRecastAreas.Length ? barrierRecastAreas[b] : -1;
+                if (recastArea <= 0)
+                {
+                    uncarved.Add(b);
+                    continue;
+                }
+                if (!byRecastArea.TryGetValue(recastArea, out List<int> sharing))
+                    byRecastArea[recastArea] = sharing = new List<int>();
+                sharing.Add(b);
+            }
+
             float inflate = settings.WalkableRadius + settings.CellSize * 2f;
             var covered = new bool[barriers.Count];
 
@@ -407,14 +566,34 @@ namespace CathodeLib.NavMesh
                     continue;
 
                 Vector3 centroid = PolyCentroid(data, poly);
-                PolyAabb(data, poly, out Vector3 polyMin, out Vector3 polyMax);
                 int hitBarrier = -1;
-                for (int b = 0; b < barriers.Count; b++)
+
+                if (byRecastArea.TryGetValue(poly.GetArea(), out List<int> candidates))
                 {
-                    CollisionNavMeshSoup.BarrierVolume barrier = barriers[b];
-                    if (PolyOverlapsBarrier(data, poly, centroid, polyMin, polyMax, barrier, inflate))
+                    // One id can be shared by barriers that are far apart, so pick by position.
+                    hitBarrier = candidates[0];
+                    if (candidates.Count > 1)
                     {
-                        hitBarrier = b;
+                        float best = float.MaxValue;
+                        for (int c = 0; c < candidates.Count; c++)
+                        {
+                            CollisionNavMeshSoup.BarrierVolume candidate = barriers[candidates[c]];
+                            float d = Vector3.DistanceSquared(centroid, candidate.Centre);
+                            if (d >= best)
+                                continue;
+                            best = d;
+                            hitBarrier = candidates[c];
+                        }
+                    }
+                }
+                else if (uncarved.Count > 0)
+                {
+                    PolyAabb(data, poly, out Vector3 polyMin, out Vector3 polyMax);
+                    for (int u = 0; u < uncarved.Count; u++)
+                    {
+                        if (!PolyOverlapsBarrier(data, poly, centroid, polyMin, polyMax, barriers[uncarved[u]], inflate))
+                            continue;
+                        hitBarrier = uncarved[u];
                         break;
                     }
                 }
@@ -1085,40 +1264,63 @@ namespace CathodeLib.NavMesh
         }
 
         /// <summary>
-        /// Drop kept polys whose centroid sits above the primary floor median by more than
-        /// <see cref="NavMeshBakeSettings.ElevatedPolyStripAboveFloor"/> (prop / duct tops
-        /// still linked into the main component).
+        /// Drop kept polys that are a prop or duct top rather than floor: walkable surface sits
+        /// directly beneath them, close enough that the two cannot be separate storeys.
         /// </summary>
+        /// <remarks>
+        /// This used to compare every poly against the median Y of the whole tile, which works
+        /// on a single-deck level like BSP_TORRENS and decapitates everything else - SCI_Hub lost
+        /// all 236 of its upper-deck polys, so the Control Room and the rest of the upper floor
+        /// had no navmesh and therefore no sound nodes. The test is per-poly now: what matters is
+        /// the height above the surface immediately below, not above the level as a whole.
+        /// </remarks>
         static int StripElevatedPolys(DtMeshTile tile, NavMeshBakeSettings settings, bool[] keep)
         {
             if (keep == null)
                 return 0;
 
             int polyCount = tile.data.header.polyCount;
-            var ys = new List<float>();
+            float minRise = Math.Max(0.05f, settings.ElevatedPolyStripAboveFloor);
+            float storey = Math.Max(minRise + 0.05f, settings.ElevatedPolyStoreySeparation);
+
+            var centroids = new Vector3[polyCount];
+            var mins = new Vector3[polyCount];
+            var maxs = new Vector3[polyCount];
+            var eligible = new bool[polyCount];
             for (int i = 0; i < polyCount; i++)
             {
-                if (!keep[i])
+                DtPoly poly = tile.data.polys[i];
+                if (poly.GetPolyType() == DtPolyTypes.DT_POLYTYPE_OFFMESH_CONNECTION)
                     continue;
-                ys.Add(PolyCentroid(tile.data, tile.data.polys[i]).Y);
+                eligible[i] = keep[i];
+                if (!eligible[i])
+                    continue;
+                centroids[i] = PolyCentroid(tile.data, poly);
+                PolyAabb(tile.data, poly, out mins[i], out maxs[i]);
             }
-            if (ys.Count == 0)
-                return 0;
 
-            ys.Sort();
-            float medianY = ys[ys.Count / 2];
-            float maxY = medianY + Math.Max(0.05f, settings.ElevatedPolyStripAboveFloor);
-
+            // Test against the set as it stood on entry: culling a crate lid must not promote the
+            // box stacked on it to floor.
             int culled = 0;
             for (int i = 0; i < polyCount; i++)
             {
-                if (!keep[i])
+                if (!eligible[i])
                     continue;
-                float y = PolyCentroid(tile.data, tile.data.polys[i]).Y;
-                if (y > maxY)
+
+                Vector3 c = centroids[i];
+                for (int j = 0; j < polyCount; j++)
                 {
+                    if (j == i || !eligible[j])
+                        continue;
+                    float rise = c.Y - centroids[j].Y;
+                    if (rise <= minRise || rise >= storey)
+                        continue;
+                    // Overlapping in plan is what makes the lower poly the surface underneath.
+                    if (c.X < mins[j].X || c.X > maxs[j].X || c.Z < mins[j].Z || c.Z > maxs[j].Z)
+                        continue;
                     keep[i] = false;
                     culled++;
+                    break;
                 }
             }
 

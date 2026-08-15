@@ -80,10 +80,29 @@ namespace CathodeLib.NavMesh
         public float IslandMinSecondaryFraction = 0.005f;
 
         /// <summary>
-        /// Drop polys inside the kept floor set whose centroid Y exceeds
-        /// primaryMedianY + this value (metres). Defaults to WalkableClimb + CellHeight.
+        /// Minimum height (metres) a kept poly must stand above walkable surface directly
+        /// beneath it before it counts as a prop / duct top rather than floor.
+        /// Defaults to WalkableClimb + CellHeight, so anything a character could simply step
+        /// onto stays part of the floor.
         /// </summary>
         public float ElevatedPolyStripAboveFloor = 0.375f;
+
+        /// <summary>
+        /// Vertical gap (metres) above which a poly with surface beneath it is treated as a
+        /// separate storey and kept. Below this it is a shelf, crate lid or duct top.
+        /// </summary>
+        /// <remarks>
+        /// This is what stops the strip decapitating multi-storey levels: SCI_Hub's upper deck
+        /// sits ~8 m over the main floor, so it is never mistaken for a prop.
+        /// </remarks>
+        public float ElevatedPolyStoreySeparation = 1.9f;
+
+        /// <summary>
+        /// Clearance (metres) two barriers need between them before they may share a Recast area
+        /// id. Recast only has 62 usable ids and a level can carry more barriers than that, so
+        /// distant ones reuse a value; they must be far enough apart never to land in one region.
+        /// </summary>
+        public float BarrierAreaIdSeparation = 4.0f;
 
         public static NavMeshBakeSettings CreateDefault() => new NavMeshBakeSettings();
     }
