@@ -15,7 +15,7 @@ namespace CATHODE
     /// </summary>
     public class SoundEnvironmentData : CathodeFile
     {
-        public HashSet<string> Entries = new HashSet<string>();
+        public List<string> Entries = new List<string>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
         //These are all the possible reverb names. Each level only uses a subset of them, defined by SoundEnvironmentMarker entities.

@@ -4764,7 +4764,20 @@ namespace CathodeLib
                     break;
                 case FunctionType.SoundEnvironmentMarker:
                     if (entity.Strings.Has(ShortGuids.reverb_name))
-                        _level.SoundEnvironmentData.Entries.Add(entity.Strings.Get(ShortGuids.reverb_name));
+                    {
+                        string reverb = entity.Strings.Get(ShortGuids.reverb_name);
+                        bool shouldAdd = true;
+                        for (int i = 0; i < _level.SoundEnvironmentData.Entries.Count; i++)
+                        {
+                            if (_level.SoundEnvironmentData.Entries[i].ToLower() == reverb.ToLower())
+                            {
+                                shouldAdd = false;
+                                break;
+                            }
+                        }
+                        if (shouldAdd)
+                            _level.SoundEnvironmentData.Entries.Add(reverb);
+                    }
                     break;
                 case FunctionType.SoundLevelInitialiser:
 
