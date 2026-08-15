@@ -2431,6 +2431,8 @@ namespace CathodeLib
             RunOptionalBake("navmesh", () => NavMeshBaker.BakeLevel(level, this, navMeshSettings));
             RunOptionalBake("cover", () => CoverBaker.BakeLevel(level, this, coverSettings));
 
+            RunOptionalBake("sound networks", () => SoundNodeNetworkGenerator.Generate(level, AllEntities, Console.WriteLine));
+
             if (radiositySettings != null)
             {
                 RadiosityBaker.BakeLevel(level, this, radiositySettings);
