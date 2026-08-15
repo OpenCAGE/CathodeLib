@@ -756,7 +756,6 @@ namespace CathodeLib
     public static class Paths
     {
         public static string CustomInfoDat = "data/info.dat"; //Set this path to a local CustomTable to override the one embedded in CathodeLib
-        public static string CustomSoundBin = "data/sound_names.bin"; //Set this path to a local sound name BIN to override the one embedded in CathodeLib
     }
 
     public static class MathsUtils

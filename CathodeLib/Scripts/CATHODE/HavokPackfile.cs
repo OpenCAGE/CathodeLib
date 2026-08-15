@@ -210,6 +210,31 @@ namespace CATHODE
             /// <summary>Number of leaf shapes contributed (meshes, boxes, convex hulls).</summary>
             public int ShapeCount;
             public int TriangleCount => Indices.Count / 3;
+
+            /// <summary>
+            /// Which top-level instance each triangle came from, in ascending triangle order, as
+            /// (first triangle, instance) pairs. Only filled when the caller asks for it.
+            /// </summary>
+            /// <remarks>
+            /// A top-level instance of a world host is what COLLISION.MAP addresses, so this is the
+            /// hook from a ray hit back to the collider's flags. Nested instances are not recorded:
+            /// everything under a root belongs to the same mapping.
+            /// </remarks>
+            public List<KeyValuePair<int, CompoundInstance>> InstanceRanges;
+
+            /// <summary>The instance that produced a triangle, or null if not tracked.</summary>
+            public CompoundInstance InstanceOf(int triangle)
+            {
+                if (InstanceRanges == null || InstanceRanges.Count == 0) return null;
+                int low = 0, high = InstanceRanges.Count - 1, found = -1;
+                while (low <= high)
+                {
+                    int mid = (low + high) / 2;
+                    if (InstanceRanges[mid].Key <= triangle) { found = mid; low = mid + 1; }
+                    else high = mid - 1;
+                }
+                return found < 0 ? null : InstanceRanges[found].Value;
+            }
         }
 
         const int PreviewShapeCap = 2048;
@@ -235,10 +260,15 @@ namespace CATHODE
         /// <param name="skipInstances">
         /// Optional instances to omit (e.g. PATH_CLOSED NavMeshBarrier boxes stamped as area ids instead).
         /// </param>
-        public PreviewMesh BuildBakeMesh(StaticCompoundShape compound, ISet<CompoundInstance> skipInstances = null)
+        /// <param name="trackInstances">
+        /// Record which top-level instance each triangle came from, so a ray hit can be traced back
+        /// to its COLLISION.MAP flags.
+        /// </param>
+        public PreviewMesh BuildBakeMesh(StaticCompoundShape compound, ISet<CompoundInstance> skipInstances = null,
+                                         bool trackInstances = false)
         {
             return BuildTriangleMesh(compound, int.MaxValue, int.MaxValue, capRootInstances: false,
-                skipInstances, convexHullOpenShells: false);
+                skipInstances, convexHullOpenShells: false, trackInstances);
         }
 
         PreviewMesh BuildTriangleMesh(
@@ -247,9 +277,12 @@ namespace CATHODE
             int triCap,
             bool capRootInstances,
             ISet<CompoundInstance> skipInstances = null,
-            bool convexHullOpenShells = true)
+            bool convexHullOpenShells = true,
+            bool trackInstances = false)
         {
             var mesh = new PreviewMesh();
+            if (trackInstances)
+                mesh.InstanceRanges = new List<KeyValuePair<int, CompoundInstance>>();
             if (compound == null)
                 return mesh;
 
@@ -450,6 +483,11 @@ namespace CATHODE
                     rotation);
                 Quaternion r = Quaternion.Normalize(rotation * inst.Rotation);
                 Vector3 s = scale * new Vector3(inst.Scale.X, inst.Scale.Y, inst.Scale.Z);
+
+                // Only the outermost level is recorded: a nested instance belongs to the same
+                // COLLISION.MAP entry as the root it hangs off.
+                if (depth == 0 && mesh.InstanceRanges != null)
+                    mesh.InstanceRanges.Add(new KeyValuePair<int, CompoundInstance>(mesh.TriangleCount, inst));
 
                 if (shapeByOffset.TryGetValue(inst.ShapeDataOffset, out StaticCompoundShape child))
                     EmitCompoundPreview(mesh, child, shapeByOffset, t, r, s, depth + 1, shapeCap, triCap, capRootInstances, skipInstances, convexHullOpenShells);

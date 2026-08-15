@@ -109,6 +109,8 @@ namespace CathodeLib.NavMesh
                 CollectBarrierVolumes(level, hkx, host, barrierEntities, soup.Barriers, skip);
             }
 
+            CollectSoundBarrierSkip(level, skip);
+
             if (settings.SkipGhostedCollision)
                 CollectGhostedSkip(level, skip);
 
@@ -248,6 +250,34 @@ namespace CathodeLib.NavMesh
         }
 
         /// <summary>
+        /// Omit sound barriers. They occlude sound and nothing else - a character walks straight
+        /// through one - so they must not carve holes in the navmesh.
+        /// </summary>
+        /// <remarks>
+        /// A SoundBarrier entity is written as collision type SOUND or SOUND_BARRIER depending on
+        /// its band_aid flag, and both mean the same thing here. Small-prop skipping used to be the
+        /// only thing removing them, which left two gaps: it is gated on SkipSmallPropCollision, and
+        /// it only drops boxes below crate scale, so a barrier spanning a doorway or window - the
+        /// normal case - always survived into the soup.
+        /// </remarks>
+        static void CollectSoundBarrierSkip(Level level, HashSet<HavokPackfile.CompoundInstance> skip)
+        {
+            if (level?.CollisionMaps?.Entries == null || skip == null)
+                return;
+
+            foreach (CollisionMaps.COLLISION_MAPPING entry in level.CollisionMaps.Entries)
+            {
+                if (entry?.CollisionInstance == null)
+                    continue;
+
+                CollisionMaps.CollisionType type =
+                    (CollisionMaps.CollisionType)((uint)entry.Flags & (uint)CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK);
+                if (type == CollisionMaps.CollisionType.SOUND || type == CollisionMaps.CollisionType.SOUND_BARRIER)
+                    skip.Add(entry.CollisionInstance);
+            }
+        }
+
+        /// <summary>
         /// Omit COLLISION.MAP instances that start ghosted (no solid collision at runtime).
         /// </summary>
         static void CollectGhostedSkip(Level level, HashSet<HavokPackfile.CompoundInstance> skip)
@@ -298,10 +328,11 @@ namespace CathodeLib.NavMesh
                     (CollisionMaps.CollisionType)((uint)entry.Flags & (uint)CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK);
                 if (type == CollisionMaps.CollisionType.PATH_CLOSED)
                     continue;
+                // Sound barriers are dropped wholesale by CollectSoundBarrierSkip, so SOUND is not
+                // listed here - crate scale has nothing to do with why they leave the soup.
                 if (type != CollisionMaps.CollisionType.STANDARD
                     && type != CollisionMaps.CollisionType.TRANSPARENT
-                    && type != CollisionMaps.CollisionType.PLAYER_ONLY
-                    && type != CollisionMaps.CollisionType.SOUND)
+                    && type != CollisionMaps.CollisionType.PLAYER_ONLY)
                     continue;
 
                 // Only box shapes — BvCompressed / compound floor tiles often have small

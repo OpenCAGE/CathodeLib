@@ -31,11 +31,23 @@ namespace CathodeLib.Radiosity
         /// structural colliders that a floor-only soup would leave out, and a missing wall is a
         /// light leak between rooms.
         /// </remarks>
+        /// <param name="staticOnly">
+        /// Keep only colliders that never move, matching what navmesh generation considers. Sound
+        /// occlusion wants this: a crate that can be shoved around should not be baked in as a wall.
+        /// </param>
+        /// <param name="triangleFlags">
+        /// When supplied, receives the COLLISION.MAP flags of the collider each triangle came from,
+        /// one entry per triangle. Triangles with no mapping - and the render-geometry fallback -
+        /// get zero. Sound occlusion uses this to tell a wall from a prop standing against it.
+        /// </param>
         public static bool TryCollect(Level level, RadiosityGeometry geometry,
-                                      out float[] verts, out int[] tris, Action<string> log = null)
+                                      out float[] verts, out int[] tris, Action<string> log = null,
+                                      bool staticOnly = false,
+                                      List<CollisionMaps.CollisionFlags> triangleFlags = null)
         {
             verts = null;
             tris = null;
+            triangleFlags?.Clear();
 
             HavokPackfile hkx = level?.CollisionHKX ?? level?.CollisionHKX64;
             if (hkx == null)
@@ -48,10 +60,18 @@ namespace CathodeLib.Radiosity
             var indices = new List<int>();
             int hosts = 0;
 
+            ISet<HavokPackfile.CompoundInstance> skipped = SkippedInstances(level, staticOnly);
+            log?.Invoke("Radiosity occluders: skipping " + skipped.Count + " collider instance(s) of " +
+                        (level.CollisionMaps?.Entries?.Count ?? 0) + " mapping(s)" +
+                        (staticOnly ? " (static only)" : ""));
+
+            Dictionary<HavokPackfile.CompoundInstance, CollisionMaps.CollisionFlags> flagsByInstance =
+                triangleFlags == null ? null : FlagsByInstance(level);
+
             foreach (HavokPackfile.StaticCompoundShape host in Hosts(hkx))
             {
                 HavokPackfile.PreviewMesh mesh;
-                try { mesh = hkx.BuildBakeMesh(host, PathClosedInstances(level)); }
+                try { mesh = hkx.BuildBakeMesh(host, skipped, triangleFlags != null); }
                 catch (Exception e) { log?.Invoke("Radiosity occluders: " + e.Message); continue; }
                 if (mesh == null || mesh.Positions.Count == 0 || mesh.Indices.Count < 3)
                     continue;
@@ -66,6 +86,14 @@ namespace CathodeLib.Radiosity
                 }
                 foreach (int i in mesh.Indices)
                     indices.Add(baseVertex + i);
+
+                if (triangleFlags == null) continue;
+                for (int tri = 0; tri < mesh.TriangleCount; tri++)
+                {
+                    HavokPackfile.CompoundInstance owner = mesh.InstanceOf(tri);
+                    triangleFlags.Add(owner != null && flagsByInstance.TryGetValue(owner, out CollisionMaps.CollisionFlags f)
+                                      ? f : 0);
+                }
             }
 
             if (hosts == 0 || indices.Count < 3)
@@ -76,6 +104,8 @@ namespace CathodeLib.Radiosity
 
             int collisionTris = indices.Count / 3;
             int fallbackTris = AppendUncoveredRenderGeometry(level, geometry, positions, indices, out int fallbackInstances);
+            if (triangleFlags != null)
+                for (int i = 0; i < fallbackTris; i++) triangleFlags.Add(0);
 
             verts = positions.ToArray();
             tris = indices.ToArray();
@@ -161,6 +191,17 @@ namespace CathodeLib.Radiosity
             return added;
         }
 
+        /// <summary>COLLISION.MAP flags keyed by the collider instance they describe.</summary>
+        static Dictionary<HavokPackfile.CompoundInstance, CollisionMaps.CollisionFlags> FlagsByInstance(Level level)
+        {
+            var byInstance = new Dictionary<HavokPackfile.CompoundInstance, CollisionMaps.CollisionFlags>();
+            if (level?.CollisionMaps?.Entries == null) return byInstance;
+            foreach (CollisionMaps.COLLISION_MAPPING entry in level.CollisionMaps.Entries)
+                if (entry?.CollisionInstance != null)
+                    byInstance[entry.CollisionInstance] = entry.Flags;
+            return byInstance;
+        }
+
         static IEnumerable<HavokPackfile.StaticCompoundShape> Hosts(HavokPackfile hkx)
         {
             HavokPackfile.StaticCompoundShape primary = hkx.WorldHostPrimary;
@@ -173,7 +214,7 @@ namespace CathodeLib.Radiosity
         /// Collision instances that must not block light: barrier boxes are invisible gameplay
         /// volumes, and a ghosted collider is not solid at runtime.
         /// </summary>
-        static ISet<HavokPackfile.CompoundInstance> PathClosedInstances(Level level)
+        static ISet<HavokPackfile.CompoundInstance> SkippedInstances(Level level, bool staticOnly)
         {
             var skip = new HashSet<HavokPackfile.CompoundInstance>();
             if (level?.CollisionMaps?.Entries == null)
@@ -186,6 +227,26 @@ namespace CathodeLib.Radiosity
             {
                 if (entry?.CollisionInstance == null) continue;
                 if ((entry.Flags & ghostMask) != 0)
+                {
+                    skip.Add(entry.CollisionInstance);
+                    continue;
+                }
+
+                if (!staticOnly) continue;
+
+                // Anything animated or physics-driven is not part of the fixed world. FIXED is the
+                // only motion type navmesh generation treats as solid, and sound wants the same set.
+                if ((entry.Flags & CollisionMaps.CollisionFlags.MOTION_TYPE_MASK) != CollisionMaps.CollisionFlags.FIXED)
+                {
+                    skip.Add(entry.CollisionInstance);
+                    continue;
+                }
+
+                // Ballistic colliders stop bullets, not sound - grates, railings and thin panels
+                // are all shot-proof and all audible through. They are the largest single group in
+                // BSP_TORRENS' collision map (2623 of 4999).
+                if ((entry.Flags & CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK) ==
+                    (CollisionMaps.CollisionFlags)CollisionMaps.CollisionType.BALLISTICS)
                     skip.Add(entry.CollisionInstance);
             }
             return skip;

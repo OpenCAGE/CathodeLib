@@ -372,11 +372,31 @@ namespace CathodeLib.NavMesh
                 && (entity.EnumIndexes.Links == null || !entity.EnumIndexes.Links.ContainsKey(ShortGuids.character_classes)))
                 return NAVIGATION_CHARACTER_CLASS_COMBINATION.ALL;
 
+            // The parameter is an INDEX into the enum as declared, not the enum's value. That
+            // distinction matters here because the enum is a bitfield - HUMANOID_NPC is
+            // HUMAN | ANDROID, not the eighth integer - so casting the index straight to the type
+            // lands on an undefined combination and fell through to ALL. BSP_TORRENS ended up with
+            // all 24 off-mesh connections set to ALL where retail has 20 of them HUMANOID_NPC.
             int idx = entity.EnumIndexes.Get(ShortGuids.character_classes);
-            if (Enum.IsDefined(typeof(NAVIGATION_CHARACTER_CLASS_COMBINATION), idx))
-                return (NAVIGATION_CHARACTER_CLASS_COMBINATION)idx;
+            NAVIGATION_CHARACTER_CLASS_COMBINATION[] declared = DeclaredCharacterClasses;
+            if (idx >= 0 && idx < declared.Length)
+                return declared[idx];
             return NAVIGATION_CHARACTER_CLASS_COMBINATION.ALL;
         }
+
+        /// <summary>The combination enum in declaration order, which is what the index addresses.</summary>
+        static readonly NAVIGATION_CHARACTER_CLASS_COMBINATION[] DeclaredCharacterClasses = BuildDeclaredCharacterClasses();
+
+        static NAVIGATION_CHARACTER_CLASS_COMBINATION[] BuildDeclaredCharacterClasses()
+        {
+            System.Reflection.FieldInfo[] fields = typeof(NAVIGATION_CHARACTER_CLASS_COMBINATION)
+                .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            var values = new NAVIGATION_CHARACTER_CLASS_COMBINATION[fields.Length];
+            for (int i = 0; i < fields.Length; i++)
+                values[i] = (NAVIGATION_CHARACTER_CLASS_COMBINATION)fields[i].GetRawConstantValue();
+            return values;
+        }
+
     }
 }
 #endif
