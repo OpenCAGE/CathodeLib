@@ -2420,7 +2420,7 @@ namespace CathodeLib
             }
         }
 
-        public Instancing(Level level, NavMeshBakeSettings navMeshSettings = null, CoverBakeSettings coverSettings = null, RadiosityBakeSettings radiositySettings = null)
+        public Instancing(Level level, NavMeshBakeSettings navMeshSettings = null, CoverBakeSettings coverSettings = null, RadiosityBakeSettings radiositySettings = null, JobPositionBakeSettings jobPositionSettings = null)
         {
             _level = level;
 
@@ -2430,7 +2430,7 @@ namespace CathodeLib
 
             RunOptionalBake("navmesh", () => NavMeshBaker.BakeLevel(level, this, navMeshSettings));
             RunOptionalBake("cover", () => CoverBaker.BakeLevel(level, this, coverSettings));
-
+            RunOptionalBake("job positions", () => JobPositionBaker.BakeLevel(level, jobPositionSettings, Console.WriteLine));
             RunOptionalBake("sound networks", () => SoundNodeNetworkGenerator.Generate(level, AllEntities, Console.WriteLine));
 
             if (radiositySettings != null)
