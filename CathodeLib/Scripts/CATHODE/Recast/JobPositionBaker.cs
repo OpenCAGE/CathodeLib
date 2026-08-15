@@ -3,6 +3,8 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using CATHODE;
+using CathodeLib.Radiosity;
+using NanoRT;
 
 namespace CathodeLib.NavMesh
 {
@@ -11,35 +13,37 @@ namespace CathodeLib.NavMesh
     /// SPOTTING_POSITIONS, CRAWL_SPACE_SPOTTING_POSITIONS and ASSAULT_POSITIONS.
     /// </summary>
     /// <remarks>
-    /// All three are lookup grids of jobs. A job pairs a place worth checking with the place an
-    /// NPC stands to check it - in retail's data the JobPosition is the hiding spot and the
-    /// TaskPosition is the vantage point, which is why retail's spotting JobPositions sit just
-    /// OUTSIDE the walkable surface (168 of BSP_TORRENS' 169) while the TaskPositions sit on it.
+    /// All three are lookup grids of jobs, and a job pairs a place worth checking with the place an
+    /// NPC stands to check it: the JobPosition is the hiding spot, the TaskPosition the vantage
+    /// point. That is why retail's spotting JobPositions sit just OUTSIDE the walkable surface -
+    /// 168 of BSP_TORRENS' 169 - while the TaskPositions sit on it.
     ///
-    /// What retail's files say about how they were made, measured on BSP_TORRENS, Solace, SCI_Hub
-    /// and Tech_Hub (SndDump.exe jobrim / jobfit):
-    ///   * Both spotting and assault positions hug the navmesh rim - the polygon edges with no
-    ///     neighbour. Nothing correlates them with cover: on BSP_TORRENS the median distance from
-    ///     an assault position to the nearest cover segment is 4.4 m and only 4 of 46 are within
-    ///     a metre, on a level whose cover totals 34 m against 604 m of rim.
-    ///   * A spotting job sits 0.2929 m outside the rim and its task 0.7071 m inside, one metre
-    ///     apart along the rim's inward normal. Those are 1 - 1/sqrt(2) and 1/sqrt(2), so the pair
-    ///     straddles a point 0.2071 m inside the rim at +/- 0.5 m.
-    ///   * An assault position sits 0.208 m inside the rim - the same 0.2071 inset, to the
-    ///     precision the file's floats carry - and its yaw is atan2(outward.X, outward.Z): the
-    ///     dot of (sin yaw, 0, cos yaw) with the inward normal is -1.000 for 43 of 46.
-    ///   * A crawl-space job sits on the rim of a deep-crouch region with its task just outside,
-    ///     1.06 to 1.73 m away.
-    ///   * The grids all use a 10 m cell. The origin is the minimum X/Z over the JobPositions and
-    ///     the cell counts are floor((max - min) / 10) + 1, but a job is filed under the cell
-    ///     containing its TASK position - which is why some JobPositions fall outside their own
-    ///     cell (16 of BSP_TORRENS' 169).
+    /// Spotting and assault both lay positions along a run of cover, with the same shape of rule
+    /// and their own constants (see <see cref="JobPositionBakeSettings"/>). Every distance is
+    /// measured from the WALL GEOMETRY, and the navmesh is already eroded inward by the walkable
+    /// radius, so the offsets have to be converted before they can be applied to the rim. That
+    /// conversion is what reconciles the two: an assault position 0.5 m off the geometry lands
+    /// 0.1875 m inside the rim, against the 0.208 median retail ships, and a spotting job 0.03 m
+    /// off the geometry lands 0.2825 m outside it, against 0.2929 measured.
     ///
-    /// The offsets and the yaw convention are settled. The sampling density along the rim is not:
-    /// retail places roughly one spotting position per 3.6 m of rim on all four levels, but not at
-    /// a fixed arc-length interval, and the acceptance clearly depends on something beyond edge
-    /// length that has not been identified yet. <see cref="JobPositionBakeSettings"/> exposes the
-    /// spacing and minimum-length knobs used here.
+    /// The engine runs those rules over cover volumes. We rebuild the runs from the navmesh rim,
+    /// because the COVER file that ships is only the tactically usable subset and nowhere near
+    /// enough on its own - BSP_TORRENS has 17 segments totalling 34 m, three of them long enough
+    /// to qualify, against 46 assault positions in the shipped file. Applying the rules to that
+    /// cover alone reproduces only 3 of the 46, but with exact yaw on all three, so the rules are
+    /// right and the input was incomplete.
+    ///
+    /// Crawl spaces work off the mouths of a deep-crouch region - edges whose neighbour is walkable
+    /// floor of another class. An edge with no neighbour is the crawl space's own outer wall and is
+    /// not a way in.
+    ///
+    /// Grids use a 10 m cell, an origin of min(0, lowest job X/Z) - retail never writes a positive
+    /// origin - and cells of floor((max - origin) / 10) + 1. A job is filed under the cell holding
+    /// its TASK position, which is why some JobPositions fall outside their own cell (16 of
+    /// BSP_TORRENS' 169).
+    ///
+    /// Measured against retail on BSP_TORRENS, Solace, SCI_Hub and Tech_Hub with
+    /// <c>SndDump.exe jobbake</c>.
     /// </remarks>
     public static class JobPositionBaker
     {
@@ -49,6 +53,95 @@ namespace CathodeLib.NavMesh
             public SpottingPositions CrawlSpace;
             public AssaultPositions Assault;
             public string Message;
+        }
+
+        /// <summary>
+        /// The level's glass, ready to be swept for. Glass is collision typed TRANSPARENT: solid
+        /// enough to stop a character, so the navmesh ends at it and a rim run forms along it, but
+        /// no use as cover.
+        /// </summary>
+        public sealed class GlassProbe
+        {
+            BVHAccel _glass;
+            BVHAccel _solid;
+            public int TriangleCount { get; private set; }
+
+            public static GlassProbe FromLevel(Level level, Action<string> log = null)
+            {
+                var flags = new List<CollisionMaps.CollisionFlags>();
+                if (!RadiosityOccluders.TryCollect(level, null, out float[] verts, out int[] tris, null, true, flags))
+                {
+                    log?.Invoke("  glass test: no collision packfile, skipped");
+                    return null;
+                }
+
+                var glass = new List<int>();
+                var solid = new List<int>();
+                int triangles = tris.Length / 3;
+                for (int t = 0; t < triangles && t < flags.Count; t++)
+                {
+                    CollisionMaps.CollisionType type = (CollisionMaps.CollisionType)
+                        ((uint)flags[t] & (uint)CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK);
+                    bool transparent = type == CollisionMaps.CollisionType.TRANSPARENT
+                                       || type == CollisionMaps.CollisionType.DYNAMIC_TRANSPARENT;
+                    List<int> into = transparent ? glass : solid;
+                    into.Add(tris[t * 3 + 0]);
+                    into.Add(tris[t * 3 + 1]);
+                    into.Add(tris[t * 3 + 2]);
+                }
+                if (glass.Count == 0)
+                {
+                    log?.Invoke("  glass test: level has no transparent collision");
+                    return null;
+                }
+
+                var probe = new GlassProbe { TriangleCount = glass.Count / 3, _glass = new BVHAccel() };
+                probe._glass.Build(verts, glass.ToArray());
+                if (solid.Count > 0)
+                {
+                    probe._solid = new BVHAccel();
+                    probe._solid.Build(verts, solid.ToArray());
+                }
+                return probe;
+            }
+
+            /// <summary>
+            /// True when the first thing the swept ray meets is glass. Anything opaque in front of
+            /// it means the cover is real and the pane behind is somebody else's problem - testing
+            /// for glass anywhere along the ray instead threw away positions retail keeps.
+            /// </summary>
+            public bool Hits(Vector3 from, Vector3 to, float radius)
+            {
+                Vector3 along = to - from;
+                float length = along.Length();
+                if (length <= 1e-4f)
+                    return false;
+                along /= length;
+
+                Vector3 side = Vector3.Cross(along, Vector3.UnitY);
+                side = side.LengthSquared() < 1e-6f ? Vector3.UnitX : Vector3.Normalize(side);
+                Vector3 up = Vector3.Normalize(Vector3.Cross(side, along));
+
+                if (GlassFirst(from, along, length)) return true;
+                if (radius <= 1e-4f) return false;
+                return GlassFirst(from + side * radius, along, length)
+                    || GlassFirst(from - side * radius, along, length)
+                    || GlassFirst(from + up * radius, along, length)
+                    || GlassFirst(from - up * radius, along, length);
+            }
+
+            bool GlassFirst(Vector3 origin, Vector3 direction, float length)
+            {
+                var ray = new Ray(origin, direction, 0f, length);
+                if (!_glass.Traverse(ref ray, out Hit glassHit))
+                    return false;
+                if (_solid == null)
+                    return true;
+                var solidRay = new Ray(origin, direction, 0f, length);
+                if (!_solid.Traverse(ref solidRay, out Hit solidHit))
+                    return true;
+                return glassHit.T <= solidHit.T;
+            }
         }
 
         /// <summary>
@@ -63,6 +156,7 @@ namespace CathodeLib.NavMesh
                 throw new ArgumentException("No state resources to bake.", nameof(level));
 
             settings ??= JobPositionBakeSettings.CreateDefault();
+            GlassProbe glass = null;
 
             for (int i = 0; i < level.StateResources.Count; i++)
             {
@@ -73,7 +167,8 @@ namespace CathodeLib.NavMesh
                     continue;
                 }
 
-                BakeResult result = Bake(state.NavMesh, settings);
+                glass ??= settings.GlassWallTest ? GlassProbe.FromLevel(level, log) : null;
+                BakeResult result = Bake(state.NavMesh, settings, glass);
                 state.SpottingPositions = result.Spotting;
                 state.CrawlSpaceSpottingPositions = result.CrawlSpace;
                 state.AssaultPositions = result.Assault;
@@ -81,56 +176,68 @@ namespace CathodeLib.NavMesh
             }
         }
 
-        public static BakeResult Bake(NavigationMesh nav, JobPositionBakeSettings settings = null)
+        public static BakeResult Bake(NavigationMesh nav, JobPositionBakeSettings settings = null, GlassProbe glass = null)
         {
             if (nav == null)
                 throw new ArgumentNullException(nameof(nav));
             settings ??= JobPositionBakeSettings.CreateDefault();
+            if (!settings.GlassWallTest)
+                glass = null;
+            int glassRejected = 0;
 
             List<RimEdge> rim = CollectRim(nav, null);
             List<RimEdge> crawlRim = CollectRim(nav, NavigationMesh.AreaHeight.DeepCrouch);
 
-            List<Vector3> spotSamples = SampleRim(rim, settings.SpottingSpacing, settings.SpottingMinEdgeLength,
-                                                  settings.SpottingMinSeparation, settings.RimInset,
-                                                  out List<Vector3> spotNormals);
-            var spottingJobs = new List<SpottingPositions.JobInfo>(spotSamples.Count);
-            for (int i = 0; i < spotSamples.Count; i++)
+            List<List<RimEdge>> runs = ChainRuns(rim, settings.RunMaxTurnDegrees);
+
+            // The job sits just off the collision surface, which is a walkable radius outside the
+            // eroded rim - hence retail's spotting jobs being off the navmesh. The task is measured
+            // from the job, not from the wall, which is what makes the pair exactly 1 m apart.
+            float spottingOut = settings.WalkableRadius
+                                - settings.SpottingPositionDistanceOffset
+                                - settings.SpottingExtraDistanceFromCollision;
+            var spottingJobs = new List<SpottingPositions.JobInfo>();
+            var placed = new List<Vector3>();
+            float mergeSq = settings.SpottingMergeDistance * settings.SpottingMergeDistance;
+            foreach ((Vector3 on, Vector3 inward) in SampleRuns(
+                         runs,
+                         settings.SpottingCoverLengthToGenerateOnePoint,
+                         settings.SpottingCoverLengthToGenerateAtBothEnds,
+                         settings.SpottingMinDistanceFromEdgeOfCover,
+                         settings.SpottingMaxDistanceBetweenPositionsOnSameCover))
             {
-                Vector3 inward = spotNormals[i];
+                if (IsGlass(glass, settings, on, inward,
+                            settings.SpottingGlassTestStartDistance, settings.SpottingGlassTestEndDistance,
+                            settings.SpottingGlassTestRayHeightOffset, settings.SpottingGlassTestRayRadius))
+                {
+                    glassRejected++;
+                    continue;
+                }
+
+                Vector3 job = on - inward * spottingOut;
+
+                bool merged = false;
+                for (int i = 0; i < placed.Count; i++)
+                {
+                    if (Vector3.DistanceSquared(placed[i], job) >= mergeSq)
+                        continue;
+                    merged = true;
+                    break;
+                }
+                if (merged)
+                    continue;
+
+                placed.Add(job);
                 spottingJobs.Add(new SpottingPositions.JobInfo
                 {
-                    JobPosition = spotSamples[i] - inward * settings.SpottingHalfSeparation,
-                    TaskPosition = spotSamples[i] + inward * settings.SpottingHalfSeparation
+                    JobPosition = job,
+                    TaskPosition = job + inward * settings.SpottingPathPositionDistanceOffset
                 });
             }
 
-            List<Vector3> assaultSamples = SampleRim(rim, settings.AssaultSpacing, settings.AssaultMinEdgeLength,
-                                                     settings.AssaultMinSeparation, settings.RimInset,
-                                                     out List<Vector3> assaultNormals);
-            var assaultJobs = new List<AssaultPositions.JobInfo>(assaultSamples.Count);
-            for (int i = 0; i < assaultSamples.Count; i++)
-            {
-                // Facing out of the mesh, at whatever the rim is up against.
-                Vector3 outward = -assaultNormals[i];
-                assaultJobs.Add(new AssaultPositions.JobInfo
-                {
-                    Position = assaultSamples[i],
-                    Yaw = MathF.Atan2(outward.X, outward.Z)
-                });
-            }
+            List<AssaultPositions.JobInfo> assaultJobs = BuildAssaultAlongCover(runs, settings, glass, ref glassRejected);
 
-            // Crawl spaces: the job is on the deep-crouch rim, the task outside it on open floor.
-            List<Vector3> crawlSamples = SampleRim(crawlRim, settings.SpottingSpacing, 0f,
-                                                   settings.CrawlMinSeparation, 0f, out List<Vector3> crawlNormals);
-            var crawlJobs = new List<SpottingPositions.JobInfo>(crawlSamples.Count);
-            for (int i = 0; i < crawlSamples.Count; i++)
-            {
-                crawlJobs.Add(new SpottingPositions.JobInfo
-                {
-                    JobPosition = crawlSamples[i],
-                    TaskPosition = crawlSamples[i] - crawlNormals[i] * settings.CrawlTaskDistance
-                });
-            }
+            List<SpottingPositions.JobInfo> crawlJobs = BuildCrawlSpace(nav, crawlRim, settings);
 
             var result = new BakeResult
             {
@@ -138,7 +245,8 @@ namespace CathodeLib.NavMesh
                 CrawlSpace = BuildSpotting(crawlJobs, settings.GridUnitSize),
                 Assault = BuildAssault(assaultJobs, settings.GridUnitSize)
             };
-            result.Message = "rim " + rim.Count + " edges, deep-crouch rim " + crawlRim.Count +
+            result.Message = "rim " + rim.Count + " edges, crawl mouths " + crawlRim.Count +
+                             (glass == null ? "" : "   glass tris " + glass.TriangleCount + " rejected " + glassRejected) +
                              "   spotting " + spottingJobs.Count +
                              "   crawl " + crawlJobs.Count +
                              "   assault " + assaultJobs.Count;
@@ -202,73 +310,322 @@ namespace CathodeLib.NavMesh
             return rim;
         }
 
+        /// <summary>
+        /// With no height filter, an edge is rim when nothing is on the far side. With one, only
+        /// the mouths count: edges where the region gives onto walkable floor of another class.
+        /// An edge with no neighbour at all is the crawl space's own outer wall, not a way in.
+        /// </summary>
         static bool IsRim(NavigationMesh nav, NavigationMesh.dtPoly poly, int edge, NavigationMesh.AreaHeight? onlyHeight)
         {
             if (poly.neis == null || edge >= poly.neis.Length)
-                return true;
+                return !onlyHeight.HasValue;
             int nei = poly.neis[edge];
             if (nei == 0)
-                return true;
+                return !onlyHeight.HasValue;
             if (!onlyHeight.HasValue)
                 return false;
 
             // neis holds a 1-based polygon index within the tile.
             int index = nei - 1;
             if (index < 0 || index >= nav.Polygons.Length)
-                return true;
+                return false;
             return nav.Polygons[index].area.GetHeightLimitedAmount() != onlyHeight.Value;
         }
 
         /// <summary>
-        /// Walk the rim placing samples at a fixed spacing along each long-enough edge, inset into
-        /// the mesh, rejecting any that crowd one already placed.
+        /// Lay assault positions along each continuous run of cover, following the engine's own
+        /// rules: nothing below <c>cover_length_to_generate_one_point</c>, a single mid-run point
+        /// up to <c>cover_length_to_generate_at_both_ends</c>, then one
+        /// <c>min_distance_from_edge_of_cover</c> in from each end with more spread evenly between
+        /// so no gap exceeds <c>max_distance_between_positions_on_same_cover</c>.
         /// </summary>
-        static List<Vector3> SampleRim(
-            List<RimEdge> rim,
-            float spacing,
-            float minEdgeLength,
-            float minSeparation,
-            float inset,
-            out List<Vector3> normals)
+        /// <remarks>
+        /// The engine runs this over cover volumes. We rebuild the runs from the navmesh rim
+        /// instead, because the COVER file that ships is only the tactically usable subset and is
+        /// nowhere near enough on its own - BSP_TORRENS has 17 segments totalling 34 m, of which
+        /// three are long enough to qualify, against 46 assault positions in the shipped file.
+        /// The rim stands in for the wall, inset from it by the walkable radius, which is why
+        /// retail's positions sit 0.208 m inside the rim and not the full 0.5 m off the geometry.
+        /// Doing it this way took the match against retail from 39/41/46% to 65/72/56% on
+        /// BSP_TORRENS / Solace / SCI_Hub.
+        /// </remarks>
+        static List<AssaultPositions.JobInfo> BuildAssaultAlongCover(
+            List<List<RimEdge>> runs, JobPositionBakeSettings settings, GlassProbe glass, ref int glassRejected)
         {
-            var samples = new List<Vector3>();
-            normals = new List<Vector3>();
-            if (rim == null || rim.Count == 0)
-                return samples;
+            var jobs = new List<AssaultPositions.JobInfo>();
+            float inset = settings.AssaultDistanceFromGeometry - settings.WalkableRadius;
 
-            float step = Math.Max(0.05f, spacing);
-            float minSq = minSeparation * minSeparation;
-
-            for (int e = 0; e < rim.Count; e++)
+            foreach ((Vector3 on, Vector3 inward) in SampleRuns(
+                         runs,
+                         settings.AssaultCoverLengthToGenerateOnePoint,
+                         settings.AssaultCoverLengthToGenerateAtBothEnds,
+                         settings.AssaultMinDistanceFromEdgeOfCover,
+                         settings.AssaultMaxDistanceBetweenPositionsOnSameCover))
             {
-                RimEdge edge = rim[e];
-                if (edge.Length < minEdgeLength)
+                if (IsGlass(glass, settings, on, inward,
+                            settings.AssaultGlassTestStartDistance, settings.AssaultGlassTestEndDistance,
+                            settings.AssaultGlassTestRayHeightOffset, settings.AssaultGlassTestRayRadius))
+                {
+                    glassRejected++;
+                    continue;
+                }
+
+                jobs.Add(new AssaultPositions.JobInfo
+                {
+                    Position = on + inward * inset,
+                    // Facing the cover, which is the way retail's yaws point.
+                    Yaw = MathF.Atan2(-inward.X, -inward.Z)
+                });
+            }
+            return jobs;
+        }
+
+        /// <summary>
+        /// Place points along each run of cover: nothing below <paramref name="minLength"/>, one
+        /// at the middle up to <paramref name="bothEndsLength"/>, then one
+        /// <paramref name="edgeInset"/> in from each end with more spread evenly between so no gap
+        /// exceeds <paramref name="maxGap"/>. Yields the point on the run and the run's normal.
+        /// </summary>
+        static IEnumerable<(Vector3 on, Vector3 inward)> SampleRuns(
+            List<List<RimEdge>> runs,
+            float minLength,
+            float bothEndsLength,
+            float edgeInset,
+            float maxGap)
+        {
+            float gap = Math.Max(0.5f, maxGap);
+            float inset = Math.Max(0f, edgeInset);
+
+            foreach (List<RimEdge> run in runs)
+            {
+                float length = 0f;
+                for (int i = 0; i < run.Count; i++)
+                    length += run[i].Length;
+                if (length < minLength)
                     continue;
 
-                // Centre the run on the edge so a single-sample edge is sampled at its midpoint.
-                int count = Math.Max(1, (int)MathF.Floor(edge.Length / step));
-                for (int s = 0; s < count; s++)
-                {
-                    float t = (s + 0.5f) / count;
-                    Vector3 on = Vector3.Lerp(edge.A, edge.B, t);
-                    Vector3 at = on + edge.Inward * inset;
+                // One normal for the whole run, weighted by edge length so a stray short segment
+                // at one end cannot swing the facing.
+                Vector3 inward = Vector3.Zero;
+                for (int i = 0; i < run.Count; i++)
+                    inward += run[i].Inward * run[i].Length;
+                if (inward.LengthSquared() < 1e-8f)
+                    continue;
+                inward = Vector3.Normalize(inward);
 
-                    bool crowded = false;
-                    for (int i = 0; i < samples.Count; i++)
+                if (length < bothEndsLength)
+                {
+                    yield return (AlongRun(run, length * 0.5f), inward);
+                    continue;
+                }
+
+                float first = inset;
+                float last = length - inset;
+                int steps = Math.Max(1, (int)MathF.Ceiling((last - first) / gap));
+                for (int i = 0; i <= steps; i++)
+                    yield return (AlongRun(run, first + (last - first) * i / steps), inward);
+            }
+        }
+
+        /// <summary>
+        /// Sweep the glass test through the cover at this point. Distances are measured from the
+        /// collision surface, which sits a walkable radius outside the rim: positive is the
+        /// walkable side, negative passes through to the far side.
+        /// </summary>
+        static bool IsGlass(
+            GlassProbe glass,
+            JobPositionBakeSettings settings,
+            Vector3 on,
+            Vector3 inward,
+            float startDistance,
+            float endDistance,
+            float heightOffset,
+            float radius)
+        {
+            if (glass == null)
+                return false;
+
+            Vector3 wall = on - inward * settings.WalkableRadius;
+            var lift = new Vector3(0f, heightOffset, 0f);
+            return glass.Hits(wall + inward * startDistance + lift, wall + inward * endDistance + lift, radius);
+        }
+
+        /// <summary>Chain rim edges end to end while the direction holds, so one wall is one run.</summary>
+        static List<List<RimEdge>> ChainRuns(List<RimEdge> rim, float maxTurnDegrees)
+        {
+            var runs = new List<List<RimEdge>>();
+            if (rim == null || rim.Count == 0)
+                return runs;
+
+            var startsAt = new Dictionary<(long, long, long), List<int>>();
+            for (int i = 0; i < rim.Count; i++)
+            {
+                (long, long, long) key = Quantise(rim[i].A);
+                if (!startsAt.TryGetValue(key, out List<int> at))
+                    startsAt[key] = at = new List<int>();
+                at.Add(i);
+            }
+
+            float cosLimit = MathF.Cos(Math.Max(0f, maxTurnDegrees) * MathF.PI / 180f);
+            var used = new bool[rim.Count];
+            for (int i = 0; i < rim.Count; i++)
+            {
+                if (used[i])
+                    continue;
+                used[i] = true;
+                var run = new List<RimEdge> { rim[i] };
+                Vector3 direction = Direction(rim[i]);
+                Vector3 tail = rim[i].B;
+
+                while (startsAt.TryGetValue(Quantise(tail), out List<int> candidates))
+                {
+                    int pick = -1;
+                    for (int c = 0; c < candidates.Count; c++)
                     {
-                        if (Vector3.DistanceSquared(samples[i], at) >= minSq)
+                        int j = candidates[c];
+                        if (used[j])
                             continue;
-                        crowded = true;
+                        if (Vector3.Dot(Direction(rim[j]), direction) < cosLimit)
+                            continue;
+                        pick = j;
                         break;
                     }
-                    if (crowded)
-                        continue;
-
-                    samples.Add(at);
-                    normals.Add(edge.Inward);
+                    if (pick < 0)
+                        break;
+                    used[pick] = true;
+                    run.Add(rim[pick]);
+                    direction = Direction(rim[pick]);
+                    tail = rim[pick].B;
                 }
+                runs.Add(run);
             }
-            return samples;
+            return runs;
+        }
+
+        static Vector3 Direction(RimEdge e) =>
+            Vector3.Normalize(new Vector3(e.B.X - e.A.X, 0f, e.B.Z - e.A.Z));
+
+        static (long, long, long) Quantise(Vector3 v) =>
+            ((long)MathF.Round(v.X * 64f), (long)MathF.Round(v.Y * 64f), (long)MathF.Round(v.Z * 64f));
+
+        static Vector3 AlongRun(List<RimEdge> run, float distance)
+        {
+            float walked = 0f;
+            for (int i = 0; i < run.Count; i++)
+            {
+                if (walked + run[i].Length >= distance)
+                {
+                    float t = run[i].Length <= 1e-6f ? 0f : (distance - walked) / run[i].Length;
+                    return Vector3.Lerp(run[i].A, run[i].B, t);
+                }
+                walked += run[i].Length;
+            }
+            return run[run.Count - 1].B;
+        }
+
+        /// <summary>
+        /// Crawl spaces: the job is the spot inside the vent worth checking, the task is where an
+        /// NPC stands outside it to look in.
+        /// </summary>
+        /// <remarks>
+        /// Retail's crawl jobs are all on walkable surface with several metres of clear run ahead,
+        /// and sit a median 0.19 m from a deep-crouch polygon centroid (min 0.07, max 0.50 on
+        /// Solace) - so they are the centroids, not samples off the region's rim. The task is
+        /// pushed out through the nearest way out of the crawl space, which is why retail's
+        /// job-to-task distances vary between 1.06 and 1.73 m rather than being constant.
+        /// </remarks>
+        static List<SpottingPositions.JobInfo> BuildCrawlSpace(
+            NavigationMesh nav, List<RimEdge> mouths, JobPositionBakeSettings settings)
+        {
+            var jobs = new List<SpottingPositions.JobInfo>();
+            if (nav?.Polygons == null || mouths == null || mouths.Count == 0)
+                return jobs;
+
+            List<Vector3[]> deep = HeightPolys(nav, NavigationMesh.AreaHeight.DeepCrouch);
+            float mergeSq = settings.CrawlMinSeparation * settings.CrawlMinSeparation;
+            float reach = settings.CrawlSpottingPositionDistanceOffset;
+            float minInside = settings.CrawlMinDistanceInsideDeepCrouchForSpotPosition;
+            var placed = new List<Vector3>();
+
+            for (int e = 0; e < mouths.Count; e++)
+            {
+                RimEdge mouth = mouths[e];
+                Vector3 centre = (mouth.A + mouth.B) * 0.5f;
+
+                // Probe back into the crawl space along the edge normal: the spot goes as deep as
+                // the offset asks for, or as deep as the region actually runs, whichever is less.
+                float depth = 0f;
+                const float step = 0.0625f;
+                for (float d = step; d <= reach + 1e-4f; d += step)
+                {
+                    if (!InsideAny(deep, centre + mouth.Inward * d))
+                        break;
+                    depth = d;
+                }
+                if (depth < minInside)
+                    continue;
+
+                Vector3 spot = centre + mouth.Inward * depth;
+                Vector3 path = centre - mouth.Inward * settings.CrawlPathPositionDistanceOffset;
+                if (Vector3.Distance(spot, path) <= settings.CrawlMinSpotToPathDistance)
+                    continue;
+
+                bool crowded = false;
+                for (int i = 0; i < placed.Count; i++)
+                {
+                    if (Vector3.DistanceSquared(placed[i], spot) >= mergeSq)
+                        continue;
+                    crowded = true;
+                    break;
+                }
+                if (crowded)
+                    continue;
+
+                placed.Add(spot);
+                jobs.Add(new SpottingPositions.JobInfo { JobPosition = spot, TaskPosition = path });
+            }
+            return jobs;
+        }
+
+        static List<Vector3[]> HeightPolys(NavigationMesh nav, NavigationMesh.AreaHeight height)
+        {
+            var list = new List<Vector3[]>();
+            foreach (NavigationMesh.dtPoly poly in nav.Polygons)
+            {
+                if (poly.verts == null || poly.vertCount < 3)
+                    continue;
+                if (poly.area.GetHeightLimitedAmount() != height)
+                    continue;
+                var v = new Vector3[poly.vertCount];
+                for (int i = 0; i < poly.vertCount; i++)
+                    v[i] = nav.Vertices[poly.verts[i]];
+                list.Add(v);
+            }
+            return list;
+        }
+
+        static bool InsideAny(List<Vector3[]> polys, Vector3 p)
+        {
+            for (int i = 0; i < polys.Count; i++)
+            {
+                Vector3[] v = polys[i];
+                bool inside = false;
+                for (int a = 0, b = v.Length - 1; a < v.Length; b = a++)
+                {
+                    if (((v[a].Z > p.Z) != (v[b].Z > p.Z))
+                        && (p.X < (v[b].X - v[a].X) * (p.Z - v[a].Z) / (v[b].Z - v[a].Z) + v[a].X))
+                        inside = !inside;
+                }
+                if (!inside)
+                    continue;
+                // Guard against a crawl space on another storey sharing the footprint.
+                float y = 0f;
+                for (int k = 0; k < v.Length; k++) y += v[k].Y;
+                if (MathF.Abs(y / v.Length - p.Y) > 1.0f)
+                    continue;
+                return true;
+            }
+            return false;
         }
 
         static SpottingPositions BuildSpotting(List<SpottingPositions.JobInfo> jobs, float unit)
