@@ -2082,27 +2082,30 @@ namespace CathodeLib
             }
         }
 
+        private T GetDefaultValueAs<T>()
+        {
+            if (typeof(T) == typeof(bool))
+                return (T)(object)false;
+            else if (typeof(T) == typeof(int))
+                return (T)(object)0;
+            else if (typeof(T) == typeof(float))
+                return (T)(object)0.0f;
+            else if (typeof(T) == typeof(Vector3))
+                return (T)(object)new Vector3(0, 0, 0);
+            else if (typeof(T) == typeof(Transform))
+                return (T)(object)new Transform();
+            else if (typeof(T) == typeof(cResource))
+                return (T)(object)new cResource();
+            else if (typeof(T) == typeof(string))
+                return (T)(object)"";
+            else
+                return default(T);
+        }
+
         private T GetValueAs<T>(object value)
         {
             if (value == null)
-            {
-                if (typeof(T) == typeof(bool))
-                    return (T)(object)false;
-                else if (typeof(T) == typeof(int))
-                    return (T)(object)0;
-                else if (typeof(T) == typeof(float))
-                    return (T)(object)0.0f;
-                else if (typeof(T) == typeof(Vector3))
-                    return (T)(object)new Vector3(0, 0, 0);
-                else if (typeof(T) == typeof(Transform))
-                    return (T)(object)new Transform();
-                else if (typeof(T) == typeof(cResource))
-                    return (T)(object)new cResource();
-                else if (typeof(T) == typeof(string))
-                    return (T)(object)"";
-                else
-                    throw new Exception("Unhandled type conversion");
-            }
+                return GetDefaultValueAs<T>();
 
             Type valueType = value.GetType();
 
@@ -2141,6 +2144,8 @@ namespace CathodeLib
                     return (T)(object)f.ToString();
                 if (typeof(T) == typeof(Vector3))
                     return (T)(object)new Vector3(f, f, f);
+                if (typeof(T) == typeof(Transform))
+                    return (T)(object)new Transform() { Position = new Vector3(f, f, f) };
             }
             else if (valueType == typeof(string))
             {
@@ -2175,6 +2180,9 @@ namespace CathodeLib
                 if (typeof(T) == typeof(Vector3))
                     return (T)(object)t.Position;
             }
+
+            if (!typeof(T).IsInstanceOfType(value))
+                return GetDefaultValueAs<T>();
 
             return (T)value;
         }
