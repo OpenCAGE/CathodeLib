@@ -285,6 +285,7 @@ namespace CathodeLib
             );
 
             Parallel.Invoke(
+                () => { RadiosityRuntime = new RadiosityRuntime(renderable + "RADIOSITY_RUNTIME.BIN", Resources); OnLoadTick?.Invoke(); },
                 () => { RadiosityInstanceMap = new RadiosityInstanceMap(renderable + "RADIOSITY_INSTANCE_MAP.TXT", Resources); OnLoadTick?.Invoke(); },
                 () => { RadiosityCollisionMap = new RadiosityCollisionMap(world + "RADIOSITY_COLLISION_MAPPING.BIN"); OnLoadTick?.Invoke(); },
                 () => { AlphaLight = new AlphaLightLevel(world + "ALPHALIGHT_LEVEL.BIN"); OnLoadTick?.Invoke(); },
@@ -307,9 +308,6 @@ namespace CathodeLib
             );
 
             Commands = new Commands(world + "COMMANDS" + (compressed ? ".BIN.GZ" : File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements, PhysicsHKX, Textures, _global?.Textures); OnLoadTick?.Invoke();
-
-            //todo - perhaps can do parallel. sort out order once working.
-            RadiosityRuntime = new RadiosityRuntime(renderable + "RADIOSITY_RUNTIME.BIN", Resources); OnLoadTick?.Invoke();
 
             StateResources.Add(new State());
             using (BinaryReader reader = new BinaryReader(File.OpenRead(world + "EXCLUSIVE_MASTER_RESOURCE_INDICES")))
