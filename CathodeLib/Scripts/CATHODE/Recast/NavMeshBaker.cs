@@ -788,47 +788,6 @@ namespace CathodeLib.NavMesh
 
             DtMeshData data = tile.data;
             int polyCount = data.header.polyCount;
-            int cellCount = chf.width * chf.height;
-
-            var active = new bool[cellCount];
-            for (int i = 0; i < polyCount; i++)
-            {
-                if (keep != null && i < keep.Length && !keep[i])
-                    continue;
-                DtPoly poly = data.polys[i];
-                if (poly.GetPolyType() == DtPolyTypes.DT_POLYTYPE_OFFMESH_CONNECTION)
-                    continue;
-                MarkPolyCells(chf, data, poly, active);
-            }
-
-            var cellHeight = new NavigationMesh.AreaHeight[cellCount];
-            for (int i = 0; i < cellCount; i++)
-                cellHeight[i] = NavigationMesh.AreaHeight.Standing;
-
-            for (int z = 0; z < chf.height; z++)
-            {
-                for (int x = 0; x < chf.width; x++)
-                {
-                    int ci = x + z * chf.width;
-                    if (!active[ci])
-                        continue;
-
-                    RcCompactCell cell = chf.cells[ci];
-                    if (cell.count <= 0)
-                        continue;
-
-                    // Clearance of the lowest span in this nav-covered column.
-                    float clearance = chf.spans[cell.index].h * chf.ch;
-                    cellHeight[ci] = ClassifyClearance(clearance, settings);
-                }
-            }
-
-            int spread = Math.Max(0, settings.HeightLimitedAreaSpread);
-            int crouchExtra = Math.Max(0, settings.HeightLimitedAreaSpreadExtraForNonDeepCrouch);
-            _ = settings.HeightLimitedAreaModeFilterPasses;
-
-            DilateCellHeightMarks(cellHeight, active, chf.width, chf.height, NavigationMesh.AreaHeight.DeepCrouch, spread);
-            DilateCellHeightMarks(cellHeight, active, chf.width, chf.height, NavigationMesh.AreaHeight.Crouch, spread + crouchExtra);
 
             for (int i = 0; i < polyCount; i++)
             {
@@ -838,7 +797,7 @@ namespace CathodeLib.NavMesh
                 if (poly.GetPolyType() == DtPolyTypes.DT_POLYTYPE_OFFMESH_CONNECTION)
                     continue;
 
-                NavigationMesh.AreaHeight h = SampleCellHeight(chf, cellHeight, data, poly);
+                NavigationMesh.AreaHeight h = ClassifyClearance(PolyClearance(chf, data, poly, settings), settings);
                 NavigationMesh.dt_area_t area = areas[i];
                 area.SetHeightLimitedAmount(h);
                 areas[i] = area;
@@ -850,145 +809,90 @@ namespace CathodeLib.NavMesh
             }
         }
 
-        static void MarkPolyCells(
+        /// <summary>
+        /// Smallest headroom over a polygon: for each compact-heightfield column under it, the
+        /// walkable span nearest the polygon's own surface, and the free height above that span.
+        /// Positive infinity when nothing resolves, which classifies as Standing.
+        /// </summary>
+        /// <remarks>
+        /// This was measured per cell rather than per polygon, and it took two things it should
+        /// not have. It read chf.spans[cell.index], the LOWEST span in the column, so a polygon on
+        /// an upper deck was judged by the headroom of the ground floor underneath it - which on a
+        /// multi-storey level is the gap up to that very deck, and reliably reads as a crouch. And
+        /// it did not skip spans the erosion pass had already killed, so the sliver of floor inside
+        /// a wall counted as surface someone stands on. Both inflate the crouch classes.
+        /// </remarks>
+        static float PolyClearance(
             RcCompactHeightfield chf,
             DtMeshData data,
             DtPoly poly,
-            bool[] active)
+            NavMeshBakeSettings settings)
         {
-            void Mark(float x, float z)
+            float worst = float.PositiveInfinity;
+            float reach = settings.WalkableClimb + chf.ch * 2f;
+
+            void Sample(float x, float y, float z)
             {
                 int ix = (int)Math.Floor((x - chf.bmin.X) / chf.cs);
                 int iz = (int)Math.Floor((z - chf.bmin.Z) / chf.cs);
                 if (ix < 0 || iz < 0 || ix >= chf.width || iz >= chf.height)
                     return;
-                active[ix + iz * chf.width] = true;
+
+                RcCompactCell cell = chf.cells[ix + iz * chf.width];
+                int nearest = -1;
+                float nearestGap = reach;
+                for (int s = cell.index; s < cell.index + cell.count; s++)
+                {
+                    if (chf.areas[s] == RcRecast.RC_NULL_AREA)
+                        continue;
+                    float gap = Math.Abs(chf.bmin.Y + chf.spans[s].y * chf.ch - y);
+                    if (gap > nearestGap)
+                        continue;
+                    nearestGap = gap;
+                    nearest = s;
+                }
+                if (nearest < 0)
+                    return;
+
+                float clearance = chf.spans[nearest].h * chf.ch;
+                if (clearance < worst)
+                    worst = clearance;
             }
 
             Vector3 c = PolyCentroid(data, poly);
-            Mark(c.X, c.Z);
+            Sample(c.X, c.Y, c.Z);
             for (int v = 0; v < poly.vertCount; v++)
             {
                 int o = poly.verts[v] * 3;
-                Mark(data.verts[o], data.verts[o + 2]);
+                Sample(data.verts[o], data.verts[o + 1], data.verts[o + 2]);
             }
 
-            // Light fill: mark cells along each edge so thin polys still cover a rim.
+            // Walk the edges too, so a long thin polygon is not judged on three points.
             for (int v = 0; v < poly.vertCount; v++)
             {
                 int o0 = poly.verts[v] * 3;
                 int o1 = poly.verts[(v + 1) % poly.vertCount] * 3;
-                float x0 = data.verts[o0], z0 = data.verts[o0 + 2];
-                float x1 = data.verts[o1], z1 = data.verts[o1 + 2];
+                float x0 = data.verts[o0], y0 = data.verts[o0 + 1], z0 = data.verts[o0 + 2];
+                float x1 = data.verts[o1], y1 = data.verts[o1 + 1], z1 = data.verts[o1 + 2];
                 float len = MathF.Sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0));
                 int steps = Math.Max(1, (int)MathF.Ceiling(len / chf.cs));
                 for (int s = 0; s <= steps; s++)
                 {
                     float t = s / (float)steps;
-                    Mark(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t);
+                    Sample(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, z0 + (z1 - z0) * t);
                 }
             }
+            return worst;
         }
 
         static NavigationMesh.AreaHeight ClassifyClearance(float clearance, NavMeshBakeSettings settings)
         {
-            if (float.IsInfinity(clearance) || clearance >= settings.CrouchHeight)
+            float measured = clearance + settings.HeightLimitedClearanceBias;
+            if (float.IsInfinity(measured) || measured >= settings.CrouchHeight)
                 return NavigationMesh.AreaHeight.Standing;
-            if (clearance >= settings.DeepCrouchHeight)
+            if (measured >= settings.DeepCrouchHeight)
                 return NavigationMesh.AreaHeight.Crouch;
             return NavigationMesh.AreaHeight.DeepCrouch;
-        }
-
-        static int HeightRank(NavigationMesh.AreaHeight h)
-        {
-            switch (h)
-            {
-                case NavigationMesh.AreaHeight.DeepCrouch: return 2;
-                case NavigationMesh.AreaHeight.Crouch: return 1;
-                default: return 0;
-            }
-        }
-
-        static void DilateCellHeightMarks(
-            NavigationMesh.AreaHeight[] cells,
-            bool[] active,
-            int width,
-            int height,
-            NavigationMesh.AreaHeight minMark,
-            int passes)
-        {
-            if (passes <= 0 || cells == null || width <= 0 || height <= 0)
-                return;
-
-            int minRank = HeightRank(minMark);
-            int n = cells.Length;
-            var next = new NavigationMesh.AreaHeight[n];
-            int[] dx = { -1, 1, 0, 0 };
-            int[] dz = { 0, 0, -1, 1 };
-
-            for (int pass = 0; pass < passes; pass++)
-            {
-                Array.Copy(cells, next, n);
-                for (int z = 0; z < height; z++)
-                {
-                    for (int x = 0; x < width; x++)
-                    {
-                        int i = x + z * width;
-                        if (active != null && !active[i])
-                            continue;
-                        if (HeightRank(cells[i]) >= minRank)
-                            continue;
-
-                        for (int d = 0; d < 4; d++)
-                        {
-                            int nx = x + dx[d];
-                            int nz = z + dz[d];
-                            if (nx < 0 || nz < 0 || nx >= width || nz >= height)
-                                continue;
-                            int ni = nx + nz * width;
-                            if (active != null && !active[ni])
-                                continue;
-                            if (HeightRank(cells[ni]) < minRank)
-                                continue;
-
-                            if (HeightRank(cells[ni]) > HeightRank(next[i]))
-                                next[i] = cells[ni];
-                            else if (HeightRank(next[i]) < minRank)
-                                next[i] = minMark;
-                        }
-                    }
-                }
-                Array.Copy(next, cells, n);
-            }
-        }
-
-        static NavigationMesh.AreaHeight SampleCellHeight(
-            RcCompactHeightfield chf,
-            NavigationMesh.AreaHeight[] cellHeight,
-            DtMeshData data,
-            DtPoly poly)
-        {
-            NavigationMesh.AreaHeight worst = NavigationMesh.AreaHeight.Standing;
-
-            void Consider(float x, float z)
-            {
-                int ix = (int)Math.Floor((x - chf.bmin.X) / chf.cs);
-                int iz = (int)Math.Floor((z - chf.bmin.Z) / chf.cs);
-                if (ix < 0 || iz < 0 || ix >= chf.width || iz >= chf.height)
-                    return;
-                NavigationMesh.AreaHeight h = cellHeight[ix + iz * chf.width];
-                if (HeightRank(h) > HeightRank(worst))
-                    worst = h;
-            }
-
-            Vector3 c = PolyCentroid(data, poly);
-            Consider(c.X, c.Z);
-            for (int v = 0; v < poly.vertCount; v++)
-            {
-                int o = poly.verts[v] * 3;
-                Consider(data.verts[o], data.verts[o + 2]);
-            }
-            return worst;
         }
 
         static bool PolyOverlapsBarrier(

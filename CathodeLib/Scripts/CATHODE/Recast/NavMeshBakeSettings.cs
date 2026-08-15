@@ -23,6 +23,7 @@ namespace CathodeLib.NavMesh
         public int HeightLimitedAreaModeFilterPasses = 0;
         public int HeightLimitedAreaSpread = 4;
         public int HeightLimitedAreaSpreadExtraForNonDeepCrouch = 1;
+        public float HeightLimitedClearanceBias = 0.0f;
         public bool FilterUnreachable = true;
         public float ReachabilitySeedHeightToleranceAbove = 0.1875f;
         public float ReachabilitySeedHeightToleranceBelow = 0.3125f;
