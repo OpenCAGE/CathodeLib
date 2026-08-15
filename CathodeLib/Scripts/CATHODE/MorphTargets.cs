@@ -70,7 +70,7 @@ namespace CATHODE
 
                         int vertCount = reader.ReadInt32();
                         for (int z = 0; z < vertCount; z++)
-                            target.Points.Add(Utilities.Consume<MorphTarget.Target.Point>(reader));
+                            target.Points.Add(MorphTarget.Target.Point.Read(reader));
 
                         model.Targets.Add(target);
                     }
@@ -115,7 +115,7 @@ namespace CATHODE
                         writer.Write(Entries[i].Targets[x].Points.Count);
                         for (int z = 0; z < Entries[i].Targets[x].Points.Count; z++)
                         {
-                            Utilities.Write(writer, Entries[i].Targets[x].Points[z]);
+                            Entries[i].Targets[x].Points[z].Write(writer);
                         }
                     }
                 }
@@ -269,14 +269,73 @@ namespace CATHODE
                     }
                 }
 
-                [StructLayout(LayoutKind.Sequential, Pack = 1)]
                 public class Point : IEquatable<Point>
                 {
-                    //TODO: convert this into indices, pos_offsets, normal_offsets
-                    //See how this is calculated in mint_rigid.cpp -> MorphTargetArray& morphs = m_morph_targets;
+                    private const float POS_EXTENTS = 0.04f;
+                    private const float NORMAL_EXTENTS = 0.5f;
 
-                    public byte u, v, nx, ny;
-                    public byte x, y, z, nz;
+                    public int Index;
+                    public Vector3 PositionOffset;
+                    public Vector3 NormalOffset;
+
+                    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+                    private struct Packed
+                    {
+                        public byte u, v, nx, ny;
+                        public byte x, y, z, nz;
+                    }
+
+                    public static Point Read(BinaryReader reader)
+                    {
+                        Packed packed = Utilities.Consume<Packed>(reader);
+                        return new Point
+                        {
+                            Index = packed.u + (packed.v * 256),
+                            PositionOffset = new Vector3(
+                                U8ToF32(packed.x, -POS_EXTENTS, POS_EXTENTS),
+                                U8ToF32(packed.y, -POS_EXTENTS, POS_EXTENTS),
+                                U8ToF32(packed.z, -POS_EXTENTS, POS_EXTENTS)),
+                            NormalOffset = new Vector3(
+                                U8ToF32(packed.nx, -NORMAL_EXTENTS, NORMAL_EXTENTS),
+                                U8ToF32(packed.ny, -NORMAL_EXTENTS, NORMAL_EXTENTS),
+                                U8ToF32(packed.nz, -NORMAL_EXTENTS, NORMAL_EXTENTS))
+                        };
+                    }
+
+                    public void Write(BinaryWriter writer)
+                    {
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                        float px = PositionOffset.x, py = PositionOffset.y, pz = PositionOffset.z;
+                        float nx = NormalOffset.x, ny = NormalOffset.y, nz = NormalOffset.z;
+#else
+                        float px = PositionOffset.X, py = PositionOffset.Y, pz = PositionOffset.Z;
+                        float nx = NormalOffset.X, ny = NormalOffset.Y, nz = NormalOffset.Z;
+#endif
+                        Utilities.Write(writer, new Packed
+                        {
+                            u = (byte)(Index % 256),
+                            v = (byte)(Index / 256),
+                            x = F32ToU8(px, -POS_EXTENTS, POS_EXTENTS),
+                            y = F32ToU8(py, -POS_EXTENTS, POS_EXTENTS),
+                            z = F32ToU8(pz, -POS_EXTENTS, POS_EXTENTS),
+                            nx = F32ToU8(nx, -NORMAL_EXTENTS, NORMAL_EXTENTS),
+                            ny = F32ToU8(ny, -NORMAL_EXTENTS, NORMAL_EXTENTS),
+                            nz = F32ToU8(nz, -NORMAL_EXTENTS, NORMAL_EXTENTS)
+                        });
+                    }
+
+                    private static float U8ToF32(byte value, float min, float max)
+                    {
+                        return min + (value / 255.0f) * (max - min);
+                    }
+
+                    private static byte F32ToU8(float value, float min, float max)
+                    {
+                        float t = (value - min) / (max - min) * 255.0f;
+                        if (t <= 0.0f) return 0;
+                        if (t >= 255.0f) return 255;
+                        return (byte)(t + 0.5f);
+                    }
 
                     public static bool operator ==(Point x, Point y)
                     {
@@ -295,14 +354,9 @@ namespace CATHODE
                         if (other == null) return false;
                         if (ReferenceEquals(this, other)) return true;
 
-                        if (u != other.u) return false;
-                        if (v != other.v) return false;
-                        if (nx != other.nx) return false;
-                        if (ny != other.ny) return false;
-                        if (x != other.x) return false;
-                        if (y != other.y) return false;
-                        if (z != other.z) return false;
-                        if (nz != other.nz) return false;
+                        if (Index != other.Index) return false;
+                        if (PositionOffset != other.PositionOffset) return false;
+                        if (NormalOffset != other.NormalOffset) return false;
 
                         return true;
                     }
@@ -317,40 +371,25 @@ namespace CATHODE
                         unchecked
                         {
                             int hash = 17;
-                            hash = hash * 23 + u.GetHashCode();
-                            hash = hash * 23 + v.GetHashCode();
-                            hash = hash * 23 + nx.GetHashCode();
-                            hash = hash * 23 + ny.GetHashCode();
-                            hash = hash * 23 + x.GetHashCode();
-                            hash = hash * 23 + y.GetHashCode();
-                            hash = hash * 23 + z.GetHashCode();
-                            hash = hash * 23 + nz.GetHashCode();
+                            hash = hash * 23 + Index.GetHashCode();
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+                            hash = hash * 23 + PositionOffset.x.GetHashCode();
+                            hash = hash * 23 + PositionOffset.y.GetHashCode();
+                            hash = hash * 23 + PositionOffset.z.GetHashCode();
+                            hash = hash * 23 + NormalOffset.x.GetHashCode();
+                            hash = hash * 23 + NormalOffset.y.GetHashCode();
+                            hash = hash * 23 + NormalOffset.z.GetHashCode();
+#else
+                            hash = hash * 23 + PositionOffset.X.GetHashCode();
+                            hash = hash * 23 + PositionOffset.Y.GetHashCode();
+                            hash = hash * 23 + PositionOffset.Z.GetHashCode();
+                            hash = hash * 23 + NormalOffset.X.GetHashCode();
+                            hash = hash * 23 + NormalOffset.Y.GetHashCode();
+                            hash = hash * 23 + NormalOffset.Z.GetHashCode();
+#endif
                             return hash;
                         }
                     }
-
-                    /*
-                        for( card32 i = 0; i < num_verts; ++i ) {
-				            Point pt;
-				            memset( &pt, 0, sizeof( pt ) );
-				            pt.u = card8( morph.indices[ i ] % 256 );
-					        pt.v = card8( morph.indices[ i ] / 256 );
-				            const auto pos_off = morph.pos_offsets[ i ];
-				            const auto normal_off = morph.normal_offsets[ i ];
-
-				            const float pos_extents = 0.04f;
-				            pt.x = f32_to_u8( pos_off.x, -pos_extents, pos_extents );
-				            pt.y = f32_to_u8( pos_off.y, -pos_extents, pos_extents );
-				            pt.z = f32_to_u8( pos_off.z, -pos_extents, pos_extents );
-
-				            const float normal_extents = 0.5f;
-				            pt.nx = f32_to_u8( normal_off.x, -normal_extents, normal_extents );
-				            pt.ny = f32_to_u8( normal_off.y, -normal_extents, normal_extents );
-				            pt.nz = f32_to_u8( normal_off.z, -normal_extents, normal_extents );
-
-				            file_write( &pt, sizeof( pt ), "cccccccc", file );
-			            } 
-                    */
                 }
             }
         }
