@@ -306,6 +306,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         case (int)ANIM_TRACK_TYPE.T_GUID: 
                                         case (int)ANIM_TRACK_TYPE.T_STRING: 
                                         case (int)ANIM_TRACK_TYPE.T_MASTERING:
+                                        case (int)ANIM_TRACK_TYPE.UNKNOWN_ANIM_TRACK_TYPE:
                                             {
                                                 CAGEAnimation.EventTrack track = cageAnim.eventTracks.FirstOrDefault(o => o.shortGUID == trackID);
                                                 if (track == null)
@@ -313,6 +314,10 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     track = new CAGEAnimation.EventTrack() { shortGUID = trackID };
                                                     cageAnim.eventTracks.Add(track);
                                                 }
+                                                ANIM_TRACK_TYPE resolvedType = (ANIM_TRACK_TYPE)trackType.enumIndex;
+                                                if (resolvedType == ANIM_TRACK_TYPE.UNKNOWN_ANIM_TRACK_TYPE)
+                                                    resolvedType = ANIM_TRACK_TYPE.T_STRING;
+                                                track.track_type = resolvedType;
                                                 keyframes /= 24;
                                                 for (int x = 0; x < keyframes - 1; x++)
                                                 {
@@ -800,7 +805,12 @@ namespace CATHODE.Scripting.Internal.Parsers
 
                                 offset = (int)bufferWriter.BaseStream.Position;
                                 Utilities.Write<ShortGuid>(bufferWriter, ShortGuids.ANIM_TRACK_TYPE);
-                                bufferWriter.Write((int)(eventTrack.keyframes.Count == 0 ? ANIM_TRACK_TYPE.UNKNOWN_ANIM_TRACK_TYPE : eventTrack.keyframes[0].track_type));
+                                ANIM_TRACK_TYPE emptyTrackType = eventTrack.keyframes.Count == 0
+                                    ? (eventTrack.track_type == ANIM_TRACK_TYPE.UNKNOWN_ANIM_TRACK_TYPE
+                                        ? ANIM_TRACK_TYPE.T_STRING
+                                        : eventTrack.track_type)
+                                    : eventTrack.keyframes[0].track_type;
+                                bufferWriter.Write((int)emptyTrackType);
                                 commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_ENUM | 8, offset));
 
                                 offset = (int)bufferWriter.BaseStream.Position;

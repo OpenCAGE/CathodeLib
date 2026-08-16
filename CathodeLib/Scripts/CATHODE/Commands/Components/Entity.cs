@@ -592,6 +592,7 @@ namespace CATHODE.Scripting
         public class EventTrack
         {
             public ShortGuid shortGUID;
+            public ANIM_TRACK_TYPE track_type = ANIM_TRACK_TYPE.T_STRING;
             public List<Keyframe> keyframes = new List<Keyframe>();
 
             [Serializable]

@@ -171,7 +171,7 @@ namespace CATHODE
         /// Pass <paramref name="remappedProxy"/> when porting between levels so the Havok compound
         /// lives in the destination COLLISION.HKX. World instances are cleared (instancing rebuilds them).
         /// </summary>
-        public COLLISION_MAPPING ImportEntry(COLLISION_MAPPING colMap, HavokPackfile.StaticCompoundShape remappedProxy = null)
+        public COLLISION_MAPPING ImportEntry(COLLISION_MAPPING colMap, HavokPackfile.StaticCompoundShape remappedProxy = null, bool overwriteExisting = false)
         {
             if (colMap == null)
                 return null;
@@ -179,8 +179,8 @@ namespace CATHODE
             COLLISION_MAPPING newColMap = colMap.Copy();
             newColMap.CollisionProxy = remappedProxy ?? colMap.CollisionProxy;
             newColMap.CollisionInstance = null;
-            newColMap.Material = _materials.ImportEntry(newColMap.Material);
-            newColMap.MaterialMapping = _materialMaps.ImportEntry(newColMap.MaterialMapping);
+            newColMap.Material = _materials.ImportEntry(newColMap.Material, overwriteExisting);
+            newColMap.MaterialMapping = _materialMaps.ImportEntry(newColMap.MaterialMapping, overwriteExisting);
 
             var existing = Entries.FirstOrDefault(o => o == newColMap);
             if (existing != null)

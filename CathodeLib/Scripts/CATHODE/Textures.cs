@@ -383,19 +383,32 @@ namespace CATHODE
 
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
+        /// Dedupes by texture name (path-normalised). When <paramref name="overwriteExisting"/> is true, replaces any existing entry with the same name.
         /// </summary>
-        public TEX4 ImportEntry(TEX4 texture)
+        public TEX4 ImportEntry(TEX4 texture, bool overwriteExisting = false)
         {
             if (texture == null)
                 return null;
 
-            var existing = Entries.FirstOrDefault(o => o == texture);
-            if (existing != null)
-                return existing;
+            string normalisedName = NormaliseTextureName(texture.Name);
+            TEX4 existingByName = Entries.FirstOrDefault(o => NormaliseTextureName(o.Name) == normalisedName);
+            if (existingByName != null && !overwriteExisting)
+                return existingByName;
 
             TEX4 newTexture = texture.Copy();
+            if (existingByName != null)
+            {
+                Entries[Entries.IndexOf(existingByName)] = newTexture;
+                return newTexture;
+            }
+
             Entries.Add(newTexture);
             return newTexture;
+        }
+
+        static string NormaliseTextureName(string name)
+        {
+            return (name ?? "").ToUpperInvariant().Replace('/', '\\');
         }
         #endregion
 

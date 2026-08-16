@@ -463,17 +463,24 @@ namespace CATHODE
 
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
+        /// Dedupes by <see cref="Shader.Technique"/>. When <paramref name="overwriteExisting"/> is true, replaces any existing entry with the same technique name.
         /// </summary>
-        public Shader ImportEntry(Shader shader)
+        public Shader ImportEntry(Shader shader, bool overwriteExisting = false)
         {
             if (shader == null)
                 return null;
 
-            var existing = Entries.FirstOrDefault(o => o == shader);
-            if (existing != null)
-                return existing;
+            Shader existingByName = Entries.FirstOrDefault(o => o.Technique == shader.Technique);
+            if (existingByName != null && !overwriteExisting)
+                return existingByName;
 
             Shader newShader = shader.Copy();
+            if (existingByName != null)
+            {
+                Entries[Entries.IndexOf(existingByName)] = newShader;
+                return newShader;
+            }
+
             Entries.Add(newShader);
             return newShader;
         }

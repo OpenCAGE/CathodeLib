@@ -335,11 +335,16 @@ namespace CATHODE
 
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
+        /// Dedupes by <see cref="Material.Name"/>. When <paramref name="overwriteExisting"/> is true, replaces any existing entry with the same name.
         /// </summary>
-        public Material ImportEntry(Material material)
+        public Material ImportEntry(Material material, bool overwriteExisting = false)
         {
             if (material == null)
                 return null;
+
+            Material existingByName = Entries.FirstOrDefault(o => o.Name == material.Name);
+            if (existingByName != null && !overwriteExisting)
+                return existingByName;
 
             Material newMaterial = material.Copy();
 
@@ -349,14 +354,16 @@ namespace CATHODE
                 if (newMaterial.TextureReferences[i].Location == Source.GLOBAL)
                     continue;
 
-                newMaterial.TextureReferences[i].Texture = _levelTextures.ImportEntry(newMaterial.TextureReferences[i].Texture);
+                newMaterial.TextureReferences[i].Texture = _levelTextures.ImportEntry(newMaterial.TextureReferences[i].Texture, overwriteExisting);
             }
-            newMaterial.Shader = _shaders.ImportEntry(newMaterial.Shader);
+            newMaterial.Shader = _shaders.ImportEntry(newMaterial.Shader, overwriteExisting);
             //newMaterial.EnvironmentMapIndex = 255; //TEMP! should remap
 
-            var existing = Entries.FirstOrDefault(o => o == newMaterial);
-            if (existing != null)
-                return existing;
+            if (existingByName != null)
+            {
+                Entries[Entries.IndexOf(existingByName)] = newMaterial;
+                return newMaterial;
+            }
 
             Entries.Add(newMaterial);
             return newMaterial;

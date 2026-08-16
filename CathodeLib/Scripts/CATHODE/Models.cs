@@ -738,12 +738,16 @@ namespace CATHODE
 
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
+        /// Dedupes by <see cref="CS2.Name"/>. When <paramref name="overwriteExisting"/> is true, replaces any existing entry with the same name.
         /// </summary>
-        /// 
-        public CS2 ImportEntry(CS2 model)
+        public CS2 ImportEntry(CS2 model, bool overwriteExisting = false)
         {
             if (model == null)
                 return null;
+
+            CS2 existingByName = Entries.FirstOrDefault(o => o.Name == model.Name);
+            if (existingByName != null && !overwriteExisting)
+                return existingByName;
 
             CS2 newModel = model.Copy();
             foreach (CS2.Component component in newModel.Components)
@@ -752,18 +756,20 @@ namespace CATHODE
                 {
                     foreach (CS2.Component.LOD.Submesh submesh in lod.Submeshes)
                     {
-                        submesh.Material = _materials.ImportEntry(submesh.Material);
+                        submesh.Material = _materials.ImportEntry(submesh.Material, overwriteExisting);
                         submesh.WeightedCollision = _collisions.ImportEntry(submesh.WeightedCollision);
                         submesh.MorphAnimSet = _morphTargets.ImportEntry(submesh.MorphAnimSet); 
                     }
                 }
             }
 
-            var existing = Entries.FirstOrDefault(o => o == newModel);
-            if (existing != null)
-                return existing;
+            if (existingByName != null)
+            {
+                Entries[Entries.IndexOf(existingByName)] = newModel;
+                return newModel;
+            }
 
-            Entries.Add(model);
+            Entries.Add(newModel);
             return newModel;
         }
         #endregion
@@ -944,6 +950,38 @@ namespace CATHODE
                             {
                                 return Components[i].LODs[x].Submeshes[z];
                             }
+                        }
+                    }
+                }
+                return null;
+            }
+
+            /// <summary>
+            /// Resolve <paramref name="sourceSubmesh"/> onto this model: prefer guid/content match, otherwise the same component/LOD/submesh indices in <paramref name="sourceModel"/>.
+            /// </summary>
+            public CS2.Component.LOD.Submesh GetCorrespondingSubmesh(CS2 sourceModel, CS2.Component.LOD.Submesh sourceSubmesh)
+            {
+                CS2.Component.LOD.Submesh matched = GetSubmesh(sourceSubmesh);
+                if (matched != null)
+                    return matched;
+
+                if (sourceModel == null || sourceSubmesh == null)
+                    return null;
+
+                for (int i = 0; i < sourceModel.Components.Count; i++)
+                {
+                    for (int x = 0; x < sourceModel.Components[i].LODs.Count; x++)
+                    {
+                        for (int z = 0; z < sourceModel.Components[i].LODs[x].Submeshes.Count; z++)
+                        {
+                            CS2.Component.LOD.Submesh candidate = sourceModel.Components[i].LODs[x].Submeshes[z];
+                            if (!ReferenceEquals(candidate, sourceSubmesh) && candidate != sourceSubmesh)
+                                continue;
+
+                            if (i >= Components.Count || x >= Components[i].LODs.Count || z >= Components[i].LODs[x].Submeshes.Count)
+                                return null;
+
+                            return Components[i].LODs[x].Submeshes[z];
                         }
                     }
                 }

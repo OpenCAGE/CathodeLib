@@ -122,17 +122,24 @@ namespace CATHODE
 
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
+        /// Dedupes by <see cref="MaterialMapping.Name"/>. When <paramref name="overwriteExisting"/> is true, replaces any existing entry with the same name.
         /// </summary>
-        public MaterialMapping ImportEntry(MaterialMapping matMap)
+        public MaterialMapping ImportEntry(MaterialMapping matMap, bool overwriteExisting = false)
         {
             if (matMap == null)
                 return null;
 
-            var existing = Entries.FirstOrDefault(o => o == matMap);
-            if (existing != null)
-                return existing;
+            MaterialMapping existingByName = Entries.FirstOrDefault(o => o.Name == matMap.Name);
+            if (existingByName != null && !overwriteExisting)
+                return existingByName;
 
             MaterialMapping newMatMap = matMap.Copy();
+            if (existingByName != null)
+            {
+                Entries[Entries.IndexOf(existingByName)] = newMatMap;
+                return newMatMap;
+            }
+
             Entries.Add(newMatMap);
             return newMatMap;
         }

@@ -357,6 +357,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     keyframe.duration = reader_parallel.ReadSingle();
                                                     thisParamSet.keyframes.Add(keyframe);
                                                 }
+                                                if (thisParamSet.keyframes.Count > 0)
+                                                    thisParamSet.track_type = thisParamSet.keyframes[0].track_type;
                                                 animEntity.eventTracks.Add(thisParamSet);
                                             }
                                             break;
