@@ -2433,6 +2433,8 @@ namespace CathodeLib
             RunOptionalBake("job positions", () => JobPositionBaker.BakeLevel(level, jobPositionSettings, Console.WriteLine));
             RunOptionalBake("sound networks", () => SoundNodeNetworkGenerator.Generate(level, AllEntities, Console.WriteLine));
 
+            //TODO: ALPHALIGHT_LEVEL.BIN needs regenerating here too, and providing the associated properties to ModelReferences
+
             if (radiositySettings != null)
             {
                 RadiosityBaker.BakeLevel(level, this, radiositySettings);
