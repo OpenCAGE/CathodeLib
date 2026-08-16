@@ -244,6 +244,11 @@ namespace CathodeLib
         public static readonly ShortGuid PARTICLE_EXPIRY_TIME_MIN = ShortGuidUtils.Generate("PARTICLE_EXPIRY_TIME_MIN");
         public static readonly ShortGuid physical_attenuation = ShortGuidUtils.Generate("physical_attenuation");
         public static readonly ShortGuid radiosity_multiplier = ShortGuidUtils.Generate("radiosity_multiplier");
+        public static readonly ShortGuid alpha_light_offset_x = ShortGuidUtils.Generate("alpha_light_offset_x");
+        public static readonly ShortGuid alpha_light_offset_y = ShortGuidUtils.Generate("alpha_light_offset_y");
+        public static readonly ShortGuid alpha_light_scale_x = ShortGuidUtils.Generate("alpha_light_scale_x");
+        public static readonly ShortGuid alpha_light_scale_y = ShortGuidUtils.Generate("alpha_light_scale_y");
+        public static readonly ShortGuid alpha_light_average_normal = ShortGuidUtils.Generate("alpha_light_average_normal");
         public static readonly ShortGuid radius = ShortGuidUtils.Generate("radius");
         public static readonly ShortGuid REFLECTIVE_MAPPING = ShortGuidUtils.Generate("REFLECTIVE_MAPPING");
         public static readonly ShortGuid replace_intensity = ShortGuidUtils.Generate("replace_intensity");

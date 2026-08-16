@@ -385,10 +385,10 @@ namespace CathodeLib
         /// Save all data for the level
         /// </summary>
 #if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
-        public void Save(bool doInstancing = false, NavMesh.NavMeshBakeSettings navMeshSettings = null, NavMesh.CoverBakeSettings coverSettings = null, Radiosity.RadiosityBakeSettings radiositySettings = null, NavMesh.JobPositionBakeSettings jobPositionSettings = null)
+        public void Save(bool doInstancing = false, NavMesh.NavMeshBakeSettings navMeshSettings = null, NavMesh.CoverBakeSettings coverSettings = null, Radiosity.RadiosityBakeSettings radiositySettings = null, NavMesh.JobPositionBakeSettings jobPositionSettings = null, Alphalight.AlphalightBakeSettings alphalightSettings = null)
         {
             if (doInstancing)
-                new Instancing(this, navMeshSettings, coverSettings, radiositySettings, jobPositionSettings);
+                new Instancing(this, navMeshSettings, coverSettings, radiositySettings, jobPositionSettings, alphalightSettings);
 #else
         public void Save()
         {

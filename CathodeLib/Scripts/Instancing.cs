@@ -3,6 +3,7 @@ using CATHODE.Enums;
 using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using CATHODE.ShaderTypes;
+using CathodeLib.Alphalight;
 using CathodeLib.NavMesh;
 using CathodeLib.ObjectExtensions;
 using CathodeLib.Radiosity;
@@ -2420,7 +2421,7 @@ namespace CathodeLib
             }
         }
 
-        public Instancing(Level level, NavMeshBakeSettings navMeshSettings = null, CoverBakeSettings coverSettings = null, RadiosityBakeSettings radiositySettings = null, JobPositionBakeSettings jobPositionSettings = null)
+        public Instancing(Level level, NavMeshBakeSettings navMeshSettings = null, CoverBakeSettings coverSettings = null, RadiosityBakeSettings radiositySettings = null, JobPositionBakeSettings jobPositionSettings = null, AlphalightBakeSettings alphalightSettings = null)
         {
             _level = level;
 
@@ -2433,11 +2434,11 @@ namespace CathodeLib
             RunOptionalBake("job positions", () => JobPositionBaker.BakeLevel(level, jobPositionSettings, Console.WriteLine));
             RunOptionalBake("sound networks", () => SoundNodeNetworkGenerator.Generate(level, AllEntities, Console.WriteLine));
 
-            //TODO: ALPHALIGHT_LEVEL.BIN needs regenerating here too, and providing the associated properties to ModelReferences
+            RunOptionalBake("alphalight", () => AlphalightBaker.BakeLevel(level, alphalightSettings, Console.WriteLine));
 
             if (radiositySettings != null)
             {
-                RadiosityBaker.BakeLevel(level, this, radiositySettings);
+                RadiosityBaker.BakeLevel(level, this, radiositySettings, Console.WriteLine);
 
                 if (_level.Patched)
                     ClearRadiosityPatch();
