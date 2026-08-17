@@ -793,6 +793,8 @@ namespace CATHODE.Scripting
                     defaultValue = null;
                 if (defaultValue == null)
                     defaultValue = CreateDefaultParameterData(functionType.Value, ShortGuids.resource, ParameterVariant.INTERNAL);
+                if (defaultValue == null)
+                    return;
 
                 if (defaultValue is cResource)
                 {
@@ -1354,9 +1356,12 @@ namespace CATHODE.Scripting
         }
         public ParameterData CreateDefaultParameterData(FunctionType function, ShortGuid parameter, ParameterVariant variant)
         {
+            if (!CustomTable.Vanilla.CathodeEntities.FunctionVariantOffsets[function].TryGetValue(variant, out int offset))
+                return null;
+
             using (BinaryReader reader = new BinaryReader(new MemoryStream(CustomTable.Vanilla.CathodeEntities.content)))
             {
-                reader.BaseStream.Position = CustomTable.Vanilla.CathodeEntities.FunctionVariantOffsets[function][variant];
+                reader.BaseStream.Position = offset;
                 int paramCount = reader.ReadInt32();
                 for (int i = 0; i < paramCount; i++)
                 {
