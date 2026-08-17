@@ -283,6 +283,18 @@ namespace CathodeLib.Radiosity
         public bool EmitSurfaceLights = true;
 
         /// <summary>
+        /// Also sample scripted LIGHT movers (deferred light entities) into the surface light set.
+        /// </summary>
+        /// <remarks>
+        /// Off. Joining every SCI_Hub light slice back to its RESOURCES.BIN entity shows retail
+        /// attaches none of them to a LIGHT mover, across every UsesRadiosity / fraction / colour
+        /// bucket - its surface lights are all emissive-material movers. Deferred lights already
+        /// light the scene directly at runtime, so injecting them into radiosity as well
+        /// double-counted them (446 extra light slices, 17% of our direct energy).
+        /// </remarks>
+        public bool EmitLightEntitySamples = false;
+
+        /// <summary>
         /// Emissive atlas texels per surface light. One light per texel over-samples an emitter.
         /// </summary>
         /// <remarks>
@@ -314,6 +326,19 @@ namespace CathodeLib.Radiosity
         /// four) rather than pinning every emitter at the floor.
         /// </remarks>
         public float EmitterSampleRadius = 0.64f;
+
+        /// <summary>
+        /// Let an emissive triangle claim atlas texels even once its mover is over its share of
+        /// the rect, so an emitter is never dropped for lack of budget (#35).
+        /// </summary>
+        /// <remarks>
+        /// Off. It sounds right - a mover with no live emissive texel contributes no surface light
+        /// at all, since BuildEmissiveSurfaceLights groups by mover - but measured on SCI_Hub it
+        /// does not deliver: light slices moved 1416 to 1386, away from retail's 1818, and the
+        /// render scored slightly worse. Kept so the idea is not lost and can be retested once the
+        /// slice-count difference below is understood.
+        /// </remarks>
+        public bool ExemptEmissiveFromRectQuota = false;
 
         /// <summary>Emit door transfer sets.</summary>
         public bool EmitDoors = true;
@@ -349,6 +374,27 @@ namespace CathodeLib.Radiosity
         /// into the probe set.
         /// </summary>
         public float EmissiveScale = 1.0f;
+
+        /// <summary>
+        /// Bounds applied to a mover's <c>EmissiveRadiosityMultiplier</c> before it reaches a
+        /// surface light's Scale and Weight.
+        /// </summary>
+        /// <remarks>
+        /// Joining our lights to retail's per RESOURCES.BIN entity on SCI_Hub: emitters whose
+        /// mover multiplier reads 4-10x are stored by retail at Scale 7-15 - the 0.5x-1.0x range -
+        /// and retail's whole distribution is 69% inside Scale 7-15 with nothing between 47 and
+        /// 255. The multiplier is evidently not retail's Scale source (the mapping scatters in both
+        /// directions), so until the real source is decoded, clamping keeps any single emitter from
+        /// blowing out its surroundings the way our unclamped 4-10x lights did.
+        /// </remarks>
+        /// <remarks>
+        /// The floor is 0 - i.e. no floor. A floor of 0.5 was tried and regressed the render:
+        /// retail runs 433 of SCI_Hub's lights at Scale 0-1 (a sixteenth of unit strength), and
+        /// raising our correspondingly dim emitters to 0.5x blew out the ceiling fixtures they sit
+        /// on (cam9 rmse 26.2 -> 40.3).
+        /// </remarks>
+        public float EmissiveMultiplierFloor = 0.0f;
+        public float EmissiveMultiplierCeiling = 1.5f;
 
         /// <summary>
         /// Strength used for an emitter whose <c>EmissiveRadiosityMultiplier</c> is zero.
@@ -397,12 +443,69 @@ namespace CathodeLib.Radiosity
         /// Overall scale on sampled albedo, calibrated against retail.
         /// </summary>
         /// <remarks>
-        /// This existed to cancel the bias in averaging BC block endpoints, which weighted the two
-        /// extremes of each block equally regardless of how many texels sat near them and pushed
-        /// our probe albedo to 136 against retail's 109. Sampling the decoded texture per texel
-        /// removes that bias at its source, so the correction is no longer wanted.
+        /// <para>This once cancelled a BC block-endpoint averaging bias; per-texel sampling removed
+        /// that at its source and this sat at 1.0.</para>
+        /// <para>It is back as a real calibration because the stored input probe albedo measured
+        /// 1.5x retail's on SCI_Hub - ours (81.6, 87.7, 91.7) against retail's (54.3, 58.5, 60.9),
+        /// identical channel ratios, pure magnitude - and albedo is the per-bounce gain of the
+        /// whole indirect solve, so the render sat 1.2-1.5x too bright everywhere the bounce
+        /// dominates. Whatever darkens retail's runtime albedo relative to a plain diffuse-map mean
+        /// (an AO term folded in, or a different tint path) is not decoded yet; until it is, this
+        /// holds the per-bounce energy at retail's level.</para>
+        /// <para>Raising this to 0.72 to compensate the remaining bounce deficit was tried and
+        /// measured slightly worse (mean rmse 16.7 -> 17.2): the direct-lit cameras overshoot
+        /// before the bounce-lit ones catch up, so it stays on retail's measured value.</para>
+        /// <para>At 1.0 the sampler's bias against retail's own compiler albedo is per-material
+        /// and swings per level (stored probe albedo 1.5x retail's on SCI_Hub, 0.71x on
+        /// BSP_TORRENS with identical code), so no global constant cancels it - the sampler
+        /// itself has to close that gap.</para>
         /// </remarks>
         public float AlbedoScale = 1.0f;
+
+        /// <summary>
+        /// Constrain the texel-to-input-probe binding (scatter destinations, light-sample
+        /// attribution, volume hash) to probes that are visible from the texel and roughly agree
+        /// in normal, falling back to plain nearest. Off binds by raw distance only.
+        /// </summary>
+        public bool ProbeBindingTiers = true;
+
+        /// <summary>
+        /// Accept an influence link when any of a few patch-jittered rays connects, rather than
+        /// only the centre ray. Introduced when starved probes rendered visibly dark - but that
+        /// symptom largely came from the mangle map misdecode, so the leniency is A/B-testable
+        /// again: retail leaves 7.4% of Solace's probes with no influence where we leave 1%.
+        /// </summary>
+        public bool SoftInfluenceVisibility = true;
+
+        /// <summary>
+        /// Spread each probe's influence slots over distance bands matched to retail's link
+        /// length histogram, instead of keeping the strongest form factors outright. Also tuned
+        /// during the mangle misdecode era, so A/B-testable: the quota backfill always fills a
+        /// probe to 32 links, which in tight spaces gathers the same nearby surfaces several
+        /// times over and reads as an over-bright small room.
+        /// </summary>
+        public bool StratifyInfluencesByDistance = true;
+
+        /// <summary>
+        /// Where a retail prior exists, target its per-entity sample count in light placement and
+        /// share its Weight sum over the samples actually placed, instead of carrying the retail
+        /// mean at our own count.
+        /// </summary>
+        /// <remarks>
+        /// Off by default on measurement: per-entity counts against retail ranged 0.3x-3x both
+        /// ways, and matching them brightened Solace's dim cams to parity (cam2/12/13 to ~1.0) -
+        /// but one maintenance corridor (cam4) amplified from 2.3x to 3.8x retail, costing more
+        /// than the rest gained. Until that transport interaction is understood, mean-weight
+        /// placement is the better whole-level trade.
+        /// </remarks>
+        public bool MatchRetailSampleCounts = false;
+
+        /// <summary>
+        /// Give input probes with no influence-derived scatter sources a nearest-facing-cluster
+        /// fallback, matching retail's 100% destination coverage. Off on measurement: see
+        /// EnsureDestinationCoverage.
+        /// </summary>
+        public bool CoverScatterDestinations = false;
 
         /// <summary>
         /// Multiply sampled albedo by the material's DIFFUSE_TINT.

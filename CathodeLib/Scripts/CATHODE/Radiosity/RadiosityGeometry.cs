@@ -34,6 +34,20 @@ namespace CathodeLib.Radiosity
             /// </summary>
             public ShortGuid CompositeInstanceID;
 
+            /// <summary>
+            /// The island id retail's bake assigned this instance's movers, or -1 for geometry
+            /// retail never baked.
+            /// </summary>
+            /// <remarks>
+            /// The instance index (RADIOSITY_INSTANCE_MAP's lightmap_transform) is not an
+            /// arbitrary ordinal: it is the island id the runtime state system addresses -
+            /// scripts toggling a RadiosityIsland resolve to it. Retail Solace runs 1856 islands
+            /// over 1758 composites (islands subdivide composites, never merge them), so a
+            /// per-composite renumbering permutes the state targets: powered-off sections render
+            /// lit and lit rooms go dark. Matched islands must keep retail's id and grouping.
+            /// </remarks>
+            public int RetailIslandId = -1;
+
             /// <summary>Indices into <c>Level.Movers.Entries</c> that belong to this island.</summary>
             public readonly List<int> Movers = new List<int>();
 
@@ -249,9 +263,14 @@ namespace CathodeLib.Radiosity
             var triAlbedo = new List<Vector3>();
             var triEmissive = new List<Vector3>();
 
-            var instanceIndexByComposite = new Dictionary<ShortGuid, int>();
+            var instanceIndexByGroup = new Dictionary<(uint, uint), int>();
             // A CS2 submesh is shared between movers, so cache the decode.
             var meshCache = new Dictionary<Models.CS2.Component.LOD.Submesh, cMesh>();
+
+            // Retail's island assignment per resource, resolved from the loaded instance map.
+            // Grouping follows it wherever it has an answer so islands keep retail's shape and,
+            // downstream, retail's id.
+            Dictionary<(uint, uint), int> retailIslands = CollectRetailIslands(level);
 
             HashSet<ShortGuid> lightmappedComposites = settings.StaticRadiosityCompositesOnly
                 ? CollectLightmappedComposites(level)
@@ -281,14 +300,23 @@ namespace CathodeLib.Radiosity
                     continue;
                 }
 
-                // Group by composite instance, not by resource: retail lightmap islands span
-                // every resource of a composite (a door frame's panels share one rect).
+                // Group by retail island where the resource is in the retail bake, else by
+                // composite instance (retail islands never span composites; they subdivide them).
                 ShortGuid composite = mover.Resource.composite_instance_id;
-                if (!instanceIndexByComposite.TryGetValue(composite, out int instanceIndex))
+                var resourceKey = (mover.Resource.composite_instance_id.AsUInt32, mover.Resource.resource_id.AsUInt32);
+                bool hasRetailIsland = retailIslands.TryGetValue(resourceKey, out int retailIsland);
+                (uint, uint) groupKey = hasRetailIsland
+                    ? ((uint)0xFFFFFFFF, (uint)retailIsland)
+                    : (composite.AsUInt32, 0u);
+                if (!instanceIndexByGroup.TryGetValue(groupKey, out int instanceIndex))
                 {
                     instanceIndex = geo.Instances.Count;
-                    instanceIndexByComposite[composite] = instanceIndex;
-                    geo.Instances.Add(new Instance { CompositeInstanceID = composite });
+                    instanceIndexByGroup[groupKey] = instanceIndex;
+                    geo.Instances.Add(new Instance
+                    {
+                        CompositeInstanceID = composite,
+                        RetailIslandId = hasRetailIsland ? retailIsland : -1
+                    });
                 }
                 Instance instance = geo.Instances[instanceIndex];
                 instance.Movers.Add(moverIndex);
@@ -440,6 +468,30 @@ namespace CathodeLib.Radiosity
                         " diffuseUVs=" + geo.TriangleMaterial.Count(m => m != RadiosityMaterialSampler.NoMaterial) + "/" + geo.TriangleCount);
 
             return geo;
+        }
+
+        /// <summary>
+        /// Resource GUID pair to retail island id (lightmap_transform), from the loaded retail
+        /// instance map. Empty when the level ships none.
+        /// </summary>
+        private static Dictionary<(uint, uint), int> CollectRetailIslands(Level level)
+        {
+            var islands = new Dictionary<(uint, uint), int>();
+            if (level.RadiosityInstanceMap?.Entries == null || level.Resources == null)
+                return islands;
+
+            foreach (RadiosityInstanceMap.Entry entry in level.RadiosityInstanceMap.Entries)
+            {
+                // Entry.Resource is null on load (the map's ctor resolves before its resources
+                // field is assigned), so resolve the raw index here.
+                Resources.Resource resource = entry.Resource
+                    ?? level.Resources.GetAtWriteIndex(entry.resource_index);
+                if (resource == null)
+                    continue;
+                islands[(resource.composite_instance_id.AsUInt32, resource.resource_id.AsUInt32)] =
+                    entry.lightmap_transform;
+            }
+            return islands;
         }
 
         /// <summary>Resolution of the per-instance UV occupancy grid.</summary>
@@ -878,15 +930,129 @@ namespace CathodeLib.Radiosity
         {
             if (mover.EmissiveFlags.HasFlag(Movers.EmissiveFlag.MasterOff))
                 return Vector3.Zero;
-            if (!IsEmissiveMaterial(element) && mover.EmissiveRadiosityMultiplier <= 0.0f)
+            // The material feature alone decides emission. A positive EmissiveRadiosityMultiplier
+            // used to qualify a mover too, but 101 of SCI_Hub's movers carry a multiplier on a
+            // non-emissive material and retail lights none of them - the field evidently scales
+            // emission where it exists rather than creating it.
+            if (!IsEmissiveMaterial(element))
                 return Vector3.Zero;
+
+            float multiplier = ResolveEmissiveStrength(mover, element, settings);
+            Vector3 tint = mover.EmissiveTint / 255.0f;
+            return tint * (multiplier * settings.EmissiveScale);
+        }
+
+        /// <summary>
+        /// An emissive element's strength: the material's own EMISSIVE_MULT constant.
+        /// </summary>
+        /// <remarks>
+        /// <para>This is retail's Scale source, decoded on BSP_TORRENS by joining each light slice
+        /// back to its mover's material: EMISSIVE_MULT 0.5 maps to Scale 7 on 118 of 118 emitters,
+        /// 1.0 to Scale 15 on 513 of 517, 1.5-2 to Scale 23 on 78 of 81, and the sub-0.15 group to
+        /// Scale 0-1 on all 158 - exactly <c>EmissiveScaleByte(EMISSIVE_MULT)</c>. The mover's
+        /// EmissiveRadiosityMultiplier, which this replaced, scatters against retail in both
+        /// directions and forced a clamp that flattened every fixture to one strength.</para>
+        /// <para>The mover multiplier and the old clamp remain only as the fallback for a material
+        /// whose shader does not remap the constant.</para>
+        /// </remarks>
+        public static float ResolveEmissiveStrength(
+            Movers.MOVER_DESCRIPTOR mover, RenderableElements.Element element, RadiosityBakeSettings settings)
+        {
+            Materials.Material material = element?.Material;
+            if (material?.Shader != null &&
+                TryMaterialConstant(material, (int)CA_ENVIRONMENT.PARAMETERS.EMISSIVE_MULT, 1, out int remap))
+            {
+                float value = material.PixelShaderConstants[remap];
+                if (!float.IsNaN(value) && !float.IsInfinity(value) && value >= 0.0f)
+                    return value;
+            }
 
             float multiplier = mover.EmissiveRadiosityMultiplier > 0.0f
                 ? mover.EmissiveRadiosityMultiplier
                 : settings.DefaultEmissiveMultiplier;
+            return Math.Max(settings.EmissiveMultiplierFloor,
+                   Math.Min(settings.EmissiveMultiplierCeiling, multiplier));
+        }
 
-            Vector3 tint = mover.EmissiveTint / 255.0f;
-            return tint * (multiplier * settings.EmissiveScale);
+        /// <summary>Strongest emissive element's strength, for the mover-level light passes.</summary>
+        public static float ResolveMoverEmissiveStrength(Movers.MOVER_DESCRIPTOR mover, RadiosityBakeSettings settings)
+        {
+            if (mover?.RenderableElements == null)
+                return 0.0f;
+            float best = 0.0f;
+            foreach (RenderableElements.Element element in mover.RenderableElements)
+            {
+                if (!IsEmissiveMaterial(element))
+                    continue;
+                float s = ResolveEmissiveStrength(mover, element, settings);
+                if (s > best) best = s;
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// World-space area of a mover's emissive elements, measured from the meshes. For movers
+        /// outside the bake geometry, whose area the triangle soup never recorded.
+        /// </summary>
+        public static float MeasureEmissiveArea(
+            Movers.MOVER_DESCRIPTOR mover, Dictionary<Models.CS2.Component.LOD.Submesh, cMesh> meshCache)
+        {
+            if (mover?.RenderableElements == null)
+                return 0.0f;
+
+            float area = 0.0f;
+            foreach (RenderableElements.Element element in mover.RenderableElements)
+            {
+                if (!IsEmissiveMaterial(element) || element.Model == null)
+                    continue;
+                if (!meshCache.TryGetValue(element.Model, out cMesh mesh))
+                    meshCache[element.Model] = mesh = element.Model.ToMesh();
+                if (mesh.Vertices.Count == 0)
+                    continue;
+                for (int i = 0; i + 2 < mesh.Indices.Count; i += 3)
+                {
+                    Vector3 a = Vector3.Transform(mesh.Vertices[mesh.Indices[i]], mover.Transform);
+                    Vector3 b = Vector3.Transform(mesh.Vertices[mesh.Indices[i + 1]], mover.Transform);
+                    Vector3 c = Vector3.Transform(mesh.Vertices[mesh.Indices[i + 2]], mover.Transform);
+                    area += Vector3.Cross(b - a, c - a).Length() * 0.5f;
+                }
+            }
+            return area;
+        }
+
+        /// <summary>Resolve a material parameter index to its first constant slot, or false.</summary>
+        private static bool TryMaterialConstant(Materials.Material material, int parameter, int components, out int remap)
+        {
+            remap = -1;
+            Shaders.Shader shader = material.Shader;
+            if (shader == null || parameter < 0 || parameter >= shader.PixelShaderParameterRemaps.Count)
+                return false;
+            remap = shader.PixelShaderParameterRemaps[parameter];
+            return remap != 255 && remap >= 0 && remap + components - 1 < material.PixelShaderConstants.Count;
+        }
+
+        /// <summary>
+        /// The emissive radiance a mover would inject, whether or not it entered the bake
+        /// geometry. Zero when nothing about it emits.
+        /// </summary>
+        /// <remarks>
+        /// Exists for the unbaked-emitter light pass: 532 of the 544 emitters retail lights on
+        /// SCI_Hub that we did not are RADIOSITY_DYNAMIC movers - excluded from the lightmap
+        /// geometry, correctly, but their emission still lands on the static world around them.
+        /// </remarks>
+        public static Vector3 ResolveMoverEmissive(Movers.MOVER_DESCRIPTOR mover, RadiosityBakeSettings settings)
+        {
+            if (mover?.RenderableElements == null)
+                return Vector3.Zero;
+            Vector3 best = Vector3.Zero;
+            float bestPeak = 0;
+            foreach (RenderableElements.Element element in mover.RenderableElements)
+            {
+                Vector3 e = ResolveEmissive(mover, element, settings);
+                float peak = Math.Max(e.X, Math.Max(e.Y, e.Z));
+                if (peak > bestPeak) { bestPeak = peak; best = e; }
+            }
+            return best;
         }
 
         /// <summary>Does this element's material compile the ubershader's EMISSIVE feature?</summary>

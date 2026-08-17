@@ -13,11 +13,12 @@ namespace CathodeLib.Radiosity
     /// at that point's UV.
     /// </summary>
     /// <remarks>
-    /// <para>Retail's own compiler output, RADIOSITY_ALBEDO_SAMPLES.BIN, is a per-sample table:
-    /// 130280 position/normal/albedo records for BSP_TORRENS, averaging 17 distinct colours within
-    /// any given cubic metre. A single average per material cannot reproduce that - it collapsed
-    /// Solace's 7655 distinct probe albedos to 108, with one colour covering 15% of all probes,
-    /// which is what made our bounce light look flat and over-stylised.</para>
+    /// <para>Retail's own compiler output, RADIOSITY_ALBEDO_SAMPLES.BIN (seen in the Windows Store 
+    /// release), is a per-sample table: 130280 position/normal/albedo records for BSP_TORRENS, 
+    /// averaging 17 distinct colours within any given cubic metre. A single average per material 
+    /// cannot reproduce that - it collapsed Solace's 7655 distinct probe albedos to 108, 
+    /// with one colour covering 15% of all probes, which is what made our bounce light look flat 
+    /// and over-stylised.</para>
     /// <para>Materials are registered up front and addressed by slot afterwards, so the per-texel
     /// path is an array index with no locking. Textures are decoded once and cached against the
     /// texture, not the material, since a diffuse map is usually shared by several materials that
