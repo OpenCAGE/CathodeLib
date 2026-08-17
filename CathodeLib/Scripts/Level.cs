@@ -440,6 +440,7 @@ namespace CathodeLib
 
             Commands.Save(); OnSaveTick?.Invoke();
 
+#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
             if (radiositySettings != null)
             {
                 Parallel.Invoke(
@@ -448,6 +449,9 @@ namespace CathodeLib
                     () => { RadiosityRuntime?.Save(); OnSaveTick?.Invoke(); }
                 );
             }
+#else
+            //todo - clear radiosity data out, see Instancing
+#endif
 
             Parallel.Invoke(
                 () => { GalaxyItems.Save(); OnSaveTick?.Invoke(); },

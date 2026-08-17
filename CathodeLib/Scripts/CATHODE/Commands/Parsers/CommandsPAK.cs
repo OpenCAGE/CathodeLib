@@ -369,13 +369,29 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             reader_parallel.BaseStream.Position = (reader_parallel.ReadInt32() * 4);
 
                                             Entity thisEntity = composite.GetEntityByID(new ShortGuid(reader_parallel));
-                                            if (thisEntity.variant == EntityVariant.PROXY)
+
+                                            //Trigger sequence data can also be attached to proxies pointing at TriggerSequence
+                                            //entities (e.g. PRODUCTION\TECH_COMMS) - those store the data on the ProxyEntity.
+                                            List<TriggerSequence.SequenceEntry> sequenceList;
+                                            List<TriggerSequence.MethodEntry> methodList;
+                                            switch (thisEntity)
                                             {
-                                                //Logs indicate that these vanilla entities contain no parameters or links, so they're not very valuable. We should implement this anyways though so we can add them ourselves.
-                                                Console.WriteLine("WARNING: Skipping load of PROXY TriggerSequence in " + composite.name);
-                                                break;
+                                                case TriggerSequence trigEntity:
+                                                    sequenceList = trigEntity.sequence;
+                                                    methodList = trigEntity.methods;
+                                                    break;
+                                                case ProxyEntity proxyEntity:
+                                                    sequenceList = proxyEntity.sequence;
+                                                    methodList = proxyEntity.methods;
+                                                    break;
+                                                default:
+                                                    Console.WriteLine("WARNING: Skipping load of trigger sequence data on unexpected entity type in " + composite.name);
+                                                    sequenceList = null;
+                                                    methodList = null;
+                                                    break;
                                             }
-                                            TriggerSequence trigEntity = (TriggerSequence)thisEntity;
+                                            if (sequenceList == null)
+                                                break;
 
                                             int triggersOffset = reader_parallel.ReadInt32() * 4;
                                             int triggersCount = reader_parallel.ReadInt32();
@@ -392,7 +408,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                 thisTrigger.timing = reader_parallel.ReadSingle();
                                                 reader_parallel.BaseStream.Position = hierarchyOffset;
                                                 thisTrigger.connectedEntity.path = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount);
-                                                trigEntity.sequence.Add(thisTrigger);
+                                                sequenceList.Add(thisTrigger);
                                             }
 
                                             for (int z = 0; z < eventsCount; z++)
@@ -403,7 +419,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                 thisEvent.method = new ShortGuid(reader_parallel);
                                                 thisEvent.relay = new ShortGuid(reader_parallel);
                                                 thisEvent.finished = new ShortGuid(reader_parallel);
-                                                trigEntity.methods.Add(thisEvent);
+                                                methodList.Add(thisEvent);
                                             }
                                             break;
                                         }
@@ -515,7 +531,7 @@ namespace CATHODE.Scripting.Internal.Parsers
             List<AliasEntity>[] reshuffledAliasPathHashes = new List<AliasEntity>[Entries.Count];
             List<ResourceReference>[] resourceReferences = new List<ResourceReference>[Entries.Count];
             List<CAGEAnimation>[] cageAnimationEntities = new List<CAGEAnimation>[Entries.Count];
-            List<TriggerSequence>[] triggerSequenceEntities = new List<TriggerSequence>[Entries.Count];
+            List<TriggerSequenceData>[] triggerSequenceEntities = new List<TriggerSequenceData>[Entries.Count];
 
             Parallel.For(0, Entries.Count, i =>
             {
@@ -526,7 +542,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                 reshuffledAliasPathHashes[i] = Entries[i].aliases.OrderBy(o => o.alias.GeneratePathHash().AsUInt32).ToList();
 
                 cageAnimationEntities[i] = new List<CAGEAnimation>();
-                triggerSequenceEntities[i] = new List<TriggerSequence>();
+                triggerSequenceEntities[i] = new List<TriggerSequenceData>();
                 resourceReferences[i] = new List<ResourceReference>();
                 foreach (var function in Entries[i].functions_dictionary.Values)
                 {
@@ -541,7 +557,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                     {
                         TriggerSequence thisEntity = (TriggerSequence)function;
                         if (thisEntity.sequence.Count == 0 && thisEntity.methods.Count == 0) continue;
-                        triggerSequenceEntities[i].Add(thisEntity);
+                        triggerSequenceEntities[i].Add(new TriggerSequenceData(thisEntity.shortGUID, thisEntity.sequence, thisEntity.methods));
                     }
 
                     //Get resources on this function
@@ -552,6 +568,14 @@ namespace CATHODE.Scripting.Internal.Parsers
                     if (param == null) continue;
                     resourceReferences[i].AddRange(((cResource)param.content).value);
                 }
+
+                //Proxies to TriggerSequence entities can carry trigger sequence data too (e.g. PRODUCTION\TECH_COMMS)
+                foreach (var proxy in Entries[i].proxies)
+                {
+                    if (proxy.sequence.Count == 0 && proxy.methods.Count == 0) continue;
+                    triggerSequenceEntities[i].Add(new TriggerSequenceData(proxy.shortGUID, proxy.sequence, proxy.methods));
+                }
+
                 resourceReferences[i] = resourceReferences[i].Distinct().ToList();
             });
 
@@ -1118,6 +1142,21 @@ namespace CATHODE.Scripting.Internal.Parsers
             public CommandsParamRefSet(ShortGuid _id)
             {
                 id = _id;
+            }
+        }
+
+        //Trigger sequence data to write for an entity - either a TriggerSequence function, or a proxy pointing at one
+        private class TriggerSequenceData
+        {
+            public ShortGuid shortGUID;
+            public List<TriggerSequence.SequenceEntry> sequence;
+            public List<TriggerSequence.MethodEntry> methods;
+
+            public TriggerSequenceData(ShortGuid _id, List<TriggerSequence.SequenceEntry> _sequence, List<TriggerSequence.MethodEntry> _methods)
+            {
+                shortGUID = _id;
+                sequence = _sequence;
+                methods = _methods;
             }
         }
         #endregion

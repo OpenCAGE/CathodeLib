@@ -184,21 +184,31 @@ namespace CATHODE.Scripting.Internal.Parsers
                                 {
                                     Tuple<Composite, Dictionary<ShortGuid, Entity>> cache = entityCache[Utilities.Consume<ShortGuid>(reader, command_entries[i + 1].Item2)];
                                     ShortGuid entityID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 2].Item2);
-                                    TriggerSequence trig = null;
+                                    List<TriggerSequence.MethodEntry> methods = null;
                                     if (cache.Item2.TryGetValue(entityID, out Entity ent))
                                     {
-                                        if (ent.variant == EntityVariant.PROXY)
+                                        //Trigger sequence data can also live on proxies pointing at TriggerSequence entities (e.g. PRODUCTION\TECH_COMMS)
+                                        switch (ent)
                                         {
-                                            Console.WriteLine("WARNING: Skipping load of proxy TriggerSequence!");
+                                            case TriggerSequence trigEnt:
+                                                methods = trigEnt.methods;
+                                                break;
+                                            case ProxyEntity proxyEnt:
+                                                methods = proxyEnt.methods;
+                                                break;
+                                        }
+                                        if (methods == null)
+                                        {
+                                            Console.WriteLine("WARNING: Skipping load of trigger sequence method on unexpected entity type!");
                                             break;
                                         }
-                                        trig = (TriggerSequence)ent;
                                     }
                                     else
                                     {
-                                        trig = new TriggerSequence(entityID);
-                                        cache.Item2.Add(ent.shortGUID, trig);
+                                        TriggerSequence trig = new TriggerSequence(entityID);
+                                        cache.Item2.Add(trig.shortGUID, trig); //NOTE: 'ent' is null here - TryGetValue failed
                                         cache.Item1.functions_dictionary.Add(trig.shortGUID, trig);
+                                        methods = trig.methods;
                                     }
                                     string name = Utilities.ReadString(reader, command_entries[i + 4].Item2);
                                     ShortGuid guid = ShortGuidUtils.Generate(name);
@@ -208,25 +218,40 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         ParameterNames.Add(ShortGuidUtils.Generate(name + "_relay"), name + "_relay");
                                         ParameterNames.Add(ShortGuidUtils.Generate(name + "_finished"), name + "_finished");
                                     }
-                                    trig.methods.Add(new TriggerSequence.MethodEntry(name));
+                                    methods.Add(new TriggerSequence.MethodEntry(name));
                                 }
                                 break;
                             case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.CONTEXT_SEQUENCE:
                                 {
                                     Tuple<Composite, Dictionary<ShortGuid, Entity>> cache = entityCache[Utilities.Consume<ShortGuid>(reader, command_entries[i + 1].Item2)];
                                     ShortGuid entityID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 2].Item2);
-                                    TriggerSequence trig = null;
+                                    List<TriggerSequence.SequenceEntry> sequence = null;
                                     if (cache.Item2.TryGetValue(entityID, out Entity ent))
                                     {
-                                        trig = (TriggerSequence)ent;
+                                        //Trigger sequence data can also live on proxies pointing at TriggerSequence entities (e.g. PRODUCTION\TECH_COMMS)
+                                        switch (ent)
+                                        {
+                                            case TriggerSequence trigEnt:
+                                                sequence = trigEnt.sequence;
+                                                break;
+                                            case ProxyEntity proxyEnt:
+                                                sequence = proxyEnt.sequence;
+                                                break;
+                                        }
+                                        if (sequence == null)
+                                        {
+                                            Console.WriteLine("WARNING: Skipping load of trigger sequence entry on unexpected entity type!");
+                                            break;
+                                        }
                                     }
                                     else
                                     {
-                                        trig = new TriggerSequence(entityID);
-                                        cache.Item2.Add(ent.shortGUID, trig);
+                                        TriggerSequence trig = new TriggerSequence(entityID);
+                                        cache.Item2.Add(trig.shortGUID, trig); //NOTE: 'ent' is null here - TryGetValue failed
                                         cache.Item1.functions_dictionary.Add(trig.shortGUID, trig);
+                                        sequence = trig.sequence;
                                     }
-                                    trig.sequence.Add(new TriggerSequence.SequenceEntry()
+                                    sequence.Add(new TriggerSequence.SequenceEntry()
                                     {
                                         timing = Utilities.Consume<float>(reader, command_entries[i + 3].Item2),
                                         connectedEntity = new EntityPath() { path = Utilities.ConsumeArray<ShortGuid>(reader, (int)(command_entries[i + 4].Item1 & (uint)CommandTypes.COMMAND_SIZE_MASK) / 4, command_entries[i + 4].Item2) }
@@ -245,7 +270,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     else
                                     {
                                         cageAnim = new CAGEAnimation(entityID);
-                                        cache.Item2.Add(ent.shortGUID, cageAnim);
+                                        cache.Item2.Add(cageAnim.shortGUID, cageAnim); //NOTE: 'ent' is null here - TryGetValue failed
                                         cache.Item1.functions_dictionary.Add(cageAnim.shortGUID, cageAnim);
                                     }
                                     cageAnim.connections.Add(new CAGEAnimation.Connection()
@@ -272,7 +297,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     else
                                     {
                                         cageAnim = new CAGEAnimation(entityID);
-                                        cache.Item2.Add(ent.shortGUID, cageAnim);
+                                        cache.Item2.Add(cageAnim.shortGUID, cageAnim); //NOTE: 'ent' is null here - TryGetValue failed
                                         cache.Item1.functions_dictionary.Add(cageAnim.shortGUID, cageAnim);
                                     }
                                     ShortGuid trackID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 3].Item2);
@@ -651,6 +676,53 @@ namespace CATHODE.Scripting.Internal.Parsers
 
                 foreach (var composite in Entries)
                 {
+                    //Proxies to TriggerSequence entities can carry trigger sequence data too (e.g. PRODUCTION\TECH_COMMS)
+                    foreach (var proxy in composite.proxies)
+                    {
+                        foreach (var method in proxy.methods)
+                        {
+                            int offset = (int)bufferWriter.BaseStream.Position;
+                            commands.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_METHOD | CommandTypes.COMMAND_ADD), offset));
+
+                            Utilities.Write<ShortGuid>(bufferWriter, composite.shortGUID);
+                            commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+
+                            offset = (int)bufferWriter.BaseStream.Position;
+                            Utilities.Write<ShortGuid>(bufferWriter, proxy.shortGUID);
+                            commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+
+                            offset = (int)bufferWriter.BaseStream.Position;
+                            Utilities.Write<ShortGuid>(bufferWriter, proxy.function);
+                            commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+
+                            offset = (int)bufferWriter.BaseStream.Position;
+                            string name = method.method.ToString();
+                            Utilities.WriteString(name, bufferWriter, true);
+                            commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(name.Length + 1), offset));
+                        }
+
+                        foreach (var sequenceEntry in proxy.sequence)
+                        {
+                            int offset = (int)bufferWriter.BaseStream.Position;
+                            commands.Add(new Tuple<uint, int>((uint)(CommandTypes.CONTEXT_SEQUENCE | CommandTypes.COMMAND_ADD), offset));
+
+                            Utilities.Write<ShortGuid>(bufferWriter, composite.shortGUID);
+                            commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+
+                            offset = (int)bufferWriter.BaseStream.Position;
+                            Utilities.Write<ShortGuid>(bufferWriter, proxy.shortGUID);
+                            commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
+
+                            offset = (int)bufferWriter.BaseStream.Position;
+                            bufferWriter.Write(sequenceEntry.timing);
+                            commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_FLOAT | 4, offset));
+
+                            offset = (int)bufferWriter.BaseStream.Position;
+                            Utilities.Write<ShortGuid>(bufferWriter, sequenceEntry.connectedEntity.path);
+                            commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_PATH | (uint)(sequenceEntry.connectedEntity.path.Length * 4), offset));
+                        }
+                    }
+
                     foreach (var func in composite.functions)
                     {
                         if (func is TriggerSequence trig)

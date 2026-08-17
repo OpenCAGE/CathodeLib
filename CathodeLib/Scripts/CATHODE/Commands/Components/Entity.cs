@@ -515,6 +515,11 @@ namespace CATHODE.Scripting
 
         public ShortGuid function;                  //The "function" value on the entity we're proxying
         public EntityPath proxy = new EntityPath(); //A path to the entity we're proxying
+
+        //Proxies to TriggerSequence entities can carry their own trigger sequence data (e.g. PRODUCTION\TECH_COMMS).
+        //These are empty for proxies to any other entity type.
+        public List<TriggerSequence.SequenceEntry> sequence = new List<TriggerSequence.SequenceEntry>();
+        public List<TriggerSequence.MethodEntry> methods = new List<TriggerSequence.MethodEntry>();
     }
     [Serializable]
     public class AliasEntity : Entity

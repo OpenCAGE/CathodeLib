@@ -597,9 +597,6 @@ namespace CathodeLib
                     case "info.dat":
                         content = Properties.Resources.info;
                         break;
-                    case "sound_names.bin":
-                        content = Properties.Resources.sound_names;
-                        break;
                 }
             }
             catch
