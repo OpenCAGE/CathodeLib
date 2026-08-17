@@ -1503,15 +1503,81 @@ namespace CATHODE.Scripting
 
         #region Entity Names
         /// <summary>
-        /// Get the name of an entity contained within a composite
+        /// Get the name of an entity contained within a composite.
+        /// Names are stored directly on the entity as a 'name' string parameter - the legacy name tables are
+        /// only consulted as a fallback (they're migrated into parameters on first load, see LoadInfo).
         /// </summary>
         public string GetEntityName(Composite composite, Entity entity)
         {
-            if (composite == null || entity == null)
-                return entity?.shortGUID.ToByteString() ?? "Unknown";
-            return GetEntityName(composite.shortGUID, entity.shortGUID);
+            if (entity == null)
+                return "Unknown";
+
+            //The name stored on the entity itself always wins
+            string ownName = GetEntityNameParameter(entity);
+            if (ownName != null)
+                return ownName;
+
+            //Aliases/proxies are stand-ins for another entity: without a name of their own, show the target's
+            if (composite != null && (entity.variant == EntityVariant.ALIAS || entity.variant == EntityVariant.PROXY))
+            {
+                string targetName = GetPointedEntityName(composite, entity);
+                if (targetName != null)
+                    return targetName;
+            }
+
+            if (composite == null)
+                return entity.shortGUID.ToByteString();
+
+            return GetEntityNameFromTables(composite.shortGUID, entity.shortGUID);
         }
+        /// <remarks>
+        /// Prefer the (Composite, Entity) overload where you have the objects: this one has to find the
+        /// composite by ID, which is a linear search.
+        /// </remarks>
         public string GetEntityName(ShortGuid compositeID, ShortGuid entityID)
+        {
+            //Resolve the entity so we can read its 'name' parameter (and alias/proxy fallbacks)
+            Composite composite = _commands?.GetComposite(compositeID);
+            Entity entity = composite?.GetEntityByID(entityID);
+            if (entity != null)
+                return GetEntityName(composite, entity);
+
+            return GetEntityNameFromTables(compositeID, entityID);
+        }
+
+        /// <summary>
+        /// The entity's own 'name' parameter, or null if it doesn't have one set
+        /// </summary>
+        public static string GetEntityNameParameter(Entity entity)
+        {
+            cString name = entity?.GetParameter(ShortGuids.name)?.content as cString;
+            if (name == null || string.IsNullOrEmpty(name.value))
+                return null;
+            return name.value;
+        }
+
+        /// <summary>
+        /// The name of the entity an alias/proxy points to (null if it can't be resolved)
+        /// </summary>
+        private string GetPointedEntityName(Composite composite, Entity entity)
+        {
+            try
+            {
+                (Composite targetComposite, Entity targetEntity) = GetResolvedTarget(ResolveAliasOrProxy(entity, composite));
+                if (targetEntity == null || targetEntity == entity)
+                    return null;
+                return GetEntityName(targetComposite, targetEntity);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Legacy name lookup: custom names saved by older versions, then the vanilla name table
+        /// </summary>
+        private string GetEntityNameFromTables(ShortGuid compositeID, ShortGuid entityID)
         {
             if (_entityNames?.names != null &&
                 _entityNames.names.TryGetValue(compositeID, out Dictionary<ShortGuid, string> customComposite) &&
@@ -1529,63 +1595,44 @@ namespace CATHODE.Scripting
         }
 
         /// <summary>
-        /// Set the name of an entity contained within a composite
+        /// Set the name of an entity, stored as a 'name' parameter on the entity itself
         /// </summary>
-        public void SetEntityName(Composite composite, Entity entity, string name) => SetEntityName(composite.shortGUID, entity.shortGUID, name);
+        public void SetEntityName(Composite composite, Entity entity, string name) => SetEntityName(entity, name);
+        public void SetEntityName(Entity entity, string name)
+        {
+            if (entity == null)
+                return;
+
+            if (string.IsNullOrEmpty(name))
+            {
+                ClearEntityName(entity);
+                return;
+            }
+
+            entity.AddParameter(ShortGuids.name, new cString(name), ParameterVariant.PARAMETER);
+        }
         public void SetEntityName(ShortGuid compositeID, ShortGuid entityID, string name)
         {
-            if (!_entityNames.names.ContainsKey(compositeID))
-                _entityNames.names.Add(compositeID, new Dictionary<ShortGuid, string>());
-
-            if (!_entityNames.names[compositeID].ContainsKey(entityID))
-                _entityNames.names[compositeID].Add(entityID, name);
-            else
-                _entityNames.names[compositeID][entityID] = name;
+            Entity entity = _commands?.GetComposite(compositeID)?.GetEntityByID(entityID);
+            if (entity != null)
+                SetEntityName(entity, name);
         }
 
         /// <summary>
-        /// Clear the name of an entity contained within a composite
+        /// Clear the name of an entity
         /// </summary>
-        public void ClearEntityName(Composite composite, Entity entity) => ClearEntityName(composite.shortGUID, entity.shortGUID);
+        public void ClearEntityName(Composite composite, Entity entity) => ClearEntityName(entity);
+        public void ClearEntityName(Entity entity)
+        {
+            entity?.RemoveParameter(ShortGuids.name);
+        }
         public void ClearEntityName(ShortGuid compositeID, ShortGuid entityID)
         {
-            if (_entityNames.names.ContainsKey(compositeID))
-                _entityNames.names[compositeID].Remove(entityID);
+            ClearEntityName(_commands?.GetComposite(compositeID)?.GetEntityByID(entityID));
         }
 
-        /// <summary>
-        /// Get all custom entity names for a composite
-        /// </summary>
-        public Dictionary<ShortGuid, string> GetAllCustomEntityNames(Composite composite) => GetAllCustomEntityNames(composite.shortGUID);
-        public Dictionary<ShortGuid, string> GetAllCustomEntityNames(ShortGuid compositeID)
-        {
-            Dictionary<ShortGuid, string> names = new Dictionary<ShortGuid, string>();
-            if (_entityNames.names.TryGetValue(compositeID, out Dictionary<ShortGuid, string> customNames))
-                foreach (KeyValuePair<ShortGuid, string> entry in customNames)
-                    names[entry.Key] = entry.Value;
-            return names;
-        }
-
-        /// <summary>
-        /// Bulk add custom entity names for a composite - note this will overwrite any that are already set with the same guids!
-        /// </summary>
-        public void AddCustomEntityNames(Composite composite, Dictionary<ShortGuid, string> names) => AddCustomEntityNames(composite.shortGUID, names);
-        public void AddCustomEntityNames(ShortGuid compositeID, Dictionary<ShortGuid, string> names)
-        {
-            Dictionary<ShortGuid, string> customNames = null;
-            if (!_entityNames.names.TryGetValue(compositeID, out customNames))
-            {
-                customNames = new Dictionary<ShortGuid, string>();
-                _entityNames.names.Add(compositeID, customNames);
-            }
-            foreach (KeyValuePair<ShortGuid, string> entry in names)
-            {
-                if (customNames.ContainsKey(entry.Key))
-                    customNames[entry.Key] = entry.Value;
-                else
-                    customNames.Add(entry.Key, entry.Value);
-            }
-        }
+        //NOTE: GetAllCustomEntityNames/AddCustomEntityNames have been removed - names live on the entities as a
+        //'name' parameter, so they're copied along with the entity itself and need no separate bookkeeping.
 
         /// <summary>
         /// Overwrites all Composite names with 'pretty' versions that aren't fully capitalised, as they are by default for PAK files.
@@ -1774,6 +1821,15 @@ namespace CATHODE.Scripting
             _flagTable = (FlagTable)CustomTable.ReadTable(filepath, CustomTableType.FLAGS);
             if (_flagTable == null) _flagTable = new FlagTable();
 
+            //Entity names are stored on entities as a 'name' parameter. PAK files carry no name data, so on
+            //first load we migrate the names from our tables onto the entities - from then on the names travel
+            //with the Commands data itself and the tables aren't needed.
+            if (!_flagTable.HasSetEntityNames && CustomTable.GetFileType(filepath) == CustomTableFileType.COMMANDS_PAK)
+            {
+                ApplyEntityNamesFromTables();
+                _flagTable.HasSetEntityNames = true;
+            }
+
             if (!_flagTable.HasBeenModified)
             {
                 //Tidy up composite names - only need to do this for PAK, BIN has this info
@@ -1853,17 +1909,41 @@ namespace CATHODE.Scripting
                 }
             }
         }
+        /// <summary>
+        /// One-time migration: copy names out of the name tables and onto the entities as a 'name' parameter.
+        /// Every named entity type is covered (functions, aliases, proxies) - variables are skipped, as their
+        /// name is their ShortGuid (it's the composite's pin name).
+        /// </summary>
+        private void ApplyEntityNamesFromTables()
+        {
+            int applied = 0;
+            foreach (Composite composite in _commands.Entries)
+            {
+                foreach (Entity entity in composite.GetEntities(includeVariables: false, includeFunctions: true, includeAliases: true, includeProxies: true))
+                {
+                    if (GetEntityNameParameter(entity) != null)
+                        continue;
+
+                    string name = GetEntityNameFromTables(composite.shortGUID, entity.shortGUID);
+                    if (string.IsNullOrEmpty(name) || name == entity.shortGUID.ToByteString())
+                        continue; //no name on record - leave it unnamed rather than baking in the GUID
+
+                    entity.AddParameter(ShortGuids.name, new cString(name), ParameterVariant.PARAMETER);
+                    applied++;
+                }
+            }
+            Console.WriteLine("Applied " + applied + " entity names as parameters!");
+        }
+
         private void SaveInfo(string filepath)
         {
             _flagTable.HasBeenModified = true;
+            _flagTable.HasSetEntityNames = true;
 
             ShortGuidUtils.SaveCustomNames(_commands.Filepath);
 
             CustomTable.WriteTable(filepath, CustomTableType.COMPOSITE_PURGE_STATES, _compPurges);
             Console.WriteLine("Stored " + _compPurges.purged.Count + " pre-purged composites!");
-
-            CustomTable.WriteTable(filepath, CustomTableType.ENTITY_NAMES, _entityNames);
-            Console.WriteLine("Saved " + _entityNames.names.Count + " custom entity names!");
 
             CustomTable.WriteTable(filepath, CustomTableType.COMPOSITE_MODIFICATION_INFO, _modificationInfo);
             Console.WriteLine("Saved modification info for " + _modificationInfo.modification_info.Count + " composites!");

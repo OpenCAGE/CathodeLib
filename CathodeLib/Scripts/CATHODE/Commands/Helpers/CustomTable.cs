@@ -1203,6 +1203,7 @@ namespace CathodeLib
         }
 
         public bool HasBeenModified = false;
+        public bool HasSetEntityNames = false;
 
         public override void Read(BinaryReader reader)
         {
@@ -1217,14 +1218,18 @@ namespace CathodeLib
                     case 0:
                         HasBeenModified = reader.ReadBoolean();
                         break;
+                    case 1:
+                        HasSetEntityNames = reader.ReadBoolean();
+                        break;
                 }
             }
         }
 
         public override void Write(BinaryWriter writer)
         {
-            writer.Write(1);
+            writer.Write(2);
             writer.Write(HasBeenModified);
+            writer.Write(HasSetEntityNames);
         }
     }
     public class MaterialMappingTable : CustomTable.Table

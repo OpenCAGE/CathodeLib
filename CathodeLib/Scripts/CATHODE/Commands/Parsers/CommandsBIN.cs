@@ -27,12 +27,10 @@ namespace CATHODE.Scripting.Internal.Parsers
 {
     public static class CommandsBIN
     {
-        public static Dictionary<ShortGuid, Dictionary<ShortGuid, string>> EntityNames = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>();
         public static Dictionary<ShortGuid, string> ParameterNames = new Dictionary<ShortGuid, string>();
 
         public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds, HavokPackfile physicsHKX = null)
         {
-            EntityNames.Clear();
             ParameterNames.Clear();
 
             EntryPoints = new ShortGuid[3];
@@ -107,10 +105,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     func.shortGUID = guid;
                                     func.function = function;
                                     string name = Utilities.ReadString(reader, command_entries[i + 4].Item2);
-                                    if (!EntityNames.ContainsKey(cache.Item1.shortGUID))
-                                        EntityNames.Add(cache.Item1.shortGUID, new Dictionary<ShortGuid, string>());
-                                    if (!EntityNames[cache.Item1.shortGUID].ContainsKey(guid) && name != "")
-                                        EntityNames[cache.Item1.shortGUID].Add(guid, name);
+                                    if (name != "")
+                                        func.AddParameter(ShortGuids.name, new cString(name), ParameterVariant.PARAMETER);
                                     if (!cache.Item2.ContainsKey(func.shortGUID))
                                     {
                                         cache.Item1.functions_dictionary.Add(func.shortGUID, func);
@@ -395,13 +391,6 @@ namespace CATHODE.Scripting.Internal.Parsers
                                         case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_FILE_PATH:
                                         case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_STRING:
                                             paramData = new cString(Utilities.ReadString(reader)); // ((cString)paramData).value.Length + 1 == length
-                                            if (paramName == ShortGuids.name)
-                                            {
-                                                if (!EntityNames.ContainsKey(cache.Item1.shortGUID))
-                                                    EntityNames.Add(cache.Item1.shortGUID, new Dictionary<ShortGuid, string>());
-                                                if (!EntityNames[cache.Item1.shortGUID].ContainsKey(entityID) && ((cString)paramData).value != "")
-                                                    EntityNames[cache.Item1.shortGUID].Add(entityID, ((cString)paramData).value);
-                                            }
                                             break;
                                         case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_BOOL:
                                             paramData = new cBool(reader.ReadBoolean());
@@ -439,8 +428,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     if (cache.Item2.TryGetValue(entityID, out Entity ent))
                                     {
                                         if (paramData != null) //Skipping nulls: links seem to get added as null parameters
-                                            if (paramName != ShortGuids.name || (ent.variant == EntityVariant.FUNCTION && ((FunctionEntity)ent).function.AsFunctionType == FunctionType.Zone)) //Skipping "name" parameter as this is handled by our name table
-                                                ent.AddParameter(paramName, paramData);
+                                            ent.AddParameter(paramName, paramData); //NOTE: "name" is kept as a parameter - that's where entity names live
                                     }
                                 }
                                 break;

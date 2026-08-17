@@ -504,7 +504,7 @@ namespace CathodeLib
         private static string NameOf(Level level, InstancedEntity entity)
         {
             if (level.Commands?.Utils == null || entity.Composite == null || entity.Entity == null) return "";
-            string name = level.Commands.Utils.GetEntityName(entity.Composite.shortGUID, entity.Entity.shortGUID);
+            string name = level.Commands.Utils.GetEntityName(entity.Composite, entity.Entity);
             return string.IsNullOrEmpty(name) ? "" : name;
         }
 
