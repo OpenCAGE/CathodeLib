@@ -281,6 +281,11 @@ namespace CathodeLib
             }
         }
 
+        private static byte ToBiasedByte(float value)
+        {
+            return (byte)Math.Max(0, Math.Min(255, Math.Round(value * 127.0f) + 128));
+        }
+
         private static Vector4 ReadVertexData(BinaryReader reader, Models.VertexFormat.Type type)
         {
             switch (type)
@@ -313,11 +318,11 @@ namespace CathodeLib
                 case Models.VertexFormat.Type.U16_4N:
                     return new Vector4((float)reader.ReadUInt16() / (float)UInt16.MaxValue, (float)reader.ReadUInt16() / (float)UInt16.MaxValue, (float)reader.ReadUInt16() / (float)UInt16.MaxValue, (float)reader.ReadUInt16() / (float)UInt16.MaxValue);
                 case Models.VertexFormat.Type.Dec3N:
-                    uint val = reader.ReadUInt32();
-                    short sx = (short)((val >> 20) & 0x3ff);
-                    short sy = (short)((val >> 10) & 0x3ff);
-                    short sz = (short)((val) & 0x3ff);
-                    return new Vector4(((sx < 512) ? sx : (sx - 1024)) / 511.0f, ((sy < 512) ? sy : (sy - 1024)) / 511.0f, ((sz < 512) ? sz : (sz - 1024)) / 511.0f, 0);
+                    //Declared as DEC3N, but the data is three unsigned bytes biased around 128, with the fourth unused.
+                    //Decoding it as 10:10:10 gives normals that neither point the right way nor come out unit length.
+                    byte dx = reader.ReadByte(), dy = reader.ReadByte(), dz = reader.ReadByte();
+                    reader.ReadByte();
+                    return new Vector4((dx - 128.0f) / 127.0f, (dy - 128.0f) / 127.0f, (dz - 128.0f) / 127.0f, 0);
             }
             throw new Exception("Unsupported VertexFormatType");
         }
@@ -538,20 +543,17 @@ namespace CathodeLib
 #endif
                     break;
                 case Models.VertexFormat.Type.Dec3N:
+                    //See ReadVertexData: three bytes biased around 128, with a fourth that's always zero
 #if UNITY_EDITOR || UNITY_STANDALONE
-                    short sx = (short)(Math.Max(-511, Math.Min(511, v.x * 511.0f)));
-                    short sy = (short)(Math.Max(-511, Math.Min(511, v.y * 511.0f)));
-                    short sz = (short)(Math.Max(-511, Math.Min(511, v.z * 511.0f)));
+                    writer.Write(ToBiasedByte(v.x));
+                    writer.Write(ToBiasedByte(v.y));
+                    writer.Write(ToBiasedByte(v.z));
 #else
-                    short sx = (short)(Math.Max(-511, Math.Min(511, v.X * 511.0f)));
-                    short sy = (short)(Math.Max(-511, Math.Min(511, v.Y * 511.0f)));
-                    short sz = (short)(Math.Max(-511, Math.Min(511, v.Z * 511.0f)));
+                    writer.Write(ToBiasedByte(v.X));
+                    writer.Write(ToBiasedByte(v.Y));
+                    writer.Write(ToBiasedByte(v.Z));
 #endif
-                    if (sx < 0) sx += 1024;
-                    if (sy < 0) sy += 1024;
-                    if (sz < 0) sz += 1024;
-                    uint val = ((uint)(sx & 0x3ff) << 20) | ((uint)(sy & 0x3ff) << 10) | ((uint)(sz & 0x3ff));
-                    writer.Write(val);
+                    writer.Write((byte)0);
                     break;
                 default:
                     throw new Exception("Unsupported VertexFormatType");
