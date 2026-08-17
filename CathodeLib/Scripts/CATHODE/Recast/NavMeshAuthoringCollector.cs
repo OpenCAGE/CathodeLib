@@ -35,6 +35,8 @@ namespace CathodeLib.NavMesh
 
             soup.OffMeshLinks ??= new List<CollisionNavMeshSoup.OffMeshLinkDraft>();
             soup.OffMeshLinks.Clear();
+            soup.BackstageNodes ??= new List<CollisionNavMeshSoup.BackstageNodeDraft>();
+            soup.BackstageNodes.Clear();
 
             var stats = new CollectStats();
             var seen = new HashSet<(int, int, int)>();
@@ -141,16 +143,28 @@ namespace CathodeLib.NavMesh
             CollisionNavMeshSoup soup,
             CollectStats stats)
         {
-            if (!GetBool(entity, ShortGuids.build_into_navmesh, false))
+            // Unlike the other pathfinding nodes, backstage nodes default to being built:
+            // SCI_Hub's 8 retail nodes carry no build_into_navmesh parameter, yet all 8 are in
+            // the shipped navmesh (8 Backstage off-mesh connections, tops in the triangulation).
+            if (!GetBool(entity, ShortGuids.build_into_navmesh, true))
                 return;
 
-            Vector3 start = EntityWorldPosition(entity);
-            if (TryAddSeed(seen, soup.ReachabilitySeeds, start))
+            Vector3 bottom = EntityWorldPosition(entity);
+            if (TryAddSeed(seen, soup.ReachabilitySeeds, bottom))
                 stats.PathfindingNodeSeeds++;
 
-            if (TryGetLinkedTransformWorld(entity, ShortGuids.destination, out Vector3 end)
-                && TryAddSeed(seen, soup.ReachabilitySeeds, end))
-                stats.PathfindingNodeSeeds++;
+            // The sheet vertex sits a fixed height straight above the node. Retail ignores the
+            // composite's TopMarker: every shipped connection rises exactly 6 m, even in the
+            // 9 m vent composite and the 4.25 m hospital ones (see BackstageNodeHeight).
+            soup.BackstageNodes ??= new List<CollisionNavMeshSoup.BackstageNodeDraft>();
+            soup.BackstageNodes.Add(new CollisionNavMeshSoup.BackstageNodeDraft
+            {
+                Bottom = bottom,
+                ExtraCost = GetFloat(entity, ShortGuids.extra_cost, 1f),
+                OpenOnReset = GetBool(entity, ShortGuids.open_on_reset, true),
+                NetworkId = GetInt(entity, ShortGuids.network_id, 0),
+                Entity = entity.Handle,
+            });
         }
 
         static bool IsSkippedEntity(InstancedEntity entity)
@@ -363,6 +377,16 @@ namespace CathodeLib.NavMesh
         {
             if (entity.Floats.Has(name) || (entity.Floats.Links != null && entity.Floats.Links.ContainsKey(name)))
                 return entity.Floats.Get(name);
+            return fallback;
+        }
+
+        /// <summary>Integer parameter that may be authored as int or float (Network_ID varies).</summary>
+        static int GetInt(InstancedEntity entity, ShortGuid name, int fallback)
+        {
+            if (entity.Integers.Has(name) || (entity.Integers.Links != null && entity.Integers.Links.ContainsKey(name)))
+                return entity.Integers.Get(name);
+            if (entity.Floats.Has(name) || (entity.Floats.Links != null && entity.Floats.Links.ContainsKey(name)))
+                return (int)MathF.Round(entity.Floats.Get(name));
             return fallback;
         }
 

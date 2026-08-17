@@ -105,6 +105,27 @@ namespace CathodeLib.NavMesh
         /// </summary>
         public float BarrierAreaIdSeparation = 4.0f;
 
+        /// <summary>
+        /// Edge length (metres) above which backstage triangulation edges are recursively
+        /// halved. Retail's subdivision points all sit on halving fractions with segments
+        /// stopping once at or below 15 m (SCI_Hub's longest surviving segment is 14.65 m).
+        /// </summary>
+        public float BackstageMaxEdgeLength = 15.0f;
+
+        /// <summary>
+        /// Half-width (metres) of the fallback strip built when every backstage node sits on
+        /// one line and a Delaunay sheet cannot exist.
+        /// </summary>
+        public float BackstageColinearStripHalfWidth = 0.5f;
+
+        /// <summary>
+        /// Height (metres) of the backstage sheet above each node. Retail hardcodes 6 m: every
+        /// one of the 275 shipped Backstage connections rises exactly 6.0, regardless of the
+        /// vent composite's own length (the 9 m marker and the 4.25 m hospital vents included) -
+        /// the node's TopMarker entity is ignored by the generator.
+        /// </summary>
+        public float BackstageNodeHeight = 6.0f;
+
         public static NavMeshBakeSettings CreateDefault() => new NavMeshBakeSettings();
     }
 }

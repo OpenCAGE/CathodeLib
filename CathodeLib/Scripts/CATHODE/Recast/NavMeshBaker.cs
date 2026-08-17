@@ -26,6 +26,9 @@ namespace CathodeLib.NavMesh
             public int ExclusionPolysCulled;
             public int BarrierPolysStamped;
             public int BarriersWithCoverage;
+            public int BackstagePolys;
+            public int BackstageConnections;
+            public string BackstageWarning;
             public List<PathBarrierResources.NAV_MESH_BARRIER_RESOURCE> PathBarriers =
                 new List<PathBarrierResources.NAV_MESH_BARRIER_RESOURCE>();
             public string Message;
@@ -112,6 +115,12 @@ namespace CathodeLib.NavMesh
 
             RcVec3f bmin = geom.GetMeshBoundsMin();
             RcVec3f bmax = geom.GetMeshBoundsMax();
+            // Align the tile origin to the cell grid so every emitted vertex lands on absolute
+            // cell-size multiples, the way retail meshes do (their bmin is always grid-aligned).
+            bmin = new RcVec3f(
+                MathF.Floor(bmin.X / settings.CellSize) * settings.CellSize,
+                MathF.Floor(bmin.Y / settings.CellHeight) * settings.CellHeight,
+                MathF.Floor(bmin.Z / settings.CellSize) * settings.CellSize);
 
             float sizeX = bmax.X - bmin.X;
             float sizeZ = bmax.Z - bmin.Z;
@@ -252,8 +261,37 @@ namespace CathodeLib.NavMesh
                 tile, rcResult.CompactHeightfield, settings, keep, polyAreas,
                 out crouchMarked, out deepCrouchMarked);
 
+            // Backstage: the alien's ceiling sheet, triangulated over the node tops. Failure is
+            // a warning, not an error - the level simply ships without a backstage.
+            BackstageMeshBuilder.Result backstage = null;
+            string backstageWarning = null;
+            List<CollisionNavMeshSoup.OffMeshLinkDraft> offMeshDrafts = soup.OffMeshLinks;
+            if (soup.BackstageNodes != null && soup.BackstageNodes.Count > 0)
+            {
+                backstage = BuildBackstageSheets(soup.BackstageNodes, settings, out backstageWarning);
+
+                // Each node becomes a vertical Backstage off-mesh connection from its frontstage
+                // mouth to the sheet, whether or not its own network managed to triangulate -
+                // retail ENG_TowPlatform ships all 19 connections with a sheet over only some of
+                // them. Retail admits only the alien on these.
+                offMeshDrafts = new List<CollisionNavMeshSoup.OffMeshLinkDraft>(soup.OffMeshLinks ?? new List<CollisionNavMeshSoup.OffMeshLinkDraft>());
+                foreach (CollisionNavMeshSoup.BackstageNodeDraft node in soup.BackstageNodes)
+                {
+                    offMeshDrafts.Add(new CollisionNavMeshSoup.OffMeshLinkDraft
+                    {
+                        Start = node.Bottom,
+                        End = node.Bottom + new Vector3(0f, settings.BackstageNodeHeight, 0f),
+                        LinkType = NavigationMesh.OffMeshLinkType.Backstage,
+                        ExtraCost = node.ExtraCost,
+                        CharacterClasses = NAVIGATION_CHARACTER_CLASS_COMBINATION.ALIEN,
+                        OpenOnReset = node.OpenOnReset,
+                        Entity = node.Entity,
+                    });
+                }
+            }
+
             NavigationMesh nav = new NavigationMesh("");
-            AdaptTile(nav, tile, settings, keep, polyAreas, soup.OffMeshLinks);
+            AdaptTile(nav, tile, settings, keep, polyAreas, offMeshDrafts, backstage);
 
             var pathBarriers = new List<PathBarrierResources.NAV_MESH_BARRIER_RESOURCE>(soup.Barriers?.Count ?? 0);
             if (soup.Barriers != null)
@@ -302,8 +340,29 @@ namespace CathodeLib.NavMesh
                 + $" Platforms={soup.WalkablePlatforms?.Count ?? 0} exclusions={soup.ExclusionAreas?.Count ?? 0}."
                 + $" HeightLimited crouch={crouchMarked} deepCrouch={deepCrouchMarked}.";
 
+            int backstagePolys = backstage != null ? backstage.Triangles.Count / 3 : 0;
+            int backstageCons = soup.BackstageNodes?.Count ?? 0;
+            if (soup.BackstageNodes != null && soup.BackstageNodes.Count > 0)
+            {
+                var networkCounts = new SortedDictionary<int, int>();
+                foreach (CollisionNavMeshSoup.BackstageNodeDraft node in soup.BackstageNodes)
+                {
+                    networkCounts.TryGetValue(node.NetworkId, out int n);
+                    networkCounts[node.NetworkId] = n + 1;
+                }
+                var parts = new List<string>();
+                foreach (KeyValuePair<int, int> kv in networkCounts)
+                    parts.Add($"{kv.Key}:x{kv.Value}");
+                message += $" Backstage nodes={soup.BackstageNodes.Count} networks=[{string.Join(" ", parts)}] polys={backstagePolys} cons={backstageCons}.";
+            }
+            if (backstageWarning != null)
+                message += $" BACKSTAGE WARNING: {backstageWarning}.";
+
             return new BakeResult
             {
+                BackstagePolys = backstagePolys,
+                BackstageConnections = backstageCons,
+                BackstageWarning = backstageWarning,
                 NavMesh = nav,
                 InputTriangles = soup.TriangleCount,
                 InputVertices = soup.VertexCount,
@@ -713,18 +772,27 @@ namespace CathodeLib.NavMesh
                     continue;
 
                 bool inside = PointInPolyXZ(position, p, verts);
-                float score = float.MaxValue;
-                for (int v = 0; v < p.vertCount; v++)
+                float score;
+                if (inside)
                 {
-                    Vector3 pv = verts[p.verts[v]];
-                    float dx = pv.X - position.X, dz = pv.Z - position.Z, dy = pv.Y - position.Y;
-                    float d = dx * dx + dz * dz + dy * dy;
-                    if (d < score) score = d;
+                    // Among containing polys pick the one whose surface is nearest in height -
+                    // vertex distance would let the floor 6 m below a large backstage triangle
+                    // beat the triangle whose middle the endpoint actually sits on.
+                    float dy = PolyHeightAtXZ(p, verts, position) - position.Y;
+                    score = dy * dy * 0.001f;
                 }
-
-                // Containment wins outright; otherwise fall back on proximity.
-                if (inside) score *= 0.001f;
-                else if (score > searchSq) continue;
+                else
+                {
+                    score = float.MaxValue;
+                    for (int v = 0; v < p.vertCount; v++)
+                    {
+                        Vector3 pv = verts[p.verts[v]];
+                        float dx = pv.X - position.X, dz = pv.Z - position.Z, dy = pv.Y - position.Y;
+                        float d = dx * dx + dz * dz + dy * dy;
+                        if (d < score) score = d;
+                    }
+                    if (score > searchSq) continue;
+                }
 
                 if (score < bestScore)
                 {
@@ -733,6 +801,30 @@ namespace CathodeLib.NavMesh
                 }
             }
             return best;
+        }
+
+        /// <summary>Surface height of a poly at an XZ position, via its triangle fan (average Y fallback).</summary>
+        static float PolyHeightAtXZ(NavigationMesh.dtPoly poly, List<Vector3> verts, Vector3 position)
+        {
+            Vector3 a = verts[poly.verts[0]];
+            for (int v = 1; v + 1 < poly.vertCount; v++)
+            {
+                Vector3 b = verts[poly.verts[v]];
+                Vector3 c = verts[poly.verts[v + 1]];
+                float det = (b.X - a.X) * (c.Z - a.Z) - (c.X - a.X) * (b.Z - a.Z);
+                if (Math.Abs(det) < 1e-8f)
+                    continue;
+                float u = ((position.X - a.X) * (c.Z - a.Z) - (c.X - a.X) * (position.Z - a.Z)) / det;
+                float w = ((b.X - a.X) * (position.Z - a.Z) - (position.X - a.X) * (b.Z - a.Z)) / det;
+                if (u < -0.01f || w < -0.01f || u + w > 1.01f)
+                    continue;
+                return a.Y + u * (b.Y - a.Y) + w * (c.Y - a.Y);
+            }
+
+            float sum = 0f;
+            for (int v = 0; v < poly.vertCount; v++)
+                sum += verts[poly.verts[v]].Y;
+            return sum / Math.Max(1, (int)poly.vertCount);
         }
 
         static bool PointInPolyXZ(Vector3 point, NavigationMesh.dtPoly poly, List<Vector3> verts)
@@ -1247,7 +1339,8 @@ namespace CathodeLib.NavMesh
             NavMeshBakeSettings settings,
             bool[] keepGroundPolys,
             NavigationMesh.dt_area_t[] polyAreas,
-            List<CollisionNavMeshSoup.OffMeshLinkDraft> offMeshDrafts)
+            List<CollisionNavMeshSoup.OffMeshLinkDraft> offMeshDrafts,
+            BackstageMeshBuilder.Result backstage = null)
         {
             DtMeshData data = tile.data;
             DtMeshHeader srcHeader = data.header;
@@ -1388,6 +1481,15 @@ namespace CathodeLib.NavMesh
                     dstDetail.Add(new NavigationMesh.dtPolyDetail());
             }
 
+            // Backstage sheet: appended after the filtered ground polys and before the off-mesh
+            // connections, matching the retail layout (ground, backstage, off-mesh).
+            if (backstage != null && backstage.Triangles.Count >= 3)
+            {
+                dstPolys = AppendBackstagePolys(
+                    backstage, settings, srcHeader, dstVerts, dstPolys, dstDetail, dstDetailVerts, dstDetailTris);
+                dstPolyCount = dstPolys.Length;
+            }
+
             int groundPolyCount = dstPolyCount;
             NavigationMesh.dtOffMeshConnection[] offMeshConnections = Array.Empty<NavigationMesh.dtOffMeshConnection>();
             if (offMeshDrafts != null && offMeshDrafts.Count > 0)
@@ -1423,8 +1525,9 @@ namespace CathodeLib.NavMesh
                     //Leave neis at 0. DT_EXT_LINK means "crosses a tile boundary", and Cathode
                     //levels are a single tile - retail writes 0 here on every off-mesh poly. The
                     //connection is expressed through the link pool below, not through neis.
+                    //No detail entry either: retail's detailMeshCount covers ground polys only
+                    //(SCI_Hub ships 1134 detail meshes for 1218 polys, 84 of them off-mesh).
                     polyList.Add(omPoly);
-                    dstDetail.Add(new NavigationMesh.dtPolyDetail());
 
                     offList.Add(new NavigationMesh.dtOffMeshConnection
                     {
@@ -1483,8 +1586,10 @@ namespace CathodeLib.NavMesh
 
             ConnectOffMeshLinks(dstPolys, dstVerts, offMeshConnections, groundPolyCount, polyRefBase, links);
 
-            // Rebuild BV tree over kept polys (quantized like Detour CreateBVTree).
-            NavigationMesh.dtBVNode[] bvNodes = BuildBvTree(dstPolys, dstVerts, srcHeader.bmin, settings.CellSize);
+            // Rebuild BV tree over ground polys only (quantized like Detour CreateBVTree).
+            // Off-mesh polys stay out of it, as in Detour and retail data (SCI_Hub ships
+            // 2268 nodes = 2 x 1134 ground polys for 1218 total).
+            NavigationMesh.dtBVNode[] bvNodes = BuildBvTree(dstPolys, groundPolyCount, dstVerts, srcHeader.bmin, settings.CellSize);
 
             var header = new NavigationMesh.dtMeshHeader
             {
@@ -1526,13 +1631,188 @@ namespace CathodeLib.NavMesh
                 offMeshConnections);
         }
 
+        /// <summary>
+        /// Build one merged backstage sheet from the nodes, triangulating each network id's
+        /// nodes separately (nodes only ever mesh with others on their own network - retail
+        /// ENG_TowPlatform's sheet covers a single network's region while other networks' nodes
+        /// keep their connections but get no sheet). Returns null when nothing triangulated.
+        /// </summary>
+        static BackstageMeshBuilder.Result BuildBackstageSheets(
+            List<CollisionNavMeshSoup.BackstageNodeDraft> nodes,
+            NavMeshBakeSettings settings,
+            out string warning)
+        {
+            warning = null;
+            var byNetwork = new SortedDictionary<int, List<Vector3>>();
+            foreach (CollisionNavMeshSoup.BackstageNodeDraft node in nodes)
+            {
+                if (!byNetwork.TryGetValue(node.NetworkId, out List<Vector3> tops))
+                    byNetwork[node.NetworkId] = tops = new List<Vector3>();
+                tops.Add(node.Bottom + new Vector3(0f, settings.BackstageNodeHeight, 0f));
+            }
+
+            var merged = new BackstageMeshBuilder.Result();
+            var warnings = new List<string>();
+            foreach (KeyValuePair<int, List<Vector3>> network in byNetwork)
+            {
+                BackstageMeshBuilder.Result sheet = BackstageMeshBuilder.Build(
+                    network.Value, settings.BackstageMaxEdgeLength, settings.BackstageColinearStripHalfWidth,
+                    out string sheetWarning);
+                sheetWarning ??= sheet?.Warning;
+                if (sheetWarning != null)
+                    warnings.Add((byNetwork.Count > 1 ? $"network {network.Key}: " : "") + sheetWarning);
+                if (sheet == null)
+                    continue;
+
+                int vertBase = merged.Vertices.Count;
+                merged.Vertices.AddRange(sheet.Vertices);
+                foreach (int index in sheet.Triangles)
+                    merged.Triangles.Add(vertBase + index);
+            }
+
+            if (warnings.Count > 0)
+                warning = string.Join("; ", warnings);
+            return merged.Triangles.Count == 0 ? null : merged;
+        }
+
+        /// <summary>
+        /// Append the backstage sheet's triangles as ground polys flagged Backstage, sharing the
+        /// tile vertex pool. Retail parity: admittance ALL, Standing, enabled, area id 0, detail
+        /// entry [2,0,1] with edge flags 21, and vertices snapped onto the Recast cell grid.
+        /// </summary>
+        static NavigationMesh.dtPoly[] AppendBackstagePolys(
+            BackstageMeshBuilder.Result backstage,
+            NavMeshBakeSettings settings,
+            DtMeshHeader srcHeader,
+            List<Vector3> dstVerts,
+            NavigationMesh.dtPoly[] dstPolys,
+            List<NavigationMesh.dtPolyDetail> dstDetail,
+            List<Vector3> dstDetailVerts,
+            List<byte> dstDetailTris)
+        {
+            float cs = settings.CellSize;
+            float ch = settings.CellHeight;
+            RcVec3f bmin = srcHeader.bmin;
+
+            // Snap onto the tile grid the way Recast quantizes its own vertices; identical
+            // snapped positions collapse to one vertex so triangles share edges properly.
+            var vertRemap = new int[backstage.Vertices.Count];
+            var snappedIndex = new Dictionary<(int, int, int), int>();
+            for (int i = 0; i < backstage.Vertices.Count; i++)
+            {
+                Vector3 v = backstage.Vertices[i];
+                int gx = (int)MathF.Floor((v.X - bmin.X) / cs);
+                int gy = (int)MathF.Floor((v.Y - bmin.Y) / ch);
+                int gz = (int)MathF.Floor((v.Z - bmin.Z) / cs);
+                var key = (gx, gy, gz);
+                if (!snappedIndex.TryGetValue(key, out int vi))
+                {
+                    vi = dstVerts.Count;
+                    dstVerts.Add(new Vector3(bmin.X + gx * cs, bmin.Y + gy * ch, bmin.Z + gz * cs));
+                    snappedIndex[key] = vi;
+                }
+                vertRemap[i] = vi;
+            }
+
+            // Remap to snapped indices, dropping triangles the snap degenerated, and re-fix
+            // winding on the snapped positions (Detour wants positive 2D area).
+            var tris = new List<(int a, int b, int c)>(backstage.Triangles.Count / 3);
+            for (int t = 0; t + 2 < backstage.Triangles.Count; t += 3)
+            {
+                int a = vertRemap[backstage.Triangles[t]];
+                int b = vertRemap[backstage.Triangles[t + 1]];
+                int c = vertRemap[backstage.Triangles[t + 2]];
+                if (a == b || b == c || a == c)
+                    continue;
+                Vector3 pa = dstVerts[a], pb = dstVerts[b], pc = dstVerts[c];
+                float area2 = (pc.X - pa.X) * (pb.Z - pa.Z) - (pb.X - pa.X) * (pc.Z - pa.Z);
+                if (area2 == 0f)
+                    continue;
+                tris.Add(area2 > 0f ? (a, b, c) : (a, c, b));
+            }
+
+            int triCount = tris.Count;
+            int baseIndex = dstPolys.Length;
+            var polys = new List<NavigationMesh.dtPoly>(dstPolys);
+
+            // Adjacency between sheet triangles by shared (snapped) edge.
+            var edgeOwner = new Dictionary<(int, int), int>();
+            var neighbours = new int[triCount, 3];
+            for (int t = 0; t < triCount; t++)
+                for (int e = 0; e < 3; e++)
+                    neighbours[t, e] = -1;
+            for (int t = 0; t < triCount; t++)
+            {
+                var (ta, tb, tc) = tris[t];
+                Span<int> v = stackalloc int[3] { ta, tb, tc };
+                for (int e = 0; e < 3; e++)
+                {
+                    int a = v[e];
+                    int b = v[(e + 1) % 3];
+                    var key = a < b ? (a, b) : (b, a);
+                    if (edgeOwner.TryGetValue(key, out int packed))
+                    {
+                        int otherTri = packed >> 2;
+                        int otherEdge = packed & 3;
+                        neighbours[t, e] = otherTri;
+                        neighbours[otherTri, otherEdge] = t;
+                    }
+                    else
+                    {
+                        edgeOwner[key] = (t << 2) | e;
+                    }
+                }
+            }
+
+            for (int t = 0; t < triCount; t++)
+            {
+                NavigationMesh.dt_area_t area = NavigationMesh.CreateDefaultGroundArea();
+                // Markup is a bitfield here: bit 0 normal, bit 1 backstage, bit 2 expensive.
+                area.SetMarkupFlags((NavigationMesh.NavMeshAreaType)(uint)NavigationMesh.NavMeshAreaTypeFlags.BackstageFlag);
+
+                var poly = new NavigationMesh.dtPoly
+                {
+                    firstLink = DT_NULL_LINK,
+                    verts = new ushort[6],
+                    neis = new ushort[6],
+                    vertCount = 3,
+                    area = area
+                };
+                var (va, vb, vc) = tris[t];
+                Span<int> v = stackalloc int[3] { va, vb, vc };
+                for (int e = 0; e < 3; e++)
+                {
+                    poly.verts[e] = (ushort)v[e];
+                    int nei = neighbours[t, e];
+                    poly.neis[e] = nei >= 0 ? (ushort)(baseIndex + nei + 1) : (ushort)0;
+                }
+                polys.Add(poly);
+
+                // Retail backstage detail: no extra verts, one tri [2,0,1] with edge flags 21.
+                dstDetail.Add(new NavigationMesh.dtPolyDetail
+                {
+                    vertBase = dstDetailVerts.Count,
+                    triBase = dstDetailTris.Count / 4,
+                    vertCount = 0,
+                    triCount = 1
+                });
+                dstDetailTris.Add(2);
+                dstDetailTris.Add(0);
+                dstDetailTris.Add(1);
+                dstDetailTris.Add(21);
+            }
+
+            return polys.ToArray();
+        }
+
         static NavigationMesh.dtBVNode[] BuildBvTree(
             NavigationMesh.dtPoly[] polys,
+            int polyCount,
             List<Vector3> verts,
             RcVec3f bmin,
             float cellSize)
         {
-            int n = polys.Length;
+            int n = Math.Min(polyCount, polys.Length);
             if (n == 0)
                 return Array.Empty<NavigationMesh.dtBVNode>();
 

@@ -24,6 +24,7 @@ namespace CathodeLib.NavMesh
         public List<AuthoringBoxVolume> WalkablePlatforms = new List<AuthoringBoxVolume>();
         public List<AuthoringBoxVolume> ExclusionAreas = new List<AuthoringBoxVolume>();
         public List<OffMeshLinkDraft> OffMeshLinks = new List<OffMeshLinkDraft>();
+        public List<BackstageNodeDraft> BackstageNodes = new List<BackstageNodeDraft>();
         /// <summary>Bake-host MAP instances skipped as small props (crate-scale).</summary>
         public int PropInstancesSkipped;
         /// <summary>Soup tris dropped as absurd edge-length outliers.</summary>
@@ -49,6 +50,22 @@ namespace CathodeLib.NavMesh
             public Vector3 Centre;
             public Quaternion Rotation = Quaternion.Identity;
             public Vector3 HalfExtents;
+        }
+
+        /// <summary>
+        /// A PathfindingAlienBackstageNode: <see cref="Bottom"/> is the entity position (the
+        /// frontstage vent mouth). The sheet vertex sits a fixed height straight above it
+        /// (<see cref="NavMeshBakeSettings.BackstageNodeHeight"/>); each node also becomes a
+        /// vertical Backstage off-mesh connection between the two.
+        /// </summary>
+        public sealed class BackstageNodeDraft
+        {
+            public Vector3 Bottom;
+            public float ExtraCost = 1f;
+            public bool OpenOnReset = true;
+            /// <summary>Nodes triangulate only with others sharing their network id.</summary>
+            public int NetworkId;
+            public EntityHandle Entity;
         }
 
         public sealed class OffMeshLinkDraft
@@ -134,6 +151,7 @@ namespace CathodeLib.NavMesh
                 soup.ExclusionAreas = sharedAuthoring.ExclusionAreas ?? soup.ExclusionAreas;
                 soup.ReachabilitySeeds = sharedAuthoring.ReachabilitySeeds ?? soup.ReachabilitySeeds;
                 soup.OffMeshLinks = sharedAuthoring.OffMeshLinks ?? soup.OffMeshLinks;
+                soup.BackstageNodes = sharedAuthoring.BackstageNodes ?? soup.BackstageNodes;
             }
             else
             {
