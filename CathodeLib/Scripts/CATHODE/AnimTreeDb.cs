@@ -659,10 +659,20 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
-            {
-                writer.BaseStream.SetLength(0);
+            byte[] content = ToBytes();
+            if (content == null) return false;
+            File.WriteAllBytes(_filepath, content);
+            return true;
+        }
 
+        /// <summary>
+        /// Serialise back to the format stored in ANIMATION.PAK.
+        /// </summary>
+        public byte[] ToBytes()
+        {
+            using (MemoryStream stream = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
                 writer.Write(66);
 
                 writer.Write(Entries.Count);
@@ -783,8 +793,9 @@ namespace CATHODE
                     foreach (var node in tree.Children)
                         WriteNode(writer, node);
                 }
+
+                return stream.ToArray();
             }
-            return true;
         }
 
         private void WriteNode(BinaryWriter writer, AnimationNode node)

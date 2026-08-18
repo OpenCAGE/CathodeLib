@@ -195,11 +195,9 @@ namespace CATHODE
             if (uint.TryParse(str, out uint literal) && !Entries.ContainsKey(literal))
                 return literal;
 
-            if (!Entries.ContainsKey(id))
-            {
-                Entries.Add(id, str);
-                _idsByString.Add(str, id);
-            }
+            /* The hash is what actually gets written, so an unknown name still round-trips. Adding
+             * it here would quietly grow the table every time a file is serialised - anything that
+             * wants a new name kept has to call AddString for it. */
             return id;
         }
 

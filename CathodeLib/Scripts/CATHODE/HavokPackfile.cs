@@ -2773,7 +2773,40 @@ namespace CATHODE
             clip.FrameCount = BitConverter.ToInt32(DataPayload, (int)spline);
             clip.BlockCount = BitConverter.ToInt32(DataPayload, (int)spline + 4);
             clip.MaxFramesPerBlock = BitConverter.ToInt32(DataPayload, (int)spline + 8);
+            clip.MaskAndQuantizationSize = BitConverter.ToInt32(DataPayload, (int)spline + 12);
+            clip.BlockDuration = BitConverter.ToSingle(DataPayload, (int)spline + 16);
             clip.FrameDuration = BitConverter.ToSingle(DataPayload, (int)spline + 24);
+
+            /* Then five hkArrays: the offset of each block into the stream, the same for float
+             * tracks, per-track offsets for the two, and the stream itself. */
+            uint arrays = spline + 28;
+            if (TryGetHkArray(arrays, out uint blockData, out int blockCount))
+                for (int i = 0; i < blockCount && blockData + (i * 4) + 4 <= DataPayload.Length; i++)
+                    clip.BlockOffsets.Add(BitConverter.ToUInt32(DataPayload, (int)(blockData + (i * 4))));
+
+            if (!TryGetHkArray(arrays + (ArraySize * 4), out uint stream, out int streamLength)) return;
+            clip.DataOffset = stream;
+            clip.DataLength = streamLength;
+
+            //each block opens with a four byte mask per transform track saying what it stores
+            for (int b = 0; b < clip.BlockOffsets.Count; b++)
+            {
+                uint blockStart = stream + clip.BlockOffsets[b];
+                List<TransformMask> masks = new List<TransformMask>();
+                for (int t = 0; t < clip.TransformTrackCount; t++)
+                {
+                    uint mask = blockStart + (uint)(t * 4);
+                    if (mask + 4 > DataPayload.Length) break;
+                    masks.Add(new TransformMask
+                    {
+                        Quantization = DataPayload[mask],
+                        Position = DataPayload[mask + 1],
+                        Rotation = DataPayload[mask + 2],
+                        Scale = DataPayload[mask + 3],
+                    });
+                }
+                clip.Blocks.Add(masks);
+            }
         }
 
         /// <summary>
@@ -2931,7 +2964,67 @@ namespace CATHODE
             /// <summary>Where the animation sits in __data__, so callers can match it back up.</summary>
             public uint AnimationOffset;
 
+            /// <summary>Bytes of mask at the head of every block - four per transform track.</summary>
+            public int MaskAndQuantizationSize;
+
+            public float BlockDuration;
+
+            /// <summary>Where each block begins, relative to <see cref="DataOffset"/>.</summary>
+            public List<uint> BlockOffsets = new List<uint>();
+
+            /// <summary>What each transform track stores, per block. See <see cref="TransformMask"/>.</summary>
+            public List<List<TransformMask>> Blocks = new List<List<TransformMask>>();
+
+            /// <summary>The compressed stream inside __data__, and how long it runs.</summary>
+            public uint DataOffset;
+            public int DataLength;
+
             public override string ToString() => (SkeletonName.Length == 0 ? "animation" : SkeletonName) + " " + Duration.ToString("0.###") + "s";
+        }
+
+        /// <summary>
+        /// The four bytes at the head of a block that say what one transform track stores.
+        ///
+        /// The curves themselves are not decoded yet. What is confirmed: the stream that follows the
+        /// masks holds, per spline, a <c>uint16</c> item count, a <c>byte</c> degree, then
+        /// <c>count + degree + 2</c> byte knots, then <c>count + 1</c> control points quantized to
+        /// the width <see cref="RotationQuantization"/> names - 5 bytes each for THREECOMP40.
+        /// </summary>
+        public class TransformMask
+        {
+            /// <summary>Packed quantization widths - see the properties below.</summary>
+            public byte Quantization;
+
+            /// <summary>Which position components are stored, and how.</summary>
+            public byte Position;
+
+            /// <summary>Which rotation components are stored. The nibbles do not read as cleanly
+            /// as the position ones do, so this is left raw.</summary>
+            public byte Rotation;
+
+            /// <summary>Which scale components are stored, and how.</summary>
+            public byte Scale;
+
+            /// <summary>Bits 0-1: how translation control points are quantized.</summary>
+            public int TranslationQuantization { get { return Quantization & 0x03; } }
+
+            /// <summary>Bits 2-5: 0 POLAR32, 1 THREECOMP40, 2 THREECOMP48, 3 THREECOMP24, 4 STRAIGHT16, 5 UNCOMPRESSED.</summary>
+            public int RotationQuantization { get { return (Quantization >> 2) & 0x0F; } }
+
+            /// <summary>Bits 6-7: how scale control points are quantized.</summary>
+            public int ScaleQuantization { get { return (Quantization >> 6) & 0x03; } }
+
+            /// <summary>Position components driven by a curve, as X/Y/Z bits.</summary>
+            public int PositionSpline { get { return Position & 0x0F; } }
+
+            /// <summary>Position components held at one value, as X/Y/Z bits.</summary>
+            public int PositionStatic { get { return (Position >> 4) & 0x0F; } }
+
+            public int ScaleSpline { get { return Scale & 0x0F; } }
+            public int ScaleStatic { get { return (Scale >> 4) & 0x0F; } }
+
+            public override string ToString() =>
+                "pos=0x" + Position.ToString("X2") + " rot=0x" + Rotation.ToString("X2") + " scale=0x" + Scale.ToString("X2");
         }
 
         /// <summary>

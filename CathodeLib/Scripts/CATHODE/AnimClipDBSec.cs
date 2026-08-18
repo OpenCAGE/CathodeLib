@@ -24,7 +24,10 @@ namespace CATHODE
         /// <summary>The Havok packfile holding this section's hkaAnimationContainer.</summary>
         public HavokPackfile Havok = null;
 
-        /// <summary>Metadata tags per clip, in clip order. Empty entries are clips with no tags.</summary>
+        /// <summary>
+        /// Metadata tags per clip, in clip order. Empty when the file is one of the handful whose
+        /// image this parser cannot follow - see <see cref="MetadataParsed"/>.
+        /// </summary>
         public List<MetadataSet> Metadata = new List<MetadataSet>();
 
         public AnimClipDBSec(string path, AnimationStrings strings, AnimationStrings debugStrings = null) : base(path)
@@ -61,9 +64,15 @@ namespace CATHODE
         }
         private byte[] _havok = new byte[0];
 
-        /* The metadata DB is a memory image with internal offsets - we read the tags out of it but
-         * don't rebuild it, so it's carried through a save as it came in. */
-        private byte[] _metadata = new byte[0];
+        /* The raw metadata image, held only while loading - everything in it is parsed out into
+         * Metadata and rebuilt from there on save. */
+        private byte[] _metadata;
+
+        /// <summary>
+        /// Whether a save will write <see cref="Metadata"/> back out. False for the few files whose
+        /// image this does not reproduce byte for byte - those still read, but are saved verbatim.
+        /// </summary>
+        public bool MetadataParsed { get { return _metadata == null; } }
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
@@ -91,55 +100,112 @@ namespace CATHODE
                 int metadataLength = reader.ReadInt32();
                 if (metadataLength < 0 || metadataLength > reader.BaseStream.Length - reader.BaseStream.Position)
                     return false;
-                _metadata = reader.ReadBytes(metadataLength);
-                ReadMetadata();
+                /* Parse the metadata out, then check we can put it back exactly as we found it.
+                 * A handful of retail files lay theirs out in a way this doesn't reproduce; those
+                 * keep their image and write it back untouched rather than risk losing data. They
+                 * still read normally - it's only saving that ignores edits, which MetadataParsed
+                 * reports. Files that don't parse at all get their sets dropped as well. */
+                byte[] image = reader.ReadBytes(metadataLength);
+                _metadata = image;
+                bool parsed = ReadMetadata();
+                _metadata = null;
 
+                if (!parsed) Metadata.Clear();
+                if (!parsed || !Reproduces(WriteMetadata(), image)) _metadata = image;
                 return true;
             }
         }
 
         /* The DB is a memory image: "MDDB", a count, then that many absolute offsets to metadata
          * sets. A set's header holds absolute offsets to its own arrays. */
-        private void ReadMetadata()
+        private bool ReadMetadata()
         {
+            if (_metadata.Length == 0) return true;
             if (_metadata.Length < 8 || Encoding.ASCII.GetString(_metadata, 0, 4) != "MDDB")
-                return;
+                return false;
 
             int count = BitConverter.ToInt32(_metadata, 4);
-            if (count < 0 || (long)count * 8 + 8 > _metadata.Length) return;
+            if (count < 0 || (long)count * 8 + 8 > _metadata.Length) return false;
 
             for (int i = 0; i < count; i++)
             {
+                long offset = BitConverter.ToInt64(_metadata, 8 + (i * 8));
+                if (offset <= 0 || offset + SetHeaderSize > _metadata.Length) return false;
+
+                //a set runs up to wherever the next one starts, and the last one to the end
+                long limit = i + 1 < count ? BitConverter.ToInt64(_metadata, 8 + ((i + 1) * 8)) : _metadata.Length;
+                if (limit <= offset || limit > _metadata.Length) return false;
+
                 MetadataSet set = new MetadataSet();
                 Metadata.Add(set);
-
-                long offset = BitConverter.ToInt64(_metadata, 8 + (i * 8));
-                if (offset <= 0 || offset + SetHeaderSize > _metadata.Length) continue;
-                ReadMetadataSet(offset, set);
+                if (!ReadMetadataSet(offset, set, limit)) return false;
             }
+
+            //the index is padded out to sixteen before the first set
+            long first = count == 0 ? _metadata.Length : BitConverter.ToInt64(_metadata, 8);
+            return first == Align(8 + (count * 8), 16);
+        }
+
+        private static bool Reproduces(byte[] rebuilt, byte[] original)
+        {
+            if (rebuilt.Length != original.Length) return false;
+            for (int i = 0; i < rebuilt.Length; i++) if (rebuilt[i] != original[i]) return false;
+            return true;
+        }
+
+        private static long Align(long value, int to)
+        {
+            long remainder = value % to;
+            return remainder == 0 ? value : value + (to - remainder);
         }
 
         /* A set is a 32 byte header - eight unknown bytes, a pointer to the set body, a pointer to
          * the instance area, then the instance count - with the common block inlined at +32. */
-        private void ReadMetadataSet(long offset, MetadataSet set)
+        private bool ReadMetadataSet(long offset, MetadataSet set, long limit)
         {
+            set.Unknown = BitConverter.ToInt64(_metadata, (int)offset);
+            set.Slack = BitConverter.ToUInt32(_metadata, (int)offset + 28);
+
             set.Common = ReadBlock(offset + 32, out long end);
+            if (set.Common == null) return false;
+            MetadataBlock previous = set.Common;
+
             uint instances = BitConverter.ToUInt32(_metadata, (int)offset + 24);
-            if (instances == 0 || instances > 512 || end < 0) return;
+            if (instances > 512) return false;
 
             /* Each instance carries its own block. They follow the common one back to back, but
-             * with some slack between them, so find each by its own signature. */
+             * with slack between them that no field predicts, so find each by its own signature
+             * and remember how far it was pushed along. */
             for (int i = 0; i < instances; i++)
             {
-                long at = -1;
-                for (long probe = end; probe <= end + 256; probe += 4)
-                    if (IsBlock(probe)) { at = probe; break; }
-                if (at < 0) return;
+                /* A block can start just inside the slack of the one before it. The signature is
+                 * strong but not unique, so keep looking until one parses and fits the set. */
+                long at = -1, next = -1;
+                MetadataBlock block = null;
+                for (long probe = end - 8; probe < limit; probe += 4)
+                {
+                    if (!IsBlock(probe)) continue;
+                    MetadataBlock candidate = ReadBlock(probe, out long candidateEnd);
+                    if (candidate == null || candidateEnd > limit + 8) continue;
+                    at = probe; next = candidateEnd; block = candidate;
+                    break;
+                }
+                if (block == null) return false;
 
-                MetadataBlock block = ReadBlock(at, out end);
-                if (block == null || end < 0) return;
+                //the instance pointer normally names the first block less sixteen, but not always
+                if (i == 0)
+                    set.InstanceBias = (int)((at - 16) - BitConverter.ToInt64(_metadata, (int)offset + 16));
+
+                previous.TrailingPadding = (int)(at - end);
+                end = next;
                 set.Instances.Add(block);
+                previous = block;
             }
+
+            /* A set's last time can spill into the next set's first field, which is why that field
+             * sometimes reads as a stray float - so the padding here is allowed to go slightly negative. */
+            previous.TrailingPadding = (int)(limit - end);
+            return previous.TrailingPadding >= -8;
         }
 
         /* A block's argument pointer always names its own base + 40, which is enough to pick the
@@ -161,16 +227,25 @@ namespace CATHODE
             uint argumentCount = BitConverter.ToUInt32(_metadata, (int)at + 16);
             uint propertyCount = BitConverter.ToUInt32(_metadata, (int)at + 20);
             if (argumentCount > 4096 || propertyCount > 4096) return null;
-            if (arguments + (argumentCount * ArgumentSize) > _metadata.Length) return null;
+            if (arguments != at + 56 || arguments + (argumentCount * ArgumentSize) > _metadata.Length) return null;
 
-            MetadataBlock block = new MetadataBlock();
+            MetadataBlock block = new MetadataBlock
+            {
+                Unknown0 = BitConverter.ToInt64(_metadata, (int)at + 24),
+                Unknown1 = BitConverter.ToInt64(_metadata, (int)at + 32),
+            };
             for (int i = 0; i < argumentCount; i++)
                 block.Arguments.Add(ReadArgument((int)(arguments + (i * ArgumentSize))));
             end = arguments + (argumentCount * ArgumentSize);
 
+            //only the final argument's trailing eight bytes are ever used, and not by the argument
+            if (argumentCount != 0)
+                block.ArgumentsTrailing = BitConverter.ToUInt64(_metadata, (int)(end - 8));
+
+            block.HasProperties = properties != 0;
             if (properties == 0 || propertyCount == 0) return block;
             properties += 16;
-            if (properties + (propertyCount * PropertySize) > _metadata.Length) return block;
+            if (properties != end || properties + (propertyCount * PropertySize) > _metadata.Length) return null;
             end = properties + (propertyCount * PropertySize);
 
             for (int i = 0; i < propertyCount; i++)
@@ -182,13 +257,33 @@ namespace CATHODE
                 };
                 block.Properties.Add(property);
 
-                //the times sit eight bytes past the pointer, not sixteen like the arrays do
+                /* The times pointer names the last event header's type field, so the times
+                 * themselves land eight bytes past it - not sixteen like every other array. */
                 long times = BitConverter.ToInt64(_metadata, (int)entry + 16) + 8;
-                uint count = BitConverter.ToUInt32(_metadata, (int)entry + 32);
-                if (count > 4096 || times < 0 || times + (count * 4) > _metadata.Length) continue;
+                long count = BitConverter.ToUInt32(_metadata, (int)entry + 32);
+                if (count > 4096 || times < 0 || times + (count * 4) > _metadata.Length) return null;
                 for (int t = 0; t < count; t++)
                     property.Times.Add(BitConverter.ToSingle(_metadata, (int)(times + (t * 4))));
-                if (times + (count * 4) > end) end = times + (count * 4);
+                end = times + (count * 4);
+
+                /* A property may also name what fires at each time - one 32 byte header per
+                 * time, with the times overlaying the last header's trailing eight bytes. */
+                long headers = BitConverter.ToInt64(_metadata, (int)entry + 8);
+                if (headers == 0) continue;
+                property.HasEvents = true;
+                headers += 16;
+                if (headers + (count * EventHeaderSize) > _metadata.Length) return null;
+                if (times != headers + ((count - 1) * EventHeaderSize) + 24) return null;
+                for (int t = 0; t < count; t++)
+                {
+                    long header = headers + (t * EventHeaderSize);
+                    property.Events.Add(new MetadataEvent
+                    {
+                        Name = Name(BitConverter.ToUInt32(_metadata, (int)header)),
+                        Type = (MetadataValueType)BitConverter.ToUInt32(_metadata, (int)header + 16),
+                    });
+                }
+
             }
             return block;
         }
@@ -241,6 +336,199 @@ namespace CATHODE
         private const int BlockSize = 40;
         private const int ArgumentSize = 48;
         private const int PropertySize = 48;
+        private const int EventHeaderSize = 32;
+
+        /* Rebuild the memory image. Everything in it is reached by absolute offset, so the layout
+         * is ours to choose - we just lay each set out end to end the way the game's allocator did,
+         * carrying the slack it left behind so an untouched file writes back unchanged. */
+        private byte[] WriteMetadata()
+        {
+            if (_metadata != null) return _metadata;
+            if (Metadata.Count == 0) return new byte[0];
+
+            long start = Align(8 + (Metadata.Count * 8), 16);
+            long[] offsets = new long[Metadata.Count];
+            long at = start;
+            for (int i = 0; i < Metadata.Count; i++)
+            {
+                offsets[i] = at;
+                at = MeasureSet(Metadata[i], at);
+            }
+
+            byte[] image = new byte[at];
+            Encoding.ASCII.GetBytes("MDDB").CopyTo(image, 0);
+            BitConverter.GetBytes(Metadata.Count).CopyTo(image, 4);
+            for (int i = 0; i < Metadata.Count; i++)
+                BitConverter.GetBytes(offsets[i]).CopyTo(image, 8 + (i * 8));
+
+            for (int i = 0; i < Metadata.Count; i++)
+                WriteSet(image, Metadata[i], offsets[i]);
+            return image;
+        }
+
+        /* Where a set ends if it starts at the given offset. */
+        private static long MeasureSet(MetadataSet set, long at)
+        {
+            long end = MeasureBlock(set.Common, at + 32) + set.Common.TrailingPadding;
+            for (int i = 0; i < set.Instances.Count; i++)
+                end = MeasureBlock(set.Instances[i], end) + set.Instances[i].TrailingPadding;
+            return end;
+        }
+
+        /* Where a block's payload ends. The header is 40 bytes, then the sixteen its argument
+         * pointer aims at, then the arguments, the property array and each property's data. */
+        private static long MeasureBlock(MetadataBlock block, long at)
+        {
+            long end = at + 56 + (block.Arguments.Count * ArgumentSize);
+            if (block.Properties.Count == 0) return end;
+
+            long cursor = end + (block.Properties.Count * PropertySize);
+            if (!block.Properties[0].HasEvents) cursor -= 8;
+            for (int i = 0; i < block.Properties.Count; i++)
+            {
+                MetadataProperty property = block.Properties[i];
+                int count = property.Times.Count;
+                //a property that named its events leaves eight bytes before the next one starts
+                if (i != 0 && block.Properties[i - 1].HasEvents) cursor += 8;
+                cursor = (property.HasEvents ? TimesOf(cursor, count) : cursor) + (count * 4);
+            }
+            return cursor;
+        }
+
+        /* Where a property's times sit given where its event headers start. An empty array still
+         * has a pointer, aimed eight bytes back from where the first header would have been. */
+        private static long TimesOf(long headers, int count)
+        {
+            return count == 0 ? headers - 8 : headers + ((count - 1) * EventHeaderSize) + 24;
+        }
+
+        private void WriteSet(byte[] image, MetadataSet set, long at)
+        {
+            long common = MeasureBlock(set.Common, at + 32);
+            long instances = common + set.Common.TrailingPadding;
+
+            BitConverter.GetBytes(set.Unknown).CopyTo(image, (int)at);
+            BitConverter.GetBytes(at + 24).CopyTo(image, (int)at + 8);
+            BitConverter.GetBytes(set.Instances.Count == 0 ? 0 : instances - 16 - set.InstanceBias).CopyTo(image, (int)at + 16);
+            BitConverter.GetBytes(set.Instances.Count).CopyTo(image, (int)at + 24);
+            BitConverter.GetBytes(set.Slack).CopyTo(image, (int)at + 28);
+
+            WriteBlock(image, set.Common, at + 32);
+            long[] positions = new long[set.Instances.Count];
+            bool[] slack = new bool[set.Instances.Count];
+            long cursor = instances, previous = common;
+            for (int i = 0; i < set.Instances.Count; i++)
+            {
+                positions[i] = cursor;
+                slack[i] = cursor - previous >= 8;
+                WriteBlock(image, set.Instances[i], cursor);
+                previous = MeasureBlock(set.Instances[i], cursor);
+                cursor = previous + set.Instances[i].TrailingPadding;
+            }
+
+            /* The instance blocks are threaded together by a link in the eight bytes ahead of each
+             * one, naming the next block's link - or itself, on the last. It only appears where the
+             * allocator left room for it; otherwise those bytes belong to the block before. */
+            for (int i = 0; i < positions.Length; i++)
+            {
+                if (!slack[i]) continue;
+                long link = (i + 1 < positions.Length ? positions[i + 1] : positions[i]) - 8;
+                BitConverter.GetBytes(link).CopyTo(image, (int)positions[i] - 8);
+            }
+        }
+
+        private void WriteBlock(byte[] image, MetadataBlock block, long at)
+        {
+            long arguments = at + 56;
+            long argumentsEnd = arguments + (block.Arguments.Count * ArgumentSize);
+            bool properties = block.HasProperties;
+
+            BitConverter.GetBytes(at + 40).CopyTo(image, (int)at);
+            BitConverter.GetBytes(properties ? argumentsEnd - 16 : 0).CopyTo(image, (int)at + 8);
+            BitConverter.GetBytes(block.Arguments.Count).CopyTo(image, (int)at + 16);
+            BitConverter.GetBytes(block.Properties.Count).CopyTo(image, (int)at + 20);
+            BitConverter.GetBytes(block.Unknown0).CopyTo(image, (int)at + 24);
+            BitConverter.GetBytes(block.Unknown1).CopyTo(image, (int)at + 32);
+
+            for (int i = 0; i < block.Arguments.Count; i++)
+                WriteArgument(image, block.Arguments[i], arguments + (i * ArgumentSize));
+            if (block.Arguments.Count != 0)
+                BitConverter.GetBytes(block.ArgumentsTrailing).CopyTo(image, (int)argumentsEnd - 8);
+            if (!properties || block.Properties.Count == 0) return;
+
+            long cursor = argumentsEnd + (block.Properties.Count * PropertySize);
+            if (!block.Properties[0].HasEvents) cursor -= 8;
+
+            for (int i = 0; i < block.Properties.Count; i++)
+            {
+                MetadataProperty property = block.Properties[i];
+                long entry = argumentsEnd + (i * PropertySize);
+                int count = property.Times.Count;
+                BitConverter.GetBytes(_strings.GetID(property.Name)).CopyTo(image, (int)entry);
+                BitConverter.GetBytes(count).CopyTo(image, (int)entry + 32);
+
+                //a property that named its events leaves eight bytes before the next one starts
+                if (i != 0 && block.Properties[i - 1].HasEvents) cursor += 8;
+
+                long times = cursor;
+                if (property.HasEvents)
+                {
+                    long headers = cursor;
+                    for (int t = 0; t < count && t < property.Events.Count; t++)
+                    {
+                        long header = headers + (t * EventHeaderSize);
+                        BitConverter.GetBytes(_strings.GetID(property.Events[t].Name)).CopyTo(image, (int)header);
+                        BitConverter.GetBytes((uint)property.Events[t].Type).CopyTo(image, (int)header + 16);
+                        BitConverter.GetBytes(property.Events[t].Type == MetadataValueType.PROPERTY_REFERENCE ? 1u : 0u).CopyTo(image, (int)header + 20);
+                    }
+                    BitConverter.GetBytes(headers - 16).CopyTo(image, (int)entry + 8);
+                    times = TimesOf(headers, count);
+                }
+                cursor = times + (count * 4);
+
+                BitConverter.GetBytes(times - 8).CopyTo(image, (int)entry + 16);
+                for (int t = 0; t < count; t++)
+                    BitConverter.GetBytes(property.Times[t]).CopyTo(image, (int)(times + (t * 4)));
+            }
+        }
+
+        private void WriteArgument(byte[] image, MetadataArgument argument, long at)
+        {
+            BitConverter.GetBytes(_strings.GetID(argument.Name)).CopyTo(image, (int)at);
+            BitConverter.GetBytes((uint)argument.Type).CopyTo(image, (int)at + 32);
+            BitConverter.GetBytes(argument.RequiresConvert).CopyTo(image, (int)at + 36);
+            image[at + 38] = (byte)(argument.CanMirror ? 1 : 0);
+            image[at + 39] = (byte)(argument.CanModulateByPlayspeed ? 1 : 0);
+
+            long value = at + 16;
+            switch (argument.Type)
+            {
+                case MetadataValueType.BOOL:
+                    BitConverter.GetBytes(argument.Value is bool b && b ? uint.MaxValue : 0u).CopyTo(image, (int)value);
+                    break;
+                case MetadataValueType.UINT32:
+                    BitConverter.GetBytes(Convert.ToUInt32(argument.Value ?? 0u)).CopyTo(image, (int)value);
+                    break;
+                case MetadataValueType.INT32:
+                    BitConverter.GetBytes(Convert.ToInt32(argument.Value ?? 0)).CopyTo(image, (int)value);
+                    break;
+                case MetadataValueType.FLOAT32:
+                    BitConverter.GetBytes(Convert.ToSingle(argument.Value ?? 0f)).CopyTo(image, (int)value);
+                    break;
+                case MetadataValueType.STRING:
+                case MetadataValueType.AUDIO:
+                case MetadataValueType.PROPERTY_REFERENCE:
+                    string text = argument.Value as string;
+                    BitConverter.GetBytes(string.IsNullOrEmpty(text) ? uint.MaxValue : _strings.GetID(text)).CopyTo(image, (int)value);
+                    break;
+                case MetadataValueType.VECTOR:
+                    System.Numerics.Vector3 vector = argument.Value is System.Numerics.Vector3 v ? v : default;
+                    BitConverter.GetBytes(vector.X).CopyTo(image, (int)value);
+                    BitConverter.GetBytes(vector.Y).CopyTo(image, (int)value + 4);
+                    BitConverter.GetBytes(vector.Z).CopyTo(image, (int)value + 8);
+                    break;
+            }
+        }
 
         override protected bool SaveInternal()
         {
@@ -267,8 +555,9 @@ namespace CATHODE
                 writer.Write(_havok.Length);
                 writer.Write(_havok);
 
-                writer.Write(_metadata.Length);
-                writer.Write(_metadata);
+                byte[] metadata = WriteMetadata();
+                writer.Write(metadata.Length);
+                writer.Write(metadata);
 
                 return stream.ToArray();
             }
@@ -299,6 +588,15 @@ namespace CATHODE
             /// <summary>One block per use of the clip, carrying that use's own tags.</summary>
             public List<MetadataBlock> Instances = new List<MetadataBlock>();
 
+            /// <summary>Engine scratch, kept so an untouched file writes back unchanged.</summary>
+            public long Unknown;
+
+            /// <summary>Engine scratch, kept so an untouched file writes back unchanged.</summary>
+            public uint Slack;
+
+            /// <summary>How far the instance pointer sits from the first instance block, normally zero.</summary>
+            public int InstanceBias;
+
             public override string ToString() =>
                 Common.Arguments.Count + " argument(s), " + Instances.Count + " instance(s)";
         }
@@ -310,6 +608,22 @@ namespace CATHODE
         {
             public List<MetadataArgument> Arguments = new List<MetadataArgument>();
             public List<MetadataProperty> Properties = new List<MetadataProperty>();
+
+            /// <summary>Engine scratch, kept so an untouched file writes back unchanged.</summary>
+            public long Unknown0, Unknown1;
+
+            /// <summary>Whether the block points at a property array, which may still be empty.</summary>
+            public bool HasProperties;
+
+            /// <summary>Engine scratch sitting past the last argument, kept for the same reason.</summary>
+            public ulong ArgumentsTrailing;
+
+            /// <summary>
+            /// Bytes the game's allocator left after this block. Nothing in the format predicts it
+            /// and nothing reads it - every reference is an absolute offset - but carrying it makes
+            /// a save byte for byte identical to the original.
+            /// </summary>
+            public int TrailingPadding;
 
             public override string ToString() =>
                 Arguments.Count + " argument(s), " + Properties.Count + " property/ies";
@@ -325,7 +639,33 @@ namespace CATHODE
             /// <summary>Times through the clip, in seconds, that this property fires at.</summary>
             public List<float> Times = new List<float>();
 
+            /// <summary>
+            /// What fires at each time, one per entry in <see cref="Times"/>. Empty when the
+            /// property is a bare marker - foot strikes name nothing, audio properties do.
+            /// </summary>
+            public List<MetadataEvent> Events = new List<MetadataEvent>();
+
+            /// <summary>Whether the property carries an event array at all - it may be empty.</summary>
+            public bool HasEvents;
+
             public override string ToString() => Name + " x" + Times.Count;
+        }
+
+        /// <summary>
+        /// One occurrence of a property - names an argument of the same block, normally the audio
+        /// event to play at the matching entry in <see cref="MetadataProperty.Times"/>.
+        /// </summary>
+        public class MetadataEvent
+        {
+            public string Name = "";
+
+            /// <summary>
+            /// Almost always PROPERTY_REFERENCE, meaning <see cref="Name"/> points at an argument
+            /// of the same block. The other types carry a raw value in that field instead.
+            /// </summary>
+            public MetadataValueType Type = MetadataValueType.PROPERTY_REFERENCE;
+
+            public override string ToString() => Name;
         }
 
         /// <summary>
