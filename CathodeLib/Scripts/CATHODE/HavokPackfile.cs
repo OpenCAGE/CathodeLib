@@ -33,6 +33,13 @@ namespace CATHODE
         /// <summary>Raw __data__ object bytes (before local fixup table).</summary>
         public byte[] DataPayload = Array.Empty<byte>();
 
+        /// <summary>
+        /// Absolute file offset of <see cref="DataPayload"/>. Lets a caller patch values back into the
+        /// original file bytes without rebuilding the packfile.
+        /// </summary>
+        public uint DataSectionOffset => _dataSectionOffset;
+        private uint _dataSectionOffset;
+
         public List<LocalFixup> LocalFixups = new List<LocalFixup>();
         public List<GlobalFixup> GlobalFixups = new List<GlobalFixup>();
         public List<VirtualFixup> VirtualFixups = new List<VirtualFixup>();
@@ -1222,7 +1229,38 @@ namespace CATHODE
             return mesh.ShapeCount > before;
         }
 
-        bool TryGetHkArray(uint arrayFieldOffset, out uint dataOffset, out int count)
+        /// <summary>
+        /// Resolve a pointer field through the local fixup table (i.e. a pointer to somewhere else in __data__).
+        /// </summary>
+        public bool TryResolveLocal(uint pointerFieldOffset, out uint dataOffset)
+        {
+            for (int i = 0; i < LocalFixups.Count; i++)
+            {
+                if (LocalFixups[i].Src == pointerFieldOffset)
+                {
+                    dataOffset = LocalFixups[i].Dst;
+                    return dataOffset < (uint)DataPayload.Length;
+                }
+            }
+            dataOffset = 0;
+            return false;
+        }
+
+        /// <summary>
+        /// Read a null terminated string out of __data__.
+        /// </summary>
+        public string ReadStringAt(uint dataOffset)
+        {
+            if (dataOffset >= (uint)DataPayload.Length) return null;
+            int end = (int)dataOffset;
+            while (end < DataPayload.Length && DataPayload[end] != 0) end++;
+            return Encoding.ASCII.GetString(DataPayload, (int)dataOffset, end - (int)dataOffset);
+        }
+
+        /// <summary>
+        /// Read an <c>hkArray</c> field: resolves the data pointer and reads the element count.
+        /// </summary>
+        public bool TryGetHkArray(uint arrayFieldOffset, out uint dataOffset, out int count)
         {
             dataOffset = 0;
             count = 0;
@@ -2559,6 +2597,7 @@ namespace CATHODE
                 ClassnamesData = Slice(file, (int)classAbs, (int)classLocal);
                 TypesData = typesLocal == 0 ? Array.Empty<byte>() : Slice(file, (int)typesAbs, (int)typesLocal);
                 DataPayload = Slice(file, (int)dataAbs, (int)dataLocal);
+                _dataSectionOffset = dataAbs;
 
                 ReadLocalFixups(file, (int)(dataAbs + dataLocal), (int)(dataAbs + dataGlobal));
                 ReadGlobalFixups(file, (int)(dataAbs + dataGlobal), (int)(dataAbs + dataVirtual));
@@ -2646,6 +2685,273 @@ namespace CATHODE
             }
 
             return true;
+        }
+        #endregion
+
+        #region ANIMATION
+        /* Field offsets for the animation classes. hkReferencedObject is 8 bytes on 32 bit and 16 on
+         * 64 bit, pointers follow suit, and hkArray is a pointer plus size and capacity. */
+        private uint ObjectHeaderSize => Header.PointerSize == 8 ? 16u : 8u;
+        private uint ArraySize => (uint)Header.PointerSize + 8u;
+
+        /// <summary>
+        /// Read every <c>hkaSplineCompressedAnimation</c> in the packfile, paired with the binding
+        /// that says which skeleton and which bones it drives.
+        /// </summary>
+        public List<AnimationClip> GetAnimations()
+        {
+            List<AnimationClip> clips = new List<AnimationClip>();
+            if (DataPayload.Length == 0) return clips;
+
+            //Bindings point at their animation, so index the animations by where they live
+            Dictionary<uint, PackfileObject> animations = new Dictionary<uint, PackfileObject>();
+            for (int i = 0; i < Objects.Count; i++)
+                if (Objects[i].ClassName == "hkaSplineCompressedAnimation")
+                    animations[Objects[i].DataOffset] = Objects[i];
+
+            Dictionary<uint, uint> globalBySrc = new Dictionary<uint, uint>();
+            for (int i = 0; i < GlobalFixups.Count; i++)
+                globalBySrc[GlobalFixups[i].Src] = GlobalFixups[i].Dst;
+
+            for (int i = 0; i < Objects.Count; i++)
+            {
+                if (Objects[i].ClassName != "hkaAnimationBinding") continue;
+
+                AnimationClip clip = ReadBinding(Objects[i].DataOffset, globalBySrc);
+                if (clip == null) continue;
+
+                if (clip.AnimationOffset != 0 && animations.TryGetValue(clip.AnimationOffset, out PackfileObject animation))
+                    ReadSplineAnimation(animation.DataOffset, clip);
+                clips.Add(clip);
+            }
+
+            //Any animation without a binding is still worth reporting
+            foreach (KeyValuePair<uint, PackfileObject> entry in animations)
+            {
+                if (clips.Any(x => x.AnimationOffset == entry.Key)) continue;
+                AnimationClip clip = new AnimationClip { AnimationOffset = entry.Key };
+                ReadSplineAnimation(entry.Key, clip);
+                clips.Add(clip);
+            }
+            return clips;
+        }
+
+        private AnimationClip ReadBinding(uint at, Dictionary<uint, uint> globalBySrc)
+        {
+            uint name = at + ObjectHeaderSize;
+            uint animation = name + (uint)Header.PointerSize;
+            uint tracks = animation + (uint)Header.PointerSize;
+            if (tracks + ArraySize > DataPayload.Length) return null;
+
+            AnimationClip clip = new AnimationClip
+            {
+                SkeletonName = TryResolveLocal(name, out uint nameAt) ? ReadStringAt(nameAt) : "",
+                AnimationOffset = globalBySrc.TryGetValue(animation, out uint target) ? target : 0,
+            };
+
+            //Which skeleton bone each transform track drives
+            if (TryGetHkArray(tracks, out uint data, out int count))
+                for (int i = 0; i < count && data + (i * 2) + 2 <= DataPayload.Length; i++)
+                    clip.TrackToBone.Add(BitConverter.ToInt16(DataPayload, (int)(data + (i * 2))));
+
+            return clip;
+        }
+
+        private void ReadSplineAnimation(uint at, AnimationClip clip)
+        {
+            uint animation = at + ObjectHeaderSize;
+            if (animation + 20 > DataPayload.Length) return;
+
+            clip.Duration = BitConverter.ToSingle(DataPayload, (int)animation + 4);
+            clip.TransformTrackCount = BitConverter.ToInt32(DataPayload, (int)animation + 8);
+            clip.FloatTrackCount = BitConverter.ToInt32(DataPayload, (int)animation + 12);
+
+            //hkaAnimation is the type, duration and two counts, then a pointer and an array
+            uint spline = animation + 16 + (uint)Header.PointerSize + ArraySize;
+            if (spline + 28 > DataPayload.Length) return;
+
+            clip.FrameCount = BitConverter.ToInt32(DataPayload, (int)spline);
+            clip.BlockCount = BitConverter.ToInt32(DataPayload, (int)spline + 4);
+            clip.MaxFramesPerBlock = BitConverter.ToInt32(DataPayload, (int)spline + 8);
+            clip.FrameDuration = BitConverter.ToSingle(DataPayload, (int)spline + 24);
+        }
+
+        /// <summary>
+        /// Read every <c>hkaSkeletonMapper</c>: which bones of one skeleton drive which of another.
+        /// </summary>
+        public List<SkeletonMapper> GetSkeletonMappers()
+        {
+            List<SkeletonMapper> mappers = new List<SkeletonMapper>();
+            for (int i = 0; i < Objects.Count; i++)
+            {
+                if (Objects[i].ClassName != "hkaSkeletonMapper") continue;
+
+                SkeletonMapper mapper = new SkeletonMapper { DataOffset = Objects[i].DataOffset };
+                uint end = ObjectEnd(Objects[i].DataOffset);
+
+                /* An empty hkArray has no fixup at all, so rather than hardcoding field offsets,
+                 * take the arrays this object actually points at and tell them apart by how many
+                 * bytes each element gets: a simple mapping is two bone indices plus a 16 byte
+                 * aligned hkQsTransform (64), an unmapped bone is a bare int16. */
+                foreach (KeyValuePair<uint, int> array in GetObjectArrays(Objects[i].DataOffset, end))
+                {
+                    int stride = ElementStride(array.Key, array.Value);
+                    if (stride >= 48)
+                    {
+                        for (int x = 0; x < array.Value && array.Key + (x * 64) + 4 <= DataPayload.Length; x++)
+                            mapper.Mappings.Add(new BoneMapping
+                            {
+                                BoneA = BitConverter.ToInt16(DataPayload, (int)(array.Key + (x * 64))),
+                                BoneB = BitConverter.ToInt16(DataPayload, (int)(array.Key + (x * 64) + 2)),
+                            });
+                    }
+                    else if (stride <= 2)
+                    {
+                        for (int x = 0; x < array.Value && array.Key + (x * 2) + 2 <= DataPayload.Length; x++)
+                            mapper.UnmappedBones.Add(BitConverter.ToInt16(DataPayload, (int)(array.Key + (x * 2))));
+                    }
+                }
+                mappers.Add(mapper);
+            }
+            return mappers;
+        }
+
+        /// <summary>
+        /// Read the <c>hkaRagdollInstance</c>: the physics bodies standing in for the skeleton,
+        /// and which bone each one belongs to.
+        /// </summary>
+        public RagdollInstance GetRagdoll()
+        {
+            PackfileObject instance = Objects.FirstOrDefault(x => x.ClassName == "hkaRagdollInstance");
+            if (instance == null) return null;
+
+            uint ptr = (uint)Header.PointerSize;
+            uint bodies = instance.DataOffset + ObjectHeaderSize;
+            uint constraints = bodies + ArraySize;
+            uint boneMap = constraints + ArraySize;
+
+            RagdollInstance ragdoll = new RagdollInstance();
+            Dictionary<uint, uint> globalBySrc = new Dictionary<uint, uint>();
+            for (int i = 0; i < GlobalFixups.Count; i++)
+                globalBySrc[GlobalFixups[i].Src] = GlobalFixups[i].Dst;
+
+            //Each element is a pointer to an hkpRigidBody elsewhere in the file
+            if (TryGetHkArray(bodies, out uint bodyList, out int bodyCount))
+            {
+                uint nameField = Header.PointerSize == 8 ? 0xB0u : 0x78u;
+                for (int i = 0; i < bodyCount; i++)
+                {
+                    if (!globalBySrc.TryGetValue(bodyList + (uint)(i * ptr), out uint body)) { ragdoll.Bodies.Add(""); continue; }
+                    ragdoll.Bodies.Add(TryResolveLocal(body + nameField, out uint nameAt) ? ReadStringAt(nameAt) : "");
+                }
+            }
+
+            if (TryGetHkArray(constraints, out uint _, out int constraintCount))
+                ragdoll.ConstraintCount = constraintCount;
+
+            if (TryGetHkArray(boneMap, out uint map, out int mapCount))
+                for (int i = 0; i < mapCount && map + (i * 4) + 4 <= DataPayload.Length; i++)
+                    ragdoll.BoneToBody.Add(BitConverter.ToInt32(DataPayload, (int)(map + (i * 4))));
+
+            return ragdoll;
+        }
+
+        /* Where the object's data runs to - the next object, or the end of the payload */
+        private uint ObjectEnd(uint start)
+        {
+            uint end = (uint)DataPayload.Length;
+            for (int i = 0; i < Objects.Count; i++)
+                if (Objects[i].DataOffset > start && Objects[i].DataOffset < end) end = Objects[i].DataOffset;
+            return end;
+        }
+
+        /* Every array this object points at, as data offset -> element count */
+        private List<KeyValuePair<uint, int>> GetObjectArrays(uint start, uint end)
+        {
+            List<KeyValuePair<uint, int>> arrays = new List<KeyValuePair<uint, int>>();
+            for (int i = 0; i < LocalFixups.Count; i++)
+            {
+                if (LocalFixups[i].Src < start || LocalFixups[i].Src >= end) continue;
+                int sizeAt = (int)LocalFixups[i].Src + Header.PointerSize;
+                if (sizeAt + 4 > DataPayload.Length) continue;
+
+                int count = BitConverter.ToInt32(DataPayload, sizeAt);
+                if (count > 0 && count < 1_000_000) arrays.Add(new KeyValuePair<uint, int>(LocalFixups[i].Dst, count));
+            }
+            return arrays;
+        }
+
+        /* How many bytes each element of an array gets, from the space before whatever follows it */
+        private int ElementStride(uint data, int count)
+        {
+            if (count <= 0) return 0;
+            uint next = (uint)DataPayload.Length;
+            for (int i = 0; i < LocalFixups.Count; i++)
+                if (LocalFixups[i].Dst > data && LocalFixups[i].Dst < next) next = LocalFixups[i].Dst;
+            for (int i = 0; i < Objects.Count; i++)
+                if (Objects[i].DataOffset > data && Objects[i].DataOffset < next) next = Objects[i].DataOffset;
+            return (int)((next - data) / count);
+        }
+
+        /// <summary>
+        /// A ragdoll: the rigid bodies that stand in for a skeleton while it's simulated.
+        /// </summary>
+        public class RagdollInstance
+        {
+            /// <summary>Rigid body names, in ragdoll order.</summary>
+            public List<string> Bodies = new List<string>();
+
+            public int ConstraintCount;
+
+            /// <summary>Body index for each skeleton bone, or -1 where a bone isn't simulated.</summary>
+            public List<int> BoneToBody = new List<int>();
+
+            public override string ToString() => Bodies.Count + " bodies, " + ConstraintCount + " constraints";
+        }
+
+        /// <summary>
+        /// One animation clip: how long it is, and which bones of which skeleton it drives.
+        /// </summary>
+        public class AnimationClip
+        {
+            /// <summary>Skeleton the clip was authored against.</summary>
+            public string SkeletonName = "";
+
+            public float Duration;
+            public int TransformTrackCount;
+            public int FloatTrackCount;
+            public int FrameCount;
+            public int BlockCount;
+            public int MaxFramesPerBlock;
+            public float FrameDuration;
+
+            /// <summary>Skeleton bone index driven by each transform track.</summary>
+            public List<int> TrackToBone = new List<int>();
+
+            /// <summary>Where the animation sits in __data__, so callers can match it back up.</summary>
+            public uint AnimationOffset;
+
+            public override string ToString() => (SkeletonName.Length == 0 ? "animation" : SkeletonName) + " " + Duration.ToString("0.###") + "s";
+        }
+
+        /// <summary>
+        /// A retargeting mapper between two skeletons.
+        /// </summary>
+        public class SkeletonMapper
+        {
+            public uint DataOffset;
+            public List<BoneMapping> Mappings = new List<BoneMapping>();
+            public List<int> UnmappedBones = new List<int>();
+
+            public override string ToString() => Mappings.Count + " mapped, " + UnmappedBones.Count + " unmapped";
+        }
+
+        public class BoneMapping
+        {
+            public int BoneA;
+            public int BoneB;
+
+            public override string ToString() => BoneA + " -> " + BoneB;
         }
         #endregion
 

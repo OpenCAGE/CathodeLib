@@ -290,6 +290,7 @@ namespace CathodeLib
         public static readonly ShortGuid band_aid = ShortGuidUtils.Generate("band_aid");
         public static readonly ShortGuid light_on_reset = ShortGuidUtils.Generate("light_on_reset");
         public static readonly ShortGuid build_into_navmesh = ShortGuidUtils.Generate("build_into_navmesh");
+        public static readonly ShortGuid network_id = ShortGuidUtils.Generate("network_id");
         public static readonly ShortGuid destination = ShortGuidUtils.Generate("destination");
         public static readonly ShortGuid DestinationIsBackstage = ShortGuidUtils.Generate("DestinationIsBackstage");
         public static readonly ShortGuid Waypoint = ShortGuidUtils.Generate("Waypoint");

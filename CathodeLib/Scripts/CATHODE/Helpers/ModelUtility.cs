@@ -164,7 +164,9 @@ namespace CathodeLib
         {
             cMesh mesh = new cMesh();
 
-            if (submesh == null || submesh.Data.Length == 0)
+            if (submesh == null || submesh.Data == null || submesh.Data.Length == 0)
+                return mesh;
+            if (ReferenceEquals(submesh.VertexFormatFull, null) || submesh.VertexFormatFull.Attributes == null)
                 return mesh;
 
             using (BinaryReader reader = new BinaryReader(new MemoryStream(submesh.Data)))

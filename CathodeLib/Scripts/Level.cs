@@ -39,6 +39,10 @@ namespace CathodeLib
 
             AnimationStrings = new AnimationStrings(animStrings.Content);
             AnimationStrings_Debug = new AnimationStrings(animStringsDebug.Content);
+
+            PAK2.File skeletonDB = Animations?.Entries?.FirstOrDefault(o => o.Filename.EndsWith(@"SKELE\DB.BIN", StringComparison.OrdinalIgnoreCase));
+            if (skeletonDB?.Content != null)
+                Skeletons = new SkeletonDB(skeletonDB.Content, AnimationStrings, skeletonDB.Filename);
         }
 
         ~Global()
@@ -46,6 +50,35 @@ namespace CathodeLib
             Textures = null;
             AnimationStrings = null;
             AnimationStrings_Debug = null;
+            Skeletons = null;
+        }
+
+        /// <summary>
+        /// Every skeleton in the game, and the mappings between them.
+        /// </summary>
+        public SkeletonDB Skeletons;
+
+        /// <summary>
+        /// Load a skeleton's bones out of the animation PAK. Returns null if it isn't there.
+        /// </summary>
+        public Skeleton GetSkeleton(SkeletonDB.SkeletonEntry skeleton)
+        {
+            if (skeleton == null || Skeletons == null) return null;
+
+            string path = Skeletons.GetSkeletonPath(skeleton);
+            PAK2.File file = Animations?.Entries?.FirstOrDefault(o => string.Equals(o.Filename, path, StringComparison.OrdinalIgnoreCase));
+            if (file?.Content == null) return null;
+
+            Skeleton loaded = new Skeleton(file.Content, AnimationStrings, file.Filename);
+            return loaded.Loaded ? loaded : null;
+        }
+
+        /// <summary>
+        /// Load a skeleton by name, e.g. "MALE" or "ALIEN".
+        /// </summary>
+        public Skeleton GetSkeleton(string name)
+        {
+            return GetSkeleton(Skeletons?.GetSkeleton(name));
         }
     }
 

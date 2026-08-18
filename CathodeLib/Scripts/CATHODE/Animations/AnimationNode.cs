@@ -52,14 +52,23 @@ namespace CATHODE.Animations
             Type = NodeType.ANIM_Tree_Top_Level;
         }
 
-        public AnimationNode AddNode(AnimationNode node)
+        /// <summary>
+        /// Add a node. A node with the same name and type is normally reused rather than added twice.
+        /// Set <paramref name="allowDuplicates"/> to keep the extra copy in <see cref="Nodes"/> - the
+        /// game's own trees do list some names more than once, and lookups still find the first.
+        /// </summary>
+        public AnimationNode AddNode(AnimationNode node, bool allowDuplicates = false)
         {
             if (node == null || string.IsNullOrEmpty(node.Name))
                 return node;
 
             var key = (node.Name, node.Type);
             if (_byNameAndType.TryGetValue(key, out AnimationNode existing))
+            {
+                if (!allowDuplicates) return existing;
+                Nodes.Add(node);
                 return existing;
+            }
 
             Nodes.Add(node);
             if (!_byName.ContainsKey(node.Name))

@@ -8,7 +8,6 @@ using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
-using static CATHODE.SkeleDB;
 
 namespace CATHODE
 {
@@ -43,6 +42,10 @@ namespace CATHODE
         private AnimationStrings _strings;
         private NodeResolver _nodeResolver = new NodeResolver();
 
+        /* The trees aren't stored in the order the lookup table indexes them, so the mapping is
+         * kept from load - without it a save reshuffles the file even when nothing changed. */
+        private int[] _logicalToFile = new int[0];
+
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
@@ -68,9 +71,10 @@ namespace CATHODE
                     treeHashToIndex[treeHash] = index;
                 }
 
-                int[] logicalToFile = new int[hashTableSize];
+                _logicalToFile = new int[hashTableSize];
                 for (int i = 0; i < hashTableSize; i++)
-                    logicalToFile[i] = (int)reader.ReadUInt32();
+                    _logicalToFile[i] = (int)reader.ReadUInt32();
+                int[] logicalToFile = _logicalToFile;
 
                 int treeCount = reader.ReadInt32();
                 var fileOrderTrees = new AnimationTree[treeCount];
@@ -119,13 +123,13 @@ namespace CATHODE
                     for (int x = 0; x < NumberOfBindings; x++)
                     {
                         var param = new ParameterNode() { Name = bindingNames[x], ParameterType = bindingParamTypes[x] };
-                        treeDef.AddNode(param);
+                        treeDef.AddNode(param, true);
                     }
 
                     for (int x = 0; x < NumberOfCallbacks; x++)
                     {
                         var cb = new AnimationNode() { Type = NodeType.ANIM_Callback, Name = _strings.GetString(reader.ReadUInt32()) };
-                        treeDef.AddNode(cb);
+                        treeDef.AddNode(cb, true);
                     }
 
                     List<string> metaListNames = new List<string>();
@@ -143,14 +147,14 @@ namespace CATHODE
                     for (int x = 0; x < NumberOfMetadataListeners; x++)
                     {
                         var meta = new MetadataListenerNode() { Name = metaListNames[x], EventName = metaListEvents[x], WeightThreshold = metaListWeights[x], FilterTime = metaListFilterTimes[x] };
-                        treeDef.AddNode(meta);
+                        treeDef.AddNode(meta, true);
                     }
 
                     uint NumberOfAutoFloatBindings = reader.ReadUInt32();
                     for (int x = 0; x < NumberOfAutoFloatBindings; x++)
                     {
                         var autoFloat = new AnimationNode() { Type = NodeType.ANIM_AutoFloatParameter, Name = _strings.GetString(reader.ReadUInt32()) };
-                        treeDef.AddNode(autoFloat);
+                        treeDef.AddNode(autoFloat, true);
                     }
 
                     List<string> propListenerNames = new List<string>();
@@ -165,7 +169,7 @@ namespace CATHODE
                     for (int x = 0; x < NumberOfPropertyListeners; x++)
                     {
                         PropertyListenerNode node = new PropertyListenerNode() { Name = propListenerNames[x], AnimProperty = propListenerPropNames[x], LeafNode = null };
-                        treeDef.AddNode(node);
+                        treeDef.AddNode(node, true);
                         _nodeResolver.RegisterFlowLookup(node, propListenerLeafNodes[x], (n, found) => n.LeafNode = found);
                     }
 
@@ -178,7 +182,7 @@ namespace CATHODE
                     for (int x = 0; x < NumberOfPropertyValues; x++)
                     {
                         var prop = new PropertyNode() { Name = propertyNames[x], Value = propertyValues[x] };
-                        treeDef.AddNode(prop);
+                        treeDef.AddNode(prop, true);
                     }
 
                     uint NumberOfFloatInterpolators = reader.ReadUInt32();
@@ -221,6 +225,7 @@ namespace CATHODE
                 Entries = new List<AnimationTree>(treeCount);
                 for (int logicalIdx = 0; logicalIdx < treeCount; logicalIdx++)
                     Entries.Add(fileOrderTrees[logicalToFile[logicalIdx]]);
+
             }
             return true;
         }
@@ -674,11 +679,18 @@ namespace CATHODE
                     writer.Write(hashEntries[slot].index);
                 }
 
+                /* Keep the load order where we can, so an untouched DB saves back byte for byte.
+                 * If entries were added or removed it no longer applies, so fall back to 1:1. */
+                int[] logicalToFile = _logicalToFile.Length == Entries.Count ? _logicalToFile : Enumerable.Range(0, Entries.Count).ToArray();
                 for (int i = 0; i < Entries.Count; i++)
-                    writer.Write(i);
+                    writer.Write(logicalToFile[i]);
+
+                AnimationTree[] fileOrder = new AnimationTree[Entries.Count];
+                for (int i = 0; i < Entries.Count; i++)
+                    fileOrder[logicalToFile[i]] = Entries[i];
 
                 writer.Write(Entries.Count);
-                foreach (var tree in Entries)
+                foreach (var tree in fileOrder)
                 {
                     writer.Write(66);
                     writer.Write(tree.Children.Count);
