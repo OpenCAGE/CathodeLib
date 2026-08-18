@@ -2779,10 +2779,19 @@ namespace CATHODE
 
             /* Then five hkArrays: the offset of each block into the stream, the same for float
              * tracks, per-track offsets for the two, and the stream itself. */
+            /* Seven scalars, then the arrays - which on a 64 bit packfile have to start on an eight
+             * byte boundary, so there are four bytes of padding in front of them. */
             uint arrays = spline + 28;
+            if (Header.PointerSize == 8) arrays = (arrays + 7u) & ~7u;
+
             if (TryGetHkArray(arrays, out uint blockData, out int blockCount))
                 for (int i = 0; i < blockCount && blockData + (i * 4) + 4 <= DataPayload.Length; i++)
                     clip.BlockOffsets.Add(BitConverter.ToUInt32(DataPayload, (int)(blockData + (i * 4))));
+
+            //the float tracks live in the same stream, starting where the transform tracks stop
+            if (TryGetHkArray(arrays + ArraySize, out uint floatData, out int floatCount))
+                for (int i = 0; i < floatCount && floatData + (i * 4) + 4 <= DataPayload.Length; i++)
+                    clip.FloatBlockOffsets.Add(BitConverter.ToUInt32(DataPayload, (int)(floatData + (i * 4))));
 
             if (!TryGetHkArray(arrays + (ArraySize * 4), out uint stream, out int streamLength)) return;
             clip.DataOffset = stream;
@@ -2807,6 +2816,321 @@ namespace CATHODE
                 }
                 clip.Blocks.Add(masks);
             }
+        }
+
+        /// <summary>
+        /// Walk one block of a clip's compressed stream and describe what each transform track holds.
+        ///
+        /// This reads the *structure* - which components are curves, their knot vectors and where
+        /// their control points sit - and decodes the values that are stored plainly. It does not
+        /// yet dequantize control points or evaluate the curves, so animated components come back
+        /// as spans rather than samples. <see cref="BlockTracks.Complete"/> says whether the walk
+        /// landed exactly on the end of the block, which is the check that the layout was right.
+        /// </summary>
+        public BlockTracks ReadBlockTracks(AnimationClip clip, int block)
+        {
+            BlockTracks result = new BlockTracks();
+            if (clip == null || block < 0 || block >= clip.Blocks.Count || block >= clip.BlockOffsets.Count)
+                return result;
+
+            //the mask is a byte per float track on top of four per transform track, so it can land odd
+            long at = Align4(clip.DataOffset + clip.BlockOffsets[block] + clip.MaskAndQuantizationSize);
+            /* The float track data shares the block and starts where the transform tracks stop, but
+             * its offset is measured from the block rather than from the start of the stream. */
+            long end = clip.DataOffset + (block < clip.FloatBlockOffsets.Count && clip.FloatTrackCount > 0
+                ? clip.BlockOffsets[block] + clip.FloatBlockOffsets[block]
+                : (block + 1 < clip.BlockOffsets.Count ? clip.BlockOffsets[block + 1] : (uint)clip.DataLength));
+
+            foreach (TransformMask mask in clip.Blocks[block])
+            {
+                TrackCurves track = new TrackCurves();
+                result.Tracks.Add(track);
+                if (at > end) return result;
+
+                track.Position = ReadCurve(mask.Position, ScalarWidth(mask.TranslationQuantization), ref at);
+                at = Align4(at);
+                track.Rotation = ReadRotationCurve(mask.Rotation, RotationWidth(mask.RotationQuantization), ref at);
+                at = Align4(at);
+                track.Scale = ReadCurve(mask.Scale, ScalarWidth(mask.ScaleQuantization), ref at);
+                at = Align4(at);
+                if (at < 0) return result;
+            }
+
+            /* Whatever follows a block starts on a sixteen byte boundary, so landing anywhere in the
+             * pad before it is right. Anything further out means the layout didn't hold. */
+            long padded = clip.DataOffset + (((at - clip.DataOffset) + 15) & ~15L);
+            result.Complete = at >= 0 && (at == end || padded == end);
+            return result;
+        }
+
+        private static long Align4(long at) { return at < 0 ? at : (at + 3) & ~3L; }
+        private static bool IsFinite(float value) { return !float.IsNaN(value) && !float.IsInfinity(value); }
+        private static int ScalarWidth(int quantization) { return quantization == 0 ? 1 : quantization == 1 ? 2 : 4; }
+        private static int RotationWidth(int quantization)
+        {
+            switch (quantization)
+            {
+                case 0: return 4;    //POLAR32
+                case 1: return 5;    //THREECOMP40
+                case 2: return 6;    //THREECOMP48
+                case 3: return 3;    //THREECOMP24
+                case 4: return 2;    //STRAIGHT16
+                default: return 16;  //UNCOMPRESSED
+            }
+        }
+
+        /* A vector track: a curve for some components, a plain float for the rest. */
+        private ComponentCurve ReadCurve(byte mask, int width, ref long at)
+        {
+            int spline = (mask >> 4) & 0x0F, stat = mask & 0x0F;
+            if (spline == 0 && stat == 0) return null;
+
+            ComponentCurve curve = new ComponentCurve { SplineComponents = spline, StaticComponents = stat, Width = width };
+            if (spline != 0 && !ReadNurbs(curve, ref at)) { at = -1; return curve; }
+            if (at < 0) return curve;
+
+            /* Floats come first, in X Y Z order: a curved component contributes the range it was
+             * quantized into, a held one contributes its value. Only then do the control points
+             * follow, which are packed bytes and need no alignment of their own. */
+            at = Align4(at);
+            for (int c = 0; c < 3; c++)
+            {
+                if ((spline & (1 << c)) != 0)
+                {
+                    if (at < 0 || at + 8 > DataPayload.Length) { at = -1; return curve; }
+                    curve.Minimum[c] = BitConverter.ToSingle(DataPayload, (int)at);
+                    curve.Maximum[c] = BitConverter.ToSingle(DataPayload, (int)at + 4);
+                    //a range that isn't a finite number means we are not where we think we are
+                    if (!IsFinite(curve.Minimum[c]) || !IsFinite(curve.Maximum[c])) { at = -1; return curve; }
+                    at += 8;
+                }
+                else if ((stat & (1 << c)) != 0)
+                {
+                    if (at < 0 || at + 4 > DataPayload.Length) { at = -1; return curve; }
+                    curve.Static[c] = BitConverter.ToSingle(DataPayload, (int)at);
+                    if (!IsFinite(curve.Static[c])) { at = -1; return curve; }
+                    at += 4;
+                }
+            }
+
+            for (int c = 0; c < 3; c++)
+            {
+                if ((spline & (1 << c)) == 0) continue;
+                if (at < 0) return curve;
+                curve.ControlPoints[c] = (uint)at;
+                at += (curve.Items + 1) * width;
+            }
+            return curve;
+        }
+
+        /* A rotation is stored whole rather than per component, so it is one value or one curve. */
+        private ComponentCurve ReadRotationCurve(byte mask, int width, ref long at)
+        {
+            int spline = (mask >> 4) & 0x0F, stat = mask & 0x0F;
+            if (spline == 0 && stat == 0) return null;
+
+            ComponentCurve curve = new ComponentCurve { SplineComponents = spline, StaticComponents = stat, Width = width };
+            if (spline != 0)
+            {
+                if (!ReadNurbs(curve, ref at)) { at = -1; return curve; }
+                curve.ControlPoints[0] = (uint)at;
+                at += (curve.Items + 1) * width;
+            }
+            else
+            {
+                curve.ControlPoints[0] = (uint)at;
+                at += width;
+            }
+            return curve;
+        }
+
+        /* uint16 item count, byte degree, then count + degree + 2 byte knots. */
+        private bool ReadNurbs(ComponentCurve curve, ref long at)
+        {
+            if (at < 0 || at + 3 > DataPayload.Length) return false;
+            curve.Items = BitConverter.ToUInt16(DataPayload, (int)at);
+            curve.Degree = DataPayload[at + 2];
+            if (curve.Items > 4096) return false;
+
+            curve.Knots = (uint)(at + 3);
+            curve.KnotCount = curve.Items + curve.Degree + 2;
+            at += 3 + curve.KnotCount;
+            return at <= DataPayload.Length;
+        }
+
+        /// <summary>
+        /// Sample every transform track of a clip at one frame. Tracks come back in track order, so
+        /// <see cref="AnimationClip.TrackToBone"/> maps them onto the skeleton. Returns an empty list
+        /// if the frame's block doesn't decode - see <see cref="BlockTracks.Complete"/>.
+        /// </summary>
+        public List<SampledTransform> Sample(AnimationClip clip, int frame)
+        {
+            List<SampledTransform> pose = new List<SampledTransform>();
+            if (clip == null || clip.MaxFramesPerBlock <= 0 || frame < 0 || frame >= clip.FrameCount) return pose;
+
+            int block = frame / clip.MaxFramesPerBlock;
+            float at = frame % clip.MaxFramesPerBlock;
+            if (block >= clip.Blocks.Count) return pose;
+
+            BlockTracks tracks = ReadBlockTracks(clip, block);
+            if (!tracks.Complete) return pose;
+
+            foreach (TrackCurves track in tracks.Tracks)
+            {
+                pose.Add(new SampledTransform
+                {
+                    Translation = SampleVector(track.Position, at, 0f),
+                    Rotation = SampleRotation(track.Rotation, at),
+                    Scale = SampleVector(track.Scale, at, 1f),
+                });
+            }
+            return pose;
+        }
+
+        /// <summary>Sample every frame of a clip, which is what an exporter wants.</summary>
+        public List<List<SampledTransform>> SampleAll(AnimationClip clip)
+        {
+            List<List<SampledTransform>> frames = new List<List<SampledTransform>>();
+            if (clip == null) return frames;
+            for (int i = 0; i < clip.FrameCount; i++) frames.Add(Sample(clip, i));
+            return frames;
+        }
+
+        /* Components the track doesn't mention keep the default - zero for a translation, one for a scale. */
+        private System.Numerics.Vector3 SampleVector(ComponentCurve curve, float at, float fallback)
+        {
+            System.Numerics.Vector3 value = new System.Numerics.Vector3(fallback, fallback, fallback);
+            if (curve == null) return value;
+
+            for (int c = 0; c < 3; c++)
+            {
+                if ((curve.SplineComponents & (1 << c)) != 0)
+                {
+                    float[] points = new float[curve.Items + 1];
+                    for (int i = 0; i <= curve.Items; i++)
+                        points[i] = Dequantize(curve.ControlPoints[c] + (uint)(i * curve.Width), curve.Width, curve.Minimum[c], curve.Maximum[c]);
+                    SetComponent(ref value, c, Evaluate(points, curve, at));
+                }
+                else if ((curve.StaticComponents & (1 << c)) != 0) SetComponent(ref value, c, curve.Static[c]);
+            }
+            return value;
+        }
+
+        private System.Numerics.Quaternion SampleRotation(ComponentCurve curve, float at)
+        {
+            if (curve == null) return System.Numerics.Quaternion.Identity;
+            if (!curve.IsSpline) return DecodeQuaternion(curve.ControlPoints[0], curve.Width);
+
+            /* Interpolate the components and renormalise. Line up each control point with the one
+             * before it first, or the double cover makes the curve jump halfway through. */
+            System.Numerics.Quaternion[] points = new System.Numerics.Quaternion[curve.Items + 1];
+            for (int i = 0; i <= curve.Items; i++)
+            {
+                points[i] = DecodeQuaternion(curve.ControlPoints[0] + (uint)(i * curve.Width), curve.Width);
+                if (i != 0 && System.Numerics.Quaternion.Dot(points[i - 1], points[i]) < 0)
+                    points[i] = new System.Numerics.Quaternion(-points[i].X, -points[i].Y, -points[i].Z, -points[i].W);
+            }
+
+            float[] lane = new float[points.Length];
+            float[] result = new float[4];
+            for (int c = 0; c < 4; c++)
+            {
+                for (int i = 0; i < points.Length; i++)
+                    lane[i] = c == 0 ? points[i].X : c == 1 ? points[i].Y : c == 2 ? points[i].Z : points[i].W;
+                result[c] = Evaluate(lane, curve, at);
+            }
+
+            System.Numerics.Quaternion sampled = new System.Numerics.Quaternion(result[0], result[1], result[2], result[3]);
+            float length = sampled.Length();
+            return length > 1e-8f ? System.Numerics.Quaternion.Normalize(sampled) : System.Numerics.Quaternion.Identity;
+        }
+
+        private static void SetComponent(ref System.Numerics.Vector3 value, int component, float to)
+        {
+            if (component == 0) value.X = to;
+            else if (component == 1) value.Y = to;
+            else value.Z = to;
+        }
+
+        /* A control point is a fraction of the range the curve declared, or a plain float at 32 bits. */
+        private float Dequantize(uint at, int width, float minimum, float maximum)
+        {
+            if (at + width > DataPayload.Length) return minimum;
+            switch (width)
+            {
+                case 1: return minimum + (DataPayload[at] / 255f) * (maximum - minimum);
+                case 2: return minimum + (BitConverter.ToUInt16(DataPayload, (int)at) / 65535f) * (maximum - minimum);
+                default: return BitConverter.ToSingle(DataPayload, (int)at);
+            }
+        }
+
+        /// <summary>
+        /// Unpack one quantized rotation. Retail only ever uses THREECOMP40: three 12 bit components,
+        /// two bits naming the one left out, and a bit for its sign. The missing component is whatever
+        /// makes the quaternion unit length.
+        /// </summary>
+        public System.Numerics.Quaternion DecodeQuaternion(uint at, int width)
+        {
+            if (at + width > DataPayload.Length) return System.Numerics.Quaternion.Identity;
+            if (width != 5) return System.Numerics.Quaternion.Identity;
+
+            ulong packed = 0;
+            for (int i = 0; i < 5; i++) packed |= (ulong)DataPayload[at + i] << (8 * i);
+
+            const double range = 1.4142135623730951;   //the three smallest components live in +-1/sqrt(2)
+            const double offset = -0.7071067811865476;
+            double[] three =
+            {
+                (packed & 0xFFF) * (range / 4095.0) + offset,
+                ((packed >> 12) & 0xFFF) * (range / 4095.0) + offset,
+                ((packed >> 24) & 0xFFF) * (range / 4095.0) + offset,
+            };
+
+            int missing = (int)((packed >> 36) & 0x03);
+            double[] q = new double[4];
+            int next = 0;
+            for (int i = 0; i < 4; i++) if (i != missing) q[i] = three[next++];
+
+            double largest = Math.Sqrt(Math.Max(0.0, 1.0 - (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3])));
+            if (((packed >> 38) & 1) != 0) largest = -largest;
+            q[missing] = largest;
+
+            return new System.Numerics.Quaternion((float)q[0], (float)q[1], (float)q[2], (float)q[3]);
+        }
+
+        /* de Boor over the byte knot vector the curve carries. Degree 0 is a step, 1 is linear. */
+        private float Evaluate(float[] points, ComponentCurve curve, float at)
+        {
+            if (points.Length == 0) return 0f;
+            if (points.Length == 1 || curve.Degree == 0) return points[Math.Min(points.Length - 1, (int)at)];
+
+            int degree = curve.Degree;
+            int knotCount = curve.KnotCount;
+            if (curve.Knots + knotCount > DataPayload.Length) return points[0];
+
+            //the span holding this frame
+            int span = degree;
+            while (span < knotCount - 1 && DataPayload[curve.Knots + span + 1] <= at) span++;
+            if (span - degree < 0) span = degree;
+            if (span > points.Length - 1) span = points.Length - 1;
+
+            float[] work = new float[degree + 1];
+            for (int i = 0; i <= degree; i++)
+            {
+                int index = span - degree + i;
+                work[i] = points[Math.Max(0, Math.Min(points.Length - 1, index))];
+            }
+
+            for (int r = 1; r <= degree; r++)
+                for (int i = degree; i >= r; i--)
+                {
+                    int low = span - degree + i, high = span + 1 + i - r;
+                    if (low < 0 || high >= knotCount) continue;
+                    float a = DataPayload[curve.Knots + low], b = DataPayload[curve.Knots + high];
+                    float alpha = b - a <= 0 ? 0f : (at - a) / (b - a);
+                    work[i] = (1f - alpha) * work[i - 1] + alpha * work[i];
+                }
+            return work[degree];
         }
 
         /// <summary>
@@ -2972,6 +3296,9 @@ namespace CATHODE
             /// <summary>Where each block begins, relative to <see cref="DataOffset"/>.</summary>
             public List<uint> BlockOffsets = new List<uint>();
 
+            /// <summary>Where each block's float track data begins, relative to <see cref="DataOffset"/>.</summary>
+            public List<uint> FloatBlockOffsets = new List<uint>();
+
             /// <summary>What each transform track stores, per block. See <see cref="TransformMask"/>.</summary>
             public List<List<TransformMask>> Blocks = new List<List<TransformMask>>();
 
@@ -2980,6 +3307,75 @@ namespace CATHODE
             public int DataLength;
 
             public override string ToString() => (SkeletonName.Length == 0 ? "animation" : SkeletonName) + " " + Duration.ToString("0.###") + "s";
+        }
+
+        /// <summary>One bone's transform at one frame.</summary>
+        public class SampledTransform
+        {
+            public System.Numerics.Vector3 Translation;
+            public System.Numerics.Quaternion Rotation;
+            public System.Numerics.Vector3 Scale;
+
+            public override string ToString() => Translation.ToString() + " " + Rotation.ToString();
+        }
+
+        /// <summary>What every transform track in one block of a clip holds.</summary>
+        public class BlockTracks
+        {
+            public List<TrackCurves> Tracks = new List<TrackCurves>();
+
+            /// <summary>
+            /// Whether the walk consumed the block exactly. False means the layout didn't hold for
+            /// this block and nothing on it should be trusted.
+            /// </summary>
+            public bool Complete;
+
+            public override string ToString() => Tracks.Count + " track(s)" + (Complete ? "" : " (incomplete)");
+        }
+
+        /// <summary>One transform track: up to three curves, any of which may be absent.</summary>
+        public class TrackCurves
+        {
+            public ComponentCurve Position;
+            public ComponentCurve Rotation;
+            public ComponentCurve Scale;
+        }
+
+        /// <summary>
+        /// A component of a track. Components named by <see cref="StaticComponents"/> hold one value
+        /// in <see cref="Static"/>; those named by <see cref="SplineComponents"/> are a curve whose
+        /// control points have not been dequantized yet - <see cref="ControlPoints"/> says where they
+        /// are and <see cref="Minimum"/>/<see cref="Maximum"/> the range they expand into.
+        /// </summary>
+        public class ComponentCurve
+        {
+            /// <summary>X/Y/Z (and W, for a rotation) bits driven by a curve.</summary>
+            public int SplineComponents;
+
+            /// <summary>X/Y/Z (and W) bits held at a single value.</summary>
+            public int StaticComponents;
+
+            /// <summary>Fully decoded, for the components <see cref="StaticComponents"/> names.</summary>
+            public float[] Static = new float[3];
+
+            public float[] Minimum = new float[3];
+            public float[] Maximum = new float[3];
+
+            /// <summary>Where each component's control points start in <c>DataPayload</c>.</summary>
+            public uint[] ControlPoints = new uint[3];
+
+            /// <summary>Bytes per control point.</summary>
+            public int Width;
+
+            public int Items, Degree, KnotCount;
+
+            /// <summary>Where the byte knot vector starts in <c>DataPayload</c>.</summary>
+            public uint Knots;
+
+            public bool IsSpline { get { return SplineComponents != 0; } }
+
+            public override string ToString() =>
+                IsSpline ? "curve items=" + Items + " degree=" + Degree : "static";
         }
 
         /// <summary>
