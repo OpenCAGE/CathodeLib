@@ -40,6 +40,8 @@ namespace CathodeLib
             AnimationStrings = new AnimationStrings(animStrings.Content);
             AnimationStrings_Debug = new AnimationStrings(animStringsDebug.Content);
 
+            AnimationStrings.Fallback = AnimationStrings_Debug;
+
             PAK2.File skeletonDB = Animations?.Entries?.FirstOrDefault(o => o.Filename.EndsWith(@"SKELE\DB.BIN", StringComparison.OrdinalIgnoreCase));
             if (skeletonDB?.Content != null)
                 Skeletons = new SkeletonDB(skeletonDB.Content, AnimationStrings, skeletonDB.Filename);

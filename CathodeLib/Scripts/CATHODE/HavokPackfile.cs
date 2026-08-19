@@ -2754,6 +2754,11 @@ namespace CATHODE
                 for (int i = 0; i < count && data + (i * 2) + 2 <= DataPayload.Length; i++)
                     clip.TrackToBone.Add(BitConverter.ToInt16(DataPayload, (int)(data + (i * 2))));
 
+            /* Three arrays in a row - the bone indices above, then the float slots and the
+             * partitions - and the blend hint is the byte straight after them. */
+            uint hint = tracks + (ArraySize * 3);
+            if (hint < DataPayload.Length) clip.Additive = DataPayload[hint] != 0;
+
             return clip;
         }
 
@@ -2913,13 +2918,28 @@ namespace CATHODE
                 }
             }
 
+            /* The splined axes share one curve, and their control points are stored a point at a
+             * time rather than an axis at a time: x0 y0 z0, x1 y1 z1, ... So each axis starts one
+             * value further in than the last and then steps over the others.
+             *
+             * The total is the same either way, which is why the block accounting never noticed:
+             * reading them as three contiguous lanes consumes exactly as many bytes and still lands
+             * on the end of the block. It just samples x, y, z, x, y, z into the x axis, which shows
+             * up as a violent wobble with a period equal to the number of splined axes. */
+            int lanes = 0;
+            for (int c = 0; c < 3; c++) if ((spline & (1 << c)) != 0) lanes++;
+
+            long start = at;
+            int lane = 0;
             for (int c = 0; c < 3; c++)
             {
                 if ((spline & (1 << c)) == 0) continue;
                 if (at < 0) return curve;
-                curve.ControlPoints[c] = (uint)at;
-                at += (curve.Items + 1) * width;
+                curve.ControlPoints[c] = (uint)(start + (lane * width));
+                lane++;
             }
+            curve.Stride = lanes * width;
+            at = start + ((curve.Items + 1) * (long)curve.Stride);
             return curve;
         }
 
@@ -2934,11 +2954,13 @@ namespace CATHODE
             {
                 if (!ReadNurbs(curve, ref at)) { at = -1; return curve; }
                 curve.ControlPoints[0] = (uint)at;
+                curve.Stride = width;
                 at += (curve.Items + 1) * width;
             }
             else
             {
                 curve.ControlPoints[0] = (uint)at;
+                curve.Stride = width;
                 at += width;
             }
             return curve;
@@ -3008,7 +3030,7 @@ namespace CATHODE
                 {
                     float[] points = new float[curve.Items + 1];
                     for (int i = 0; i <= curve.Items; i++)
-                        points[i] = Dequantize(curve.ControlPoints[c] + (uint)(i * curve.Width), curve.Width, curve.Minimum[c], curve.Maximum[c]);
+                        points[i] = Dequantize(curve.ControlPoints[c] + (uint)(i * curve.Stride), curve.Width, curve.Minimum[c], curve.Maximum[c]);
                     SetComponent(ref value, c, Evaluate(points, curve, at));
                 }
                 else if ((curve.StaticComponents & (1 << c)) != 0) SetComponent(ref value, c, curve.Static[c]);
@@ -3026,7 +3048,7 @@ namespace CATHODE
             System.Numerics.Quaternion[] points = new System.Numerics.Quaternion[curve.Items + 1];
             for (int i = 0; i <= curve.Items; i++)
             {
-                points[i] = DecodeQuaternion(curve.ControlPoints[0] + (uint)(i * curve.Width), curve.Width);
+                points[i] = DecodeQuaternion(curve.ControlPoints[0] + (uint)(i * curve.Stride), curve.Width);
                 if (i != 0 && System.Numerics.Quaternion.Dot(points[i - 1], points[i]) < 0)
                     points[i] = new System.Numerics.Quaternion(-points[i].X, -points[i].Y, -points[i].Z, -points[i].W);
             }
@@ -3285,6 +3307,13 @@ namespace CATHODE
             /// <summary>Skeleton bone index driven by each transform track.</summary>
             public List<int> TrackToBone = new List<int>();
 
+            /// <summary>
+            /// Whether the clip holds deltas to layer over a base pose rather than a pose of its own.
+            /// The impact and recoil clips are all built this way: on their own their tracks read as
+            /// no rotation and no offset, and they only mean anything added on top of something else.
+            /// </summary>
+            public bool Additive;
+
             /// <summary>Where the animation sits in __data__, so callers can match it back up.</summary>
             public uint AnimationOffset;
 
@@ -3368,6 +3397,10 @@ namespace CATHODE
             public int Width;
 
             public int Items, Degree, KnotCount;
+
+            /// <summary>Bytes between one control point of a component and the next. Splined axes
+            /// share a curve and interleave their points, so this is width times the axis count.</summary>
+            public int Stride;
 
             /// <summary>Where the byte knot vector starts in <c>DataPayload</c>.</summary>
             public uint Knots;

@@ -22,19 +22,22 @@ namespace CATHODE
         public List<BlendSet> BlendSets = new List<BlendSet>();
         public List<Context> Contexts = new List<Context>();
 
-        public AnimClipDB(string path, AnimationStrings strings) : base(path)
+        public AnimClipDB(string path, AnimationStrings strings, AnimationStrings debugStrings = null) : base(path)
         {
             _strings = strings;
+            PairDebugStrings(debugStrings);
             _loaded = Load();
         }
-        public AnimClipDB(MemoryStream stream, AnimationStrings strings, string path = "") : base(stream, path)
+        public AnimClipDB(MemoryStream stream, AnimationStrings strings, string path = "", AnimationStrings debugStrings = null) : base(stream, path)
         {
             _strings = strings;
+            PairDebugStrings(debugStrings);
             _loaded = Load(stream);
         }
-        public AnimClipDB(byte[] data, AnimationStrings strings, string path = "") : base(data, path)
+        public AnimClipDB(byte[] data, AnimationStrings strings, string path = "", AnimationStrings debugStrings = null) : base(data, path)
         {
             _strings = strings;
+            PairDebugStrings(debugStrings);
             using (MemoryStream stream = new MemoryStream(data))
             {
                 _loaded = Load(stream);
@@ -42,6 +45,13 @@ namespace CATHODE
         }
 
         private AnimationStrings _strings;
+
+        /* Clip, context and blend set names were only ever shipped in the debug string DB - the
+         * plain one holds little more than the character name - so let it fall through to it. */
+        private void PairDebugStrings(AnimationStrings debug)
+        {
+            if (_strings != null && debug != null && _strings.Fallback == null) _strings.Fallback = debug;
+        }
 
         /* Reserved words around the header and at the end of the file. Zero in all 400 retail
          * files, so they carry nothing - preserved anyway in case a modded file uses them. */

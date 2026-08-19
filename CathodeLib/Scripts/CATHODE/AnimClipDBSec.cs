@@ -571,8 +571,12 @@ namespace CATHODE
         /// </summary>
         public List<HavokPackfile.AnimationClip> GetAnimations()
         {
-            return Havok == null ? new List<HavokPackfile.AnimationClip>() : Havok.GetAnimations();
+            /* Walking the packfile costs the same whether one clip is wanted or all of them, and the
+             * big resident sections hold nearly six hundred - so hold on to the result. */
+            if (_animations != null) return _animations;
+            return _animations = Havok == null ? new List<HavokPackfile.AnimationClip>() : Havok.GetAnimations();
         }
+        private List<HavokPackfile.AnimationClip> _animations;
         #endregion
 
         #region STRUCTURES

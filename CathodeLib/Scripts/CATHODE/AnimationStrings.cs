@@ -139,6 +139,14 @@ namespace CATHODE
 
         #region ACCESSORS
         /// <summary>
+        /// A second table to fall back on for names this one does not hold. CA shipped the plain DB
+        /// next to a much larger debug one, and most of the names the files reference - clips,
+        /// contexts, arguments - only ever appear in the debug half. Writing is unaffected: an ID is
+        /// the hash of its own name, so a name resolved through here hashes straight back to it.
+        /// </summary>
+        public AnimationStrings Fallback;
+
+        /// <summary>
         /// Add a string to the DB (generates an ID)
         /// </summary>
         public void AddString(string str)
@@ -166,6 +174,8 @@ namespace CATHODE
         {
             if (Entries.TryGetValue(id, out string s))
                 return s;
+            if (Fallback != null && Fallback.Entries.TryGetValue(id, out string fallback))
+                return fallback;
             return id.ToString(); //Warn?
         }
 
@@ -189,6 +199,13 @@ namespace CATHODE
             }
             if (_idsByString.TryGetValue(str, out uint existing))
                 return existing;
+
+            /* Same again for anything that only lives in the fallback table */
+            if (Fallback != null)
+            {
+                uint borrowed = Fallback.GetID(str);
+                if (Fallback.Entries.ContainsKey(borrowed)) return borrowed;
+            }
 
             /* GetString hands back the raw ID as text when it doesn't know a hash, so turn that
              * back into the ID rather than hashing the digits. */
