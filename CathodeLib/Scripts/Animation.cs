@@ -502,14 +502,58 @@ namespace CathodeLib
 
         /* Environment rigs live in a folder tree under ReferenceSkeletons named after the piece of set
          * dressing they drive; character rigs sit loose at the top of it. Nothing else separates the
-         * two in the shipped data - though every rig with a ragdoll does fall on the character side. */
+         * two in the shipped data - though every rig with a ragdoll does fall on the character side.
+         *
+         * Not every set has a definition, so this falls back twice more. */
         private AnimationKind Classify(AnimationSet set)
         {
             if (SkeletonDefs.TryGetValue(set.Name, out SkeletonDef named))
                 return named.IsEnvironment ? AnimationKind.Environment : AnimationKind.Character;
             if (set.Skeleton.Length != 0 && SkeletonDefs.TryGetValue(set.Skeleton, out SkeletonDef used))
                 return used.IsEnvironment ? AnimationKind.Environment : AnimationKind.Character;
-            return AnimationKind.Unknown;
+
+            /* Go by the company it keeps. ANDROID has no definition of its own, but its 1,528 clips
+             * sit in sections alongside MALE, FEMALE and half the named cast, all of which do. */
+            int character = 0, environment = 0;
+            foreach (string skeleton in SkeletonsUsedBy(set))
+            {
+                if (!SkeletonDefs.TryGetValue(skeleton, out SkeletonDef def)) continue;
+                if (def.IsEnvironment) environment++; else character++;
+            }
+            if (character != environment)
+                return character > environment ? AnimationKind.Character : AnimationKind.Environment;
+
+            /* Last resort, the shape of the rig. Across the 395 sets the definitions do cover, every
+             * character rig carries most of these bones and not one environment rig carries any. */
+            return LooksHumanoid(GetSkeleton(set.Skeleton)?.Bones) ? AnimationKind.Character : AnimationKind.Unknown;
+        }
+
+        /// <summary>Every skeleton the sections holding a set's clips are built against.</summary>
+        public IEnumerable<string> SkeletonsUsedBy(AnimationSet set)
+        {
+            HashSet<string> used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (AnimationContext context in set.Contexts)
+                foreach (ClipReference clip in context.Clips)
+                {
+                    if (clip.Section == null) continue;
+                    foreach (string skeleton in clip.Section.SkeletonDependencies) used.Add(skeleton);
+                }
+            return used;
+        }
+
+        /* The bones every animated character has and no door, locker or fan does. */
+        private static readonly string[] _humanoidBones =
+            { "HIPS", "SPINE", "HEAD", "NECK", "LEFTARM", "RIGHTARM", "LEFTLEG", "RIGHTLEG", "PELVIS" };
+
+        private static bool LooksHumanoid(List<Skeleton.Bone> bones)
+        {
+            if (bones == null) return false;
+
+            int found = 0;
+            foreach (string landmark in _humanoidBones)
+                foreach (Skeleton.Bone bone in bones)
+                    if (bone.Name.EndsWith(":" + landmark, StringComparison.OrdinalIgnoreCase)) { found++; break; }
+            return found >= 4;
         }
 
         private void ReadSkeletonDefs()
