@@ -3004,6 +3004,9 @@ namespace CATHODE
                     Translation = SampleVector(track.Position, at, 0f),
                     Rotation = SampleRotation(track.Rotation, at),
                     Scale = SampleVector(track.Scale, at, 1f),
+                    HasTranslation = Carries(track.Position),
+                    HasRotation = Carries(track.Rotation),
+                    HasScale = Carries(track.Scale),
                 });
             }
             return pose;
@@ -3019,6 +3022,12 @@ namespace CATHODE
         }
 
         /* Components the track doesn't mention keep the default - zero for a translation, one for a scale. */
+        /// <summary>Whether this track stored anything at all for one channel.</summary>
+        private static bool Carries(ComponentCurve curve)
+        {
+            return curve != null && (curve.SplineComponents != 0 || curve.StaticComponents != 0);
+        }
+
         private System.Numerics.Vector3 SampleVector(ComponentCurve curve, float at, float fallback)
         {
             System.Numerics.Vector3 value = new System.Numerics.Vector3(fallback, fallback, fallback);
@@ -3177,12 +3186,21 @@ namespace CATHODE
                     int stride = ElementStride(array.Key, array.Value);
                     if (stride >= 48)
                     {
-                        for (int x = 0; x < array.Value && array.Key + (x * 64) + 4 <= DataPayload.Length; x++)
+                        /* Two bone indices, then the hkQsTransform on the next sixteen byte boundary:
+                         * translation, rotation and scale as four floats each, of which the last of
+                         * the translation and scale is padding. */
+                        for (int x = 0; x < array.Value && array.Key + (x * 64) + 64 <= DataPayload.Length; x++)
+                        {
+                            int at = (int)(array.Key + (x * 64));
                             mapper.Mappings.Add(new BoneMapping
                             {
-                                BoneA = BitConverter.ToInt16(DataPayload, (int)(array.Key + (x * 64))),
-                                BoneB = BitConverter.ToInt16(DataPayload, (int)(array.Key + (x * 64) + 2)),
+                                BoneA = BitConverter.ToInt16(DataPayload, at),
+                                BoneB = BitConverter.ToInt16(DataPayload, at + 2),
+                                Translation = ReadVector3(at + 16),
+                                Rotation = ReadQuaternion(at + 32),
+                                Scale = ReadVector3(at + 48),
                             });
+                        }
                     }
                     else if (stride <= 2)
                     {
@@ -3193,6 +3211,23 @@ namespace CATHODE
                 mappers.Add(mapper);
             }
             return mappers;
+        }
+
+        private System.Numerics.Vector3 ReadVector3(int at)
+        {
+            return new System.Numerics.Vector3(
+                BitConverter.ToSingle(DataPayload, at),
+                BitConverter.ToSingle(DataPayload, at + 4),
+                BitConverter.ToSingle(DataPayload, at + 8));
+        }
+
+        private System.Numerics.Quaternion ReadQuaternion(int at)
+        {
+            return new System.Numerics.Quaternion(
+                BitConverter.ToSingle(DataPayload, at),
+                BitConverter.ToSingle(DataPayload, at + 4),
+                BitConverter.ToSingle(DataPayload, at + 8),
+                BitConverter.ToSingle(DataPayload, at + 12));
         }
 
         /// <summary>
@@ -3345,6 +3380,13 @@ namespace CATHODE
             public System.Numerics.Quaternion Rotation;
             public System.Numerics.Vector3 Scale;
 
+            /* A track only stores the channels the clip actually drives, so a value can be here
+             * because the clip said so or because nothing did. The two are not the same thing: an
+             * unwritten channel means "leave the bone as the rig rests", not "zero". */
+            public bool HasTranslation;
+            public bool HasRotation;
+            public bool HasScale;
+
             public override string ToString() => Translation.ToString() + " " + Rotation.ToString();
         }
 
@@ -3472,6 +3514,15 @@ namespace CATHODE
         {
             public int BoneA;
             public int BoneB;
+
+            /// <summary>
+            /// Where bone A sits relative to bone B - Havok's <c>m_aFromBTransform</c>. Two rigs that
+            /// share a bone rarely rest it the same way, and this is the difference. Without it a
+            /// retarget copies raw local transforms and the mesh comes out twisted.
+            /// </summary>
+            public System.Numerics.Vector3 Translation;
+            public System.Numerics.Quaternion Rotation = System.Numerics.Quaternion.Identity;
+            public System.Numerics.Vector3 Scale = System.Numerics.Vector3.One;
 
             public override string ToString() => BoneA + " -> " + BoneB;
         }

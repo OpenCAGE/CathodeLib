@@ -582,9 +582,9 @@ namespace CathodeLib
         /// Additive clips are layered onto the bind pose rather than replacing it, which is the only
         /// base pose available in isolation - in game they go on top of whatever is already playing.
         /// </summary>
-        public static List<Matrix4x4> SampleLocalPose(ClipReference clip, Skeleton skeleton, int frame, RootMotion root = RootMotion.Ignore)
+        public static List<Matrix4x4> SampleLocalPose(ClipReference clip, Skeleton skeleton, int frame, RootMotion root = RootMotion.Ignore, Retargeter retarget = null)
         {
-            List<HavokPackfile.SampledTransform> bones = SampleBones(clip, skeleton, frame, root);
+            List<HavokPackfile.SampledTransform> bones = SampleBones(clip, skeleton, frame, root, retarget);
             if (bones == null) return null;
 
             List<Matrix4x4> pose = new List<Matrix4x4>(bones.Count);
@@ -600,11 +600,25 @@ namespace CathodeLib
         /// and scale per bone - which is what a keyframe wants, and avoids decomposing a matrix back
         /// into the three parts it was built from.
         /// </summary>
-        public static List<HavokPackfile.SampledTransform> SampleBones(ClipReference clip, Skeleton skeleton, int frame, RootMotion root = RootMotion.Ignore)
+        public static List<HavokPackfile.SampledTransform> SampleBones(ClipReference clip, Skeleton skeleton, int frame,
+            RootMotion root = RootMotion.Ignore, Retargeter retarget = null)
         {
-            List<HavokPackfile.SampledTransform> pose = SampleBonesRaw(clip, skeleton, frame);
+            /* With a retargeter the clip is sampled on the rig it was authored for and moved across
+             * afterwards. Anchoring happens last either way, because the bone it keys off belongs to
+             * the rig being played on. */
+            Skeleton authored = retarget == null ? skeleton : retarget.From;
+
+            List<HavokPackfile.SampledTransform> pose = SampleBonesRaw(clip, authored, frame);
             if (pose == null || clip?.Animation == null) return pose;
-            return Anchor(pose, clip, skeleton, frame, root);
+            if (retarget != null) pose = retarget.Apply(pose);
+
+            List<HavokPackfile.SampledTransform> start = frame == 0 ? pose : null;
+            if (start == null)
+            {
+                start = SampleBonesRaw(clip, authored, 0);
+                if (retarget != null && start != null) start = retarget.Apply(start);
+            }
+            return Anchor(pose, start, skeleton, frame, root);
         }
 
         /* The clip's own transforms, with nothing done about where the character ends up. */
@@ -633,7 +647,16 @@ namespace CathodeLib
                 HavokPackfile.SampledTransform sampled = tracks[track];
                 if (!animation.Additive)
                 {
-                    pose[bone] = sampled;
+                    /* Only take the channels the clip actually stored. A track that leaves one out
+                     * isn't saying "put this at zero", it's saying "the rig already has it right" -
+                     * which matters for the environment rigs, where a part authored at a scale
+                     * other than 1 is animated by clips that never mention scale. */
+                    pose[bone] = new HavokPackfile.SampledTransform
+                    {
+                        Translation = sampled.HasTranslation ? sampled.Translation : skeleton.Bones[bone].Position,
+                        Rotation = sampled.HasRotation ? sampled.Rotation : skeleton.Bones[bone].Rotation,
+                        Scale = sampled.HasScale ? sampled.Scale : skeleton.Bones[bone].ScaleXYZ,
+                    };
                     continue;
                 }
 
@@ -647,6 +670,45 @@ namespace CathodeLib
                 };
             }
             return pose;
+        }
+
+        /// <summary>
+        /// The bones a clip never moves off the rig's rest pose, either because it holds no track
+        /// for them or because the track it holds never turns.
+        ///
+        /// A clip that drives only part of the body is completely normal - the game lays it over
+        /// whatever else is playing, so an idle can leave the arms to a weapon animation. Shown on
+        /// its own, though, those bones sit in the rest pose and read as a limb left behind, which
+        /// is worth saying out loud.
+        /// </summary>
+        public static List<int> BonesLeftAtRest(ClipReference clip, Skeleton skeleton, Retargeter retarget = null)
+        {
+            List<int> still = new List<int>();
+            if (clip?.Animation == null || skeleton == null) return still;
+
+            int frames = clip.Animation.FrameCount;
+            if (frames < 2) return still;
+
+            bool[] moved = new bool[skeleton.Bones.Count];
+            int step = Math.Max(1, (frames - 1) / 5);
+            for (int frame = 0; frame < frames; frame += step)
+            {
+                List<HavokPackfile.SampledTransform> pose = SampleBones(clip, skeleton, frame, RootMotion.Ignore, retarget);
+                if (pose == null) break;
+
+                for (int bone = 0; bone < moved.Length && bone < pose.Count; bone++)
+                {
+                    if (moved[bone]) continue;
+                    if (Quaternion.Dot(Quaternion.Normalize(pose[bone].Rotation),
+                                       Quaternion.Normalize(skeleton.Bones[bone].Rotation)) < 0.99999f
+                        || (pose[bone].Translation - skeleton.Bones[bone].Position).LengthSquared() > 1e-8f)
+                        moved[bone] = true;
+                }
+            }
+
+            for (int bone = 0; bone < moved.Length; bone++)
+                if (!moved[bone]) still.Add(bone);
+            return still;
         }
 
         /// <summary>The bone a rig marks its own position with, or -1. Every character rig has one.</summary>
@@ -670,7 +732,7 @@ namespace CathodeLib
          * The correction rides entirely on the root bone's local transform: every other bone hangs
          * off it, so folding it in there moves the lot and leaves the sampled data alone. */
         private static List<HavokPackfile.SampledTransform> Anchor(List<HavokPackfile.SampledTransform> pose,
-            ClipReference clip, Skeleton skeleton, int frame, RootMotion root)
+            List<HavokPackfile.SampledTransform> start, Skeleton skeleton, int frame, RootMotion root)
         {
             int rootBone = RootBone(skeleton);
             if (rootBone < 0) return pose;
@@ -691,7 +753,7 @@ namespace CathodeLib
              * Taking it per frame instead would be wrong: the body does not travel with this bone.
              * Across the retail clips where it moves more than 25 cm, the hips follow it only 13% of
              * the way in the median case, so pinning it every frame swings the character around it. */
-            List<HavokPackfile.SampledTransform> start = frame == 0 ? pose : SampleBonesRaw(clip, skeleton, 0);
+            if (start == null) start = pose;
             Matrix4x4 anchor = ModelSpaceOf(start, skeleton, reference);
             if (!Matrix4x4.Invert(anchor, out Matrix4x4 place)) return pose;
 
@@ -770,9 +832,9 @@ namespace CathodeLib
         /// One frame of a clip as bone transforms relative to the skeleton root, rotated into mesh
         /// space - the same space <see cref="Skeleton.GetBindPose"/> hands back, so the two compose.
         /// </summary>
-        public static List<Matrix4x4> SampleModelPose(ClipReference clip, Skeleton skeleton, int frame, RootMotion root = RootMotion.Ignore)
+        public static List<Matrix4x4> SampleModelPose(ClipReference clip, Skeleton skeleton, int frame, RootMotion root = RootMotion.Ignore, Retargeter retarget = null)
         {
-            List<Matrix4x4> local = SampleLocalPose(clip, skeleton, frame, root);
+            List<Matrix4x4> local = SampleLocalPose(clip, skeleton, frame, root, retarget);
             if (local == null) return null;
 
             List<Matrix4x4> pose = new List<Matrix4x4>(local.Count);
@@ -785,12 +847,32 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// One frame of a clip as bone transforms relative to the skeleton root, left in the
+        /// skeleton's own space. <see cref="SampleModelPose"/> turns the same sample into the space
+        /// a character's mesh is authored in; an environment rig sits in the same space as the prop
+        /// it drives already, and wants this one.
+        /// </summary>
+        public static List<Matrix4x4> SampleRigPose(ClipReference clip, Skeleton skeleton, int frame, RootMotion root = RootMotion.Ignore, Retargeter retarget = null)
+        {
+            List<Matrix4x4> local = SampleLocalPose(clip, skeleton, frame, root, retarget);
+            if (local == null) return null;
+
+            List<Matrix4x4> pose = new List<Matrix4x4>(local.Count);
+            for (int i = 0; i < local.Count; i++)
+            {
+                int parent = skeleton.Bones[i].ParentIndex;
+                pose.Add(parent >= 0 && parent < i ? local[i] * pose[parent] : local[i]);
+            }
+            return pose;
+        }
+
+        /// <summary>
         /// One frame of a clip as skinning matrices - the inverse bind pose times the animated pose.
         /// A vertex run through its bones' matrices and weighted lands where the animation puts it.
         /// </summary>
-        public static List<Matrix4x4> SampleSkinningPose(ClipReference clip, Skeleton skeleton, int frame, RootMotion root = RootMotion.Ignore)
+        public static List<Matrix4x4> SampleSkinningPose(ClipReference clip, Skeleton skeleton, int frame, RootMotion root = RootMotion.Ignore, Retargeter retarget = null)
         {
-            List<Matrix4x4> animated = SampleModelPose(clip, skeleton, frame, root);
+            List<Matrix4x4> animated = SampleModelPose(clip, skeleton, frame, root, retarget);
             if (animated == null) return null;
 
             List<Matrix4x4> bind = skeleton.GetBindPose();
