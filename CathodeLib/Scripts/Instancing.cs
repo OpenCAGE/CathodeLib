@@ -48,10 +48,19 @@ namespace CathodeLib
 
             public T Get(ShortGuid guid)
             {
-                //Check links first, these override the values
+                //Check links first, these override the values.
+                //When several links drive one parameter the LAST one wins, in the order the
+                //connections are authored - links push their value in, so the final write is what
+                //the parameter ends up holding. Scored against the light flags retail ships (which
+                //equal their movers' own DEFERRED_PARAMS exactly, so they are a reliable witness):
+                //last-link is exact on all 14,641 light movers of ChallengeMap4, SCI_HospitalUpper,
+                //BSP_Torrens, Solace, Tech_Hub and HAB_Airport, where taking the first link instead
+                //misses 76 of them (5/0/40/4/23/4). The cases that separate the two are lights
+                //whose is_specular is fed by both a composite variable and a PlatformConstantBool,
+                //and it is always the constant - the later connection - retail agrees with.
                 if (Links.TryGetValue(guid, out List<Tuple<ShortGuid, InstancedEntity>> links))
                     if (links.Count != 0)
-                        return links[0].Item2.GetAs<T>(links[0].Item1);
+                        return links[links.Count - 1].Item2.GetAs<T>(links[links.Count - 1].Item1);
 
                 //Fall back to our own value
                 if (Values.TryGetValue(guid, out T val))
@@ -2320,6 +2329,9 @@ namespace CathodeLib
 
         private Level _level = null;
 
+        //Creates (or finds) the materials an instance needs that the authored data has no entry for.
+        private MaterialFactory _materialFactory = null;
+
         private readonly ConcurrentDictionary<(Entity, Composite), List<(ShortGuid, ParameterVariant, DataType)>> _parameterCache = new ConcurrentDictionary<(Entity, Composite), List<(ShortGuid, ParameterVariant, DataType)>>();
         private readonly ConcurrentDictionary<(Composite, ShortGuid), Entity> _entityLookupCache = new ConcurrentDictionary<(Composite, ShortGuid), Entity>();
 
@@ -2420,6 +2432,16 @@ namespace CathodeLib
                 Console.WriteLine("WARNING: skipped " + message);
             }
         }
+
+        /// <summary>
+        /// Entities whose radiosity_multiplier parameter is authored zero, keyed by
+        /// (composite_instance_id, entity_id). The radiosity bake must attach no surface light to
+        /// these; the MVR field alone cannot express the rule because an absent parameter also
+        /// stores 0 there and those movers ARE lit.
+        /// </summary>
+        public readonly HashSet<(uint, uint)> RadiosityAuthoredOff = new HashSet<(uint, uint)>();
+
+        public static bool EmitRequiredAssetParticles = true;
 
         public Instancing(Level level, NavMeshBakeSettings navMeshSettings = null, CoverBakeSettings coverSettings = null, RadiosityBakeSettings radiositySettings = null, JobPositionBakeSettings jobPositionSettings = null, AlphalightBakeSettings alphalightSettings = null)
         {
@@ -2574,7 +2596,14 @@ namespace CathodeLib
             //Clear other various bits we'll re-write
             _level.Resources.Entries.Clear();
             _level.PhysicsMaps.Entries.Clear();
-            _level.RenderableElements.Entries.Clear();
+            // NOTE: RenderableElements is deliberately NOT cleared. Indices into it are held by
+            // systems this pass does not renumber, so clearing it and rebuilding renumbered every
+            // entry underneath them - the engine then read a character's renderable run out of
+            // range and faulted in calculate_renderable_instance_type the moment ACTIVE_CHARACTERS
+            // finalised its first temporary entity, on most levels in the game. Retail's own file
+            // is mostly entries that no mover or Commands resource points at, which is the same
+            // shape. EnsureRegistered reuses identical runs, so appending keeps it at retail's size
+            // (18635 vs retail's 18633 on BSP_LV426_Pt01).
             _level.SoundEnvironmentData.Entries.Clear();
             while (!_exclusiveMasters.IsEmpty)
                 _exclusiveMasters.TryTake(out _);
@@ -2608,9 +2637,24 @@ namespace CathodeLib
             CalculateZones();
             CalculateEnvironmentMaps();
 
+            //Materials an instance needs but the authored data doesn't hold - see MaterialFactory.
+            _materialFactory = new MaterialFactory(_level);
+
             //Do the instancing!
             _sharedComposites.Clear();
             ProcessInstances(Root, false, false, false, false, false, false);
+
+            if (_materialFactory.MaterialsCreated != 0 || _materialFactory.TexturesNotFound != 0)
+            {
+                Console.WriteLine("Instanced materials: created " + _materialFactory.MaterialsCreated +
+                                  ", reused " + _materialFactory.MaterialsReused +
+                                  (_materialFactory.TexturesNotFound != 0
+                                      ? ", " + _materialFactory.TexturesNotFound + " gobo texture(s) unresolved"
+                                      : ""));
+                foreach (KeyValuePair<string, string> unresolved in _materialFactory.UnresolvedTextures)
+                    Console.WriteLine("WARNING: gobo texture not packed with this level: " + unresolved.Key +
+                                      (unresolved.Value == "" ? "" : "  (first requested by " + unresolved.Value + ")"));
+            }
 
             //Re-write Commands-only (not instanced) REDs back to REDs since we cleared it out earlier
             PopulateCommandsREDs();
@@ -3557,6 +3601,17 @@ namespace CathodeLib
             return true;
         }
 
+        //"composite / entity name" for a warning line, best-effort - never worth throwing over.
+        private static string DescribeForLog(InstancedEntity entity)
+        {
+            if (entity == null)
+                return "";
+            string name = null;
+            try { name = entity.Level?.Commands?.Utils?.GetEntityName(entity.Composite, entity.Entity); }
+            catch { }
+            return (entity.Composite?.name ?? "?") + " / " + (string.IsNullOrEmpty(name) ? entity.Entity?.shortGUID.ToByteString() : name);
+        }
+
         private static bool IsAnimationAnchorEntity(InstancedEntity entity)
         {
             string name = null;
@@ -4191,7 +4246,14 @@ namespace CathodeLib
                             cpuConstants.Features |= LightFeature.PhysicalAttenuation;
                         if (entity.Bools.Get(ShortGuids.horizontal_gobo_flip))
                             cpuConstants.Features |= LightFeature.HorizontalGoboFlip;
-                        if (entity.Bools.Values.TryGetValue(ShortGuids.is_specular, out bool specularLocal) ? specularLocal : entity.Bools.Get(ShortGuids.is_specular))
+                        // Reading the entity's own value ahead of its links was tried here and is
+                        // wrong: every light in ChallengeMap4 that disagreed with retail (112 of
+                        // 1838) has is_specular driven by a PlatformConstantBool, and retail
+                        // follows the link in BOTH directions - 104 where the own value is true and
+                        // the link false, 8 the other way. Retail's light materials and their
+                        // movers' DEFERRED_PARAMS agree on all 1862, so the material table is a
+                        // second witness to the same answer.
+                        if (entity.Bools.Get(ShortGuids.is_specular))
                             cpuConstants.Features |= LightFeature.Specular;
                         if (entity.Bools.Get(ShortGuids.no_alphalight))
                             cpuConstants.Features |= LightFeature.NoAlphaLight;
@@ -4216,6 +4278,15 @@ namespace CathodeLib
                         cpuConstants.FlareOccluderRadius = entity.Floats.Get(ShortGuids.flare_occluder_radius);
                         cpuConstants.FlareSpotOffset = entity.Floats.Get(ShortGuids.flare_spot_offset);
                         cpuConstants.DepthBias = entity.Floats.Get(ShortGuids.depth_bias);
+                        // The material comes from these same resolved parameters, and is settled
+                        // before the constants are written because the factory can drop the GOBO
+                        // feature when the named texture is not packed with the level - retail's
+                        // material flags equal their mover's DEFERRED_PARAMS on all 1862 of
+                        // ChallengeMap4's light movers, so the two must never part company.
+                        Materials.Material lightMaterial = _materialFactory?.GetLightMaterial(
+                            cpuConstants.Type, cpuConstants.Features, goboTexture, DescribeForLog(entity));
+                        if (lightMaterial?.OfflineLightFeatures != null)
+                            cpuConstants.Features = (LightFeature)((lightMaterial.OfflineLightFeatures.Value >> 8) & 0xFFFF);
                         mvr.RenderConstants.SetAs<DEFERRED_PARAMS>(cpuConstants);
                         DEFERRED_GPU_CONSTANTS gpuConstants = new DEFERRED_GPU_CONSTANTS();
                         float endAttenuation = Math.Max(entity.Floats.Get(ShortGuids.end_attenuation), 0.00001f);
@@ -4274,7 +4345,17 @@ namespace CathodeLib
                         float volumeEndAttenuation = entity.Floats.Get(ShortGuids.volume_end_attenuation);
                         gpuConstants.VolumeAttenuationEnd = volumeEndAttenuation > 0.0f ? volumeEndAttenuation : entity.Floats.Get(ShortGuids.end_attenuation);
                         mvr.GPUConstants.SetAs<DEFERRED_GPU_CONSTANTS>(gpuConstants);
-                        mvr.RenderableElements = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                        // The renderable run belongs to the COMPOSITE, so every instance of a light
+                        // prefab shares one material - but the features above and the gobo are
+                        // per-instance, freely rewritten by aliases anywhere up the tree. Give the
+                        // instance the material its own resolved parameters call for, which is what
+                        // retail ships: 485 of ChallengeMap4's 1862 light movers point somewhere
+                        // other than their composite's authored material.
+                        List<RenderableElements.Element> lightReds =
+                            ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                        mvr.RenderableElements = _materialFactory != null
+                            ? _materialFactory.ApplyLightMaterial(lightReds, lightMaterial)
+                            : lightReds;
                         mvr.Resource = resource;
                         if (entity.Bools.Get(ShortGuids.include_in_planar_reflections))
                             mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
@@ -4424,6 +4505,17 @@ namespace CathodeLib
                                 mvr.EmissiveFlags |= Movers.EmissiveFlag.ReplaceTint;
                             mvr.EmissiveIntensityMultiplier = ResolveModelReferenceEmissiveIntensity(entity, isTemplate);
                             mvr.EmissiveRadiosityMultiplier = Math.Max(0.0f, entity.Floats.Get(ShortGuids.radiosity_multiplier));
+                            // An AUTHORED radiosity_multiplier of 0 excludes the model from the
+                            // radiosity bake - retail Solace drops exactly its 4 such fixtures
+                            // while lighting 900 whose multiplier is merely absent (also 0 in the
+                            // MVR, so the distinction only exists here where the parameter table
+                            // is in hand). The value itself does not scale the baked output:
+                            // retail's per-entity Weight/sqrt(area) is flat (~270) across every
+                            // authored value from 0.2 to >1.5, and Scale stays on the material
+                            // EMISSIVE_MULT grid, so nonzero values are runtime-side.
+                            if (entity.Floats.Values.TryGetValue(ShortGuids.radiosity_multiplier, out float authoredRadiosity) &&
+                                authoredRadiosity <= 0.0f)
+                                RadiosityAuthoredOff.Add((entity.Handle.composite_instance_id.AsUInt32, entity.Handle.entity_id.AsUInt32));
                             ApplyMoverZones(mvr, entity);
                             mvr.LightingMasterID = entity.LightingMaster;
                             AddMover(entity, mvr, isTemplate);
@@ -4469,7 +4561,30 @@ namespace CathodeLib
                     break;
                 case FunctionType.ParticleEmitterReference:
                     {
+                        // See task #43 - this guard is the SCI_Hub / Tech_Hub trade-off. Emitting
+                        // templates fixes SCI_Hub's load crash but breaks Tech_Hub, which then
+                        // crashes in update_parameters ~28s in.
+                        //
+                        // Measured against retail BSP_TORRENS: with templates emitted we write 1053
+                        // more movers than retail (+18.6%), 4079 more REDS entries (+14.4%) and 1023
+                        // more resources (+12.5%), and nothing retail writes is missing - it is a
+                        // strict superset. Retail emits FX movers for 31 composites where we emit
+                        // for 92, and 61 of the extra 61 are composites retail never instances at
+                        // all: *_Template prefabs, Character_Burning\AndroidBurn*, Blood\FX_*_On_Lens,
+                        // Debris\Bottle*, Pistol_VFX\Tazer_* - all spawned at runtime rather than
+                        // placed. They are correctly marked invisible, but still occupy a slot each.
+                        //
+                        // Retail never ships a mover for a template (prefab) FX emitter. Joining
+                        // our instanced mover set to the shipped MVR by entity handle, isTemplate
+                        // separates the two sets exactly on BSP_LV426_Pt01, SCI_Hub, Solace,
+                        // BSP_Torrens and HAB_Airport: every emitter reached only through a
+                        // template path has no retail mover, and every non-template one has
+                        // precisely one. A template is a definition the spawner instantiates at
+                        // runtime, so pre-instancing it hands the engine a second copy of an
+                        // emitter it is about to create itself.
                         if (isDeleted || isTemplate)
+                            break;
+                        if (isRequiredAssets && !EmitRequiredAssetParticles)
                             break;
 
                         bool uniqueMaterial = entity.Bools.Get(ShortGuids.unique_material);
@@ -4663,7 +4778,9 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.RibbonEmitterReference:
-                    if (!isDeleted && !isTemplate && !isRequiredAssets)
+                    // Held in step with ParticleEmitterReference above - see the note there for the
+                    // measurements behind the isTemplate guard.
+                    if (!isDeleted && !isRequiredAssets && !isTemplate)
                     {
                         Resources.Resource resource = AddResourceEntry(entity);
 
@@ -4995,8 +5112,12 @@ namespace CathodeLib
             if (!entity.Bools.Get(ShortGuids.light_on_reset))
                 return 0.0f;
 
+            // Follows the link the same way a light's intensity does, and for the same measured
+            // reason: on the 7611 ChallengeMap4 model references this pass lights, following it
+            // matches retail's own EmissiveIntensityMultiplier 7559 times against 7409 for the
+            // "only some link sources count" test, which reads 1.0 where the level authored 0.05.
             float intensity;
-            if (entity.Floats.Links.TryGetValue(ShortGuids.intensity_multiplier, out List<Tuple<ShortGuid, InstancedEntity>> links) && links.Count > 0 && IsStaticFloatIntensityLink(links[0].Item2))
+            if (entity.Floats.Links.TryGetValue(ShortGuids.intensity_multiplier, out List<Tuple<ShortGuid, InstancedEntity>> links) && links.Count > 0)
             {
                 intensity = entity.Floats.Get(ShortGuids.intensity_multiplier);
             }
@@ -5011,41 +5132,26 @@ namespace CathodeLib
             return Math.Max(0.0f, intensity);
         }
 
+        // A light's intensity_multiplier resolves like any other parameter: whatever drives it wins,
+        // then the entity's own value, then 1 for a light that never mentions it. Judging which
+        // link sources count as "static" and falling back to the local value for the rest was tried
+        // and is much worse - scored against the Colour retail's own light movers carry (their
+        // attenuation terms already agree exactly, so colour isolates the intensity), following the
+        // link is right on 92-99.5% of lights on every level while the static test manages 43-77%:
+        // ChallengeMap4 1829/1838 against 1415, SCI_HospitalUpper 2101/2125 against 1063,
+        // BSP_Torrens 731/740 against 496, Solace 1644/1677 against 723, Tech_Hub 3361/3452
+        // against 2582, HAB_Airport 4453/4814 against 2979. Gating on light_on_reset was tried too
+        // and is wrong in the other direction: it darkens 165-1292 lights a level that retail
+        // leaves lit.
         private static float ResolveLightIntensityMultiplier(InstancedEntity entity)
         {
             if (entity.Floats.Links.TryGetValue(ShortGuids.intensity_multiplier, out List<Tuple<ShortGuid, InstancedEntity>> links) && links.Count > 0)
-            {
-                if (IsStaticFloatIntensityLink(links[0].Item2))
-                    return Math.Max(0.0f, entity.Floats.Get(ShortGuids.intensity_multiplier));
-                if (entity.Floats.Values.TryGetValue(ShortGuids.intensity_multiplier, out float linkedLocal))
-                    return Math.Max(0.0f, linkedLocal);
-                return 0.0f;
-            }
+                return Math.Max(0.0f, entity.Floats.Get(ShortGuids.intensity_multiplier));
 
             if (entity.Floats.Values.TryGetValue(ShortGuids.intensity_multiplier, out float value))
                 return Math.Max(0.0f, value);
 
             return 1.0f;
-        }
-
-        private static bool IsStaticFloatIntensityLink(InstancedEntity source)
-        {
-            if (source?.Entity is VariableEntity variable)
-                return variable.type == DataType.FLOAT;
-            if (source?.Entity is FunctionEntity function && function.function.IsFunctionType)
-            {
-                switch (function.function.AsFunctionType)
-                {
-                    case FunctionType.VariableFloat:
-                    case FunctionType.RandomFloat:
-                    case FunctionType.TriggerSelect:
-                    case FunctionType.SetFloat:
-                        return true;
-                    default:
-                        return false;
-                }
-            }
-            return false;
         }
 
         private static ShortGuid GetResourceID(InstancedEntity entity)

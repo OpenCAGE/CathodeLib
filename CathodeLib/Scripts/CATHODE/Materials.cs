@@ -565,6 +565,9 @@ namespace CATHODE
                 set { SetFeatureFlag(15, value); }
             }
 
+            /// <summary>The raw dword: the light type in the low byte, the feature bits above it.</summary>
+            public int Value => flags;
+
             public void Read(BinaryReader reader) => flags = reader.ReadInt32();
             public void Write(BinaryWriter writer) => writer.Write(flags);
 

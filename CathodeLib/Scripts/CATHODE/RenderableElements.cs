@@ -195,8 +195,12 @@ namespace CATHODE
             if (elements == null || elements.Count == 0)
                 return elements ?? new List<Element>();
 
-            //if (GetWriteIndex(elements, mustStartAfter) >= 0)
-            //    return elements;
+            // Reuse a run that is already registered rather than appending a second copy: retail's
+            // file holds one run per distinct renderable set, not one per user. Appending per user
+            // grew the file to ~1.6x retail and made registration quadratic (BSP_LV426_Pt01's
+            // instancing pass went from 250s to 44s once this was restored).
+            if (GetWriteIndex(elements, mustStartAfter) >= 0)
+                return elements;
             
             var parentIndices = new List<int>(elements.Count);
             for (int i = 0; i < elements.Count; i++)

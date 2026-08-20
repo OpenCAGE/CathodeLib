@@ -26,6 +26,23 @@ namespace CathodeLib.Radiosity
         public float MetresSquaredPerTexel = 1.27f;
 
         /// <summary>
+        /// Exponent on a progressive texel boost for larger instances. 0 spends a flat
+        /// <see cref="MetresSquaredPerTexel"/> everywhere; 0.25 roughly reproduces retail's
+        /// allocation curve.
+        /// </summary>
+        /// <remarks>
+        /// Retail does not spend a constant area per texel. Measured against ChallengeMap4's
+        /// shipped MODEL_PARAMS (7745 movers with a real rect in both bakes), our rect area against
+        /// retail's runs p50 1.00 for instances retail gives under 16 texels, 0.75 at "small",
+        /// 0.71 at "medium" and 0.52 for the 73 largest - so retail gives its big surfaces nearly
+        /// twice the lightmap resolution we do, and takes it back on small props. Total area is
+        /// close (ours 118385 against 131228), so this is distribution, not budget. Off by default
+        /// until it is measured to help: the atlas has only ~30% headroom and a boost that
+        /// overflows makes the packer shrink rects, which is worse than the flat spend.
+        /// </remarks>
+        public float LargeInstanceTexelBoost = 0.0f;
+
+        /// <summary>
         /// Smallest rect an instance can be given, in texels. Retail never goes below 2 - a
         /// 1-texel rect would collapse the shader's half-texel inset to zero width.
         /// </summary>
@@ -77,6 +94,42 @@ namespace CathodeLib.Radiosity
         /// a slice forced past it cannot give all its texels input probes.
         /// </summary>
         public int MaxSlices = 32;
+
+        /// <summary>
+        /// Partition instances into slices by the slice retail's own bake put them in, rather than
+        /// by a spatial median split.
+        /// </summary>
+        /// <remarks>
+        /// <para>Retail's slices are not a spatial partition. On ChallengeMap4 all three of them
+        /// span most of the level and overlap heavily (slice 0 covers world X -62.5..15.3, slice 1
+        /// -32.6..29.3, slice 2 -62.5..17.3), where a median split produces three disjoint strips.
+        /// That matters because a slice is what the runtime consults for an object's lighting: the
+        /// slice index comes from the object's island (RADIOSITY_RUNTIME's InstanceSliceIndices,
+        /// keyed by the island id in RADIOSITY_INSTANCE_MAP), not from where the object is. Put an
+        /// island in a different slice than retail did and its MODEL_PARAMS rect indexes into a
+        /// different slice's atlas page, so the objects it lights render black. Measured on
+        /// ChallengeMap4: this is a lightmap effect, not a volume probe one - stripping the volume
+        /// section from retail's own runtime there is near-noise (mean rmse 4.74).</para>
+        /// <para>Islands retail never baked have no answer here; they join the slice of their
+        /// nearest matched neighbour. With no retail data at all (a scratch bake) this falls back
+        /// to the median split.</para>
+        /// </remarks>
+        public bool MatchRetailSlices = true;
+
+        /// <summary>
+        /// Texel ceiling applied to a group taken from retail's own slice grouping, before it is
+        /// split spatially anyway.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="MaxTexelsPerSlice"/> is deliberately conservative because it decides how many
+        /// slices a level is cut into from scratch. A retail group is different: retail's bake
+        /// already fitted that exact set of instances into one 128x128 atlas, so the only question
+        /// is whether our rect sizing needs a little more room than theirs did - and splitting the
+        /// group is the worse answer, because it puts islands retail lit together into different
+        /// slices and that is the mapping this whole path exists to preserve. Sci_Hub's first
+        /// retail group asks for 13809 texels and was being split at 13000 for the sake of 5%.
+        /// </remarks>
+        public int MaxTexelsPerRetailSlice = 15800;
 
         // ---- Probes ------------------------------------------------------------------------
 
@@ -492,13 +545,21 @@ namespace CathodeLib.Radiosity
         /// mean at our own count.
         /// </summary>
         /// <remarks>
-        /// Off by default on measurement: per-entity counts against retail ranged 0.3x-3x both
-        /// ways, and matching them brightened Solace's dim cams to parity (cam2/12/13 to ~1.0) -
-        /// but one maintenance corridor (cam4) amplified from 2.3x to 3.8x retail, costing more
-        /// than the rest gained. Until that transport interaction is understood, mean-weight
-        /// placement is the better whole-level trade.
+        /// <para>On by default because it is what makes our emitted light energy match retail's.
+        /// Measured on ChallengeMap4: off, we emit 3871 lights summing to weight 70039 against
+        /// retail's 4414 / 83521 - 88% of the count and 84% of the energy. On, 4381 lights summing
+        /// to 83547, within 0.03% of retail on energy and 0.7% on count.</para>
+        /// <para>It is also the only lever measured to move the dim rooms, which sit on a flat
+        /// additive floor our transport does not produce (cam7 0.755x -> 0.895x, cam9 0.791x ->
+        /// 0.844x, best mean |luma diff| 4.28). Mean rmse goes 12.49 -> 12.74 and exposure-
+        /// normalised rmse is flat (12.28 -> 12.33): the raw cost is one room already 1.30x over
+        /// before this was touched, so the flag scales a pre-existing error rather than causing
+        /// one.</para>
+        /// <para>This was off for a long time because it amplified Solace's cam4 corridor from
+        /// 2.3x to 3.8x. That corridor's excess was later traced to long scatter links and removed
+        /// by LocalScatter, so the original objection no longer applies.</para>
         /// </remarks>
-        public bool MatchRetailSampleCounts = false;
+        public bool MatchRetailSampleCounts = true;
 
         /// <summary>
         /// Give input probes with no influence-derived scatter sources a nearest-facing-cluster
@@ -506,6 +567,76 @@ namespace CathodeLib.Radiosity
         /// EnsureDestinationCoverage.
         /// </summary>
         public bool CoverScatterDestinations = false;
+
+        /// <summary>
+        /// Leave PATH_CLOSED doorway barrier boxes out of the occluder soup, baking every doorway
+        /// as open. The door transfer sets describe door-open light paths, so the field they
+        /// modulate is the doors-open one; a barrier baked solid also walls off rooms that in
+        /// retail borrow light through their doorways.
+        /// </summary>
+        /// <remarks>
+        /// On by measurement (2026-08-18): Solace mean rmse 13.86 -> 13.55 (a dim room behind a
+        /// doorway, cam13, recovered 0.66 -> 0.84 of retail's brightness), BSP_TORRENS
+        /// 19.83 -> 19.35, SCI_Hub unchanged. Stripping the doors section from retail's own
+        /// runtime changes nothing visually, so the engine's runtime door modulation is a no-op
+        /// in practice - the doorway state that matters is the one baked into the field.
+        /// </remarks>
+        public bool OpenDoorwaysForBake = true;
+
+        /// <summary>
+        /// Build the scatter list from each input probe's local cluster neighbourhood instead of
+        /// deriving it from influence transfers. Matches retail's measured shape (~6 sources per
+        /// probe at sub-metre range, both coverage invariants held); the influence-derived list
+        /// managed 2.5 per probe with a third of probes unfed, which starves everything that reads
+        /// input probe radiance - most visibly RADIOSITY_DYNAMIC props.
+        /// </summary>
+        /// <remarks>
+        /// On by measurement (2026-08-18): Solace mean rmse 13.50 -> 12.99 with the two rooms
+        /// that had been invariant under every other transport change finally moving (cam11
+        /// 1.36x -> 1.06x, cam4 1.76x -> 0.54x); BSP_TORRENS 19.33 -> 17.31 (cockpit 1.66x ->
+        /// 1.37x); SCI_Hub best-ever exposure-normalised error.
+        /// </remarks>
+        public bool LocalScatter = true;
+
+        /// <summary>Search radius, in metres, for a probe's local scatter neighbourhood.</summary>
+        /// <remarks>
+        /// The count-vs-energy balance: the engine's gather makes source count an energy
+        /// multiplier, and retail's per-probe counts run p10 3 / p50 6 / p90 8 - a spread that
+        /// falls out of local cluster availability inside a roughly metre-scale ball. Swept 1.0 /
+        /// 1.25 / 1.5 / 2.5 across three levels: 2.5 saturates every probe at the cap and
+        /// over-feeds bright levels; 1.25 is the best aggregate.
+        /// </remarks>
+        public float LocalScatterRadius = 1.25f;
+
+        /// <summary>
+        /// Outer radius, in metres, a probe may reach to when its own neighbourhood cannot fill it.
+        /// </summary>
+        /// <remarks>
+        /// Measured against retail on ChallengeMap4: retail's scatter source distances run
+        /// p50 0.73 m with a p90 of 2.5 m, where a flat <see cref="LocalScatterRadius"/> ball
+        /// produced p50 0.74 m and a hard p90 of 1.12 m - the same median with no tail. Sweeping
+        /// the base radius up to reach that tail is what over-fed bright levels, because it also
+        /// moves the sources every well-served probe takes. Keeping the base radius and letting
+        /// only the probes that come up short reach further reproduces retail's spread and adds
+        /// energy nowhere else: dense neighbourhoods still fill from within a metre, and the
+        /// probes in sparse ones stop coming back empty (95% of ours were fed against retail's
+        /// 99.8%, and an unfed probe leaves a dead patch in the standing field).
+        /// </remarks>
+        public float LocalScatterReachRadius = 3.0f;
+
+        /// <summary>
+        /// Influence falloff curve: weight at zero distance before facing modulation. The default
+        /// trio (212, 2.0, 0.32) is deliberately flatter than retail's measured byte-vs-distance
+        /// bands; the retail-calibrated trio is (227, 2.43, 0.46) - see InfluenceWeight for why it
+        /// is not the default.
+        /// </summary>
+        public float InfluenceCurveW0 = 212.0f;
+
+        /// <summary>Influence falloff curve: distance at which falloff reaches (1/2)^k.</summary>
+        public float InfluenceCurveD0 = 2.0f;
+
+        /// <summary>Influence falloff curve: how hard the curve compresses.</summary>
+        public float InfluenceCurveK = 0.32f;
 
         /// <summary>
         /// Multiply sampled albedo by the material's DIFFUSE_TINT.

@@ -166,6 +166,10 @@ namespace CathodeLib.Radiosity
         /// <summary>Movers skipped because their composite has no static-radiosity geometry.</summary>
         public int MoversNotLightmapped;
 
+        /// <summary>Skip-reason breakdown, for telling "retail lightmaps it and we do not" apart
+        /// from "neither of us does".</summary>
+        public int SkippedNotBakeable, SkippedDynamicMaterial, SkippedNoResource, SkippedNoGeometry;
+
         /// <summary>Renderable elements skipped because their shader does not describe a surface.</summary>
         public int ElementsNotSurfaces;
 
@@ -282,6 +286,8 @@ namespace CathodeLib.Radiosity
                 if (!IsBakeable(mover, settings))
                 {
                     geo.MoversSkipped++;
+                    if (RequiresDynamicRadiosity(mover)) geo.SkippedDynamicMaterial++;
+                    else geo.SkippedNotBakeable++;
                     continue;
                 }
 
@@ -297,6 +303,7 @@ namespace CathodeLib.Radiosity
                 if (resourceIndex < 0)
                 {
                     geo.MoversSkipped++;
+                    geo.SkippedNoResource++;
                     continue;
                 }
 
@@ -434,7 +441,10 @@ namespace CathodeLib.Radiosity
                 }
 
                 if (!contributedGeometry)
+                {
                     geo.MoversSkipped++;
+                    geo.SkippedNoGeometry++;
+                }
                 else if (hadLightmapUVs)
                     geo.MoversWithLightmapUVs++;
                 else
@@ -466,6 +476,13 @@ namespace CathodeLib.Radiosity
                         " nonSurfaceElements=" + geo.ElementsNotSurfaces +
                         " albedoDecoded=" + geo.MaterialSampler.Decoded + " albedoFallback=" + geo.MaterialSampler.FellBack +
                         " diffuseUVs=" + geo.TriangleMaterial.Count(m => m != RadiosityMaterialSampler.NoMaterial) + "/" + geo.TriangleCount);
+
+            log?.Invoke("Radiosity skips: notBakeable=" + geo.SkippedNotBakeable +
+                        " dynamicMaterial=" + geo.SkippedDynamicMaterial +
+                        " notLightmappedComposite=" + geo.MoversNotLightmapped +
+                        " noResource=" + geo.SkippedNoResource +
+                        " noGeometry=" + geo.SkippedNoGeometry +
+                        " (retail lightmaps " + (level.RadiosityInstanceMap?.Entries.Count.ToString() ?? "?") + " movers)");
 
             return geo;
         }

@@ -214,7 +214,13 @@ namespace CathodeLib
             if (string.IsNullOrWhiteSpace(materialName))
                 return renderables;
 
-            Materials.Material material = FindMaterialByName(level.Materials, materialName);
+            // Several entries answer to one name: an authoring material and a run of [NNNNNN]
+            // variants that differ in their compiled shader's feature bits. The plain unsuffixed
+            // one is never what retail's movers use - on ChallengeMap4's screens it picks a variant
+            // every time (InactiveScreen 51x [000000], 13x [000001], 3x [000002]) - so hand the
+            // lookup the material being replaced and the model table, and let the vertex-format
+            // test choose a variant this mesh can actually be drawn with.
+            Materials.Material material = FindMaterialByName(level.Materials, materialName, renderables[0]?.Material, level.Models);
             if (material == null)
                 return renderables;
 

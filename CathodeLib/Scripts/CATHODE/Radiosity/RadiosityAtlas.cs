@@ -174,6 +174,11 @@ namespace CathodeLib.Radiosity
             surfaceArea /= (float)Math.Pow(coverage, settings.UvCoverageCompensation);
             float texels = Math.Max(1.0f, surfaceArea / Math.Max(1e-4f, settings.MetresSquaredPerTexel));
 
+            // Retail spends progressively more resolution on bigger surfaces; see
+            // RadiosityBakeSettings.LargeInstanceTexelBoost for the measurement.
+            if (settings.LargeInstanceTexelBoost > 0.0f && texels > 64.0f)
+                texels *= Math.Min(2.0f, (float)Math.Pow(texels / 64.0f, settings.LargeInstanceTexelBoost));
+
             // Project onto the two largest world axes so the rect follows the dominant faces.
             float a = boundsSize.X, b = boundsSize.Y, c = boundsSize.Z;
             float largest = Math.Max(a, Math.Max(b, c));

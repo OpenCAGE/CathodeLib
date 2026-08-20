@@ -43,7 +43,8 @@ namespace CathodeLib.Radiosity
         public static bool TryCollect(Level level, RadiosityGeometry geometry,
                                       out float[] verts, out int[] tris, Action<string> log = null,
                                       bool staticOnly = false,
-                                      List<CollisionMaps.CollisionFlags> triangleFlags = null)
+                                      List<CollisionMaps.CollisionFlags> triangleFlags = null,
+                                      bool skipDoorBarriers = false)
         {
             verts = null;
             tris = null;
@@ -60,7 +61,7 @@ namespace CathodeLib.Radiosity
             var indices = new List<int>();
             int hosts = 0;
 
-            ISet<HavokPackfile.CompoundInstance> skipped = SkippedInstances(level, staticOnly);
+            ISet<HavokPackfile.CompoundInstance> skipped = SkippedInstances(level, staticOnly, skipDoorBarriers);
             log?.Invoke("Radiosity occluders: skipping " + skipped.Count + " collider instance(s) of " +
                         (level.CollisionMaps?.Entries?.Count ?? 0) + " mapping(s)" +
                         (staticOnly ? " (static only)" : ""));
@@ -214,7 +215,8 @@ namespace CathodeLib.Radiosity
         /// Collision instances that must not block light: barrier boxes are invisible gameplay
         /// volumes, and a ghosted collider is not solid at runtime.
         /// </summary>
-        static ISet<HavokPackfile.CompoundInstance> SkippedInstances(Level level, bool staticOnly)
+        static ISet<HavokPackfile.CompoundInstance> SkippedInstances(Level level, bool staticOnly,
+                                                                     bool skipDoorBarriers = false)
         {
             var skip = new HashSet<HavokPackfile.CompoundInstance>();
             if (level?.CollisionMaps?.Entries == null)
@@ -227,6 +229,17 @@ namespace CathodeLib.Radiosity
             {
                 if (entry?.CollisionInstance == null) continue;
                 if ((entry.Flags & ghostMask) != 0)
+                {
+                    skip.Add(entry.CollisionInstance);
+                    continue;
+                }
+
+                // A doorway barrier is the sealed state of a door the runtime opens and closes;
+                // the door-transfer section modulates the doorway after the fact, so the bake
+                // itself stores the doors-open field.
+                if (skipDoorBarriers &&
+                    (entry.Flags & CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK) ==
+                    (CollisionMaps.CollisionFlags)CollisionMaps.CollisionType.PATH_CLOSED)
                 {
                     skip.Add(entry.CollisionInstance);
                     continue;
