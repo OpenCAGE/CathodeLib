@@ -85,6 +85,18 @@ namespace CathodeLib.Radiosity
             /// </remarks>
             public float UvCoverage = 1.0f;
 
+            /// <summary>
+            /// Width over height of the region of the unit UV square this instance's triangles
+            /// occupy, which is what the atlas rect's shape should follow.
+            /// </summary>
+            /// <remarks>
+            /// Scored against retail's own rects on ChallengeMap4: taking the aspect from the
+            /// instance's world bounding box instead misses by |log| 0.77 on average against 0.51
+            /// for this, and it is worst on exactly the islands that matter - retail gives the
+            /// executive lounge 41x42, a square, where the world box asks for 1.95:1.
+            /// </remarks>
+            public float UvAspect = 1.0f;
+
             /// <summary>Coarse occupancy of the unit UV square, used to compute UvCoverage.</summary>
             internal bool[] UvGrid;
 
@@ -232,6 +244,12 @@ namespace CathodeLib.Radiosity
             SHADER_LIST.CA_FILTERS,
             SHADER_LIST.CA_MOTION_BLUR_HI_SPEC,
         };
+
+        /// <summary>True when an element draws something that is not a lit surface - a light volume,
+        /// a fog sphere, a debug pass. Exposed because tools that raycast the level for a camera
+        /// view need the same filter: standing inside a spot light's cone proxy fills the frame
+        /// with geometry the player never sees.</summary>
+        public static bool IsNonSurfaceElement(RenderableElements.Element element) => IsNonSurface(element);
 
         /// <summary>True when an element's shader draws something that is not a lit surface.</summary>
         private static bool IsNonSurface(RenderableElements.Element element)
@@ -425,7 +443,7 @@ namespace CathodeLib.Radiosity
 
                         instance.MoverAreas[moverSlot] += area;
 
-                        MarkUvCoverage(instance, uvs, i0, i1, i2);
+                        MarkUvCoverage(instance, uvs, i0, i1, i2, settings.PreciseUvCoverage);
 
                         tris.Add(i0);
                         tris.Add(i1);
@@ -515,10 +533,19 @@ namespace CathodeLib.Radiosity
         private const int UvGridSize = 16;
 
         /// <summary>
-        /// Mark the cells of the unit UV square a triangle touches. Its bounding box is close
-        /// enough at this resolution and costs a couple of cells per triangle.
+        /// Mark the cells of the unit UV square a triangle actually covers.
         /// </summary>
-        private static void MarkUvCoverage(Instance instance, List<Vector2> uvs, int i0, int i1, int i2)
+        /// <remarks>
+        /// The bounding box is NOT close enough, which is what this used to use. A triangle laid
+        /// diagonally marks up to twice the cells it covers, and an instance with thousands of them
+        /// saturates the grid: ChallengeMap4's island 602 (238 m2, 14228 triangles) measured
+        /// coverage ~1.0 and so got no compensation at all, sizing its rect on world area alone -
+        /// 14x14 = 196 texels, of which its UVs reach only 80. Retail gives that island 1024.
+        /// Testing cell centres instead reports what the rasteriser will actually fill, and a
+        /// triangle smaller than a cell still marks the cell holding its centroid so fine detail is
+        /// not lost.
+        /// </remarks>
+        private static void MarkUvCoverage(Instance instance, List<Vector2> uvs, int i0, int i1, int i2, bool precise)
         {
             if (instance.UvGrid == null)
                 instance.UvGrid = new bool[UvGridSize * UvGridSize];
@@ -534,9 +561,42 @@ namespace CathodeLib.Radiosity
             minY = Math.Max(0, Math.Min(UvGridSize - 1, minY));
             maxY = Math.Max(0, Math.Min(UvGridSize - 1, maxY));
 
-            for (int y = minY; y <= maxY; y++)
-                for (int x = minX; x <= maxX; x++)
-                    instance.UvGrid[y * UvGridSize + x] = true;
+            if (!precise)
+            {
+                for (int y = minY; y <= maxY; y++)
+                    for (int x = minX; x <= maxX; x++)
+                        instance.UvGrid[y * UvGridSize + x] = true;
+                return;
+            }
+
+            Vector2 ga = a * UvGridSize, gb = b * UvGridSize, gc = c * UvGridSize;
+            float denominator = (gb.Y - gc.Y) * (ga.X - gc.X) + (gc.X - gb.X) * (ga.Y - gc.Y);
+            bool marked = false;
+            if (Math.Abs(denominator) > 1e-9f)
+            {
+                float inv = 1.0f / denominator;
+                float a0 = (gb.Y - gc.Y) * inv, b0 = (gc.X - gb.X) * inv;
+                float a1 = (gc.Y - ga.Y) * inv, b1 = (ga.X - gc.X) * inv;
+                for (int y = minY; y <= maxY; y++)
+                    for (int x = minX; x <= maxX; x++)
+                    {
+                        float px = x + 0.5f - gc.X, py = y + 0.5f - gc.Y;
+                        float l0 = a0 * px + b0 * py;
+                        float l1 = a1 * px + b1 * py;
+                        if (l0 < 0.0f || l1 < 0.0f || l0 + l1 > 1.0f)
+                            continue;
+                        instance.UvGrid[y * UvGridSize + x] = true;
+                        marked = true;
+                    }
+            }
+
+            // A triangle smaller than a cell covers no centre; it still occupies UV space.
+            if (!marked)
+            {
+                int cx = Math.Max(0, Math.Min(UvGridSize - 1, (int)((a.X + b.X + c.X) / 3.0f * UvGridSize)));
+                int cy = Math.Max(0, Math.Min(UvGridSize - 1, (int)((a.Y + b.Y + c.Y) / 3.0f * UvGridSize)));
+                instance.UvGrid[cy * UvGridSize + cx] = true;
+            }
         }
 
         /// <summary>
@@ -549,6 +609,19 @@ namespace CathodeLib.Radiosity
                 return 1.0f;
             int filled = 0;
             foreach (bool b in instance.UvGrid) if (b) filled++;
+
+            // The rect's SHAPE has to come from the same grid, because the rect maps this square and
+            // nothing else. Columns and rows that carry any UV at all, rather than a bounding box,
+            // so one stray triangle cannot stretch the shape to the full square.
+            int columns = 0, rows = 0;
+            for (int x = 0; x < UvGridSize; x++)
+                for (int y = 0; y < UvGridSize; y++)
+                    if (instance.UvGrid[y * UvGridSize + x]) { columns++; break; }
+            for (int y = 0; y < UvGridSize; y++)
+                for (int x = 0; x < UvGridSize; x++)
+                    if (instance.UvGrid[y * UvGridSize + x]) { rows++; break; }
+            instance.UvAspect = columns > 0 && rows > 0 ? (float)columns / rows : 1.0f;
+
             instance.UvGrid = null;
             float coverage = filled / (float)(UvGridSize * UvGridSize);
             return Math.Max(0.15f, Math.Min(1.0f, coverage));

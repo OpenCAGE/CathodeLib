@@ -168,7 +168,8 @@ namespace CathodeLib.Radiosity
         /// of the cells retail fills empty in ours while others ran to 20x retail's density.
         /// </remarks>
         public static void RectSizeForBounds(float surfaceArea, System.Numerics.Vector3 boundsSize, float uvCoverage,
-                                             RadiosityBakeSettings settings, out int width, out int height)
+                                             RadiosityBakeSettings settings, out int width, out int height,
+                                             float uvAspect = 0.0f)
         {
             float coverage = uvCoverage > 0.0f ? Math.Min(1.0f, uvCoverage) : 1.0f;
             surfaceArea /= (float)Math.Pow(coverage, settings.UvCoverageCompensation);
@@ -179,19 +180,33 @@ namespace CathodeLib.Radiosity
             if (settings.LargeInstanceTexelBoost > 0.0f && texels > 64.0f)
                 texels *= Math.Min(2.0f, (float)Math.Pow(texels / 64.0f, settings.LargeInstanceTexelBoost));
 
-            // Project onto the two largest world axes so the rect follows the dominant faces.
-            float a = boundsSize.X, b = boundsSize.Y, c = boundsSize.Z;
-            float largest = Math.Max(a, Math.Max(b, c));
-            float smallest = Math.Min(a, Math.Min(b, c));
-            float middle = a + b + c - largest - smallest;
+            float aspect;
+            if (settings.UvShapedRects && uvAspect > 0.0f)
+            {
+                // The rect maps the unit UV square and nothing else, so its shape follows how the
+                // UVs are laid out in that square.
+                aspect = uvAspect;
+            }
+            else
+            {
+                // Project onto the two largest world axes so the rect follows the dominant faces.
+                float a = boundsSize.X, b = boundsSize.Y, c = boundsSize.Z;
+                float largest = Math.Max(a, Math.Max(b, c));
+                float smallest = Math.Min(a, Math.Min(b, c));
+                float middle = a + b + c - largest - smallest;
+                aspect = middle > 1e-4f ? largest / middle : 1.0f;
+            }
 
-            float aspect = middle > 1e-4f ? largest / middle : 1.0f;
-            if (aspect < 1.0f) aspect = 1.0f;
+            // Either way the rect is described width-over-height, so an aspect under one is a tall
+            // rect rather than an invalid one.
+            bool tall = aspect < 1.0f;
+            if (tall) aspect = aspect > 1e-4f ? 1.0f / aspect : 1.0f;
             if (aspect > settings.MaxInstanceRect) aspect = settings.MaxInstanceRect;
 
             // w * h == texels with w / h == aspect.
             int w = (int)Math.Ceiling(Math.Sqrt(texels * aspect));
             int h = (int)Math.Ceiling(texels / Math.Max(1, w));
+            if (tall) { int swap = w; w = h; h = swap; }
 
             width = Math.Max(settings.MinInstanceRect, Math.Min(settings.MaxInstanceRect, w));
             height = Math.Max(settings.MinInstanceRect, Math.Min(settings.MaxInstanceRect, h));

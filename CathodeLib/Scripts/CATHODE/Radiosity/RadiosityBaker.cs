@@ -156,7 +156,7 @@ namespace CathodeLib.Radiosity
         /// began to rise, since a sparse probe's 32 best candidates are far away but still rank
         /// 0-31.</para>
         /// </remarks>
-        private static byte InfluenceWeight(float distance, float cosProduct, RadiosityBakeSettings settings)
+        private static byte InfluenceWeight(float distance, float cosProduct, RadiosityBakeSettings settings, float gain = 1.0f)
         {
             // The default curve is flatter than retail's (~9 bytes under its per-band means below
             // half a metre, ~8 over past 8 m; retail: 205 at 0.35 m, 170 at 2.5 m, 141 at 5 m,
@@ -176,7 +176,7 @@ namespace CathodeLib.Radiosity
             // Retail spreads about +/-14% either side of each distance band's mean (at 2-3 m the
             // mean is 170 with p10 144 and p90 191). The facing term is what varies within a band.
             float facing = (float)Math.Sqrt(Math.Max(0.0f, Math.Min(1.0f, cosProduct)));
-            float weight = baseWeight * (0.85f + 0.30f * facing);
+            float weight = baseWeight * (0.85f + 0.30f * facing) * gain;
 
             int v = (int)Math.Round(weight);
             return (byte)Math.Max(1, Math.Min(255, v));
@@ -575,6 +575,30 @@ namespace CathodeLib.Radiosity
             if (settings.EmitSurfaceLights)
                 AddUnbakedEmitterLights(level, geometry, sliceData, settings, lightPriors, log);
 
+
+            //Direct light and bounced light are two separate defects with two separate sizes: the
+            //slope of ours-against-retail is set by how much energy enters the level, the
+            //intercept by how much the influence loop recirculates. One gain cannot fix both, so
+            //this scales the injected energy independently of InfluenceCurveW0.
+            if (settings.SurfaceLightWeightScale != 1.0f)
+            {
+                int scaled = 0;
+                foreach (SliceBake sb in sliceData)
+                {
+                    List<RadiosityRuntime.RuntimeSurfaceLights.Light> lights = sb?.Slice?.SurfaceLights?.Lights;
+                    if (lights == null) continue;
+                    for (int i = 0; i < lights.Count; i++)
+                    {
+                        RadiosityRuntime.RuntimeSurfaceLights.Light l = lights[i];
+                        int w = (int)Math.Round(l.Weight * settings.SurfaceLightWeightScale);
+                        l.Weight = (byte)Math.Max(1, Math.Min(191, w));
+                        lights[i] = l;
+                        scaled++;
+                    }
+                }
+                log?.Invoke("Surface light weights scaled by " + settings.SurfaceLightWeightScale.ToString("0.###") +
+                            " over " + scaled + " lights");
+            }
             result.StaleRectsCleared = ClearStaleModelParams(level, taggedMovers);
 
             BuildSliceNeighbours(runtime);
@@ -630,7 +654,7 @@ namespace CathodeLib.Radiosity
             foreach (RadiosityGeometry.Instance instance in geometry.Instances)
             {
                 RadiosityAtlas.RectSizeForBounds(instance.SurfaceArea, instance.BoundsMax - instance.BoundsMin,
-                    instance.UvCoverage, settings, out int w, out int h);
+                    instance.UvCoverage, settings, out int w, out int h, instance.UvAspect);
                 instance.AtlasWidth = w;
                 instance.AtlasHeight = h;
             }
@@ -938,6 +962,48 @@ namespace CathodeLib.Radiosity
             }
         }
 
+        /// <summary>
+        /// World area each live atlas texel represents, per instance: the instance's surface area
+        /// shared over the texels its rect actually claimed.
+        /// </summary>
+        /// <remarks>
+        /// This is what a cluster stands for when a receiver gathers from it, and it varies by
+        /// orders of magnitude between instances because rect sizes do. See
+        /// <see cref="RadiosityBakeSettings.InfluenceClusterAreaNormalisation"/>.
+        /// </remarks>
+        private static float[] MeasureTexelAreas(List<RadiosityGeometry.Instance> instances, SurfaceTexel[] texels, out float median)
+        {
+            var area = new float[AtlasTexels];
+            median = 0.0f;
+            foreach (RadiosityGeometry.Instance instance in instances)
+            {
+                int live = 0;
+                for (int y = instance.AtlasY; y < instance.AtlasY + instance.AtlasHeight && y < AtlasSize; y++)
+                    for (int x = instance.AtlasX; x < instance.AtlasX + instance.AtlasWidth && x < AtlasSize; x++)
+                        if (y >= 0 && x >= 0 && texels[y * AtlasSize + x].Live) live++;
+                if (live == 0 || instance.SurfaceArea <= 0.0f) continue;
+
+                float per = instance.SurfaceArea / live;
+                for (int y = instance.AtlasY; y < instance.AtlasY + instance.AtlasHeight && y < AtlasSize; y++)
+                    for (int x = instance.AtlasX; x < instance.AtlasX + instance.AtlasWidth && x < AtlasSize; x++)
+                        if (y >= 0 && x >= 0 && texels[y * AtlasSize + x].Live) area[y * AtlasSize + x] = per;
+            }
+
+            //The correction that uses this is meant to be redistributive rather than a global
+            //brightness knob, so it is measured against this slice's own typical texel rather than
+            //the nominal MetresSquaredPerTexel - an island denser than its neighbours loses light,
+            //and that difference is the part worth correcting.
+            var liveAreas = new List<float>();
+            for (int i = 0; i < AtlasTexels; i++) if (area[i] > 0.0f) liveAreas.Add(area[i]);
+            if (liveAreas.Count != 0)
+            {
+                liveAreas.Sort();
+                median = liveAreas[liveAreas.Count / 2];
+            }
+
+            return area;
+        }
+
         private static SliceBake BakeSlice(
             Level level,
             RadiosityGeometry geometry,
@@ -1080,7 +1146,8 @@ namespace CathodeLib.Radiosity
             }
 
             // ---- 6. Visibility solve: influences per surface probe ---------------------------
-            int influenceCount = SolveInfluences(geometry, texels, surfaceSlotForTexel, nearestProbeForTexel, slice, settings, out var transfers, out byte[] usedSlots, log);
+            float[] texelArea = MeasureTexelAreas(instances, texels, out float medianTexelArea);
+            int influenceCount = SolveInfluences(geometry, texels, surfaceSlotForTexel, nearestProbeForTexel, slice, settings, texelArea, medianTexelArea, out var transfers, out byte[] usedSlots, log);
             // Which instances came out of the solve with no lit texel at all? An instance whose
             // whole rect is unlinked renders solid black however healthy the rest of the slice is,
             // and that is the shape of the remaining "randomly dark model" reports - so name them
@@ -1918,25 +1985,62 @@ namespace CathodeLib.Radiosity
         private static void RasteriseByUv(RadiosityGeometry geometry, RadiosityGeometry.Instance instance, SurfaceTexel[] texels, RadiosityBakeSettings settings)
         {
             // All of a composite's movers share one atlas rect and each addresses it with its own
-            // 0..1 lightmap UVs, so their footprints overlap: on Solace, 61.6% of mover pairs in a
-            // composite overlap by more than half, and the top deciles overlap completely. Letting
-            // the first arrival keep every texel it touches therefore hands the whole rect to one
-            // mover and leaves the rest of the composite with no probes at all - which is why our
-            // coverage missed 38.7% of the cells retail fills while running up to 20x its density
-            // in others, and why a corridor's floor could vanish while its walls stayed dense.
+            // 0..1 lightmap UVs. Letting the first arrival keep every texel it touches hands the
+            // whole rect to one mover wherever those footprints DO overlap, and leaves the rest of
+            // the composite with no probes at all - which is why our coverage missed 38.7% of the
+            // cells retail fills while running up to 20x its density in others, and why a
+            // corridor's floor could vanish while its walls stayed dense. So each mover gets a
+            // quota, and triangles past it are dropped.
             //
-            // Instead each mover may claim only its area's share of the rect. Whatever is left
-            // over goes to FillUnclaimed, which already spreads by triangle area.
+            // The quota is the mover's own UV FOOTPRINT, not its share of the composite's world
+            // area. Area was the wrong currency: what a mover needs from the rect is however many
+            // texels its lightmap UVs actually land on, and the two are only loosely related - an
+            // authored lightmap set gives a big flat wall a small dense patch and a fiddly prop a
+            // sprawling one. Measured across ChallengeMap4's 1968 multi-mover islands, mover
+            // footprints overlap by a median of just 12.7%, so they are mostly disjoint and the
+            // rationing should not bind at all; under area shares it bound constantly and in both
+            // directions. On island 1549 (the executive lounge, cam7/cam9) mover 3166 drew 31.3%
+            // of the rect for a 19% footprint while mover 3156 was capped at 15.4% for a 22% one,
+            // so 3156 lost triangles, its texels stayed dead, and FillUnclaimed handed them to a
+            // neighbour - the room's average stayed about right while individual walls landed
+            // 31 luma under retail and others 38 over.
+            //
+            // With footprint quotas the disjoint majority is never rationed (the quotas simply sum
+            // to the footprint total), and only genuinely contended rects - repeated meshes sharing
+            // one UV layout, which do exist at 82-96% overlap - are shared out, proportionally.
             int rectTexels = Math.Max(1, instance.AtlasWidth * instance.AtlasHeight);
             var quota = new int[instance.Movers.Count];
             var claimed = new int[instance.Movers.Count];
-            float totalArea = Math.Max(1e-6f, instance.SurfaceArea);
-            for (int m = 0; m < quota.Length; m++)
+
+            if (!settings.FootprintRectQuota)
             {
-                float share = m < instance.MoverAreas.Count ? instance.MoverAreas[m] : 0.0f;
-                // At least one texel for any mover that has surface at all, so a small prop inside
-                // a large composite is represented rather than rounded away.
-                quota[m] = share <= 0.0f ? 0 : Math.Max(1, (int)Math.Round(rectTexels * share / totalArea));
+                float totalArea = Math.Max(1e-6f, instance.SurfaceArea);
+                for (int m = 0; m < quota.Length; m++)
+                {
+                    float share = m < instance.MoverAreas.Count ? instance.MoverAreas[m] : 0.0f;
+                    quota[m] = share <= 0.0f ? 0 : Math.Max(1, (int)Math.Round(rectTexels * share / totalArea));
+                }
+            }
+            else
+            {
+                int[] footprint = MeasureFootprints(geometry, instance, quota.Length);
+                long footprintTotal = 0;
+                for (int m = 0; m < footprint.Length; m++) footprintTotal += footprint[m];
+
+                for (int m = 0; m < quota.Length; m++)
+                {
+                    if (footprint[m] <= 0)
+                    {
+                        // No footprint measured but the mover does have surface: give it a texel
+                        // rather than round it away, which is what the area rule did for small props.
+                        float area = m < instance.MoverAreas.Count ? instance.MoverAreas[m] : 0.0f;
+                        quota[m] = area > 0.0f ? 1 : 0;
+                        continue;
+                    }
+                    quota[m] = footprintTotal <= rectTexels
+                        ? footprint[m]
+                        : Math.Max(1, (int)Math.Round((double)rectTexels * footprint[m] / footprintTotal));
+                }
             }
 
             foreach (int tri in instance.Triangles)
@@ -2070,6 +2174,92 @@ namespace CathodeLib.Radiosity
         }
 
         /// <summary>
+        /// How many of the instance's rect texels each mover's lightmap UVs actually reach.
+        /// </summary>
+        /// <remarks>
+        /// This is the currency <see cref="RasteriseByUv"/> rations the rect in. It measures demand
+        /// rather than contention: a texel counts for every mover whose triangles cover it, so the
+        /// totals exceed the rect exactly to the extent that the movers' UV footprints overlap, and
+        /// the rationing only binds when they genuinely do. The coverage rule is the rasteriser's
+        /// own - the texel centre with the same seam bias, or failing that any sub-tap - so a
+        /// mover's quota is counted the same way as its claims.
+        /// </remarks>
+        private static int[] MeasureFootprints(RadiosityGeometry geometry, RadiosityGeometry.Instance instance, int slots)
+        {
+            var counts = new int[Math.Max(1, slots)];
+            if (slots <= 0)
+                return counts;
+
+            int w = Math.Max(1, instance.AtlasWidth), h = Math.Max(1, instance.AtlasHeight);
+            var seen = new bool[slots * w * h];
+
+            foreach (int tri in instance.Triangles)
+            {
+                int slot = tri < geometry.TriangleMoverSlot.Length ? geometry.TriangleMoverSlot[tri] : 0;
+                if (slot < 0 || slot >= slots)
+                    slot = 0;
+
+                int i0 = geometry.Tris[tri * 3 + 0], i1 = geometry.Tris[tri * 3 + 1], i2 = geometry.Tris[tri * 3 + 2];
+                Vector2 uv0 = ToRect(geometry.LightmapUVs[i0], instance);
+                Vector2 uv1 = ToRect(geometry.LightmapUVs[i1], instance);
+                Vector2 uv2 = ToRect(geometry.LightmapUVs[i2], instance);
+
+                int minX = Math.Max(instance.AtlasX, (int)Math.Floor(Math.Min(uv0.X, Math.Min(uv1.X, uv2.X))));
+                int maxX = Math.Min(instance.AtlasX + w - 1, (int)Math.Ceiling(Math.Max(uv0.X, Math.Max(uv1.X, uv2.X))));
+                int minY = Math.Max(instance.AtlasY, (int)Math.Floor(Math.Min(uv0.Y, Math.Min(uv1.Y, uv2.Y))));
+                int maxY = Math.Min(instance.AtlasY + h - 1, (int)Math.Ceiling(Math.Max(uv0.Y, Math.Max(uv1.Y, uv2.Y))));
+
+                float denominator = (uv1.Y - uv2.Y) * (uv0.X - uv2.X) + (uv2.X - uv1.X) * (uv0.Y - uv2.Y);
+                if (Math.Abs(denominator) < 1e-9f)
+                    continue;
+                float invDenominator = 1.0f / denominator;
+                float a0 = (uv1.Y - uv2.Y) * invDenominator, b0 = (uv2.X - uv1.X) * invDenominator;
+                float a1 = (uv2.Y - uv0.Y) * invDenominator, b1 = (uv0.X - uv2.X) * invDenominator;
+
+                for (int y = minY; y <= maxY; y++)
+                {
+                    for (int x = minX; x <= maxX; x++)
+                    {
+                        int cell = slot * w * h + (y - instance.AtlasY) * w + (x - instance.AtlasX);
+                        if (cell < 0 || cell >= seen.Length || seen[cell])
+                            continue;
+
+                        float px = x + 0.5f, py = y + 0.5f;
+                        float l0 = a0 * (px - uv2.X) + b0 * (py - uv2.Y);
+                        float l1 = a1 * (px - uv2.X) + b1 * (py - uv2.Y);
+                        float l2 = 1.0f - l0 - l1;
+                        const float bias = -0.02f;
+                        bool covered = l0 >= bias && l1 >= bias && l2 >= bias;
+
+                        if (!covered)
+                        {
+                            for (int sy = 0; sy < AlbedoSubTaps && !covered; sy++)
+                            {
+                                float qy = y + (sy + 0.5f) / AlbedoSubTaps - uv2.Y;
+                                for (int sx = 0; sx < AlbedoSubTaps; sx++)
+                                {
+                                    float qx = x + (sx + 0.5f) / AlbedoSubTaps - uv2.X;
+                                    float s0 = a0 * qx + b0 * qy;
+                                    float s1 = a1 * qx + b1 * qy;
+                                    if (s0 < 0f || s1 < 0f || s0 + s1 > 1f)
+                                        continue;
+                                    covered = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!covered)
+                            continue;
+                        seen[cell] = true;
+                        counts[slot]++;
+                    }
+                }
+            }
+            return counts;
+        }
+
+        /// <summary>
         /// Scatter samples over any texels in the rect the UV pass did not reach, picking
         /// triangles in proportion to their area so large faces get more probes.
         /// </summary>
@@ -2194,7 +2384,7 @@ namespace CathodeLib.Radiosity
             RadiosityGeometry geometry, SurfaceTexel[] texels, int[] surfaceSlotForTexel,
             int[] inputProbeForTexel,
             RadiosityRuntime.RuntimeDataSlice slice,
-            RadiosityBakeSettings settings, out List<(int emitter, int receiver, float weight)> transfers,
+            RadiosityBakeSettings settings, float[] texelArea, float medianTexelArea, out List<(int emitter, int receiver, float weight)> transfers,
             out byte[] usedSlots, Action<string> log)
         {
             var collected = new System.Collections.Concurrent.ConcurrentBag<(int, int, float)>();
@@ -2327,11 +2517,39 @@ namespace CathodeLib.Radiosity
                 // the whole render by ~1.7x (mean rmse 30.8 -> 63.0). Retail's tight weight-sum
                 // band falls out of nearly every probe carrying ~32 links; parity comes from
                 // finding that many links, not from renormalising.
+
+                // Correct for how much world area this probe's chosen clusters actually stand for.
+                // The weight curve carries cos and distance but no patch area, so it assumes every
+                // cluster covers MetresSquaredPerTexel; where a rect is denser than that, the 32
+                // links it can hold span less surface and the probe is starved of light purely
+                // because of how its island was packed. See InfluenceClusterAreaNormalisation.
+                float areaGain = 1.0f;
+                if (settings.InfluenceClusterAreaNormalisation > 0.0f && texelArea != null)
+                {
+                    double sum = 0; int n = 0;
+                    for (int k = 0; k < keep; k++)
+                    {
+                        float a = texelArea[candidates[k].texel];
+                        if (a > 0.0f) { sum += a; n++; }
+                    }
+                    if (n > 0)
+                    {
+                        double mean = sum / n;
+                        double reference = settings.InfluenceClusterAreaReference > 0.0f
+                            ? settings.InfluenceClusterAreaReference
+                            : (medianTexelArea > 0.0f ? medianTexelArea : settings.MetresSquaredPerTexel);
+                        double raw = reference / Math.Max(1e-4, mean);
+                        areaGain = (float)Math.Pow(raw, settings.InfluenceClusterAreaNormalisation);
+                        float hi = Math.Max(1.0f, settings.InfluenceClusterAreaClamp);
+                        areaGain = Math.Max(1.0f / hi, Math.Min(hi, areaGain));
+                    }
+                }
+
                 for (int k = 0; k < keep; k++)
                 {
                     int otherTexel = candidates[k].texel;
                     ClusterRef(otherTexel, out byte cx, out byte cy);
-                    byte weight = InfluenceWeight(candidates[k].distance, candidates[k].cosProduct, settings);
+                    byte weight = InfluenceWeight(candidates[k].distance, candidates[k].cosProduct, settings, areaGain);
 
                     int influenceSlot = surfaceSlotForTexel[probeTexel] * InfluencesPerProbe + k;
                     WriteInfluence(slice, influenceSlot, cx, cy, weight);

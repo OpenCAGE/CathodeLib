@@ -43,6 +43,22 @@ namespace CathodeLib.Radiosity
         public float LargeInstanceTexelBoost = 0.0f;
 
         /// <summary>
+        /// Take an atlas rect's aspect ratio from the instance's UV occupancy rather than from its
+        /// world bounding box.
+        /// </summary>
+        /// <remarks>
+        /// On. A rect maps the unit lightmap UV square, so its shape is a property of how the UVs
+        /// are laid out, not of the object's shape in the world. Scored against retail's own rects
+        /// on ChallengeMap4 (1066 islands), the world box misses by |log(pred/retail)| 0.77 on
+        /// average where UV occupancy misses by 0.51, and the gap is widest on the islands that
+        /// carry a room: retail gives the executive lounge 41x42, near square, while the world box
+        /// asks for 1.95:1 and produced a 40x27 that halved V resolution again. Squashing one axis
+        /// crowds thirteen movers' UV islands together in a rect they already share, and a mover
+        /// whose texels are lost reads its atlas neighbour's lighting - a different wall.
+        /// </remarks>
+        public bool UvShapedRects = true;
+
+        /// <summary>
         /// Smallest rect an instance can be given, in texels. Retail never goes below 2 - a
         /// 1-texel rect would collapse the shader's half-texel inset to zero width.
         /// </summary>
@@ -69,6 +85,75 @@ namespace CathodeLib.Radiosity
         /// surface its probes.</para>
         /// </remarks>
         public float UvCoverageCompensation = 1.0f;
+
+        /// <summary>
+        /// Measure an instance's UV occupancy by actual triangle coverage rather than by each
+        /// triangle's UV bounding box.
+        /// </summary>
+        /// <remarks>
+        /// <para>The bounding box measure is simply wrong - a triangle laid diagonally marks up to
+        /// twice the cells it covers, and an instance with thousands of them saturates the 16x16
+        /// grid. ChallengeMap4's island 602 (238 m2, 14228 triangles) measures coverage ~1.0 that
+        /// way, so <see cref="UvCoverageCompensation"/> does nothing and the rect is sized on world
+        /// area alone: 14x14 = 196 texels, of which its UVs reach only 80. Retail gives that island
+        /// 1024. Measured properly its coverage is ~0.41 and it gets the rect it needs.</para>
+        /// <para>OFF BY DEFAULT, and the reason is worth reading before flipping it. On
+        /// ChallengeMap4 it is the first change ever measured that moves the two error families
+        /// SEPARATELY. The chronically over-bright rooms - cam21 1.366 -> 1.088, cam22 1.185 ->
+        /// 1.023, cam23 1.227 -> 0.986 - land at parity, having resisted every previous lever. But
+        /// cam16 goes 0.736 -> 0.396 and cam13 1.113 -> 1.176, and mean rmse is a wash: 12.48
+        /// against 12.90. Light counts and unlit islands are identical across both bakes, so this
+        /// is not lost lights.</para>
+        /// <para>The mechanism is that it raises surface probes 27845 -> 30649 (+10%) and OUR
+        /// TRANSPORT GAIN DEPENDS ON PROBE DENSITY - more probes means each gathers less and the
+        /// level dims roughly in proportion. That is itself a bug: subdividing a surface should not
+        /// change how much light it receives per unit area. Fixing the normalisation is what would
+        /// let this ship, and would probably unblock the dim rooms at the same time.</para>
+        /// <para><see cref="UvCoverageCompensation"/> trades the two families directly against each
+        /// other on top of this: with precise coverage, exponent 0.5 puts cam13 at 1.033 and cam16
+        /// at 0.737 but sends cam21 back to 1.610 (mean 14.69).</para>
+        /// </remarks>
+        public bool PreciseUvCoverage = false;
+
+        /// <summary>
+        /// How strongly to correct a surface probe's influence weights for the world area its
+        /// chosen clusters actually represent. 0 disables it; 1 fully normalises.
+        /// </summary>
+        /// <remarks>
+        /// <para>A receiver gathers from at most 32 clusters, and a cluster is one live atlas
+        /// texel. Where texels are dense those 32 span a small patch of the world, where they are
+        /// sparse they span a large one - so the same room, subdivided more finely, delivers less
+        /// light. That is measurable: raising ChallengeMap4's surface probes by 10% dims the level
+        /// roughly in proportion, which is why <see cref="PreciseUvCoverage"/> fixes the
+        /// over-bright rooms and breaks the dim one at the same time.</para>
+        /// <para>Physically the missing term is the patch area in the form factor
+        /// (cos.cos.A / pi.d^2); our weight curve has cos and d but no A, so it silently assumes
+        /// every cluster covers <see cref="MetresSquaredPerTexel"/>. This scales each probe's
+        /// weights by <c>(MetresSquaredPerTexel / mean chosen cluster area)^this</c>, clamped, so
+        /// an island's brightness stops depending on how many texels its rect happened to get.</para>
+        /// <para>The MEAN cluster area is used rather than the sum on purpose: normalising by the
+        /// sum would also boost probes that legitimately found fewer than 32 links, washing out
+        /// enclosed corners that are correctly dark. This isolates density from link count.</para>
+        /// <para>MEASURED AND REJECTED at exponent 1 on ChallengeMap4: mean rmse 12.92 -> 40.02.
+        /// The direction of the failure is informative - it brightened EVERY brightness band
+        /// (dim 1.28 -> 1.56, mid 1.00 -> 1.36, bright 0.96 -> 1.35), so it is not redistributing
+        /// as intended. Taking the slice MEDIAN as the reference is the flaw: cluster areas are
+        /// heavily right-skewed, so most probes sit below the median and are scaled UP. A gain
+        /// normalised over the actual probe population, not the median texel, would be needed
+        /// before this is worth retrying.</para>
+        /// </remarks>
+        public float InfluenceClusterAreaNormalisation = 0.0f;
+
+        /// <summary>Bounds on the correction above, so one pathological rect cannot dominate.</summary>
+        public float InfluenceClusterAreaClamp = 2.5f;
+
+        /// <summary>
+        /// Texel area (m2) treated as the norm by the correction above. Zero uses the slice's own
+        /// median, which makes the correction purely redistributive - it moves light between
+        /// islands of different density without changing the level's overall brightness. Setting a
+        /// value turns it into a global gain as well, which is rarely what you want.
+        /// </summary>
+        public float InfluenceClusterAreaReference = 0.0f;
 
         // ---- Slicing -----------------------------------------------------------------------
 
@@ -393,6 +478,24 @@ namespace CathodeLib.Radiosity
         /// </remarks>
         public bool ExemptEmissiveFromRectQuota = false;
 
+        /// <summary>
+        /// Ration a shared atlas rect between an island's movers by each mover's UV FOOTPRINT
+        /// rather than by its share of the island's world area.
+        /// </summary>
+        /// <remarks>
+        /// On. What a mover needs from the rect is however many texels its lightmap UVs land on,
+        /// and that is only loosely related to how much world surface it has. Across
+        /// ChallengeMap4's 1968 multi-mover islands the movers' footprints overlap by a median of
+        /// 12.7%, so they are mostly disjoint and no rationing should be needed at all - but under
+        /// area shares the quota bound constantly and in both directions, starving movers with a
+        /// big footprint and a small area while reserving unusable texels for the reverse. The
+        /// starved movers' texels stayed dead and FillUnclaimed handed them to a neighbour, so
+        /// individual walls of one room read another wall's brightness: on ChallengeMap4's cam7
+        /// two walls of the same island landed 31 luma under retail and 38 over.
+        /// Set false to go back to area shares.
+        /// </remarks>
+        public bool FootprintRectQuota = true;
+
         /// <summary>Emit door transfer sets.</summary>
         public bool EmitDoors = true;
 
@@ -427,6 +530,34 @@ namespace CathodeLib.Radiosity
         /// into the probe set.
         /// </summary>
         public float EmissiveScale = 1.0f;
+
+        /// <summary>
+        /// Multiplies every surface light's Weight - the energy injected into the probe set -
+        /// after retail's priors have been applied.
+        /// </summary>
+        /// <remarks>
+        /// <para>Fitting our rendered luma against retail's per mover gives a straight line with
+        /// two independent errors, <c>ours = slope * retail + intercept</c>. The intercept is a bed
+        /// of light our transport adds where retail has none; the slope is how much light reaches
+        /// a surface once that bed is removed. <see cref="InfluenceCurveW0"/> moves BOTH, and
+        /// steeply - it is a loop gain, not a one-shot one, and the transport sits near the knee:
+        /// on ChallengeMap4, W0 188/200/212/240/262 gives intercept -10.2/-4.1/+5.0/+39.3/+221.3.
+        /// So the influence curve cannot fix both, and this is the second knob.</para>
+        /// <para>Use W0 to put the intercept at zero, then this to put the slope at one. Swept on
+        /// ChallengeMap4 at W0 200 with soft visibility:</para>
+        /// <code>
+        ///   scale   slope   intercept   rmse    nrmse
+        ///   1.00    0.966     -4.14     12.66   12.76
+        ///   1.10    0.950     -0.79     12.33   12.23
+        ///   1.20    0.916     +1.54     12.00   11.72   (default)
+        ///   1.35    0.917     +3.18     12.51   12.08
+        /// </code>
+        /// <para>Note it raises the intercept more than the slope - injected energy feeds the same
+        /// loop - so it cannot recover the slope on its own. At the (200, 1.20) optimum the fit is
+        /// 0.916 x retail + 1.54 against the old default's 0.872 x retail + 7.27, and the residual
+        /// 8% slope deficit is a separate defect still open.</para>
+        /// </remarks>
+        public float SurfaceLightWeightScale = 1.20f;
 
         /// <summary>
         /// Bounds applied to a mover's <c>EmissiveRadiosityMultiplier</c> before it reaches a
@@ -625,12 +756,36 @@ namespace CathodeLib.Radiosity
         public float LocalScatterReachRadius = 3.0f;
 
         /// <summary>
-        /// Influence falloff curve: weight at zero distance before facing modulation. The default
-        /// trio (212, 2.0, 0.32) is deliberately flatter than retail's measured byte-vs-distance
-        /// bands; the retail-calibrated trio is (227, 2.43, 0.46) - see InfluenceWeight for why it
-        /// is not the default.
+        /// Influence falloff curve: weight at zero distance before facing modulation.
         /// </summary>
-        public float InfluenceCurveW0 = 212.0f;
+        /// <remarks>
+        /// <para>This is a LOOP gain, not a one-shot one, and the transport sits close to its
+        /// knee - so it moves the result far more than its size suggests. Swept on ChallengeMap4
+        /// (strict visibility, no light scaling, everything else default), fitting our rendered
+        /// luma against retail's over 1094 mover sightings as
+        /// <c>ours = slope * retail + intercept</c>:</para>
+        /// <code>
+        ///   W0    slope   intercept   mean rmse
+        ///   188   1.014     -10.17      14.95
+        ///   200   0.966      -4.14      12.66
+        ///   240   0.586     +39.28      30.10
+        ///   262  -0.010    +221.34     182.49   (saturated - the level is white)
+        /// </code>
+        /// <para>A 13% increase multiplies the delivered light several times over, so this is not
+        /// a brightness slider. The old default of 212 with soft visibility fitted
+        /// <c>0.872 x retail + 7.27</c> at rmse 12.92.</para>
+        /// <para>That intercept is a bed of light our transport lays down where retail has none,
+        /// and it is what made dim surfaces read 28% too bright while mid and bright ones looked
+        /// like parity - the two "error families" chased for weeks are ONE line with a slope and
+        /// an intercept, and they cancel at retail luma ~57. Dropping W0 to 200 removes nearly all
+        /// of it; the level is then too dark overall, which
+        /// <see cref="SurfaceLightWeightScale"/> puts back. Use W0 to set the intercept to zero,
+        /// then that to set the slope. Together (200, 1.20) they measure
+        /// <c>0.916 x retail + 1.54</c> at rmse 12.00 / nrmse 11.72.</para>
+        /// <para>The retail-calibrated trio (227, 2.43, 0.46) measures WORSE here (14.83, and dim
+        /// surfaces go to 1.32) - see InfluenceWeight for the history.</para>
+        /// </remarks>
+        public float InfluenceCurveW0 = 200.0f;
 
         /// <summary>Influence falloff curve: distance at which falloff reaches (1/2)^k.</summary>
         public float InfluenceCurveD0 = 2.0f;

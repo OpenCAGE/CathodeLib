@@ -35,6 +35,9 @@ namespace CathodeLib
             //Any links to other entities that set parameter values
             public Dictionary<ShortGuid, List<Tuple<ShortGuid, InstancedEntity>>> Links;
 
+            //The entity these belong to, so a resolution can be seeded on whoever asked for it.
+            public InstancedEntity Owner;
+
             public Parameters(int capacity = 0)
             {
                 Values = new Dictionary<ShortGuid, T>(capacity);
@@ -60,7 +63,14 @@ namespace CathodeLib
                 //and it is always the constant - the later connection - retail agrees with.
                 if (Links.TryGetValue(guid, out List<Tuple<ShortGuid, InstancedEntity>> links))
                     if (links.Count != 0)
-                        return links[links.Count - 1].Item2.GetAs<T>(links[links.Count - 1].Item1);
+                    {
+                        //Note who asked, so a randomiser several entities down the chain can be
+                        //seeded on them - see _resolutionRoot.
+                        bool outermost = _resolutionRoot == null;
+                        if (outermost) _resolutionRoot = Owner;
+                        try { return links[links.Count - 1].Item2.GetAs<T>(links[links.Count - 1].Item1); }
+                        finally { if (outermost) _resolutionRoot = null; }
+                    }
 
                 //Fall back to our own value
                 if (Values.TryGetValue(guid, out T val))
@@ -445,6 +455,8 @@ namespace CathodeLib
             Entity = entity;
             Path = path;
             Composite = composite;
+            Bools.Owner = this; Integers.Owner = this; Floats.Owner = this; EnumIndexes.Owner = this;
+            Vectors.Owner = this; Transforms.Owner = this; Resources.Owner = this; Strings.Owner = this;
 
             //Get all parameters that supply values - use cache if available
             List<(ShortGuid, ParameterVariant, DataType)> parameters;
@@ -2079,15 +2091,52 @@ namespace CathodeLib
             return true;
         }
 
+        // The entity whose parameter is being resolved right now, for the length of that resolution.
+        // A composite marked is_shared is instanced ONCE and every user links to that one instance,
+        // so a randomiser inside it would hand all of them the same roll - every VDU in
+        // ChallengeMap4 ends up showing the same screen where retail's show a spread of fifteen.
+        // Seeding on the entity that ASKED restores the variety. It has to be tracked rather than
+        // passed down because the chain from a parameter to the randomiser runs through several
+        // entities (SCREEN.material -> Material -> MaterialStringSelect -> MaterialString ->
+        // RandomStaticVDUscreen.RandomVDUString -> RandomSelect_1), and only the outermost caller
+        // is the one to seed on. Thread-static because the instancing pass resolves in parallel.
+        [ThreadStatic] private static InstancedEntity _resolutionRoot;
+
+        //The murmur3 32-bit finaliser: spreads a clustered input across the whole range.
+        private static int Avalanche(int value)
+        {
+            unchecked
+            {
+                uint h = (uint)value;
+                h ^= h >> 16;
+                h *= 0x85ebca6b;
+                h ^= h >> 13;
+                h *= 0xc2b2ae35;
+                h ^= h >> 16;
+                return (int)h;
+            }
+        }
+
         private int GetDeterministicSeed()
         {
             unchecked
             {
-                int seed = Entity != null ? (int)Entity.shortGUID.AsUInt32 : 0;
-                if (ParentCompositeInstanceEntity?.ThisCompositeInstance != null)
-                    seed = (seed * 397) ^ (int)ParentCompositeInstanceEntity.ThisCompositeInstance.InstanceID.AsUInt32;
-                else if (ThisCompositeInstance != null)
-                    seed = (seed * 397) ^ (int)ThisCompositeInstance.InstanceID.AsUInt32;
+                //Whoever asked, if anyone did; otherwise this entity, which is the same thing when
+                //nothing is being resolved through a link.
+                InstancedEntity subject = _resolutionRoot ?? this;
+                int seed = subject.Entity != null ? (int)subject.Entity.shortGUID.AsUInt32 : 0;
+                if (subject.ParentCompositeInstanceEntity?.ThisCompositeInstance != null)
+                    seed = (seed * 397) ^ (int)subject.ParentCompositeInstanceEntity.ThisCompositeInstance.InstanceID.AsUInt32;
+                else if (subject.ThisCompositeInstance != null)
+                    seed = (seed * 397) ^ (int)subject.ThisCompositeInstance.InstanceID.AsUInt32;
+                //Mix the randomiser's own identity back in so two different randomisers reached by
+                //the same caller do not roll in lockstep.
+                if (!ReferenceEquals(subject, this) && Entity != null)
+                    seed = (seed * 397) ^ (int)Entity.shortGUID.AsUInt32;
+                //Avalanche it. Composite instance ids come out in clusters, and Random(seed).Next(n)
+                //returns the same value for a whole run of nearby seeds - ChallengeMap4's 318 VDUs
+                //landed on six of their randomiser's twenty-five screens until this was added.
+                seed = Avalanche(seed);
                 return seed == 0 ? 1 : seed;
             }
         }
@@ -2441,6 +2490,34 @@ namespace CathodeLib
         /// </summary>
         public readonly HashSet<(uint, uint)> RadiosityAuthoredOff = new HashSet<(uint, uint)>();
 
+        /// <summary>
+        /// Skip the navmesh / cover / job position / sound network bakes even though their
+        /// settings are supplied. For fast lighting-only iteration from test harnesses; the
+        /// previously saved data for those systems is left as-is on disk.
+        /// </summary>
+        public static bool SkipAgentBakes = false;
+
+        /// <summary>
+        /// Skip the alphalight bake, leaving the loaded data to round-trip. For isolating the
+        /// radiosity bake's effect in A/B tests.
+        /// </summary>
+        public static bool SkipAlphalightBake = false;
+ 
+        /// <summary>
+        /// Obsolete. Template FX emitters are never given movers now - retail's own MVR shows
+        /// isTemplate is the discriminator, so there is no longer a per-level choice to make.
+        /// Retained only so existing callers still compile; it has no effect.
+        /// </summary>
+        [Obsolete("Template FX emitters are never emitted; this flag no longer has any effect.")]
+        public static bool EmitFxTemplates = true;
+
+        /// <summary>
+        /// Emit movers for particle emitters inside REQUIRED_ASSETS composites (weapons, gadgets -
+        /// content that spawns as temporary entities at runtime). The ribbon case has always
+        /// skipped these; the particle case did not, and a pre-instanced mover for an emitter the
+        /// engine expects to instantiate fresh at spawn is the current suspect for Solace's
+        /// weapon-spawn fault in PARTICLE_EMITTER_REFERENCE::update_parameters.
+        /// </summary>
         public static bool EmitRequiredAssetParticles = true;
 
         public Instancing(Level level, NavMeshBakeSettings navMeshSettings = null, CoverBakeSettings coverSettings = null, RadiosityBakeSettings radiositySettings = null, JobPositionBakeSettings jobPositionSettings = null, AlphalightBakeSettings alphalightSettings = null)
@@ -2451,12 +2528,16 @@ namespace CathodeLib
             ProcessInstances();
             BuildStateProperties();
 
-            RunOptionalBake("navmesh", () => NavMeshBaker.BakeLevel(level, this, navMeshSettings));
-            RunOptionalBake("cover", () => CoverBaker.BakeLevel(level, this, coverSettings));
-            RunOptionalBake("job positions", () => JobPositionBaker.BakeLevel(level, jobPositionSettings, Console.WriteLine));
-            RunOptionalBake("sound networks", () => SoundNodeNetworkGenerator.Generate(level, AllEntities, Console.WriteLine));
+            if (!SkipAgentBakes)
+            {
+                RunOptionalBake("navmesh", () => NavMeshBaker.BakeLevel(level, this, navMeshSettings));
+                RunOptionalBake("cover", () => CoverBaker.BakeLevel(level, this, coverSettings));
+                RunOptionalBake("job positions", () => JobPositionBaker.BakeLevel(level, jobPositionSettings, Console.WriteLine));
+                RunOptionalBake("sound networks", () => SoundNodeNetworkGenerator.Generate(level, AllEntities, Console.WriteLine));
+            }
 
-            RunOptionalBake("alphalight", () => AlphalightBaker.BakeLevel(level, alphalightSettings, Console.WriteLine));
+            if (!SkipAlphalightBake)
+                RunOptionalBake("alphalight", () => AlphalightBaker.BakeLevel(level, alphalightSettings, Console.WriteLine));
 
             if (radiositySettings != null)
             {
@@ -2465,11 +2546,58 @@ namespace CathodeLib
                 if (_level.Patched)
                     ClearRadiosityPatch();
             }
-            else
+            else if (!SkipRadiosityClear)
             {
                 ClearRadiosity();
             }
         }
+
+        /// <summary>
+        /// Do not blank the level's radiosity files when instancing without radiosity settings.
+        /// Constructing an Instancing WRITES TO DISK - it empties RADIOSITY_RUNTIME.BIN and deletes
+        /// RADIOSITY_INSTANCE_MAP.TXT in the level's own folder - even though nothing asked it to
+        /// save. Anything that instances a level only to read the result (a diagnostic, a
+        /// comparison against retail) must set this first, or it destroys the copy it is measuring.
+        /// </summary>
+        public static bool SkipRadiosityClear = false;
+
+        /// <summary>
+        /// Swap every mover's primary and secondary zone when it has two.
+        /// </summary>
+        /// <remarks>
+        /// A FLICKER EXPERIMENT, not a fix - leave it false unless you are testing.
+        ///
+        /// Measured on ChallengeMap4: 95.8% of movers carry both zones exactly as retail does, and
+        /// of the 529 that do not, 468 (88.5%) are our pair the RIGHT way up but the WRONG way
+        /// round. Zones drive culling and streaming, and the level carries 3584 deliberately
+        /// coincident movers (door, VDU and light state variants sharing a transform), so a mover
+        /// whose zones are backwards is a candidate for models popping in and out.
+        ///
+        /// What to look for: if the flickering changes character at all - different models, or it
+        /// stops - zones are implicated. Turning this on trades errors rather than removing them
+        /// (the 468 become right and roughly 277 currently-correct ones become wrong), so a level
+        /// that looks BETTER with it on is still evidence even though this is not the real rule.
+        /// The real rule is not spatial: containment picks retail's primary only 64.6% of the time
+        /// and nearest-centroid 45.9%, worse than chance.
+        /// </remarks>
+        public static bool SwapTwoZoneMoverOrder = false;
+
+        /// <summary>
+        /// The value written to every mover's <c>Flags.RequiresScript</c>.
+        /// </summary>
+        /// <remarks>
+        /// ANOTHER FLICKER EXPERIMENT. We hardcode true and retail disagrees on 4049 of
+        /// ChallengeMap4's 12672 movers - retail says false for 2172 ENVIRONMENT, 1438
+        /// ENVIRONMENT_EXTRA, 203 LIGHT and 174 DYNAMICFX movers. "Always true" agrees with retail
+        /// 68.5% of the time and no predicate tried beats it, so the rule is undecoded.
+        ///
+        /// If the engine expects a script to drive a mover marked this way and nothing does, that
+        /// is a plausible source of a model appearing and disappearing. Setting this false makes us
+        /// agree with retail on the 4049 and disagree on the 8623 that should be true, so neither
+        /// setting is correct - but if the flickering moves to a DIFFERENT set of models when it is
+        /// flipped, this flag is the cause and the rule is worth decoding properly.
+        /// </remarks>
+        public static bool MoverRequiresScript = true;
 
         private void ClearRadiosity()
         {
@@ -3497,6 +3625,12 @@ namespace CathodeLib
             ShortGuid secondary = entity.SecondaryZone;
             if (primary == ShortGuid.Invalid)
                 primary = GlobalZoneId;
+            if (SwapTwoZoneMoverOrder && primary != ShortGuid.Invalid && secondary != ShortGuid.Invalid)
+            {
+                ShortGuid swap = primary;
+                primary = secondary;
+                secondary = swap;
+            }
             mvr.PrimaryZoneID = primary;
             mvr.SecondaryZoneID = secondary;
         }
@@ -3532,8 +3666,9 @@ namespace CathodeLib
                 visible = false;
             mvr.Flags.Visible = visible;
 
-            //Defaulting to true - TODO figure this out for real (is it even important?)
-            mvr.Flags.RequiresScript = true;
+            //Defaulting to true - the real rule is undecoded, and retail disagrees on a third of
+            //ChallengeMap4's movers. Instancing.MoverRequiresScript flips it for testing.
+            mvr.Flags.RequiresScript = MoverRequiresScript;
         }
 
         private static bool IsHiddenByAncestorTemplate(InstancedEntity entity)
@@ -3599,6 +3734,106 @@ namespace CathodeLib
                 return false;
 
             return true;
+        }
+
+        // Reads an ubershader's named PARAMETER off the entity, in the shape the material's constant
+        // slots want it. A parameter the entity does not itself supply returns null so the material
+        // being replaced keeps its own value - a fog box declares the DEPTH_INTERSECT colours but
+        // only authors them when that feature is on, and retail leaves the material's alone.
+        private static MaterialFactory.ParameterLookup EntityShaderParameters(InstancedEntity entity, SHADER_LIST ubershader)
+        {
+            return (name, width) =>
+            {
+                if (MaterialFactory.NotBakedIntoMaterial(ubershader, name))
+                    return null;
+                ShortGuid guid = ShortGuidUtils.Generate(name);
+                bool authored = entity.Entity?.GetParameter(guid) != null ||
+                                (entity.Floats.Links?.ContainsKey(guid) ?? false) ||
+                                (entity.Integers.Links?.ContainsKey(guid) ?? false) ||
+                                (entity.Vectors.Links?.ContainsKey(guid) ?? false);
+                if (!authored)
+                    return null;
+
+                if (width == 1)
+                {
+                    //An integer parameter (DRAW_PASS, PARTICLE_COUNT) lives in its own table.
+                    float scalar = entity.Floats.Values.ContainsKey(guid) || (entity.Floats.Links?.ContainsKey(guid) ?? false)
+                        ? entity.Floats.Get(guid) : entity.Integers.Get(guid);
+                    return new[] { MaterialFactory.ConvertParameter(ubershader, name, scalar) };
+                }
+
+                Vector3 raw = entity.Vectors.Get(guid);
+                if (MaterialFactory.TreatAsUnauthored(ubershader, name, new[] { raw.X, raw.Y, raw.Z }))
+                    return null;
+                Vector3 vector = raw * MaterialFactory.VectorScale(ubershader, name);
+                float[] result = new float[width];
+                if (width > 0) result[0] = vector.X;
+                if (width > 1) result[1] = vector.Y;
+                if (width > 2) result[2] = vector.Z;
+                if (width > 3) result[3] = 1.0f;
+                return result;
+            };
+        }
+
+        // Give a volume the material its own parameters call for. Its shader's feature mask IS those
+        // parameters, and its constants are the ubershader's named parameters - regenerating every
+        // ChallengeMap4 volume from its entity reproduces retail's material exactly: 662 of 662 fog
+        // spheres, 24 of 24 fog boxes, 2 of 2 surface effect boxes. Returns the run unchanged when
+        // nothing needs to change or when the level has no shader for the combination asked for.
+        private List<RenderableElements.Element> ApplyShaderFeatureMaterial(List<RenderableElements.Element> reds, InstancedEntity entity, long features)
+        {
+            if (_materialFactory == null || reds == null || reds.Count != 1 || reds[0]?.Material?.Shader == null)
+                return reds;
+
+            SHADER_LIST ubershader = reds[0].Material.Shader.Ubershader;
+            string prefix = ubershader == SHADER_LIST.CA_FOGSPHERE ? "FOGSPHERE_"
+                          : ubershader == SHADER_LIST.CA_FOGPLANE ? "FOGBOX_"
+                          : ubershader == SHADER_LIST.CA_EFFECT_OVERLAY ? "SURFACE_EFFECT_" : null;
+            Materials.Material material = _materialFactory.GetShaderFeatureMaterial(
+                reds[0].Material, features, prefix, EntityShaderParameters(entity, ubershader), DescribeForLog(entity));
+            return material == null ? reds : _materialFactory.ApplyMaterial(reds, material);
+        }
+
+        // Give an FX emitter the material its own parameters call for. The shader stays the one the
+        // composite authored - nothing here computes CA_PARTICLE features - but the constants are
+        // rebuilt, because they ARE the emitter's parameters and retail bakes each instance's own
+        // values into a material of its own. Regenerating every ChallengeMap4 emitter this way
+        // reproduces retail's material exactly on 585 of 588 particle movers and 59 of 59 ribbons;
+        // the three that differ have a PARTICLE_COUNT retail lowered (60 -> 8, 20 -> 7, 34 -> 1).
+        //
+        // An emitter with unique_material set gets a material nobody else shares, which is what the
+        // offline flags value of 1 marks (Utilities.CalculateRenderableType reads it as
+        // DYNAMICFX_UNIQUE_MAT) - so those are never deduplicated against an existing entry.
+        private List<RenderableElements.Element> ApplyFxMaterial(List<RenderableElements.Element> reds, InstancedEntity entity)
+        {
+            if (_materialFactory == null || reds == null || reds.Count != 1 || reds[0]?.Material?.Shader == null)
+                return reds;
+
+            Materials.Material template = reds[0].Material;
+            bool unique = entity.Bools.Get(ShortGuids.unique_material);
+            string name = null;
+            if (unique)
+            {
+                //Retail's shape is {material guid}_{per emitter}_{per instance}; keep everything up
+                //to the last group and put this instance's id in its place.
+                string stem = template.Name ?? "FX";
+                int lastUnderscore = stem.LastIndexOf('_');
+                if (lastUnderscore > 32) stem = stem.Substring(0, lastUnderscore);
+                name = stem + "_" + (entity.ThisCompositeInstance?.InstanceID.AsUInt32 ?? 0).ToString("X8");
+            }
+
+            //The offline dword is cleared, never set. Retail ships 0 on EVERY emitter mover of
+            //ChallengeMap4, BSP_Torrens, Sci_Hub and Tech_RnD_HzdLab - 56 distinct
+            //(retail, authored, unique_material, sharing, CPU) groups and not one with a 1 - while
+            //six ChallengeMap4 ribbons have a composite material that carries 1 and a shipped one
+            //that does not. So the 1 lives only on an authored material and means "this needs its
+            //own copy": it is an instruction to the build, spent once the copy exists, not a
+            //property of the copy. Writing it onto the instance instead was tried and is wrong.
+            Materials.Material material = _materialFactory.GetShaderFeatureMaterial(
+                template, template.Shader.UbershaderFeatureFlags, null,
+                EntityShaderParameters(entity, template.Shader.Ubershader), DescribeForLog(entity), !unique, name,
+                clearOfflineFlags: true);
+            return material == null ? reds : _materialFactory.ApplyMaterial(reds, material);
         }
 
         //"composite / entity name" for a warning line, best-effort - never worth throwing over.
@@ -4066,13 +4301,12 @@ namespace CathodeLib
                         if (entity.Bools.Get(ShortGuids.DEPTH_INTERSECT_COLOUR))
                             features |= CA_FOGPLANE.FEATURES.DEPTH_INTERSECT_COLOUR;
 
-                        //materials
-
                         Resources.Resource resource = AddResourceEntry(entity);
 
                         Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
                         List<RenderableElements.Element> reds = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                        reds = ApplyShaderFeatureMaterial(reds, entity, (long)features);
                         if (reds != null && reds.Count > 0 && reds[0].Material != null && reds[0].Material.Shader != null)
                         {
                             switch (reds[0].Material.Shader.Ubershader)
@@ -4170,8 +4404,6 @@ namespace CathodeLib
                         if (entity.Bools.Get(ShortGuids.NO_CLIP))
                             features |= CA_FOGSPHERE.FEATURES.NO_CLIP;
 
-                        // generate mat
-
                         //exit if template init mode
 
                         Resources.Resource resource = AddResourceEntry(entity);
@@ -4179,6 +4411,7 @@ namespace CathodeLib
                         Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
                         List<RenderableElements.Element> reds = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                        reds = ApplyShaderFeatureMaterial(reds, entity, (long)features);
                         if (reds != null && reds.Count > 0 && reds[0].Material != null && reds[0].Material.Shader != null)
                         {
                             switch (reds[0].Material.Shader.Ubershader)
@@ -4354,7 +4587,7 @@ namespace CathodeLib
                         List<RenderableElements.Element> lightReds =
                             ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
                         mvr.RenderableElements = _materialFactory != null
-                            ? _materialFactory.ApplyLightMaterial(lightReds, lightMaterial)
+                            ? _materialFactory.ApplyMaterial(lightReds, lightMaterial)
                             : lightReds;
                         mvr.Resource = resource;
                         if (entity.Bools.Get(ShortGuids.include_in_planar_reflections))
@@ -4587,9 +4820,6 @@ namespace CathodeLib
                         if (isRequiredAssets && !EmitRequiredAssetParticles)
                             break;
 
-                        bool uniqueMaterial = entity.Bools.Get(ShortGuids.unique_material);
-                        //string material = entity.Strings.Get(ShortGuids.material);
-
                         Resources.Resource resource = AddResourceEntry(entity);
 
                         Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
@@ -4648,7 +4878,7 @@ namespace CathodeLib
                             cpuConstants.Entity = entity.Handle;
                             mvr.RenderConstants.SetAs<PARTICLE_PARAMS>(cpuConstants);
                         }
-                        mvr.RenderableElements = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                        mvr.RenderableElements = ApplyFxMaterial(((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance, entity);
                         mvr.Resource = resource;
                         if (mvr.RenderableElements != null && mvr.RenderableElements.Count > 0 && mvr.RenderableElements[0].Material != null && mvr.RenderableElements[0].Material.Shader != null)
                         {
@@ -4798,7 +5028,7 @@ namespace CathodeLib
                             DrawPass = entity.Integers.Get(ShortGuids.DRAW_PASS),
                             Entity = entity.Handle
                         });
-                        mvr.RenderableElements = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                        mvr.RenderableElements = ApplyFxMaterial(((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance, entity);
                         mvr.Resource = resource;
                         if (mvr.RenderableElements != null && mvr.RenderableElements.Count > 0 && mvr.RenderableElements[0].Material != null && mvr.RenderableElements[0].Material.Shader != null)
                         {
@@ -4819,6 +5049,10 @@ namespace CathodeLib
                         AddMover(entity, mvr, isTemplate);
                     }
                     break;
+                //SimpleWater and SimpleRefraction produce no mover - retail emits none for either, on
+                //any level (6 and 3 entities across the whole game) - so there is no renderable to
+                //hang a material on. The feature mask is still derived so that whoever gives these a
+                //renderable does not have to rediscover it.
                 case FunctionType.SimpleRefraction:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                     {
@@ -4836,8 +5070,8 @@ namespace CathodeLib
                     break;
                 case FunctionType.SimpleWater:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
-                        AddResourceEntry(entity);
                     {
+                        AddResourceEntry(entity);
                         CA_SIMPLEWATER.FEATURES features = 0;
                         if (entity.Bools.Get(ShortGuids.SECONDARY_NORMAL_MAPPING))
                             features |= CA_SIMPLEWATER.FEATURES.SECONDARY_NORMAL_MAPPING;
@@ -4918,12 +5152,12 @@ namespace CathodeLib
                             features |= CA_EFFECT_OVERLAY.FEATURES.WS_LOCKED;
                         if (entity.Bools.Get(ShortGuids.ENVMAP))
                             features |= CA_EFFECT_OVERLAY.FEATURES.ENVMAP;
-                        _ = features; //material feature bits not yet written back to REDS shader
-
                         Resources.Resource resource = AddResourceEntry(entity);
                         Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
-                        mvr.RenderableElements = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                        mvr.RenderableElements = ApplyShaderFeatureMaterial(
+                            ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance,
+                            entity, (long)features);
                         mvr.Resource = resource;
                         mvr.Entity = entity.Handle;
                         mvr.CullFlags |= Movers.CullFlag.NO_CAST_SHADOWS; // i think?
@@ -4942,12 +5176,12 @@ namespace CathodeLib
                             features |= CA_EFFECT_OVERLAY.FEATURES.WS_LOCKED;
                         if (entity.Bools.Get(ShortGuids.ENVMAP))
                             features |= CA_EFFECT_OVERLAY.FEATURES.ENVMAP;
-                        _ = features;
-
                         Resources.Resource resource = AddResourceEntry(entity);
                         Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
-                        mvr.RenderableElements = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                        mvr.RenderableElements = ApplyShaderFeatureMaterial(
+                            ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance,
+                            entity, (long)features);
                         mvr.Resource = resource;
                         mvr.Entity = entity.Handle;
                         mvr.CullFlags |= Movers.CullFlag.NO_CAST_SHADOWS;
