@@ -264,7 +264,7 @@ namespace CathodeLib
             return data;
         }
 
-        private static CustomTableFileType GetFileType(string filepath)
+        public static CustomTableFileType GetFileType(string filepath)
         {
             switch (Path.GetFileName(filepath).ToUpper())
             {
