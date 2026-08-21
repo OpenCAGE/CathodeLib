@@ -58,6 +58,9 @@ namespace CathodeLib
             /// <summary>How many parts the rig actually moves.</summary>
             public int Driven { get { return Parts.Count(x => x.Bone >= 0); } }
 
+            /// <summary>Whether any of its parts deform rather than being carried about rigidly.</summary>
+            public bool HasSkinning { get { return Parts.Any(x => x.Skinned); } }
+
             public override string ToString() { return Rig + " (" + Driven + " of " + Parts.Count + " parts)"; }
         }
 
@@ -72,6 +75,17 @@ namespace CathodeLib
 
             /// <summary>The bone that moves it, or -1 for a part that stays put.</summary>
             public int Bone = -1;
+
+            /// <summary>
+            /// Whether the mesh carries vertex weights, and so deforms instead of being carried
+            /// about in one piece.
+            ///
+            /// The level's record still names a bone for a part like this, but that bone is only
+            /// where the part hangs - the shape comes from the weights. An alien egg's shell is one
+            /// mesh spread over nine petal bones while the record pins the lot to a single bone, so
+            /// following the record alone leaves it sitting shut.
+            /// </summary>
+            public bool Skinned;
         }
 
         /// <summary>Every prop this level animates.</summary>
@@ -100,6 +114,18 @@ namespace CathodeLib
                 if (best == null || prop.Driven > best.Driven) best = prop;
             }
             return best;
+        }
+
+        /// <summary>
+        /// The prop a rig actually animates this mesh as, or null.
+        ///
+        /// The level declares character rigs alongside prop ones, and those resolve to a record that
+        /// drives no geometry - so finding a prop isn't on its own a reason to treat a mesh as one.
+        /// </summary>
+        public static Prop AnimatedPropFor(Level level, string rigName, Models.CS2 model = null)
+        {
+            Prop prop = PropFor(level, rigName, model);
+            return prop != null && (prop.Driven > 0 || prop.HasSkinning) ? prop : null;
         }
 
         /// <summary>
@@ -146,6 +172,43 @@ namespace CathodeLib
             for (int i = 0; i < pose.Length; i++)
                 pose[i] = i < animated.Count ? offset[i] * animated[i] : Matrix4x4.Identity;
             return pose;
+        }
+
+        /* Whether a mesh carries vertex weights, read off the vertex format rather than by decoding
+         * the geometry - this runs over every part of every prop in the level. */
+        private static bool IsSkinned(Models.CS2.Component.LOD.Submesh submesh)
+        {
+            if (ReferenceEquals(submesh, null) || ReferenceEquals(submesh.VertexFormatFull, null)) return false;
+            if (submesh.VertexFormatFull.Attributes == null) return false;
+
+            foreach (List<Models.VertexFormat.Attribute> set in submesh.VertexFormatFull.Attributes)
+            {
+                if (set == null) continue;
+                foreach (Models.VertexFormat.Attribute attribute in set)
+                    if (attribute.Usage == Models.VertexFormat.Usage.BlendWeight) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Skinning matrices for a prop whose parts deform, at one frame of a clip. Pass a null clip
+        /// for the rest pose. A weighted vertex run through its bones' matrices lands where the clip
+        /// puts it; <see cref="Pose"/> is the rigid equivalent for parts carried in one piece.
+        ///
+        /// The level's inverse bind poses are exactly what a skinned mesh wants in front of the
+        /// animated transform, so at rest every matrix here is the identity and the prop sits
+        /// untouched.
+        /// </summary>
+        public static Matrix4x4[] SkinningPose(Prop prop, Skeleton rig, Animation.ClipReference clip, int frame,
+                                               Animation.RootMotion root = Animation.RootMotion.Ignore)
+        {
+            Matrix4x4[] placed = Pose(prop, rig, clip, frame, root);
+            Matrix4x4[] skinning = new Matrix4x4[placed.Length];
+            for (int i = 0; i < placed.Length; i++)
+                skinning[i] = i < prop.Entry.InverseBindPoses.Count
+                    ? prop.Entry.InverseBindPoses[i] * placed[i]
+                    : Matrix4x4.Identity;
+            return skinning;
         }
 
         /// <summary>
@@ -311,7 +374,7 @@ namespace CathodeLib
 
                         foreach (Models.CS2.Component.LOD.Submesh submesh in renderable.Value.Submeshes)
                         {
-                            prop.Parts.Add(new Part { Submesh = submesh, Rest = rest, Bone = bone });
+                            prop.Parts.Add(new Part { Submesh = submesh, Rest = rest, Bone = bone, Skinned = IsSkinned(submesh) });
                             if (!owners.TryGetValue(submesh, out Models.CS2 model)) continue;
                             parts[model] = (parts.TryGetValue(model, out int count) ? count : 0) + 1;
                         }

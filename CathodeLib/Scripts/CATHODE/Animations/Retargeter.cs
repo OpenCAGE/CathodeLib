@@ -136,15 +136,87 @@ namespace CathodeLib
             /* No direct mapping. The rigs a character borrows from all reach its lo-res reference
              * skeleton, so go through that - it's the hub the whole scheme is built around. */
             string reference = animations.SkeletonDefs.TryGetValue(to, out Animation.SkeletonDef def) ? def.ReferenceSkeleton : null;
-            if (string.IsNullOrEmpty(reference) || string.Equals(reference, from, StringComparison.OrdinalIgnoreCase)) return null;
+            if (!string.IsNullOrEmpty(reference) && !string.Equals(reference, from, StringComparison.OrdinalIgnoreCase))
+            {
+                Skeleton middle = Rig(animations, reference);
+                if (middle != null)
+                {
+                    Retargeter second = Hop(animations, middle, target, null, new List<string> { reference, to });
+                    if (second != null)
+                    {
+                        Retargeter through = Hop(animations, source, middle, second, new List<string> { from, reference, to });
+                        if (through != null) return through;
+                    }
+                }
+            }
 
-            Skeleton middle = Rig(animations, reference);
-            if (middle == null) return null;
+            /* Still nothing. The mappings form a graph and a route can perfectly well exist that
+             * neither of those two shapes covers - through the SOURCE's reference skeleton, or
+             * through a shared rig like MALE. FEMALEFP -> CAT is one: no direct mapping and CAT's
+             * reference doesn't help, but FEMALEFP -> MALE -> CAT is right there. Following the
+             * graph properly picks up 18 more rig pairs, 97 clips. */
+            return Along(animations, ShortestRoute(animations, from, to));
+        }
 
-            Retargeter second = Hop(animations, middle, target, null, new List<string> { reference, to });
-            if (second == null) return null;
+        /* Chain one hop per step of the route, built from the far end back, so each retargeter hands
+         * its result to the next. Null if any step turns out not to be readable after all. */
+        private static Retargeter Along(Animation animations, List<string> route)
+        {
+            if (route == null || route.Count < 2) return null;
 
-            return Hop(animations, source, middle, second, new List<string> { from, reference, to });
+            Retargeter chain = null;
+            for (int i = route.Count - 2; i >= 0; i--)
+            {
+                Skeleton a = Rig(animations, route[i]), b = Rig(animations, route[i + 1]);
+                if (a == null || b == null) return null;
+
+                chain = Hop(animations, a, b, chain, route.GetRange(i, route.Count - i));
+                if (chain == null) return null;
+            }
+            return chain;
+        }
+
+        /* Fewest mappings that get from one rig to the other, ends included, or null. A mapping
+         * reads in either direction, so the graph is undirected. */
+        private static List<string> ShortestRoute(Animation animations, string from, string to)
+        {
+            Dictionary<string, List<string>> edges = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (Animation.MappingAsset mapping in animations.Mappings)
+            {
+                Link(edges, mapping.SkeletonA, mapping.SkeletonB);
+                Link(edges, mapping.SkeletonB, mapping.SkeletonA);
+            }
+            if (!edges.ContainsKey(from) || !edges.ContainsKey(to)) return null;
+
+            Dictionary<string, string> cameFrom = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { { from, null } };
+            Queue<string> queue = new Queue<string>();
+            queue.Enqueue(from);
+
+            while (queue.Count != 0)
+            {
+                string at = queue.Dequeue();
+                if (string.Equals(at, to, StringComparison.OrdinalIgnoreCase))
+                {
+                    List<string> route = new List<string>();
+                    for (string step = to; step != null; step = cameFrom[step]) route.Add(step);
+                    route.Reverse();
+                    return route;
+                }
+                foreach (string next in edges[at])
+                {
+                    if (cameFrom.ContainsKey(next)) continue;
+                    cameFrom[next] = at;
+                    queue.Enqueue(next);
+                }
+            }
+            return null;
+        }
+
+        private static void Link(Dictionary<string, List<string>> edges, string a, string b)
+        {
+            if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return;
+            if (!edges.TryGetValue(a, out List<string> list)) edges[a] = list = new List<string>();
+            if (!list.Contains(b, StringComparer.OrdinalIgnoreCase)) list.Add(b);
         }
 
         private static Skeleton Rig(Animation animations, string name)

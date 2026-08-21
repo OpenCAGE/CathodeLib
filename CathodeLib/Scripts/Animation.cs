@@ -711,6 +711,102 @@ namespace CathodeLib
             return still;
         }
 
+        /// <summary>
+        /// The limbs a clip never moves - an arm or leg that holds its shape while the torso carries
+        /// it about, which is what someone watching calls a limb left in the rest pose. Named in
+        /// plain words ("right arm"), ready to show.
+        ///
+        /// This asks the question the viewer asks, not the one <see cref="BonesLeftAtRest"/> asks. A
+        /// bone whose own transform never changes is not the same thing as a limb that doesn't move:
+        /// a shoulder can hold its angle while the elbow below it bends, and the arm is plainly
+        /// moving. So the limb is compared against its rest shape in the frame of the bone it hangs
+        /// off, and only counts as left behind when the whole chain holds still.
+        ///
+        /// Fingers and toes are left out on purpose - they carry small motions of their own, and an
+        /// arm nobody would call moving shouldn't stop being worth mentioning because a finger
+        /// twitched.
+        /// </summary>
+        public static List<string> LimbsLeftAtRest(ClipReference clip, Skeleton skeleton, Retargeter retarget = null)
+        {
+            List<string> limbs = new List<string>();
+            if (clip?.Animation == null || skeleton == null || clip.Animation.FrameCount < 2) return limbs;
+
+            List<Matrix4x4> rest = skeleton.GetBindPose();
+            List<List<Matrix4x4>> frames = new List<List<Matrix4x4>>();
+            int step = Math.Max(1, (clip.Animation.FrameCount - 1) / 5);
+            for (int frame = 0; frame < clip.Animation.FrameCount; frame += step)
+            {
+                List<Matrix4x4> pose = SampleModelPose(clip, skeleton, frame, RootMotion.Ignore, retarget);
+                if (pose == null) return limbs;
+                frames.Add(pose);
+            }
+            if (frames.Count == 0) return limbs;
+
+            foreach (KeyValuePair<string[], string> limb in _limbChains)
+            {
+                List<int> bones = new List<int>();
+                foreach (string name in limb.Key)
+                {
+                    int bone = IndexOfBone(skeleton, name);
+                    if (bone >= 0) bones.Add(bone);
+                }
+                if (bones.Count == 0 || limbs.Contains(limb.Value)) continue;
+
+                int anchor = skeleton.Bones[bones[0]].ParentIndex;
+                if (anchor < 0 || anchor >= rest.Count) continue;
+                if (!Matrix4x4.Invert(rest[anchor], out Matrix4x4 restAnchor)) continue;
+
+                if (Held(frames, rest, restAnchor, bones, anchor)) limbs.Add(limb.Value);
+            }
+            return limbs;
+        }
+
+        /* Does every bone of the limb sit where it does at rest, in the frame of what it hangs off? */
+        private static bool Held(List<List<Matrix4x4>> frames, List<Matrix4x4> rest, Matrix4x4 restAnchor, List<int> bones, int anchor)
+        {
+            //a centimetre at the end of a 10cm probe is about half a degree, which reads as still
+            const float tolerance = 0.002f;
+            Vector3 tip = new Vector3(0.1f, 0, 0);
+
+            foreach (List<Matrix4x4> pose in frames)
+            {
+                if (anchor >= pose.Count) return false;
+                if (!Matrix4x4.Invert(pose[anchor], out Matrix4x4 poseAnchor)) return false;
+
+                foreach (int bone in bones)
+                {
+                    if (bone >= pose.Count || bone >= rest.Count) continue;
+                    Matrix4x4 now = pose[bone] * poseAnchor, was = rest[bone] * restAnchor;
+
+                    if ((now.Translation - was.Translation).Length() > tolerance) return false;
+                    if ((Vector3.Transform(tip, now) - Vector3.Transform(tip, was)).Length() > tolerance) return false;
+                }
+            }
+            return true;
+        }
+
+        private static int IndexOfBone(Skeleton skeleton, string name)
+        {
+            for (int i = 0; i < skeleton.Bones.Count; i++)
+            {
+                string bone = skeleton.Bones[i].Name ?? "";
+                int at = bone.LastIndexOf(':');
+                if (string.Equals(at < 0 ? bone : bone.Substring(at + 1), name, StringComparison.OrdinalIgnoreCase)) return i;
+            }
+            return -1;
+        }
+
+        /* The chain each limb is made of, in the order the limbs read best. */
+        private static readonly KeyValuePair<string[], string>[] _limbChains =
+        {
+            new KeyValuePair<string[], string>(new[] { "RIGHTARM", "RIGHTFOREARM", "RIGHTHAND" }, "right arm"),
+            new KeyValuePair<string[], string>(new[] { "LEFTARM", "LEFTFOREARM", "LEFTHAND" }, "left arm"),
+            new KeyValuePair<string[], string>(new[] { "RIGHTUPLEG", "RIGHTLEG", "RIGHTFOOT" }, "right leg"),
+            new KeyValuePair<string[], string>(new[] { "LEFTUPLEG", "LEFTLEG", "LEFTFOOT" }, "left leg"),
+            new KeyValuePair<string[], string>(new[] { "SPINE", "SPINE1", "SPINE2" }, "spine"),
+            new KeyValuePair<string[], string>(new[] { "NECK", "HEAD" }, "head"),
+        };
+
         /// <summary>The bone a rig marks its own position with, or -1. Every character rig has one.</summary>
         public static int ReferenceBone(Skeleton skeleton)
         {
@@ -740,10 +836,17 @@ namespace CathodeLib
             int reference = ReferenceBone(skeleton);
             if (reference < 0)
             {
-                /* No reference bone - the environment rigs. Their clips are authored in place, so
-                 * the only thing to correct is the root orientation, which the clip overwrites with
-                 * something that isn't the pose the mesh was built around. */
-                pose[rootBone] = Rest(skeleton, rootBone);
+                /* No reference bone - the environment rigs. Their clips are authored in place
+                 * already, so there is nothing to anchor and the root is left exactly as the clip
+                 * wrote it.
+                 *
+                 * This used to overwrite the root with the rig's rest transform, on the theory that
+                 * the clip put something there the mesh wasn't built around. It doesn't: 392 of the
+                 * 548 environment clips already start with the root at rest, and the ones that
+                 * don't are the "close" halves of door pairs, which are supposed to begin open. The
+                 * rule was throwing away the whole animation of 87 clips whose root is the moving
+                 * part - a ceiling fan or a nodding bird is a single bone, and that bone is the
+                 * root. */
                 return pose;
             }
 
