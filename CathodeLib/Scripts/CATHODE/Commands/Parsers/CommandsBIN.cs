@@ -539,8 +539,12 @@ namespace CATHODE.Scripting.Internal.Parsers
                 }
             }
 
-            EntryPoints[1] = Entries.FirstOrDefault(o => o.name.ToUpper() == "GLOBAL").shortGUID;
-            EntryPoints[2] = Entries.FirstOrDefault(o => o.name.ToUpper() == "PAUSEMENU").shortGUID;
+            //A composite with a null name threw here before the caller ever saw the file, and not
+            //every level is guaranteed to carry a GLOBAL or a PAUSEMENU either.
+            Composite globalComposite = Entries.FirstOrDefault(o => o.name != null && o.name.ToUpper() == "GLOBAL");
+            Composite pauseComposite = Entries.FirstOrDefault(o => o.name != null && o.name.ToUpper() == "PAUSEMENU");
+            EntryPoints[1] = globalComposite?.shortGUID ?? ShortGuid.Invalid;
+            EntryPoints[2] = pauseComposite?.shortGUID ?? ShortGuid.Invalid;
 
             foreach (Composite c in Entries)
                 foreach (Entity e in c.GetEntities())

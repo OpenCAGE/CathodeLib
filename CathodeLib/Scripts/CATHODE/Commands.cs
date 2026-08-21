@@ -268,17 +268,49 @@ namespace CATHODE
                     return false;
             }
 
-            using (Stream stream = File.OpenWrite(_filepath))
+            WriteToDisk(_filepath, content);
+
+            if (_compressed)
+                Utilities.GZIPCompress(_filepath);
+            else
+                SaveSibling();
+
+            return true;
+        }
+
+        /// <summary>
+        /// Write the same script data out in the other of the two formats a level carries.
+        /// </summary>
+        private void SaveSibling()
+        {
+            string siblingPath;
+            byte[] siblingContent;
+
+            switch (Path.GetExtension(_filepath).ToUpper())
+            {
+                case ".PAK":
+                    siblingPath = Path.ChangeExtension(_filepath, ".BIN");
+                    CommandsBIN.Write(_entryPoints, Entries, out siblingContent, _envAnims, _colMaps, _reds);
+                    break;
+                case ".BIN":
+                    siblingPath = Path.ChangeExtension(_filepath, ".PAK");
+                    CommandsPAK.Write(_entryPoints, Entries, out siblingContent, _envAnims, _colMaps, _reds);
+                    break;
+                default:
+                    return;
+            }
+
+            WriteToDisk(siblingPath, siblingContent);
+        }
+
+        private static void WriteToDisk(string path, byte[] content)
+        {
+            using (Stream stream = File.OpenWrite(path))
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 writer.BaseStream.SetLength(0);
                 writer.Write(content);
             }
-
-            if (_compressed)
-                Utilities.GZIPCompress(_filepath);
-
-            return true;
         }
         #endregion
 
