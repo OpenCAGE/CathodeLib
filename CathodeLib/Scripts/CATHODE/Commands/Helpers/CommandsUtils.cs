@@ -56,6 +56,7 @@ namespace CATHODE.Scripting
                 return;
 
             _commands.OnLoadSuccess += LoadInfo;
+            _commands.OnSaveBegin += ApplyEntityTransformsToResources;
             _commands.OnSaveSuccess += SaveInfo;
 
             if (_commands.Loaded)
@@ -68,6 +69,7 @@ namespace CATHODE.Scripting
                 return;
 
             _commands.OnLoadSuccess -= LoadInfo;
+            _commands.OnSaveBegin -= ApplyEntityTransformsToResources;
             _commands.OnSaveSuccess -= SaveInfo;
 
             _compPurges?.purged?.Clear();
@@ -1933,6 +1935,64 @@ namespace CATHODE.Scripting
                 }
             }
             Console.WriteLine("Applied " + applied + " entity names as parameters!");
+        }
+
+        /// <summary>
+        /// Stamp every ResourceReference's transform from the entity that owns it, just before a save.
+        /// </summary>
+        private void ApplyEntityTransformsToResources(string filepath)
+        {
+            int updated = 0;
+            for (int i = 0; i < _commands.Entries.Count; i++)
+            {
+                Composite composite = _commands.Entries[i];
+                if (composite?.functions == null)
+                    continue;
+
+                for (int x = 0; x < composite.functions.Count; x++)
+                {
+                    FunctionEntity function = composite.functions[x];
+                    if (function == null)
+                        continue;
+
+                    Vector3 position = new Vector3(0, 0, 0);
+                    Vector3 rotation = new Vector3(0, 0, 0);
+                    Parameter transformParameter = function.GetParameter(ShortGuids.position);
+                    if (transformParameter?.content is cTransform transform)
+                    {
+                        position = transform.position;
+                        rotation = transform.rotation;
+                    }
+
+                    for (int y = 0; y < function.resources.Count; y++)
+                        updated += StampResource(function.resources[y], position, rotation);
+
+                    //Resources can also hang off a "resource" parameter
+                    for (int y = 0; y < function.parameters.Count; y++)
+                    {
+                        if (!(function.parameters[y]?.content is cResource resourceParameter) || resourceParameter.value == null)
+                            continue;
+
+                        for (int z = 0; z < resourceParameter.value.Count; z++)
+                            updated += StampResource(resourceParameter.value[z], position, rotation);
+                    }
+                }
+            }
+
+            if (updated != 0)
+                Console.WriteLine("Derived transforms for " + updated + " resource references from their entities!");
+        }
+
+        private static int StampResource(ResourceReference resource, Vector3 position, Vector3 rotation)
+        {
+            if (resource == null)
+                return 0;
+            if (resource.position == position && resource.rotation == rotation)
+                return 0;
+
+            resource.position = position;
+            resource.rotation = rotation;
+            return 1;
         }
 
         private void SaveInfo(string filepath)

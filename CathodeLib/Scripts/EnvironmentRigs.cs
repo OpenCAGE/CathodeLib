@@ -10,6 +10,7 @@ using UnityEngine;
 using Godot;
 using System.Numerics;
 using Matrix4x4 = System.Numerics.Matrix4x4;
+using Quaternion = System.Numerics.Quaternion;
 #else
 using System.Numerics;
 #endif
@@ -470,7 +471,14 @@ namespace CathodeLib
             const float radians = (float)(Math.PI / 180.0);
             Quaternion rotation = Quaternion.CreateFromYawPitchRoll(
                 transform.rotation.Y * radians, transform.rotation.X * radians, transform.rotation.Z * radians);
-            return Matrix4x4.CreateFromQuaternion(rotation) * Matrix4x4.CreateTranslation(transform.position);
+#if GODOT
+            //cTransform carries Godot vectors in the viewer build; the rig maths is all System.Numerics
+            Matrix4x4 translation = Matrix4x4.CreateTranslation(
+                new System.Numerics.Vector3(transform.position.X, transform.position.Y, transform.position.Z));
+#else
+            Matrix4x4 translation = Matrix4x4.CreateTranslation(transform.position);
+#endif
+            return Matrix4x4.CreateFromQuaternion(rotation) * translation;
         }
 
         /* Models.FindModel walks every model in the level and compares submeshes by value, which is

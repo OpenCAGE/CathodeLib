@@ -1,4 +1,4 @@
-using CATHODE.Animations;
+﻿using CATHODE.Animations;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
@@ -507,6 +507,30 @@ namespace CATHODE
             return -1;
         }
 
+        /* Mesh data is in the host engine's vector type in the viewer builds, while the bone maths
+           below is all System.Numerics. Convert once at the boundary. */
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN
+        private static System.Numerics.Vector3 ToNumerics(UnityEngine.Vector3 value)
+        {
+            return new System.Numerics.Vector3(value.x, value.y, value.z);
+        }
+        private static System.Numerics.Vector4 ToNumerics(UnityEngine.Vector4 value)
+        {
+            return new System.Numerics.Vector4(value.x, value.y, value.z, value.w);
+        }
+#elif GODOT
+        private static System.Numerics.Vector3 ToNumerics(Godot.Vector3 value)
+        {
+            return new System.Numerics.Vector3(value.X, value.Y, value.Z);
+        }
+        private static System.Numerics.Vector4 ToNumerics(Godot.Vector4 value)
+        {
+            return new System.Numerics.Vector4(value.X, value.Y, value.Z, value.W);
+        }
+#else
+        private static System.Numerics.Vector3 ToNumerics(System.Numerics.Vector3 value) { return value; }
+        private static System.Numerics.Vector4 ToNumerics(System.Numerics.Vector4 value) { return value; }
+#endif
         /// <summary>
         /// The number of bones a skeleton needs before it can drive this model, i.e. one past the
         /// highest bone index any of its submeshes reference.
@@ -545,7 +569,7 @@ namespace CATHODE
                         int count = Math.Min(mesh.Vertices.Count, Math.Min(mesh.BoneIndexes.Count, mesh.BoneWeights.Count));
                         for (int v = 0; v < count; v++)
                         {
-                            Vector4 indices = mesh.BoneIndexes[v], weights = mesh.BoneWeights[v];
+                            Vector4 indices = ToNumerics(mesh.BoneIndexes[v]), weights = ToNumerics(mesh.BoneWeights[v]);
                             for (int slot = 0; slot < 4; slot++)
                             {
                                 float weight = slot == 0 ? weights.X : slot == 1 ? weights.Y : slot == 2 ? weights.Z : weights.W;
@@ -556,7 +580,8 @@ namespace CATHODE
                                 if (local < 0 || local >= submesh.Bones.Count) continue;
 
                                 int bone = submesh.Bones[local];
-                                weighted[bone] = (weighted.TryGetValue(bone, out Vector3 sum) ? sum : Vector3.Zero) + mesh.Vertices[v] * weight;
+                                Vector3 vertex = ToNumerics(mesh.Vertices[v]);
+                                weighted[bone] = (weighted.TryGetValue(bone, out Vector3 sum) ? sum : Vector3.Zero) + vertex * weight;
                                 totals[bone] = (totals.TryGetValue(bone, out float t) ? t : 0) + weight;
                             }
                         }
@@ -732,3 +757,4 @@ namespace CATHODE
         #endregion
     }
 }
+

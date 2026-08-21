@@ -9,7 +9,7 @@ using UnityEngine;
 using Godot;
 using System.Numerics;
 using Quaternion = System.Numerics.Quaternion;
-using Vector3 = Godot.Vector3;
+using Vector3 = System.Numerics.Vector3; //Havok skeleton data is all System.Numerics - never Godot mesh space
 #else
 using System.Numerics;
 #endif
