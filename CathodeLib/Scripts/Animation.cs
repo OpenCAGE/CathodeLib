@@ -143,39 +143,52 @@ namespace CathodeLib
         {
             if (_pak == null) return false;
 
-            Write(Strings, x => x.ToBytes());
-            Write(StringsDebug, x => x.ToBytes());
-            Write(SkeletonIndex, x => x.ToBytes());
-            Write(ClipIndex, x => x.ToBytes());
-            foreach (AnimClipDB clips in ClipDatabases) Write(clips, x => x.ToBytes());
-            foreach (AnimClipDBSec section in Sections) Write(section, x => x.ToBytes());
-            foreach (AnimTreeDB tree in Trees) Write(tree, x => x.ToBytes());
+            /* Every parsed file has to find the PAK entry it came from. Searching the entry list for
+             * each one is a linear scan, and there are 23,000 sections, so it costs about eight
+             * seconds of nothing but string comparison - far more than serialising all 427 MB and
+             * writing it to disk put together. One dictionary answers all of them; filenames are
+             * unique across the PAK, so it stands in for the search exactly. */
+            Dictionary<string, PAK2.File> entries =
+                new Dictionary<string, PAK2.File>(_pak.Entries.Count, StringComparer.OrdinalIgnoreCase);
+            foreach (PAK2.File entry in _pak.Entries)
+            {
+                string name = entry.Filename ?? "";
+                if (!entries.ContainsKey(name)) entries[name] = entry;      //first wins, as a search would
+            }
+
+            Write(entries, Strings, x => x.ToBytes());
+            Write(entries, StringsDebug, x => x.ToBytes());
+            Write(entries, SkeletonIndex, x => x.ToBytes());
+            Write(entries, ClipIndex, x => x.ToBytes());
+            foreach (AnimClipDB clips in ClipDatabases) Write(entries, clips, x => x.ToBytes());
+            foreach (AnimClipDBSec section in Sections) Write(entries, section, x => x.ToBytes());
+            foreach (AnimTreeDB tree in Trees) Write(entries, tree, x => x.ToBytes());
 
             foreach (SkeletonAsset skeleton in Skeletons)
             {
-                Write(skeleton.Skeleton, x => x.ToBytes());
-                Write(skeleton.Skeleton64, x => x.ToBytes());
+                Write(entries, skeleton.Skeleton, x => x.ToBytes());
+                Write(entries, skeleton.Skeleton64, x => x.ToBytes());
             }
             foreach (MappingAsset mapping in Mappings)
             {
-                Write(mapping.Mapping, x => x.ToBytes());
-                Write(mapping.Mapping64, x => x.ToBytes());
+                Write(entries, mapping.Mapping, x => x.ToBytes());
+                Write(entries, mapping.Mapping64, x => x.ToBytes());
             }
             foreach (RagdollAsset ragdoll in Ragdolls)
             {
-                Write(ragdoll.Ragdoll, x => x.ToBytes());
-                Write(ragdoll.Ragdoll64, x => x.ToBytes());
+                Write(entries, ragdoll.Ragdoll, x => x.ToBytes());
+                Write(entries, ragdoll.Ragdoll64, x => x.ToBytes());
             }
 
             return path.Length == 0 ? _pak.Save() : _pak.Save(path);
         }
 
         /* Serialise one file back over the PAK entry it came from. */
-        private void Write<T>(T file, Func<T, byte[]> serialise) where T : CathodeFile
+        private static void Write<T>(Dictionary<string, PAK2.File> entries, T file, Func<T, byte[]> serialise)
+            where T : CathodeFile
         {
             if (file == null) return;
-            PAK2.File entry = _pak.Entries.FirstOrDefault(x => string.Equals(x.Filename, file.Filepath, StringComparison.OrdinalIgnoreCase));
-            if (entry == null) return;
+            if (!entries.TryGetValue(file.Filepath ?? "", out PAK2.File entry)) return;
 
             byte[] content = serialise(file);
             if (content != null) entry.Content = content;
