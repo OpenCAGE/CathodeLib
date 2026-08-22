@@ -59,6 +59,18 @@ namespace CathodeLib
             /// <summary>How many parts the rig actually moves.</summary>
             public int Driven { get { return Parts.Count(x => x.Bone >= 0); } }
 
+            /// <summary>
+            /// How many parts of one mesh the rig moves. A composite draws more than the prop -
+            /// scenery around it, and any character standing in it - and all of that ends up here as
+            /// parts the record names no bone for. Asking per mesh is what separates the prop from
+            /// its surroundings.
+            /// </summary>
+            public int DrivenIn(Models.CS2 model)
+            {
+                if (model == null) return Driven;
+                return Parts.Count(x => x.Bone >= 0 && ReferenceEquals(x.Model, model));
+            }
+
             /// <summary>Whether any of its parts deform rather than being carried about rigidly.</summary>
             public bool HasSkinning { get { return Parts.Any(x => x.Skinned); } }
 
@@ -70,6 +82,9 @@ namespace CathodeLib
         {
             /// <summary>The geometry itself.</summary>
             public Models.CS2.Component.LOD.Submesh Submesh;
+
+            /// <summary>The mesh that submesh came out of, or null if no model in the level holds it.</summary>
+            public Models.CS2 Model;
 
             /// <summary>Where the level puts it when nothing is playing.</summary>
             public Matrix4x4 Rest;
@@ -110,9 +125,8 @@ namespace CathodeLib
             foreach (Prop prop in Props(level))
             {
                 if (!string.Equals(prop.Rig, rigName, StringComparison.OrdinalIgnoreCase)) continue;
-                if (model == null) { if (best == null || prop.Driven > best.Driven) best = prop; continue; }
-                if (!Holds(prop.Models, model)) continue;
-                if (best == null || prop.Driven > best.Driven) best = prop;
+                if (model != null && !Holds(prop.Models, model)) continue;
+                if (best == null || prop.DrivenIn(model) > best.DrivenIn(model)) best = prop;
             }
             return best;
         }
@@ -120,28 +134,43 @@ namespace CathodeLib
         /// <summary>
         /// The prop a rig actually animates this mesh as, or null.
         ///
-        /// The level declares character rigs alongside prop ones, and those resolve to a record that
-        /// drives no geometry - so finding a prop isn't on its own a reason to treat a mesh as one.
+        /// Finding a record isn't on its own a reason to treat a mesh as a prop. A composite draws
+        /// everything standing in it, so a character bracing a door is listed among the door's parts
+        /// - and the level declares character rigs alongside prop ones besides. What settles it is
+        /// whether the record names a bone for a part of that particular mesh. Measured over the 21
+        /// shipped levels that separates the 1,358 mesh-and-rig pairs a level really animates from
+        /// the 894 that only share a composite, with nothing in between.
+        ///
+        /// Note the answer has nothing to do with whether the mesh carries vertex weights: 21 of
+        /// those 1,358 are skinned props - an alien egg, a survey crane, the reactor core.
         /// </summary>
         public static Prop AnimatedPropFor(Level level, string rigName, Models.CS2 model = null)
         {
             Prop prop = PropFor(level, rigName, model);
-            return prop != null && (prop.Driven > 0 || prop.HasSkinning) ? prop : null;
+            return prop != null && prop.DrivenIn(model) > 0 ? prop : null;
         }
 
         /// <summary>
         /// The meshes this level animates with a rig, the one whose parts it drives most first.
+        /// Meshes the records only draw alongside the prop are left out - see <see cref="AnimatedPropFor"/>.
         /// </summary>
         public static List<Models.CS2> ModelsFor(Level level, string rigName, Skeleton rig = null)
         {
             List<Models.CS2> models = new List<Models.CS2>();
             if (string.IsNullOrEmpty(rigName)) return models;
 
-            foreach (Prop prop in Props(level).Where(x => string.Equals(x.Rig, rigName, StringComparison.OrdinalIgnoreCase))
-                                              .OrderByDescending(x => x.Driven))
+            List<int> driven = new List<int>();
+            foreach (Prop prop in Props(level).Where(x => string.Equals(x.Rig, rigName, StringComparison.OrdinalIgnoreCase)))
                 foreach (Models.CS2 model in prop.Models)
-                    if (!Holds(models, model)) models.Add(model);
-            return models;
+                {
+                    int parts = prop.DrivenIn(model);
+                    if (parts == 0 || Holds(models, model)) continue;
+                    models.Add(model);
+                    driven.Add(parts);
+                }
+
+            return models.Select((x, i) => new { Model = x, Parts = driven[i] })
+                         .OrderByDescending(x => x.Parts).Select(x => x.Model).ToList();
         }
 
         /// <summary>Whether this level drives anything with the named rig.</summary>
@@ -310,16 +339,18 @@ namespace CathodeLib
 
         /// <summary>
         /// Whether a rig looks like it belongs to a model: the level animates that mesh with it, or
-        /// failing that at least one named part matches a bone. Either way the model has to be
-        /// static - a skinned mesh is a character, and moves the other way.
+        /// failing that at least one named part matches a bone.
+        ///
+        /// The level's own record is allowed to say so about a skinned mesh - a few props deform.
+        /// Matching by name isn't: with no record to go on, a mesh with vertex weights is a
+        /// character, and characters move the other way round.
         /// </summary>
         public static bool Drives(Skeleton rig, Models.CS2 model, Level level = null)
         {
-            if (rig == null || model == null || Skeleton.RequiredBoneCount(model) != 0) return false;
+            if (rig == null || model == null) return false;
+            if (level != null && AnimatedPropFor(level, rig.Name, model) != null) return true;
 
-            Prop prop = level == null ? null : PropFor(level, rig.Name, model);
-            if (prop != null) return prop.Driven > 0;
-            return DrivenParts(model, rig) > 0;
+            return Skeleton.RequiredBoneCount(model) == 0 && DrivenParts(model, rig) > 0;
         }
 
         private static IEnumerable<string> PartNames(Models.CS2 model)
@@ -375,8 +406,9 @@ namespace CathodeLib
 
                         foreach (Models.CS2.Component.LOD.Submesh submesh in renderable.Value.Submeshes)
                         {
-                            prop.Parts.Add(new Part { Submesh = submesh, Rest = rest, Bone = bone, Skinned = IsSkinned(submesh) });
-                            if (!owners.TryGetValue(submesh, out Models.CS2 model)) continue;
+                            owners.TryGetValue(submesh, out Models.CS2 model);
+                            prop.Parts.Add(new Part { Submesh = submesh, Model = model, Rest = rest, Bone = bone, Skinned = IsSkinned(submesh) });
+                            if (model == null) continue;
                             parts[model] = (parts.TryGetValue(model, out int count) ? count : 0) + 1;
                         }
                     }
