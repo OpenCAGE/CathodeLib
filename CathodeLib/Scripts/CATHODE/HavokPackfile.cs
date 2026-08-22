@@ -2614,8 +2614,20 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
+            byte[] content = ToBytes();
+            if (content == null) return false;
+            File.WriteAllBytes(_filepath, content);
+            return true;
+        }
+
+        /// <summary>
+        /// Serialise the packfile as it stands. Everything that holds one of these keeps it inside
+        /// another file, so writing to disk is the special case rather than the normal one.
+        /// </summary>
+        public byte[] ToBytes()
+        {
             if (DataPayload == null || ClassnamesData == null)
-                return false;
+                return null;
 
             // Apply any in-place instance edits back into the data payload before writing.
             WriteBackCompoundInstances();
@@ -2680,11 +2692,8 @@ namespace CATHODE
                     writer.Write(VirtualFixups[i].NameOffset);
                 }
                 writer.Write(unchecked((int)0xFFFFFFFF));
-
-                File.WriteAllBytes(_filepath, ms.ToArray());
+                return ms.ToArray();
             }
-
-            return true;
         }
         #endregion
 

@@ -601,39 +601,53 @@ namespace CathodeLib
         /// into the three parts it was built from.
         /// </summary>
         public static List<HavokPackfile.SampledTransform> SampleBones(ClipReference clip, Skeleton skeleton, int frame,
-            RootMotion root = RootMotion.Ignore, Retargeter retarget = null)
+            RootMotion root = RootMotion.Ignore, Retargeter retarget = null,
+            UntrackedChannels untracked = UntrackedChannels.RestPose)
         {
             /* With a retargeter the clip is sampled on the rig it was authored for and moved across
              * afterwards. Anchoring happens last either way, because the bone it keys off belongs to
              * the rig being played on. */
             Skeleton authored = retarget == null ? skeleton : retarget.From;
 
-            List<HavokPackfile.SampledTransform> pose = SampleBonesRaw(clip, authored, frame);
+            List<HavokPackfile.SampledTransform> pose = SampleBonesRaw(clip, authored, frame, untracked);
             if (pose == null || clip?.Animation == null) return pose;
             if (retarget != null) pose = retarget.Apply(pose);
+
+            //retargeting moves the clip onto another rig, which is a real change to the data;
+            //anchoring only squares it up to be looked at, so it is the half that gets skipped here
+            if (root == RootMotion.Authored) return pose;
 
             List<HavokPackfile.SampledTransform> start = frame == 0 ? pose : null;
             if (start == null)
             {
-                start = SampleBonesRaw(clip, authored, 0);
+                start = SampleBonesRaw(clip, authored, 0, untracked);
                 if (retarget != null && start != null) start = retarget.Apply(start);
             }
             return Anchor(pose, start, skeleton, frame, root);
         }
 
         /* The clip's own transforms, with nothing done about where the character ends up. */
-        private static List<HavokPackfile.SampledTransform> SampleBonesRaw(ClipReference clip, Skeleton skeleton, int frame)
+        private static List<HavokPackfile.SampledTransform> SampleBonesRaw(ClipReference clip, Skeleton skeleton, int frame,
+                                                                          UntrackedChannels untracked = UntrackedChannels.RestPose)
         {
             if (skeleton == null) return null;
+            bool engine = untracked == UntrackedChannels.EngineDefaults;
 
             List<HavokPackfile.SampledTransform> pose = new List<HavokPackfile.SampledTransform>(skeleton.Bones.Count);
             for (int i = 0; i < skeleton.Bones.Count; i++)
-                pose.Add(new HavokPackfile.SampledTransform
-                {
-                    Translation = skeleton.Bones[i].Position,
-                    Rotation = skeleton.Bones[i].Rotation,
-                    Scale = skeleton.Bones[i].ScaleXYZ,
-                });
+                pose.Add(engine
+                    ? new HavokPackfile.SampledTransform
+                    {
+                        Translation = Vector3.Zero,
+                        Rotation = Quaternion.Identity,
+                        Scale = Vector3.One,
+                    }
+                    : new HavokPackfile.SampledTransform
+                    {
+                        Translation = skeleton.Bones[i].Position,
+                        Rotation = skeleton.Bones[i].Rotation,
+                        Scale = skeleton.Bones[i].ScaleXYZ,
+                    });
 
             HavokPackfile.AnimationClip animation = clip?.Animation;
             if (animation == null) return pose;
@@ -653,9 +667,12 @@ namespace CathodeLib
                      * other than 1 is animated by clips that never mention scale. */
                     pose[bone] = new HavokPackfile.SampledTransform
                     {
-                        Translation = sampled.HasTranslation ? sampled.Translation : skeleton.Bones[bone].Position,
-                        Rotation = sampled.HasRotation ? sampled.Rotation : skeleton.Bones[bone].Rotation,
-                        Scale = sampled.HasScale ? sampled.Scale : skeleton.Bones[bone].ScaleXYZ,
+                        Translation = sampled.HasTranslation ? sampled.Translation
+                            : engine ? Vector3.Zero : skeleton.Bones[bone].Position,
+                        Rotation = sampled.HasRotation ? sampled.Rotation
+                            : engine ? Quaternion.Identity : skeleton.Bones[bone].Rotation,
+                        Scale = sampled.HasScale ? sampled.Scale
+                            : engine ? Vector3.One : skeleton.Bones[bone].ScaleXYZ,
                     };
                     continue;
                 }
@@ -1002,6 +1019,233 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// Build a section holding one clip, registered nowhere. The import preview plays one of
+        /// these, and <see cref="AddClip"/> is this plus the paperwork.
+        ///
+        /// Which channels get stored is decided here rather than left to the caller - see
+        /// <see cref="SetCarriage"/> for why it isn't a matter of preference.
+        /// </summary>
+        public AnimClipDBSec BuildSection(List<List<HavokPackfile.SampledTransform>> frames, List<short> trackToBone,
+                                          string skeletonName, string clipPath, string metaLabel,
+                                          float frameDuration = 1f / 30f, bool additive = false,
+                                          AnimClipDBSec template = null)
+        {
+            if (frames == null || frames.Count == 0 || trackToBone == null || trackToBone.Count == 0) return null;
+            foreach (List<HavokPackfile.SampledTransform> pose in frames)
+                if (pose == null || pose.Count != trackToBone.Count) return null;
+
+            if (template == null) template = StreamedTemplates().FirstOrDefault();
+            if (template?.Havok == null) return null;
+
+            SetCarriage(frames);
+
+            HavokPackfile packfile = new HavokPackfile(template.Havok.ToBytes());
+            if (!packfile.Loaded) return null;
+
+            new SplineEncoder
+            {
+                SkeletonName = skeletonName,
+                TrackToBone = trackToBone,
+                FrameDuration = frameDuration,
+                Frames = frames,
+                Additive = additive,
+            }.BuildInto(packfile);
+
+            string folder = Path.GetDirectoryName(template.Filepath) ?? "";
+            string filename = "ANIM_CLIP_DB_SEC_" + Utilities.AnimationHashedString(clipPath) + ".BIN";
+
+            AnimClipDBSec section = new AnimClipDBSec(Strings, Path.Combine(folder, filename), StringsDebug);
+            section.SkeletonDependencies.Add(skeletonName);
+            section.SetHavok(packfile);
+            section.Metadata.Add(BuildMetadata(clipPath, metaLabel, frames.Count, frameDuration));
+            return section;
+        }
+
+        /// <summary>
+        /// Add a clip the game doesn't have. It gets a streamed section of its own in both pointer
+        /// sizes, an entry in the global index, and a line in the set's clip DB - which is the shape
+        /// 11,540 of the 11,546 one-clip sections in the game already take.
+        ///
+        /// The rig the poses are authored on need not be the one the character wears: a character
+        /// clip is normally built on a shared reference rig (MALE, FEMALE) and the engine retargets
+        /// it at runtime, which is how 1,272 of SAMUELS's 1,728 clips arrive. A prop's clip is
+        /// authored on the prop's own rig.
+        /// </summary>
+        /// <param name="frames">One pose per frame per track. Which channels get stored comes from
+        /// each pose's Has flags - see <see cref="SetCarriage"/>.</param>
+        public bool AddClip(AnimationSet set, string clipName, string clipPath, string skeletonName,
+                            List<short> trackToBone, List<List<HavokPackfile.SampledTransform>> frames,
+                            float frameDuration = 1f / 30f, bool additive = false)
+        {
+            if (set?.Database == null || ClipIndex == null || _pak?.Entries == null) return false;
+            if (frames == null || frames.Count == 0 || trackToBone == null || trackToBone.Count == 0) return false;
+            if (string.IsNullOrEmpty(clipName) || string.IsNullOrEmpty(clipPath)) return false;
+            if (_sectionOfClip != null && _sectionOfClip.ContainsKey(clipPath)) return false;
+            foreach (List<HavokPackfile.SampledTransform> pose in frames)
+                if (pose == null || pose.Count != trackToBone.Count) return false;
+
+            //clip, path and label names only ever existed in the debug table
+            string metaLabel = set.Name + "\\" + clipName.ToUpperInvariant();
+            AddName(clipPath, true);
+            AddName(clipName, true);
+            AddName(metaLabel, true);
+
+            List<AnimClipDBSec> templates = StreamedTemplates();
+            if (templates.Count == 0) return false;
+
+            string filename = "ANIM_CLIP_DB_SEC_" + Utilities.AnimationHashedString(clipPath) + ".BIN";
+            AnimClipDBSec primary = null;
+            foreach (AnimClipDBSec template in templates)
+            {
+                //one copy per pointer size, since the game ships a 32 and a 64 bit build
+                AnimClipDBSec section = BuildSection(frames, trackToBone, skeletonName, clipPath, metaLabel,
+                                                     frameDuration, additive, template);
+                if (section == null) return false;
+
+                byte[] content = section.ToBytes();
+                if (content == null) return false;
+
+                _pak.Entries.Add(new PAK2.File { Filename = section.Filepath, Content = content });
+                Sections.Add(section);
+                if (primary == null) primary = section;
+            }
+
+            //a section holding one clip names itself after that clip and indexes it at -1
+            GlobalAnimClipDB.ClipDbSection index = new GlobalAnimClipDB.ClipDbSection
+            {
+                Name = clipPath,
+                SectionName = clipPath,
+                SectionIndex = -1,
+            };
+            ClipIndex.ClipDbSections.Add(index);
+            set.Database.Animations.Add(new AnimClipDB.AnimClip { Name = clipName, Path = clipPath, MetadataInstance = 0 });
+
+            //keep the resolved view in step rather than rebuilding every set for one clip
+            if (_sectionOfClip != null) _sectionOfClip[clipPath] = index;
+            if (_sectionByName != null) _sectionByName[Path.GetFileNameWithoutExtension(filename)] = primary;
+
+            AnimationContext context = set.Contexts.FirstOrDefault(x => x.Name.Length == 0) ?? set.Contexts.FirstOrDefault();
+            if (context != null)
+            {
+                context.Clips.Add(new ClipReference
+                {
+                    Name = clipName,
+                    Path = clipPath,
+                    Context = context,
+                    Section = primary,
+                    Index = 0,
+                });
+                set.ClipCount++;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// The metadata a clip cannot exist without: while finalising a section it has streamed in,
+        /// the engine looks up a metadata entry per clip by the clip's path, and falls over if there
+        /// isn't one. No section in the game ships without this.
+        /// </summary>
+        public static AnimClipDBSec.MetadataSet BuildMetadata(string clipPath, string metaLabel, int frames, float frameDuration)
+        {
+            AnimClipDBSec.MetadataSet set = new AnimClipDBSec.MetadataSet();
+
+            //anim_label is the key the lookup uses, so it has to be the clip's path exactly
+            set.Common.Arguments.Add(Argument("mirror", MetadataValueType.BOOL, true));
+            set.Common.Arguments.Add(Argument("anim_label", MetadataValueType.STRING, clipPath));
+
+            //how long the clip runs is a function of how fast it is played, so these two say so
+            set.Common.Arguments.Add(Argument("duration", MetadataValueType.FLOAT32,
+                frames > 1 ? (frames - 1) * frameDuration : frameDuration, playspeed: true));
+            set.Common.Arguments.Add(Argument("numberOfFrames", MetadataValueType.UINT32, (uint)frames, playspeed: true));
+            set.Common.Arguments.Add(Argument("has_motion", MetadataValueType.BOOL, false));
+
+            /* One instance block, which is what a MetadataInstance of 0 selects. The two values in
+             * front of the label carry no name in any shipped clip either. */
+            AnimClipDBSec.MetadataBlock instance = new AnimClipDBSec.MetadataBlock();
+            instance.Arguments.Add(Argument("0", MetadataValueType.UINT32, (uint)0));
+            instance.Arguments.Add(Argument("0", MetadataValueType.UINT32, (uint)0));
+            instance.Arguments.Add(Argument("meta_label", MetadataValueType.STRING, metaLabel));
+            set.Instances.Add(instance);
+            return set;
+        }
+
+        private static AnimClipDBSec.MetadataArgument Argument(string name, MetadataValueType type, object value, bool playspeed = false)
+        {
+            return new AnimClipDBSec.MetadataArgument
+            {
+                Name = name,
+                Type = type,
+                Value = value,
+                CanModulateByPlayspeed = playspeed,
+            };
+        }
+
+        /* One section per pointer size to take the packfile header and class name table from, out of
+         * the folders the game streams single clips from. */
+        private List<AnimClipDBSec> StreamedTemplates()
+        {
+            List<AnimClipDBSec> templates = new List<AnimClipDBSec>();
+            bool has32 = false, has64 = false;
+            foreach (AnimClipDBSec section in Sections)
+            {
+                if (section.Havok == null || !section.Havok.Loaded) continue;
+                string folder = (Path.GetDirectoryName(section.Filepath) ?? "").ToUpperInvariant();
+                if (!folder.EndsWith("STREAMED") && !folder.EndsWith("STREAMED64")) continue;
+
+                bool sixtyFour = section.Havok.Header.PointerSize == 8;
+                if (sixtyFour ? has64 : has32) continue;
+                if (sixtyFour) has64 = true; else has32 = true;
+
+                templates.Add(section);
+                if (has32 && has64) break;
+            }
+            return templates;
+        }
+
+        /// <summary>
+        /// Decide which channels a clip stores, which is not a matter of taste: a channel the clip
+        /// leaves out is played back as the Havok default - zero, identity, one - and NOT as the
+        /// bone's rest value, so anything that is not the default has to be written. Leaving
+        /// translation out collapses every bone onto its parent; writing a rotation the clip should
+        /// not have overrides where the engine put the character.
+        /// </summary>
+        public static void SetCarriage(List<List<HavokPackfile.SampledTransform>> frames)
+        {
+            if (frames == null || frames.Count == 0) return;
+            int tracks = frames[0].Count;
+
+            for (int track = 0; track < tracks; track++)
+            {
+                bool translation = false, rotation = false, scale = false;
+                for (int frame = 0; frame < frames.Count && !(translation && rotation && scale); frame++)
+                {
+                    HavokPackfile.SampledTransform value = frames[frame][track];
+                    translation |= value.Translation.Length() > 0.0001f;
+                    rotation |= AngleBetween(value.Rotation, Quaternion.Identity) > 0.05;
+                    scale |= (value.Scale - Vector3.One).Length() > 0.0001f;
+                }
+
+                for (int frame = 0; frame < frames.Count; frame++)
+                {
+                    HavokPackfile.SampledTransform value = frames[frame][track];
+                    value.HasTranslation = translation;
+                    value.HasRotation = rotation;
+                    value.HasScale = scale;
+                    frames[frame][track] = value;
+                }
+            }
+        }
+
+        /* Normalise first: the rest quaternions are float32 and not quite unit, so comparing one
+         * against itself raw comes out at 0.056 degrees rather than zero. */
+        private static double AngleBetween(Quaternion a, Quaternion b)
+        {
+            if (a.LengthSquared() > 1e-12f) a = Quaternion.Normalize(a);
+            if (b.LengthSquared() > 1e-12f) b = Quaternion.Normalize(b);
+            return Math.Acos(Math.Min(1.0, Math.Abs(Quaternion.Dot(a, b)))) * 2.0 * 180.0 / Math.PI;
+        }
+
+        /// <summary>
         /// Tag a moment in a clip - a footstep sound, a ragdoll trigger. The property is added to the
         /// clip's first instance block, which is where the game looks for per-use events.
         /// </summary>
@@ -1224,6 +1468,38 @@ namespace CathodeLib
             /// exactly as authored.
             /// </summary>
             Follow,
+
+            /// <summary>
+            /// The clip's own transforms with no anchoring at all - what the game itself stores.
+            ///
+            /// Use this whenever the pose is going back into the game rather than onto the screen.
+            /// Anchoring squares the character up for viewing by rewriting the root bone, and a
+            /// clip exported that way and re-imported has that rewrite baked in - on ALIEN's
+            /// crouched_feasting it turns the root 180 degrees and moves it 15 cm, while leaving
+            /// every other bone alone.
+            /// </summary>
+            Authored,
+        }
+
+        /// <summary>
+        /// What to show for a channel a clip doesn.t store. The two are not the same thing, and which
+        /// one is wanted depends on whether the pose is going on screen or back into the game.
+        /// </summary>
+        public enum UntrackedChannels
+        {
+            /// <summary>
+            /// The bone.s rest transform. A clip that drives only part of the rig then still looks
+            /// like the character it belongs to, which is what a viewer wants.
+            /// </summary>
+            RestPose,
+
+            /// <summary>
+            /// Zero, identity and one - what the engine itself puts there. This is what the clip
+            /// actually holds, so it is what an export destined to come back in has to carry: a rig
+            /// rests its root a long way from identity, and writing that out as if it were animation
+            /// turns the character round on the way back.
+            /// </summary>
+            EngineDefaults,
         }
 
         /// <summary>What an animation set drives: a skinned character, or a piece of set dressing.</summary>

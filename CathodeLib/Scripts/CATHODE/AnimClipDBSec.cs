@@ -52,6 +52,20 @@ namespace CATHODE
             }
         }
 
+        /// <summary>
+        /// A new, empty section - for a clip that is being built rather than read. Fill in
+        /// <see cref="SkeletonDependencies"/>, hand it a packfile with <see cref="SetHavok"/> and
+        /// give it a <see cref="Metadata"/> set, then <see cref="ToBytes"/> is a section the game
+        /// can stream.
+        /// </summary>
+        public AnimClipDBSec(AnimationStrings strings, string path, AnimationStrings debugStrings = null)
+            : base(new MemoryStream(), path)
+        {
+            _strings = strings;
+            _debug = debugStrings;
+            _loaded = true;
+        }
+
         private AnimationStrings _strings;
         private AnimationStrings _debug;
 
@@ -63,6 +77,21 @@ namespace CATHODE
             return id.ToString();
         }
         private byte[] _havok = new byte[0];
+
+        /* Set when Havok has been replaced wholesale, so ToBytes serialises it rather than writing
+         * back the image it was loaded from. Untouched sections keep their original bytes, which is
+         * what makes a save byte for byte identical. */
+        private bool _havokReplaced = false;
+
+        /// <summary>
+        /// Replace this section.s animation packfile. Until this is called a save writes the bytes
+        /// the section was loaded with, so editing <see cref="Havok"/> in place has no effect.
+        /// </summary>
+        public void SetHavok(HavokPackfile packfile)
+        {
+            Havok = packfile;
+            _havokReplaced = packfile != null;
+        }
 
         /* The raw metadata image, held only while loading - everything in it is parsed out into
          * Metadata and rebuilt from there on save. */
@@ -341,7 +370,8 @@ namespace CATHODE
         /* Rebuild the memory image. Everything in it is reached by absolute offset, so the layout
          * is ours to choose - we just lay each set out end to end the way the game's allocator did,
          * carrying the slack it left behind so an untouched file writes back unchanged. */
-        private byte[] WriteMetadata()
+        /// <summary>Serialise <see cref="Metadata"/> into the image the game reads.</summary>
+        public byte[] WriteMetadata()
         {
             if (_metadata != null) return _metadata;
             if (Metadata.Count == 0) return new byte[0];
@@ -543,7 +573,8 @@ namespace CATHODE
         /// </summary>
         public byte[] ToBytes()
         {
-            if (_havok.Length == 0) return null;
+            byte[] havok = _havokReplaced ? Havok?.ToBytes() : _havok;
+            if (havok == null || havok.Length == 0) return null;
 
             using (MemoryStream stream = new MemoryStream())
             using (BinaryWriter writer = new BinaryWriter(stream))
@@ -552,8 +583,8 @@ namespace CATHODE
                 for (int i = 0; i < SkeletonDependencies.Count; i++)
                     writer.Write(_strings.GetID(SkeletonDependencies[i]));
 
-                writer.Write(_havok.Length);
-                writer.Write(_havok);
+                writer.Write(havok.Length);
+                writer.Write(havok);
 
                 byte[] metadata = WriteMetadata();
                 writer.Write(metadata.Length);
