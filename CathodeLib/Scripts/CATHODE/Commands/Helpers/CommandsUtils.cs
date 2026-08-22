@@ -697,6 +697,9 @@ namespace CATHODE.Scripting
         {
             var pinInfo = _commands.Utils.GetPinInfo(composite, baseEntity);
             ParameterData defaultValue = baseEntity.GetParameter(baseEntity.name)?.content;
+
+            if (defaultValue != null && !ReferenceEquals(baseEntity, targetEntity))
+                defaultValue = (ParameterData)defaultValue.Clone();
             if (defaultValue != null)
             {
                 if (pinInfo == null)
