@@ -445,23 +445,34 @@ namespace CATHODE
 
             WriteBlock(image, set.Common, at + 32);
             long[] positions = new long[set.Instances.Count];
-            bool[] slack = new bool[set.Instances.Count];
+            bool[] gap = new bool[set.Instances.Count];
             long cursor = instances, previous = common;
             for (int i = 0; i < set.Instances.Count; i++)
             {
                 positions[i] = cursor;
-                slack[i] = cursor - previous >= 8;
+                gap[i] = cursor - previous >= 8;
                 WriteBlock(image, set.Instances[i], cursor);
                 previous = MeasureBlock(set.Instances[i], cursor);
                 cursor = previous + set.Instances[i].TrailingPadding;
             }
 
             /* The instance blocks are threaded together by a link in the eight bytes ahead of each
-             * one, naming the next block's link - or itself, on the last. It only appears where the
-             * allocator left room for it; otherwise those bytes belong to the block before. */
+             * one, naming the next block's link - or itself, on the last. Where the allocator left no
+             * gap, those same bytes are the last eight of the block before, so the reader hands them
+             * back as its ArgumentsTrailing: one field, two readings. 3,978 of 4,000 shipped sets
+             * carry the link there.
+             *
+             * So a block that came out of a file already holds the right value and is left alone -
+             * writing over it costs 270 sections their byte-for-byte round trip. A block built from
+             * scratch has nothing there, and cannot have: only this method knows where the blocks
+             * landed. That is what the null means, and filling it in is not cosmetic - the engine
+             * walks this chain in ANIMATION_METADATA_DB::loadInPlace and dies in
+             * AnimationMetadataValue::convert on whatever a zero points it at. */
             for (int i = 0; i < positions.Length; i++)
             {
-                if (!slack[i]) continue;
+                MetadataBlock before = i == 0 ? set.Common : set.Instances[i - 1];
+                if (!gap[i] && before.ArgumentsTrailing.HasValue) continue;
+
                 long link = (i + 1 < positions.Length ? positions[i + 1] : positions[i]) - 8;
                 BitConverter.GetBytes(link).CopyTo(image, (int)positions[i] - 8);
             }
@@ -483,7 +494,7 @@ namespace CATHODE
             for (int i = 0; i < block.Arguments.Count; i++)
                 WriteArgument(image, block.Arguments[i], arguments + (i * ArgumentSize));
             if (block.Arguments.Count != 0)
-                BitConverter.GetBytes(block.ArgumentsTrailing).CopyTo(image, (int)argumentsEnd - 8);
+                BitConverter.GetBytes(block.ArgumentsTrailing ?? 0).CopyTo(image, (int)argumentsEnd - 8);
             if (!properties || block.Properties.Count == 0) return;
 
             long cursor = argumentsEnd + (block.Properties.Count * PropertySize);
@@ -650,8 +661,14 @@ namespace CATHODE
             /// <summary>Whether the block points at a property array, which may still be empty.</summary>
             public bool HasProperties;
 
-            /// <summary>Engine scratch sitting past the last argument, kept for the same reason.</summary>
-            public ulong ArgumentsTrailing;
+            /// <summary>
+            /// The eight bytes past the last argument. Where an instance block follows immediately
+            /// they are also that block's link, which is why they matter: a set built from scratch
+            /// must leave this null so the writer can fill the link in, because only the writer
+            /// knows where the blocks will land. A block read from a file already has the right
+            /// value and keeps it.
+            /// </summary>
+            public ulong? ArgumentsTrailing;
 
             /// <summary>
             /// Bytes the game's allocator left after this block. Nothing in the format predicts it
