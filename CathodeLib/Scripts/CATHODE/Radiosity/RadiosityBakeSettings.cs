@@ -26,6 +26,36 @@ namespace CathodeLib.Radiosity
         public float MetresSquaredPerTexel = 1.27f;
 
         /// <summary>
+        /// Per-island atlas rect sizes taken from retail's own MODEL_PARAMS, keyed by retail
+        /// island id: value is [width, height] in texels. When set, an instance whose retail
+        /// island id is present uses retail's rect verbatim and the area formula is only a
+        /// fallback for islands retail never baked.
+        /// </summary>
+        /// <remarks>
+        /// The area formula's rect totals are wrong PER LEVEL in both directions - measured
+        /// against retail's shipped rects (shared islands, texel sums): CM3 -11.5%, CM4 -20%,
+        /// Torrens -18%, CM9 -12%, CM14 +5%, Solace +27%. Emitter mass follows rect mass, and
+        /// the transport's loop gain follows emitter mass, so no single W0 fits levels whose
+        /// emitter mass sits 25% under retail's on one map and 27% over on the next. Rect
+        /// under-allocation was also directly the dim-floor mechanism: rendering with bigger
+        /// rects (LargeInstanceTexelBoost 0.25) moved ChallengeMap3's intercept -12.6 -> +8.6,
+        /// the first lever ever measured to move a deficit level's floor. Copying retail's rect
+        /// per island normalises emitter mass to retail's everywhere at once.
+        /// The caller harvests these from the pristine level's movers BEFORE instancing rewrites
+        /// MODEL_PARAMS (first four floats: w-0.5, h-0.5, x, y).
+        /// </remarks>
+        public System.Collections.Generic.Dictionary<int, int[]> RetailRectSizes = null;
+
+        /// <summary>
+        /// Use <see cref="RetailRectSizes"/> as a per-dimension FLOOR under the formula instead
+        /// of verbatim: an island's rect is never smaller than retail's, but the formula (and
+        /// <see cref="LargeInstanceTexelBoost"/>) may size it larger. Measured because verbatim
+        /// retail rects gave Torrens its best result while returning ChallengeMap3's dim floor -
+        /// the boost-fixed levels need certain rects larger than retail's own.
+        /// </summary>
+        public bool RetailRectSizesAsFloor = false;
+
+        /// <summary>
         /// Exponent on a progressive texel boost for larger instances. 0 spends a flat
         /// <see cref="MetresSquaredPerTexel"/> everywhere; 0.25 roughly reproduces retail's
         /// allocation curve.
@@ -269,11 +299,18 @@ namespace CathodeLib.Radiosity
         /// lighting patchy where retail's is smooth. Sampling the geometry directly gives cv 0.14,
         /// tighter than retail's own.</para>
         /// <para>Scattering candidates over the surfaces and thinning to this spacing yields a mean
-        /// nearest-neighbour distance of roughly 1.1x it. 0.46 puts our probe count and spacing on
-        /// retail's - 22743 probes at 0.455 mean on Solace - while leaving headroom under the
-        /// 12288 per-slice ceiling.</para>
+        /// nearest-neighbour distance of roughly 1.1x it. Retail's density is per-level: 0.46
+        /// reproduces Solace's count but overshoots ChallengeMap3's by 34%, while 0.52 lands on
+        /// retail's count for ChallengeMap3/4 (18k/23k input probes). The old 0.56 default
+        /// undershot retail everywhere measured (-12% to -18%).</para>
+        /// <para>0.52 measured across seven levels (2026-08-21, W0 200 calibration): CM4
+        /// 12.31->11.78 rmse with fit r2 0.77->0.80 and the LINE unchanged - matched density
+        /// reduces per-mover scatter, it does not shift brightness. CM5 19.05->18.28, Torrens
+        /// 18.64->18.03 (slope 1.109->1.062), CM3/CM9/Solace neutral, no regressions. Denser
+        /// still (0.46 where that overshoots) couples into loop gain instead: CM4's intercept
+        /// drifted +1.6->+4.4. So match retail's count, do not exceed it.</para>
         /// </remarks>
-        public float InputProbeSpacing = 0.56f;
+        public float InputProbeSpacing = 0.52f;
 
         /// <summary>
         /// Candidate points scattered per square metre of surface before the thinning pass runs.
@@ -647,6 +684,41 @@ namespace CathodeLib.Radiosity
         public float AlbedoScale = 1.0f;
 
         /// <summary>
+        /// Store the LIGHT's colour, not the diffuse texture, as input-probe albedo on movers that
+        /// carry a retail surface-light prior.
+        /// </summary>
+        /// <remarks>
+        /// <para>Measured on ChallengeMap4 (harness `albmat --mover 7706`): the luminous ceiling
+        /// CEILING_HZDLAB is 216 m2 of HAB_Plastic_Matte_GreyDark mesh, and our sampler faithfully
+        /// stores its dark diffuse (~RGB 23,22,22). Retail's probes at the same positions store
+        /// ~(180,175,164) - exactly the room's surface-light colour, R174 G174 B174. Retail treats
+        /// a lit panel as bouncing its glow colour, not the plastic it is moulded from.</para>
+        /// <para>The same dark-plastic families carry the broad albedo deficits gaincmp measures
+        /// (ours/retail 0.74 on CM4, 0.78 on CM3, at parity on CM1/CM5), so this is the candidate
+        /// mechanism for closing them.</para>
+        /// <para>MEASURED, NOW THE DEFAULT: ChallengeMap5 (the panel-dense science lab, our worst
+        /// level) goes rmse 24.93 -> 19.05 and fitted intercept -28.7 -> -17.0; ChallengeMap4
+        /// (already at parity) is unchanged within noise (12.05 -> 12.06, fit identical). Helps
+        /// where luminous fixtures dominate, costs nothing where they do not.</para>
+        /// </remarks>
+        public bool LightColourProbeAlbedo = true;
+
+        /// <summary>
+        /// Extend <see cref="LightColourProbeAlbedo"/> to a lit mover's coincident state-variant
+        /// siblings: movers in the same island within half a metre of a prior-carrying mover
+        /// inherit its light colour.
+        /// </summary>
+        /// <remarks>
+        /// Lit fixtures ship as several coincident movers with the light slice on only one.
+        /// ChallengeMap4's mover 2511 (dark plastic, no prior) sits on lit twin 2512 (prior colour
+        /// 245,233,204) and retail's probe albedo on BOTH is that glow, not the plastic.
+        /// Experimental - measure per level before defaulting on.
+        /// </remarks>
+        public bool LightColourProbeAlbedoSiblings = false;
+
+
+
+        /// <summary>
         /// Constrain the texel-to-input-probe binding (scatter destinations, light-sample
         /// attribution, volume hash) to probes that are visible from the texel and roughly agree
         /// in normal, falling back to plain nearest. Off binds by raw distance only.
@@ -811,6 +883,31 @@ namespace CathodeLib.Radiosity
         /// </para>
         /// </remarks>
         public bool ApplyDiffuseTint = true;
+
+        /// <summary>
+        /// Ignore DIFFUSE_TINT for the 26-remap CA_ENVIRONMENT shader permutation, as retail's
+        /// compiler does.
+        /// </summary>
+        /// <remarks>
+        /// <para>Verified per mover on ChallengeMap4: for materials on this permutation the ratio
+        /// of our stored input-probe albedo to retail's equals the material's DIFFUSE_TINT exactly
+        /// (mover 2511: tint 0.09, ratio 0.098; mover 2372: tint 0.43, ratio 0.43). Retail stores
+        /// the untinted linearised diffuse map; with the tint applied we under-drove every
+        /// dark-tinted plastic's bounce by 2-10x. This is where the "luminous ceiling" cases came
+        /// from too - CEILING_HZDLAB's dark look is a 0.09 tint over a near-white base texture,
+        /// and retail bounces the base (~175), which also matches the EMI panel diffusers.</para>
+        /// <para>MEASURED AND REFUTED as a blanket rule, so OFF: with it on, CM4's whole-file
+        /// albedo overshoots to 3.24x retail (CM3 1.22x, Torrens 1.37x), Torrens' render regresses
+        /// 17.05 -> 19.56 (slope 0.997 -> 1.137), and classifying every 26-remap mover on CM4
+        /// against retail shows the SAME material+tint+flags is tinted on 222 movers and untinted
+        /// on only 25. The untinted minority is a per-MOVER phenomenon - the leading explanation is
+        /// coincident state-variant movers whose lit sibling uses the same base texture with a
+        /// white tint (e.g. HAB_Grid_White over plastic_base), which reproduces the exact
+        /// ratio-equals-tint signature without any compiler rule. See the memory note
+        /// radiosity-albedo-decode.</para>
+        /// </remarks>
+        public bool UntintedEnvironment26 = false;
+
 
         /// <summary>
         /// Longest edge, in texels, of the diffuse mip the albedo sampler decodes and keeps.

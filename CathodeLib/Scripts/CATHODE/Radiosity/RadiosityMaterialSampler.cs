@@ -136,7 +136,7 @@ namespace CathodeLib.Radiosity
 
         private MaterialAlbedo Build(Materials.Material material)
         {
-            Vector3 tint = _settings.ApplyDiffuseTint ? ResolveDiffuseTint(material) : Vector3.One;
+            Vector3 tint = _settings.ApplyDiffuseTint ? ResolveDiffuseTint(material, _settings) : Vector3.One;
             float uvScale = ResolveDiffuseUvMult(material);
             Textures.TEX4 diffuse = ResolveDiffuse(material);
             MaterialAlbedo image = diffuse == null ? null : DecodeCached(diffuse);
@@ -323,10 +323,21 @@ namespace CathodeLib.Radiosity
             }
         }
 
-        private static Vector3 ResolveDiffuseTint(Materials.Material material)
+        private static Vector3 ResolveDiffuseTint(Materials.Material material, RadiosityBakeSettings settings)
         {
             Shaders.Shader shader = material.Shader;
             if (shader == null || !TryConstant(material, DiffuseTintIndex(shader.Ubershader), 3, out int remap))
+                return Vector3.One;
+
+            //The 26-remap CA_ENVIRONMENT permutation: retail's compiler ignores DIFFUSE_TINT for
+            //it, verified per mover on ChallengeMap4 - ours/retail stored albedo equals the tint
+            //EXACTLY (mover 2511 tint 0.09 ratio 0.098, mover 2372 tint 0.43 ratio 0.43). This was
+            //measured once before and dismissed as a compiler quirk because honouring it makes
+            //dark plastics bounce like white paint - but that IS how retail's bounce behaves, and
+            //it is where the dark-plastic albedo deficits on CM3/CM4 came from.
+            if (settings.UntintedEnvironment26 &&
+                shader.Ubershader == SHADER_LIST.CA_ENVIRONMENT &&
+                shader.PixelShaderParameterRemaps.Count == 26)
                 return Vector3.One;
 
             return new Vector3(

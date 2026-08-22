@@ -653,8 +653,26 @@ namespace CathodeLib.Radiosity
         {
             foreach (RadiosityGeometry.Instance instance in geometry.Instances)
             {
+                // Retail's own rect for this island: verbatim, or as a per-dimension FLOOR under
+                // the formula (never smaller than retail; the formula and its boost may exceed).
+                // The floor exists because verbatim retail rects fixed Torrens but returned CM3's
+                // dim floor - the levels the boost fixed need certain rects LARGER than retail's.
+                int[] retailRect = null;
+                if (settings.RetailRectSizes != null && instance.RetailIslandId >= 0)
+                    settings.RetailRectSizes.TryGetValue(instance.RetailIslandId, out retailRect);
+                if (retailRect != null && !settings.RetailRectSizesAsFloor)
+                {
+                    instance.AtlasWidth = Math.Max(1, Math.Min(AtlasSize, retailRect[0]));
+                    instance.AtlasHeight = Math.Max(1, Math.Min(AtlasSize, retailRect[1]));
+                    continue;
+                }
                 RadiosityAtlas.RectSizeForBounds(instance.SurfaceArea, instance.BoundsMax - instance.BoundsMin,
                     instance.UvCoverage, settings, out int w, out int h, instance.UvAspect);
+                if (retailRect != null)
+                {
+                    w = Math.Max(w, Math.Min(AtlasSize, retailRect[0]));
+                    h = Math.Max(h, Math.Min(AtlasSize, retailRect[1]));
+                }
                 instance.AtlasWidth = w;
                 instance.AtlasHeight = h;
             }
@@ -1066,7 +1084,7 @@ namespace CathodeLib.Radiosity
             // area leaves texel density varying by orders of magnitude between instances, which
             // left a third of the cells retail fills with no probes of ours at all. Sampling the
             // triangles directly makes emitter coverage independent of the atlas entirely.
-            List<ProbePoint> inputProbes = ScatterInputProbes(geometry, instances, settings);
+            List<ProbePoint> inputProbes = ScatterInputProbes(geometry, instances, settings, level, lightPriors);
 
             // Order spatially before assigning tile slots, so a 16x16 tile holds probes that are
             // near each other in the world. The probe tree's leaves are those same tiles, so their
@@ -1508,13 +1526,62 @@ namespace CathodeLib.Radiosity
         private static List<ProbePoint> ScatterInputProbes(
             RadiosityGeometry geometry,
             List<RadiosityGeometry.Instance> instances,
-            RadiosityBakeSettings settings)
+            RadiosityBakeSettings settings,
+            Level level = null,
+            RetailLightPriors lightPriors = null)
         {
             float spacing = Math.Max(0.01f, settings.InputProbeSpacing);
             float perSquareMetre = Math.Max(1.0f, settings.InputProbeCandidatesPerSquareMetre);
 
             // Dart-throwing needs a scrambled visit order, so candidates are accumulated per
             // triangle and then walked in a hashed sequence rather than in geometry order.
+            //Per-mover light colour, where retail attached a surface light to the entity. Retail's
+            //own input-probe albedo on luminous panel surfaces stores the LIGHT's colour, not the
+            //fixture's housing texture (CEILING_HZDLAB: retail ~(180,175,164) = the room's R174
+            //G174 B174 lights, our diffuse sample ~(23,22,22)) - so a lit fixture should bounce
+            //its glow colour, not the dark plastic it is moulded from.
+            var lightColour = new Dictionary<int, Vector3>();
+            if (settings.LightColourProbeAlbedo && level != null && lightPriors != null)
+            {
+                foreach (RadiosityGeometry.Instance inst2 in instances)
+                    foreach (int m in inst2.Movers)
+                    {
+                        if (lightColour.ContainsKey(m)) continue;
+                        Movers.MOVER_DESCRIPTOR mv = level.Movers.Entries[m];
+                        if (mv?.Resource == null) continue;
+                        RetailLightPriors.Prior prior = lightPriors.Lookup(mv.Resource);
+                        if (prior != null)
+                            lightColour[m] = new Vector3(prior.R / 255.0f, prior.G / 255.0f, prior.B / 255.0f);
+                    }
+
+                //State-variant siblings: a lit fixture ships as several coincident movers, and the
+                //light slice sits on only one of them. The unlit twin has the same geometry and
+                //renders lit whenever the fixture is on, so its bounce should carry the glow too -
+                //retail's probe albedo on ChallengeMap4's twin walls (mover 2511 next to lit 2512)
+                //is the sibling's light colour, not the dark plastic. Same island only, within
+                //half a metre of a prior-carrying mover's origin.
+                if (settings.LightColourProbeAlbedoSiblings)
+                    foreach (RadiosityGeometry.Instance inst3 in instances)
+                    {
+                        var lit = inst3.Movers.Where(m => lightColour.ContainsKey(m)).ToList();
+                        if (lit.Count == 0) continue;
+                        foreach (int m in inst3.Movers)
+                        {
+                            if (lightColour.ContainsKey(m)) continue;
+                            Movers.MOVER_DESCRIPTOR mv2 = level.Movers.Entries[m];
+                            Vector3 at = new Vector3(mv2.Transform.M41, mv2.Transform.M42, mv2.Transform.M43);
+                            foreach (int litMover in lit)
+                            {
+                                Movers.MOVER_DESCRIPTOR lm = level.Movers.Entries[litMover];
+                                Vector3 lp = new Vector3(lm.Transform.M41, lm.Transform.M42, lm.Transform.M43);
+                                if (Vector3.DistanceSquared(lp, at) > 0.5f * 0.5f) continue;
+                                lightColour[m] = lightColour[litMover];
+                                break;
+                            }
+                        }
+                    }
+            }
+
             var candidates = new List<ProbePoint>();
             foreach (RadiosityGeometry.Instance instance in instances)
             {
@@ -1523,6 +1590,15 @@ namespace CathodeLib.Radiosity
                     float area = geometry.TriangleArea(tri);
                     if (area <= 1e-7f)
                         continue;
+
+                    Vector3 lit = Vector3.Zero;
+                    bool hasLit = false;
+                    if (lightColour.Count != 0)
+                    {
+                        int slot2 = tri < geometry.TriangleMoverSlot.Length ? geometry.TriangleMoverSlot[tri] : 0;
+                        if (slot2 >= 0 && slot2 < instance.Movers.Count)
+                            hasLit = lightColour.TryGetValue(instance.Movers[slot2], out lit);
+                    }
 
                     // At least one candidate per triangle, so a small face is still represented
                     // and can win a probe if nothing nearby has taken the space.
@@ -1540,7 +1616,7 @@ namespace CathodeLib.Radiosity
                         {
                             Position = position,
                             Normal = normal,
-                            Albedo = geometry.SampleAlbedo(tri, diffuseUv),
+                            Albedo = hasLit ? lit : geometry.SampleAlbedo(tri, diffuseUv),
                         });
                     }
                 }
