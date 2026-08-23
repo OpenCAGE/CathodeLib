@@ -22,6 +22,9 @@ namespace CATHODE
     {
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
 
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
+
         public HeaderInfo Header = new HeaderInfo();
 
         /// <summary>Raw __classnames__ payload (signatures + names). Fixups are empty on AI files.</summary>
@@ -2551,7 +2554,9 @@ namespace CATHODE
             GlobalFixups.Clear();
             VirtualFixups.Clear();
 
-            byte[] file = stream.ToArray();
+            _compressed = _filepath != null && _filepath.EndsWith("_SWITCH.GZ", StringComparison.OrdinalIgnoreCase);
+
+            byte[] file = (_compressed ? Utilities.GZIPDecompress(stream) : stream).ToArray();
             if (file.Length < 0x40)
                 return false;
 
@@ -2616,7 +2621,17 @@ namespace CATHODE
         {
             byte[] content = ToBytes();
             if (content == null) return false;
+
+            if (_compressed && !_filepath.EndsWith("_SWITCH.GZ", StringComparison.OrdinalIgnoreCase))
+                _filepath += "_SWITCH.GZ";
+            else if (!_compressed && _filepath.EndsWith("_SWITCH.GZ", StringComparison.OrdinalIgnoreCase))
+                _filepath = _filepath.Substring(0, _filepath.Length - "_SWITCH.GZ".Length);
+
             File.WriteAllBytes(_filepath, content);
+
+            if (_compressed)
+                Utilities.GZIPCompress(_filepath);
+
             return true;
         }
 

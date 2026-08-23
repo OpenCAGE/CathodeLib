@@ -31,18 +31,26 @@ namespace CathodeLib
         public GlobalAnimClipDB ClipIndex;
 
         /// <summary>One per character: the clips it owns and the sections holding them.</summary>
-        public List<AnimClipDB> ClipDatabases = new List<AnimClipDB>();
+        public List<AnimClipDB> ClipDatabases { get { EnsureContents(); return _clipDatabases; } }
 
         /// <summary>The loadable chunks of animation - Havok clips plus their metadata.</summary>
-        public List<AnimClipDBSec> Sections = new List<AnimClipDBSec>();
+        public List<AnimClipDBSec> Sections { get { EnsureContents(); return _sections; } }
 
         /// <summary>The animation trees that decide which clip plays when. These name themselves out
         /// of the debug string table rather than the plain one.</summary>
-        public List<AnimTreeDB> Trees = new List<AnimTreeDB>();
+        public List<AnimTreeDB> Trees { get { EnsureContents(); return _trees; } }
 
-        public List<SkeletonAsset> Skeletons = new List<SkeletonAsset>();
-        public List<MappingAsset> Mappings = new List<MappingAsset>();
-        public List<RagdollAsset> Ragdolls = new List<RagdollAsset>();
+        private readonly List<AnimClipDB> _clipDatabases = new List<AnimClipDB>();
+        private readonly List<AnimClipDBSec> _sections = new List<AnimClipDBSec>();
+        private readonly List<AnimTreeDB> _trees = new List<AnimTreeDB>();
+
+        public List<SkeletonAsset> Skeletons { get { EnsureContents(); return _skeletons; } }
+        public List<MappingAsset> Mappings { get { EnsureContents(); return _mappings; } }
+        public List<RagdollAsset> Ragdolls { get { EnsureContents(); return _ragdolls; } }
+
+        private readonly List<SkeletonAsset> _skeletons = new List<SkeletonAsset>();
+        private readonly List<MappingAsset> _mappings = new List<MappingAsset>();
+        private readonly List<RagdollAsset> _ragdolls = new List<RagdollAsset>();
 
         /// <summary>The PAK everything came out of. Entry content is refreshed by <see cref="Save"/>.</summary>
         public PAK2 PAK { get { return _pak; } }
@@ -58,14 +66,27 @@ namespace CathodeLib
 
         public Animation(string path) : this(new PAK2(path)) { }
 
-        public Animation(PAK2 pak)
+        public Animation(PAK2 pak) : this(pak, true) { }
+
+        /// <summary>
+        /// Read the PAK.
+        ///
+        /// The four tables everything else is named through are always read - they are four files and
+        /// cost nothing. The rest is 23,000 clip sections and takes a few seconds, so
+        /// <paramref name="parseEverything"/> can defer it until something actually asks for one; the
+        /// properties below load it on first touch either way.
+        /// </summary>
+        public Animation(PAK2 pak, bool parseEverything)
         {
             _pak = pak;
-            _loaded = Load();
+            _loaded = LoadIndex();
+
+            if (_loaded && parseEverything)
+                EnsureContents();
         }
 
         #region LOAD_SAVE
-        private bool Load()
+        private bool LoadIndex()
         {
             if (_pak == null || !_pak.Loaded || _pak.Entries == null) return false;
 
@@ -80,20 +101,34 @@ namespace CathodeLib
             SkeletonIndex = LoadOne(Find(@"SKELE\DB.BIN"), x => new SkeletonDB(x.Content, Strings, x.Filename));
             ClipIndex = LoadOne(Find(@"ANIM_SYS\ANIM_CLIP_DB.BIN"), x => new GlobalAnimClipDB(x.Content, Strings, x.Filename, StringsDebug));
 
+            return true;
+        }
+
+        private bool _contentsLoaded;
+
+        /// <summary>
+        /// Parse everything the index doesn't cover, once. Everything in here works on the backing
+        /// fields rather than the properties, which would come straight back round to this.
+        /// </summary>
+        private void EnsureContents()
+        {
+            if (_contentsLoaded || !_loaded) return;
+            _contentsLoaded = true;
+
             foreach (PAK2.File file in _pak.Entries)
             {
                 string name = (file.Filename ?? "").ToUpperInvariant();
                 if (file.Content == null) continue;
 
                 if (name.Contains("ANIM_CLIP_DB_SEC_"))
-                    Add(Sections, file, x => new AnimClipDBSec(x.Content, Strings, x.Filename, StringsDebug));
+                    Add(_sections, file, x => new AnimClipDBSec(x.Content, Strings, x.Filename, StringsDebug));
                 else if (name.EndsWith("_ANIM_CLIP_DB.BIN"))
-                    Add(ClipDatabases, file, x => new AnimClipDB(x.Content, Strings, x.Filename, StringsDebug));
+                    Add(_clipDatabases, file, x => new AnimClipDB(x.Content, Strings, x.Filename, StringsDebug));
                 else if (name.EndsWith("_ANIM_TREE_DB.BIN"))
-                    Add(Trees, file, x => new AnimTreeDB(x.Content, StringsDebug, x.Filename));
+                    Add(_trees, file, x => new AnimTreeDB(x.Content, StringsDebug, x.Filename));
             }
 
-            LoadPaired(@"SKELE\SK\", @"SKELE\SK64\", Skeletons,
+            LoadPaired(@"SKELE\SK\", @"SKELE\SK64\", _skeletons,
                 (file, sixtyFour) => new SkeletonAsset { Name = SkeletonName(file.Filename) },
                 (asset, file, sixtyFour) =>
                 {
@@ -103,7 +138,7 @@ namespace CathodeLib
                     return true;
                 });
 
-            LoadPaired(@"SKELE\MAPS\", @"SKELE\MAPS64\", Mappings,
+            LoadPaired(@"SKELE\MAPS\", @"SKELE\MAPS64\", _mappings,
                 (file, sixtyFour) => new MappingAsset(),
                 (asset, file, sixtyFour) =>
                 {
@@ -113,7 +148,7 @@ namespace CathodeLib
                     return true;
                 });
 
-            LoadPaired(@"SKELE\RAGS\", @"SKELE\RAGS64\", Ragdolls,
+            LoadPaired(@"SKELE\RAGS\", @"SKELE\RAGS64\", _ragdolls,
                 (file, sixtyFour) => new RagdollAsset { Name = SkeletonName(file.Filename) },
                 (asset, file, sixtyFour) =>
                 {
@@ -124,7 +159,7 @@ namespace CathodeLib
                 });
 
             //name the mappings now the skeletons are in, since the files are named by hash
-            foreach (MappingAsset mapping in Mappings)
+            foreach (MappingAsset mapping in _mappings)
             {
                 SkeletonMapping source = mapping.Mapping ?? mapping.Mapping64;
                 if (source == null) continue;
@@ -133,7 +168,6 @@ namespace CathodeLib
             }
 
             BuildSets();
-            return Failures.Count == 0;
         }
 
         /// <summary>
@@ -250,8 +284,14 @@ namespace CathodeLib
         /// <summary>Find a skeleton by name, e.g. "MALE" or "ALIEN".</summary>
         public SkeletonAsset GetSkeleton(string name)
         {
-            SkeletonDB.SkeletonEntry entry = SkeletonIndex?.GetSkeleton(name);
-            if (entry == null) return null;
+            return GetSkeleton(SkeletonIndex?.GetSkeleton(name));
+        }
+
+        /// <summary>Find a skeleton from its entry in the index.</summary>
+        public SkeletonAsset GetSkeleton(SkeletonDB.SkeletonEntry entry)
+        {
+            if (entry == null || SkeletonIndex == null) return null;
+
             string file = SkeletonName(SkeletonIndex.GetSkeletonPath(entry));
             return Skeletons.FirstOrDefault(x => string.Equals(x.Name, file, StringComparison.OrdinalIgnoreCase));
         }
@@ -412,10 +452,13 @@ namespace CathodeLib
         /// Every animation set in the PAK, resolved down to the clips it can play. This is the view
         /// the game presents to script: pick a set, pick a context within it, play a clip by name.
         /// </summary>
-        public List<AnimationSet> Sets = new List<AnimationSet>();
+        public List<AnimationSet> Sets { get { EnsureContents(); return _sets; } }
 
         /// <summary>The skeleton definitions from DATA/SKELETONDEFS, keyed by skeleton name.</summary>
-        public Dictionary<string, SkeletonDef> SkeletonDefs = new Dictionary<string, SkeletonDef>(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, SkeletonDef> SkeletonDefs { get { EnsureContents(); return _skeletonDefs; } }
+
+        private readonly List<AnimationSet> _sets = new List<AnimationSet>();
+        private readonly Dictionary<string, SkeletonDef> _skeletonDefs = new Dictionary<string, SkeletonDef>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>Look a set up by name, e.g. "MALE" or "DOORS_DOOR_SHOPPING".</summary>
         public AnimationSet GetSet(string name)
@@ -430,6 +473,7 @@ namespace CathodeLib
         /// </summary>
         public AnimClipDBSec GetSection(string clipPath, out int index)
         {
+            EnsureContents(); //the lookups below are built by it, and reading them is not
             index = 0;
             if (clipPath == null || _sectionOfClip == null) return null;
             if (!_sectionOfClip.TryGetValue(clipPath, out GlobalAnimClipDB.ClipDbSection entry)) return null;
@@ -443,7 +487,7 @@ namespace CathodeLib
          * pointing each clip at the section that actually holds its animation. */
         private void BuildSets()
         {
-            Sets.Clear();
+            _sets.Clear();
             _sectionOfClip = new Dictionary<string, GlobalAnimClipDB.ClipDbSection>(StringComparer.OrdinalIgnoreCase);
             _sectionByName = new Dictionary<string, AnimClipDBSec>(StringComparer.OrdinalIgnoreCase);
 
@@ -470,7 +514,7 @@ namespace CathodeLib
                 set.ClipCount = set.Contexts.Sum(x => x.Clips.Count);
                 set.Skeleton = PrimarySkeleton(set);
                 set.Kind = Classify(set);
-                Sets.Add(set);
+                _sets.Add(set);
             }
         }
 
@@ -520,9 +564,9 @@ namespace CathodeLib
          * Not every set has a definition, so this falls back twice more. */
         private AnimationKind Classify(AnimationSet set)
         {
-            if (SkeletonDefs.TryGetValue(set.Name, out SkeletonDef named))
+            if (_skeletonDefs.TryGetValue(set.Name, out SkeletonDef named))
                 return named.IsEnvironment ? AnimationKind.Environment : AnimationKind.Character;
-            if (set.Skeleton.Length != 0 && SkeletonDefs.TryGetValue(set.Skeleton, out SkeletonDef used))
+            if (set.Skeleton.Length != 0 && _skeletonDefs.TryGetValue(set.Skeleton, out SkeletonDef used))
                 return used.IsEnvironment ? AnimationKind.Environment : AnimationKind.Character;
 
             /* Go by the company it keeps. ANDROID has no definition of its own, but its 1,528 clips
@@ -530,7 +574,7 @@ namespace CathodeLib
             int character = 0, environment = 0;
             foreach (string skeleton in SkeletonsUsedBy(set))
             {
-                if (!SkeletonDefs.TryGetValue(skeleton, out SkeletonDef def)) continue;
+                if (!_skeletonDefs.TryGetValue(skeleton, out SkeletonDef def)) continue;
                 if (def.IsEnvironment) environment++; else character++;
             }
             if (character != environment)
@@ -571,14 +615,14 @@ namespace CathodeLib
 
         private void ReadSkeletonDefs()
         {
-            SkeletonDefs.Clear();
+            _skeletonDefs.Clear();
             foreach (PAK2.File file in _pak.Entries)
             {
                 if (file.Content == null) continue;
                 if (!(file.Filename ?? "").StartsWith(@"DATA\SKELETONDEFS", StringComparison.OrdinalIgnoreCase)) continue;
 
                 SkeletonDef def = SkeletonDef.Read(file);
-                if (def != null) SkeletonDefs[def.Name] = def;
+                if (def != null) _skeletonDefs[def.Name] = def;
             }
         }
 
@@ -1090,6 +1134,7 @@ namespace CathodeLib
                             List<short> trackToBone, List<List<HavokPackfile.SampledTransform>> frames,
                             float frameDuration = 1f / 30f, bool additive = false)
         {
+            EnsureContents(); //everything below works on the parsed contents, not the index
             if (set?.Database == null || ClipIndex == null || _pak?.Entries == null) return false;
             if (frames == null || frames.Count == 0 || trackToBone == null || trackToBone.Count == 0) return false;
             if (string.IsNullOrEmpty(clipName) || string.IsNullOrEmpty(clipPath)) return false;

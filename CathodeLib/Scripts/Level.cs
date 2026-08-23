@@ -15,64 +15,35 @@ namespace CathodeLib
     public class Global
     {
         public Textures Textures;
+        public Animation Animations;
 
-        public PAK2 Animations;
-
-        public AnimationStrings AnimationStrings;
-        public AnimationStrings AnimationStrings_Debug;
+        public AnimationStrings AnimationStrings { get { return Animations?.Strings; } }
+        public AnimationStrings AnimationStrings_Debug { get { return Animations?.StringsDebug; } }
+        public SkeletonDB Skeletons { get { return Animations?.SkeletonIndex; } }
 
         public Global(string path)
         {
             string root = (path ?? "").TrimEnd('\\', '/') + "\\";
             Textures = new Textures(root + "WORLD\\GLOBAL_TEXTURES.ALL.PAK");
-            string animationPak = root + "..\\..\\GLOBAL\\ANIMATION.PAK";
-            Animations = new PAK2(animationPak);
-
-            PAK2.File animStrings = Animations?.Entries?.FirstOrDefault(o => o.Filename.Contains("ANIM_STRING_DB.BIN"));
-            PAK2.File animStringsDebug = Animations?.Entries?.FirstOrDefault(o => o.Filename.Contains("ANIM_STRING_DB_DEBUG.BIN"));
-            if (animStrings?.Content == null || animStringsDebug?.Content == null)
-            {
-                throw new FileNotFoundException(
-                    "Failed to load ANIMATION.PAK string tables from '" + animationPak + "'. "
-                    + "Entries=" + (Animations?.Entries?.Count ?? -1));
-            }
-
-            AnimationStrings = new AnimationStrings(animStrings.Content);
-            AnimationStrings_Debug = new AnimationStrings(animStringsDebug.Content);
-
-            AnimationStrings.Fallback = AnimationStrings_Debug;
-
-            PAK2.File skeletonDB = Animations?.Entries?.FirstOrDefault(o => o.Filename.EndsWith(@"SKELE\DB.BIN", StringComparison.OrdinalIgnoreCase));
-            if (skeletonDB?.Content != null)
-                Skeletons = new SkeletonDB(skeletonDB.Content, AnimationStrings, skeletonDB.Filename);
+            if (File.Exists(root + "..\\..\\GLOBAL\\ANIMATION_SWITCH.PAK"))
+                Animations = new Animation(new PAK2(root + "..\\..\\GLOBAL\\ANIMATION_SWITCH.PAK"), false);
+            else if (File.Exists(root + "..\\..\\GLOBAL\\ANIMATION.PAK"))
+                Animations = new Animation(new PAK2(root + "..\\..\\GLOBAL\\ANIMATION.PAK"), false);
         }
 
         ~Global()
         {
             Textures = null;
-            AnimationStrings = null;
-            AnimationStrings_Debug = null;
-            Skeletons = null;
+            Animations = null;
         }
 
         /// <summary>
-        /// Every skeleton in the game, and the mappings between them.
-        /// </summary>
-        public SkeletonDB Skeletons;
-
-        /// <summary>
-        /// Load a skeleton's bones out of the animation PAK. Returns null if it isn't there.
+        /// A skeleton's bones, from the animation PAK. Returns null if it isn't there.
         /// </summary>
         public Skeleton GetSkeleton(SkeletonDB.SkeletonEntry skeleton)
         {
-            if (skeleton == null || Skeletons == null) return null;
-
-            string path = Skeletons.GetSkeletonPath(skeleton);
-            PAK2.File file = Animations?.Entries?.FirstOrDefault(o => string.Equals(o.Filename, path, StringComparison.OrdinalIgnoreCase));
-            if (file?.Content == null) return null;
-
-            Skeleton loaded = new Skeleton(file.Content, AnimationStrings, file.Filename);
-            return loaded.Loaded ? loaded : null;
+            Skeleton loaded = Animations?.GetSkeleton(skeleton)?.Skeleton;
+            return loaded != null && loaded.Loaded ? loaded : null;
         }
 
         /// <summary>
@@ -80,7 +51,8 @@ namespace CathodeLib
         /// </summary>
         public Skeleton GetSkeleton(string name)
         {
-            return GetSkeleton(Skeletons?.GetSkeleton(name));
+            Skeleton loaded = Animations?.GetSkeleton(name)?.Skeleton;
+            return loaded != null && loaded.Loaded ? loaded : null;
         }
     }
 
@@ -291,9 +263,10 @@ namespace CathodeLib
                 },
                 () =>
                 {
-                    if (File.Exists(world + "COLLISION.HKX64"))
+                    string path = Havok64Path(world, "COLLISION");
+                    if (path != null)
                     {
-                        CollisionHKX64 = new HavokPackfile(world + "COLLISION.HKX64");
+                        CollisionHKX64 = new HavokPackfile(path);
                         if (!CollisionHKX64.Loaded)
                             CollisionHKX64 = null;
                     }
@@ -311,9 +284,10 @@ namespace CathodeLib
                 },
                 () =>
                 {
-                    if (File.Exists(world + "PHYSICS.HKX64"))
+                    string path = Havok64Path(world, "PHYSICS");
+                    if (path != null)
                     {
-                        PhysicsHKX64 = new HavokPackfile(world + "PHYSICS.HKX64");
+                        PhysicsHKX64 = new HavokPackfile(path);
                         if (!PhysicsHKX64.Loaded)
                             PhysicsHKX64 = null;
                     }
@@ -327,7 +301,7 @@ namespace CathodeLib
             );
 
             Parallel.Invoke(
-                () => { RadiosityRuntime = new RadiosityRuntime(renderable + "RADIOSITY_RUNTIME.BIN", Resources); OnLoadTick?.Invoke(); },
+                () => { RadiosityRuntime = new RadiosityRuntime(File.Exists(renderable + "RADIOSITY_RUNTIME.BIN.GZ") ? renderable + "RADIOSITY_RUNTIME.BIN.GZ" : renderable + "RADIOSITY_RUNTIME.BIN", Resources); OnLoadTick?.Invoke(); },
                 () => { RadiosityInstanceMap = new RadiosityInstanceMap(renderable + "RADIOSITY_INSTANCE_MAP.TXT", Resources); OnLoadTick?.Invoke(); },
                 () => { RadiosityCollisionMap = new RadiosityCollisionMap(world + "RADIOSITY_COLLISION_MAPPING.BIN"); OnLoadTick?.Invoke(); },
                 () => { AlphaLight = new AlphaLightLevel(world + "ALPHALIGHT_LEVEL.BIN"); OnLoadTick?.Invoke(); },
@@ -563,6 +537,18 @@ namespace CathodeLib
                         return function;
                 }
             }
+            return null;
+        }
+
+        /// <summary>
+        /// Gets the Havok 64 filepath (on Switch it's named differently)
+        /// </summary>
+        private static string Havok64Path(string world, string name)
+        {
+            if (File.Exists(world + name + ".HKX64_SWITCH.GZ"))
+                return world + name + ".HKX64_SWITCH.GZ";
+            if (File.Exists(world + name + ".HKX64"))
+                return world + name + ".HKX64";
             return null;
         }
 

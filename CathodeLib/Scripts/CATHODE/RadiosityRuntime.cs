@@ -28,6 +28,9 @@ namespace CATHODE
 
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
 
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
+
         private Resources _resources;
 
         public RadiosityRuntime(string path, Resources resources) : base(path)
@@ -51,7 +54,9 @@ namespace CATHODE
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
-            using (BinaryReader reader = new BinaryReader(stream))
+            _compressed = _filepath != null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
+
+            using (BinaryReader reader = new BinaryReader(_compressed ? Utilities.GZIPDecompress(stream) : stream))
             {
                 reader.BaseStream.Position += 8;
 
@@ -81,6 +86,11 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
+            if (_compressed && Path.GetExtension(_filepath).ToLower() != ".gz")
+                _filepath += ".gz";
+            else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
+                _filepath = _filepath.Substring(0, _filepath.Length - 3);
+
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
@@ -128,6 +138,10 @@ namespace CATHODE
                 Utilities.Write(writer, sliceOffsets);
                 writer.BaseStream.Position = endPos;
             }
+
+            if (_compressed)
+                Utilities.GZIPCompress(_filepath);
+
             return true;
         }
 
