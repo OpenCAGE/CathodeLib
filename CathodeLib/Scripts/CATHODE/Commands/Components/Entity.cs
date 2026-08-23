@@ -186,12 +186,12 @@ namespace CATHODE.Scripting.Internal
         {
             return AddParameter(ShortGuidUtils.Generate(name), data, variant, overwriteIfExists);
         }
-        public Parameter AddParameter(ShortGuid id, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER, bool overwriteIfExists = true)
+        public Parameter AddParameter(ShortGuid id, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER, bool overwriteIfExists = true, bool bindResourceToEntity = true)
         {
             if (data == null)
                 Console.WriteLine("WARNING: Entity " + this.shortGUID + " (" + this.variant + ") has null parameter data for " + id.ToString());
 
-            if (id == ShortGuids.resource && data is cResource resourceParam)
+            if (bindResourceToEntity && id == ShortGuids.resource && data is cResource resourceParam)
                 BindResourceParameterToEntity(resourceParam);
 
             Parameter param = GetParameter(id);

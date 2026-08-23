@@ -428,7 +428,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     if (cache.Item2.TryGetValue(entityID, out Entity ent))
                                     {
                                         if (paramData != null) //Skipping nulls: links seem to get added as null parameters
-                                            ent.AddParameter(paramName, paramData); //NOTE: "name" is kept as a parameter - that's where entity names live
+                                            ent.AddParameter(paramName, paramData, ParameterVariant.PARAMETER, true, false);
                                     }
                                 }
                                 break;
@@ -494,43 +494,41 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             }
                                             break;
                                     }
-                                    if (cache.Item2.TryGetValue(resource.resource_id, out Entity ent))
+                                    bool attached = false;
+                                    foreach (Entity entity in cache.Item1.GetEntities())
                                     {
-                                        ((FunctionEntity)ent).resources.Add(resource);
+                                        foreach (Parameter parameter in entity.parameters)
+                                        {
+                                            if (parameter.name != ShortGuids.resource) continue;
+                                            if (!(parameter.content is cResource socket) || socket.shortGUID != resource.resource_id) continue;
+
+                                            socket.value.Add(resource);
+                                            attached = true;
+                                            break;
+                                        }
+                                        if (attached) break;
                                     }
-                                    else
+
+                                    if (!attached && cache.Item2.TryGetValue(resource.resource_id, out Entity ent) && ent is FunctionEntity owner)
                                     {
-                                        bool addedAsParam = false;
-                                        foreach (Entity entity in cache.Item1.GetEntities())
+                                        owner.resources.Add(resource);
+                                        attached = true;
+                                    }
+
+                                    if (!attached && resource.resource_type == ResourceType.DYNAMIC_PHYSICS_SYSTEM)
+                                    {
+                                        FunctionEntity physEnt = cache.Item1.functions.FirstOrDefault(o => o.function == ShortGuids.PhysicsSystem);
+                                        if (physEnt != null)
                                         {
-                                            foreach (Parameter parameter in entity.parameters)
-                                            {
-                                                if (parameter.name != ShortGuids.resource) continue;
-                                                if (((cResource)parameter.content).shortGUID == resource.resource_id)
-                                                {
-                                                    ((cResource)parameter.content).value.Add(resource);
-                                                    addedAsParam = true;
-                                                    break;
-                                                }
-                                            }
+                                            physEnt.resources.Add(resource);
+                                            attached = true;
                                         }
-                                        if (!addedAsParam)
-                                        {
-                                            if (resource.resource_type == ResourceType.DYNAMIC_PHYSICS_SYSTEM)
-                                            {
-                                                FunctionEntity physEnt = cache.Item1.functions.FirstOrDefault(o => o.function == ShortGuids.PhysicsSystem);
-                                                if (physEnt != null)
-                                                {
-                                                    physEnt.resources.Add(resource);
-                                                    addedAsParam = true;
-                                                }
-                                            }
-                                            if (!addedAsParam)
-                                            {
-                                                Console.WriteLine("Failed to find entity or parameter [" + resource.resource_id.ToByteString() + "] in composite: " + cache.Item1.name);
-                                                Console.WriteLine("\t Type - " + resource.resource_type);
-                                            }
-                                        }
+                                    }
+
+                                    if (!attached)
+                                    {
+                                        Console.WriteLine("Failed to find entity or parameter [" + resource.resource_id.ToByteString() + "] in composite: " + cache.Item1.name);
+                                        Console.WriteLine("\t Type - " + resource.resource_type);
                                     }
                                 }
                                 break;
