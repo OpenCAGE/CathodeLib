@@ -2395,8 +2395,8 @@ namespace CathodeLib
 
         private static readonly ShortGuid GlobalZoneId = new ShortGuid("01-00-00-00");
 
-        private HavokCollisionTarget _hkx;  
-        private HavokCollisionTarget _hkx64;
+        private HavokCollisionTarget _collision;  
+        private HavokCollisionTarget _collisionMirror;
         private readonly object _havokLock = new object();
 
         private sealed class HavokCollisionTarget
@@ -2716,10 +2716,19 @@ namespace CathodeLib
             _applyDefaultFrozen = ShouldApplyFrozen(_level.CollisionMaps.Entries);
 
             //Prep and clear Havok data
-            _hkx = _level.CollisionHKX != null && _level.CollisionHKX.Loaded ? new HavokCollisionTarget(_level.CollisionHKX) : null;
-            _hkx?.ClearWorldHosts();
-            _hkx64 = _level.CollisionHKX64 != null && _level.CollisionHKX64.Loaded ? new HavokCollisionTarget(_level.CollisionHKX64) : null;
-            _hkx64?.ClearWorldHosts();
+            /* A COLLISION.MAP row names an instance by its slot in the host compound, so one file
+             * decides the numbering and the other width has to be built to match it slot for slot.
+             * PC ships both and the 32-bit one leads; the mobile and Switch builds ship only 64, and
+             * that one leads instead - there is nothing to mirror it to. */
+            HavokPackfile collision32 = _level.CollisionHKX != null && _level.CollisionHKX.Loaded ? _level.CollisionHKX : null;
+            HavokPackfile collision64 = _level.CollisionHKX64 != null && _level.CollisionHKX64.Loaded ? _level.CollisionHKX64 : null;
+
+            _collision = collision32 != null ? new HavokCollisionTarget(collision32)
+                : collision64 != null ? new HavokCollisionTarget(collision64) : null;
+            _collision?.ClearWorldHosts();
+
+            _collisionMirror = collision32 != null && collision64 != null ? new HavokCollisionTarget(collision64) : null;
+            _collisionMirror?.ClearWorldHosts();
 
             //Clear other various bits we'll re-write
             _level.Resources.Entries.Clear();
@@ -2789,8 +2798,8 @@ namespace CathodeLib
 
             //Rebuild Havok data
             ApplyHavokUserRows();
-            _hkx?.Packfile.CommitInstanceRebuild();
-            _hkx64?.Packfile.CommitInstanceRebuild();
+            _collision?.Packfile.CommitInstanceRebuild();
+            _collisionMirror?.Packfile.CommitInstanceRebuild();
 
             //Regenerate level states (navmesh, cover, etc)
             BuildExclusiveMasterStates();
@@ -2874,16 +2883,16 @@ namespace CathodeLib
                 instance.UserData = (ulong)i;
                 stamped.Add(instance);
 
-                //todo - this assumes that we are writing everything to 32 and copying to 64, but that might not be the case
-                HavokPackfile.StaticCompoundShape host64 = _hkx64?.HostFor(rows[i].Flags);
+                //Whichever width leads, the other has to carry the same row index on the same slot
+                HavokPackfile.StaticCompoundShape hostMirror = _collisionMirror?.HostFor(rows[i].Flags);
                 int slot = instance.Index;
-                if (host64 != null && slot >= 0 && slot < host64.Instances.Count)
-                    host64.Instances[slot].UserData = (ulong)i;
+                if (hostMirror != null && slot >= 0 && slot < hostMirror.Instances.Count)
+                    hostMirror.Instances[slot].UserData = (ulong)i;
             }
 
             //todo - i think maybe navmesh barrier uses a different id system?
 
-            int orphans = CountUnstamped(_hkx?.PrimaryHost, stamped) + CountUnstamped(_hkx?.SecondaryHost, stamped);
+            int orphans = CountUnstamped(_collision?.PrimaryHost, stamped) + CountUnstamped(_collision?.SecondaryHost, stamped);
             if (orphans > 0)
                 Console.WriteLine("  WARNING: {0} Havok instances have no COLLISION.MAP row (zone lookup will miss)", orphans);
         }
@@ -2902,7 +2911,7 @@ namespace CathodeLib
         //Creates a new instance for a Havok proxy
         HavokPackfile.CompoundInstance AllocateHavokCompoundInstance(InstancedEntity entity, HavokPackfile.StaticCompoundShape collisionProxy, CollisionMaps.CollisionFlags mapFlags)
         {
-            if (_hkx == null || collisionProxy == null)
+            if (_collision == null || collisionProxy == null)
                 return null;
 
             Matrix4x4 worldMatrix = entity.CalculateWorldTransformMatrix();
@@ -2922,21 +2931,21 @@ namespace CathodeLib
             lock (_havokLock)
             {
                 //Prefer world hosts: instance shape = the template compound object itself.
-                if (_hkx.HasWorldHosts)
+                if (_collision.HasWorldHosts)
                 {
-                    HavokPackfile.StaticCompoundShape host = _hkx.HostFor(mapFlags);
-                    HavokPackfile.CompoundInstance instance = EmitCompoundInstance(_hkx, host, collisionProxy, mapFlags, position, rotation, scale, padding);
+                    HavokPackfile.StaticCompoundShape host = _collision.HostFor(mapFlags);
+                    HavokPackfile.CompoundInstance instance = EmitCompoundInstance(_collision, host, collisionProxy, mapFlags, position, rotation, scale, padding);
 
-                    HavokPackfile.StaticCompoundShape host64 = _hkx64?.HostFor(mapFlags);
-                    if (host64 != null)
+                    HavokPackfile.StaticCompoundShape hostMirror = _collisionMirror?.HostFor(mapFlags);
+                    if (hostMirror != null)
                     {
-                        HavokPackfile.StaticCompoundShape proxy64 = _hkx64.Packfile.GetCompound(collisionProxy.ProxyIndex);
-                        if (proxy64 != null)
+                        HavokPackfile.StaticCompoundShape proxyMirror = _collisionMirror.Packfile.GetCompound(collisionProxy.ProxyIndex);
+                        if (proxyMirror != null)
                         {
-                            EmitCompoundInstance(_hkx64, host64, proxy64, mapFlags, position, rotation, scale, padding);
-                            if (host64.Instances.Count != host.Instances.Count)
+                            EmitCompoundInstance(_collisionMirror, hostMirror, proxyMirror, mapFlags, position, rotation, scale, padding);
+                            if (hostMirror.Instances.Count != host.Instances.Count)
                                 throw new InvalidOperationException(
-                                    "COLLISION.HKX / HKX64 world-host instance indexes diverged during rebuild.");
+                                    "COLLISION.HKX and HKX64 world-host instance slots diverged during rebuild.");
                         }
                     }
                     return instance;
@@ -2944,15 +2953,15 @@ namespace CathodeLib
 
                 //Fallback for packs with no recognisable world host: enqueue onto the template compound.
                 int collisionProxyIndex = collisionProxy.ProxyIndex;
-                if (!_hkx.Prototypes.TryGetValue(collisionProxyIndex, out HavokPackfile.CompoundInstance prototype))
+                if (!_collision.Prototypes.TryGetValue(collisionProxyIndex, out HavokPackfile.CompoundInstance prototype))
                     return null;
 
-                HavokPackfile.CompoundInstance fallback = _hkx.Packfile.EnqueueInstance(collisionProxy, position, rotation, scale, prototype, padding);
-                if (_hkx64 != null && _hkx64.Prototypes.TryGetValue(collisionProxyIndex, out HavokPackfile.CompoundInstance prototype64))
+                HavokPackfile.CompoundInstance fallback = _collision.Packfile.EnqueueInstance(collisionProxy, position, rotation, scale, prototype, padding);
+                if (_collisionMirror != null && _collisionMirror.Prototypes.TryGetValue(collisionProxyIndex, out HavokPackfile.CompoundInstance prototypeMirror))
                 {
-                    HavokPackfile.StaticCompoundShape proxy64 = _hkx64.Packfile.GetCompound(collisionProxyIndex);
-                    if (proxy64 != null)
-                        _hkx64.Packfile.EnqueueInstance(proxy64, position, rotation, scale, prototype64, padding);
+                    HavokPackfile.StaticCompoundShape proxyMirror = _collisionMirror.Packfile.GetCompound(collisionProxyIndex);
+                    if (proxyMirror != null)
+                        _collisionMirror.Packfile.EnqueueInstance(proxyMirror, position, rotation, scale, prototypeMirror, padding);
                 }
                 return fallback;
             }
@@ -2995,10 +3004,10 @@ namespace CathodeLib
         //Adds a box shape to the Havok data (for CollisionBarriers, etc)
         HavokPackfile.CompoundInstance AllocateHavokBoxInstance(InstancedEntity entity, CollisionMaps.CollisionFlags mapFlags)
         {
-            if (_hkx == null)
+            if (_collision == null)
                 return null;
 
-            HavokPackfile.StaticCompoundShape host = _hkx.HostFor(mapFlags);
+            HavokPackfile.StaticCompoundShape host = _collision.HostFor(mapFlags);
             if (host == null)
                 return null;
 
@@ -3027,14 +3036,14 @@ namespace CathodeLib
 
             lock (_havokLock)
             {
-                HavokPackfile.CompoundInstance instance = EmitBoxInstance(_hkx, host, centre, rotation, halfExtents, unityScale, filterInfo, leafFlagBits);
+                HavokPackfile.CompoundInstance instance = EmitBoxInstance(_collision, host, centre, rotation, halfExtents, unityScale, filterInfo, leafFlagBits);
 
-                HavokPackfile.StaticCompoundShape host64 = _hkx64?.HostFor(mapFlags);
-                if (host64 != null)
+                HavokPackfile.StaticCompoundShape hostMirror = _collisionMirror?.HostFor(mapFlags);
+                if (hostMirror != null)
                 {
-                    EmitBoxInstance(_hkx64, host64, centre, rotation, halfExtents, unityScale, filterInfo, leafFlagBits);
-                    if (host64.Instances.Count != host.Instances.Count)
-                        throw new InvalidOperationException("COLLISION.HKX / HKX64 world-host instance indexes diverged during box emit.");
+                    EmitBoxInstance(_collisionMirror, hostMirror, centre, rotation, halfExtents, unityScale, filterInfo, leafFlagBits);
+                    if (hostMirror.Instances.Count != host.Instances.Count)
+                        throw new InvalidOperationException("COLLISION.HKX and HKX64 world-host instance slots diverged during box emit.");
                 }
 
                 return instance;
@@ -4941,7 +4950,7 @@ namespace CathodeLib
                             break;
                         }
 
-                        HavokPackfile.PhysicsSystem template = physicsSystem.PhysicsSystem ?? _level.PhysicsHKX?.GetPhysicsSystem(systemIndex);
+                        HavokPackfile.PhysicsSystem template = physicsSystem.PhysicsSystem ?? _level.Physics?.GetPhysicsSystem(systemIndex);
                         if (template == null)
                         {
                             //Should warn here!

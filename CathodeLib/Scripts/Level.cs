@@ -96,6 +96,10 @@ namespace CathodeLib
         public GalaxyItems GalaxyItems;
         public GalaxyDefinition GalaxyDefinition;
 
+        //Helpful accessors: default to 64-bit Havok data, fall back to 32-bit if not present
+        public HavokPackfile Collision => CollisionHKX64 ?? CollisionHKX;
+        public HavokPackfile Physics => PhysicsHKX64 ?? PhysicsHKX;
+
         public class State
         {
             //The entity that defines this state (invalid if state 0, as that's the default)
@@ -297,7 +301,7 @@ namespace CathodeLib
 
             Parallel.Invoke(
                 () => { PathBarrierResources = new PathBarrierResources(world + "PATH_BARRIER_RESOURCES", Resources); OnLoadTick?.Invoke(); },
-                () => { CollisionMaps = new CollisionMaps(world + "COLLISION.MAP" + (compressed ? ".GZ" : ""), Materials, MaterialMappings, CollisionHKX); OnLoadTick?.Invoke(); }
+                () => { CollisionMaps = new CollisionMaps(world + "COLLISION.MAP" + (compressed ? ".GZ" : ""), Materials, MaterialMappings, Collision); OnLoadTick?.Invoke(); }
             );
 
             Parallel.Invoke(
@@ -323,7 +327,7 @@ namespace CathodeLib
                 () => { GalaxyDefinition = new GalaxyDefinition(renderable + "GALAXY/GALAXY.DEFINITION_BIN"); OnLoadTick?.Invoke(); } //Not used at runtime, but useful to regenerate GalaxyItems.
             );
 
-            Commands = new Commands(world + "COMMANDS" + (compressed ? ".BIN.GZ" : File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements, PhysicsHKX, Textures, _global?.Textures); OnLoadTick?.Invoke();
+            Commands = new Commands(world + "COMMANDS" + (compressed ? ".BIN.GZ" : File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements, Physics, Textures, _global?.Textures); OnLoadTick?.Invoke();
 
             StateResources.Add(new State());
             using (BinaryReader reader = new BinaryReader(File.OpenRead(world + "EXCLUSIVE_MASTER_RESOURCE_INDICES")))

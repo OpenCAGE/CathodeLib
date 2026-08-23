@@ -27,6 +27,35 @@ namespace CATHODE
 
         public HeaderInfo Header = new HeaderInfo();
 
+        /// <summary>Set when this file turned out to be a Havok tagfile rather than a packfile.</summary>
+        internal HavokTagfile Tagfile = null;
+
+        /// <summary>
+        /// Where the shape fields the geometry readers want actually sit. The defaults are the 2012.2
+        /// packfile layout the PC ships; a tagfile overwrites them from its own type table, because
+        /// 2018.2 grew hkReferencedObject by eight bytes and pushed most of these along with it.
+        /// The mesh tree's own fields did not move, so they are still read where they always were.
+        /// </summary>
+        internal sealed class ShapeLayout
+        {
+            public int ConvexRotatedVertices = 64;
+            public int ConvexNumVertices = 80;
+            public int ConvexPlaneEquations = 88;
+            public int ConvexConnectivity = 104;
+            public int ConvexAabbHalfExtents = 48;
+            public int ConvexAabbCentre = 64;
+            public int ConnectivityVertexIndices = 16;
+            public int ConnectivityFacesPerVertex = 32;
+            public int ListChildInfo = 40;
+            public int ListChildStride = 32;
+            public int WorldObjectCollidable = 32;
+        }
+
+        internal ShapeLayout Layout = new ShapeLayout();
+
+        /// <summary>True when the data came from a tagfile, which carries no geometry we can rebuild.</summary>
+        public bool IsTagfile => Tagfile != null;
+
         /// <summary>Raw __classnames__ payload (signatures + names). Fixups are empty on AI files.</summary>
         public byte[] ClassnamesData = Array.Empty<byte>();
 
@@ -342,7 +371,7 @@ namespace CATHODE
                 globalBySrc[GlobalFixups[i].Src] = GlobalFixups[i].Dst;
 
             // hkpWorldObject.collidable: +32 (64-bit) / +16 (32-bit); shape pointer at start of collidable.
-            uint collidableShapeField = Header.PointerSize == 8 ? 32u : 16u;
+            uint collidableShapeField = Header.PointerSize == 8 ? (uint)Layout.WorldObjectCollidable : 16u;
 
             for (int b = 0; b < bodyOffsets.Count && mesh.ShapeCount < PreviewShapeCap; b++)
             {
@@ -361,6 +390,10 @@ namespace CATHODE
         /// </summary>
         public List<RigidBodyInfo> GetRigidBodies(PhysicsSystem system)
         {
+            //A tagfile read its bodies when it read the system, so this is a lookup rather than a walk
+            if (Tagfile != null)
+                return Tagfile.RigidBodies(system);
+
             var bodies = new List<RigidBodyInfo>();
             if (system == null || !TryGetRigidBodyOffsets(system, out List<uint> bodyOffsets))
                 return bodies;
@@ -812,6 +845,20 @@ namespace CATHODE
             if (!IsFinite(codecBase) || !IsFinite(codecScale))
                 return false;
 
+            /* 2012 packs each range as (first << 8) | count into one uint32. 2018 splits them: the
+             * first indices stay uint32s and the counts move to their own bytes, so reading it the
+             * old way yields a primitive count of zero and a section that emits nothing. */
+            if (Tagfile != null)
+            {
+                firstPacked = (int)BitConverter.ToUInt32(DataPayload, sec + 72);
+                firstSharedIdx = (int)BitConverter.ToUInt32(DataPayload, sec + 76);
+                firstPrim = (int)BitConverter.ToUInt32(DataPayload, sec + 80);
+                numPacked = DataPayload[sec + 88];
+                numPrim = DataPayload[sec + 89];
+                numShared = 0;
+                return true;
+            }
+
             firstPacked = (int)BitConverter.ToUInt32(DataPayload, sec + 72);
             uint sharedData = BitConverter.ToUInt32(DataPayload, sec + 76);
             uint primData = BitConverter.ToUInt32(DataPayload, sec + 80);
@@ -1044,10 +1091,10 @@ namespace CATHODE
             // 32-bit: rotatedVertices @+48, numVertices @+60, planeEquations @+64, connectivity @+76
             // (hkArray is 12 vs 16 bytes; confirmed against aabbHalfExtents @32/48 pattern used elsewhere)
             int ptrSize = Header.PointerSize;
-            uint rotatedField = shapeOffset + (ptrSize == 8 ? 64u : 48u);
-            int numVertOff = (int)shapeOffset + (ptrSize == 8 ? 80 : 60);
-            uint planesField = shapeOffset + (ptrSize == 8 ? 88u : 64u);
-            uint connectivityField = shapeOffset + (ptrSize == 8 ? 104u : 76u);
+            uint rotatedField = shapeOffset + (ptrSize == 8 ? (uint)Layout.ConvexRotatedVertices : 48u);
+            int numVertOff = (int)shapeOffset + (ptrSize == 8 ? Layout.ConvexNumVertices : 60);
+            uint planesField = shapeOffset + (ptrSize == 8 ? (uint)Layout.ConvexPlaneEquations : 64u);
+            uint connectivityField = shapeOffset + (ptrSize == 8 ? (uint)Layout.ConvexConnectivity : 76u);
 
             if (numVertOff + 4 > DataPayload.Length)
                 return false;
@@ -1163,8 +1210,8 @@ namespace CATHODE
 
             int ptrSize = Header.PointerSize;
             // hkReferencedObject (8/16) then vertexIndices array, numVerticesPerFace array.
-            uint indicesField = connOff + (ptrSize == 8 ? 16u : 8u);
-            uint facesField = connOff + (ptrSize == 8 ? 32u : 20u);
+            uint indicesField = connOff + (ptrSize == 8 ? (uint)Layout.ConnectivityVertexIndices : 8u);
+            uint facesField = connOff + (ptrSize == 8 ? (uint)Layout.ConnectivityFacesPerVertex : 20u);
             if (!TryGetHkArray(indicesField, out uint indicesOff, out int indexCount) || indexCount <= 0)
                 return false;
             if (!TryGetHkArray(facesField, out uint facesOff, out int faceCount) || faceCount <= 0)
@@ -1206,12 +1253,12 @@ namespace CATHODE
             bool convexHullOpenShells = true)
         {
             // childInfo hkArray at +40 (64-bit) / +28 (32-bit approx).
-            uint childField = shapeOffset + (Header.PointerSize == 8 ? 40u : 28u);
+            uint childField = shapeOffset + (Header.PointerSize == 8 ? (uint)Layout.ListChildInfo : 28u);
             if (!TryGetHkArray(childField, out uint childOff, out int childCount) || childCount <= 0)
                 return false;
 
             // Each ChildInfo has a shape pointer (global fixup) at the start.
-            int stride = Header.PointerSize == 8 ? 32 : 16;
+            int stride = Header.PointerSize == 8 ? Layout.ListChildStride : 16;
             var classAtOffset = new Dictionary<uint, string>();
             for (int i = 0; i < Objects.Count; i++)
                 classAtOffset[Objects[i].DataOffset] = Objects[i].ClassName;
@@ -1237,6 +1284,10 @@ namespace CATHODE
         /// </summary>
         public bool TryResolveLocal(uint pointerFieldOffset, out uint dataOffset)
         {
+            //A tagfile stores an item index where a packfile stores a pointer to be fixed up
+            if (Tagfile != null)
+                return Tagfile.TryResolvePointer(pointerFieldOffset, out dataOffset, out int _);
+
             for (int i = 0; i < LocalFixups.Count; i++)
             {
                 if (LocalFixups[i].Src == pointerFieldOffset)
@@ -1267,6 +1318,12 @@ namespace CATHODE
         {
             dataOffset = 0;
             count = 0;
+
+            /* A tagfile leaves m_size at zero and keeps the real count on the item its m_data names -
+             * reading the field the packfile way returns an empty array for absolutely everything. */
+            if (Tagfile != null)
+                return Tagfile.TryResolvePointer(arrayFieldOffset, out dataOffset, out count);
+
             int ptrSize = Header.PointerSize;
             int sizePos = (int)arrayFieldOffset + ptrSize;
             if (sizePos + 4 > DataPayload.Length)
@@ -1306,8 +1363,8 @@ namespace CATHODE
                 || string.Equals(shapeClass, "hkpConvexTranslateShape", StringComparison.Ordinal)
                 || string.Equals(shapeClass, "hkpConvexTransformShape", StringComparison.Ordinal))
             {
-                int heOff = (int)shapeDataOffset + (Header.PointerSize == 8 ? 48 : 32);
-                int cOff = (int)shapeDataOffset + (Header.PointerSize == 8 ? 64 : 48);
+                int heOff = (int)shapeDataOffset + (Header.PointerSize == 8 ? Layout.ConvexAabbHalfExtents : 32);
+                int cOff = (int)shapeDataOffset + (Header.PointerSize == 8 ? Layout.ConvexAabbCentre : 48);
                 if (cOff + 16 <= DataPayload.Length)
                 {
                     Vector4 half = ReadVector4(DataPayload, heOff);
@@ -1657,8 +1714,28 @@ namespace CATHODE
         const int BoxShapeHalfExtentsOffset32 = 32;
         const int BoxShapeHalfExtentsOffset64 = 48;
 
-        int BoxShapeObjectSize => Header.PointerSize == 8 ? BoxShapeObjectSize64 : BoxShapeObjectSize32;
-        int BoxShapeHalfExtentsOffset => Header.PointerSize == 8 ? BoxShapeHalfExtentsOffset64 : BoxShapeHalfExtentsOffset32;
+        /* A tagfile carries its own layout, so take the box shape's size and field from it rather than
+         * from the 2012 constants - they happen to agree in the shipped 2018 files, but a build on a
+         * different SDK is exactly what that reader exists for. */
+        int BoxShapeObjectSize
+        {
+            get
+            {
+                int described = Tagfile == null ? -1 : Tagfile.SizeOf("hkpBoxShape");
+                if (described > 0) return described;
+                return Header.PointerSize == 8 ? BoxShapeObjectSize64 : BoxShapeObjectSize32;
+            }
+        }
+
+        int BoxShapeHalfExtentsOffset
+        {
+            get
+            {
+                int described = Tagfile == null ? -1 : Tagfile.OffsetOf("hkpBoxShape", "halfExtents");
+                if (described >= 0) return described;
+                return Header.PointerSize == 8 ? BoxShapeHalfExtentsOffset64 : BoxShapeHalfExtentsOffset32;
+            }
+        }
 
         /// <summary>Read <c>hkpBoxShape.halfExtents</c> (xyz) from a shape object in the data payload.</summary>
         public bool TryGetBoxHalfExtents(uint dataOffset, out Vector3 halfExtents)
@@ -1715,23 +1792,34 @@ namespace CATHODE
             WriteVector4(DataPayload, dst + heOff, new Vector4(hx, hy, hz, hw));
 
             uint dataOffset = (uint)dst;
-            // VirtualFixup.SectionIndex is the *classnames* section (0), not the data section (2).
-            // Retail boxes all use Sec=0; Sec=2 makes Havok fail to resolve the class → shape=null.
-            uint classSection = 0;
-            for (int i = 0; i < VirtualFixups.Count; i++)
+
+            /* What makes the copy a real object differs by container: a packfile names its class
+             * through a virtual fixup, a tagfile through an entry in its item table. */
+            if (Tagfile != null)
             {
-                if (VirtualFixups[i].Src == template.DataOffset)
-                {
-                    classSection = VirtualFixups[i].SectionIndex;
-                    break;
-                }
+                if (!Tagfile.CloneObject(template.DataOffset, dataOffset, boxSize))
+                    throw new InvalidOperationException("The template hkpBoxShape has no item in the tagfile to copy.");
             }
-            VirtualFixups.Add(new VirtualFixup
+            else
             {
-                Src = dataOffset,
-                SectionIndex = classSection,
-                NameOffset = template.ClassNameOffset,
-            });
+                // VirtualFixup.SectionIndex is the *classnames* section (0), not the data section (2).
+                // Retail boxes all use Sec=0; Sec=2 makes Havok fail to resolve the class → shape=null.
+                uint classSection = 0;
+                for (int i = 0; i < VirtualFixups.Count; i++)
+                {
+                    if (VirtualFixups[i].Src == template.DataOffset)
+                    {
+                        classSection = VirtualFixups[i].SectionIndex;
+                        break;
+                    }
+                }
+                VirtualFixups.Add(new VirtualFixup
+                {
+                    Src = dataOffset,
+                    SectionIndex = classSection,
+                    NameOffset = template.ClassNameOffset,
+                });
+            }
             Objects.Add(new PackfileObject
             {
                 DataOffset = dataOffset,
@@ -1832,15 +1920,23 @@ namespace CATHODE
         {
             if (compound?.Instances == null || compound.Instances.Count == 0)
                 return;
+            HavokTagfile.CompoundLayout layout = Tagfile == null ? null : Tagfile.Compound();
+            uint shapeField = (uint)(layout == null ? 48 : layout.Shape);
             var scrub = new HashSet<uint>();
             for (int i = 0; i < compound.Instances.Count; i++)
-                scrub.Add(compound.Instances[i].DataOffset + 48);
+                scrub.Add(compound.Instances[i].DataOffset + shapeField);
 
             for (int g = GlobalFixups.Count - 1; g >= 0; g--)
             {
                 if (scrub.Contains(GlobalFixups[g].Src))
                     GlobalFixups.RemoveAt(g);
             }
+
+            //A tagfile keeps the same list in the file itself, so those slots have to leave it too -
+            //otherwise every rewrite adds to the patch table and never takes anything away
+            if (layout != null)
+                foreach (uint src in scrub)
+                    Tagfile.ClearPointer((int)src, layout.ShapeGroup);
         }
 
         /// <summary>Find the static compound for a COLLISION.MAP CollisionProxyIndex, or null.</summary>
@@ -1991,7 +2087,17 @@ namespace CATHODE
             if (source == null)
                 throw new ArgumentNullException(nameof(source));
             if (Header.PointerSize != source.Header.PointerSize)
-                throw new InvalidOperationException("Pointer size mismatch.");
+                throw new InvalidOperationException("Cannot import Havok data between packfiles with different pointer sizes (HKX vs HKX64).");
+
+            /* Both kinds are 64-bit, so pointer size does not tell them apart - and copied bytes mean
+             * completely different things in the two, because a tagfile stores item indices where a
+             * packfile stores addresses to be fixed up. */
+            if ((Tagfile != null) != (source.Tagfile != null))
+            {
+                throw new InvalidOperationException(
+                    "Cannot import Havok data between a packfile and a tagfile - "
+                    + (Tagfile != null ? "the destination" : "the source") + " is the tagfile.");
+            }
 
             if (remapCache != null && remapCache.TryGetValue(sourceRootOffset, out uint cached))
                 return cached;
@@ -2062,26 +2168,43 @@ namespace CATHODE
             for (int i = 0; i < objectRanges.Count; i++)
             {
                 PackfileObject srcObj = objectRanges[i].Obj;
-                int nameOff = EnsureClassName(source, srcObj, destClassByName);
                 uint newOff = srcToDst[srcObj.DataOffset];
 
-                VirtualFixups.Add(new VirtualFixup
+                if (Tagfile == null)
                 {
-                    Src = newOff,
-                    SectionIndex = 0,
-                    NameOffset = nameOff,
-                });
-                Objects.Add(new PackfileObject
-                {
-                    DataOffset = newOff,
-                    ClassNameOffset = nameOff,
-                    ClassName = srcObj.ClassName,
-                    Class = srcObj.Class,
-                    ProxyIndex = -1,
-                });
+                    int nameOff = EnsureClassName(source, srcObj, destClassByName);
+                    VirtualFixups.Add(new VirtualFixup
+                    {
+                        Src = newOff,
+                        SectionIndex = 0,
+                        NameOffset = nameOff,
+                    });
+                    Objects.Add(new PackfileObject
+                    {
+                        DataOffset = newOff,
+                        ClassNameOffset = nameOff,
+                        ClassName = srcObj.ClassName,
+                        Class = srcObj.Class,
+                        ProxyIndex = -1,
+                    });
+                }
 
                 if (remapCache != null)
                     remapCache[srcObj.DataOffset] = newOff;
+            }
+
+            /* A tagfile does not name its objects with class-name strings - it claims them with item
+             * entries, and its pointers are indices into that table. Copying both across is the whole
+             * of the work, and afterwards everything is re-read rather than patched up in place. */
+            if (Tagfile != null)
+            {
+                ImportTagfileItems(source, srcToDst);
+
+                if (!srcToDst.TryGetValue(sourceRootOffset, out uint tagRoot))
+                    throw new InvalidOperationException("Failed to remap imported Havok root.");
+                if (remapCache != null)
+                    remapCache[sourceRootOffset] = tagRoot;
+                return tagRoot;
             }
 
             // Remap fixups whose source falls in copied regions.
@@ -2423,6 +2546,89 @@ namespace CATHODE
             return newNameOff;
         }
 
+        /// <summary>
+        /// Give the copied bytes the two things a tagfile needs to make them objects: an item for
+        /// every object and array that came across, and a patch entry for every word that holds a
+        /// pointer - with the item indices in those words translated to name our own items.
+        /// </summary>
+        void ImportTagfileItems(HavokPackfile source, Dictionary<uint, uint> srcToDst)
+        {
+            /* The two files number their types differently - each level declares only the types it
+             * uses - so every type index that comes across has to be translated into ours. */
+            int[] types = Tagfile.MapTypesFrom(source.Tagfile);
+            List<HavokTagfile.Item> items = source.Tagfile.Items();
+            List<KeyValuePair<int, int>> patches = source.Tagfile.Patches();
+
+            /* Check every type this graph needs before registering any of it. Half an import is worse
+             * than none: the objects would be claimed but their pointers never listed. */
+            for (int i = 1; i < items.Count; i++)
+            {
+                if (!srcToDst.ContainsKey((uint)items[i].Offset))
+                    continue;
+
+                int theirs = (int)(items[i].Word & 0xFFFFFF);
+                if (theirs < 1 || theirs >= types.Length || types[theirs] < 0)
+                {
+                    throw new InvalidOperationException(
+                        "Cannot import this Havok object: the destination has no "
+                        + source.Tagfile.SignatureOf(theirs) + ".");
+                }
+            }
+            foreach (KeyValuePair<int, int> patch in patches)
+            {
+                if (srcToDst.ContainsKey((uint)patch.Value)
+                    && (patch.Key < 1 || patch.Key >= types.Length || types[patch.Key] < 0))
+                {
+                    throw new InvalidOperationException(
+                        "Cannot import this Havok object: the destination has no "
+                        + source.Tagfile.SignatureOf(patch.Key) + " to hold one of its pointers.");
+                }
+            }
+
+            //Items first, so the pointers below can be pointed at them
+            for (int i = 1; i < items.Count; i++)
+            {
+                if (srcToDst.TryGetValue((uint)items[i].Offset, out uint movedItem))
+                    Tagfile.AddItem((items[i].Word & 0xFF000000u) | (uint)types[(int)(items[i].Word & 0xFFFFFF)],
+                        (int)movedItem, items[i].Count);
+            }
+
+            foreach (KeyValuePair<int, int> patch in patches)
+            {
+                if (!srcToDst.TryGetValue((uint)patch.Value, out uint moved))
+                    continue;
+
+                int group = types[patch.Key];
+
+                //The copied word still holds the source file's item index; it has to name ours instead
+                int index = source.Tagfile.ReadIndex(patch.Value);
+                if (index == 0)
+                {
+                    Tagfile.WriteIndexAt((int)moved, 0);
+                    Tagfile.SetPatch(group, (int)moved);
+                    continue;
+                }
+
+                if (!source.Tagfile.TryGetItem(index, out int pointsAt, out _)
+                    || !srcToDst.TryGetValue((uint)pointsAt, out uint movedTarget))
+                {
+                    //Something outside the graph we copied - a dangling pointer is worse than none
+                    Tagfile.WriteIndexAt((int)moved, 0);
+                    continue;
+                }
+
+                int ours = Tagfile.IndexOfObjectAt((int)movedTarget);
+                if (ours <= 0)
+                {
+                    Tagfile.WriteIndexAt((int)moved, 0);
+                    continue;
+                }
+
+                Tagfile.WriteIndexAt((int)moved, ours);
+                Tagfile.SetPatch(group, (int)moved);
+            }
+        }
+
         void AppendPhysicsSystemToPhysicsData(uint systemDataOffset)
         {
             PackfileObject physicsData = null;
@@ -2438,7 +2644,12 @@ namespace CATHODE
                 return;
 
             int ptrSize = Header.PointerSize;
-            uint systemsField = physicsData.DataOffset + 16 + (uint)ptrSize;
+
+            //2018 grew hkReferencedObject, so the array is not where the 2012 arithmetic puts it
+            int systemsMember = Tagfile == null ? -1 : Tagfile.OffsetOf("hkpPhysicsData", "systems");
+            uint systemsField = physicsData.DataOffset
+                + (systemsMember >= 0 ? (uint)systemsMember : 16 + (uint)ptrSize);
+
             TryReadPointerArray(systemsField, out List<uint> existing);
             if (existing == null)
                 existing = new List<uint>();
@@ -2450,6 +2661,12 @@ namespace CATHODE
                     return;
             }
             existing.Add(systemDataOffset);
+
+            if (Tagfile != null)
+            {
+                AppendPhysicsSystemToTagfile(physicsData, systemsField, existing);
+                return;
+            }
 
             // Scrub previous systems-array storage fixups.
             uint oldArr = 0;
@@ -2508,8 +2725,59 @@ namespace CATHODE
             }
         }
 
+        /// <summary>
+        /// Grow <c>hkpPhysicsData.systems</c> in a tagfile: write the pointers out fresh at the end of
+        /// the data, move the item that names them, and mark every slot as a pointer.
+        /// </summary>
+        void AppendPhysicsSystemToTagfile(PackfileObject physicsData, uint systemsField, List<uint> systems)
+        {
+            int group = Tagfile.PatchGroupOf("hkpPhysicsData", "systems");
+            if (group <= 0)
+                throw new InvalidOperationException("The tagfile does not describe hkpPhysicsData.systems.");
+
+            /* Which group the element slots belong to is not something the member's own type answers -
+             * so read it off the array that is already there rather than guessing at it. */
+            Tagfile.TryResolvePointer(systemsField, out uint oldArray, out int oldCount);
+            int slotGroup = oldCount > 0 ? Tagfile.GroupContaining((int)oldArray) : -1;
+            if (slotGroup <= 0)
+                throw new InvalidOperationException("The tagfile has no existing physics system pointers to follow.");
+
+            //Retire the slots the old array used, so the patch table does not keep growing
+            for (int n = 0; n < oldCount; n++)
+                Tagfile.ClearPointer((int)(oldArray + (uint)(n * 8)), slotGroup);
+
+            int at = AlignPayload(DataPayload.Length, 16);
+            byte[] grown = new byte[at + systems.Count * 8];
+            Buffer.BlockCopy(DataPayload, 0, grown, 0, DataPayload.Length);
+            DataPayload = grown;
+
+            for (int n = 0; n < systems.Count; n++)
+            {
+                int slot = at + n * 8;
+                if (!Tagfile.SetPointer(slot, systems[n], slotGroup))
+                    throw new InvalidOperationException("No item in the tagfile for physics system at " + systems[n] + ".");
+
+                GlobalFixups.Add(new GlobalFixup { Src = (uint)slot, DstSectionIndex = 2, Dst = systems[n] });
+            }
+
+            if (!Tagfile.SetArray((int)systemsField, at, systems.Count, group))
+                throw new InvalidOperationException("Could not move the hkpPhysicsData.systems array.");
+        }
+
         void RebuildTypedViewsFromObjects()
         {
+            /* Everything below reads class names out of the packfile's own table to work out what each
+             * object is. A tagfile has no such table - it says so in its item entries - so it reads
+             * itself again instead. */
+            if (Tagfile != null)
+            {
+                Tagfile.RereadTypedViews(this);
+                _worldHostPrimary = null;
+                _worldHostSecondary = null;
+                _worldHostsResolved = false;
+                return;
+            }
+
             // Reassign compound ordinals in virtual-fixup / Objects order.
             int compoundOrdinal = 0;
             for (int i = 0; i < Objects.Count; i++)
@@ -2559,6 +2827,22 @@ namespace CATHODE
             byte[] file = (_compressed ? Utilities.GZIPDecompress(stream) : stream).ToArray();
             if (file.Length < 0x40)
                 return false;
+
+            /* The mobile and Switch builds ship the same data as a Havok tagfile rather than a
+             * packfile. It reads into the same structures, so nothing downstream needs to know. */
+            Tagfile = null;
+            if (HavokTagfile.IsTagfile(file))
+            {
+                HavokTagfile tags = new HavokTagfile();
+                if (!tags.Read(file))
+                    return false;
+
+                tags.Populate(this);
+                Tagfile = tags;
+                Header.PointerSize = 8;
+                Header.ContentsVersion = tags.Version;
+                return true;
+            }
 
             using (BinaryReader reader = new BinaryReader(new MemoryStream(file)))
             {
@@ -2647,6 +2931,11 @@ namespace CATHODE
             // Apply any in-place instance edits back into the data payload before writing.
             WriteBackCompoundInstances();
 
+            /* A tagfile keeps its schema and its item and patch tables in chunks of its own, so it
+             * puts itself back together rather than going through the packfile's sections. */
+            if (Tagfile != null)
+                return Tagfile.ToBytes(DataPayload);
+
             int headerSize = 0x40;
             int sectionHeaderSize = Header.NumSections * 0x30;
             int classAbs = headerSize + sectionHeaderSize;
@@ -2719,6 +3008,81 @@ namespace CATHODE
         private uint ArraySize => (uint)Header.PointerSize + 8u;
 
         /// <summary>
+        /// Where the members of the animation classes sit. A packfile carries no schema, so these are
+        /// the 2012 layout worked out by hand; a tagfile describes itself and says what its own are.
+        /// </summary>
+        internal sealed class AnimationLayout
+        {
+            public int BindingName;
+            public int BindingAnimation;
+            public int BindingTrackToBone;
+            public int BindingBlendHint;
+
+            public int AnimationDuration;
+            public int AnimationTransformTracks;
+            public int AnimationFloatTracks;
+
+            /// <summary>Where a spline animation's own members begin - the end of hkaAnimation.</summary>
+            public int SplineStart;
+
+            public int ArrayStride;
+        }
+
+        private AnimationLayout _animation;
+
+        private AnimationLayout Animation()
+        {
+            if (_animation != null)
+                return _animation;
+
+            int header = (int)ObjectHeaderSize;
+            int array = (int)ArraySize;
+            _animation = new AnimationLayout()
+            {
+                //hkaAnimationBinding: a name, the animation it binds, then three arrays and a hint
+                BindingName = header,
+                BindingAnimation = header + Header.PointerSize,
+                BindingTrackToBone = header + Header.PointerSize * 2,
+                BindingBlendHint = header + Header.PointerSize * 2 + array * 3,
+
+                //hkaAnimation: a type, a duration, two track counts, a pointer and an array
+                AnimationDuration = header + 4,
+                AnimationTransformTracks = header + 8,
+                AnimationFloatTracks = header + 12,
+                SplineStart = header + 16 + Header.PointerSize + array,
+
+                ArrayStride = array,
+            };
+
+            if (Tagfile == null)
+                return _animation;
+
+            /* 2018 grew hkReferencedObject by eight for a property bag, which moves every one of
+             * these - and moves them by different amounts, because the compiler packs a derived
+             * class's first member into the tail padding of its base. Read them, don't adjust them. */
+            Take(Tagfile.OffsetOf("hkaAnimationBinding", "originalSkeletonName"), ref _animation.BindingName);
+            Take(Tagfile.OffsetOf("hkaAnimationBinding", "animation"), ref _animation.BindingAnimation);
+            Take(Tagfile.OffsetOf("hkaAnimationBinding", "transformTrackToBoneIndices"), ref _animation.BindingTrackToBone);
+            Take(Tagfile.OffsetOf("hkaAnimationBinding", "blendHint"), ref _animation.BindingBlendHint);
+
+            Take(Tagfile.OffsetOf("hkaAnimation", "duration"), ref _animation.AnimationDuration);
+            Take(Tagfile.OffsetOf("hkaAnimation", "numberOfTransformTracks"), ref _animation.AnimationTransformTracks);
+            Take(Tagfile.OffsetOf("hkaAnimation", "numberOfFloatTracks"), ref _animation.AnimationFloatTracks);
+
+            /* hkaSplineCompressedAnimation is the one animation class the file does NOT describe -
+             * Havok serialises its contents by hand rather than by reflection - so where its own
+             * members start has to come from the size of the class it derives from. */
+            Take(Tagfile.SizeOf("hkaAnimation"), ref _animation.SplineStart);
+
+            return _animation;
+        }
+
+        private static void Take(int described, ref int target)
+        {
+            if (described >= 0) target = described;
+        }
+
+        /// <summary>
         /// Read every <c>hkaSplineCompressedAnimation</c> in the packfile, paired with the binding
         /// that says which skeleton and which bones it drives.
         /// </summary>
@@ -2762,10 +3126,11 @@ namespace CATHODE
 
         private AnimationClip ReadBinding(uint at, Dictionary<uint, uint> globalBySrc)
         {
-            uint name = at + ObjectHeaderSize;
-            uint animation = name + (uint)Header.PointerSize;
-            uint tracks = animation + (uint)Header.PointerSize;
-            if (tracks + ArraySize > DataPayload.Length) return null;
+            AnimationLayout layout = Animation();
+            uint name = at + (uint)layout.BindingName;
+            uint animation = at + (uint)layout.BindingAnimation;
+            uint tracks = at + (uint)layout.BindingTrackToBone;
+            if (tracks + (uint)layout.ArrayStride > DataPayload.Length) return null;
 
             AnimationClip clip = new AnimationClip
             {
@@ -2780,7 +3145,7 @@ namespace CATHODE
 
             /* Three arrays in a row - the bone indices above, then the float slots and the
              * partitions - and the blend hint is the byte straight after them. */
-            uint hint = tracks + (ArraySize * 3);
+            uint hint = at + (uint)layout.BindingBlendHint;
             if (hint < DataPayload.Length) clip.Additive = DataPayload[hint] != 0;
 
             return clip;
@@ -2788,15 +3153,15 @@ namespace CATHODE
 
         private void ReadSplineAnimation(uint at, AnimationClip clip)
         {
-            uint animation = at + ObjectHeaderSize;
-            if (animation + 20 > DataPayload.Length) return;
+            AnimationLayout layout = Animation();
+            if (at + (uint)layout.AnimationFloatTracks + 4 > DataPayload.Length) return;
 
-            clip.Duration = BitConverter.ToSingle(DataPayload, (int)animation + 4);
-            clip.TransformTrackCount = BitConverter.ToInt32(DataPayload, (int)animation + 8);
-            clip.FloatTrackCount = BitConverter.ToInt32(DataPayload, (int)animation + 12);
+            clip.Duration = BitConverter.ToSingle(DataPayload, (int)at + layout.AnimationDuration);
+            clip.TransformTrackCount = BitConverter.ToInt32(DataPayload, (int)at + layout.AnimationTransformTracks);
+            clip.FloatTrackCount = BitConverter.ToInt32(DataPayload, (int)at + layout.AnimationFloatTracks);
 
             //hkaAnimation is the type, duration and two counts, then a pointer and an array
-            uint spline = animation + 16 + (uint)Header.PointerSize + ArraySize;
+            uint spline = at + (uint)layout.SplineStart;
             if (spline + 28 > DataPayload.Length) return;
 
             clip.FrameCount = BitConverter.ToInt32(DataPayload, (int)spline);
@@ -2818,11 +3183,11 @@ namespace CATHODE
                     clip.BlockOffsets.Add(BitConverter.ToUInt32(DataPayload, (int)(blockData + (i * 4))));
 
             //the float tracks live in the same stream, starting where the transform tracks stop
-            if (TryGetHkArray(arrays + ArraySize, out uint floatData, out int floatCount))
+            if (TryGetHkArray(arrays + (uint)layout.ArrayStride, out uint floatData, out int floatCount))
                 for (int i = 0; i < floatCount && floatData + (i * 4) + 4 <= DataPayload.Length; i++)
                     clip.FloatBlockOffsets.Add(BitConverter.ToUInt32(DataPayload, (int)(floatData + (i * 4))));
 
-            if (!TryGetHkArray(arrays + (ArraySize * 4), out uint stream, out int streamLength)) return;
+            if (!TryGetHkArray(arrays + (uint)(layout.ArrayStride * 4), out uint stream, out int streamLength)) return;
             clip.DataOffset = stream;
             clip.DataLength = streamLength;
 
@@ -3201,21 +3566,32 @@ namespace CATHODE
                 SkeletonMapper mapper = new SkeletonMapper { DataOffset = Objects[i].DataOffset };
                 uint end = ObjectEnd(Objects[i].DataOffset);
 
+                /* A tagfile names its members, so ask it which array is which. Telling them apart by
+                 * element size is a guess that works until another int16 array turns up in the same
+                 * object - hkaSkeletonMapperData has a partitionMap that is exactly that. */
+                if (TryReadMapperByName(Objects[i].DataOffset, mapper))
+                {
+                    mappers.Add(mapper);
+                    continue;
+                }
+
                 /* An empty hkArray has no fixup at all, so rather than hardcoding field offsets,
                  * take the arrays this object actually points at and tell them apart by how many
                  * bytes each element gets: a simple mapping is two bone indices plus a 16 byte
                  * aligned hkQsTransform (64), an unmapped bone is a bare int16. */
-                foreach (KeyValuePair<uint, int> array in GetObjectArrays(Objects[i].DataOffset, end))
+                foreach (int[] array in ObjectArrays(Objects[i].DataOffset, end))
                 {
-                    int stride = ElementStride(array.Key, array.Value);
+                    uint data = (uint)array[0];
+                    int count = array[1];
+                    int stride = array[2];
                     if (stride >= 48)
                     {
                         /* Two bone indices, then the hkQsTransform on the next sixteen byte boundary:
                          * translation, rotation and scale as four floats each, of which the last of
                          * the translation and scale is padding. */
-                        for (int x = 0; x < array.Value && array.Key + (x * 64) + 64 <= DataPayload.Length; x++)
+                        for (int x = 0; x < count && data + (x * 64) + 64 <= DataPayload.Length; x++)
                         {
-                            int at = (int)(array.Key + (x * 64));
+                            int at = (int)(data + (x * 64));
                             mapper.Mappings.Add(new BoneMapping
                             {
                                 BoneA = BitConverter.ToInt16(DataPayload, at),
@@ -3228,8 +3604,8 @@ namespace CATHODE
                     }
                     else if (stride <= 2)
                     {
-                        for (int x = 0; x < array.Value && array.Key + (x * 2) + 2 <= DataPayload.Length; x++)
-                            mapper.UnmappedBones.Add(BitConverter.ToInt16(DataPayload, (int)(array.Key + (x * 2))));
+                        for (int x = 0; x < count && data + (x * 2) + 2 <= DataPayload.Length; x++)
+                            mapper.UnmappedBones.Add(BitConverter.ToInt16(DataPayload, (int)(data + (x * 2))));
                     }
                 }
                 mappers.Add(mapper);
@@ -3264,9 +3640,16 @@ namespace CATHODE
             if (instance == null) return null;
 
             uint ptr = (uint)Header.PointerSize;
-            uint bodies = instance.DataOffset + ObjectHeaderSize;
-            uint constraints = bodies + ArraySize;
-            uint boneMap = constraints + ArraySize;
+
+            /* Three arrays in a row in 2012 - but 2018 grew the object header they follow, so take
+             * them from the file's own type table when it has one. */
+            int bodiesAt = Tagfile == null ? -1 : Tagfile.OffsetOf("hkaRagdollInstance", "rigidBodies");
+            int constraintsAt = Tagfile == null ? -1 : Tagfile.OffsetOf("hkaRagdollInstance", "constraints");
+            int boneMapAt = Tagfile == null ? -1 : Tagfile.OffsetOf("hkaRagdollInstance", "boneToRigidBodyMap");
+
+            uint bodies = instance.DataOffset + (bodiesAt >= 0 ? (uint)bodiesAt : ObjectHeaderSize);
+            uint constraints = constraintsAt >= 0 ? instance.DataOffset + (uint)constraintsAt : bodies + ArraySize;
+            uint boneMap = boneMapAt >= 0 ? instance.DataOffset + (uint)boneMapAt : constraints + ArraySize;
 
             RagdollInstance ragdoll = new RagdollInstance();
             Dictionary<uint, uint> globalBySrc = new Dictionary<uint, uint>();
@@ -3276,7 +3659,9 @@ namespace CATHODE
             //Each element is a pointer to an hkpRigidBody elsewhere in the file
             if (TryGetHkArray(bodies, out uint bodyList, out int bodyCount))
             {
-                uint nameField = Header.PointerSize == 8 ? 0xB0u : 0x78u;
+                int describedName = Tagfile == null ? -1 : Tagfile.OffsetOf("hkpWorldObject", "name");
+                uint nameField = describedName >= 0 ? (uint)describedName
+                    : (Header.PointerSize == 8 ? 0xB0u : 0x78u);
                 for (int i = 0; i < bodyCount; i++)
                 {
                     if (!globalBySrc.TryGetValue(bodyList + (uint)(i * ptr), out uint body)) { ragdoll.Bodies.Add(""); continue; }
@@ -3297,6 +3682,22 @@ namespace CATHODE
         /* Where the object's data runs to - the next object, or the end of the payload */
         private uint ObjectEnd(uint start)
         {
+            /* A packfile only lists real objects, so the next one along is where this one stops. A
+             * tagfile's item table also claims every array and string, and those sit INSIDE the
+             * object they belong to - taking the next entry there would cut the object short, right
+             * before the arrays we were looking for. It describes its own sizes, so ask. */
+            if (Tagfile != null)
+            {
+                for (int i = 0; i < Objects.Count; i++)
+                {
+                    if (Objects[i].DataOffset != start) continue;
+
+                    int size = Tagfile.SizeOf(Objects[i].ClassName);
+                    if (size > 0) return start + (uint)size;
+                    break;
+                }
+            }
+
             uint end = (uint)DataPayload.Length;
             for (int i = 0; i < Objects.Count; i++)
                 if (Objects[i].DataOffset > start && Objects[i].DataOffset < end) end = Objects[i].DataOffset;
@@ -3304,9 +3705,56 @@ namespace CATHODE
         }
 
         /* Every array this object points at, as data offset -> element count */
-        private List<KeyValuePair<uint, int>> GetObjectArrays(uint start, uint end)
+        /// <summary>
+        /// Fill a mapper from the members the file names, rather than from what its arrays look like.
+        /// Only a tagfile can answer this; returns false when there is no schema to ask.
+        /// </summary>
+        bool TryReadMapperByName(uint at, SkeletonMapper mapper)
         {
-            List<KeyValuePair<uint, int>> arrays = new List<KeyValuePair<uint, int>>();
+            if (Tagfile == null)
+                return false;
+
+            int data = Tagfile.OffsetOf("hkaSkeletonMapper", "mapping");
+            int simple = Tagfile.OffsetOf("hkaSkeletonMapperData", "simpleMappings");
+            int unmapped = Tagfile.OffsetOf("hkaSkeletonMapperData", "unmappedBones");
+            int stride = Tagfile.SizeOf("hkaSkeletonMapperData::SimpleMapping");
+            if (data < 0 || simple < 0 || unmapped < 0 || stride <= 0)
+                return false;
+
+            if (TryGetHkArray((uint)(at + data + simple), out uint mappings, out int mappingCount))
+            {
+                for (int x = 0; x < mappingCount && mappings + (x * stride) + stride <= DataPayload.Length; x++)
+                {
+                    int element = (int)(mappings + (x * stride));
+                    mapper.Mappings.Add(new BoneMapping
+                    {
+                        BoneA = BitConverter.ToInt16(DataPayload, element),
+                        BoneB = BitConverter.ToInt16(DataPayload, element + 2),
+                        Translation = ReadVector3(element + 16),
+                        Rotation = ReadQuaternion(element + 32),
+                        Scale = ReadVector3(element + 48),
+                    });
+                }
+            }
+
+            if (TryGetHkArray((uint)(at + data + unmapped), out uint bones, out int boneCount))
+                for (int x = 0; x < boneCount && bones + (x * 2) + 2 <= DataPayload.Length; x++)
+                    mapper.UnmappedBones.Add(BitConverter.ToInt16(DataPayload, (int)(bones + (x * 2))));
+
+            return true;
+        }
+
+        /// <summary>
+        /// The arrays an object points at, as offset, count and element size. A packfile finds them by
+        /// the fixups that land inside the object and has to work the element size out from the gap to
+        /// whatever comes next; a tagfile lists both the count and the element's type on the item.
+        /// </summary>
+        private List<int[]> ObjectArrays(uint start, uint end)
+        {
+            if (Tagfile != null)
+                return Tagfile.ArraysIn((int)start, (int)end);
+
+            List<int[]> arrays = new List<int[]>();
             for (int i = 0; i < LocalFixups.Count; i++)
             {
                 if (LocalFixups[i].Src < start || LocalFixups[i].Src >= end) continue;
@@ -3314,7 +3762,8 @@ namespace CATHODE
                 if (sizeAt + 4 > DataPayload.Length) continue;
 
                 int count = BitConverter.ToInt32(DataPayload, sizeAt);
-                if (count > 0 && count < 1_000_000) arrays.Add(new KeyValuePair<uint, int>(LocalFixups[i].Dst, count));
+                if (count > 0 && count < 1_000_000)
+                    arrays.Add(new int[] { (int)LocalFixups[i].Dst, count, ElementStride(LocalFixups[i].Dst, count) });
             }
             return arrays;
         }
@@ -3805,6 +4254,24 @@ namespace CATHODE
         {
             elementOffsets = null;
             int ptrSize = Header.PointerSize;
+
+            /* In a tagfile the length is on the item and each slot holds an item index, so the array
+             * resolves through the same call the geometry readers use. */
+            if (Tagfile != null)
+            {
+                if (!Tagfile.TryResolvePointer(arrayFieldOffset, out uint elements, out int elementCount))
+                    return false;
+
+                elementOffsets = new List<uint>(Math.Max(0, elementCount));
+                for (int n = 0; n < elementCount; n++)
+                {
+                    if (!Tagfile.TryResolvePointer(elements + (uint)(n * ptrSize), out uint element, out _))
+                        return false;
+                    elementOffsets.Add(element);
+                }
+                return true;
+            }
+
             int sizePos = (int)arrayFieldOffset + ptrSize;
             if (sizePos + 4 > DataPayload.Length)
                 return false;
@@ -3943,6 +4410,20 @@ namespace CATHODE
         {
             instancesField = 0;
             treeField = 0;
+
+            /* A tagfile has no local fixups to find the arrays by, but it does describe its own
+             * layout - so ask it where the members are rather than looking for pointers. */
+            if (Tagfile != null)
+            {
+                HavokTagfile.CompoundLayout layout = Tagfile.Compound();
+                if (!layout.Complete)
+                    return false;
+
+                instancesField = compoundDataOffset + (uint)layout.Instances;
+                treeField = compoundDataOffset + (uint)layout.Nodes;
+                return true;
+            }
+
             var fields = new List<uint>();
             uint end = compoundDataOffset + 0x100;
             for (int i = 0; i < LocalFixups.Count; i++)
@@ -3964,6 +4445,13 @@ namespace CATHODE
             domainOffset = 0;
             if (!TryGetCompoundArrayFields(compoundDataOffset, out _, out treeField))
                 return false;
+
+            if (Tagfile != null)
+            {
+                domainOffset = compoundDataOffset + (uint)Tagfile.Compound().Domain;
+                return true;
+            }
+
             // nodes hkArray then pad to 16, then domain AABB (32 bytes).
             uint afterArray = treeField + (uint)Header.PointerSize + 8;
             domainOffset = (afterArray + 15u) & ~15u;
@@ -4003,6 +4491,9 @@ namespace CATHODE
             Buffer.BlockCopy(DataPayload, 0, grown, 0, DataPayload.Length);
             DataPayload = grown;
 
+            HavokTagfile.CompoundLayout layout = Tagfile == null ? null : Tagfile.Compound();
+            int shapeField = layout == null ? 48 : layout.Shape;
+
             for (int n = 0; n < count; n++)
             {
                 int o = newInstancesOff + n * instanceStride;
@@ -4010,7 +4501,16 @@ namespace CATHODE
                 WriteCompoundInstanceBytes(DataPayload, o, inst, ptrSize);
                 inst.DataOffset = (uint)o;
 
-                uint shapePtrField = (uint)(o + 48);
+                uint shapePtrField = (uint)(o + shapeField);
+
+                /* A tagfile spells the link out in the data as an item index and lists the word in
+                 * PTCH; a packfile leaves the word at zero and carries the link in its fixup table. */
+                if (layout != null && !Tagfile.SetPointer((int)shapePtrField, inst.ShapeDataOffset, layout.ShapeGroup))
+                {
+                    throw new InvalidOperationException(
+                        "No object in the tagfile at " + inst.ShapeDataOffset + " for an instance shape pointer.");
+                }
+
                 GlobalFixups.Add(new GlobalFixup
                 {
                     Src = shapePtrField,
@@ -4022,15 +4522,30 @@ namespace CATHODE
             for (int n = 0; n < nodes.Count; n++)
                 Buffer.BlockCopy(nodes[n], 0, DataPayload, newNodesOff + n * 6, 6);
 
-            // Update hkArray size/capacity and local fixups.
-            WriteUInt32(DataPayload, (int)instancesField + ptrSize, (uint)count);
-            WriteUInt32(DataPayload, (int)instancesField + ptrSize + 4, (uint)count | 0x80000000u);
-            WriteUInt32(DataPayload, (int)treeField + ptrSize, (uint)nodes.Count);
-            WriteUInt32(DataPayload, (int)treeField + ptrSize + 4, (uint)nodes.Count | 0x80000000u);
+            int nodesOffset = nodes.Count > 0 ? newNodesOff : newInstancesOff;
+            if (layout != null)
+            {
+                /* An array's length lives on the item its m_data names, not in the data - so both
+                 * arrays move by moving their item, and m_size stays zero exactly as retail leaves it. */
+                if (!Tagfile.SetArray((int)instancesField, newInstancesOff, count, layout.InstancesGroup)
+                    || !Tagfile.SetArray((int)treeField, nodesOffset, nodes.Count, layout.NodesGroup))
+                {
+                    throw new InvalidOperationException(
+                        "Could not move the instance or node array for compound proxy " + compound.ProxyIndex + ".");
+                }
+            }
+            else
+            {
+                // Update hkArray size/capacity and local fixups.
+                WriteUInt32(DataPayload, (int)instancesField + ptrSize, (uint)count);
+                WriteUInt32(DataPayload, (int)instancesField + ptrSize + 4, (uint)count | 0x80000000u);
+                WriteUInt32(DataPayload, (int)treeField + ptrSize, (uint)nodes.Count);
+                WriteUInt32(DataPayload, (int)treeField + ptrSize + 4, (uint)nodes.Count | 0x80000000u);
 
-            // size 0 arrays: Havok still accepts a local fixup Dst; point at the append cursor.
-            SetLocalFixupDst(instancesField, (uint)newInstancesOff);
-            SetLocalFixupDst(treeField, (uint)(nodes.Count > 0 ? newNodesOff : newInstancesOff));
+                // size 0 arrays: Havok still accepts a local fixup Dst; point at the append cursor.
+                SetLocalFixupDst(instancesField, (uint)newInstancesOff);
+                SetLocalFixupDst(treeField, (uint)nodesOffset);
+            }
 
             // Domain AABB in embedded tree header (leave as-is if empty — still valid bounds).
             WriteVector4(DataPayload, (int)domainOffset, compound.DomainMin);

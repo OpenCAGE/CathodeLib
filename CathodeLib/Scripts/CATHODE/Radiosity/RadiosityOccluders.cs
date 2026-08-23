@@ -50,7 +50,7 @@ namespace CathodeLib.Radiosity
             tris = null;
             triangleFlags?.Clear();
 
-            HavokPackfile hkx = level?.CollisionHKX ?? level?.CollisionHKX64;
+            HavokPackfile hkx = level?.Collision;
             if (hkx == null)
             {
                 log?.Invoke("Radiosity occluders: level has no collision packfile, occluding against render meshes");

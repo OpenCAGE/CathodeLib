@@ -321,6 +321,10 @@ namespace CATHODE
             _packfile = new HavokPackfile(_havok);
             if (!_packfile.Loaded) return false;
 
+            //The mobile and Switch builds wrap the same skeleton in a Havok tagfile instead
+            if (_packfile.IsTagfile)
+                return _packfile.Tagfile.ReadSkeleton(this);
+
             HavokPackfile.PackfileObject skeleton = _packfile.Objects.FirstOrDefault(o => o.ClassName == "hkaSkeleton");
             if (skeleton == null) return false;
 

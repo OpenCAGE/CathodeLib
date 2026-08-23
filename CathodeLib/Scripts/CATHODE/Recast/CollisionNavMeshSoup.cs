@@ -104,7 +104,7 @@ namespace CathodeLib.NavMesh
 
             settings ??= NavMeshBakeSettings.CreateDefault();
             var soup = new CollisionNavMeshSoup();
-            HavokPackfile hkx = level.CollisionHKX ?? level.CollisionHKX64;
+            HavokPackfile hkx = level.Collision;
             if (hkx == null)
                 throw new InvalidOperationException("Level has no collision HKX packfile.");
 

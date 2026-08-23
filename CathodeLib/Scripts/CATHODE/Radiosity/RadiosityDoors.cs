@@ -49,7 +49,7 @@ namespace CathodeLib.Radiosity
             if (level?.CollisionMaps?.Entries == null)
                 return doors;
 
-            HavokPackfile hkx = level.CollisionHKX ?? level.CollisionHKX64;
+            HavokPackfile hkx = level.Collision;
             if (hkx == null)
                 return doors;
 

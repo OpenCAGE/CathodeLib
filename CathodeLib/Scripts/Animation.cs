@@ -134,7 +134,16 @@ namespace CathodeLib
                 {
                     Skeleton skeleton = new Skeleton(file.Content, Strings, file.Filename);
                     if (!skeleton.Loaded) return false;
-                    if (sixtyFour) asset.Skeleton64 = skeleton; else asset.Skeleton = skeleton;
+
+                    if (!sixtyFour) { asset.Skeleton = skeleton; return true; }
+
+                    asset.Skeleton64 = skeleton;
+
+                    /* The mobile and Switch builds ship no 32-bit skeletons at all, and everything
+                     * that reads a rig reads Skeleton - so the width that is present answers for both
+                     * rather than leaving those builds looking like they have no skeletons. A 32-bit
+                     * one, where there is one, still takes its own slot whichever order they load in. */
+                    if (asset.Skeleton == null) asset.Skeleton = skeleton;
                     return true;
                 });
 
@@ -497,6 +506,16 @@ namespace CathodeLib
                 string folder = (Path.GetDirectoryName(section.Filepath) ?? "").ToUpperInvariant();
                 if (folder.EndsWith("64")) continue;
                 _sectionByName[Path.GetFileNameWithoutExtension(section.Filepath)] = section;
+            }
+
+            /* ...but the mobile and Switch builds ship *only* the 64 bit folder, so skipping it there
+             * leaves nothing indexed and no clip can find its section. Anything still unclaimed takes
+             * whichever copy is present. */
+            foreach (AnimClipDBSec section in Sections)
+            {
+                string key = Path.GetFileNameWithoutExtension(section.Filepath);
+                if (!_sectionByName.ContainsKey(key))
+                    _sectionByName[key] = section;
             }
             if (ClipIndex != null)
                 foreach (GlobalAnimClipDB.ClipDbSection entry in ClipIndex.ClipDbSections)
