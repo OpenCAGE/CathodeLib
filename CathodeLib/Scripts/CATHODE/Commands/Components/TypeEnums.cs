@@ -1200,6 +1200,7 @@ namespace CATHODE.Scripting.Internal
         FLAGS,                                  // A table of generic flags that can store level modification metadata
         MATERIAL_MAPPINGS,                      // Stores material mappings to populate as parameters or aliases
         MATERIAL_NAMES,                         // Neat material names translated from LongGuid
+        FILE_HASHES,                            // Hashes of the game's shipped files, for telling vanilla data from modified data
 
         //Add new entries here
 

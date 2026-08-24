@@ -46,6 +46,7 @@ namespace CathodeLib
                 CathodeEnums = (CathodeEnumTable)ReadTable(content, CustomTableType.CATHODE_ENUM_INFO);
                 MaterialMappings = (MaterialMappingTable)ReadTable(content, CustomTableType.MATERIAL_MAPPINGS);
                 MaterialNames = (MaterialNameTable)ReadTable(content, CustomTableType.MATERIAL_NAMES);
+                FileHashes = (FileHashTable)ReadTable(content, CustomTableType.FILE_HASHES);
             }
 
             public readonly CompositePathTable CompositePaths;
@@ -56,6 +57,7 @@ namespace CathodeLib
             public readonly CathodeEnumTable CathodeEnums;
             public readonly MaterialMappingTable MaterialMappings;
             public readonly MaterialNameTable MaterialNames;
+            public readonly FileHashTable FileHashes;
         }
 
         /// <summary>
@@ -160,6 +162,9 @@ namespace CathodeLib
                             case CustomTableType.MATERIAL_NAMES:
                                 ((MaterialNameTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomTableType.FILE_HASHES:
+                                ((FileHashTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
 #if DEBUG
                         if (tableType == table)
@@ -258,6 +263,9 @@ namespace CathodeLib
                         break;
                     case CustomTableType.MATERIAL_NAMES:
                         data = new MaterialNameTable(reader);
+                        break;
+                    case CustomTableType.FILE_HASHES:
+                        data = new FileHashTable(reader);
                         break;
                 }
             }
@@ -1411,6 +1419,89 @@ namespace CathodeLib
             {
                 writer.Write(composites.Key);
                 writer.Write(composites.Value);
+            }
+        }
+    }
+    public class FileHashTable : CustomTable.Table
+    {
+        public FileHashTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.FILE_HASHES;
+        }
+
+        public class Entry
+        {
+            public string Path;   //Relative to the game root, forward slashes, uppercase
+            public long Size;
+            public byte[] Sha256; //32 bytes
+        }
+
+        //Hash sets keyed by the shipped build they describe (e.g. "STEAM_PC"), then by normalised path
+        public Dictionary<string, Dictionary<string, Entry>> sets = new Dictionary<string, Dictionary<string, Entry>>();
+
+        /// <summary>
+        /// The one true spelling of a path in this table: relative to the game root, forward slashes, uppercase.
+        /// </summary>
+        public static string NormalisePath(string path)
+        {
+            return (path ?? "").Replace('\\', '/').TrimStart('/').ToUpperInvariant();
+        }
+
+        public Entry Lookup(string set, string path)
+        {
+            Dictionary<string, Entry> entries;
+            if (!sets.TryGetValue(set, out entries))
+                return null;
+            Entry entry;
+            entries.TryGetValue(NormalisePath(path), out entry);
+            return entry;
+        }
+
+        public override void Read(BinaryReader reader)
+        {
+            sets.Clear();
+
+            if (reader == null)
+                return;
+
+            /* An absent table is stored as a single zero int32, and that can be the last thing in
+             * the file - so nothing further may be read until the version says the table is real */
+            int version = reader.ReadInt32();
+            if (version <= 0)
+                return;
+
+            int setCount = reader.ReadInt32();
+            for (int i = 0; i < setCount; i++)
+            {
+                string setName = reader.ReadString();
+                int entryCount = reader.ReadInt32();
+                Dictionary<string, Entry> entries = new Dictionary<string, Entry>(entryCount);
+                for (int x = 0; x < entryCount; x++)
+                {
+                    Entry entry = new Entry();
+                    entry.Path = reader.ReadString();
+                    entry.Size = reader.ReadInt64();
+                    entry.Sha256 = reader.ReadBytes(32);
+                    entries[entry.Path] = entry;
+                }
+                sets[setName] = entries;
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write((Int32)1);
+            writer.Write(sets.Count);
+            foreach (KeyValuePair<string, Dictionary<string, Entry>> set in sets)
+            {
+                writer.Write(set.Key ?? string.Empty);
+                writer.Write(set.Value.Count);
+                foreach (KeyValuePair<string, Entry> entry in set.Value)
+                {
+                    writer.Write(entry.Value.Path ?? string.Empty);
+                    writer.Write(entry.Value.Size);
+                    writer.Write(entry.Value.Sha256);
+                }
             }
         }
     }
