@@ -1000,29 +1000,108 @@ namespace CathodeLib.Radiosity
                 log?.Invoke("Radiosity probe slice: no bakeable geometry among the out-of-field movers");
                 return 0;
             }
-            float rectScale = Math.Max(0.2f, Math.Min(1.0f, settings.DeltaProbeRectScale));
-            foreach (RadiosityGeometry.Instance instance in deltaInstances)
+            if (settings.DeltaUniformProbes)
             {
-                RadiosityAtlas.RectSizeForBounds(instance.SurfaceArea, instance.BoundsMax - instance.BoundsMin,
-                    instance.UvCoverage, settings, out int w, out int h, instance.UvAspect);
-                if (rectScale < 1.0f)
+                // Every surface sampled on one world-space grid, so probe spacing is the same
+                // everywhere - the rect is just a slot allocation sized to fit the samples.
+                // The UV route below inherits the authored charts' packing instead, and its
+                // world density is nothing like uniform: measured on the F5 whole-level bake,
+                // per-2m-cell density against retail ran p10 0.38 with 136 cells empty or
+                // below a third of retail's, while 21.5% of the probes were dilation clones
+                // stacked at one position.
+                float spacing = Math.Max(0.2f, settings.DeltaProbeSpacing);
+                long totalSamples = 0;
+                foreach (RadiosityGeometry.Instance instance in deltaInstances)
                 {
-                    // Probe-slice rects only allocate cluster texels (nothing rect-samples
-                    // them), so big edits can run coarser to fit fewer slices.
-                    w = Math.Max(2, (int)Math.Round(w * rectScale));
-                    h = Math.Max(2, (int)Math.Round(h * rectScale));
+                    instance.UniformSamples = GridSampleInstance(geometry, instance, spacing);
+                    int n = Math.Max(1, instance.UniformSamples.Count);
+                    int h2 = Math.Min(AtlasSize, Math.Max(1, (int)Math.Ceiling(Math.Sqrt(n))));
+                    int w2 = Math.Min(AtlasSize, Math.Max(1, (n + h2 - 1) / h2));
+                    instance.AtlasWidth = w2;
+                    instance.AtlasHeight = h2;
+                    totalSamples += instance.UniformSamples.Count;
                 }
-                instance.AtlasWidth = w;
-                instance.AtlasHeight = h;
+                log?.Invoke("Radiosity probe slices: uniform grid placement - " + totalSamples +
+                            " samples at " + spacing.ToString("0.0#") + "m over " + deltaInstances.Count + " islands");
+            }
+            else
+            {
+                // Scale may go above 1: the F1 bald-spot audit showed the area model allotting big
+                // architecture far fewer texels than retail gave the same islands, and the old <=1
+                // clamp silently ate every attempt to densify (F4: PROBERECT=1.5 changed nothing).
+                float rectScale = Math.Max(0.2f, Math.Min(4.0f, settings.DeltaProbeRectScale));
+                foreach (RadiosityGeometry.Instance instance in deltaInstances)
+                {
+                    RadiosityAtlas.RectSizeForBounds(instance.SurfaceArea, instance.BoundsMax - instance.BoundsMin,
+                        instance.UvCoverage, settings, out int w, out int h, instance.UvAspect);
+                    if (rectScale != 1.0f)
+                    {
+                        w = Math.Max(2, Math.Min(AtlasSize, (int)Math.Round(w * rectScale)));
+                        h = Math.Max(2, Math.Min(AtlasSize, (int)Math.Round(h * rectScale)));
+                    }
+                    // Retail floor: never allocate an island fewer texels than retail shipped it -
+                    // per-surface probe density then cannot fall below the shipped bake's.
+                    if (settings.RetailRectSizes != null && instance.RetailIslandId >= 0 &&
+                        settings.RetailRectSizes.TryGetValue(instance.RetailIslandId, out int[] probeFloor) &&
+                        probeFloor != null && probeFloor.Length >= 2)
+                    {
+                        w = Math.Max(w, Math.Min(AtlasSize, probeFloor[0]));
+                        h = Math.Max(h, Math.Min(AtlasSize, probeFloor[1]));
+                    }
+                    instance.AtlasWidth = w;
+                    instance.AtlasHeight = h;
+                }
             }
 
             // Partition into as many slices as the content needs (a whole shifted level is a
             // legal edit), leaving atlas headroom per slice for each group's donor shell.
             var groups = new List<List<RadiosityGeometry.Instance>>();
             int texelCap = settings.MaxTexelsPerSlice;
-            settings.MaxTexelsPerSlice = Math.Min(texelCap, 11000);
-            try { SplitSpatially(deltaInstances, settings, groups, log); }
-            finally { settings.MaxTexelsPerSlice = texelCap; }
+            if (settings.DeltaZoneSlices)
+            {
+                // Retail's slices follow ZONES: a zone's rooms always live wholly in one slice
+                // (measured on the CM3 visualiser), which keeps a room's probes, scatter links
+                // and door transfers together. The spatial-band split cut rooms across slices
+                // and pinned every band at the same starved texel cap. Pack whole zones into
+                // slices first-fit-decreasing; only a zone too big for one slice still gets
+                // the spatial splitter.
+                int budget = Math.Min(texelCap, 15000);
+                int Tex(List<RadiosityGeometry.Instance> l) { int t = 0; foreach (var i2 in l) t += i2.AtlasWidth * i2.AtlasHeight; return t; }
+                var byZone = new Dictionary<uint, List<RadiosityGeometry.Instance>>();
+                foreach (RadiosityGeometry.Instance inst in deltaInstances)
+                {
+                    uint zone = 0;
+                    foreach (int mi in inst.Movers)
+                    {
+                        var z = level.Movers.Entries[mi].PrimaryZoneID;
+                        if (z != CATHODE.Scripting.ShortGuid.Invalid) { zone = z.AsUInt32; break; }
+                    }
+                    if (!byZone.TryGetValue(zone, out var zl)) byZone[zone] = zl = new List<RadiosityGeometry.Instance>();
+                    zl.Add(inst);
+                }
+                foreach (var zoneGroup in byZone.Values.OrderByDescending(Tex))
+                {
+                    if (Tex(zoneGroup) > budget)
+                    {
+                        settings.MaxTexelsPerSlice = budget;
+                        try { SplitSpatially(zoneGroup, settings, groups, log); }
+                        finally { settings.MaxTexelsPerSlice = texelCap; }
+                        continue;
+                    }
+                    List<RadiosityGeometry.Instance> target = null;
+                    foreach (var g in groups)
+                        if (Tex(g) + Tex(zoneGroup) <= budget) { target = g; break; }
+                    if (target == null) { target = new List<RadiosityGeometry.Instance>(); groups.Add(target); }
+                    target.AddRange(zoneGroup);
+                }
+                log?.Invoke("Radiosity probe slices: zone packing - " + byZone.Count + " zones -> " + groups.Count + " slices (budget " + budget + ")");
+            }
+            else
+            {
+                settings.MaxTexelsPerSlice = Math.Min(texelCap, 11000);
+                try { SplitSpatially(deltaInstances, settings, groups, log); }
+                finally { settings.MaxTexelsPerSlice = texelCap; }
+            }
 
             var deltaSet = new HashSet<RadiosityGeometry.Instance>(deltaInstances);
             int slicesBaked = 0, donorsTotal = 0;
@@ -3387,6 +3466,15 @@ namespace CathodeLib.Radiosity
         private static void RasteriseInstance(RadiosityGeometry geometry, RadiosityGeometry.Instance instance,
                                               SurfaceTexel[] texels, RadiosityBakeSettings settings)
         {
+            // Uniform world-grid placement (probe-only slices): the samples ARE the texels, one
+            // each, no dilation - dilation exists for bilinear lightmap edge reads, which these
+            // slices never get, and its position-clones were 21.5% of the F5 probe count.
+            if (instance.UniformSamples != null)
+            {
+                PlaceUniformSamples(geometry, instance, texels);
+                return;
+            }
+
             bool anyUv = false;
             foreach (int tri in instance.Triangles)
             {
@@ -3851,6 +3939,207 @@ namespace CathodeLib.Radiosity
                 }
             }
             return counts;
+        }
+
+        /// <summary>
+        /// Sample an island's triangles where they cross a world-axis-aligned grid at
+        /// <paramref name="spacing"/>. Each triangle is walked on the grid of its normal's two
+        /// non-dominant axes, so flat surfaces come out as literal lattices - which is what
+        /// retail's probe fields look like - and the spacing is identical for every island.
+        /// Coplanar neighbours sharing grid points dedupe on the grid key; the two faces of a
+        /// thin panel stay separate on the normal-direction bit.
+        /// </summary>
+        private static List<RadiosityGeometry.UniformSurfaceSample> GridSampleInstance(
+            RadiosityGeometry geometry, RadiosityGeometry.Instance instance, float spacing)
+        {
+            var samples = new List<RadiosityGeometry.UniformSurfaceSample>();
+            var seen = new HashSet<(int, int, int, int)>();
+            int moverCount = Math.Max(1, instance.Movers.Count);
+
+            // Hidden-face note: the authored lightmap charts are a hidden-face oracle (CA
+            // leaves the inside of a closed prop, the top of a ceiling panel under a plenum,
+            // the back of a flush panel UNMAPPED), and F8's cam10 ceiling read 52% of its
+            // blend from a dark plenum-side probe. Skipping degenerate-UV triangles was tried
+            // in F9 together with an above-surface hash fill and the pair regressed several
+            // rooms to the raw-bed state - reverted; isolate before re-attempting.
+            var moverHasSample = new bool[moverCount];
+            var moverHasEmissiveSample = new bool[moverCount];
+            var moverBestTri = new int[moverCount];
+            var moverBestArea = new float[moverCount];
+            List<(int tri, float area)>[] emissiveTris = null;
+            for (int m = 0; m < moverCount; m++) moverBestTri[m] = -1;
+
+            float Coord(Vector3 p, int a) => a == 0 ? p.X : a == 1 ? p.Y : p.Z;
+
+            void AddCentroid(int tri, int slot, bool emissive)
+            {
+                geometry.SamplePoint(tri, 1.0f / 3.0f, 1.0f / 3.0f,
+                    out Vector3 pos, out Vector3 n, out _, out Vector2 duv);
+                samples.Add(new RadiosityGeometry.UniformSurfaceSample
+                { Tri = tri, Position = pos, Normal = n, DiffuseUv = duv });
+                moverHasSample[slot] = true;
+                if (emissive) moverHasEmissiveSample[slot] = true;
+            }
+
+            foreach (int tri in instance.Triangles)
+            {
+                int i0 = geometry.Tris[tri * 3 + 0], i1 = geometry.Tris[tri * 3 + 1], i2 = geometry.Tris[tri * 3 + 2];
+
+                // NOTE(F9): skipping degenerate-lightmap-UV triangles here (the authored
+                // hidden-face oracle) was tried together with an above-surface hash fill and
+                // the pair regressed several rooms to the raw-bed state; both were reverted
+                // to the F8 baseline. Isolate before re-attempting either.
+
+                int slot = tri < geometry.TriangleMoverSlot.Length ? geometry.TriangleMoverSlot[tri] : 0;
+                if (slot < 0 || slot >= moverCount) slot = 0;
+                float area = geometry.TriangleArea(tri);
+                if (area > moverBestArea[slot]) { moverBestArea[slot] = area; moverBestTri[slot] = tri; }
+                bool emissive = tri < geometry.TriangleEmissive.Length &&
+                                geometry.TriangleEmissive[tri] != Vector3.Zero;
+                if (emissive)
+                {
+                    emissiveTris = emissiveTris ?? new List<(int, float)>[moverCount];
+                    (emissiveTris[slot] = emissiveTris[slot] ?? new List<(int, float)>()).Add((tri, area));
+                }
+
+                var v0 = new Vector3(geometry.Verts[i0 * 3], geometry.Verts[i0 * 3 + 1], geometry.Verts[i0 * 3 + 2]);
+                var v1 = new Vector3(geometry.Verts[i1 * 3], geometry.Verts[i1 * 3 + 1], geometry.Verts[i1 * 3 + 2]);
+                var v2 = new Vector3(geometry.Verts[i2 * 3], geometry.Verts[i2 * 3 + 1], geometry.Verts[i2 * 3 + 2]);
+                Vector3 face = Vector3.Cross(v1 - v0, v2 - v0);
+                float faceLen = face.Length();
+                if (faceLen < 1e-9f)
+                    continue;
+                Vector3 fn = face / faceLen;
+
+                // Grid axes: the two the face is most parallel to. Projecting along the dominant
+                // normal axis keeps the projected area within 1/sqrt(3) of the true one, so the
+                // 2D point-in-triangle test never degenerates.
+                float ax = Math.Abs(fn.X), ay = Math.Abs(fn.Y), az = Math.Abs(fn.Z);
+                int axis = ax >= ay && ax >= az ? 0 : (ay >= az ? 1 : 2);
+                int ua = axis == 0 ? 1 : 0, va = axis == 2 ? 1 : 2;
+
+                float p0u = Coord(v0, ua), p0v = Coord(v0, va);
+                float p1u = Coord(v1, ua), p1v = Coord(v1, va);
+                float p2u = Coord(v2, ua), p2v = Coord(v2, va);
+                float det = (p1u - p0u) * (p2v - p0v) - (p2u - p0u) * (p1v - p0v);
+                if (Math.Abs(det) < 1e-9f)
+                    continue;
+                float inv = 1.0f / det;
+
+                int minIu = (int)Math.Ceiling(Math.Min(p0u, Math.Min(p1u, p2u)) / spacing);
+                int maxIu = (int)Math.Floor(Math.Max(p0u, Math.Max(p1u, p2u)) / spacing);
+                int minIv = (int)Math.Ceiling(Math.Min(p0v, Math.Min(p1v, p2v)) / spacing);
+                int maxIv = (int)Math.Floor(Math.Max(p0v, Math.Max(p1v, p2v)) / spacing);
+
+                for (int iu = minIu; iu <= maxIu; iu++)
+                {
+                    for (int iv = minIv; iv <= maxIv; iv++)
+                    {
+                        float du = iu * spacing - p0u, dv = iv * spacing - p0v;
+                        float bu = (du * (p2v - p0v) - (p2u - p0u) * dv) * inv;
+                        float bv = ((p1u - p0u) * dv - du * (p1v - p0v)) * inv;
+                        // A small tolerance keeps a point on a shared edge from being rejected
+                        // by both triangles; the grid key dedupes the double-accept.
+                        const float eps = 1e-4f;
+                        if (bu < -eps || bv < -eps || bu + bv > 1.0f + eps)
+                            continue;
+                        bu = Math.Max(0.0f, Math.Min(1.0f, bu));
+                        bv = Math.Max(0.0f, Math.Min(1.0f - bu, bv));
+
+                        geometry.SamplePoint(tri, bu, bv,
+                            out Vector3 pos, out Vector3 n, out _, out Vector2 duv);
+                        var key = (axis * 2 + (Coord(fn, axis) < 0 ? 1 : 0), iu, iv,
+                                   (int)Math.Round(Coord(pos, axis) / (spacing * 0.5f)));
+                        if (!seen.Add(key))
+                            continue;
+                        samples.Add(new RadiosityGeometry.UniformSurfaceSample
+                        { Tri = tri, Position = pos, Normal = n, DiffuseUv = duv });
+                        moverHasSample[slot] = true;
+                        if (emissive) moverHasEmissiveSample[slot] = true;
+                    }
+                }
+            }
+
+            // Coverage guarantees the grid cannot make: every mover with any surface gets at
+            // least one probe (the volume hash resolves a converted mover from its own probes
+            // first), and a mover whose emissive fixtures all fell between grid lines still
+            // gets emitter samples - a missed emitter is missing light, not a missing probe.
+            for (int slot = 0; slot < moverCount; slot++)
+            {
+                if (!moverHasSample[slot] && moverBestTri[slot] >= 0)
+                    AddCentroid(moverBestTri[slot], slot, false);
+                if (emissiveTris != null && emissiveTris[slot] != null && !moverHasEmissiveSample[slot])
+                {
+                    emissiveTris[slot].Sort((a, b) => b.area.CompareTo(a.area));
+                    for (int e = 0; e < emissiveTris[slot].Count && e < 4; e++)
+                        AddCentroid(emissiveTris[slot][e].tri, slot, true);
+                }
+            }
+            return samples;
+        }
+
+        /// <summary>
+        /// Place an island's uniform grid samples into its atlas rect, one texel per sample.
+        /// Spatially sorted first so a rect row holds world-neighbours, which keeps the probe
+        /// tree leaves tight; overflow is thinned along that order rather than truncated, so
+        /// losing slots never shaves one contiguous region off the island.
+        /// </summary>
+        private static void PlaceUniformSamples(RadiosityGeometry geometry, RadiosityGeometry.Instance instance,
+                                                SurfaceTexel[] texels)
+        {
+            List<RadiosityGeometry.UniformSurfaceSample> samples = instance.UniformSamples;
+            if (samples == null || samples.Count == 0 || instance.AtlasWidth <= 0 || instance.AtlasHeight <= 0)
+                return;
+
+            var order = new List<int>(samples.Count);
+            for (int i = 0; i < samples.Count; i++) order.Add(i);
+            SpatialSort(order, i => samples[i].Position);
+
+            int capacity = instance.AtlasWidth * instance.AtlasHeight;
+            if (order.Count > capacity)
+            {
+                var kept = new List<int>(capacity);
+                double stride = (double)order.Count / capacity;
+                for (int k = 0; k < capacity; k++) kept.Add(order[(int)(k * stride)]);
+                order = kept;
+            }
+
+            for (int k = 0; k < order.Count; k++)
+            {
+                RadiosityGeometry.UniformSurfaceSample s = samples[order[k]];
+                int x = instance.AtlasX + k % instance.AtlasWidth;
+                int y = instance.AtlasY + k / instance.AtlasWidth;
+                if (x >= AtlasSize || y >= AtlasSize)
+                    break;
+                int index = y * AtlasSize + x;
+                if (texels[index].Live)
+                    continue;
+
+                int moverSlot = s.Tri < geometry.TriangleMoverSlot.Length ? geometry.TriangleMoverSlot[s.Tri] : 0;
+                int moverIndex = moverSlot >= 0 && moverSlot < instance.Movers.Count ? instance.Movers[moverSlot] : -1;
+
+                var texel = new SurfaceTexel
+                {
+                    Position = s.Position,
+                    Normal = s.Normal,
+                    AlbedoSum = geometry.SampleAlbedo(s.Tri, s.DiffuseUv),
+                    AlbedoTaps = 1,
+                    Emissive = geometry.TriangleEmissive[s.Tri],
+                    MoverIndex = moverIndex,
+                    Live = true
+                };
+                // No texel footprint to integrate over - spread a few extra taps across the
+                // sample's triangle, as the scattered fill does.
+                for (int tap = 1; tap < FillAlbedoTaps; tap++)
+                {
+                    float ju = Fract((k + tap * 0.37f + 0.5f) * 0.7548776662f);
+                    float jv = Fract((k + tap * 0.71f + 0.5f) * 0.5698402910f);
+                    if (ju + jv > 1.0f) { ju = 1.0f - ju; jv = 1.0f - jv; }
+                    texel.AlbedoSum += geometry.SampleAlbedo(s.Tri, geometry.DiffuseUvAt(s.Tri, ju, jv));
+                    texel.AlbedoTaps++;
+                }
+                texels[index] = texel;
+            }
         }
 
         /// <summary>
@@ -5269,6 +5558,107 @@ namespace CathodeLib.Radiosity
                     }
                 }
                 probeForCell[key] = chosen >= 0 ? chosen : pair.Value[0];
+            }
+
+            // Mid-air fill. A cell no probe falls inside would stay a (255,255) no-probe item,
+            // but the engine's 8-cell blend does NOT renormalise around missing items - a
+            // converted mover whose bounds centre floats between the floor and ceiling probe
+            // layers reads a mostly-black blend. That is what turned F6's ceilings and wall
+            // panels black: 73% of the blend weight at one traced centre sat on no-probe cells
+            // while lit probes waited 0.8 m away, and finer cells (1 m against retail's 2 m)
+            // manufacture exactly such a layer in every room. Retail's own items resolve probes
+            // up to ~2.6 m from their cell, so empty cells here borrow the nearest probe within
+            // reach, preferring one visible from the cell centre.
+            float reach = settings.VolumeProbeFillReach;
+            if (reach > 0)
+            {
+                int ring = Math.Max(1, (int)Math.Ceiling(reach / cell));
+                float reachSq = reach * reach;
+
+                // Dilate outward from occupied cells so far-out empties (a stretched hash can
+                // cover most of the level) are never even visited.
+                var fillTargets = new HashSet<int>();
+                foreach (int key in cellCandidates.Keys)
+                {
+                    int cz2 = key / (gx * gy), cy2 = (key / gx) % gy, cx2 = key % gx;
+                    for (int dz2 = -ring; dz2 <= ring; dz2++)
+                        for (int dy2 = -ring; dy2 <= ring; dy2++)
+                            for (int dx2 = -ring; dx2 <= ring; dx2++)
+                            {
+                                int nx = cx2 + dx2, ny = cy2 + dy2, nz = cz2 + dz2;
+                                if (nx < 0 || ny < 0 || nz < 0 || nx >= gx || ny >= gy || nz >= gz)
+                                    continue;
+                                int nk = (nz * gy + ny) * gx + nx;
+                                if (probeForCell[nk] < 0)
+                                    fillTargets.Add(nk);
+                            }
+                }
+
+                bool OccupiedAt(int x, int y, int z) =>
+                    x >= 0 && y >= 0 && z >= 0 && x < gx && y < gy && z < gz &&
+                    cellCandidates.ContainsKey((z * gy + y) * gx + x);
+
+                var scratch = new List<int>();
+                foreach (int key in fillTargets)
+                {
+                    int cz2 = key / (gx * gy), cy2 = (key / gx) % gy, cx2 = key % gx;
+
+                    // Interior air only: surfaces on OPPOSITE sides along some axis within the
+                    // ring (the floor-below-ceiling-above layer where mover bounds centres sit).
+                    // Filling the outward shell too - outside walls, above ceilings - was the F7
+                    // item explosion, and nothing ever samples out there.
+                    bool interior = false;
+                    for (int axis = 0; axis < 3 && !interior; axis++)
+                    {
+                        bool neg = false, pos = false;
+                        for (int step = 1; step <= ring && !(neg && pos); step++)
+                        {
+                            int sx = axis == 0 ? step : 0, sy = axis == 1 ? step : 0, sz = axis == 2 ? step : 0;
+                            neg = neg || OccupiedAt(cx2 - sx, cy2 - sy, cz2 - sz);
+                            pos = pos || OccupiedAt(cx2 + sx, cy2 + sy, cz2 + sz);
+                        }
+                        interior = neg && pos;
+                    }
+                    if (!interior)
+                        continue;
+
+                    Vector3 centre = min + new Vector3((cx2 + 0.5f) * cell, (cy2 + 0.5f) * cell, (cz2 + 0.5f) * cell);
+
+                    scratch.Clear();
+                    for (int dz2 = -ring; dz2 <= ring; dz2++)
+                        for (int dy2 = -ring; dy2 <= ring; dy2++)
+                            for (int dx2 = -ring; dx2 <= ring; dx2++)
+                            {
+                                int nx = cx2 + dx2, ny = cy2 + dy2, nz = cz2 + dz2;
+                                if (nx < 0 || ny < 0 || nz < 0 || nx >= gx || ny >= gy || nz >= gz)
+                                    continue;
+                                if (cellCandidates.TryGetValue((nz * gy + ny) * gx + nx, out List<int> near))
+                                    foreach (int texel in near)
+                                        if (Vector3.DistanceSquared(centre, texels[texel].Position) <= reachSq)
+                                            scratch.Add(texel);
+                            }
+                    if (scratch.Count == 0)
+                        continue;
+
+                    scratch.Sort((a, b) =>
+                        Vector3.DistanceSquared(centre, texels[a].Position)
+                            .CompareTo(Vector3.DistanceSquared(centre, texels[b].Position)));
+
+                    int chosen = -1;
+                    int tried = 0;
+                    foreach (int texel in scratch)
+                    {
+                        if (tried++ >= 12) break;
+                        if (geometry.Visible(centre,
+                                             texels[texel].Position + texels[texel].Normal * settings.ProbeSurfaceOffset,
+                                             settings.RayEpsilon))
+                        {
+                            chosen = texel;
+                            break;
+                        }
+                    }
+                    probeForCell[key] = chosen >= 0 ? chosen : scratch[0];
+                }
             }
 
             // Summed-area table over occupancy so "does this box hold a probe" is O(1) and empty

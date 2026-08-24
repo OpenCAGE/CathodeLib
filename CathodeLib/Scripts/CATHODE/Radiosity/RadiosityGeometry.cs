@@ -119,7 +119,23 @@ namespace CathodeLib.Radiosity
             /// </summary>
             public bool DonorOnly;
 
+            /// <summary>
+            /// World-space uniform surface samples for the probe-only path, one texel each. When
+            /// set, the atlas rasteriser places these instead of rasterising the lightmap UVs -
+            /// see <c>RadiosityBakeSettings.DeltaUniformProbes</c>.
+            /// </summary>
+            internal List<UniformSurfaceSample> UniformSamples;
+
             public Vector3 Centre => (BoundsMin + BoundsMax) * 0.5f;
+        }
+
+        /// <summary>A probe site produced by uniform world-grid surface sampling.</summary>
+        internal struct UniformSurfaceSample
+        {
+            public int Tri;
+            public Vector3 Position;
+            public Vector3 Normal;
+            public Vector2 DiffuseUv;
         }
 
         /// <summary>xyz-interleaved world-space vertex positions.</summary>

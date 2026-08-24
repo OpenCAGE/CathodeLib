@@ -151,6 +151,29 @@ namespace CathodeLib.Radiosity
         public bool DeltaIgnoreMoves = false;
 
         /// <summary>
+        /// Group probe-only delta slices by the movers' PrimaryZoneID and bin-pack whole
+        /// zones into slices, the way retail's own slices keep every room in exactly one
+        /// slice. Off falls back to the spatial-band splitter (which can cut rooms across
+        /// slices and starves each band at the same texel cap).
+        /// </summary>
+        public bool DeltaZoneSlices = true;
+
+        /// <summary>
+        /// Place probe-only slice surfaces on a world-space grid at
+        /// <see cref="DeltaProbeSpacing"/> instead of rasterising the authored lightmap UVs
+        /// into area-sized rects. The UV route inherits the charts' packing, whose world
+        /// density is nothing like uniform (measured on the F5 whole-level bake: per-2m-cell
+        /// density against retail p10 0.38, 136 cells empty or below a third, and 21.5% of
+        /// probes were dilation clones stacked at one position). The grid gives every surface
+        /// the same spacing - retail's own lattice look - and needs no dilation, so every
+        /// probe is a distinct point. Rects become plain slot allocations sized to fit.
+        /// </summary>
+        public bool DeltaUniformProbes = true;
+
+        /// <summary>World grid spacing in metres for <see cref="DeltaUniformProbes"/>.</summary>
+        public float DeltaProbeSpacing = 0.5f;
+
+        /// <summary>
         /// Volume hash cell size (m) for the probe-only delta slice. Retail bakes 2.0 everywhere,
         /// but the engine derives cell size from the hash's own AABB and dims (proven in-game by
         /// re-encoding retail's hashes at 2x), and a finer grid shrinks the world-space span of
@@ -815,6 +838,20 @@ namespace CathodeLib.Radiosity
 
         /// <summary>Subdivisions per hash level, matching the retail value.</summary>
         public uint VolumeProbeSubdivsPerLevel = 3;
+
+        /// <summary>
+        /// Hash cells no probe falls inside borrow the nearest (preferably visible) probe
+        /// within this many metres; 0 disables and leaves them as no-probe items. The
+        /// engine's 8-cell blend does not renormalise around missing items, so a converted
+        /// mover whose bounds centre floats in mid-air - a ceiling panel, a room-sized wall
+        /// piece - otherwise reads a mostly-black blend even with lit probes under a metre
+        /// away. Retail's own items resolve probes up to ~2.6 m from their cell.
+        /// OPT-IN: at 3.0 the item count exploded 10x (23-53k/slice against retail's ~2.4k)
+        /// and every F6-lit room went black at F3-identical ratios - ~180k extra vis-face
+        /// grids folding into the shared 256-entry palette is the prime suspect. Keep the
+        /// reach at or under ~1.2 (one ring at 1 m cells) if enabling.
+        /// </summary>
+        public float VolumeProbeFillReach = 0.0f;
 
         /// <summary>
         /// Rays per cell of a volume probe's 8x8 visibility face. The stored byte is
