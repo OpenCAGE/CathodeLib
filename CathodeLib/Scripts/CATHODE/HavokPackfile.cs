@@ -2886,6 +2886,7 @@ namespace CATHODE
                 ClassnamesData = Slice(file, (int)classAbs, (int)classLocal);
                 TypesData = typesLocal == 0 ? Array.Empty<byte>() : Slice(file, (int)typesAbs, (int)typesLocal);
                 DataPayload = Slice(file, (int)dataAbs, (int)dataLocal);
+                _rawFile = file;
                 _dataSectionOffset = dataAbs;
 
                 ReadLocalFixups(file, (int)(dataAbs + dataLocal), (int)(dataAbs + dataGlobal));
@@ -4952,6 +4953,88 @@ namespace CATHODE
             }
 
             return inst;
+        }
+
+        /// <summary>Original file bytes as loaded; see <see cref="SavePatched"/>.</summary>
+        private byte[] _rawFile;
+
+        /// <summary>
+        /// Write the file back as the ORIGINAL bytes with only the in-memory compound-instance
+        /// and BVH-domain edits patched in at their absolute offsets. Unlike <c>Save</c>, this
+        /// cannot disturb any structure the parser does not model - measured necessary for
+        /// editing RETAIL collision files: a full reconstruction of a pristine COLLISION.HKX
+        /// (even with zero edits) breaks zone streaming level-wide and crashes the game, while
+        /// our own rebuilt files survive it because they were constructed by this writer.
+        /// </summary>
+        public bool SavePatched()
+        {
+            if (_rawFile == null || string.IsNullOrEmpty(_filepath))
+                return false;
+            byte[] outBytes = (byte[])_rawFile.Clone();
+            int baseOff = (int)_dataSectionOffset;
+            foreach (StaticCompoundShape compound in StaticCompoundShapes)
+            {
+                foreach (CompoundInstance inst in compound.Instances)
+                {
+                    int o = baseOff + (int)inst.DataOffset;
+                    if (o < 0 || o + 48 > outBytes.Length)
+                        continue;
+                    WriteVector4(outBytes, o, inst.Translation);
+                    WriteSingle(outBytes, o + 16, inst.Rotation.X);
+                    WriteSingle(outBytes, o + 20, inst.Rotation.Y);
+                    WriteSingle(outBytes, o + 24, inst.Rotation.Z);
+                    WriteSingle(outBytes, o + 28, inst.Rotation.W);
+                    WriteVector4(outBytes, o + 32, inst.Scale);
+                }
+                if (compound.DomainMin.X <= compound.DomainMax.X &&
+                    TryGetCompoundTreeField(compound.DataOffset, out _, out uint domainOff) &&
+                    baseOff + (int)domainOff + 32 <= outBytes.Length)
+                {
+                    WriteVector4(outBytes, baseOff + (int)domainOff, compound.DomainMin);
+                    WriteVector4(outBytes, baseOff + (int)domainOff + 16, compound.DomainMax);
+                }
+            }
+            System.IO.File.WriteAllBytes(_filepath, outBytes);
+            return true;
+        }
+
+        /// <summary>
+        /// Rigidly translate every static-compound collision instance (and each compound's BVH
+        /// domain) by <paramref name="delta"/>. The Storage6 tree quantises node AABBs relative
+        /// to the domain, so moving instances and domain together keeps every quantised tree
+        /// byte valid - no rebuild. Instance W flag bits are preserved. Call Save afterwards.
+        /// Returns the number of instances moved.
+        /// </summary>
+        public int TranslateStaticGeometry(Vector3 delta)
+        {
+            int moved = 0;
+            if (delta == Vector3.Zero)
+                return moved;
+            foreach (StaticCompoundShape compound in StaticCompoundShapes)
+            {
+                foreach (CompoundInstance inst in compound.Instances)
+                {
+                    inst.Translation = new Vector4(inst.Translation.X + delta.X,
+                                                   inst.Translation.Y + delta.Y,
+                                                   inst.Translation.Z + delta.Z,
+                                                   inst.Translation.W);
+                    moved++;
+                }
+                if (compound.DomainMin.X <= compound.DomainMax.X)
+                {
+                    compound.DomainMin = new Vector4(compound.DomainMin.X + delta.X, compound.DomainMin.Y + delta.Y,
+                                                     compound.DomainMin.Z + delta.Z, compound.DomainMin.W);
+                    compound.DomainMax = new Vector4(compound.DomainMax.X + delta.X, compound.DomainMax.Y + delta.Y,
+                                                     compound.DomainMax.Z + delta.Z, compound.DomainMax.W);
+                    if (TryGetCompoundTreeField(compound.DataOffset, out _, out uint domainOff) &&
+                        domainOff + 32 <= (uint)DataPayload.Length)
+                    {
+                        WriteVector4(DataPayload, (int)domainOff, compound.DomainMin);
+                        WriteVector4(DataPayload, (int)domainOff + 16, compound.DomainMax);
+                    }
+                }
+            }
+            return moved;
         }
 
         void WriteBackCompoundInstances()

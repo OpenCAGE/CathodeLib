@@ -110,6 +110,15 @@ namespace CathodeLib.Radiosity
             public int SliceIndex = -1;
             public int AtlasX, AtlasY, AtlasWidth, AtlasHeight;
 
+            /// <summary>
+            /// Radiance donor for a delta slice: rasterised into the atlas as cluster-only texels
+            /// (live cluster field, input probes, light slices, scatter) so the slice's real
+            /// islands can gather the surrounding room's bounce natively in-slice, but no surface
+            /// probes and no MODEL_PARAMS / instance-map writes - the mover keeps rendering from
+            /// its retail slice.
+            /// </summary>
+            public bool DonorOnly;
+
             public Vector3 Centre => (BoundsMin + BoundsMax) * 0.5f;
         }
 

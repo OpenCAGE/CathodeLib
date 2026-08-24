@@ -2117,7 +2117,7 @@ namespace CathodeLib
             }
         }
 
-        private int GetDeterministicSeed()
+        internal int GetDeterministicSeed()
         {
             unchecked
             {
@@ -2527,6 +2527,7 @@ namespace CathodeLib
             GenerateInstances();
             ProcessInstances();
             BuildStateProperties();
+            CarryRetailModelParams();
 
             if (!SkipAgentBakes)
             {
@@ -2730,6 +2731,10 @@ namespace CathodeLib
             _collisionMirror = collision32 != null && collision64 != null ? new HavokCollisionTarget(collision64) : null;
             _collisionMirror?.ClearWorldHosts();
 
+            //Snapshot everything the carries need BEFORE any table is cleared - the resource
+            //table snapshot read an empty list when this ran after the clears.
+            SnapshotModelParams();
+
             //Clear other various bits we'll re-write
             _level.Resources.Entries.Clear();
             _level.PhysicsMaps.Entries.Clear();
@@ -2747,6 +2752,14 @@ namespace CathodeLib
 
             //First 12 movers are required assets used by various things like particle systems, etc - keep them!
             //If building a level from scratch I'll need to add these somehow - store them? They're the same everywhere.
+            //Before the old list goes: keep every environment mover's MODEL_PARAMS lightmap
+            //transform, keyed by resource GUID. Instancing rebuilds movers from Commands and
+            //cannot compute this - it is bake output - so without carrying it every rebuilt wall
+            //samples a wrong atlas region (ChallengeMap3's vent wall rendered its neighbouring
+            //tube-lights' yellow; ceiling pieces degenerated entirely). A full radiosity bake
+            //rewrites these afterwards, so carrying is harmless there and essential everywhere
+            //else (instonly, delta patches). NOTE: the snapshot itself now runs earlier, before
+            //the table clears above.
             List<Movers.MOVER_DESCRIPTOR> requiredAssets = new List<Movers.MOVER_DESCRIPTOR>();
             if (_level.Movers.Entries.Count >= 12)
                 for (int i = 0; i < 12; i++)
@@ -3098,14 +3111,18 @@ namespace CathodeLib
                 zones.Add(entity);
             }
 
-            Parallel.ForEach(zones, opts, entity =>
-            {
+            //SEQUENTIAL on purpose. AssignZone is a first-arrival state machine (first zone to
+            //reach an entity becomes primary, later arrivals fight for secondary), so running the
+            //zones in Parallel.ForEach made arrival order a thread race: two runs of the same code
+            //disagreed on ~800 movers, and ChallengeMap9 put 4,757 of 12,485 movers (38%) in a
+            //different zone from retail - which flips zone streaming states, and that is visible:
+            //rooms rendered that retail keeps unloaded (cam4), the vent exterior black (cam11),
+            //required-asset FX pulled out of the persistent global zone. Iterating in AllEntities
+            //order is deterministic; zones per level number in the dozens, so this costs nothing.
+            foreach (InstancedEntity entity in zones)
                 ApplyZoneLinks(entity, variablePinsOnly: false);
-            });
-            Parallel.ForEach(zones, opts, entity =>
-            {
+            foreach (InstancedEntity entity in zones)
                 ApplyZoneLinks(entity, variablePinsOnly: true);
-            });
         }
 
         //This finds every EnvironmentMap entity and applies itself to any entities connected to it via the 'Entities' pin
@@ -3597,6 +3614,320 @@ namespace CathodeLib
             return last;
         }
 
+        //Pristine MODEL_PARAMS per resource GUID, harvested before the mover list is discarded
+        //and written back once the rebuilt movers exist. Environment renderable types only: a
+        //LIGHT's first 16 constant bytes are DEFERRED_PARAMS and must never be touched.
+        private System.Collections.Generic.Dictionary<ulong, byte[]> _retailModelParams = null;
+        private System.Collections.Generic.Dictionary<ulong, byte[][]> _retailFxConstants = null;
+        private System.Collections.Generic.Dictionary<ulong, bool> _retailRequiresScript = null;
+        private System.Collections.Generic.Dictionary<ulong, (byte[] refs, int index)> _retailRuntimeRefs = null;
+        private System.Collections.Generic.Dictionary<ulong, (ShortGuid primary, ShortGuid secondary)> _retailZones = null;
+        private System.Collections.Generic.Dictionary<(uint inst, uint ent, uint res), (ShortGuid zone, CollisionMaps.CollisionFlags flags)> _retailCollisionZones = null;
+        private System.Collections.Generic.Dictionary<ulong, int> _retailResourceIndex = null;
+
+        private void SnapshotModelParams()
+        {
+            _retailModelParams = new System.Collections.Generic.Dictionary<ulong, byte[]>();
+            _retailFxConstants = new System.Collections.Generic.Dictionary<ulong, byte[][]>();
+            _retailRequiresScript = new System.Collections.Generic.Dictionary<ulong, bool>();
+            _retailRuntimeRefs = new System.Collections.Generic.Dictionary<ulong, (byte[], int)>();
+            _retailZones = new System.Collections.Generic.Dictionary<ulong, (ShortGuid, ShortGuid)>();
+
+            // RESOURCES.BIN index assignment: a row's index is just its position in the runtime
+            // list, and the rebuild hands out positions in instancing order - 16,891 of
+            // ChallengeMap9's 18,468 pairs landed at a different index than retail even though the
+            // pair SETS are identical. The engine resolves entities through this table at spawn
+            // (PARTICLE_EMITTER_REFERENCE::on_initialise faulted when the table and MVR came from
+            // different builds), so retail's assignment is restored before save.
+            _retailResourceIndex = new System.Collections.Generic.Dictionary<ulong, int>();
+            if (_level.Resources?.Entries != null)
+                for (int ri = 0; ri < _level.Resources.Entries.Count; ri++)
+                {
+                    Resources.Resource r = _level.Resources.Entries[ri];
+                    if (r == null) continue;
+                    ulong rkey = ((ulong)r.composite_instance_id.AsUInt32 << 32) | r.resource_id.AsUInt32;
+                    if (!_retailResourceIndex.ContainsKey(rkey))
+                        _retailResourceIndex[rkey] = ri;
+                }
+
+            // Collision-row zones and flags: COLLISION.MAP feeds the engine's position->zone
+            // lookup and collider state, and its rows take the same computed PrimaryZone the
+            // movers do plus the ShouldApplyFrozen best-guess for the state bits. The measured
+            // CM9 delta vs retail is ~550 rows differing ONLY in the state nibble (we add
+            // FROZEN|PRE_FROZEN where retail leaves colliders live, and drop GHOSTED|PRE_GHOSTED
+            // where retail ghosts them) - retail's own answer is carried per row.
+            _retailCollisionZones = new System.Collections.Generic.Dictionary<(uint, uint, uint), (ShortGuid, CollisionMaps.CollisionFlags)>();
+            if (_level.CollisionMaps?.Entries != null)
+                foreach (CollisionMaps.COLLISION_MAPPING row in _level.CollisionMaps.Entries)
+                {
+                    if (row?.Entity == null)
+                        continue;
+                    var ckey = (row.Entity.composite_instance_id.AsUInt32, row.Entity.entity_id.AsUInt32, row.ResourceGUID.AsUInt32);
+                    if (!_retailCollisionZones.ContainsKey(ckey))
+                        _retailCollisionZones[ckey] = (row.ZoneID, row.Flags);
+                }
+            foreach (Movers.MOVER_DESCRIPTOR m in _level.Movers.Entries)
+            {
+                if (m.Resource == null || m.RenderableElements == null || m.RenderableElements.Count == 0)
+                    continue;
+                RenderableInstanceType type;
+                try { type = m.GetRenderableType(); }
+                catch { continue; }
+                ulong key = ((ulong)m.Resource.composite_instance_id.AsUInt32 << 32) | m.Resource.resource_id.AsUInt32;
+
+                // RequiresScript: the rule is undecoded (hardcoding either way disagrees with a
+                // third of retail). Retail's own answer is carried per mover.
+                if (m.Flags != null && !_retailRequiresScript.ContainsKey(key))
+                    _retailRequiresScript[key] = m.Flags.RequiresScript;
+
+                // The undecoded runtime words (RuntimeRefs at +256, RuntimeIndex at +280):
+                // retail fills the refs on EVERY mover and hands ~40% a unique sequential
+                // RuntimeIndex; we used to zero one and write a bogus mover index for the other.
+                if (!_retailRuntimeRefs.ContainsKey(key))
+                    _retailRuntimeRefs[key] = (m.RuntimeRefs, m.RuntimeIndex);
+
+                // Zones: our AssignZone pass disagrees with retail's per-entity arrival order on
+                // ~4% of ChallengeMap4's movers and 38% (!) of ChallengeMap9's - retail resolves
+                // the same contested zone PAIR both ways depending on the entity, so the true rule
+                // is per-entity and still undecoded. Zone membership drives streaming: CM9 rendered
+                // rooms retail keeps unloaded and blacked out the vent exterior. Retail's own pair
+                // is carried per mover; the computed pass still covers new content.
+                if (!_retailZones.ContainsKey(key))
+                    _retailZones[key] = (m.PrimaryZoneID, m.SecondaryZoneID);
+
+                // FX movers: the whole constant pair is carried verbatim. Retail's fogsphere GPU
+                // block is NOT the authored-parameter layout our generation writes (it opens with
+                // a rotation matrix and carries packed fields) - the mismatch rendered CM9's
+                // vented-gas floor fog invisible. Until that layout is decoded, retail's bytes
+                // are strictly better for every unedited FX entity.
+                if (type == RenderableInstanceType.FOGSPHERE ||
+                    type == RenderableInstanceType.DYNAMICFX ||
+                    type == RenderableInstanceType.DYNAMICFX_UNIQUE_MAT)
+                {
+                    if (!_retailFxConstants.ContainsKey(key))
+                        _retailFxConstants[key] = new byte[][]
+                        {
+                            m.GPUConstants?.RawBytes,
+                            m.RenderConstants?.RawBytes
+                        };
+                    continue;
+                }
+
+                if (type != RenderableInstanceType.ENVIRONMENT &&
+                    type != RenderableInstanceType.ENVIRONMENT_EXTRA &&
+                    type != RenderableInstanceType.MISC)
+                    continue;
+                byte[] raw = m.RenderConstants?.RawBytes;
+                if (raw == null || raw.Length < 16)
+                    continue;
+                if (_retailModelParams.ContainsKey(key))
+                    continue;
+                byte[] copy = new byte[16];
+                Array.Copy(raw, copy, 16);
+                _retailModelParams[key] = copy;
+            }
+        }
+
+        private void CarryRetailModelParams()
+        {
+            if (_retailModelParams == null || _retailModelParams.Count == 0)
+                return;
+            int carried = 0;
+            foreach (Movers.MOVER_DESCRIPTOR m in _level.Movers.Entries)
+            {
+                if (m.Resource == null || m.RenderConstants == null)
+                    continue;
+                RenderableInstanceType type;
+                try { type = m.GetRenderableType(); }
+                catch { continue; }
+                if (type != RenderableInstanceType.ENVIRONMENT &&
+                    type != RenderableInstanceType.ENVIRONMENT_EXTRA &&
+                    type != RenderableInstanceType.MISC)
+                    continue;
+                ulong key = ((ulong)m.Resource.composite_instance_id.AsUInt32 << 32) | m.Resource.resource_id.AsUInt32;
+                if (!_retailModelParams.TryGetValue(key, out byte[] pristine))
+                    continue;
+                byte[] raw = m.RenderConstants.RawBytes;
+                if (raw == null || raw.Length < 16)
+                    continue;
+                bool differs = false;
+                for (int b = 0; b < 16; b++)
+                    if (raw[b] != pristine[b]) { differs = true; break; }
+                if (!differs)
+                    continue;
+                Array.Copy(pristine, raw, 16);
+                m.RenderConstants.SetRawBytes(raw);
+                carried++;
+            }
+            if (carried > 0)
+                Console.WriteLine("Instancing: carried MODEL_PARAMS lightmap transforms for " + carried + " movers");
+
+            // FX constant carry (see SnapshotModelParams): pristine GPU + render constants
+            // verbatim for matched fogsphere/FX movers.
+            if (_retailFxConstants != null && _retailFxConstants.Count > 0)
+            {
+                int fxCarried = 0;
+                foreach (Movers.MOVER_DESCRIPTOR m in _level.Movers.Entries)
+                {
+                    if (m.Resource == null)
+                        continue;
+                    RenderableInstanceType type;
+                    try { type = m.GetRenderableType(); }
+                    catch { continue; }
+                    if (type != RenderableInstanceType.FOGSPHERE &&
+                        type != RenderableInstanceType.DYNAMICFX &&
+                        type != RenderableInstanceType.DYNAMICFX_UNIQUE_MAT)
+                        continue;
+                    ulong key = ((ulong)m.Resource.composite_instance_id.AsUInt32 << 32) | m.Resource.resource_id.AsUInt32;
+                    if (!_retailFxConstants.TryGetValue(key, out byte[][] pristine))
+                        continue;
+                    bool touched = false;
+                    if (pristine[0] != null && m.GPUConstants != null)
+                    {
+                        m.GPUConstants.SetRawBytes(pristine[0]);
+                        touched = true;
+                    }
+                    if (pristine[1] != null && m.RenderConstants != null)
+                    {
+                        m.RenderConstants.SetRawBytes(pristine[1]);
+                        touched = true;
+                    }
+                    if (touched) fxCarried++;
+                }
+                if (fxCarried > 0)
+                    Console.WriteLine("Instancing: carried FX constants for " + fxCarried + " movers");
+            }
+
+            // RequiresScript carry (see SnapshotModelParams): retail's per-mover answer for the
+            // undecoded rule, all types.
+            if (_retailRequiresScript != null && _retailRequiresScript.Count > 0)
+            {
+                int flagsCarried = 0;
+                foreach (Movers.MOVER_DESCRIPTOR m in _level.Movers.Entries)
+                {
+                    if (m.Resource == null || m.Flags == null)
+                        continue;
+                    ulong key = ((ulong)m.Resource.composite_instance_id.AsUInt32 << 32) | m.Resource.resource_id.AsUInt32;
+                    if (!_retailRequiresScript.TryGetValue(key, out bool pristine))
+                        continue;
+                    if (m.Flags.RequiresScript != pristine)
+                    {
+                        m.Flags.RequiresScript = pristine;
+                        flagsCarried++;
+                    }
+                }
+                if (flagsCarried > 0)
+                    Console.WriteLine("Instancing: carried RequiresScript for " + flagsCarried + " movers");
+            }
+
+            // Runtime words carry (see SnapshotModelParams), all types.
+            if (_retailRuntimeRefs != null && _retailRuntimeRefs.Count > 0)
+            {
+                int refsCarried = 0;
+                foreach (Movers.MOVER_DESCRIPTOR m in _level.Movers.Entries)
+                {
+                    if (m.Resource == null)
+                        continue;
+                    ulong key = ((ulong)m.Resource.composite_instance_id.AsUInt32 << 32) | m.Resource.resource_id.AsUInt32;
+                    if (!_retailRuntimeRefs.TryGetValue(key, out (byte[] refs, int index) pristine))
+                        continue;
+                    m.RuntimeRefs = pristine.refs;
+                    m.RuntimeIndex = pristine.index;
+                    refsCarried++;
+                }
+                if (refsCarried > 0)
+                    Console.WriteLine("Instancing: carried runtime reference words for " + refsCarried + " movers");
+            }
+
+            // Zone carry (see SnapshotModelParams): retail's primary/secondary pair, all types.
+            if (_retailZones != null && _retailZones.Count > 0)
+            {
+                int zonesCarried = 0;
+                foreach (Movers.MOVER_DESCRIPTOR m in _level.Movers.Entries)
+                {
+                    if (m.Resource == null)
+                        continue;
+                    ulong key = ((ulong)m.Resource.composite_instance_id.AsUInt32 << 32) | m.Resource.resource_id.AsUInt32;
+                    if (!_retailZones.TryGetValue(key, out (ShortGuid primary, ShortGuid secondary) pristine))
+                        continue;
+                    if (m.PrimaryZoneID != pristine.primary || m.SecondaryZoneID != pristine.secondary)
+                    {
+                        m.PrimaryZoneID = pristine.primary;
+                        m.SecondaryZoneID = pristine.secondary;
+                        zonesCarried++;
+                    }
+                }
+                if (zonesCarried > 0)
+                    Console.WriteLine("Instancing: carried zones for " + zonesCarried + " movers");
+            }
+
+            // Collision-row zone + state-flag carry (see SnapshotModelParams).
+            if (_retailCollisionZones != null && _retailCollisionZones.Count > 0 && _level.CollisionMaps?.Entries != null)
+            {
+                int colZonesCarried = 0, colFlagsCarried = 0;
+                foreach (CollisionMaps.COLLISION_MAPPING row in _level.CollisionMaps.Entries)
+                {
+                    if (row?.Entity == null)
+                        continue;
+                    var ckey = (row.Entity.composite_instance_id.AsUInt32, row.Entity.entity_id.AsUInt32, row.ResourceGUID.AsUInt32);
+                    if (!_retailCollisionZones.TryGetValue(ckey, out (ShortGuid zone, CollisionMaps.CollisionFlags flags) pristine))
+                        continue;
+                    if (row.ZoneID != pristine.zone)
+                    {
+                        row.ZoneID = pristine.zone;
+                        colZonesCarried++;
+                    }
+                    // State byte only (GHOSTED/PRE_GHOSTED/FROZEN/PRE_FROZEN/REMOVED/...): the low
+                    // bits pick the Havok host at build time, so they must stay what the instance
+                    // was actually built with.
+                    CollisionMaps.CollisionFlags carriedFlags =
+                        (row.Flags & (CollisionMaps.CollisionFlags)0x00FFFFFF) |
+                        (pristine.flags & (CollisionMaps.CollisionFlags)0xFF000000);
+                    if (row.Flags != carriedFlags)
+                    {
+                        row.Flags = carriedFlags;
+                        colFlagsCarried++;
+                    }
+                }
+                if (colZonesCarried > 0)
+                    Console.WriteLine("Instancing: carried collision-row zones for " + colZonesCarried + " rows");
+                if (colFlagsCarried > 0)
+                    Console.WriteLine("Instancing: carried collision-row flags for " + colFlagsCarried + " rows");
+            }
+
+            // Resource-table order restore (see SnapshotModelParams): retail pairs return to
+            // retail's index; new pairs fill the gaps in creation order.
+            if (_retailResourceIndex != null && _retailResourceIndex.Count > 0 && _level.Resources?.Entries != null)
+            {
+                List<Resources.Resource> entries = _level.Resources.Entries;
+                var slots = new Resources.Resource[Math.Max(entries.Count, _retailResourceIndex.Count)];
+                var leftovers = new List<Resources.Resource>();
+                int matched = 0;
+                foreach (Resources.Resource r in entries)
+                {
+                    if (r == null) continue;
+                    ulong rkey = ((ulong)r.composite_instance_id.AsUInt32 << 32) | r.resource_id.AsUInt32;
+                    if (_retailResourceIndex.TryGetValue(rkey, out int idx) && slots[idx] == null)
+                    {
+                        slots[idx] = r;
+                        matched++;
+                    }
+                    else
+                        leftovers.Add(r);
+                }
+                var reordered = new List<Resources.Resource>(entries.Count);
+                int li = 0;
+                for (int i = 0; i < slots.Length && reordered.Count < entries.Count; i++)
+                {
+                    if (slots[i] != null) reordered.Add(slots[i]);
+                    else if (li < leftovers.Count) reordered.Add(leftovers[li++]);
+                }
+                while (li < leftovers.Count) reordered.Add(leftovers[li++]);
+                _level.Resources.Entries = reordered;
+                Console.WriteLine("Instancing: restored retail resource-table order (" + matched + " of " + reordered.Count + " at retail index)");
+            }
+        }
+
         private void AddMover(InstancedEntity entity, Movers.MOVER_DESCRIPTOR mvr, bool isTemplate = false)
         {
             if (mvr == null || mvr.RenderableElements == null || mvr.RenderableElements.Count == 0)
@@ -3610,7 +3941,19 @@ namespace CathodeLib
 
             lock (_mvrLock)
             {
-                mvr.RenderableElements = _level.RenderableElements.EnsureRegistered(mvr.RenderableElements);
+                //Retail's tool gives every instanced FX mover its OWN renderable entry - value
+                //duplicates of the composite resource's run, one per placed instance (measured on
+                //ChallengeMap9: fogspheres 6226/6235/6244..., particle emitters 6230/6239...).
+                //Sharing the resource's single entry across all instances is the wrong shape, and
+                //the fogsphere gas carpet never rendered under it.
+                RenderableInstanceType renderType = RenderableInstanceType.MISC;
+                try { renderType = mvr.GetRenderableType(); } catch { }
+                if (!isTemplate && (renderType == RenderableInstanceType.FOGSPHERE ||
+                                    renderType == RenderableInstanceType.DYNAMICFX ||
+                                    renderType == RenderableInstanceType.DYNAMICFX_UNIQUE_MAT))
+                    mvr.RenderableElements = _level.RenderableElements.RegisterDuplicateRun(mvr.RenderableElements);
+                else
+                    mvr.RenderableElements = _level.RenderableElements.EnsureRegistered(mvr.RenderableElements);
                 _level.Movers.Entries.Add(mvr);
             }
         }
@@ -3829,6 +4172,20 @@ namespace CathodeLib
                 int lastUnderscore = stem.LastIndexOf('_');
                 if (lastUnderscore > 32) stem = stem.Substring(0, lastUnderscore);
                 name = stem + "_" + (entity.ThisCompositeInstance?.InstanceID.AsUInt32 ?? 0).ToString("X8");
+
+                //When the level already ships a material with this exact name, THIS instance is the
+                //one it was authored for - use it rather than regenerating. Regenerating collided
+                //with the shipped name (ClaimName suffixed it "[000000]") and detached the mover's
+                //REDS run from the material the Commands-side resource still points at; the engine
+                //then never drew the emitter. ChallengeMap9's poison-gas carpet was the proof: its
+                //renderable chain was byte-identical to retail EXCEPT the mover's material was the
+                //"[000000]" copy, and the gas simply did not render. 547 materials per level were
+                //duplicated this way before the lookup.
+                if (name == template.Name)
+                    return reds;
+                Materials.Material shipped = _materialFactory.FindByName(name);
+                if (shipped != null)
+                    return _materialFactory.ApplyMaterial(reds, shipped);
             }
 
             //The offline dword is cleared, never set. Retail ships 0 on EVERY emitter mover of
@@ -4874,6 +5231,12 @@ namespace CathodeLib
                             gpuConstants.ParticleExpiryTimeMin = entity.Floats.Get(ShortGuids.PARTICLE_EXPIRY_TIME_MIN);
                             gpuConstants.ParticleExpiryTimeMax = entity.Floats.Get(ShortGuids.PARTICLE_EXPIRY_TIME_MAX);
                             gpuConstants.Wind = new Vector3(entity.Floats.Get(ShortGuids.WIND_X), entity.Floats.Get(ShortGuids.WIND_Y), entity.Floats.Get(ShortGuids.WIND_Z));
+                            // Retail stores a random per-system slot in RandomNumber/VertexOffset,
+                            // but the pool layout it indexes is the RETAIL tool's, not ours -
+                            // randomising them here KILLED live FX (ChallengeMap3 cam10's door
+                            // light-shaft vanished; offsets pointing at garbage verts). All-zero
+                            // offsets are what we have always shipped and they render correctly,
+                            // so they stay zero deliberately.
                             mvr.GPUConstants.SetAs<PARTICLE_GPU_CONSTANTS>(gpuConstants);
 
                             PARTICLE_PARAMS cpuConstants = new PARTICLE_PARAMS();

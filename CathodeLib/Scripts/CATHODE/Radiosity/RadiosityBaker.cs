@@ -464,6 +464,10 @@ namespace CathodeLib.Radiosity
 
             settings ??= RadiosityBakeSettings.CreateDefault();
 
+            // Delta mode: keep the shipped radiosity and patch only what the edit invalidated.
+            if (settings.PatchRetailRuntime)
+                return RadiosityPatcher.PatchLevel(level, settings, log);
+
             RadiosityGeometry geometry = RadiosityGeometry.CollectFromLevel(level, settings, log);
             if (geometry.TriangleCount == 0)
                 throw new InvalidOperationException("No renderable geometry to bake.");
@@ -637,6 +641,1329 @@ namespace CathodeLib.Radiosity
                              " doorTransfers=" + result.DoorTransfers;
             log?.Invoke(result.Message);
             return result;
+        }
+
+        /// <summary>
+        /// Slide a purely-translated island's retail radiosity data to its new position, in
+        /// place, inside its own retail slice: cluster positions, surface probe positions and
+        /// texel-coincident input probes all move by the island's world delta; the diets,
+        /// scatter links, mangle map, surface lights (they sample via input-probe U/V), rect and
+        /// instance-map rows stay retail bytes. Movers translated here are REMOVED from
+        /// <paramref name="deltaMovers"/>. Islands that rotate, scale, split their deltas, or
+        /// cannot be identified fall through to the append-slice path untouched.
+        /// </summary>
+        /// <remarks>
+        /// v1 limits: probe TREE bounds and the volume-probe hash are left stale (loose by the
+        /// move distance - fine for prop nudges, wrong for cross-room relocations), and the ~10%
+        /// of retail input probes that are not texel-coincident stay behind at the old spot.
+        /// </remarks>
+        private static void TranslateMovedIslands(
+            Level level, RadiosityRuntime runtime, RadiosityBakeSettings settings,
+            HashSet<int> deltaMovers, Action<string> log)
+        {
+            if (settings.RetailTransforms == null || settings.RetailModelParams == null ||
+                level.RadiosityInstanceMap?.Entries == null)
+                return;
+
+            // Retail island id per resource key, from the (still retail) instance map - and the
+            // reverse: every resource an island binds, for the whole-island coverage check below.
+            var islandForKey = new Dictionary<ulong, int>();
+            var keysForIsland = new Dictionary<int, HashSet<ulong>>();
+            foreach (RadiosityInstanceMap.Entry e in level.RadiosityInstanceMap.Entries)
+            {
+                Resources.Resource r = e.Resource ?? level.Resources.GetAtWriteIndex(e.resource_index);
+                if (r == null) continue;
+                ulong k = ((ulong)r.composite_instance_id.AsUInt32 << 32) | r.resource_id.AsUInt32;
+                if (!islandForKey.ContainsKey(k))
+                    islandForKey[k] = e.lightmap_transform;
+                if (!keysForIsland.TryGetValue(e.lightmap_transform, out HashSet<ulong> ks))
+                    keysForIsland[e.lightmap_transform] = ks = new HashSet<ulong>();
+                ks.Add(k);
+            }
+
+            // First mover per resource key, for verifying island-mates that are not in the census.
+            var moverForKey = new Dictionary<ulong, int>();
+            for (int m = 0; m < level.Movers.Entries.Count; m++)
+            {
+                Movers.MOVER_DESCRIPTOR mv = level.Movers.Entries[m];
+                if (mv.Resource == null) continue;
+                ulong k = ((ulong)mv.Resource.composite_instance_id.AsUInt32 << 32) | mv.Resource.resource_id.AsUInt32;
+                if (!moverForKey.ContainsKey(k))
+                    moverForKey[k] = m;
+            }
+
+            // Group the delta movers by retail island, keeping only pure translations.
+            var groups = new Dictionary<int, List<(int mover, Vector3 delta)>>();
+            var unqualified = new HashSet<int>();   //islands with any non-translated/rotated member
+            foreach (int m in deltaMovers)
+            {
+                if (m < 0 || m >= level.Movers.Entries.Count) continue;
+                Movers.MOVER_DESCRIPTOR mover = level.Movers.Entries[m];
+                if (mover.Resource == null) continue;
+                ulong key = ((ulong)mover.Resource.composite_instance_id.AsUInt32 << 32) | mover.Resource.resource_id.AsUInt32;
+                if (!islandForKey.TryGetValue(key, out int islandId)) continue;   //added content
+                if (!settings.RetailTransforms.TryGetValue(key, out System.Numerics.Matrix4x4 pristineT))
+                {
+                    unqualified.Add(islandId);
+                    continue;
+                }
+                //Rotation/scale must be unchanged for a slide to be valid.
+                System.Numerics.Matrix4x4 cur = mover.Transform;
+                float rotDiff =
+                    Math.Abs(cur.M11 - pristineT.M11) + Math.Abs(cur.M12 - pristineT.M12) + Math.Abs(cur.M13 - pristineT.M13) +
+                    Math.Abs(cur.M21 - pristineT.M21) + Math.Abs(cur.M22 - pristineT.M22) + Math.Abs(cur.M23 - pristineT.M23) +
+                    Math.Abs(cur.M31 - pristineT.M31) + Math.Abs(cur.M32 - pristineT.M32) + Math.Abs(cur.M33 - pristineT.M33);
+                if (rotDiff > 0.01f)
+                {
+                    unqualified.Add(islandId);
+                    continue;
+                }
+                var delta = new Vector3(cur.M41 - pristineT.M41, cur.M42 - pristineT.M42, cur.M43 - pristineT.M43);
+                if (!groups.TryGetValue(islandId, out List<(int, Vector3)> list))
+                    groups[islandId] = list = new List<(int, Vector3)>();
+                list.Add((m, delta));
+            }
+
+            foreach (KeyValuePair<int, List<(int mover, Vector3 delta)>> group in groups)
+            {
+                int islandId = group.Key;
+                if (unqualified.Contains(islandId))
+                    continue;
+                //Uniform world delta across the island's movers - a composite instance moves as
+                //one body; disagreeing deltas mean per-entity edits and need a re-bake.
+                Vector3 d = group.Value[0].delta;
+                bool uniform = true;
+                foreach ((int _, Vector3 dd) in group.Value)
+                    if ((dd - d).Length() > 0.005f) { uniform = false; break; }
+                if (!uniform || d.Length() < 1e-4f)
+                    continue;
+                // A slide keeps the island's retail diets, scatter and LIGHT INJECTION - all of
+                // which describe the OLD surroundings. Valid for nudges; a cross-room relocation
+                // must re-light from its destination instead (the graft/appended paths).
+                if (d.Length() > 2.0f)
+                {
+                    log?.Invoke("    delta translate: island " + islandId + " moved " +
+                                d.Length().ToString("0.0") + "m - too far to slide, re-lighting instead");
+                    continue;
+                }
+                if (islandId < 0 || islandId >= runtime.InstanceSliceIndices.Count)
+                    continue;
+
+                // WHOLE-ISLAND coverage: sliding moves the lighting of EVERY resource the
+                // instance map binds to this rect, so every one of them must have moved by the
+                // same delta - censused or not. An entity-level move (one mover of a five-mover
+                // composite instance) passed the uniform-delta test trivially, slid the island
+                // out from under its unmoved mates, and - worse - dropped the moved mover from
+                // the census, leaving it on retail's lightmap for its OLD position. Partial
+                // moves take the re-bake path, which is what the donor shell exists for.
+                if (keysForIsland.TryGetValue(islandId, out HashSet<ulong> islandKeys))
+                {
+                    var censusKeys = new HashSet<ulong>();
+                    foreach ((int m, Vector3 _) in group.Value)
+                    {
+                        Movers.MOVER_DESCRIPTOR mm = level.Movers.Entries[m];
+                        censusKeys.Add(((ulong)mm.Resource.composite_instance_id.AsUInt32 << 32) | mm.Resource.resource_id.AsUInt32);
+                    }
+                    bool covered = true;
+                    foreach (ulong k in islandKeys)
+                    {
+                        if (censusKeys.Contains(k)) continue;
+                        // Not in the census - verify it moved with the group anyway (a mover can
+                        // sit out the census for reasons other than not moving). Unverifiable
+                        // mates block the slide: safe, since the re-bake path still works.
+                        if (!moverForKey.TryGetValue(k, out int mateIndex) ||
+                            !settings.RetailTransforms.TryGetValue(k, out System.Numerics.Matrix4x4 matePristine))
+                        { covered = false; break; }
+                        System.Numerics.Matrix4x4 mateCur = level.Movers.Entries[mateIndex].Transform;
+                        float mateRot =
+                            Math.Abs(mateCur.M11 - matePristine.M11) + Math.Abs(mateCur.M12 - matePristine.M12) + Math.Abs(mateCur.M13 - matePristine.M13) +
+                            Math.Abs(mateCur.M21 - matePristine.M21) + Math.Abs(mateCur.M22 - matePristine.M22) + Math.Abs(mateCur.M23 - matePristine.M23) +
+                            Math.Abs(mateCur.M31 - matePristine.M31) + Math.Abs(mateCur.M32 - matePristine.M32) + Math.Abs(mateCur.M33 - matePristine.M33);
+                        var mateDelta = new Vector3(mateCur.M41 - matePristine.M41, mateCur.M42 - matePristine.M42, mateCur.M43 - matePristine.M43);
+                        if (mateRot > 0.01f || (mateDelta - d).Length() > 0.005f)
+                        { covered = false; break; }
+                    }
+                    if (!covered)
+                    {
+                        log?.Invoke("    delta translate: island " + islandId + " moved PARTIALLY (" +
+                                    censusKeys.Count + " of " + islandKeys.Count + " bound resources) - re-baking instead");
+                        continue;
+                    }
+                }
+                int sliceIndex = runtime.InstanceSliceIndices[islandId];
+                if (sliceIndex < 0 || sliceIndex >= runtime.Slices.Count)
+                    continue;
+                RadiosityRuntime.RuntimeDataSlice slice = runtime.Slices[sliceIndex];
+
+                //The island's rect, from any member's pristine MODEL_PARAMS.
+                int rx = -1, ry = -1, rw = 0, rh = 0;
+                foreach ((int m, Vector3 _) in group.Value)
+                {
+                    Movers.MOVER_DESCRIPTOR mover = level.Movers.Entries[m];
+                    ulong key = ((ulong)mover.Resource.composite_instance_id.AsUInt32 << 32) | mover.Resource.resource_id.AsUInt32;
+                    if (!settings.RetailModelParams.TryGetValue(key, out byte[] mp) || mp.Length < 16) continue;
+                    int w = (int)Math.Round(BitConverter.ToSingle(mp, 0) + 0.5f);
+                    int h = (int)Math.Round(BitConverter.ToSingle(mp, 4) + 0.5f);
+                    int x = (int)Math.Round(BitConverter.ToSingle(mp, 8));
+                    int y = (int)Math.Round(BitConverter.ToSingle(mp, 12));
+                    if (w >= 1 && w <= 128 && h >= 1 && h <= 128 && x >= 0 && y >= 0 && x + w <= AtlasSize && y + h <= AtlasSize)
+                    { rx = x; ry = y; rw = w; rh = h; break; }
+                }
+                if (rx < 0)
+                    continue;
+
+                //1a. The island's OLD region, from its rect's live clusters - read-only pass.
+                var oldClusterPositions = new List<Vector3>();
+                Vector3 bMin = new Vector3(float.MaxValue), bMax = new Vector3(float.MinValue);
+                for (int y = ry; y < ry + rh; y++)
+                    for (int x = rx; x < rx + rw; x++)
+                    {
+                        int t = y * AtlasSize + x;
+                        if (t >= slice.ClusterPositions.Count) continue;
+                        Vector4u16 cp = slice.ClusterPositions[t];
+                        if (cp.W == 0) continue;
+                        var pos = new Vector3(FromHalf(cp.X), FromHalf(cp.Y), FromHalf(cp.Z));
+                        oldClusterPositions.Add(pos);
+                        bMin = Vector3.Min(bMin, pos);
+                        bMax = Vector3.Max(bMax, pos);
+                    }
+                if (oldClusterPositions.Count == 0)
+                    continue;
+
+                //1b. Sanity: every mover's PRISTINE pivot must sit at this island (within a metre
+                //of its cluster bounds). Without this, movers whose RetailTransforms entry is a
+                //stale identity matrix (single-instance FX families) computed 20m "deltas" and
+                //slid two unrelated islands across the level.
+                bool pivotsMatch = true;
+                foreach ((int m, Vector3 delta) in group.Value)
+                {
+                    System.Numerics.Matrix4x4 cur = level.Movers.Entries[m].Transform;
+                    var pristinePos = new Vector3(cur.M41 - delta.X, cur.M42 - delta.Y, cur.M43 - delta.Z);
+                    const float pivotMargin = 1.0f;
+                    if (pristinePos.X < bMin.X - pivotMargin || pristinePos.X > bMax.X + pivotMargin ||
+                        pristinePos.Y < bMin.Y - pivotMargin || pristinePos.Y > bMax.Y + pivotMargin ||
+                        pristinePos.Z < bMin.Z - pivotMargin || pristinePos.Z > bMax.Z + pivotMargin)
+                    { pivotsMatch = false; break; }
+                }
+                if (!pivotsMatch)
+                    continue;
+
+                //1c. Slide the clusters.
+                for (int y = ry; y < ry + rh; y++)
+                    for (int x = rx; x < rx + rw; x++)
+                    {
+                        int t = y * AtlasSize + x;
+                        if (t >= slice.ClusterPositions.Count) continue;
+                        Vector4u16 cp = slice.ClusterPositions[t];
+                        if (cp.W == 0) continue;
+                        var pos = new Vector3(FromHalf(cp.X), FromHalf(cp.Y), FromHalf(cp.Z));
+                        Vector3 np = pos + d;
+                        slice.ClusterPositions[t] = new Vector4u16 { X = ToHalf(np.X), Y = ToHalf(np.Y), Z = ToHalf(np.Z), W = cp.W };
+                    }
+                const float margin = 0.15f;
+                bMin -= new Vector3(margin); bMax += new Vector3(margin);
+
+                //2. Surface probes: the rect's mangle slots, position-guarded against the
+                //dead-texel fallback pointing outside the island.
+                var movedSlots = new HashSet<int>();
+                int probesMoved = 0;
+                for (int y = ry; y < ry + rh; y++)
+                    for (int x = rx; x < rx + rw; x++)
+                    {
+                        int t = y * AtlasSize + x;
+                        if (t >= slice.MangleMap.Count) continue;
+                        ColourRGBA8 mm = slice.MangleMap[t];
+                        int slot = mm.G * ProbeTexWidth + mm.R;
+                        if (slot >= slice.SurfaceProbePositions.Count || !movedSlots.Add(slot)) continue;
+                        Vector4 sp = slice.SurfaceProbePositions[slot];
+                        if (sp.W == 0) continue;
+                        var pos = new Vector3(sp.X, sp.Y, sp.Z);
+                        if (pos.X < bMin.X || pos.X > bMax.X || pos.Y < bMin.Y || pos.Y > bMax.Y || pos.Z < bMin.Z || pos.Z > bMax.Z)
+                            continue;
+                        slice.SurfaceProbePositions[slot] = new Vector4(pos + d, sp.W);
+                        probesMoved++;
+                    }
+
+                //3. Input probes: only the ones texel-coincident with the island's own clusters
+                //(retail's are, ~90%) - a bounds test alone would drag the floor's probes along
+                //under any furniture.
+                int inputMoved = 0;
+                for (int i = 0; i < slice.InputProbePositions.Count; i++)
+                {
+                    Vector4u16 ip = slice.InputProbePositions[i];
+                    if (ip.W == 0) continue;
+                    var pos = new Vector3(FromHalf(ip.X), FromHalf(ip.Y), FromHalf(ip.Z));
+                    if (pos.X < bMin.X || pos.X > bMax.X || pos.Y < bMin.Y || pos.Y > bMax.Y || pos.Z < bMin.Z || pos.Z > bMax.Z)
+                        continue;
+                    bool coincident = false;
+                    foreach (Vector3 cp in oldClusterPositions)
+                        if (Vector3.DistanceSquared(cp, pos) < 0.02f * 0.02f) { coincident = true; break; }
+                    if (!coincident) continue;
+                    Vector3 np = pos + d;
+                    slice.InputProbePositions[i] = new Vector4u16 { X = ToHalf(np.X), Y = ToHalf(np.Y), Z = ToHalf(np.Z), W = ip.W };
+                    inputMoved++;
+                }
+
+                foreach ((int m, Vector3 _) in group.Value)
+                    deltaMovers.Remove(m);
+
+                log?.Invoke("    delta translate: island " + islandId + " (slice " + sliceIndex + ", rect " +
+                            rw + "x" + rh + "@" + rx + "," + ry + ") slid by (" +
+                            d.X.ToString("0.###") + "," + d.Y.ToString("0.###") + "," + d.Z.ToString("0.###") + "): " +
+                            oldClusterPositions.Count + " clusters, " + probesMoved + " surface probes, " +
+                            inputMoved + " input probes, " + group.Value.Count + " movers keep retail rects");
+            }
+        }
+
+        /// <summary>
+        /// The PROBE-ONLY delta path: light added or moved DYNAMIC content by extending the
+        /// volume probe field, without touching any lightmap mechanism. The out-of-field delta
+        /// content is partitioned spatially (one 128x128 atlas cannot hold a large edit) and
+        /// each group is baked - with a donor shell of nearby non-delta geometry - into an
+        /// appended slice: clusters, input probes, diets, scatter, surface lights, topped with
+        /// a volume probe hash over its bounds at
+        /// <see cref="RadiosityBakeSettings.DeltaVolumeProbeCellSize"/>. Nothing is written to
+        /// any mover: no MODEL_PARAMS rects, no island ids, no instance-map rows, no
+        /// transforms records. Movers whose pivot lies INSIDE the retail volume field are
+        /// skipped - retail's own probes already light them.
+        /// MUST run BEFORE <see cref="DynamicRadiosityConverter"/>: geometry collection
+        /// excludes dynamic-class movers, so the content has to be baked while its materials
+        /// are still static-class. See the DeltaProbeOnlySlice setting remarks for why this
+        /// is currently opt-in (fresh appended slices' own radiance delivery).
+        /// </summary>
+        public static int AppendProbeOnlySlice(
+            Level level,
+            RadiosityBakeSettings settings,
+            HashSet<int> deltaMovers,
+            Action<string> log = null)
+        {
+            if (deltaMovers == null || deltaMovers.Count == 0)
+                return 0;
+            RadiosityRuntime runtime = level.RadiosityRuntime
+                ?? throw new InvalidOperationException("No runtime to append to.");
+
+            // Out-of-field census: pivots outside every retail volume hash AABB, with one
+            // cell of margin so content at a hash edge keeps using retail's field.
+            var outOfField = new HashSet<int>();
+            foreach (int mi in deltaMovers)
+            {
+                if (mi < 0 || mi >= level.Movers.Entries.Count)
+                    continue;
+                Movers.MOVER_DESCRIPTOR mv = level.Movers.Entries[mi];
+                var p = new Vector3(mv.Transform.M41, mv.Transform.M42, mv.Transform.M43);
+                bool inside = false;
+                foreach (RadiosityRuntime.RuntimeDataSlice s in runtime.Slices)
+                {
+                    RadiosityRuntime.VolumeProbeHash h = s.VolumeProbeHash;
+                    if (h == null || h.Dims.X == 0)
+                        continue;
+                    const float margin = 2.0f;
+                    if (p.X >= h.AabbMin.X - margin && p.X <= h.AabbMax.X + margin &&
+                        p.Y >= h.AabbMin.Y - margin && p.Y <= h.AabbMax.Y + margin &&
+                        p.Z >= h.AabbMin.Z - margin && p.Z <= h.AabbMax.Z + margin)
+                    { inside = true; break; }
+                }
+                if (!inside)
+                    outOfField.Add(mi);
+            }
+            if (outOfField.Count == 0)
+            {
+                log?.Invoke("Radiosity probe slice: every delta mover sits inside the retail volume field - nothing to extend");
+                return 0;
+            }
+
+            level.Resources.RefreshWriteList();
+
+            bool staticOnly = settings.StaticRadiosityCompositesOnly;
+            settings.StaticRadiosityCompositesOnly = false;
+            RadiosityGeometry geometry;
+            try { geometry = RadiosityGeometry.CollectFromLevel(level, settings, log); }
+            finally { settings.StaticRadiosityCompositesOnly = staticOnly; }
+            if (geometry.TriangleCount == 0)
+                return 0;
+            geometry.Build(log);
+            if (settings.UseCollisionForVisibility &&
+                RadiosityOccluders.TryCollect(level, geometry, out float[] occluderVerts, out int[] occluderTris, log,
+                                              skipDoorBarriers: settings.OpenDoorwaysForBake))
+            {
+                geometry.OccluderEndpointSlack = settings.OccluderEndpointSlack;
+                geometry.OccluderSlackFraction = settings.OccluderSlackFraction;
+                geometry.BuildOccluders(occluderVerts, occluderTris, log);
+            }
+
+            var deltaInstances = new List<RadiosityGeometry.Instance>();
+            foreach (RadiosityGeometry.Instance instance in geometry.Instances)
+                if (instance.Movers.Any(outOfField.Contains))
+                    deltaInstances.Add(instance);
+            if (deltaInstances.Count == 0)
+            {
+                log?.Invoke("Radiosity probe slice: no bakeable geometry among the out-of-field movers");
+                return 0;
+            }
+            float rectScale = Math.Max(0.2f, Math.Min(1.0f, settings.DeltaProbeRectScale));
+            foreach (RadiosityGeometry.Instance instance in deltaInstances)
+            {
+                RadiosityAtlas.RectSizeForBounds(instance.SurfaceArea, instance.BoundsMax - instance.BoundsMin,
+                    instance.UvCoverage, settings, out int w, out int h, instance.UvAspect);
+                if (rectScale < 1.0f)
+                {
+                    // Probe-slice rects only allocate cluster texels (nothing rect-samples
+                    // them), so big edits can run coarser to fit fewer slices.
+                    w = Math.Max(2, (int)Math.Round(w * rectScale));
+                    h = Math.Max(2, (int)Math.Round(h * rectScale));
+                }
+                instance.AtlasWidth = w;
+                instance.AtlasHeight = h;
+            }
+
+            // Partition into as many slices as the content needs (a whole shifted level is a
+            // legal edit), leaving atlas headroom per slice for each group's donor shell.
+            var groups = new List<List<RadiosityGeometry.Instance>>();
+            int texelCap = settings.MaxTexelsPerSlice;
+            settings.MaxTexelsPerSlice = Math.Min(texelCap, 11000);
+            try { SplitSpatially(deltaInstances, settings, groups, log); }
+            finally { settings.MaxTexelsPerSlice = texelCap; }
+
+            var deltaSet = new HashSet<RadiosityGeometry.Instance>(deltaInstances);
+            int slicesBaked = 0, donorsTotal = 0;
+            RadiosityRuntime.VolumeProbeHash lastHash = null;
+            var doorBakes = new List<SliceBake>();
+            foreach (List<RadiosityGeometry.Instance> group in groups)
+            {
+                // Donor shell per group: nearby geometry that is NOT part of the delta at all
+                // (unmoved retail stays lightmapped and joins here cluster-only, so the
+                // group's probes gather the surroundings' bounce).
+                var bakeInstances = new List<RadiosityGeometry.Instance>(group);
+                if (settings.DeltaDonorShell)
+                {
+                    float reach = Math.Max(1.0f, settings.DeltaDonorShellRadius);
+                    float BoxDistance(RadiosityGeometry.Instance inst)
+                    {
+                        float best = float.MaxValue;
+                        foreach (RadiosityGeometry.Instance d in group)
+                        {
+                            float bx = Math.Max(0, Math.Max(inst.BoundsMin.X - d.BoundsMax.X, d.BoundsMin.X - inst.BoundsMax.X));
+                            float by = Math.Max(0, Math.Max(inst.BoundsMin.Y - d.BoundsMax.Y, d.BoundsMin.Y - inst.BoundsMax.Y));
+                            float bz = Math.Max(0, Math.Max(inst.BoundsMin.Z - d.BoundsMax.Z, d.BoundsMin.Z - inst.BoundsMax.Z));
+                            float dd = bx * bx + by * by + bz * bz;
+                            if (dd < best) best = dd;
+                        }
+                        return (float)Math.Sqrt(best);
+                    }
+                    var donors = new List<(RadiosityGeometry.Instance inst, float dist)>();
+                    foreach (RadiosityGeometry.Instance inst in geometry.Instances)
+                    {
+                        if (deltaSet.Contains(inst)) continue;
+                        float d = BoxDistance(inst);
+                        if (d <= reach) donors.Add((inst, d));
+                    }
+                    donors.Sort((a, b) => a.dist.CompareTo(b.dist));
+                    int budget = Math.Max(0, settings.DeltaDonorTexelBudget);
+                    int groupTexels = 0;
+                    foreach (RadiosityGeometry.Instance inst in group) groupTexels += inst.AtlasWidth * inst.AtlasHeight;
+                    budget = Math.Min(budget, Math.Max(0, 15800 - groupTexels));
+                    int maxDim = Math.Max(2, settings.DeltaDonorMaxRectDim);
+                    int taken = 0, spent = 0, dupes = 0;
+                    var seenFootprints = new HashSet<(int, int, int, int, int, int)>();
+                    (int, int, int, int, int, int) Footprint(RadiosityGeometry.Instance inst) =>
+                        ((int)Math.Round(inst.BoundsMin.X * 20), (int)Math.Round(inst.BoundsMin.Y * 20), (int)Math.Round(inst.BoundsMin.Z * 20),
+                         (int)Math.Round(inst.BoundsMax.X * 20), (int)Math.Round(inst.BoundsMax.Y * 20), (int)Math.Round(inst.BoundsMax.Z * 20));
+                    foreach ((RadiosityGeometry.Instance inst, float dist) in donors)
+                    {
+                        if (!seenFootprints.Add(Footprint(inst))) { dupes++; continue; }
+                        RadiosityAtlas.RectSizeForBounds(inst.SurfaceArea, inst.BoundsMax - inst.BoundsMin,
+                            inst.UvCoverage, settings, out int w, out int h, inst.UvAspect);
+                        if (w > maxDim || h > maxDim)
+                        {
+                            float scale = Math.Min((float)maxDim / w, (float)maxDim / h);
+                            w = Math.Max(2, (int)Math.Round(w * scale));
+                            h = Math.Max(2, (int)Math.Round(h * scale));
+                        }
+                        if (spent + w * h > budget) continue;
+                        inst.DonorOnly = true;
+                        inst.AtlasWidth = w;
+                        inst.AtlasHeight = h;
+                        bakeInstances.Add(inst);
+                        spent += w * h;
+                        taken++;
+                    }
+                    donorsTotal += taken;
+                }
+
+                var probeOnlySlices = new List<List<RadiosityGeometry.Instance>> { bakeInstances };
+                AllocateAtlases(probeOnlySlices, settings, log);
+
+                Dictionary<int, float> emissiveAreas = ComputeEmissiveAreas(geometry);
+                RetailLightPriors lightPriors = CalibrateWeightCoefficient(level, emissiveAreas, log);
+
+                bool probesOnTexels = settings.InputProbesOnTexels;
+                float volumeCell = settings.VolumeProbeCellSize;
+                settings.InputProbesOnTexels = true;
+                settings.VolumeProbeCellSize = Math.Max(0.25f, settings.DeltaVolumeProbeCellSize);
+                SliceBake bake;
+                try { bake = BakeSlice(level, geometry, bakeInstances, runtime.Slices.Count, settings, emissiveAreas, lightPriors, log); }
+                finally { settings.InputProbesOnTexels = probesOnTexels; settings.VolumeProbeCellSize = volumeCell; }
+
+                if (settings.EmitSurfaceLights)
+                    AddUnbakedEmitterLights(level, geometry, new[] { bake }, settings, lightPriors, log);
+
+                if (settings.SurfaceLightWeightScale != 1.0f && bake?.Slice?.SurfaceLights?.Lights != null)
+                {
+                    List<RadiosityRuntime.RuntimeSurfaceLights.Light> lights = bake.Slice.SurfaceLights.Lights;
+                    for (int i = 0; i < lights.Count; i++)
+                    {
+                        RadiosityRuntime.RuntimeSurfaceLights.Light l = lights[i];
+                        l.Weight = (byte)Math.Max(1, Math.Min(191, (int)Math.Round(l.Weight * settings.SurfaceLightWeightScale)));
+                        lights[i] = l;
+                    }
+                }
+
+                FoldVisPaletteIntoRuntime(runtime, bake);
+
+                int newSliceIndex = runtime.Slices.Count;
+                runtime.Slices.Add(bake.Slice);
+                AppendDeltaFixups(level, runtime, bake, newSliceIndex, geometry, settings, log);
+                CalibrateDeltaEnergy(level, runtime, bake, newSliceIndex, settings, log);
+
+                // Anchor islands (see DeltaProbeAnchorIslands): repoint EVERY in-range island
+                // that a group mover's kept map rows bind at this slice. B2 proved influence
+                // weights are invisible without this - the appended slice contributes only its
+                // direct injection, because the instance map is what schedules the gather; a
+                // slice with no mapped islands never bounces. The islands' movers are all
+                // dynamic (zeroed rects), so nothing samples the repointed pages through rects.
+                if (settings.DeltaProbeAnchorIslands && level.RadiosityInstanceMap?.Entries != null)
+                {
+                    var groupResources = new HashSet<Resources.Resource>();
+                    foreach (RadiosityGeometry.Instance inst in group)
+                        foreach (int moverIndex in inst.Movers)
+                            if (level.Movers.Entries[moverIndex].Resource != null)
+                                groupResources.Add(level.Movers.Entries[moverIndex].Resource);
+                    var anchoredIds = new HashSet<int>();
+                    foreach (RadiosityInstanceMap.Entry e in level.RadiosityInstanceMap.Entries)
+                    {
+                        Resources.Resource r = e.Resource ?? level.Resources.GetAtWriteIndex(e.resource_index);
+                        if (r == null || !groupResources.Contains(r))
+                            continue;
+                        int id = e.lightmap_transform;
+                        if (id < 0 || id >= runtime.InstanceSliceIndices.Count || anchoredIds.Contains(id))
+                            continue;
+                        runtime.InstanceSliceIndices[id] = newSliceIndex;
+                        anchoredIds.Add(id);
+                    }
+                    log?.Invoke("    probe slice " + newSliceIndex + ": " + anchoredIds.Count +
+                                " islands anchored (gather scheduling)");
+                }
+
+                doorBakes.Add(bake);
+                lastHash = bake.Slice.VolumeProbeHash;
+                slicesBaked++;
+            }
+
+            // The engine's relight propagation runs on the per-slice DOOR tables: stripping
+            // retail slice 1's doors reproduced the appended-slice black-room family almost
+            // decimal-for-decimal (E10 0.367/0.318/0.194 vs F1 0.366/0.313/0.204, including
+            // the cam5 overshoot). A door-less slice never gathers, whatever its influence
+            // weights say - so probe slices need the same door build as the full bake.
+            if (settings.EmitDoors && doorBakes.Count > 0)
+            {
+                int doorTransfers = BuildDoors(level, geometry, doorBakes.ToArray(), settings, log);
+                log?.Invoke("Radiosity probe slices: " + doorTransfers + " door transfers built");
+            }
+
+            log?.Invoke("Radiosity probe slices: " + deltaInstances.Count + " islands (" + outOfField.Count +
+                        " out-of-field movers) across " + slicesBaked + " appended slices + " + donorsTotal +
+                        " donors; " + (lastHash != null && lastHash.Dims.X > 0 ? "last hash " + lastHash.Dims.X + "x" +
+                        lastHash.Dims.Y + "x" + lastHash.Dims.Z + " at " +
+                        settings.DeltaVolumeProbeCellSize.ToString("0.0#") + "m cells" : "no hash") +
+                        "; no rects, no ids, no map rows written");
+            return deltaInstances.Count;
+        }
+
+        /// <summary>Fold an appended slice bake's visibility grids into the runtime's shared
+        /// 256-entry palette: match by content, take over zero-padding entries from the end for
+        /// new grids, snap to entry 0 (fully open) once the slots are truly full.</summary>
+        private static void FoldVisPaletteIntoRuntime(RadiosityRuntime runtime, SliceBake bake)
+        {
+            // Fold the delta slice.s visibility grids into the EXISTING palette: match by
+            // content, take over zero-padding entries from the end for new grids, and snap to
+            // the closest entry once the 256 slots are truly full.
+            if (bake.VisFaceGrids != null && bake.VisFaceGrids.Count > 0 && runtime.VolumeProbeVisPalette != null)
+            {
+                List<RadiosityRuntime.VolumeProbeVisSlice> palette = runtime.VolumeProbeVisPalette;
+                var byContent = new Dictionary<string, int>();
+                for (int i = 0; i < palette.Count; i++)
+                    if (palette[i]?.Grid != null && !byContent.ContainsKey(Convert.ToBase64String(palette[i].Grid)))
+                        byContent[Convert.ToBase64String(palette[i].Grid)] = i;
+                int nextFree = palette.Count - 1;
+                bool IsZero(byte[] g) { foreach (byte b in g) if (b != 0) return false; return true; }
+                for (int g = 0; g < bake.VisFaceGrids.Count; g++)
+                {
+                    byte[] grid = bake.VisFaceGrids[g];
+                    string key = Convert.ToBase64String(grid);
+                    if (byContent.TryGetValue(key, out int existing)) { bake.VisFaceIndices[g] = (byte)existing; continue; }
+                    while (nextFree > 0 && (palette[nextFree]?.Grid == null || !IsZero(palette[nextFree].Grid))) nextFree--;
+                    if (nextFree > 0)
+                    {
+                        palette[nextFree] = new RadiosityRuntime.VolumeProbeVisSlice { Grid = grid };
+                        byContent[key] = nextFree;
+                        bake.VisFaceIndices[g] = (byte)nextFree;
+                        nextFree--;
+                        continue;
+                    }
+                    bake.VisFaceIndices[g] = 0;   //fully-open fallback, as retail entry 0
+                }
+                ApplyVisPaletteIndices(new[] { bake });
+            }
+        }
+
+        /// <summary>Per-probe energy calibration for an appended delta slice - the weight byte is
+        /// exponent-domain, so each probe's exp mass is matched to the median of the retail
+        /// surface probes near it (or the global bias where none exist). Shared by the lightmap
+        /// delta path and the probe-only path.</summary>
+        private static void CalibrateDeltaEnergy(Level level, RadiosityRuntime runtime, SliceBake bake, int newSliceIndex, RadiosityBakeSettings settings, Action<string> log)
+        {
+            // Delta energy calibration, per probe: the weight byte is exponent-domain (~+32 =
+            // x2 rendered), so a probe's delivered gather tracks its "exp mass" sum(2^(w/32)),
+            // not its byte sum - which is why a single global bias fit CM3 (0.97) yet overshot
+            // CM5's shelving family to 1.14: per-island diets differ too much for one shift.
+            // Instead each delta probe's exp mass is matched to the MEDIAN exp mass of the
+            // retail surface probes near it - retail's own answer for how much gather a probe
+            // in that room carries. Probes with no retail neighbours (void content, new rooms)
+            // fall back to the global DeltaInfluenceWeightBias.
+            if (!settings.DeltaMatchRetailExpMass &&
+                (settings.DeltaInfluenceWeightScale != 1.0f || settings.DeltaInfluenceWeightBias != 0) &&
+                bake?.Slice?.SurfaceProbeWeights != null)
+            {
+                // Uniform fallback path: global bias/scale on every weight, no local matching.
+                float weightScale = settings.DeltaInfluenceWeightScale;
+                int weightBias = settings.DeltaInfluenceWeightBias;
+                byte ScaleW(byte w) => w == 0 ? (byte)0 : (byte)Math.Max(1, Math.Min(254, (int)Math.Round(w * weightScale) + weightBias));
+                for (int i = 0; i < bake.Slice.SurfaceProbeWeights.Count; i++)
+                {
+                    Vector4u8 v = bake.Slice.SurfaceProbeWeights[i];
+                    v.X = ScaleW(v.X); v.Y = ScaleW(v.Y); v.Z = ScaleW(v.Z); v.W = ScaleW(v.W);
+                    bake.Slice.SurfaceProbeWeights[i] = v;
+                }
+                int gOffset = runtime.SliceNeighbourArrayOffsets[newSliceIndex];
+                for (int n = 0; n < runtime.SliceNeighbourCounts[newSliceIndex]; n++)
+                {
+                    RadiosityRuntime.FixupRange range = runtime.FlattenedFixupRanges[gOffset + n];
+                    for (int i = range.First; i < range.First + range.Num; i++)
+                    {
+                        RadiosityRuntime.RuntimeInfluenceFixup fx = runtime.InfluenceFixups[i];
+                        fx.Weight = ScaleW(fx.Weight);
+                        runtime.InfluenceFixups[i] = fx;
+                    }
+                }
+            }
+            else if (settings.DeltaMatchRetailExpMass &&
+                bake?.Slice?.SurfaceProbeWeights != null && bake.Slice.SurfaceProbePositions != null)
+            {
+                const float matchRadius = 4.0f;
+                double ExpOf(byte w) => Math.Pow(2.0, w / 32.0);
+
+                // Retail probe exp masses, gridded for the neighbourhood query.
+                var retailGrid = new Dictionary<(int, int, int), List<(Vector3 pos, double mass)>>();
+                (int, int, int) Cell(Vector3 v) =>
+                    ((int)Math.Floor(v.X / matchRadius), (int)Math.Floor(v.Y / matchRadius), (int)Math.Floor(v.Z / matchRadius));
+                for (int s = 0; s < newSliceIndex; s++)
+                {
+                    RadiosityRuntime.RuntimeDataSlice retail = runtime.Slices[s];
+                    for (int slot = 0; slot < retail.SurfaceProbePositions.Count; slot++)
+                    {
+                        Vector4 p = retail.SurfaceProbePositions[slot];
+                        if (p.W == 0) continue;
+                        double mass = 0;
+                        for (int k = 0; k < InfluencesPerProbe; k++)
+                        {
+                            byte w = ReadInfluenceWeight(retail, slot * InfluencesPerProbe + k);
+                            if (w != 0) mass += ExpOf(w);
+                        }
+                        if (mass <= 0) continue;
+                        var pos = new Vector3(p.X, p.Y, p.Z);
+                        (int, int, int) key = Cell(pos);
+                        if (!retailGrid.TryGetValue(key, out List<(Vector3, double)> list))
+                            retailGrid[key] = list = new List<(Vector3, double)>();
+                        list.Add((pos, mass));
+                    }
+                }
+
+                // Our probes' fixups grouped by probe slot, so the shift covers both weight sets.
+                var fixupsBySlot = new Dictionary<int, List<int>>();
+                int nbOffset = runtime.SliceNeighbourArrayOffsets[newSliceIndex];
+                for (int n = 0; n < runtime.SliceNeighbourCounts[newSliceIndex]; n++)
+                {
+                    RadiosityRuntime.FixupRange range = runtime.FlattenedFixupRanges[nbOffset + n];
+                    for (int i = range.First; i < range.First + range.Num; i++)
+                    {
+                        int slot = runtime.InfluenceFixups[i].WeightTexOffset / InfluencesPerProbe;
+                        if (!fixupsBySlot.TryGetValue(slot, out List<int> list))
+                            fixupsBySlot[slot] = list = new List<int>();
+                        list.Add(i);
+                    }
+                }
+
+                int matched2 = 0, fellBack = 0;
+                var shifts = new List<int>();
+                for (int slot = 0; slot < bake.Slice.SurfaceProbePositions.Count; slot++)
+                {
+                    Vector4 p = bake.Slice.SurfaceProbePositions[slot];
+                    if (p.W == 0) continue;
+                    // DeltaCalibrationOffset maps a rigidly-moved group back onto its ORIGINAL
+                    // location, so its probes match the retail exp masses of the room they came
+                    // from instead of falling back to the flat bias (a shifted level has no
+                    // retail probes anywhere near its new position).
+                    var pos = new Vector3(p.X, p.Y, p.Z) + settings.DeltaCalibrationOffset;
+
+                    // Our probe's current exp mass, fixup overlay included.
+                    var slotWeights = new byte[InfluencesPerProbe];
+                    for (int k = 0; k < InfluencesPerProbe; k++)
+                        slotWeights[k] = ReadInfluenceWeight(bake.Slice, slot * InfluencesPerProbe + k);
+                    if (fixupsBySlot.TryGetValue(slot, out List<int> myFixups))
+                        foreach (int i in myFixups)
+                            slotWeights[runtime.InfluenceFixups[i].WeightTexOffset % InfluencesPerProbe] = runtime.InfluenceFixups[i].Weight;
+                    double ourMass = 0;
+                    foreach (byte w in slotWeights)
+                        if (w != 0) ourMass += ExpOf(w);
+                    if (ourMass <= 0) continue;
+
+                    // Median retail exp mass within reach.
+                    var near = new List<double>();
+                    (int cx, int cy, int cz) = Cell(pos);
+                    for (int dx = -1; dx <= 1; dx++)
+                        for (int dy = -1; dy <= 1; dy++)
+                            for (int dz = -1; dz <= 1; dz++)
+                            {
+                                if (!retailGrid.TryGetValue((cx + dx, cy + dy, cz + dz), out List<(Vector3 pos, double mass)> list))
+                                    continue;
+                                foreach ((Vector3 rp, double mass) in list)
+                                    if (Vector3.DistanceSquared(rp, pos) < matchRadius * matchRadius)
+                                        near.Add(mass);
+                            }
+
+                    int shift;
+                    if (near.Count >= 4)
+                    {
+                        near.Sort();
+                        double target = near[near.Count / 2];
+                        shift = (int)Math.Round(32.0 * Math.Log(target / ourMass, 2.0));
+                        shift = Math.Max(-48, Math.Min(48, shift));
+                        matched2++;
+                    }
+                    else
+                    {
+                        shift = settings.DeltaInfluenceWeightBias;
+                        fellBack++;
+                    }
+                    if (shift == 0) continue;
+                    shifts.Add(shift);
+
+                    byte Shifted(byte w) => w == 0 ? (byte)0 : (byte)Math.Max(1, Math.Min(254, w + shift));
+                    for (int k = 0; k < InfluencesPerProbe; k++)
+                    {
+                        byte w = ReadInfluenceWeight(bake.Slice, slot * InfluencesPerProbe + k);
+                        if (w != 0)
+                            WriteInfluenceWeight(bake.Slice, slot * InfluencesPerProbe + k, Shifted(w));
+                    }
+                    if (myFixups != null)
+                        foreach (int i in myFixups)
+                        {
+                            RadiosityRuntime.RuntimeInfluenceFixup fx = runtime.InfluenceFixups[i];
+                            fx.Weight = Shifted(fx.Weight);
+                            runtime.InfluenceFixups[i] = fx;
+                        }
+                }
+                shifts.Sort();
+                log?.Invoke("    delta calibration: " + matched2 + " probes matched to local retail exp mass, " +
+                            fellBack + " fell back to bias " + settings.DeltaInfluenceWeightBias +
+                            (shifts.Count > 0 ? "  shift p10/50/90 = " + shifts[shifts.Count / 10] + "/" +
+                             shifts[shifts.Count / 2] + "/" + shifts[shifts.Count * 9 / 10] : ""));
+            }
+        }
+
+        /// <summary>
+        /// The delta-bake's second half: bake the movers an edit ADDED or MOVED into one new
+        /// slice appended to the kept retail runtime, so new geometry lights itself instead of
+        /// rendering black (architecture) or fullbright (props).
+        /// </summary>
+        /// <remarks>
+        /// <para>The delta unit is the geometry INSTANCE: any instance containing at least one
+        /// delta mover is rebaked whole (retail islands never span composites, so this never
+        /// splits a retail island - a moved mover pulls its island-mates along, which is right:
+        /// their old rect would otherwise light them as if nothing had moved).</para>
+        /// <para>Version limits, deliberate: the new slice has no volume-probe hash (dynamic
+        /// objects inside brand-new rooms get no probe lighting yet), no cross-slice fixups
+        /// (a new room lights itself from its own emissives; embedded new props will want links
+        /// into retail clusters later), and no door transfers. It gets zero slice neighbours,
+        /// which the fixup-range table shape permits by construction.</para>
+        /// </remarks>
+        public static int AppendDeltaSlices(
+            Level level,
+            RadiosityBakeSettings settings,
+            HashSet<int> deltaMovers,
+            Action<string> log = null)
+        {
+            if (deltaMovers == null || deltaMovers.Count == 0)
+                return 0;
+            RadiosityRuntime runtime = level.RadiosityRuntime
+                ?? throw new InvalidOperationException("No runtime to append to.");
+
+            // Translation-only moves keep their RETAIL island and get its data slid over:
+            // re-baking a moved island into an appended slice fed the probes through cross-slice
+            // fixups alone, and that path SATURATES at roughly half a native diet (CM9's server
+            // rack: 0.38x retail at cloned weights, 0.53x with every slot at byte 255 - no weight
+            // can close it). The retail island's own probes, diets, scatter, lights and rect are
+            // all still valid after a translation; they just describe the old position. Movers
+            // handled here leave the delta census entirely, so the patcher restores their retail
+            // MODEL_PARAMS and the instance map keeps its retail rows.
+            if (settings.DeltaTranslateMovedIslands)
+                TranslateMovedIslands(level, runtime, settings, deltaMovers, log);
+            if (deltaMovers.Count == 0)
+                return 0;
+
+            // Instancing appended resources for the new content; without a refresh they resolve
+            // to write index -1 and geometry collection drops every new mover.
+            level.Resources.RefreshWriteList();
+
+            // The static-composites whitelist is derived from what RETAIL lightmapped - a freshly
+            // added composite instance can never be on it, which silently skipped every mover of
+            // a newly placed room. The delta census has already vetted these movers, and the
+            // per-mover IsBakeable filter still applies, so the whitelist is dropped here.
+            bool staticOnly = settings.StaticRadiosityCompositesOnly;
+            settings.StaticRadiosityCompositesOnly = false;
+            RadiosityGeometry geometry;
+            try { geometry = RadiosityGeometry.CollectFromLevel(level, settings, log); }
+            finally { settings.StaticRadiosityCompositesOnly = staticOnly; }
+            if (geometry.TriangleCount == 0)
+                return 0;
+            geometry.Build(log);
+            if (settings.UseCollisionForVisibility &&
+                RadiosityOccluders.TryCollect(level, geometry, out float[] occluderVerts, out int[] occluderTris, log,
+                                              skipDoorBarriers: settings.OpenDoorwaysForBake))
+            {
+                geometry.OccluderEndpointSlack = settings.OccluderEndpointSlack;
+                geometry.OccluderSlackFraction = settings.OccluderSlackFraction;
+                geometry.BuildOccluders(occluderVerts, occluderTris, log);
+            }
+
+            log?.Invoke("    delta geometry: " + geometry.Instances.Count + " instances, skipped=" + geometry.MoversSkipped + " (noResource=" + geometry.SkippedNoResource + ")");
+            var inInstances = new HashSet<int>();
+            foreach (RadiosityGeometry.Instance inst in geometry.Instances)
+                foreach (int mv in inst.Movers)
+                    if (deltaMovers.Contains(mv)) inInstances.Add(mv);
+            log?.Invoke("    delta coverage: " + inInstances.Count + "/" + deltaMovers.Count + " delta movers present in geometry");
+            int missingShown = 0;
+            foreach (int mv in deltaMovers)
+            {
+                if (inInstances.Contains(mv) || missingShown >= 6) continue;
+                Movers.MOVER_DESCRIPTOR mm = level.Movers.Entries[mv];
+                string mtype; try { mtype = mm.GetRenderableType().ToString(); } catch { mtype = "?"; }
+                log?.Invoke("       missing mover " + mv + ": type=" + mtype + " els=" + (mm.RenderableElements?.Count ?? -1) +
+                            " res=" + (mm.Resource != null) + " wIdx=" + level.Resources.GetWriteIndex(mm.Resource) +
+                            " dyn=" + RadiosityGeometry.RequiresDynamicRadiosity(mm) + " stationary=" + (mm.Flags?.Stationary.ToString() ?? "?"));
+                missingShown++;
+            }
+            var deltaInstances = new List<RadiosityGeometry.Instance>();
+            foreach (RadiosityGeometry.Instance instance in geometry.Instances)
+                if (instance.Movers.Any(deltaMovers.Contains))
+                    deltaInstances.Add(instance);
+            if (deltaInstances.Count == 0)
+            {
+                log?.Invoke("Radiosity delta: no bakeable geometry among the delta movers");
+                return 0;
+            }
+
+            // GRAFT retail-bound islands into byte-clones of their retail slices first (see
+            // GraftDeltaIslands): retail's field relights at parity where anything we bake
+            // delivers about half, so edits inside existing rooms ride the clone. Whatever
+            // remains (genuinely new content, uncovered islands) takes the appended-slice path.
+            int graftedIslands = 0;
+            if (settings.DeltaGraftRetailSlices)
+                graftedIslands = GraftDeltaIslands(level, runtime, geometry, deltaInstances, settings, deltaMovers, log);
+            if (deltaInstances.Count == 0)
+            {
+                log?.Invoke("Radiosity delta: " + graftedIslands + " islands grafted into retail-slice clones, nothing left to append");
+                return graftedIslands;
+            }
+
+            foreach (RadiosityGeometry.Instance instance in deltaInstances)
+            {
+                RadiosityAtlas.RectSizeForBounds(instance.SurfaceArea, instance.BoundsMax - instance.BoundsMin,
+                    instance.UvCoverage, settings, out int w, out int h, instance.UvAspect);
+
+                // A MOVED island's pristine MODEL_PARAMS carry retail's own rect size for this
+                // exact geometry - use it as a floor. The formula underquotes complex furniture
+                // (CM7's moved shelving got 14x14 against retail's 18x16, a third fewer probes).
+                if (settings.RetailModelParams != null)
+                {
+                    foreach (int moverIndex in instance.Movers)
+                    {
+                        Movers.MOVER_DESCRIPTOR mover = level.Movers.Entries[moverIndex];
+                        if (mover.Resource == null)
+                            continue;
+                        ulong key = ((ulong)mover.Resource.composite_instance_id.AsUInt32 << 32) | mover.Resource.resource_id.AsUInt32;
+                        if (!settings.RetailModelParams.TryGetValue(key, out byte[] pristine) || pristine.Length < 16)
+                            continue;
+                        int rw = (int)Math.Round(BitConverter.ToSingle(pristine, 0) + 0.5f);
+                        int rh = (int)Math.Round(BitConverter.ToSingle(pristine, 4) + 0.5f);
+                        if (rw >= 1 && rw <= 128 && rh >= 1 && rh <= 128)
+                        {
+                            w = Math.Max(w, rw);
+                            h = Math.Max(h, rh);
+                        }
+                    }
+                }
+                instance.AtlasWidth = w;
+                instance.AtlasHeight = h;
+            }
+            foreach (RadiosityGeometry.Instance instance in deltaInstances.OrderByDescending(i => i.Movers.Count).Take(3))
+            {
+                log?.Invoke("    delta island: " + instance.Movers.Count + " movers  area " +
+                            instance.SurfaceArea.ToString("0.0") + " m2  uvCov " + instance.UvCoverage.ToString("0.00") +
+                            "  tris " + instance.Triangles.Count + "  rect " + instance.AtlasWidth + "x" + instance.AtlasHeight);
+                for (int m = 0; m < instance.Movers.Count && m < 12; m++)
+                {
+                    Movers.MOVER_DESCRIPTOR mv = level.Movers.Entries[instance.Movers[m]];
+                    string mat = mv.RenderableElements != null && mv.RenderableElements.Count > 0
+                        ? (mv.RenderableElements[0]?.Material?.Name ?? "?") : "(none)";
+                    log?.Invoke("       mover " + instance.Movers[m] + "  " + mv.RenderableElements?.Count + " els  " +
+                                instance.MoverAreas[m].ToString("0.00") + " m2  " + mat);
+                }
+            }
+            // Donor shell (see RadiosityBakeSettings.DeltaDonorShell): everything the delta
+            // probes should gather bounce from must live IN this slice - influence indices cannot
+            // cross slices except through fixups, and the engine's fixup gather saturates at
+            // about half a native diet. The surrounding retail islands are baked in as
+            // cluster-only donors: their movers are never written to, they exist here purely as
+            // lit surfaces for the real delta islands' diets, scatter and light injection.
+            var bakeInstances = new List<RadiosityGeometry.Instance>(deltaInstances);
+            if (settings.DeltaDonorShell)
+            {
+                var deltaSet = new HashSet<RadiosityGeometry.Instance>(deltaInstances);
+                float reach = Math.Max(1.0f, settings.DeltaDonorShellRadius);
+
+                // Distance to the NEAREST delta island, not to their union box: delta islands can
+                // be instances of one composite in different rooms across the level, and the
+                // union box scores everything in the dead space between them as distance zero.
+                float BoxDistance(RadiosityGeometry.Instance inst)
+                {
+                    float best = float.MaxValue;
+                    foreach (RadiosityGeometry.Instance d in deltaInstances)
+                    {
+                        float bx = Math.Max(0, Math.Max(inst.BoundsMin.X - d.BoundsMax.X, d.BoundsMin.X - inst.BoundsMax.X));
+                        float by = Math.Max(0, Math.Max(inst.BoundsMin.Y - d.BoundsMax.Y, d.BoundsMin.Y - inst.BoundsMax.Y));
+                        float bz = Math.Max(0, Math.Max(inst.BoundsMin.Z - d.BoundsMax.Z, d.BoundsMin.Z - inst.BoundsMax.Z));
+                        float dd = bx * bx + by * by + bz * bz;
+                        if (dd < best) best = dd;
+                    }
+                    return (float)Math.Sqrt(best);
+                }
+
+                var donors = new List<(RadiosityGeometry.Instance inst, float dist)>();
+                foreach (RadiosityGeometry.Instance inst in geometry.Instances)
+                {
+                    if (deltaSet.Contains(inst)) continue;
+                    float d = BoxDistance(inst);
+                    if (d <= reach) donors.Add((inst, d));
+                }
+                donors.Sort((a, b) => a.dist.CompareTo(b.dist));
+
+                int budget = Math.Max(0, settings.DeltaDonorTexelBudget);
+                int maxDim = Math.Max(2, settings.DeltaDonorMaxRectDim);
+                int taken = 0, spent = 0, dupes = 0;
+                // CM9 ships stacks of coincident duplicate composite instances (seven instance
+                // ids on one records-room prop). Duplicates waste the budget AND poison the bake:
+                // their texels sit at identical positions, so the input-probe Poisson pass blocks
+                // all copies down to one object's worth - one run spent 8k texels on stacks and
+                // came out with 128 input probes and 18 surface lights. One donor per footprint.
+                var seenFootprints = new HashSet<(int, int, int, int, int, int)>();
+                (int, int, int, int, int, int) Footprint(RadiosityGeometry.Instance inst) =>
+                    ((int)Math.Round(inst.BoundsMin.X * 20), (int)Math.Round(inst.BoundsMin.Y * 20), (int)Math.Round(inst.BoundsMin.Z * 20),
+                     (int)Math.Round(inst.BoundsMax.X * 20), (int)Math.Round(inst.BoundsMax.Y * 20), (int)Math.Round(inst.BoundsMax.Z * 20));
+                foreach ((RadiosityGeometry.Instance inst, float dist) in donors)
+                {
+                    if (!seenFootprints.Add(Footprint(inst))) { dupes++; continue; }
+                    RadiosityAtlas.RectSizeForBounds(inst.SurfaceArea, inst.BoundsMax - inst.BoundsMin,
+                        inst.UvCoverage, settings, out int w, out int h, inst.UvAspect);
+                    // Coarse is fine - donors only feed the cluster field - but preserve aspect
+                    // under the clamp so wide islands keep their shape.
+                    if (w > maxDim || h > maxDim)
+                    {
+                        float scale = Math.Min((float)maxDim / w, (float)maxDim / h);
+                        w = Math.Max(2, (int)Math.Round(w * scale));
+                        h = Math.Max(2, (int)Math.Round(h * scale));
+                    }
+                    if (spent + w * h > budget) continue;
+                    inst.DonorOnly = true;
+                    inst.AtlasWidth = w;
+                    inst.AtlasHeight = h;
+                    bakeInstances.Add(inst);
+                    spent += w * h;
+                    taken++;
+                }
+                log?.Invoke("    delta donors: " + taken + "/" + donors.Count + " nearby retail islands baked cluster-only (" +
+                            spent + " texels, " + dupes + " coincident dupes skipped, reach " + reach.ToString("0.0") + "m)");
+                foreach (RadiosityGeometry.Instance inst in bakeInstances)
+                    if (inst.DonorOnly && inst.AtlasWidth * inst.AtlasHeight >= 200)
+                        log?.Invoke("       donor " + inst.AtlasWidth + "x" + inst.AtlasHeight + " at (" +
+                                    inst.Centre.X.ToString("0.0") + "," + inst.Centre.Y.ToString("0.0") + "," +
+                                    inst.Centre.Z.ToString("0.0") + ")  area " + inst.SurfaceArea.ToString("0.0") +
+                                    " m2  tris " + inst.Triangles.Count);
+            }
+
+            var deltaSlices = new List<List<RadiosityGeometry.Instance>> { bakeInstances };
+            AllocateAtlases(deltaSlices, settings, log);
+
+            Dictionary<int, float> emissiveAreas = ComputeEmissiveAreas(geometry);
+            RetailLightPriors lightPriors = CalibrateWeightCoefficient(level, emissiveAreas, log);
+
+            // The volume hash is REQUIRED here, not optional: materials carrying the
+            // RADIOSITY_DYNAMIC shader bit may not be lightmapped (the engine asserts on a rect
+            // plus the dynamic bit), so everything dynamic inside the new content lights from
+            // these probes or not at all.
+            // Texel-coincident input probes for delta slices (see InputProbesOnTexels): without
+            // the zero-distance cluster/probe self-pairs, the slice's cluster field never picks
+            // up injected energy the way retail's does.
+            bool probesOnTexels = settings.InputProbesOnTexels;
+            settings.InputProbesOnTexels = true;
+            SliceBake bake;
+            try { bake = BakeSlice(level, geometry, bakeInstances, runtime.Slices.Count, settings, emissiveAreas, lightPriors, log); }
+            finally { settings.InputProbesOnTexels = probesOnTexels; }
+
+            // A delta slice cut out of a room-coherent retail slice starts with almost no direct
+            // light of its own: its islands' emissive texels are often dynamic movers (excluded
+            // from the lightmap) and the room's emitters sample the ROOM slice's probes, never
+            // ours. The unbaked-emitter pass fixes both - dynamic emitters are not "baked", and
+            // static ones are rescued through their retail light priors - sampling each at our
+            // probes with retail's own Scale/Weight. Without it the moved cam9 vent wall baked
+            // 0 surface lights and rendered black beside its own glowing tubes.
+            if (settings.EmitSurfaceLights)
+                AddUnbakedEmitterLights(level, geometry, new[] { bake }, settings, lightPriors, log);
+
+            if (settings.SurfaceLightWeightScale != 1.0f && bake?.Slice?.SurfaceLights?.Lights != null)
+            {
+                List<RadiosityRuntime.RuntimeSurfaceLights.Light> lights = bake.Slice.SurfaceLights.Lights;
+                for (int i = 0; i < lights.Count; i++)
+                {
+                    RadiosityRuntime.RuntimeSurfaceLights.Light l = lights[i];
+                    l.Weight = (byte)Math.Max(1, Math.Min(191, (int)Math.Round(l.Weight * settings.SurfaceLightWeightScale)));
+                    lights[i] = l;
+                }
+            }
+
+            FoldVisPaletteIntoRuntime(runtime, bake);
+
+            int newSliceIndex = runtime.Slices.Count;
+            runtime.Slices.Add(bake.Slice);
+
+            int deltaFixups = AppendDeltaFixups(level, runtime, bake, newSliceIndex, geometry, settings, log);
+
+            CalibrateDeltaEnergy(level, runtime, bake, newSliceIndex, settings, log);
+
+            // Island ids: prefer the GAPS retail left in its own id space (ids inside
+            // InstanceSliceIndices range that no map entry uses - retail assigned them to
+            // geometry it excluded). A beyond-range id has no state anywhere; a gap id sits
+            // inside whatever default state retail ships, which is the difference between the
+            // runtime treating the island as powered and ignoring it entirely.
+            var usedIds = new HashSet<int>();
+            if (level.RadiosityInstanceMap != null)
+                foreach (RadiosityInstanceMap.Entry e in level.RadiosityInstanceMap.Entries)
+                    usedIds.Add(e.lightmap_transform);
+            var gapIds = new Queue<int>();
+            for (int id = 0; id < runtime.InstanceSliceIndices.Count; id++)
+                if (!usedIds.Contains(id)) gapIds.Enqueue(id);
+
+            // DIAGNOSTIC (env RADBAKE_STEAL_IDS="1,2,3"): deliberately sacrifice named retail
+            // islands and hand their in-range ids to delta islands - the discriminator for
+            // whether the engine honours EXTENDED transforms-table records or sizes its
+            // per-island state from retail's count. The sacrificed islands' movers will sample
+            // wrong data; only use ids of invisible junk.
+            var stealIds = new Queue<int>();
+            string stealEnv = Environment.GetEnvironmentVariable("RADBAKE_STEAL_IDS");
+            if (!string.IsNullOrEmpty(stealEnv))
+                foreach (string s in stealEnv.Split(','))
+                    if (int.TryParse(s.Trim(), out int sid) && sid >= 0 && sid < runtime.InstanceSliceIndices.Count)
+                        stealIds.Enqueue(sid);
+            // HARVEST in-range ids from coincident-duplicate islands: a beyond-range id is
+            // BROKEN - the engine sizes its per-island state from retail's transforms table
+            // once and ignores appended records (proven by the cam7 stolen-id door: black with
+            // an extended record, fully lit with an in-range id). Two mapped islands whose
+            // movers sit at identical positions render identical pixels; repointing one twin's
+            // rows onto the other (and copying its lightmap rect params) frees an id at no
+            // visual cost. Harvested lazily, only as needed.
+            var harvestable = new Queue<(int freeId, int keepId)>();
+            List<RadiosityInstanceMap.Entry> mapEntriesH = level.RadiosityInstanceMap?.Entries;
+            // Ids that must never be freed: anything a delta mover's own resource binds (the
+            // reuse path may claim it), plus everything assigned during this bake.
+            var usedIdsTaken = new HashSet<int>();
+            foreach (int dm in deltaMovers)
+            {
+                Movers.MOVER_DESCRIPTOR mv = level.Movers.Entries[dm];
+                if (mv.Resource == null || mapEntriesH == null) continue;
+                foreach (RadiosityInstanceMap.Entry e in mapEntriesH)
+                {
+                    Resources.Resource r = e.Resource ?? level.Resources.GetAtWriteIndex(e.resource_index);
+                    if (r == mv.Resource) usedIdsTaken.Add(e.lightmap_transform);
+                }
+            }
+            if (mapEntriesH != null)
+            {
+                var moverForKeyH = new Dictionary<ulong, int>();
+                for (int m = 0; m < level.Movers.Entries.Count; m++)
+                {
+                    Movers.MOVER_DESCRIPTOR mv = level.Movers.Entries[m];
+                    if (mv.Resource == null) continue;
+                    ulong k = ((ulong)mv.Resource.composite_instance_id.AsUInt32 << 32) | mv.Resource.resource_id.AsUInt32;
+                    if (!moverForKeyH.ContainsKey(k)) moverForKeyH[k] = m;
+                }
+                var islandKeysH = new Dictionary<int, List<ulong>>();
+                foreach (RadiosityInstanceMap.Entry e in mapEntriesH)
+                {
+                    Resources.Resource r = e.Resource ?? level.Resources.GetAtWriteIndex(e.resource_index);
+                    if (r == null) continue;
+                    ulong k = ((ulong)r.composite_instance_id.AsUInt32 << 32) | r.resource_id.AsUInt32;
+                    if (!islandKeysH.TryGetValue(e.lightmap_transform, out List<ulong> ks))
+                        islandKeysH[e.lightmap_transform] = ks = new List<ulong>();
+                    if (!ks.Contains(k)) ks.Add(k);
+                }
+                var bySignature = new Dictionary<string, List<int>>();
+                foreach (KeyValuePair<int, List<ulong>> kv in islandKeysH)
+                {
+                    var parts = new List<string>();
+                    bool ok = true;
+                    foreach (ulong k in kv.Value)
+                    {
+                        if (!moverForKeyH.TryGetValue(k, out int m)) { ok = false; break; }
+                        System.Numerics.Matrix4x4 tr = level.Movers.Entries[m].Transform;
+                        parts.Add(((int)Math.Round(tr.M41 * 100)) + "," + ((int)Math.Round(tr.M42 * 100)) + "," + ((int)Math.Round(tr.M43 * 100)));
+                    }
+                    if (!ok || parts.Count == 0) continue;
+                    parts.Sort();
+                    string sig = parts.Count + "|" + string.Join(";", parts);
+                    if (!bySignature.TryGetValue(sig, out List<int> ids)) bySignature[sig] = ids = new List<int>();
+                    ids.Add(kv.Key);
+                }
+                foreach (List<int> group in bySignature.Values)
+                {
+                    if (group.Count < 2) continue;
+                    group.Sort();
+                    for (int g = 1; g < group.Count; g++)
+                        harvestable.Enqueue((group[g], group[0]));
+                }
+            }
+            int harvestedCount = 0;
+            int HarvestId()
+            {
+                while (harvestable.Count > 0)
+                {
+                    (int freeId, int keepId) = harvestable.Dequeue();
+                    if (!islandForKeyGuard(freeId) || !islandForKeyGuard(keepId)) continue;
+                    // Repoint every row of the freed island onto its twin, and copy the twin's
+                    // lightmap rect params onto the freed island's movers so they sample the
+                    // twin's rect (identical geometry, identical pixels).
+                    byte[] twinParams = null;
+                    foreach (RadiosityInstanceMap.Entry e in mapEntriesH)
+                    {
+                        if (e.lightmap_transform != keepId) continue;
+                        Resources.Resource r = e.Resource ?? level.Resources.GetAtWriteIndex(e.resource_index);
+                        if (r == null) continue;
+                        foreach (Movers.MOVER_DESCRIPTOR mv in level.Movers.Entries)
+                            if (mv.Resource == r && mv.RenderConstants?.RawBytes != null && mv.RenderConstants.RawBytes.Length >= 16)
+                            { twinParams = mv.RenderConstants.RawBytes; break; }
+                        if (twinParams != null) break;
+                    }
+                    foreach (RadiosityInstanceMap.Entry e in mapEntriesH)
+                    {
+                        if (e.lightmap_transform != freeId) continue;
+                        e.lightmap_transform = keepId;
+                        if (twinParams == null) continue;
+                        Resources.Resource r = e.Resource ?? level.Resources.GetAtWriteIndex(e.resource_index);
+                        if (r == null) continue;
+                        foreach (Movers.MOVER_DESCRIPTOR mv in level.Movers.Entries)
+                        {
+                            if (mv.Resource != r || mv.RenderConstants?.RawBytes == null || mv.RenderConstants.RawBytes.Length < 16) continue;
+                            byte[] raw = mv.RenderConstants.RawBytes;
+                            Array.Copy(twinParams, 0, raw, 0, 16);
+                            mv.RenderConstants.SetRawBytes(raw);
+                        }
+                    }
+                    harvestedCount++;
+                    return freeId;
+                }
+                return -1;
+            }
+            bool islandForKeyGuard(int id) => id >= 0 && id < runtime.InstanceSliceIndices.Count && !usedIdsTaken.Contains(id);
+
+            log?.Invoke("    delta island ids: " + gapIds.Count + " retail gaps, " + harvestable.Count +
+                        " duplicate-island ids harvestable, for " + deltaInstances.Count + " islands");
+            int sharedOverflowId = -1, sharedOverflowCount = 0;
+            var recordWritten = new HashSet<int>();
+            int nextId = runtime.InstanceSliceIndices.Count;
+            // ALL rows per key: a resource has one map row PER SUBMESH of its model (the CM9
+            // server rack's resource carries four rows, all pointing at the same island), and the
+            // engine binds each submesh through its own row. Collapsing them into a single-entry
+            // dictionary meant the delta update repointed ONE row and left the rest on the retail
+            // island - three of the moved rack's four submeshes rendered from the stale binding
+            // and the cabinet stayed black no matter how healthy the delta probes were.
+            var mapEntries = level.RadiosityInstanceMap?.Entries;
+            var existingByKey = new Dictionary<ulong, List<RadiosityInstanceMap.Entry>>();
+            if (mapEntries != null)
+                foreach (RadiosityInstanceMap.Entry e in mapEntries)
+                {
+                    Resources.Resource r = e.Resource ?? level.Resources.GetAtWriteIndex(e.resource_index);
+                    if (r == null)
+                        continue;
+                    ulong k = ((ulong)r.composite_instance_id.AsUInt32 << 32) | r.resource_id.AsUInt32;
+                    if (!existingByKey.TryGetValue(k, out List<RadiosityInstanceMap.Entry> rows))
+                        existingByKey[k] = rows = new List<RadiosityInstanceMap.Entry>();
+                    rows.Add(e);
+                }
+
+            int lightsBuilt = bake.Slice.SurfaceLights?.Lights?.Count ?? 0;
+            foreach (RadiosityGeometry.Instance instance in deltaInstances)
+            {
+                // A delta island whose movers ALL repoint away from one retail island orphans
+                // that retail id - so reuse it. A retail id is in range of every per-island
+                // state table the runtime keeps; a beyond-range id has no state anywhere, and
+                // the appended-slice saturation (~0.5x however the diets arrive - cloned fixup
+                // weights 0.38x, all-255 0.53x, full native donor diets 0.35x on the CM9 rack)
+                // tracks the id, not the gather path, if the id-state hypothesis holds.
+                int retailIdReuse = -1;
+                var instanceKeys = new HashSet<ulong>();
+                foreach (int moverIndex in instance.Movers)
+                {
+                    Movers.MOVER_DESCRIPTOR mv = level.Movers.Entries[moverIndex];
+                    if (mv.Resource != null)
+                        instanceKeys.Add(((ulong)mv.Resource.composite_instance_id.AsUInt32 << 32) | mv.Resource.resource_id.AsUInt32);
+                }
+                foreach (ulong k in instanceKeys)
+                {
+                    if (!existingByKey.TryGetValue(k, out List<RadiosityInstanceMap.Entry> rows) || rows.Count == 0)
+                        continue;
+                    int candidate = rows[0].lightmap_transform;
+                    if (candidate < 0 || candidate >= runtime.InstanceSliceIndices.Count)
+                        continue;
+                    // Only truly ORPHANED ids: every resource the map binds to this id must be in
+                    // this instance, or a partial overlap would strand the leftovers on a slice
+                    // binding that no longer matches their rects.
+                    bool fullyCovered = true;
+                    foreach (RadiosityInstanceMap.Entry e in mapEntries)
+                    {
+                        if (e.lightmap_transform != candidate) continue;
+                        Resources.Resource r = e.Resource ?? level.Resources.GetAtWriteIndex(e.resource_index);
+                        if (r == null) { fullyCovered = false; break; }
+                        ulong rk = ((ulong)r.composite_instance_id.AsUInt32 << 32) | r.resource_id.AsUInt32;
+                        if (!instanceKeys.Contains(rk)) { fullyCovered = false; break; }
+                    }
+                    if (fullyCovered)
+                    {
+                        retailIdReuse = candidate;
+                        break;
+                    }
+                }
+
+                int islandId;
+                bool foreignId = false;   //an id taken over from unrelated retail content
+                if (retailIdReuse >= 0)
+                {
+                    islandId = retailIdReuse;
+                    runtime.InstanceSliceIndices[islandId] = newSliceIndex;
+                    log?.Invoke("    delta island ids: reusing orphaned retail id " + islandId);
+                }
+                else if (gapIds.Count > 0)
+                {
+                    islandId = gapIds.Dequeue();
+                    runtime.InstanceSliceIndices[islandId] = newSliceIndex;
+                }
+                else if (stealIds.Count > 0)
+                {
+                    islandId = stealIds.Dequeue();
+                    runtime.InstanceSliceIndices[islandId] = newSliceIndex;
+                    foreignId = true;
+                    log?.Invoke("    delta island ids: STEALING in-range id " + islandId + " (diagnostic)");
+                }
+                else if ((islandId = HarvestId()) >= 0)
+                {
+                    runtime.InstanceSliceIndices[islandId] = newSliceIndex;
+                    foreignId = true;
+                    log?.Invoke("    delta island ids: harvested duplicate-island id " + islandId);
+                    // The LAST harvestable id becomes the shared overflow id: retail itself
+                    // ships multi-rect islands (CM9 island 1322 carries 5x5@119,2 AND 8x8@114,7
+                    // under one id, its record holding just the first rect), so per-mover
+                    // MODEL_PARAMS drives the sampling and any number of remaining delta
+                    // islands can share one valid in-range id. A shared id beats a
+                    // beyond-range one, which the engine provably reads as garbage.
+                    if (harvestable.Count == 0 && sharedOverflowId < 0)
+                        sharedOverflowId = islandId;
+                }
+                else if (sharedOverflowId >= 0)
+                {
+                    islandId = sharedOverflowId;
+                    foreignId = true;
+                    sharedOverflowCount++;
+                }
+                else
+                {
+                    // BROKEN: the engine sizes its per-island state from retail's transforms
+                    // table and ignores appended records - this island will render black or
+                    // flicker (the cam7 door proof). Emitted only when every in-range source
+                    // is exhausted and nothing is shareable.
+                    islandId = nextId++;
+                    runtime.InstanceSliceIndices.Add(newSliceIndex);
+                    log?.Invoke("    delta island ids: WARNING - no in-range id left, island " + islandId +
+                                " is beyond retail's transform table and will misrender");
+                }
+                usedIdsTaken.Add(islandId);
+
+                // The per-island lightmap-transform record (RADIOSITY_TRANSFORMS.BIN - Windows
+                // Store build) is what the engine samples the atlas through: an island id at
+                // or past that table's count reads GARBAGE - black on some cameras, flickering
+                // on others (the CM3 door round: cam1 lit / cam12 black) - and a reused id would
+                // sample the new slice at its OLD rect origin. CathodeLib does not own that file:
+                // the caller persists a record for every id handed out here (first writer wins on
+                // a shared id, matching retail's own multi-rect island convention).
+                if (settings.DeltaIslandRecord != null && recordWritten.Add(islandId))
+                    settings.DeltaIslandRecord(islandId, instance.AtlasX, instance.AtlasY, foreignId);
+
+                foreach (int moverIndex in instance.Movers)
+                {
+                    Movers.MOVER_DESCRIPTOR mover = level.Movers.Entries[moverIndex];
+                    WriteModelParams(mover, instance);
+                    // Every rect-assigned mover joins the delta set - islands carry unmoved
+                    // instance-mates beyond the census movers, and the patcher's pristine
+                    // MODEL_PARAMS restore must skip them all or their fresh rects are clobbered.
+                    deltaMovers.Add(moverIndex);
+                    if (mover.Resource == null || mapEntries == null)
+                        continue;
+                    ulong key = ((ulong)mover.Resource.composite_instance_id.AsUInt32 << 32) | mover.Resource.resource_id.AsUInt32;
+                    if (existingByKey.TryGetValue(key, out List<RadiosityInstanceMap.Entry> existingRows))
+                    {
+                        // A MOVED mover: repoint EVERY row (one per submesh) at the new slice's
+                        // bake - retail keeps all of a resource's rows on one island.
+                        foreach (RadiosityInstanceMap.Entry existing in existingRows)
+                        {
+                            existing.lightmap_transform = islandId;
+                            existing.Resource = mover.Resource;
+                        }
+                    }
+                    else
+                    {
+                        mapEntries.Add(new RadiosityInstanceMap.Entry
+                        {
+                            lightmap_transform = islandId,
+                            Resource = mover.Resource,
+                            resource_index = -1
+                        });
+                    }
+                }
+            }
+
+            log?.Invoke("Radiosity delta: slice " + newSliceIndex + " appended - " + deltaInstances.Count +
+                        " islands, " + deltaInstances.Sum(i => i.Movers.Count) + " movers, " +
+                        bake.SurfaceProbeCount + " surface probes, " + bake.InputProbeCount + " input probes, " +
+                        lightsBuilt + " surface lights, " + deltaFixups + " cross-slice fixups" +
+                        (sharedOverflowCount > 0 ? ", " + sharedOverflowCount + " islands sharing overflow id " + sharedOverflowId : ""));
+            return graftedIslands + deltaInstances.Count;
         }
 
         #region SLICING
@@ -868,10 +2195,24 @@ namespace CathodeLib.Radiosity
             {
                 var atlas = new RadiosityAtlas(AtlasSize);
 
-                // Largest first: skyline packers waste far less space that way.
-                slices[s].Sort((a, b) => (b.AtlasWidth * b.AtlasHeight).CompareTo(a.AtlasWidth * a.AtlasHeight));
+                // Texel (0,0) is RESERVED: a MODEL_PARAMS rect with x AND y both zero reads as
+                // "no lightmap" - retail ships hundreds of x==0 rects and hundreds of y==0 rects
+                // per level but not one at the exact origin (0 of 32,747 across five levels).
+                // An island packed there renders unmapped-dark and ignores its slice entirely:
+                // it is immune to every fixup/weight/mangle change, which is what buried
+                // ChallengeMap7's moved shelving (and one island of every full bake ever run).
+                atlas.TryAllocate(1, 1, out _, out _);
+
+                // Largest first: skyline packers waste far less space that way. Donors pack
+                // after every real island (they must never displace or shrink one) and are
+                // DROPPED on overflow rather than parked - a donor squeezed onto the shared
+                // 1x1 would rasterise its whole island into one arbitrary texel.
+                slices[s].Sort((a, b) => a.DonorOnly != b.DonorOnly
+                    ? (a.DonorOnly ? 1 : -1)
+                    : (b.AtlasWidth * b.AtlasHeight).CompareTo(a.AtlasWidth * a.AtlasHeight));
 
                 int shrunk = 0, failed = 0;
+                var droppedDonors = new List<RadiosityGeometry.Instance>();
                 foreach (RadiosityGeometry.Instance instance in slices[s])
                 {
                     int w = instance.AtlasWidth;
@@ -880,6 +2221,8 @@ namespace CathodeLib.Radiosity
 
                     while (w >= 1 && h >= 1)
                     {
+                        if (instance.DonorOnly && (w < 2 || h < 2))
+                            break;
                         if (atlas.TryAllocate(w, h, out int x, out int y))
                         {
                             instance.SliceIndex = s;
@@ -898,19 +2241,31 @@ namespace CathodeLib.Radiosity
 
                     if (!placed)
                     {
-                        // Nothing left. Park it on a 1x1 at the origin: the island still resolves
-                        // to a valid texel, it just shares lighting with whatever else is there.
+                        if (instance.DonorOnly)
+                        {
+                            droppedDonors.Add(instance);
+                            continue;
+                        }
+                        // Nothing left. Park it on a 1x1 beside the reserved origin: the island
+                        // still resolves to a valid texel, it just shares lighting with whatever
+                        // else is there. Never (0,0) - that is the "no lightmap" sentinel.
                         instance.SliceIndex = s;
-                        instance.AtlasX = 0;
+                        instance.AtlasX = 1;
                         instance.AtlasY = 0;
                         instance.AtlasWidth = 1;
                         instance.AtlasHeight = 1;
                         failed++;
                     }
                 }
+                foreach (RadiosityGeometry.Instance dropped in droppedDonors)
+                {
+                    dropped.DonorOnly = false;
+                    slices[s].Remove(dropped);
+                }
 
                 log?.Invoke("  slice " + s + " atlas: " + atlas.UsedTexels + "/" + AtlasTexels +
-                            " texels used, " + shrunk + " shrunk, " + failed + " overflowed");
+                            " texels used, " + shrunk + " shrunk, " + failed + " overflowed" +
+                            (droppedDonors.Count > 0 ? ", " + droppedDonors.Count + " donors dropped" : ""));
             }
         }
 
@@ -945,6 +2300,15 @@ namespace CathodeLib.Radiosity
 
             /// <summary>Atlas texel -> surface probe slot in the 256x64 probe texture, or -1.</summary>
             public int[] SurfaceSlotForTexel;
+
+            /// <summary>
+            /// Optional per-texel brightness proxy for THIS slice acting as a fixup emitter
+            /// (injected surface-light energy near the texel). When set, fixup candidate
+            /// selection ranks by formFactor x proxy instead of pure geometry - without it the
+            /// close dim floor crowds the far bright ceiling out of the cap, which measured as
+            /// UP-weight share 27% ours vs 41% retail on the CM7 shelving.
+            /// </summary>
+            public float[] TexelRadianceProxy;
         }
 
         /// <summary>One atlas texel that an instance claimed, with the surface it samples.</summary>
@@ -959,6 +2323,14 @@ namespace CathodeLib.Radiosity
             public Vector3 Emissive;
             public int MoverIndex;
             public bool Live;
+
+            /// <summary>
+            /// A gutter cell filled by <see cref="FillAtlasGutters"/>: it is a cluster (emitter)
+            /// and an input-probe binding site but never a surface probe, matching retail, whose
+            /// live-cell counts exceed its rect sums by ~12% while its surface probes stay below
+            /// them.
+            /// </summary>
+            public bool ClusterOnly;
             /// <summary>Where visibility rays start; see RadiosityGeometry.VisibilityOrigin.</summary>
             public Vector3 RayOrigin;
         }
@@ -1038,8 +2410,31 @@ namespace CathodeLib.Radiosity
             // ---- 1. Rasterise each instance's geometry into its atlas rect -------------------
             foreach (RadiosityGeometry.Instance instance in instances)
                 RasteriseInstance(geometry, instance, texels, settings);
+
+            // Donor rects join the cluster/emitter field only: live for input probes, scatter and
+            // light injection, but no surface probes and no diets - nothing renders from them.
+            foreach (RadiosityGeometry.Instance instance in instances)
+            {
+                if (!instance.DonorOnly) continue;
+                for (int y = instance.AtlasY; y < instance.AtlasY + instance.AtlasHeight; y++)
+                    for (int x = instance.AtlasX; x < instance.AtlasX + instance.AtlasWidth; x++)
+                    {
+                        int t = y * AtlasSize + x;
+                        if (texels[t].Live) texels[t].ClusterOnly = true;
+                    }
+            }
             FoldAlbedo(texels);
             ResolveRayOrigins(geometry, texels, settings);
+
+            // Retail's atlases have (almost) no dead cells: every slice's live-cluster count
+            // exceeds its MODEL_PARAMS rect sum, and ChallengeMap4 slice 0 is a completely full
+            // 16384-cell grid. Our packer leaves 12-45% dead gutter between rects, which makes
+            // what sits next to a rect's edge - and therefore anything that reads across it - an
+            // arbitrary function of packing order. Filling the gutter with cluster-only clones of
+            // the nearest live cell reproduces retail's observable state and removes the layout
+            // lottery from the emitter field.
+            if (settings.FillAtlasGutters)
+                FillAtlasGutters(texels, log);
 
             int liveCount = 0;
             for (int i = 0; i < AtlasTexels; i++) if (texels[i].Live) liveCount++;
@@ -1051,7 +2446,7 @@ namespace CathodeLib.Radiosity
             // maps key on a probe slot rather than an atlas texel.
             var surfaceOrder = new List<int>();
             for (int i = 0; i < AtlasTexels; i++)
-                if (texels[i].Live) surfaceOrder.Add(i);
+                if (texels[i].Live && !texels[i].ClusterOnly) surfaceOrder.Add(i);
             SpatialSort(surfaceOrder, i => texels[i].Position);
             if (surfaceOrder.Count > MaxSurfaceProbes)
                 surfaceOrder.RemoveRange(MaxSurfaceProbes, surfaceOrder.Count - MaxSurfaceProbes);
@@ -1084,7 +2479,15 @@ namespace CathodeLib.Radiosity
             // area leaves texel density varying by orders of magnitude between instances, which
             // left a third of the cells retail fills with no probes of ours at all. Sampling the
             // triangles directly makes emitter coverage independent of the atlas entirely.
-            List<ProbePoint> inputProbes = ScatterInputProbes(geometry, instances, settings, level, lightPriors);
+            // Retail's input probes are TEXEL-COINCIDENT: ~90% sit at exactly a live cluster
+            // texel's position (measured on every CM7 retail slice), and virtually every such
+            // probe carries a zero-distance scatter self-pair with its cluster - the coupling
+            // that lets injected probe energy enter the cluster field in one hop. Free surface
+            // scattering never reproduces that (4 coincident of 2,231 on the CM7 delta slice),
+            // so delta slices place probes ON live texels instead.
+            List<ProbePoint> inputProbes = settings.InputProbesOnTexels
+                ? TexelInputProbes(texels, liveTexels, settings)
+                : ScatterInputProbes(geometry, instances, settings, level, lightPriors);
 
             // Order spatially before assigning tile slots, so a 16x16 tile holds probes that are
             // near each other in the world. The probe tree's leaves are those same tiles, so their
@@ -1176,6 +2579,8 @@ namespace CathodeLib.Radiosity
                 var worst = new List<(int area, int live, string what)>();
                 foreach (RadiosityGeometry.Instance inst in instances)
                 {
+                    // Donors have no surface probes by design - "unlit" is their normal state.
+                    if (inst.DonorOnly) continue;
                     int live2 = 0, lit = 0;
                     for (int y = inst.AtlasY; y < inst.AtlasY + inst.AtlasHeight; y++)
                     {
@@ -1268,7 +2673,9 @@ namespace CathodeLib.Radiosity
             return new SliceBake
             {
                 Slice = slice,
-                SurfaceProbeCount = liveCount,
+                // Real surface probes (donor/gutter cluster-only texels excluded): liveCount here
+                // read "7951 surface probes" for a 4-tiny-island delta slice once donors joined.
+                SurfaceProbeCount = surfaceOrder.Count,
                 InputProbeCount = inputProbes.Count,
                 ClusterCount = liveCount,
                 InfluenceCount = influenceCount,
@@ -1507,6 +2914,43 @@ namespace CathodeLib.Radiosity
             public Vector3 Position;
             public Vector3 Normal;
             public Vector3 Albedo;
+        }
+
+        /// <summary>
+        /// Input probes placed ON live atlas texels, Poisson-thinned to the configured spacing.
+        /// Because the positions are the texel positions verbatim, the half-float encodes come
+        /// out identical to ClusterPositions and the local scatter pass emits the zero-distance
+        /// cluster/probe self-pairs retail ships (see the call site).
+        /// </summary>
+        private static List<ProbePoint> TexelInputProbes(SurfaceTexel[] texels, List<int> liveTexels, RadiosityBakeSettings settings)
+        {
+            float spacing = Math.Max(0.05f, settings.InputProbeSpacing);
+            float spacingSq = spacing * spacing;
+            float cell = spacing;
+            var accepted = new Dictionary<(int, int, int), List<Vector3>>();
+            var probes = new List<ProbePoint>();
+            foreach (int i in liveTexels)
+            {
+                Vector3 p = texels[i].Position;
+                int cx = (int)Math.Floor(p.X / cell), cy = (int)Math.Floor(p.Y / cell), cz = (int)Math.Floor(p.Z / cell);
+                bool blocked = false;
+                for (int dx = -1; dx <= 1 && !blocked; dx++)
+                    for (int dy = -1; dy <= 1 && !blocked; dy++)
+                        for (int dz = -1; dz <= 1 && !blocked; dz++)
+                        {
+                            if (!accepted.TryGetValue((cx + dx, cy + dy, cz + dz), out List<Vector3> list))
+                                continue;
+                            foreach (Vector3 q in list)
+                                if (Vector3.DistanceSquared(p, q) < spacingSq) { blocked = true; break; }
+                        }
+                if (blocked)
+                    continue;
+                if (!accepted.TryGetValue((cx, cy, cz), out List<Vector3> mine))
+                    accepted[(cx, cy, cz)] = mine = new List<Vector3>();
+                mine.Add(p);
+                probes.Add(new ProbePoint { Position = p, Normal = texels[i].Normal, Albedo = texels[i].Albedo });
+            }
+            return probes;
         }
 
         /// <summary>
@@ -2119,11 +3563,20 @@ namespace CathodeLib.Radiosity
                 }
             }
 
+            //RADBAKE_RASTDUMP diagnostics: which triangles the quota drops and which raster visits
+            //an earlier winner blocks, per mover.
+            string rastDump = Environment.GetEnvironmentVariable("RADBAKE_RASTDUMP");
+            var dbgDroppedQuota = rastDump != null ? new int[quota.Length] : null;
+            var dbgBlockedLive = rastDump != null ? new int[quota.Length] : null;
+            var dbgTris = rastDump != null ? new int[quota.Length] : null;
+
+
             foreach (int tri in instance.Triangles)
             {
                 int moverSlot = tri < geometry.TriangleMoverSlot.Length ? geometry.TriangleMoverSlot[tri] : 0;
                 if (moverSlot < 0 || moverSlot >= quota.Length)
                     moverSlot = 0;
+                if (dbgTris != null) dbgTris[moverSlot]++;
 
                 // Optionally let an emitter through regardless of budget. The reasoning was that a
                 // light is not an area claim - it is the only way that surface enters the solve, so
@@ -2134,8 +3587,9 @@ namespace CathodeLib.Radiosity
                 bool exempt = settings.ExemptEmissiveFromRectQuota
                               && tri < geometry.TriangleEmissive.Length
                               && geometry.TriangleEmissive[tri] != Vector3.Zero;
-                if (!exempt && quota.Length > 0 && claimed[moverSlot] >= quota[moverSlot])
-                    continue;
+                //The quota no longer drops whole triangles here: that starved late-processed
+                //faces out of the reservoir below AND threw away their albedo taps. It now gates
+                //only the dead-texel claim inside the loop, which is the thing it rations.
 
                 int moverIndex = moverSlot < instance.Movers.Count ? instance.Movers[moverSlot] : -1;
 
@@ -2197,9 +3651,6 @@ namespace CathodeLib.Radiosity
                             }
                         }
 
-                        if (texels[index].Live)
-                            continue;
-
                         float px = x + 0.5f, py = y + 0.5f;
                         float l0 = a0 * (px - uv2.X) + b0 * (py - uv2.Y);
                         float l1 = a1 * (px - uv2.X) + b1 * (py - uv2.Y);
@@ -2229,13 +3680,33 @@ namespace CathodeLib.Radiosity
                         if (sum <= 0) continue;
                         l0 /= sum; l1 /= sum; l2 /= sum;
 
+                        //First-covering-triangle wins, as before. A coverage-weighted reservoir
+                        //re-draw was tried here for the stacked-chart problem (several faces
+                        //aliasing one texel) and REGRESSED the well-behaved islands - CM9's
+                        //RecordsRoom island went 1.77 -> 8.40 rmse while barely helping the dark
+                        //rack, so first-come stays and the quota alone was softened: it now gates
+                        //only the dead-texel claim rather than dropping whole triangles, which
+                        //keeps late faces' albedo taps and lets them claim any texel the earlier
+                        //faces left dead.
+                        if (texels[index].Live)
+                        {
+                            if (dbgBlockedLive != null && coveredTaps > 0 && texels[index].MoverIndex != moverIndex)
+                                dbgBlockedLive[moverSlot]++;
+                            continue;
+                        }
+                        if (!exempt && quota.Length > 0 && claimed[moverSlot] >= quota[moverSlot])
+                        {
+                            if (dbgDroppedQuota != null) dbgDroppedQuota[moverSlot]++;
+                            continue;
+                        }
+                        claimed[moverSlot]++;
+
                         geometry.SamplePoint(tri, l1, l2, out Vector3 position, out Vector3 normal, out _, out Vector2 diffuseUv);
                         texels[index].Position = position;
                         texels[index].Normal = normal;
                         texels[index].Emissive = geometry.TriangleEmissive[tri];
                         texels[index].MoverIndex = moverIndex;
                         texels[index].Live = true;
-                        claimed[moverSlot]++;
 
                         // Guarantee at least one tap, for a texel whose centre is covered but
                         // whose sub-grid all fell outside this triangle.
@@ -2246,6 +3717,53 @@ namespace CathodeLib.Radiosity
                         }
                     }
                 }
+            }
+
+            if (rastDump != null)
+            {
+                try
+                {
+                    System.IO.Directory.CreateDirectory(rastDump);
+                    using (var w = new System.IO.StreamWriter(System.IO.Path.Combine(rastDump,
+                        "rast_" + instance.AtlasX + "_" + instance.AtlasY + ".csv")))
+                    {
+                        w.WriteLine("# instance rect " + instance.AtlasWidth + "x" + instance.AtlasHeight + " @" + instance.AtlasX + "," + instance.AtlasY);
+                        w.WriteLine("moverSlot,moverIndex,quota,claimed,tris,droppedQuota,blockedByOtherLive,uvMin,uvMax,worldXMin,worldXMax");
+                        var uvMin = new Vector2[quota.Length]; var uvMax = new Vector2[quota.Length];
+                        var wxMin = new float[quota.Length]; var wxMax = new float[quota.Length];
+                        for (int m = 0; m < quota.Length; m++) { uvMin[m] = new Vector2(9e9f); uvMax[m] = new Vector2(-9e9f); wxMin[m] = 9e9f; wxMax[m] = -9e9f; }
+                        foreach (int tri in instance.Triangles)
+                        {
+                            int ms = tri < geometry.TriangleMoverSlot.Length ? geometry.TriangleMoverSlot[tri] : 0;
+                            if (ms < 0 || ms >= quota.Length) ms = 0;
+                            for (int v = 0; v < 3; v++)
+                            {
+                                int vi = geometry.Tris[tri * 3 + v];
+                                Vector2 uv = geometry.LightmapUVs[vi];
+                                uvMin[ms] = Vector2.Min(uvMin[ms], uv); uvMax[ms] = Vector2.Max(uvMax[ms], uv);
+                                float wx = geometry.Verts[vi * 3];
+                                if (wx < wxMin[ms]) wxMin[ms] = wx;
+                                if (wx > wxMax[ms]) wxMax[ms] = wx;
+                            }
+                        }
+                        for (int m = 0; m < quota.Length; m++)
+                            w.WriteLine(m + "," + (m < instance.Movers.Count ? instance.Movers[m] : -1) + "," +
+                                quota[m] + "," + claimed[m] + "," + dbgTris[m] + "," + dbgDroppedQuota[m] + "," + dbgBlockedLive[m] + "," +
+                                "(" + uvMin[m].X.ToString("0.00") + ";" + uvMin[m].Y.ToString("0.00") + "),(" + uvMax[m].X.ToString("0.00") + ";" + uvMax[m].Y.ToString("0.00") + ")," +
+                                wxMin[m].ToString("0.00") + "," + wxMax[m].ToString("0.00"));
+                        w.WriteLine("x,y,moverIndex,px,py,pz,nx,ny,nz");
+                        for (int y = instance.AtlasY; y < instance.AtlasY + instance.AtlasHeight; y++)
+                            for (int x = instance.AtlasX; x < instance.AtlasX + instance.AtlasWidth; x++)
+                            {
+                                SurfaceTexel t = texels[y * AtlasSize + x];
+                                if (!t.Live) { w.WriteLine((x - instance.AtlasX) + "," + (y - instance.AtlasY) + ",DEAD"); continue; }
+                                w.WriteLine((x - instance.AtlasX) + "," + (y - instance.AtlasY) + "," + t.MoverIndex + "," +
+                                    t.Position.X.ToString("0.###") + "," + t.Position.Y.ToString("0.###") + "," + t.Position.Z.ToString("0.###") + "," +
+                                    t.Normal.X.ToString("0.##") + "," + t.Normal.Y.ToString("0.##") + "," + t.Normal.Z.ToString("0.##"));
+                            }
+                    }
+                }
+                catch (Exception e) { Console.WriteLine("RASTDUMP failed: " + e.Message); }
             }
         }
 
@@ -2411,6 +3929,66 @@ namespace CathodeLib.Radiosity
                     texels[unclaimed[i]].AlbedoTaps++;
                 }
             }
+        }
+
+        /// <summary>
+        /// Fill dead atlas cells with cluster-only clones of the nearest live cell, within a
+        /// bounded ring search. Cloned cells carry the neighbour's surface (position, normal,
+        /// resolved albedo) but no emissive - the surface-light pass must not gain emitter area -
+        /// and never become surface probes.
+        /// </summary>
+        private static void FillAtlasGutters(SurfaceTexel[] texels, Action<string> log)
+        {
+            // Retail leaves a few percent dead on some slices, so the search is bounded: a dead
+            // cell more than MaxRing cells from any live one stays dead.
+            const int MaxRing = 6;
+            int filled = 0, stillDead = 0;
+            var fills = new List<(int cell, int source)>();
+            for (int y = 0; y < AtlasSize; y++)
+            {
+                for (int x = 0; x < AtlasSize; x++)
+                {
+                    int i = y * AtlasSize + x;
+                    if (texels[i].Live)
+                        continue;
+                    int source = -1;
+                    for (int r = 1; r <= MaxRing && source < 0; r++)
+                    {
+                        for (int dy = -r; dy <= r && source < 0; dy++)
+                        {
+                            for (int dx = -r; dx <= r; dx++)
+                            {
+                                if (Math.Max(Math.Abs(dx), Math.Abs(dy)) != r)
+                                    continue;
+                                int nx = x + dx, ny = y + dy;
+                                if (nx < 0 || ny < 0 || nx >= AtlasSize || ny >= AtlasSize)
+                                    continue;
+                                int n = ny * AtlasSize + nx;
+                                if (texels[n].Live && !texels[n].ClusterOnly) { source = n; break; }
+                            }
+                        }
+                    }
+                    if (source < 0) { stillDead++; continue; }
+                    fills.Add((i, source));
+                }
+            }
+            foreach ((int cell, int source) in fills)
+            {
+                SurfaceTexel s = texels[source];
+                texels[cell] = new SurfaceTexel
+                {
+                    Position = s.Position,
+                    Normal = s.Normal,
+                    Albedo = s.Albedo,
+                    AlbedoTaps = s.AlbedoTaps,
+                    Emissive = Vector3.Zero,
+                    MoverIndex = s.MoverIndex,
+                    Live = true,
+                    ClusterOnly = true
+                };
+                filled++;
+            }
+            log?.Invoke("    atlas gutters: " + filled + " cells filled cluster-only, " + stillDead + " left dead");
         }
 
         /// <summary>
@@ -3297,6 +4875,20 @@ namespace CathodeLib.Radiosity
                 group.Add((cluster, 0.0f));
                 covered.Add(cluster);
             }
+        }
+
+        /// <summary>Rewrite only the weight byte of an influence slot, keeping its cluster index.</summary>
+        private static void WriteInfluenceWeight(RadiosityRuntime.RuntimeDataSlice slice, int influenceSlot, byte weight)
+        {
+            Vector4u8 weights = slice.SurfaceProbeWeights[influenceSlot / 4];
+            switch (influenceSlot & 3)
+            {
+                case 0: weights.X = weight; break;
+                case 1: weights.Y = weight; break;
+                case 2: weights.Z = weight; break;
+                default: weights.W = weight; break;
+            }
+            slice.SurfaceProbeWeights[influenceSlot / 4] = weights;
         }
 
         /// <summary>Weight byte previously written for an influence slot.</summary>
@@ -5033,7 +6625,7 @@ namespace CathodeLib.Radiosity
 
         private static void EmitPairFixups(
             SliceBake receiver, SliceBake emitter, RadiosityRuntime runtime, RadiosityGeometry geometry,
-            RadiosityBakeSettings settings, float maxDist, float maxDistSq)
+            RadiosityBakeSettings settings, float maxDist, float maxDistSq, HashSet<int> skipProbeSlots = null)
         {
             if (receiver?.Texels == null || emitter?.Texels == null)
                 return;
@@ -5069,6 +6661,7 @@ namespace CathodeLib.Radiosity
                 // Only appending to free slots starved every full probe near a slice boundary of
                 // cross-boundary light - and with the soft visibility pass, most probes are full.
                 if (probeSlot < 0) continue;
+                if (skipProbeSlots != null && skipProbeSlots.Contains(probeSlot)) continue;
                 Vector3 p = receiver.Texels[i].Position;
                 if (p.X < emitterMin.X || p.Y < emitterMin.Y || p.Z < emitterMin.Z ||
                     p.X > emitterMax.X || p.Y > emitterMax.Y || p.Z > emitterMax.Z) continue;
@@ -5106,6 +6699,14 @@ namespace CathodeLib.Radiosity
                     float formFactor = cosReceiver * cosEmitter / (float)(Math.PI * distanceSq);
                     if (formFactor <= 1e-5f) continue;
 
+                    // Selection is GEOMETRIC only. Radiance-aware ranking (formFactor x injected-
+                    // energy proxy) was tried and REVERTED: in dim corridors it reaches for the
+                    // brightest clusters in range while retail's links sample the local dim field,
+                    // and with per-probe exp-mass matching that renders dim rooms blown bright
+                    // (CM5 cam11 hit rmse 41.7) - importance sampling without dividing out the
+                    // importance. Geometry-ranked links inherit the local field like retail's.
+                    float rank = formFactor;
+
                     // Strict visibility here, unlike the soft test the in-slice solve uses. Relaxing
                     // it to VisibleSoft was measured on ChallengeMap4: fixups 46769 -> 59405
                     // (retail 78294) but mean rmse 12.49 -> 13.17, because the extra energy lands
@@ -5114,7 +6715,7 @@ namespace CathodeLib.Radiosity
                     if (!geometry.Visible(origin, other.Position + other.Normal * settings.ProbeSurfaceOffset, settings.RayEpsilon))
                         continue;
 
-                    candidates.Add((otherTexel, formFactor, distance, cosReceiver * cosEmitter));
+                    candidates.Add((otherTexel, rank, distance, cosReceiver * cosEmitter));
                 }
 
                 if (candidates.Count == 0)
@@ -5122,6 +6723,15 @@ namespace CathodeLib.Radiosity
 
                 candidates.Sort((a, b) => b.weight.CompareTo(a.weight));
                 var emittedList = new List<RadiosityRuntime.RuntimeInfluenceFixup>();
+
+                // Working copy of the probe's slot weights, updated as fixups claim slots. The
+                // base entries stay as written (a fixup rewrites its slot only when applied),
+                // but WITHOUT the overlay every replacement candidate re-picked the same weakest
+                // base slot, and the engine - applying the range in order - left that slot
+                // holding the WEAKEST candidate instead of the strongest.
+                var slotWeights = new byte[InfluencesPerProbe];
+                for (int k = 0; k < InfluencesPerProbe; k++)
+                    slotWeights[k] = ReadInfluenceWeight(receiver.Slice, probeSlot * InfluencesPerProbe + k);
 
                 foreach ((int texel, float weight, float distance, float cosProduct) in candidates)
                 {
@@ -5137,21 +6747,19 @@ namespace CathodeLib.Radiosity
                     }
                     else
                     {
-                        // No free slot: replace the weakest in-slice influence, but only when this
-                        // link is genuinely stronger. Both sides use the same weight curve, so the
-                        // bytes compare directly.
+                        // No free slot: replace the weakest influence, but only when this link is
+                        // genuinely stronger. Both sides use the same weight curve, so the bytes
+                        // compare directly.
                         targetSlot = -1;
                         byte weakest = 255;
                         for (int k = 0; k < InfluencesPerProbe; k++)
                         {
-                            byte existing = ReadInfluenceWeight(receiver.Slice, probeSlot * InfluencesPerProbe + k);
-                            if (existing < weakest) { weakest = existing; targetSlot = k; }
+                            if (slotWeights[k] < weakest) { weakest = slotWeights[k]; targetSlot = k; }
                         }
                         if (targetSlot < 0 || fixupWeight <= weakest)
                             break;
-                        // The base entry stays as written: a fixup rewrites the slot when it is
-                        // applied, and until then the in-slice link remains a valid fallback.
                     }
+                    slotWeights[targetSlot] = fixupWeight;
 
                     int weightOffset = probeSlot * InfluencesPerProbe + targetSlot;
                     ClusterRef(texel, out byte clusterX, out byte clusterY);
@@ -5180,6 +6788,409 @@ namespace CathodeLib.Radiosity
             // Append serially so the fixup array stays grouped by (slice, neighbour) pair.
             foreach (List<RadiosityRuntime.RuntimeInfluenceFixup> list in perProbe)
                 if (list != null) runtime.InfluenceFixups.AddRange(list);
+        }
+
+        /// <summary>
+        /// Neighbour entries and cross-slice fixups for a freshly appended delta slice, so its
+        /// probes can gather bounce from the retail clusters around them.
+        /// </summary>
+        /// <remarks>
+        /// A delta slice is self-contained for DIRECT light - every level light in reach of its
+        /// probes got a light slice at bake time - but the surrounding room's bounce lives in the
+        /// clusters of whichever retail slice owns it, and influence indices cannot cross slices
+        /// except through fixups. Without these, geometry moved into or added inside an existing
+        /// room renders with direct light only, which for a mostly indirectly-lit wall is
+        /// near-black (the CM3 cam9 moved-vent-wall test). Only the delta slice receives: its
+        /// neighbour table is appended at the tail of the flattened arrays, so nothing retail
+        /// shipped moves.
+        /// </remarks>
+        private static int AppendDeltaFixups(
+            Level level, RadiosityRuntime runtime, SliceBake bake, int newSliceIndex,
+            RadiosityGeometry geometry, RadiosityBakeSettings settings, Action<string> log)
+        {
+            if (!settings.EmitCrossSliceFixups || bake?.Texels == null || newSliceIndex == 0)
+            {
+                runtime.SliceNeighbourArrayOffsets.Add((short)runtime.FlattenedOtherSliceIndices.Count);
+                runtime.SliceNeighbourCounts.Add(0);
+                return 0;
+            }
+
+            // TEMPLATE CLONING for MOVED content: a delta probe whose mover simply translated
+            // copies the ENTIRE influence list - clusters and weights verbatim - of the nearest
+            // retail surface probe at its pre-move position. That is retail's own solved answer
+            // for that exact spot: every weight-level calibration scheme tried (global bias,
+            // per-probe exp-mass matching, radiance-aware ranking) fixed one room while breaking
+            // another, because the same composite needs opposite corrections in a bright records
+            // room and a dim corridor - the difference is WHICH clusters retail linked, not how
+            // hard. Cloned probes need no calibration at all; the geometric path below covers
+            // probes with no retail predecessor (genuinely new content).
+            var claimed = new HashSet<int>();
+            var clonesBySlice = new Dictionary<int, List<RadiosityRuntime.RuntimeInfluenceFixup>>();
+            int cloned = 0;
+            // With the donor shell on, cloning is OFF: a cloned diet routes ALL of a probe's
+            // gather through the saturating fixup path (0.38x on the CM9 rack even with retail's
+            // own weights), which is exactly what the in-slice donors exist to avoid.
+            if (settings.RetailTransforms != null && !settings.DeltaDonorShell)
+            {
+                // Per-mover translation since pristine.
+                var moveDelta = new Dictionary<int, Vector3>();
+                for (int m = 0; m < level.Movers.Entries.Count; m++)
+                {
+                    Movers.MOVER_DESCRIPTOR mover = level.Movers.Entries[m];
+                    if (mover.Resource == null) continue;
+                    ulong key = ((ulong)mover.Resource.composite_instance_id.AsUInt32 << 32) | mover.Resource.resource_id.AsUInt32;
+                    if (!settings.RetailTransforms.TryGetValue(key, out System.Numerics.Matrix4x4 pristineT)) continue;
+                    var d = new Vector3(mover.Transform.M41 - pristineT.M41,
+                                        mover.Transform.M42 - pristineT.M42,
+                                        mover.Transform.M43 - pristineT.M43);
+                    if (d.LengthSquared() > 1e-6f)
+                        moveDelta[m] = d;
+                }
+
+                if (moveDelta.Count > 0)
+                {
+                    // Retail probe lookup grid: position -> (slice, slot).
+                    const float cloneRadius = 1.0f;
+                    var probeGrid = new Dictionary<(int, int, int), List<(Vector3 pos, int slice, int slot)>>();
+                    (int, int, int) PCell(Vector3 v) =>
+                        ((int)Math.Floor(v.X / cloneRadius), (int)Math.Floor(v.Y / cloneRadius), (int)Math.Floor(v.Z / cloneRadius));
+                    for (int s = 0; s < newSliceIndex; s++)
+                    {
+                        RadiosityRuntime.RuntimeDataSlice retail = runtime.Slices[s];
+                        for (int slot = 0; slot < retail.SurfaceProbePositions.Count; slot++)
+                        {
+                            Vector4 p = retail.SurfaceProbePositions[slot];
+                            if (p.W == 0) continue;
+                            var pos = new Vector3(p.X, p.Y, p.Z);
+                            (int, int, int) key = PCell(pos);
+                            if (!probeGrid.TryGetValue(key, out List<(Vector3, int, int)> list))
+                                probeGrid[key] = list = new List<(Vector3, int, int)>();
+                            list.Add((pos, s, slot));
+                        }
+                    }
+
+                    // A template is only usable if it actually EATS something: the probe arrays
+                    // carry padding slots with live positions but all-zero (or out-of-range)
+                    // influence lists, and cloning one of those stamped 32 zero-weights onto the
+                    // delta probe AND claimed it away from the geometric fallback - 13 of the
+                    // moved CM9 server rack's 45 probes went pitch black exactly this way.
+                    var dietCache = new Dictionary<(int, int), int>();
+                    int DietSlots((int slice, int slot) key)
+                    {
+                        if (dietCache.TryGetValue(key, out int cached)) return cached;
+                        RadiosityRuntime.RuntimeDataSlice sl = runtime.Slices[key.slice];
+                        int nonZero = 0;
+                        for (int k = 0; k < InfluencesPerProbe; k++)
+                            if (ReadInfluenceWeight(sl, key.slot * InfluencesPerProbe + k) > 0)
+                                nonZero++;
+                        dietCache[key] = nonZero;
+                        return nonZero;
+                    }
+
+                    for (int t = 0; t < AtlasTexels; t++)
+                    {
+                        if (!bake.Texels[t].Live) continue;
+                        int probeSlot = bake.SurfaceSlotForTexel[t];
+                        if (probeSlot < 0 || claimed.Contains(probeSlot)) continue;
+                        if (!moveDelta.TryGetValue(bake.Texels[t].MoverIndex, out Vector3 delta)) continue;
+
+                        Vector3 target = bake.Texels[t].Position - delta;
+                        //Two tiers: nearest healthy template (at least half a diet), else nearest
+                        //with ANY diet. A probe with no live-diet template within radius stays
+                        //unclaimed for the geometric path.
+                        int bestSlice = -1, bestSlot = -1, fallSlice = -1, fallSlot = -1;
+                        float bestD = cloneRadius * cloneRadius, fallD = cloneRadius * cloneRadius;
+                        (int cx, int cy, int cz) = PCell(target);
+                        for (int dx = -1; dx <= 1; dx++)
+                            for (int dy = -1; dy <= 1; dy++)
+                                for (int dz = -1; dz <= 1; dz++)
+                                {
+                                    if (!probeGrid.TryGetValue((cx + dx, cy + dy, cz + dz), out List<(Vector3 pos, int slice, int slot)> list))
+                                        continue;
+                                    foreach ((Vector3 pp, int ps, int pslot) in list)
+                                    {
+                                        float d2 = Vector3.DistanceSquared(pp, target);
+                                        if (d2 >= bestD && d2 >= fallD) continue;
+                                        int diet = DietSlots((ps, pslot));
+                                        if (diet >= InfluencesPerProbe / 2)
+                                        {
+                                            if (d2 < bestD) { bestD = d2; bestSlice = ps; bestSlot = pslot; }
+                                        }
+                                        else if (diet > 0)
+                                        {
+                                            if (d2 < fallD) { fallD = d2; fallSlice = ps; fallSlot = pslot; }
+                                        }
+                                    }
+                                }
+                        if (bestSlice < 0) { bestSlice = fallSlice; bestSlot = fallSlot; }
+                        if (bestSlice < 0) continue;
+
+                        RadiosityRuntime.RuntimeDataSlice template = runtime.Slices[bestSlice];
+                        if (!clonesBySlice.TryGetValue(bestSlice, out List<RadiosityRuntime.RuntimeInfluenceFixup> clones))
+                            clonesBySlice[bestSlice] = clones = new List<RadiosityRuntime.RuntimeInfluenceFixup>();
+                        // ALL 32 slots are cloned, zero weights included, so the probe's diet is
+                        // a full replacement - a base link left live under an uncloned slot would
+                        // re-mix our approximation into retail's answer.
+                        for (int k = 0; k < InfluencesPerProbe; k++)
+                        {
+                            int srcSlot = bestSlot * InfluencesPerProbe + k;
+                            byte w = ReadInfluenceWeight(template, srcSlot);
+                            ColourRGBA8 idx = template.SurfaceProbeInfluences[srcSlot / 2];
+                            byte ix = (srcSlot & 1) == 0 ? idx.R : idx.B;
+                            byte iy = (srcSlot & 1) == 0 ? idx.G : idx.A;
+                            int dstOffset = probeSlot * InfluencesPerProbe + k;
+                            clones.Add(new RadiosityRuntime.RuntimeInfluenceFixup
+                            {
+                                WeightTexOffset = dstOffset,
+                                InflTexOffset = dstOffset * 2,
+                                Weight = w,
+                                Padding = 0,
+                                ClusterTex = new Vector2u8 { X = ix, Y = iy }
+                            });
+                        }
+                        claimed.Add(probeSlot);
+                        cloned++;
+                    }
+                }
+            }
+            if (cloned > 0)
+                log?.Invoke("    delta fixups: " + cloned + " moved probes cloned retail influence lists verbatim");
+
+            // Donor-fed probes with an (almost) full native diet need no cross-slice links at
+            // all; the geometric pass below only tops up the starved ones (occluded corners,
+            // shell-edge probes). A saturated cross-slice link that replaces a native link is a
+            // strict loss even at a higher weight byte.
+            if (settings.DeltaDonorShell && bake.UsedInfluenceSlots != null)
+            {
+                int wellFed = 0;
+                for (int slot = 0; slot < bake.UsedInfluenceSlots.Length; slot++)
+                    if (bake.UsedInfluenceSlots[slot] >= InfluencesPerProbe * 3 / 4 && claimed.Add(slot))
+                        wellFed++;
+                if (wellFed > 0)
+                    log?.Invoke("    delta fixups: " + wellFed + " donor-fed probes keep native diets");
+            }
+
+            // Geometric fixups for the remaining (new-content) probes: gathering from each retail
+            // slice's clusters under the delta-specific per-probe cap.
+            float maxDist = settings.MaxInfluenceDistance;
+            int total = 0;
+            var ourEntries = new List<(byte neighbour, RadiosityRuntime.FixupRange range)>();
+            int fullBakeCap = settings.MaxCrossSliceFixupsPerProbe;
+            settings.MaxCrossSliceFixupsPerProbe = Math.Max(fullBakeCap, settings.DeltaCrossSliceFixupsPerProbe);
+            try
+            {
+                for (int s = 0; s < newSliceIndex; s++)
+                {
+                    SliceBake emitter = RetailEmitterBake(runtime.Slices[s]);
+                    if (emitter == null)
+                        continue;
+                    int first = runtime.InfluenceFixups.Count;
+                    if (clonesBySlice.TryGetValue(s, out List<RadiosityRuntime.RuntimeInfluenceFixup> clones))
+                        runtime.InfluenceFixups.AddRange(clones);
+                    EmitPairFixups(bake, emitter, runtime, geometry, settings, maxDist, maxDist * maxDist, claimed);
+                    int emitted = runtime.InfluenceFixups.Count - first;
+                    ourEntries.Add(((byte)s, new RadiosityRuntime.FixupRange { First = first, Num = emitted }));
+                    total += emitted;
+                    if (emitted > 0)
+                        log?.Invoke("    delta fixups: " + emitted + " gathering from retail slice " + s);
+                }
+            }
+            finally
+            {
+                settings.MaxCrossSliceFixupsPerProbe = fullBakeCap;
+            }
+
+            // Retail neighbour tables are SYMMETRIC on every level (each slice lists every other),
+            // so the retail slices must list the delta slice back - with empty ranges, since
+            // nothing retail gathers from us yet - or the engine may never walk our pair. The
+            // flattened arrays are rebuilt with shifted offsets; the ranges themselves index the
+            // global fixup array and survive the reorder untouched.
+            var lists = new List<(byte neighbour, RadiosityRuntime.FixupRange range)>[newSliceIndex + 1];
+            for (int s = 0; s < newSliceIndex; s++)
+            {
+                lists[s] = new List<(byte, RadiosityRuntime.FixupRange)>();
+                int offset = runtime.SliceNeighbourArrayOffsets[s];
+                int count = runtime.SliceNeighbourCounts[s];
+                for (int n = 0; n < count; n++)
+                    lists[s].Add((runtime.FlattenedOtherSliceIndices[offset + n], runtime.FlattenedFixupRanges[offset + n]));
+                lists[s].Add(((byte)newSliceIndex, new RadiosityRuntime.FixupRange { First = 0, Num = 0 }));
+            }
+            lists[newSliceIndex] = ourEntries;
+
+            // Retail's convention, measured on every CM9 slice (52,668 fixups, 100.0%): the BASE
+            // weight byte under a fixup slot is ZERO - the zero is the "this slot is externally
+            // fed" marker. We left our geometric in-slice weights standing under 1,176 of the
+            // delta fixups, and slots where base and fixup disagree are exactly where the engine
+            // can pick the wrong side. Zero every base byte a fixup overrides.
+            {
+                RadiosityRuntime.RuntimeDataSlice deltaSlice = runtime.Slices[newSliceIndex];
+                int zeroed = 0;
+                foreach ((byte neighbour, RadiosityRuntime.FixupRange range) in ourEntries)
+                    for (int i = range.First; i < range.First + range.Num && i < runtime.InfluenceFixups.Count; i++)
+                    {
+                        int slot = runtime.InfluenceFixups[i].WeightTexOffset;
+                        if (ReadInfluenceWeight(deltaSlice, slot) != 0)
+                        {
+                            WriteInfluenceWeight(deltaSlice, slot, 0);
+                            zeroed++;
+                        }
+                    }
+                if (zeroed > 0)
+                    log?.Invoke("    delta fixups: zeroed " + zeroed + " base weights under fixup slots (retail convention)");
+            }
+
+            runtime.SliceNeighbourCounts.Clear();
+            runtime.SliceNeighbourArrayOffsets.Clear();
+            runtime.FlattenedOtherSliceIndices.Clear();
+            runtime.FlattenedFixupRanges.Clear();
+            foreach (List<(byte neighbour, RadiosityRuntime.FixupRange range)> list in lists)
+            {
+                runtime.SliceNeighbourArrayOffsets.Add((short)runtime.FlattenedOtherSliceIndices.Count);
+                runtime.SliceNeighbourCounts.Add((byte)list.Count);
+                foreach ((byte neighbour, RadiosityRuntime.FixupRange range) in list)
+                {
+                    runtime.FlattenedOtherSliceIndices.Add(neighbour);
+                    runtime.FlattenedFixupRanges.Add(range);
+                }
+            }
+            return total;
+        }
+
+        /// <summary>
+        /// Wrap a shipped slice's clusters as an emitter <see cref="EmitPairFixups"/> can read.
+        /// </summary>
+        /// <remarks>
+        /// Cluster world positions decode from the half4 ClusterPositions array, which is indexed
+        /// by atlas texel exactly as a fixup's ClusterTex expects. Cluster normals are not stored;
+        /// each takes the normal of the nearest live input probe - input probes sit on the same
+        /// surfaces, but their tiled layout makes a direct texel join impossible.
+        /// </remarks>
+        private static SliceBake RetailEmitterBake(RadiosityRuntime.RuntimeDataSlice retail)
+        {
+            if (retail?.ClusterPositions == null || retail.ClusterPositions.Count < AtlasTexels)
+                return null;
+
+            var probePositions = new List<Vector3>();
+            var probeNormals = new List<Vector3>();
+            int probeEntries = Math.Min(retail.InputProbePositions?.Count ?? 0, retail.InputProbeNormals?.Count ?? 0);
+            for (int i = 0; i < probeEntries; i++)
+            {
+                Vector4u16 p = retail.InputProbePositions[i];
+                if (p.W == 0)
+                    continue;
+                ColourRGBA8 enc = retail.InputProbeNormals[i];
+                var normal = new Vector3(enc.R / 127.5f - 1.0f, enc.G / 127.5f - 1.0f, enc.B / 127.5f - 1.0f);
+                float length = normal.Length();
+                probePositions.Add(FromHalf3(p));
+                probeNormals.Add(length > 1e-3f ? normal / length : Vector3.UnitY);
+            }
+            if (probePositions.Count == 0)
+                return null;
+
+            const float cellSize = 2.0f;
+            (int, int, int) Cell(Vector3 v) =>
+                ((int)Math.Floor(v.X / cellSize), (int)Math.Floor(v.Y / cellSize), (int)Math.Floor(v.Z / cellSize));
+            var cells = new Dictionary<(int, int, int), List<int>>();
+            for (int i = 0; i < probePositions.Count; i++)
+            {
+                (int, int, int) key = Cell(probePositions[i]);
+                if (!cells.TryGetValue(key, out List<int> list))
+                    cells[key] = list = new List<int>();
+                list.Add(i);
+            }
+
+            var texels = new SurfaceTexel[AtlasTexels];
+            var inputProbeForTexel = new int[AtlasTexels];
+            for (int t = 0; t < AtlasTexels; t++)
+            {
+                inputProbeForTexel[t] = -1;
+                Vector4u16 c = retail.ClusterPositions[t];
+                if (c.W == 0)
+                    continue;
+                Vector3 position = FromHalf3(c);
+
+                int best = -1;
+                float bestDistSq = float.MaxValue;
+                (int cx, int cy, int cz) = Cell(position);
+                for (int ring = 1; ring <= 3 && best < 0; ring++)
+                {
+                    for (int dx = -ring; dx <= ring; dx++)
+                        for (int dy = -ring; dy <= ring; dy++)
+                            for (int dz = -ring; dz <= ring; dz++)
+                            {
+                                if (!cells.TryGetValue((cx + dx, cy + dy, cz + dz), out List<int> list))
+                                    continue;
+                                foreach (int i in list)
+                                {
+                                    float d = Vector3.DistanceSquared(position, probePositions[i]);
+                                    if (d < bestDistSq) { bestDistSq = d; best = i; }
+                                }
+                            }
+                }
+                if (best < 0)
+                    continue;
+                texels[t].Live = true;
+                texels[t].Position = position;
+                texels[t].Normal = probeNormals[best];
+                inputProbeForTexel[t] = best;
+            }
+
+            // Brightness proxy per cluster texel: the slice's own surface-light injections
+            // (Weight x Scale at each sampled input probe) summed within a short radius, plus a
+            // floor so unlit-but-bounced areas keep a nonzero score. Selection-only - the
+            // emitted fixup weight byte still comes from the geometric curve.
+            var proxy = new float[AtlasTexels];
+            const float ambientFloor = 0.05f;
+            var lights = retail.SurfaceLights?.Lights;
+            if (lights != null && lights.Count > 0)
+            {
+                var injections = new List<(Vector3 pos, float energy)>();
+                foreach (RadiosityRuntime.RuntimeSurfaceLights.Light l in lights)
+                {
+                    int texel = l.V * ProbeTexWidth + l.U;
+                    if (texel < 0 || texel >= retail.InputProbePositions.Count)
+                        continue;
+                    Vector4u16 ip = retail.InputProbePositions[texel];
+                    if (ip.W == 0)
+                        continue;
+                    injections.Add((new Vector3(FromHalf(ip.X), FromHalf(ip.Y), FromHalf(ip.Z)),
+                                    l.Weight * (l.Scale / 255.0f)));
+                }
+                const float reach = 2.5f;
+                var injGrid = new Dictionary<(int, int, int), List<int>>();
+                (int, int, int) InjCell(Vector3 v) =>
+                    ((int)Math.Floor(v.X / reach), (int)Math.Floor(v.Y / reach), (int)Math.Floor(v.Z / reach));
+                for (int i = 0; i < injections.Count; i++)
+                {
+                    (int, int, int) key = InjCell(injections[i].pos);
+                    if (!injGrid.TryGetValue(key, out List<int> list))
+                        injGrid[key] = list = new List<int>();
+                    list.Add(i);
+                }
+                for (int t = 0; t < AtlasTexels; t++)
+                {
+                    if (!texels[t].Live) continue;
+                    float sum = ambientFloor;
+                    (int gx, int gy, int gz) = InjCell(texels[t].Position);
+                    for (int dx = -1; dx <= 1; dx++)
+                        for (int dy = -1; dy <= 1; dy++)
+                            for (int dz = -1; dz <= 1; dz++)
+                            {
+                                if (!injGrid.TryGetValue((gx + dx, gy + dy, gz + dz), out List<int> list))
+                                    continue;
+                                foreach (int i in list)
+                                    if (Vector3.DistanceSquared(texels[t].Position, injections[i].pos) < reach * reach)
+                                        sum += injections[i].energy;
+                            }
+                    proxy[t] = sum;
+                }
+            }
+            else
+            {
+                for (int t = 0; t < AtlasTexels; t++) proxy[t] = ambientFloor;
+            }
+
+            return new SliceBake { Texels = texels, InputProbeForTexel = inputProbeForTexel, TexelRadianceProxy = proxy };
         }
 
         #endregion
@@ -5242,6 +7253,685 @@ namespace CathodeLib.Radiosity
             Z = ToHalf(v.Z),
             W = ToHalf(w)
         };
+
+        /// <summary>
+        /// Deep-copy a slice through its own serialiser: complete by construction, and exactly
+        /// what Save would emit for it right now. Entity indices stay raw;
+        /// <see cref="RadiosityRuntime"/>'s save-time resolution walks every slice, clones
+        /// included, so a clone's light references track the source's.
+        /// </summary>
+        private static RadiosityRuntime.RuntimeDataSlice CloneSlice(RadiosityRuntime.RuntimeDataSlice slice)
+        {
+            using (var ms = new System.IO.MemoryStream())
+            {
+                using (var w = new System.IO.BinaryWriter(ms, System.Text.Encoding.UTF8, true))
+                    slice.Write(w);
+                ms.Position = 0;
+                using (var r = new System.IO.BinaryReader(ms))
+                    return new RadiosityRuntime.RuntimeDataSlice(r);
+            }
+        }
+
+        /// <summary>
+        /// Append symmetric neighbour-table entries for the slice just added to
+        /// <see cref="RadiosityRuntime.Slices"/>: every pair involving it gets an EMPTY fixup
+        /// range (retail's tables list every slice from every other), and every existing range
+        /// survives untouched - ranges index the global fixup array and are order-independent.
+        /// </summary>
+        private static void AppendEmptyNeighbourEntries(RadiosityRuntime runtime)
+        {
+            int newIndex = runtime.Slices.Count - 1;
+            var lists = new List<(byte n, RadiosityRuntime.FixupRange r)>[newIndex + 1];
+            for (int s = 0; s < newIndex; s++)
+            {
+                lists[s] = new List<(byte, RadiosityRuntime.FixupRange)>();
+                int offset = runtime.SliceNeighbourArrayOffsets[s];
+                int count = runtime.SliceNeighbourCounts[s];
+                for (int n = 0; n < count; n++)
+                    lists[s].Add((runtime.FlattenedOtherSliceIndices[offset + n], runtime.FlattenedFixupRanges[offset + n]));
+                lists[s].Add(((byte)newIndex, new RadiosityRuntime.FixupRange { First = 0, Num = 0 }));
+            }
+            lists[newIndex] = new List<(byte, RadiosityRuntime.FixupRange)>();
+            for (int s = 0; s < newIndex; s++)
+                lists[newIndex].Add(((byte)s, new RadiosityRuntime.FixupRange { First = 0, Num = 0 }));
+
+            runtime.SliceNeighbourCounts.Clear();
+            runtime.SliceNeighbourArrayOffsets.Clear();
+            runtime.FlattenedOtherSliceIndices.Clear();
+            runtime.FlattenedFixupRanges.Clear();
+            foreach (List<(byte n, RadiosityRuntime.FixupRange r)> list in lists)
+            {
+                runtime.SliceNeighbourArrayOffsets.Add((short)runtime.FlattenedOtherSliceIndices.Count);
+                runtime.SliceNeighbourCounts.Add((byte)list.Count);
+                foreach ((byte n, RadiosityRuntime.FixupRange r) in list)
+                {
+                    runtime.FlattenedOtherSliceIndices.Add(n);
+                    runtime.FlattenedFixupRanges.Add(r);
+                }
+            }
+        }
+
+        /// <summary>Closest point on triangle (a,b,c) to p - the standard region walk.</summary>
+        private static Vector3 ClosestOnTriangle(Vector3 p, Vector3 a, Vector3 b, Vector3 c)
+        {
+            Vector3 ab = b - a, ac = c - a, ap = p - a;
+            float d1 = Vector3.Dot(ab, ap), d2 = Vector3.Dot(ac, ap);
+            if (d1 <= 0 && d2 <= 0) return a;
+            Vector3 bp = p - b;
+            float d3 = Vector3.Dot(ab, bp), d4 = Vector3.Dot(ac, bp);
+            if (d3 >= 0 && d4 <= d3) return b;
+            float vc = d1 * d4 - d3 * d2;
+            if (vc <= 0 && d1 >= 0 && d3 <= 0) return a + ab * (d1 / (d1 - d3));
+            Vector3 cp = p - c;
+            float d5 = Vector3.Dot(ab, cp), d6 = Vector3.Dot(ac, cp);
+            if (d6 >= 0 && d5 <= d6) return c;
+            float vb = d5 * d2 - d1 * d6;
+            if (vb <= 0 && d2 >= 0 && d6 <= 0) return a + ac * (d2 / (d2 - d6));
+            float va = d3 * d6 - d5 * d4;
+            if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0)
+                return b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6)));
+            float denom = 1.0f / (va + vb + vc);
+            return a + ab * (vb * denom) + ac * (vc * denom);
+        }
+
+        /// <summary>
+        /// Graft edited retail-bound islands into byte-clones of their retail slices.
+        /// </summary>
+        /// <remarks>
+        /// <para>The parity finding this rests on (the slicedup control): an APPENDED slice
+        /// relights at 0.96x retail when it carries retail bytes - while every slice we bake
+        /// ourselves delivers roughly half of retail's field however the diets reach it (cloned
+        /// fixups 0.38x, native donor-fed diets 0.35x on the CM9 rack; injection, connectivity
+        /// and weights all measured retail-grade in isolation - equilibrium fields resist
+        /// term-by-term matching). So: keep retail's field, byte-cloned, and surgically replace
+        /// only the edited island's own rect inside it.</para>
+        /// <para>The island keeps its retail id (in range of every per-island state table - a
+        /// beyond-range id measured 0.35x vs 0.47x alone), its rect coordinates, and its
+        /// instance-map rows. Its movers leave the delta census, so the patcher restores their
+        /// retail MODEL_PARAMS; the only visible change is InstanceSliceIndices[id] -> clone.
+        /// Within the clone: the rect's clusters and probe slots are re-fed from a fresh
+        /// rasterisation of the CURRENT geometry, texel-coincident input probes follow their
+        /// texels (untouched mates keep retail albedo bytes), and the island's surface probes
+        /// get fresh diets solved against the clone's retail cluster field - in-slice, no
+        /// fixups - each self-calibrated to the exp mass its own slot carried in retail.</para>
+        /// <para>v1 limits: retail Scale/Weight light injection onto the island's own probes
+        /// describes the pre-move position (fine for nudges); texels newly live where retail
+        /// was dead get no scatter self-pairs; islands whose movers do not cover the whole
+        /// retail island fall through to the appended-slice path.</para>
+        /// </remarks>
+        /// <summary>
+        /// A mover that purely TRANSLATED (rotation unchanged, shift under maxDelta) keeps its
+        /// texels' RETAIL diets and probe bytes in a graft: the cluster set a diet gathers is
+        /// the ROOM, which did not move. Isolated on the CM9 partial-move test: the unmoved
+        /// mates' texels changed nothing but their diets, and the mates halved (0.50x) exactly
+        /// like the moved rack - fresh diets on a byte-retail field deliver ~half of retail's
+        /// own diets even exp-mass-matched, while slid retail diets render 0.86x.
+        /// </summary>
+        private static bool MoverPurelyTranslated(Level level, RadiosityBakeSettings settings, int moverIndex, float maxDelta)
+        {
+            if (settings.RetailTransforms == null || moverIndex < 0 || moverIndex >= level.Movers.Entries.Count)
+                return false;
+            Movers.MOVER_DESCRIPTOR mv = level.Movers.Entries[moverIndex];
+            if (mv.Resource == null)
+                return false;
+            ulong k = ((ulong)mv.Resource.composite_instance_id.AsUInt32 << 32) | mv.Resource.resource_id.AsUInt32;
+            if (!settings.RetailTransforms.TryGetValue(k, out System.Numerics.Matrix4x4 pristine))
+                return false;
+            System.Numerics.Matrix4x4 cur = mv.Transform;
+            float rotDiff =
+                Math.Abs(cur.M11 - pristine.M11) + Math.Abs(cur.M12 - pristine.M12) + Math.Abs(cur.M13 - pristine.M13) +
+                Math.Abs(cur.M21 - pristine.M21) + Math.Abs(cur.M22 - pristine.M22) + Math.Abs(cur.M23 - pristine.M23) +
+                Math.Abs(cur.M31 - pristine.M31) + Math.Abs(cur.M32 - pristine.M32) + Math.Abs(cur.M33 - pristine.M33);
+            if (rotDiff > 0.01f)
+                return false;
+            var delta = new Vector3(cur.M41 - pristine.M41, cur.M42 - pristine.M42, cur.M43 - pristine.M43);
+            return delta.Length() < maxDelta;
+        }
+
+        private static int GraftDeltaIslands(
+            Level level, RadiosityRuntime runtime, RadiosityGeometry geometry,
+            List<RadiosityGeometry.Instance> deltaInstances, RadiosityBakeSettings settings,
+            HashSet<int> deltaMovers, Action<string> log)
+        {
+            if (level.RadiosityInstanceMap?.Entries == null || settings.RetailModelParams == null)
+                return 0;
+            int retailSliceCount = runtime.Slices.Count;
+
+            // Every resource key each island id binds, for the whole-island coverage gate.
+            var keysForIsland = new Dictionary<int, HashSet<ulong>>();
+            foreach (RadiosityInstanceMap.Entry e in level.RadiosityInstanceMap.Entries)
+            {
+                Resources.Resource r = e.Resource ?? level.Resources.GetAtWriteIndex(e.resource_index);
+                if (r == null) continue;
+                ulong k = ((ulong)r.composite_instance_id.AsUInt32 << 32) | r.resource_id.AsUInt32;
+                if (!keysForIsland.TryGetValue(e.lightmap_transform, out HashSet<ulong> ks))
+                    keysForIsland[e.lightmap_transform] = ks = new HashSet<ulong>();
+                ks.Add(k);
+            }
+
+            var cloneForSlice = new Dictionary<int, int>();
+            var work = new List<(RadiosityGeometry.Instance instance, int islandId, int cloneIndex,
+                                 int rx, int ry, int rw, int rh, SurfaceTexel[] texels,
+                                 int[] slotForTexel, Dictionary<int, double> retailMass)>();
+
+            // ---- pass 1: clone slices, rasterise, transplant clusters/mangle/input probes ----
+            foreach (RadiosityGeometry.Instance instance in deltaInstances)
+            {
+                int islandId = instance.RetailIslandId;
+                if (islandId < 0 || islandId >= runtime.InstanceSliceIndices.Count) continue;
+                int retailSlice = runtime.InstanceSliceIndices[islandId];
+                if (retailSlice < 0 || retailSlice >= retailSliceCount) continue;
+
+                var instanceKeys = new HashSet<ulong>();
+                foreach (int m in instance.Movers)
+                {
+                    Movers.MOVER_DESCRIPTOR mv = level.Movers.Entries[m];
+                    if (mv.Resource != null)
+                        instanceKeys.Add(((ulong)mv.Resource.composite_instance_id.AsUInt32 << 32) | mv.Resource.resource_id.AsUInt32);
+                }
+                if (!keysForIsland.TryGetValue(islandId, out HashSet<ulong> islandKeys) ||
+                    islandKeys.Any(k => !instanceKeys.Contains(k)))
+                {
+                    log?.Invoke("    delta graft: island " + islandId + " not fully covered by the instance - appended path");
+                    continue;
+                }
+
+                // RELOCATIONS (any mover translated beyond 2m) cannot graft: the island's
+                // retail light-slice injection (Scale/Weight per input probe) describes the OLD
+                // position, and an in-place graft keeps it. The appended path builds native
+                // lights at the destination instead. Stale-identity RetailTransforms entries
+                // (pristine at the exact origin - the CM9 FX family) are carries, not moves.
+                bool movedFar = false;
+                foreach (int m in instance.Movers)
+                {
+                    Movers.MOVER_DESCRIPTOR mv = level.Movers.Entries[m];
+                    if (mv.Resource == null || settings.RetailTransforms == null) continue;
+                    ulong k = ((ulong)mv.Resource.composite_instance_id.AsUInt32 << 32) | mv.Resource.resource_id.AsUInt32;
+                    if (!settings.RetailTransforms.TryGetValue(k, out System.Numerics.Matrix4x4 pristine)) continue;
+                    if (pristine.M41 == 0 && pristine.M42 == 0 && pristine.M43 == 0) continue;
+                    var d3 = new Vector3(mv.Transform.M41 - pristine.M41,
+                                         mv.Transform.M42 - pristine.M42,
+                                         mv.Transform.M43 - pristine.M43);
+                    if (d3.Length() > 2.0f) { movedFar = true; break; }
+                }
+                if (movedFar)
+                {
+                    log?.Invoke("    delta graft: island " + islandId + " relocated beyond graft reach - appended path (native lights at the destination)");
+                    continue;
+                }
+
+                // Retail rect from any member's pristine MODEL_PARAMS.
+                int rx = -1, ry = -1, rw = 0, rh = 0;
+                foreach (ulong k in instanceKeys)
+                {
+                    if (!settings.RetailModelParams.TryGetValue(k, out byte[] mp) || mp.Length < 16) continue;
+                    int w = (int)Math.Round(BitConverter.ToSingle(mp, 0) + 0.5f);
+                    int h = (int)Math.Round(BitConverter.ToSingle(mp, 4) + 0.5f);
+                    int x = (int)Math.Round(BitConverter.ToSingle(mp, 8));
+                    int y = (int)Math.Round(BitConverter.ToSingle(mp, 12));
+                    if (w >= 1 && w <= 128 && h >= 1 && h <= 128 && x >= 0 && y >= 0 && x + w <= AtlasSize && y + h <= AtlasSize)
+                    { rx = x; ry = y; rw = w; rh = h; break; }
+                }
+                if (rx < 0)
+                    continue;
+
+                // IN PLACE, no clone: the graft only touches this island's own rect - every
+                // other island's data in the slice stays byte-identical - so the retail slice
+                // itself is the host. That keeps the slice count at retail's (the five-slice
+                // clone experiment dimmed the WHOLE level, mean |luma| 3.7 -> 5.7: extra slices
+                // are not free), and the island keeps its binding untouched. CloneSlice /
+                // AppendEmptyNeighbourEntries remain for the future sacrificial-rect path, where
+                // new content must steal a rect that a live island still renders from.
+                int cloneIndex = retailSlice;
+                cloneForSlice[retailSlice] = retailSlice;
+                RadiosityRuntime.RuntimeDataSlice clone = runtime.Slices[retailSlice];
+
+                // Snapshot the rect's retail state before any overwrite.
+                var retailPos = new Dictionary<int, Vector3>();
+                var retailW = new Dictionary<int, ushort>();
+                var retailSlot = new Dictionary<int, int>();
+                var retailMass = new Dictionary<int, double>();
+                for (int y = ry; y < ry + rh; y++)
+                    for (int x = rx; x < rx + rw; x++)
+                    {
+                        int t = y * AtlasSize + x;
+                        Vector4u16 cp = clone.ClusterPositions[t];
+                        if (cp.W == 0) continue;
+                        retailPos[t] = FromHalf3(cp);
+                        retailW[t] = cp.W;
+                        ColourRGBA8 mm = clone.MangleMap[t];
+                        int slot = mm.G * ProbeTexWidth + mm.R;
+                        if (slot >= 0 && slot < clone.SurfaceProbePositions.Count &&
+                            clone.SurfaceProbePositions[slot].W != 0)
+                        {
+                            retailSlot[t] = slot;
+                            if (!retailMass.ContainsKey(slot))
+                            {
+                                double mass = 0;
+                                for (int kk = 0; kk < InfluencesPerProbe; kk++)
+                                {
+                                    byte wgt = ReadInfluenceWeight(clone, slot * InfluencesPerProbe + kk);
+                                    if (wgt != 0) mass += Math.Pow(2.0, wgt / 32.0);
+                                }
+                                retailMass[slot] = mass;
+                            }
+                        }
+                    }
+
+                // Rasterise the CURRENT geometry into the retail rect.
+                var texels = new SurfaceTexel[AtlasTexels];
+                instance.SliceIndex = retailSlice;
+                instance.AtlasX = rx; instance.AtlasY = ry;
+                instance.AtlasWidth = rw; instance.AtlasHeight = rh;
+                RasteriseInstance(geometry, instance, texels, settings);
+                FoldAlbedo(texels);
+                ResolveRayOrigins(geometry, texels, settings);
+
+                // Borrow a live W for texels retail never lit.
+                ushort borrowW = ToHalf(1.0f);
+                foreach (ushort wv in retailW.Values) { borrowW = wv; break; }
+
+                // Per-mover translation, for the retail-byte-preserving paths: a purely
+                // translated mover's texels SLIDE retail's stored sample positions by the
+                // mover's exact delta (v3's proven mechanism - zero movement for unmoved
+                // mates) instead of snapping to our raster winners, which land anywhere
+                // within the texel's footprint.
+                var moverShift = new Dictionary<int, (bool pure, Vector3 delta)>();
+                (bool pure, Vector3 delta) Shift(int moverIndex)
+                {
+                    if (moverShift.TryGetValue(moverIndex, out (bool, Vector3) cached)) return cached;
+                    (bool, Vector3) result = (false, Vector3.Zero);
+                    if (MoverPurelyTranslated(level, settings, moverIndex, 2.0f))
+                    {
+                        Movers.MOVER_DESCRIPTOR mv = level.Movers.Entries[moverIndex];
+                        ulong mk = ((ulong)mv.Resource.composite_instance_id.AsUInt32 << 32) | mv.Resource.resource_id.AsUInt32;
+                        settings.RetailTransforms.TryGetValue(mk, out System.Numerics.Matrix4x4 pristine);
+                        result = (true, new Vector3(mv.Transform.M41 - pristine.M41,
+                                                    mv.Transform.M42 - pristine.M42,
+                                                    mv.Transform.M43 - pristine.M43));
+                    }
+                    moverShift[moverIndex] = result;
+                    return result;
+                }
+
+                // Transplant: clusters + probe-slot reuse.
+                var slotForTexel = new int[AtlasTexels];
+                for (int i = 0; i < AtlasTexels; i++) slotForTexel[i] = -1;
+                var slotTouched = new HashSet<int>();
+                var ourLive = new List<int>();
+                for (int y = ry; y < ry + rh; y++)
+                    for (int x = rx; x < rx + rw; x++)
+                    {
+                        int t = y * AtlasSize + x;
+                        if (!texels[t].Live) continue;
+                        ourLive.Add(t);
+                        (bool pure, Vector3 mdelta) = Shift(texels[t].MoverIndex);
+                        Vector3 cpos = pure && retailPos.TryGetValue(t, out Vector3 rp)
+                            ? rp + mdelta
+                            : texels[t].Position;
+                        clone.ClusterPositions[t] = new Vector4u16
+                        {
+                            X = ToHalf(cpos.X),
+                            Y = ToHalf(cpos.Y),
+                            Z = ToHalf(cpos.Z),
+                            W = retailW.TryGetValue(t, out ushort wv) ? wv : borrowW
+                        };
+                        if (retailSlot.TryGetValue(t, out int slot))
+                        {
+                            // The texel keeps its own retail probe slot; the position follows.
+                            // slotTouched guards the slide: two texels sharing one slot through
+                            // dilation must not shift it twice.
+                            slotForTexel[t] = slot;
+                            if (slotTouched.Add(slot))
+                            {
+                                Vector4 rsp = clone.SurfaceProbePositions[slot];
+                                clone.SurfaceProbePositions[slot] = pure
+                                    ? new Vector4(rsp.X + mdelta.X, rsp.Y + mdelta.Y, rsp.Z + mdelta.Z, rsp.W)
+                                    : new Vector4(texels[t].Position, ProbeNormalisation);
+                            }
+                        }
+                    }
+                if (ourLive.Count == 0)
+                {
+                    log?.Invoke("    delta graft: island " + islandId + " rasterised no live texels - appended path");
+                    continue;
+                }
+
+                int NearestOwn(int t)
+                {
+                    int tx = t % AtlasSize, ty = t / AtlasSize, best = -1; float bestD = float.MaxValue;
+                    foreach (int o in ourLive)
+                    {
+                        if (slotForTexel[o] < 0) continue;
+                        int ox = o % AtlasSize, oy = o / AtlasSize;
+                        float d = (ox - tx) * (ox - tx) + (oy - ty) * (oy - ty);
+                        if (d < bestD) { bestD = d; best = o; }
+                    }
+                    return best;
+                }
+
+                int mangleRewrites = 0, ghostTexels = 0, orphanSlots = 0;
+                for (int y = ry; y < ry + rh; y++)
+                    for (int x = rx; x < rx + rw; x++)
+                    {
+                        int t = y * AtlasSize + x;
+                        bool oursIsLive = texels[t].Live;
+                        bool hasOwnSlot = slotForTexel[t] >= 0;
+                        if (oursIsLive && hasOwnSlot)
+                            continue;   //retail mangle entry already points at the reused slot
+                        int near = NearestOwn(t);
+                        if (near < 0) continue;
+                        if (!oursIsLive && retailPos.ContainsKey(t))
+                        {
+                            // Retail had a cluster here; our content no longer covers it. Keep
+                            // the texel live as a clone of the nearest own texel so no scatter
+                            // entry dangles, and orphan its retail probe slot.
+                            clone.ClusterPositions[t] = new Vector4u16
+                            {
+                                X = ToHalf(texels[near].Position.X),
+                                Y = ToHalf(texels[near].Position.Y),
+                                Z = ToHalf(texels[near].Position.Z),
+                                W = retailW[t]
+                            };
+                            ghostTexels++;
+                            if (retailSlot.TryGetValue(t, out int orphan) && orphan != slotForTexel[near])
+                            {
+                                clone.SurfaceProbePositions[orphan] = UnusedSurfaceProbe;
+                                for (int kk = 0; kk < InfluencesPerProbe; kk++)
+                                    WriteInfluenceWeight(clone, orphan * InfluencesPerProbe + kk, 0);
+                                orphanSlots++;
+                            }
+                        }
+                        else if (!oursIsLive)
+                        {
+                            continue;   //dead in both: leave retail's dead-texel mangle alone
+                        }
+                        int nSlot = slotForTexel[near];
+                        int npx = nSlot % ProbeTexWidth, npy = nSlot / ProbeTexWidth;
+                        clone.MangleMap[t] = new ColourRGBA8 { R = (byte)npx, G = (byte)npy, B = 255, A = 63 };
+                        mangleRewrites++;
+                    }
+
+                // Texel-coincident input probes follow their texels. Only probes that actually
+                // MOVED get their normal/albedo refreshed - untouched mates keep retail bytes.
+                int probesMoved = 0;
+                for (int i = 0; i < clone.InputProbePositions.Count; i++)
+                {
+                    Vector4u16 ip = clone.InputProbePositions[i];
+                    if (ip.W == 0) continue;
+                    Vector3 p = FromHalf3(ip);
+                    foreach (KeyValuePair<int, Vector3> kv in retailPos)
+                    {
+                        if (Vector3.DistanceSquared(p, kv.Value) >= 0.02f * 0.02f) continue;
+                        int t = kv.Key;
+                        if (!texels[t].Live) break;
+                        (bool tPure, Vector3 tDelta) = Shift(texels[t].MoverIndex);
+                        // Purely-translated movers slide their probes by the exact delta
+                        // (nothing at all for unmoved mates); everything else snaps to the
+                        // re-rasterised texel position.
+                        Vector3 np = tPure ? p + tDelta : texels[t].Position;
+                        if (Vector3.DistanceSquared(np, p) > 0.01f * 0.01f)
+                        {
+                            clone.InputProbePositions[i] = new Vector4u16
+                            { X = ToHalf(np.X), Y = ToHalf(np.Y), Z = ToHalf(np.Z), W = ip.W };
+                            // A purely-translated mover keeps its RETAIL normal/albedo bytes -
+                            // our sampler's albedo is position-scrambled against retail's
+                            // (donorcheck p10 0.14 / p90 14.6), and a slid probe's surface is
+                            // the same surface.
+                            if (!MoverPurelyTranslated(level, settings, texels[t].MoverIndex, 2.0f))
+                            {
+                                clone.InputProbeNormals[i] = EncodeNormal(texels[t].Normal);
+                                clone.InputProbeAlbedo[i] = EncodeAlbedo(texels[t].Albedo, 255);
+                            }
+                            probesMoved++;
+                        }
+                        break;
+                    }
+                }
+
+                log?.Invoke("    delta graft: island " + islandId + " (slice " + retailSlice + " -> clone " + cloneIndex +
+                            ", rect " + rw + "x" + rh + "@" + rx + "," + ry + "): " + ourLive.Count + " live texels, " +
+                            retailSlot.Count + " slots reused, " + mangleRewrites + " mangle rewrites, " +
+                            ghostTexels + " ghosts, " + orphanSlots + " slots orphaned, " + probesMoved + " input probes moved");
+
+                work.Add((instance, islandId, cloneIndex, rx, ry, rw, rh, texels, slotForTexel, retailMass));
+            }
+
+            if (work.Count == 0)
+                return 0;
+
+            // ---- pass 2: fresh diets against each clone's (post-transplant) cluster field ----
+            // Runs after EVERY transplant so islands grafted into one clone see each other.
+            const float candidateRange = 16.0f;   //retail's measured diet reach tops out ~14.3m
+            foreach (int cloneIndex in cloneForSlice.Values)
+            {
+                RadiosityRuntime.RuntimeDataSlice clone = runtime.Slices[cloneIndex];
+
+                var clusterGrid = new Dictionary<(int, int, int), List<int>>();
+                (int, int, int) CCell(Vector3 v) => ((int)Math.Floor(v.X / candidateRange),
+                                                     (int)Math.Floor(v.Y / candidateRange),
+                                                     (int)Math.Floor(v.Z / candidateRange));
+                var clusterPos = new Vector3[AtlasTexels];
+                for (int t = 0; t < AtlasTexels && t < clone.ClusterPositions.Count; t++)
+                {
+                    Vector4u16 cp = clone.ClusterPositions[t];
+                    if (cp.W == 0) continue;
+                    clusterPos[t] = FromHalf3(cp);
+                    (int, int, int) key = CCell(clusterPos[t]);
+                    if (!clusterGrid.TryGetValue(key, out List<int> l)) clusterGrid[key] = l = new List<int>();
+                    l.Add(t);
+                }
+
+                foreach ((RadiosityGeometry.Instance instance, int islandId, int wCloneIndex,
+                          int rx, int ry, int rw, int rh, SurfaceTexel[] texels,
+                          int[] slotForTexel, Dictionary<int, double> retailMass) in work)
+                {
+                    if (wCloneIndex != cloneIndex) continue;
+
+                    // Emitter normals: nearest level-soup triangle, gridded around the island's
+                    // candidate reach.
+                    Vector3 bMin = instance.BoundsMin - new Vector3(candidateRange + 1);
+                    Vector3 bMax = instance.BoundsMax + new Vector3(candidateRange + 1);
+                    const float triCell = 1.0f;
+                    var triGrid = new Dictionary<(int, int, int), List<int>>();
+                    (int, int, int) TCell(Vector3 v) => ((int)Math.Floor(v.X / triCell),
+                                                         (int)Math.Floor(v.Y / triCell),
+                                                         (int)Math.Floor(v.Z / triCell));
+                    int triCount = geometry.Tris.Length / 3;
+                    for (int tri = 0; tri < triCount; tri++)
+                    {
+                        int i0 = geometry.Tris[tri * 3] * 3, i1 = geometry.Tris[tri * 3 + 1] * 3, i2 = geometry.Tris[tri * 3 + 2] * 3;
+                        var centroid = new Vector3(
+                            (geometry.Verts[i0] + geometry.Verts[i1] + geometry.Verts[i2]) / 3.0f,
+                            (geometry.Verts[i0 + 1] + geometry.Verts[i1 + 1] + geometry.Verts[i2 + 1]) / 3.0f,
+                            (geometry.Verts[i0 + 2] + geometry.Verts[i1 + 2] + geometry.Verts[i2 + 2]) / 3.0f);
+                        if (centroid.X < bMin.X || centroid.Y < bMin.Y || centroid.Z < bMin.Z ||
+                            centroid.X > bMax.X || centroid.Y > bMax.Y || centroid.Z > bMax.Z) continue;
+                        (int, int, int) key = TCell(centroid);
+                        if (!triGrid.TryGetValue(key, out List<int> l)) triGrid[key] = l = new List<int>();
+                        l.Add(tri);
+                    }
+
+                    Vector3 TriPoint(int idx) => new Vector3(geometry.Verts[idx], geometry.Verts[idx + 1], geometry.Verts[idx + 2]);
+                    bool EmitterNormal(Vector3 p, out Vector3 normal)
+                    {
+                        normal = Vector3.Zero;
+                        float bestD = 1.0f;   //no surface within 1m: not a believable emitter
+                        (int cx, int cy, int cz) = TCell(p);
+                        for (int dx = -1; dx <= 1; dx++)
+                            for (int dy = -1; dy <= 1; dy++)
+                                for (int dz = -1; dz <= 1; dz++)
+                                {
+                                    if (!triGrid.TryGetValue((cx + dx, cy + dy, cz + dz), out List<int> l)) continue;
+                                    foreach (int tri in l)
+                                    {
+                                        Vector3 a = TriPoint(geometry.Tris[tri * 3] * 3);
+                                        Vector3 b = TriPoint(geometry.Tris[tri * 3 + 1] * 3);
+                                        Vector3 c = TriPoint(geometry.Tris[tri * 3 + 2] * 3);
+                                        float d = Vector3.DistanceSquared(p, ClosestOnTriangle(p, a, b, c));
+                                        if (d >= bestD) continue;
+                                        Vector3 n = Vector3.Cross(b - a, c - a);
+                                        float len = n.Length();
+                                        if (len < 1e-8f) continue;
+                                        bestD = d;
+                                        normal = n / len;
+                                    }
+                                }
+                        return normal != Vector3.Zero;
+                    }
+
+                    int solved = 0, keptRetailDiet = 0;
+                    var shifts = new List<int>();
+                    for (int y = ry; y < ry + rh; y++)
+                        for (int x = rx; x < rx + rw; x++)
+                        {
+                            int t = y * AtlasSize + x;
+                            int slot = slotForTexel[t];
+                            if (slot < 0 || !texels[t].Live) continue;
+                            // Purely-translated movers keep their retail diets (see
+                            // MoverPurelyTranslated) - the slot position already slid in pass 1.
+                            if (MoverPurelyTranslated(level, settings, texels[t].MoverIndex, 2.0f))
+                            {
+                                keptRetailDiet++;
+                                continue;
+                            }
+                            Vector3 origin = texels[t].RayOrigin;
+                            Vector3 n = texels[t].Normal;
+
+                            var candidates = new List<(int texel, float weight, float distance, float cosProduct)>();
+                            (int gx, int gy, int gz) = CCell(texels[t].Position);
+                            for (int dx = -1; dx <= 1; dx++)
+                                for (int dy = -1; dy <= 1; dy++)
+                                    for (int dz = -1; dz <= 1; dz++)
+                                    {
+                                        if (!clusterGrid.TryGetValue((gx + dx, gy + dy, gz + dz), out List<int> cell)) continue;
+                                        foreach (int t2 in cell)
+                                        {
+                                            if (t2 == t) continue;
+                                            Vector3 delta = clusterPos[t2] - origin;
+                                            float distSq = delta.LengthSquared();
+                                            if (distSq < 1e-6f || distSq > candidateRange * candidateRange) continue;
+                                            float dist = (float)Math.Sqrt(distSq);
+                                            Vector3 dir = delta / dist;
+                                            float cosR = Vector3.Dot(n, dir);
+                                            if (cosR <= 0.02f) continue;
+                                            if (!EmitterNormal(clusterPos[t2], out Vector3 n2)) continue;
+                                            float cosE = Vector3.Dot(n2, -dir);
+                                            if (cosE <= 0.02f) continue;
+                                            float formFactor = cosR * cosE / (float)(Math.PI * distSq);
+                                            if (formFactor <= 1e-5f) continue;
+                                            if (!VisibleSoft(geometry, origin, n,
+                                                             clusterPos[t2] + n2 * settings.ProbeSurfaceOffset, n2,
+                                                             settings, t, t2))
+                                                continue;
+                                            candidates.Add((t2, formFactor, dist, cosR * cosE));
+                                        }
+                                    }
+
+                            if (candidates.Count == 0)
+                            {
+                                // Keep the slot's retail diet: it described this spot before the
+                                // edit, which beats a dead probe.
+                                keptRetailDiet++;
+                                continue;
+                            }
+                            candidates.Sort((a, b) => b.weight.CompareTo(a.weight));
+                            int keep = Math.Min(InfluencesPerProbe, Math.Min(candidates.Count, settings.InfluencesPerSurfaceProbe));
+                            StratifyByDistance(candidates, keep, t, settings);
+
+                            for (int k = 0; k < keep; k++)
+                            {
+                                ClusterRef(candidates[k].texel, out byte cx2, out byte cy2);
+                                byte wgt = InfluenceWeight(candidates[k].distance, candidates[k].cosProduct, settings);
+                                WriteInfluence(clone, slot * InfluencesPerProbe + k, cx2, cy2, wgt);
+                            }
+                            for (int k = keep; k < InfluencesPerProbe; k++)
+                                WriteInfluenceWeight(clone, slot * InfluencesPerProbe + k, 0);
+
+                            // Self-calibration: this very slot's retail exp mass IS the energy
+                            // budget retail assigned this surface - match it.
+                            if (retailMass.TryGetValue(slot, out double target) && target > 0)
+                            {
+                                double ours = 0;
+                                for (int k = 0; k < keep; k++)
+                                {
+                                    byte wgt = ReadInfluenceWeight(clone, slot * InfluencesPerProbe + k);
+                                    if (wgt != 0) ours += Math.Pow(2.0, wgt / 32.0);
+                                }
+                                if (ours > 0)
+                                {
+                                    int shift = (int)Math.Round(32.0 * Math.Log(target / ours, 2.0));
+                                    shift = Math.Max(-48, Math.Min(48, shift));
+                                    if (shift != 0)
+                                    {
+                                        shifts.Add(shift);
+                                        for (int k = 0; k < keep; k++)
+                                        {
+                                            byte wgt = ReadInfluenceWeight(clone, slot * InfluencesPerProbe + k);
+                                            if (wgt != 0)
+                                                WriteInfluenceWeight(clone, slot * InfluencesPerProbe + k,
+                                                    (byte)Math.Max(1, Math.Min(254, wgt + shift)));
+                                        }
+                                    }
+                                }
+                            }
+                            solved++;
+                        }
+
+                    shifts.Sort();
+                    log?.Invoke("    delta graft: island " + islandId + " diets: " + solved + " solved, " +
+                                keptRetailDiet + " kept retail" +
+                                (shifts.Count > 0 ? ", calibration shift p10/50/90 = " + shifts[shifts.Count / 10] + "/" +
+                                 shifts[shifts.Count / 2] + "/" + shifts[shifts.Count * 9 / 10] : ""));
+                }
+            }
+
+            // ---- pass 3: rebind and leave the census ---------------------------------------
+            foreach ((RadiosityGeometry.Instance instance, int islandId, int cloneIndex,
+                      int rx, int ry, int rw, int rh, SurfaceTexel[] texels,
+                      int[] slotForTexel, Dictionary<int, double> retailMass) in work)
+            {
+                runtime.InstanceSliceIndices[islandId] = cloneIndex;
+                foreach (int m in instance.Movers)
+                    deltaMovers.Remove(m);
+                deltaInstances.Remove(instance);
+            }
+            return work.Count;
+        }
+
+        private static Vector3 FromHalf3(Vector4u16 v) => new Vector3(FromHalf(v.X), FromHalf(v.Y), FromHalf(v.Z));
+
+        /// <summary>IEEE 754 binary16 decode, the inverse of <see cref="ToHalf"/>.</summary>
+        private static float FromHalf(ushort h)
+        {
+            uint sign = (uint)(h >> 15) & 1;
+            int exponent = (h >> 10) & 0x1F;
+            uint mantissa = (uint)h & 0x3FF;
+            uint bits;
+            if (exponent == 0)
+            {
+                if (mantissa == 0)
+                {
+                    bits = sign << 31;
+                }
+                else
+                {
+                    // Subnormal half: renormalise into the float exponent range.
+                    exponent = 127 - 15 + 1;
+                    while ((mantissa & 0x400) == 0) { mantissa <<= 1; exponent--; }
+                    bits = (sign << 31) | ((uint)exponent << 23) | ((mantissa & 0x3FF) << 13);
+                }
+            }
+            else if (exponent == 0x1F)
+            {
+                bits = (sign << 31) | 0x7F800000 | (mantissa << 13);
+            }
+            else
+            {
+                bits = (sign << 31) | ((uint)(exponent - 15 + 127) << 23) | (mantissa << 13);
+            }
+            return BitConverter.ToSingle(BitConverter.GetBytes(bits), 0);
+        }
 
         /// <summary>IEEE 754 binary16 encode, round-to-nearest-even.</summary>
         private static ushort ToHalf(float value)

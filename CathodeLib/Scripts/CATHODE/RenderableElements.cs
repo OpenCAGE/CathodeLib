@@ -140,6 +140,21 @@ namespace CATHODE
             if (greaterThan >= Entries.Count)
                 return -1;
 
+            //Reference match first: retail's file holds VALUE-identical duplicate runs on purpose
+            //(every instanced FX mover gets its own entry), and matching by value alone collapsed
+            //them all onto the first copy on save - a plain load+save moved every fogsphere mover's
+            //redsIndex, which is a fidelity loss even before instancing edits anything.
+            for (int i = greaterThan; i < Entries.Count; i++)
+            {
+                if (!ReferenceEquals(Entries[i], element[0]))
+                    continue;
+                bool all = true;
+                for (int x = 1; x < element.Count; x++)
+                    if (i + x >= Entries.Count || !ReferenceEquals(Entries[i + x], element[x])) { all = false; break; }
+                if (all)
+                    return i;
+            }
+
             for (int i = greaterThan; i < Entries.Count; i++)
             {
                 if (Entries[i] != element[0])
@@ -176,6 +191,40 @@ namespace CATHODE
             for (int i = 0; i < count; i++)
                 elements.Add(_writeList[index + i]);
             return elements;
+        }
+
+        /// <summary>
+        /// Append a fresh copy of a run and return the copies, even when a value-identical run is
+        /// already registered. Retail gives every instanced FX mover (fogsphere / particle /
+        /// ribbon) its OWN renderable entry rather than sharing the composite resource's - the
+        /// per-instance entry is the mover's identity to the engine.
+        /// </summary>
+        public List<Element> RegisterDuplicateRun(List<Element> elements)
+        {
+            if (elements == null || elements.Count == 0)
+                return elements;
+            var copies = new List<Element>(elements.Count);
+            foreach (Element el in elements)
+            {
+                if (el == null) { copies.Add(null); continue; }
+                copies.Add(new Element
+                {
+                    ModelLocation = el.ModelLocation,
+                    Model = el.Model,
+                    ModelSubplatformDependent = el.ModelSubplatformDependent,
+                    MaterialLocation = el.MaterialLocation,
+                    Material = el.Material,
+                    MaterialSubplatformDependent = el.MaterialSubplatformDependent,
+                    LODs = el.LODs != null ? new List<Element>(el.LODs) : new List<Element>()
+                });
+            }
+            lock (Entries)
+            {
+                foreach (Element el in copies)
+                    if (el != null)
+                        Entries.Add(el);
+            }
+            return copies;
         }
 
         /// <summary>

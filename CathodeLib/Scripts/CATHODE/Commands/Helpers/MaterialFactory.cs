@@ -189,6 +189,24 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// The level material carrying exactly this name, or null. Unique-material emitter names
+        /// encode the emitter entity and composite instance, so an exact hit IS that instance's
+        /// shipped material.
+        /// </summary>
+        public Materials.Material FindByName(string name)
+        {
+            if (name == null || _level?.Materials?.Entries == null)
+                return null;
+            lock (_lock)
+            {
+                foreach (Materials.Material m in _level.Materials.Entries)
+                    if (m?.Name == name)
+                        return m;
+            }
+            return null;
+        }
+
+        /// <summary>
         /// A renderable run that renders with <paramref name="material"/>, reusing
         /// <paramref name="source"/> untouched when it already does. The source run belongs to the
         /// composite and is shared by every instance of it, so it is copied rather than edited.
@@ -305,7 +323,15 @@ namespace CathodeLib
 
             lock (_lock)
             {
-                Shaders.Shader shader = FindShader(template.Shader.Ubershader, required);
+                //When the template's own shader already carries the required features, use IT -
+                //FindShader returns the first table entry with that (ubershader, features) pair and
+                //the level can hold duplicates, so it may hand back a DIFFERENT entry. The rebuilt
+                //material then failed SameContent's reference compare against the template, a
+                //byte-identical "[000000]" copy was born, and the mover's REDS run detached from
+                //the material the Commands resource points at (ChallengeMap9's floor gas emitter).
+                Shaders.Shader shader = template.Shader.UbershaderFeatureFlags == required
+                    ? template.Shader
+                    : FindShader(template.Shader.Ubershader, required);
                 if (shader == null)
                 {
                     if (!UnavailableShaders.ContainsKey(template.Shader.Ubershader + " 0x" + required.ToString("X16")))
@@ -319,6 +345,17 @@ namespace CathodeLib
                     built.OfflineLightFeatures = null;
                 if (allowReuse)
                 {
+                    //The template's constants CAME from these same entity parameters through the
+                    //retail tool, so a rebuild that lands within float-roundtrip distance of the
+                    //template IS the template - the unit conversions (spread/360, rotation*2pi,
+                    //alpha*0.01...) do not reproduce retail's last bit on every slot. The exact
+                    //compare refused 0.49998602 vs 0.5 on one engine slot, cloned ChallengeMap9's
+                    //floor-gas material, and the detached mover run made the gas invisible.
+                    if (flagsAlreadyClear && SameContentApprox(template, built))
+                    {
+                        MaterialsReused++;
+                        return template;
+                    }
                     Materials.Material existing = FindEquivalent(built);
                     if (existing != null)
                     {
@@ -528,6 +565,33 @@ namespace CathodeLib
         private static bool NeedsConstants(Materials.Material m)
         {
             return m.EngineConstants.Count != 0 || m.VertexShaderConstants.Count != 0 || m.PixelShaderConstants.Count != 0;
+        }
+
+        /// <summary>SameContent, but constants may differ by float-roundtrip noise (the parameter
+        /// unit conversions do not reproduce retail's last bit). Everything discrete stays exact.</summary>
+        private static bool SameContentApprox(Materials.Material a, Materials.Material b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            if (a == null || b == null) return false;
+            if (!ReferenceEquals(a.Shader, b.Shader)) return false;
+            if ((a.OfflineLightFeatures?.Value ?? 0) != (b.OfflineLightFeatures?.Value ?? 0)) return false;
+            if (a.PhysicalMaterialIndex != b.PhysicalMaterialIndex || a.EnvironmentMapIndex != b.EnvironmentMapIndex || a.Priority != b.Priority) return false;
+            if (a.TextureReferences.Count != b.TextureReferences.Count) return false;
+            for (int i = 0; i < a.TextureReferences.Count; i++)
+                if (a.TextureReferences[i]?.Location != b.TextureReferences[i]?.Location ||
+                    !ReferenceEquals(a.TextureReferences[i]?.Texture, b.TextureReferences[i]?.Texture)) return false;
+            for (int s = 0; s < 5; s++)
+            {
+                List<float> ca = Constants(a, s), cb = Constants(b, s);
+                if (ca.Count != cb.Count) return false;
+                for (int i = 0; i < ca.Count; i++)
+                {
+                    float d = Math.Abs(ca[i] - cb[i]);
+                    if (d > 1e-5f && d > 1e-4f * Math.Abs(cb[i]))
+                        return false;
+                }
+            }
+            return true;
         }
 
         private Materials.Material FindEquivalent(Materials.Material built)

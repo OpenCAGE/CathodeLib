@@ -105,10 +105,15 @@ namespace CATHODE
                     int redsCount = reader.ReadInt32();
                     mvr.RenderableElements = _reds.GetAtWriteIndex(redsIndex, redsCount);
                     mvr.Resource = _resources.GetAtWriteIndex(reader.ReadInt32());
-                    reader.BaseStream.Position += 12;
+                    // Three undecoded runtime reference words: retail populates them on EVERY
+                    // mover (0 all-zero entries of 12,485 on ChallengeMap9, values 404..65k).
+                    // Zeroing them on save was part of what killed script-driven FX.
+                    mvr.RuntimeRefs = reader.ReadBytes(12);
                     mvr.CullFlags = (CullFlag)reader.ReadInt32();
                     mvr.Entity = Utilities.Consume<EntityHandle>(reader);
-                    reader.BaseStream.Position += 4;
+                    // Undecoded: -1 on most retail movers, a unique sequential id on the rest
+                    // (0..N each exactly once). Writing the mover's own index here was wrong.
+                    mvr.RuntimeIndex = reader.ReadInt32();
                     mvr.EnvironmentMap = environmentMaps[i];
                     mvr.EmissiveTint = new Vector3(reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
                     mvr.EmissiveFlags = (EmissiveFlag)reader.ReadByte();
@@ -210,10 +215,10 @@ namespace CATHODE
                     writer.Write(entry.RenderableElements.Count);
                 }
                 writer.Write(_resources.GetWriteIndex(entry.Resource));
-                writer.Write(new byte[12]);
+                writer.Write(entry.RuntimeRefs != null && entry.RuntimeRefs.Length == 12 ? entry.RuntimeRefs : new byte[12]);
                 writer.Write((int)entry.CullFlags);
                 Utilities.Write<EntityHandle>(writer, entry.Entity);
-                writer.Write(index);
+                writer.Write(entry.RuntimeIndex);
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
                 writer.Write((byte)entry.EmissiveTint.x);
                 writer.Write((byte)entry.EmissiveTint.y);
@@ -387,6 +392,15 @@ namespace CATHODE
 
             public MoverFlag Flags = new MoverFlag();
 
+            /// <summary>Undecoded per-mover runtime reference words (12 bytes at entry+256).
+            /// Retail populates them on every mover; preserved verbatim on load/save and carried
+            /// from pristine data by instancing.</summary>
+            public byte[] RuntimeRefs = null;
+
+            /// <summary>Undecoded word at entry+280: -1 on most retail movers, a unique
+            /// sequential id on the rest.</summary>
+            public int RuntimeIndex = -1;
+
             [StructLayout(LayoutKind.Sequential, Pack = 1)]
             public class GPU_CONSTANTS : IEquatable<GPU_CONSTANTS>
             {
@@ -394,6 +408,14 @@ namespace CATHODE
                 private byte[] buffer = new byte[96];
 
                 public byte[] RawBytes => (byte[])buffer.Clone();
+
+                public void SetRawBytes(byte[] value)
+                {
+                    if (value == null) return;
+                    byte[] replacement = new byte[96];
+                    Array.Copy(value, replacement, Math.Min(96, value.Length));
+                    buffer = replacement;
+                }
 
                 public T GetAs<T>()
                 {
@@ -700,7 +722,10 @@ namespace CATHODE
 
                     public LightFeature Features;
 
-                    private byte _unused;
+                    // Not unused: retail writes 6 here on 4107 of the 4109 light movers across
+                    // ChallengeMap3, Solace and BSP_Torrens (the other two carry 8), independent
+                    // of the material's flag word. Meaning unknown; the constant is matched.
+                    private byte _unused = 6;
 
                     public LightFadeType LightFadeType
                     {
@@ -754,7 +779,9 @@ namespace CATHODE
                 [StructLayout(LayoutKind.Sequential, Pack = 1)]
                 public class DYNAMIC_PFX_PARAMS //CPU Particles
                 {
-                    public float DrawPass;
+                    // Retail stores this as an integer (415 of 415 CPU-particle movers on
+                    // ChallengeMap3); a float here wrote 0x41700000 where the engine reads 15.
+                    public int DrawPass;
 
                     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 12)]
                     private byte[] _unused;
@@ -767,10 +794,12 @@ namespace CATHODE
                 [StructLayout(LayoutKind.Sequential, Pack = 1)]
                 public class PARTICLE_PARAMS //GPU Particles
                 {
-                    public float DrawPass;
-                    public float NumVerts;
-                    public float PrimitiveCount;
-                    public float VertexOffset;
+                    // All four are integers on disk (173 of 173 GPU-particle movers on
+                    // ChallengeMap3); floats here wrote 0x40000000 where the engine reads 2.
+                    public int DrawPass;
+                    public int NumVerts;
+                    public int PrimitiveCount;
+                    public int VertexOffset;
 
                     public EntityHandle Entity;
 

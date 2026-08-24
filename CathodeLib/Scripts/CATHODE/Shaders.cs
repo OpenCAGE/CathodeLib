@@ -28,6 +28,13 @@ namespace CATHODE
 
         private List<Shader> _writeList = new List<Shader>();
 
+        //The six bytecode pools exactly as loaded, in file order. The save used to rebuild them
+        //in first-reference order over Entries, which permuted two thirds of the bin pak on a
+        //plain roundtrip - and the engine's rendering visibly changed with the permuted file
+        //(ChallengeMap9's gas/grading). Preserving the loaded order keeps the roundtrip
+        //byte-faithful; genuinely new bytecode appends at the tail.
+        private List<byte[]> _poolVertex, _poolPixel, _poolHull, _poolDomain, _poolGeometry, _poolCompute;
+
         public Shaders(string path) : base(path) { }
 
         ~Shaders()
@@ -178,6 +185,13 @@ namespace CATHODE
                 }
             }
 
+            _poolVertex = VertexShaders;
+            _poolPixel = PixelShaders;
+            _poolHull = HullShaders;
+            _poolDomain = DomainShaders;
+            _poolGeometry = GeometryShaders;
+            _poolCompute = ComputeShaders;
+
             _writeList.AddRange(Entries);
             return true;
         }
@@ -189,13 +203,15 @@ namespace CATHODE
             else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
                 _filepath = _filepath.Substring(0, _filepath.Length - 3);
 
-            //Compile all shader data
-            List<byte[]> VertexShaders = new List<byte[]>();
-            List<byte[]> PixelShaders = new List<byte[]>();
-            List<byte[]> HullShaders = new List<byte[]>();
-            List<byte[]> DomainShaders = new List<byte[]>();
-            List<byte[]> GeometryShaders = new List<byte[]>();
-            List<byte[]> ComputeShaders = new List<byte[]>();
+            //Bytecode pools: the loaded file's pools in their original order, so an unchanged
+            //level roundtrips byte-for-byte; the loop below only appends bytecode that was not
+            //part of the loaded file.
+            List<byte[]> VertexShaders = _poolVertex != null ? new List<byte[]>(_poolVertex) : new List<byte[]>();
+            List<byte[]> PixelShaders = _poolPixel != null ? new List<byte[]>(_poolPixel) : new List<byte[]>();
+            List<byte[]> HullShaders = _poolHull != null ? new List<byte[]>(_poolHull) : new List<byte[]>();
+            List<byte[]> DomainShaders = _poolDomain != null ? new List<byte[]>(_poolDomain) : new List<byte[]>();
+            List<byte[]> GeometryShaders = _poolGeometry != null ? new List<byte[]>(_poolGeometry) : new List<byte[]>();
+            List<byte[]> ComputeShaders = _poolCompute != null ? new List<byte[]>(_poolCompute) : new List<byte[]>();
             for (int i = 0; i < Entries.Count; i++)
             {
                 if (Entries[i].VertexShader != null && !VertexShaders.Contains(Entries[i].VertexShader))

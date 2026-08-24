@@ -47,6 +47,182 @@ namespace CathodeLib.Radiosity
         public System.Collections.Generic.Dictionary<int, int[]> RetailRectSizes = null;
 
         /// <summary>
+        /// Fill dead atlas cells between rects with cluster-only clones of the nearest live
+        /// cell, the way retail's bakes do (retail's live-cluster counts exceed its rect sums by
+        /// ~12%, and ChallengeMap4 slice 0 ships a completely full 16384-cell grid).
+        /// </summary>
+        /// <remarks>
+        /// Our skyline packer leaves 12-45% of the grid dead between rects, so what sits beside
+        /// any rect's edge is an arbitrary function of packing order. Renders proved sensitive to
+        /// exactly that: ChallengeMap3's whole-level fit swings 14 luma between boost exponents
+        /// 0.25/0.30/0.35 (intercept +0.0 / -14.5 / -9.6, deterministic) whose only effect is a
+        /// one-percent cascade of rect relocations. Filled cells become emitters and input-probe
+        /// binding sites but never surface probes, matching retail's counts.
+        /// </remarks>
+        public bool FillAtlasGutters = false;
+
+        /// <summary>
+        /// Delta-bake: keep the level's shipped radiosity wholesale and patch only what the edit
+        /// invalidated, instead of regenerating everything. See <see cref="RadiosityPatcher"/>.
+        /// Requires the level's RADIOSITY_RUNTIME.BIN to still be a real bake (retail's or a
+        /// previous full bake); throws when it carries no slices.
+        /// </summary>
+        public bool PatchRetailRuntime = false;
+
+        /// <summary>
+        /// Pristine MODEL_PARAMS lightmap transforms (first 16 bytes of RENDER_CONSTANTS), keyed
+        /// by the mover's resource GUID pair packed as (composite &lt;&lt; 32 | resource). Harvested
+        /// by the caller BEFORE instancing and written back by <see cref="RadiosityPatcher"/>:
+        /// instancing rebuilds some movers without carrying their lightmap rect, and a rect-less
+        /// mover samples a wrong atlas region - ChallengeMap3's vent wall rendered its
+        /// neighbouring tube-lights' yellow, a post rendered bunk-light blue, and ceiling pieces
+        /// degenerated entirely.
+        /// </summary>
+        public System.Collections.Generic.Dictionary<ulong, byte[]> RetailModelParams = null;
+
+        /// <summary>
+        /// Pristine mover transforms keyed like <see cref="RetailModelParams"/>, harvested by the
+        /// caller before instancing. The patcher uses them to detect MOVED movers - which must be
+        /// routed through the delta rebake, because their carried MODEL_PARAMS would light them
+        /// as they stood at their old location.
+        /// </summary>
+        public System.Collections.Generic.Dictionary<ulong, System.Numerics.Matrix4x4> RetailTransforms = null;
+
+        /// <summary>
+        /// In patch mode, bake added/moved geometry into an appended slice (see
+        /// <see cref="RadiosityBaker.AppendDeltaSlices"/>). Off leaves new geometry unlit -
+        /// black architecture, fullbright props - as the v1 behaviour did.
+        /// </summary>
+        public bool PatchBakeDelta = true;
+
+        /// <summary>
+        /// In patch mode, light added/moved movers by forcing them onto the engine's DYNAMIC
+        /// radiosity path (materials cloned onto real dynamic shader permutations - shipped
+        /// twins where they exist, bytecode-patched otherwise - rect zeroed, instance-map rows
+        /// dropped; see <see cref="DynamicRadiosityConverter"/>) instead of baking them into a
+        /// lightmap delta slice. They then sample the level's live volume probe field at their
+        /// pivot, which needs no atlas allocation, no island ids and no transforms records.
+        /// Movers the converter cannot fully convert (a static-class element whose pixel shader
+        /// lacks the radiosity sampling idiom) fall back to the lightmap delta when
+        /// <see cref="PatchBakeDelta"/> is on. Set false to route everything through the
+        /// lightmap delta bake instead - that whole path is kept intact.
+        /// </summary>
+        public bool DeltaDynamicProps = true;
+
+        /// <summary>
+        /// With <see cref="DeltaDynamicProps"/>, extend the volume probe field over dynamic delta
+        /// content whose pivot sits OUTSIDE every retail volume hash (new rooms, content beyond
+        /// the shell): bake it - plus a donor shell - into one appended slice carrying clusters,
+        /// lights and its own fine-celled volume hash, and nothing else. No rects, no island ids,
+        /// no instance-map rows, no transforms records. See
+        /// <see cref="RadiosityBaker.AppendProbeOnlySlice"/>. Content inside the retail field is
+        /// never included - retail's own probes light it better than anything we bake.
+        /// </summary>
+        /// <remarks>
+        /// PROVEN DELIVERING (2026-08-24, the shifted-level experiment): with the whole level
+        /// moved outside its original probe volumes and every mapped mover forced dynamic, the
+        /// appended probe slices light the level in game - the A/B control without them turns a
+        /// probe-dependent room pitch black (cam4: luma 14.7 with slices, 0.0 without) while
+        /// deferred-dominated rooms are unchanged. The earlier all-black Solace room was the
+        /// CONTENT, not the pipeline: a raw-dropped composite's light entities are unpowered,
+        /// and a slice whose only energy is entity-gated lights that never come on stays dark
+        /// under every path. A properly authored room with wired, powered lights gets lit.
+        /// Ambient is dim on the first cut (0.3-0.5x in bounce-dominated rooms; calibration
+        /// falls back to the global bias where no retail probes are near) - quality tuning on a
+        /// working pipeline.
+        /// </remarks>
+        public bool DeltaProbeOnlySlice = true;
+
+        /// <summary>
+        /// Invoked once per island id the lightmap delta path assigns: (islandId, atlasX,
+        /// atlasY, foreignId). The engine samples the atlas through per-island transform
+        /// records (RADIOSITY_TRANSFORMS.BIN - Windows Store) and an id at or past that table's 
+        /// count misrenders - but the file is not a CathodeLib concern, so the caller owns it and
+        /// must persist a record carrying the island's rect origin for every callback
+        /// (resetting the grouping fields on foreign ids - see the delta bake tooling).
+        /// </summary>
+        public System.Action<int, int, int, bool> DeltaIslandRecord = null;
+
+        /// <summary>
+        /// Treat the patch census as empty: convert nothing and keep the shipped radiosity
+        /// exactly as-is. For rigid whole-level moves, where every lightmap stays valid and
+        /// the volume field is translated by the caller instead.
+        /// </summary>
+        public bool DeltaIgnoreMoves = false;
+
+        /// <summary>
+        /// Volume hash cell size (m) for the probe-only delta slice. Retail bakes 2.0 everywhere,
+        /// but the engine derives cell size from the hash's own AABB and dims (proven in-game by
+        /// re-encoding retail's hashes at 2x), and a finer grid shrinks the world-space span of
+        /// the engine's 8-cell probe blend - the mechanism that made a dynamic crate read grey in
+        /// a pitch-black room at 2 m cells and correctly black at 1 m.
+        /// </summary>
+        public float DeltaVolumeProbeCellSize = 1.0f;
+
+        /// <summary>
+        /// In patch mode, re-encode the KEPT retail slices' volume hashes at this multiple of
+        /// their grid resolution (same AABB, each fine cell inheriting its parent's probe).
+        /// 0 or 1 disables. Appended delta slices are never touched - they are born fine-celled.
+        /// </summary>
+        /// <remarks>
+        /// OFF by default, and the reason is a real lesson: inheritance upsampling does not add
+        /// probes, it REMOVES blend diversity. The engine averages the 8 cells around an object's
+        /// pivot; at 2 m those are 8 distinct probes, but the 8 fine 1 m cells mostly inherit
+        /// from one or two parents, so a mid-room prop reads a single probe's value raw. That is
+        /// what fixed the pitch-black-room crate (ratio 1.141 -> 0.989 - it stopped blending in
+        /// lit texels from 4 m away) and EXACTLY what darkened lit-room crates (measured on the
+        /// CM3 16-crate round: several crates near-silhouette under 2x where the 2 m grid lit
+        /// them warmly; rebind picks nearest-by-distance and collapses the same way). Genuine
+        /// densification needs per-fine-cell probe SELECTION - nearest VISIBLE texel with the
+        /// baker's anti-self-shadow preference, correct per-cell vis entries - i.e. re-running
+        /// the cell binding at the fine grid, not inheriting or nearest-snapping. The format and
+        /// the engine are proven ready for it (a 2x re-encode renders, MEAN 4.88-4.97 vs retail).
+        /// </remarks>
+        public int VolumeHashUpsampleFactor = 0;
+
+        /// <summary>
+        /// When upsampling, REBIND each fine cell to whichever probe of its 3x3x3 coarse
+        /// neighbourhood sits nearest the fine cell's centre (probe positions resolved through
+        /// the slice's mangle map), instead of inheriting the parent's probe verbatim - genuine
+        /// densification from the existing visibility-vetted probe set. Occupancy is unchanged
+        /// either way. Set false for the pure grid subdivision.
+        /// </summary>
+        public bool VolumeHashRebind = true;
+
+        /// <summary>
+        /// Drop converted movers' RADIOSITY_INSTANCE_MAP rows (retail's dynamic convention).
+        /// Rows on a dynamic mover are a benign mixed state (the wholesale experiments kept the
+        /// whole map and rendered fine); set false for whole-level conversions, where dropping
+        /// nearly every row is equivalent to the catastrophic map clear that collapses the
+        /// retail slices' relight (MEAN 28.87).
+        /// </summary>
+        public bool DeltaDropInstanceMapRows = true;
+
+        /// <summary>
+        /// Register ONE anchor island per appended probe-only slice: repoint an in-range island
+        /// id (one that a converted mover's kept instance-map rows already bind) at the new
+        /// slice via InstanceSliceIndices. Tests / satisfies the hypothesis that the engine only
+        /// schedules a slice's relight when at least one mapped island belongs to it. Requires
+        /// DeltaDropInstanceMapRows=false so the anchor's rows exist.
+        /// </summary>
+        public bool DeltaProbeAnchorIslands = false;
+
+        /// <summary>
+        /// Added to a delta probe's position before querying RETAIL probes during exp-mass
+        /// calibration: a rigidly-moved group (a shifted room, a shifted level) references the
+        /// retail lighting of the place it CAME FROM instead of the flat bias fallback. The
+        /// patcher sets this automatically when the moved census shares one common translation.
+        /// </summary>
+        public System.Numerics.Vector3 DeltaCalibrationOffset = System.Numerics.Vector3.Zero;
+
+        /// <summary>
+        /// Scale on the probe-only slices' atlas rects. Probe-slice content is never sampled
+        /// through rects - the rects only allocate CLUSTER texels for the standing field - so
+        /// large edits can run coarser to fit fewer slices (0.5 quarters the texel spend).
+        /// </summary>
+        public float DeltaProbeRectScale = 1.0f;
+
+        /// <summary>
         /// Use <see cref="RetailRectSizes"/> as a per-dimension FLOOR under the formula instead
         /// of verbatim: an island's rect is never smaller than retail's, but the formula (and
         /// <see cref="LargeInstanceTexelBoost"/>) may size it larger. Measured because verbatim
@@ -54,6 +230,83 @@ namespace CathodeLib.Radiosity
         /// the boost-fixed levels need certain rects larger than retail's own.
         /// </summary>
         public bool RetailRectSizesAsFloor = false;
+
+        /// <summary>
+        /// Place input probes ON live atlas texels (Poisson-thinned) instead of scattering them
+        /// freely over the surfaces. Retail is texel-coincident: ~90% of its input probes sit at
+        /// exactly a cluster texel's position, each carrying a zero-distance scatter self-pair
+        /// with that cluster. The delta patch path turns this on; the full-bake default stays
+        /// off until it is re-validated against the campaign baselines.
+        /// </summary>
+        public bool InputProbesOnTexels = false;
+
+        /// <summary>
+        /// Multiplier on a DELTA slice's influence weights - base links and cross-slice fixups
+        /// both - applied after the bake. The weight byte is EXPONENT-domain: a x1.35 multiplier
+        /// TRIPLED the rendered output (each +32 bytes is roughly a doubling), so calibration
+        /// lives in the additive <see cref="DeltaInfluenceWeightBias"/>; this multiplier stays
+        /// at 1 outside experiments.
+        /// </summary>
+        public float DeltaInfluenceWeightScale = 1.0f;
+
+        /// <summary>
+        /// Additive byte bias on a delta slice's influence and fixup weights. Exponent domain:
+        /// +24 is roughly x1.7 rendered. Calibration from the CM7 moved shelving, whose computed
+        /// weights rendered the moved family at ~0.6x retail while its static diet measured at
+        /// or above retail on every file-side metric.
+        /// </summary>
+        public int DeltaInfluenceWeightBias = 18;
+
+        /// <summary>
+        /// Per-probe calibration: match each delta probe's exponent-domain weight mass to the
+        /// median of the retail surface probes within 4m, falling back to the global bias where
+        /// no retail neighbours exist. Off = apply the global bias/scale uniformly instead.
+        /// </summary>
+        public bool DeltaMatchRetailExpMass = true;
+
+        /// <summary>Slide a purely-translated island's retail radiosity data to its new position
+        /// in place (keeping its retail slice, rect, diets, scatter and instance-map rows) instead
+        /// of re-baking it into the appended slice, whose fixup-fed probes saturate at about half
+        /// a native diet. Rotated, scaled or partially-moved islands still re-bake.</summary>
+        public bool DeltaTranslateMovedIslands = true;
+
+        /// <summary>
+        /// Graft edited retail-bound islands into a BYTE-CLONE of their room's retail slice
+        /// instead of the appended bake. The clone's radiance field is retail's own (an appended
+        /// byte-clone relights at 0.96x parity - the slicedup control), so the island's fresh
+        /// diets gather real retail energy in-slice: no fixups, no donor field to calibrate.
+        /// Only the island's own rect region is re-rasterised inside the clone; the island keeps
+        /// its retail id, rect coordinates and instance-map rows, so its movers leave the delta
+        /// census and the patcher restores their retail MODEL_PARAMS untouched. Content with no
+        /// retail island (genuinely new) falls through to the appended-slice path.
+        /// </summary>
+        public bool DeltaGraftRetailSlices = true;
+
+        /// <summary>
+        /// Bake a shell of the surrounding RETAIL geometry into the appended delta slice as
+        /// cluster-only radiance donors, so the delta islands' probes gather the room's bounce
+        /// from native in-slice diets instead of cross-slice fixups. The fixup path is the delta
+        /// bake's ceiling: the engine's fixup gather saturates at roughly half a native diet
+        /// (CM9 rack: 0.38x retail with retail's own cloned weights, 0.53x with every weight
+        /// byte at 255), and no weight calibration can close it. Donor movers are never written
+        /// to - no MODEL_PARAMS, no instance-map rows - they exist only as emitters inside the
+        /// delta slice's data.
+        /// </summary>
+        public bool DeltaDonorShell = true;
+
+        /// <summary>World-space reach (m) around the delta content's bounds from which retail
+        /// islands are pulled in as donors. Bounce energy is dominated by nearby surfaces
+        /// (form factor ~ 1/d²); scatter links cap at 6m.</summary>
+        public float DeltaDonorShellRadius = 8.0f;
+
+        /// <summary>Atlas texels the donor shell may spend (the slice atlas is 128x128 = 16,384;
+        /// delta islands allocate first and donors never displace them). Nearest donors win.</summary>
+        public int DeltaDonorTexelBudget = 8192;
+
+        /// <summary>Per-donor rect dimension clamp. Donors only feed the cluster field, so they
+        /// can run coarser than render resolution; this stops a level-spanning floor island from
+        /// eating the whole budget.</summary>
+        public int DeltaDonorMaxRectDim = 24;
 
         /// <summary>
         /// Exponent on a progressive texel boost for larger instances. 0 spends a flat
@@ -352,6 +605,19 @@ namespace CathodeLib.Radiosity
 
         /// <summary>Cross-slice influence patches emitted per surface probe.</summary>
         public int MaxCrossSliceFixupsPerProbe = 4;
+
+        /// <summary>
+        /// Per-probe cap for a DELTA slice's fixups into retail clusters. The full 32: a retail
+        /// probe near a slice boundary needs a few patched slots, but a delta probe cut out of a
+        /// room-coherent slice gets ALL its bounce from the room - a flat island (a moved wall,
+        /// a shelving face) has zero in-slice links because its own surfaces are coplanar, so
+        /// the fixups are its entire gather diet. Measured on the CM3 moved vent wall
+        /// (islandgain): at 24 links the wall's probes carried gain 2324 against 3110 for the
+        /// surrounding room's retail probes - almost exactly the 24/32 ratio - and at 4 links it
+        /// rendered 0.64x retail while a weight-255 crank of those 4 brought the dark tail to
+        /// exact parity, so link COUNT is the knob, not the weight curve.
+        /// </summary>
+        public int DeltaCrossSliceFixupsPerProbe = 32;
 
         /// <summary>Nudge ray origins by this much to avoid re-hitting the source triangle.</summary>
         public float RayEpsilon = 0.001f;

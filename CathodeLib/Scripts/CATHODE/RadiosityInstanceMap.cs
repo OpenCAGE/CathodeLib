@@ -81,7 +81,9 @@ namespace CATHODE
 
                 radiosityMappings.Add(entry.lightmap_transform + " " + resourceIndex);
             }
-            File.WriteAllLines(_filepath, radiosityMappings.ToArray());
+            // Retail ships this file LF-terminated; WriteAllLines emits CRLF on Windows and
+            // the engine's row parser is not known to tolerate it. Match retail exactly.
+            File.WriteAllText(_filepath, radiosityMappings.Count > 0 ? string.Join("\n", radiosityMappings) + "\n" : "");
             return true;
         }
         #endregion

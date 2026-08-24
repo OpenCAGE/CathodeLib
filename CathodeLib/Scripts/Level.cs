@@ -97,9 +97,9 @@ namespace CathodeLib
         public GalaxyItems GalaxyItems;
         public GalaxyDefinition GalaxyDefinition;
 
-        //Helpful accessors: default to 64-bit Havok data, fall back to 32-bit if not present
-        public HavokPackfile Collision => CollisionHKX64 ?? CollisionHKX;
-        public HavokPackfile Physics => PhysicsHKX64 ?? PhysicsHKX;
+        //Helpful accessors: default to 32-bit Havok data, fall back to 64-bit if not present
+        public HavokPackfile Collision => CollisionHKX ?? CollisionHKX64;
+        public HavokPackfile Physics => PhysicsHKX ?? PhysicsHKX64;
 
         public class State
         {
@@ -302,7 +302,7 @@ namespace CathodeLib
 
             Parallel.Invoke(
                 () => { PathBarrierResources = new PathBarrierResources(world + "PATH_BARRIER_RESOURCES", Resources); OnLoadTick?.Invoke(); },
-                () => { CollisionMaps = new CollisionMaps(world + "COLLISION.MAP" + (compressed ? ".GZ" : ""), Materials, MaterialMappings, Collision); OnLoadTick?.Invoke(); }
+                () => { CollisionMaps = new CollisionMaps(world + "COLLISION.MAP" + (compressed ? ".GZ" : ""), Materials, MaterialMappings, CollisionHKX ?? CollisionHKX64); OnLoadTick?.Invoke(); }
             );
 
             Parallel.Invoke(
