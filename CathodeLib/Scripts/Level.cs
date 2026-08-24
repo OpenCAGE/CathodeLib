@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml;
@@ -391,6 +392,8 @@ namespace CathodeLib
                     Strings[lang].Add(db, new TextDB(textDB));
                 }
             }
+
+            ImportFromGlobal();
             OnLoadTick?.Invoke();
         }
 
@@ -407,7 +410,8 @@ namespace CathodeLib
         {
 #endif
 
-            //TODO: if we haven't pulled GLOBAL texture data into our texture pak, do so, and update sources.
+            //OpenCAGE never modifies Global - but since people might, re-run the global importer again.
+            ImportFromGlobal();
 
             string renderable = _filepath + "/RENDERABLE/";
             string world = _filepath + (_patched ? "_PATCH" : "") + "/WORLD/";
@@ -502,24 +506,38 @@ namespace CathodeLib
         /// <summary>
         /// Imports resources to the level from Global, making it easier to share around
         /// </summary>
-        public void ImportFromGlobal()
+        private int ImportFromGlobal()
         {
-            //NOTE: REDS supports referencing models/materials in GLOBAL, but never seems to, so not bothering with that
-            //      However, some levels, E.G. Torrens, fail to render after doing this and then clearing global, so something is still pointing there somewhere
+            if (_global?.Textures == null || Textures == null)
+                return 0;
 
-            //Import global textures referenced by materials
-            for (int i = 0; i < Materials.Entries.Count; i++)
+            Dictionary<Textures.TEX4, Textures.TEX4> imported = new Dictionary<Textures.TEX4, Textures.TEX4>();
+            foreach (Textures.TEX4 globalTexture in _global.Textures.Entries)
             {
-                Materials.Material material = Materials.Entries[i];
-                for (int x = 0; x < material.TextureReferences.Count; x++)
-                    material.TextureReferences[x]?.RemapToLevel(this);
+                globalTexture.UsageFlags &= ~Textures.TextureUsageFlag.IS_GLOBAL_PACK;
+                globalTexture.UsageFlags |= Textures.TextureUsageFlag.IS_LEVEL_PACK;
+                imported[globalTexture] = Textures.ImportEntry(globalTexture);
+                globalTexture.UsageFlags |= Textures.TextureUsageFlag.IS_GLOBAL_PACK;
+                globalTexture.UsageFlags &= ~Textures.TextureUsageFlag.IS_LEVEL_PACK;
             }
 
-            // DO i also need to do the samplers on the shader? confused what that is.
+            int remapped = 0;
+            if (Materials?.Entries != null)
+            {
+                foreach (Materials.Material material in Materials.Entries)
+                {
+                    foreach (TexturePtr reference in material.TextureReferences)
+                    {
+                        if (reference == null || reference.Location != TexturePtr.Source.GLOBAL || reference.Texture == null)
+                            continue;
 
-            //Import global textures referenced by sound flash models
-            //for (int i = 0; i < SoundFlashModels.Entries.Count; i++)
-            //    SoundFlashModels.Entries[i].Texture?.RemapToLevel(this);
+                        reference.Texture = imported[reference.Texture];
+                        reference.Location = TexturePtr.Source.LEVEL;
+                        remapped++;
+                    }
+                }
+            }
+            return remapped;
         }
 
         /// <summary>
