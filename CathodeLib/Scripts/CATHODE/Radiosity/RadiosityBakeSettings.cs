@@ -174,6 +174,183 @@ namespace CathodeLib.Radiosity
         public float DeltaProbeSpacing = 0.5f;
 
         /// <summary>
+        /// Drop probe-path instances none of whose movers carry a PrimaryZoneID. Instancing
+        /// emits zone-less template/particle movers sprawled outside playable space; they
+        /// bucket into a fake "zone 0" and build oversized slices whose hash exceeds the
+        /// engine's item budget (~6.5k/slice), which rejects the slice wholesale.
+        /// </summary>
+        public bool DeltaRequireZone = true;
+
+        /// <summary>
+        /// Mint one fresh island id per appended probe slice and point its
+        /// InstanceSliceIndices entry at the slice. The engine only relights slices that at
+        /// least one island references (H3: an unreferenced appended slice rendered its
+        /// content completely unlit - lights placed, hash resolving, radiance never computed;
+        /// one referencing island lit it, cam7 0.195 -> 0.982). The caller persists a
+        /// RADIOSITY_TRANSFORMS record per minted id via <see cref="DeltaIslandRecord"/>.
+        /// </summary>
+        public bool DeltaMintScheduleIsland = true;
+
+        /// <summary>
+        /// Drop probe-path instances whose bounds span more than this many metres on any
+        /// axis (0 disables). The exterior hull/skybox meshes sprawl 50-100 m outside
+        /// playable space and explode the slice hashes past the engine's item budget;
+        /// no playable island approaches this size.
+        /// </summary>
+        public float DeltaMaxInstanceSpan = 45.0f;
+
+        /// <summary>
+        /// Let a mover with no exact light prior inherit the priors of retail movers that share
+        /// its resource_id. Duplicated retail content carries a NEW composite_instance_id, so the
+        /// exact (instance, resource) key misses for every dupe mover and the whole light stack
+        /// falls back to scratch heuristics: colour from the authored EmissiveTint (screens are
+        /// blue - CM3's dupe light census read 33% cool against retail's 15%), Weight from the
+        /// fitted area model, and retail's per-entity suppression/force-lit truth lost entirely.
+        /// resource_id survives duplication; where several retail instances of one fixture share
+        /// it their priors are merged (Items-weighted colour, mean flux).
+        /// </summary>
+        public bool DeltaLoosePriors = true;   //H35 baseline default
+
+        /// <summary>
+        /// Treat the absence of a light prior on a fixture whose retail twin we can identify as
+        /// retail's DECISION to leave it dark, rather than as missing data. Only meaningful with
+        /// <see cref="DeltaLoosePriors"/>, which is what supplies the twin.
+        /// </summary>
+        /// <remarks>
+        /// Measured on the duplicate: retail lights one bunk area with 30 white, 23 grey and 22
+        /// warm sources plus red and green status LEDs; we light the same volume with 58 warm and
+        /// almost nothing else. The colours are right - every one occurs in retail's own palette -
+        /// but we light fixtures retail left dark, and those resolve to the nearest warm fixture
+        /// of their class. Note the standing warning in SuppressedByRetail: on SCI_Hub, suppressing
+        /// emitters merely because they lack a prior dimmed the whole level. This rule is narrower -
+        /// it fires only when a specific retail twin can be located and that twin is dark.
+        /// </remarks>
+        public bool DeltaTwinSuppression = false;
+
+        /// <summary>
+        /// How far an emitter may be from a slice's live texels and still be injected into that
+        /// slice by the unbaked-emitter rescue pass. 0 keeps the legacy
+        /// <c>max(EmitterSampleRadius x 4, 3)</c>, which is THREE METRES.
+        /// </summary>
+        /// <remarks>
+        /// That default is fine when a slice is a whole room, because the room's emitters are
+        /// inside it. It fails on appended delta slices, which are chunked by mover budget rather
+        /// than by room: the chunker put one duplicated room's walls in slice 8 and its ceiling
+        /// fixtures in slice 9, the fixtures were 20 m from slice 8's texels, nothing was rescued
+        /// past 3 m, and the room rendered pitch black while the identical room next door - whose
+        /// fixtures happened to land in the same chunk - rendered at parity. A slice cannot be lit
+        /// by another slice's lights, so the reach has to cover the room, not the fixture.
+        /// </remarks>
+        public float UnbakedEmitterReach = 20.0f;   //H58 default: was ~3m, the single biggest win (-0.73)
+
+        /// <summary>
+        /// Directory to write one CSV per appended delta slice listing the movers actually in its
+        /// bake set, with positions and island ids. Null disables. Diagnostic only: which slice a
+        /// room's geometry really landed in cannot be inferred from the instance map, because the
+        /// map records the island a mover is BOUND to, not the slice it was RASTERISED into - and
+        /// the black-room bug is precisely a disagreement between those two.
+        /// </summary>
+        public string DeltaSliceMemberDir = null;
+
+        /// <summary>
+        /// Target atlas occupancy for a delta lightmap chunk, 0..1. Chunks are sized by the atlas
+        /// TEXELS their islands actually need rather than by mover count, and balanced so no chunk
+        /// runs hot. 0 keeps the legacy mover-count chunking.
+        /// </summary>
+        /// <remarks>
+        /// Mover count is a poor proxy for texel demand - it varies about 2x per zone between
+        /// room geometry and prop clutter - so a mover-count cap produced wildly uneven atlases:
+        /// 95%, 95%, 88%, 54%, 26% full across five chunks whose total demand would have fitted
+        /// at ~71% each. At 95% the skyline packer cannot find a contiguous 24x24 even with ~860
+        /// texels free, so it shrinks a real island one texel at a time; the duplicated reception
+        /// room was ground from 24x24 down to 7x7 that way and rendered black. Donors already
+        /// yield to real islands and are dropped first, so this is purely real-island pressure.
+        /// </remarks>
+        public float DeltaAtlasFillTarget = 0.75f;   //H35 baseline default: demand-balanced chunking
+
+        /// <summary>
+        /// Apply retail's albedo convention on emitting surfaces at the texel level: a mover with
+        /// a light prior stores the LIGHT's colour as albedo over its whole fixture (retail
+        /// CEILING_HZDLAB ~(180,175,164) = the room's lights, our diffuse read (23,22,22)), and an
+        /// emissive surface with NO prior stores near-black, not its glow art - retail's probes on
+        /// CM3's welder access panels read (5..11) flat where our diffuse sample of WELDER_BLUE
+        /// read ~(4,52,128); those panels alone were 560 of the dupe's 1299 blue-shifted probes
+        /// and the visible blue-green cast on everything near them.
+        /// </summary>
+        public bool EmissiveAlbedoConvention = true;   //H35 baseline default
+
+        /// <summary>Albedo (0..1) stored for emissive surfaces with no light prior when
+        /// <see cref="EmissiveAlbedoConvention"/> is on. Retail stores 5..11 of 255.</summary>
+        public float EmissiveNoPriorAlbedo = 0.04f;
+
+        /// <summary>
+        /// How close an unlit mover's origin must be to a lit one's to inherit its light colour
+        /// under <see cref="LightColourProbeAlbedoSiblings"/>. A fixture's housing is a separate
+        /// mover from its emissive panel and carries no prior of its own.
+        /// </summary>
+        public float LightColourSiblingRadius = 0.5f;
+
+        /// <summary>
+        /// Split delta movers between the two delta paths by bakeability: movers the lightmap
+        /// geometry collector can bake go down the LIGHTMAP delta route (appended lightmap
+        /// slices render their pages directly and lit rooms the probe path never could - H12
+        /// was cam9's first light in any configuration); only unbakeable dynamic-class movers
+        /// are converted and probe-sliced. Off = the old behaviour (everything forced dynamic).
+        /// </summary>
+        public bool DeltaHybridSplit = false;
+
+        /// <summary>
+        /// When the lightmap delta has more movers than this, chunk it by zone into multiple
+        /// appended slices (AppendDeltaSlices bakes one slice per call and a whole added
+        /// environment overflows it - H12: 2,507 islands parked unmapped-dark). 0 disables.
+        /// </summary>
+        public int DeltaLightmapChunkMovers = 3000;
+
+        /// <summary>
+        /// In-range retail island ids the delta paths may REPOINT when the id well runs dry
+        /// (CM3: 0 gaps, 53 harvestable duplicates against ~2,900 delta islands). Consumed by
+        /// the probe path's slice-scheduling islands and as each lightmap chunk's guaranteed
+        /// shared-overflow id - without one, a chunk's islands go beyond-range, which the
+        /// engine provably reads as garbage. Fill with ids of islands invisible from
+        /// anywhere that matters; their retail movers will sample wrong data.
+        /// </summary>
+        public System.Collections.Generic.Queue<int> DeltaSacrificialIslands = new System.Collections.Generic.Queue<int>();
+
+        /// <summary>
+        /// Mint every delta island a FRESH id by growing InstanceSliceIndices, bypassing the
+        /// whole scavenger (gaps / steal / duplicate-twin harvest / shared overflow).
+        ///
+        /// The scavenger exists to satisfy one claim: that the engine sizes its per-island
+        /// state from RADIOSITY_TRANSFORMS.BIN's count and ignores appended records. That file
+        /// is DEBUG SPEW - the game never opens it (confirmed 2026-08-25) - so no such sizing
+        /// can happen. The engine's per-island rect comes from the mover's own MODEL_PARAMS
+        /// (the VS LightmapTransform mad at cb offset 64), and the only island-indexed table it
+        /// reads is InstanceSliceIndices here, which is count-prefixed and written by us.
+        ///
+        /// Growing it is therefore the natural allocation, and it also stops the harvester
+        /// repointing RETAIL instance-map rows and overwriting RETAIL movers' rects - collateral
+        /// damage that lands on geometry the delta never touched.
+        /// </summary>
+        public bool DeltaGrowIslandIds = false;
+
+        /// <summary>
+        /// OUT: (island id, resource) scheduling rows the probe path wants in the instance
+        /// map. The patcher adds them AFTER the lightmap delta writes its real rows, so a
+        /// resource's first row - the one rendering follows - stays its real rect binding,
+        /// and the scheduling row only feeds the relight walk. Adding them first blackened
+        /// whatever the row bound (H16's doorway).
+        /// </summary>
+        public System.Collections.Generic.List<(int island, object resource)> DeltaPendingScheduleRows =
+            new System.Collections.Generic.List<(int, object)>();
+
+        /// <summary>
+        /// OUT: island ids minted by <see cref="DeltaMintScheduleIsland"/> during this bake.
+        /// The dynamic converter preserves these islands' instance-map rows through row
+        /// dropping - without them the schedule rows die before reaching disk (H5).
+        /// </summary>
+        public System.Collections.Generic.List<int> DeltaMintedIslands = new System.Collections.Generic.List<int>();
+
+        /// <summary>
         /// Volume hash cell size (m) for the probe-only delta slice. Retail bakes 2.0 everywhere,
         /// but the engine derives cell size from the hash's own AABB and dims (proven in-game by
         /// re-encoding retail's hashes at 2x), and a finer grid shrinks the world-space span of
@@ -320,7 +497,24 @@ namespace CathodeLib.Radiosity
         /// <summary>World-space reach (m) around the delta content's bounds from which retail
         /// islands are pulled in as donors. Bounce energy is dominated by nearby surfaces
         /// (form factor ~ 1/d²); scatter links cap at 6m.</summary>
-        public float DeltaDonorShellRadius = 8.0f;
+        public float DeltaDonorShellRadius = 25.0f;   //H58 default
+
+        /// <summary>
+        /// Every mover in the WHOLE lightmap delta, when that delta is appended in more than one
+        /// chunk. Null falls back to the per-call chunk, which is correct for a single-chunk delta.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="RadiosityBaker.AppendDeltaSlices"/> bakes ONE slice per call and only sees its
+        /// own chunk's movers, so it cannot otherwise tell another chunk's delta geometry from the
+        /// surrounding retail. It scored the former as DONOR material - and a donor is live for
+        /// light injection while nothing renders from it - so a duplicated room's emitters deposited
+        /// their light into a slice holding only a cluster-only copy of that room. Measured on CM3:
+        /// the cam9 locker door is a 2x3 MEMBER in slice 11 carrying 1-2 lights (38.8 wLuma) while
+        /// 5-6 lights (~110 wLuma) landed on its 24x24 DONOR copy in slice 12; under zone chunking
+        /// cam3's slice 11 held 15 lights and ZERO probes. It also spends the donor budget, which is
+        /// meant for the surrounding level, on the delta's own geometry.
+        /// </remarks>
+        public System.Collections.Generic.HashSet<int> DeltaAllMovers = null;
 
         /// <summary>Atlas texels the donor shell may spend (the slice atlas is 128x128 = 16,384;
         /// delta islands allocate first and donors never displace them). Nearest donors win.</summary>
@@ -477,7 +671,7 @@ namespace CathodeLib.Radiosity
         /// input probe was placed per live texel. Input probes are scattered over the geometry now,
         /// so the two are independent and only the 128x128 atlas bounds this.</para>
         /// </remarks>
-        public int MaxTexelsPerSlice = 13000;
+        public int MaxTexelsPerSlice = 8000;   //H58 default: leaves donor headroom (-0.14)
 
         /// <summary>
         /// Upper bound on slice count. Retail ranges from 1 (Frontend) to 15 (HAB_AIRPORT). This is
@@ -851,7 +1045,7 @@ namespace CathodeLib.Radiosity
         /// grids folding into the shared 256-entry palette is the prime suspect. Keep the
         /// reach at or under ~1.2 (one ring at 1 m cells) if enabling.
         /// </summary>
-        public float VolumeProbeFillReach = 0.0f;
+        public float VolumeProbeFillReach = 1.20f;   //H58 default (harness ran RADBAKE_HASHFILL=1.2 throughout)
 
         /// <summary>
         /// Rays per cell of a volume probe's 8x8 visibility face. The stored byte is
@@ -897,7 +1091,7 @@ namespace CathodeLib.Radiosity
         /// 0.916 x retail + 1.54 against the old default's 0.872 x retail + 7.27, and the residual
         /// 8% slope deficit is a separate defect still open.</para>
         /// </remarks>
-        public float SurfaceLightWeightScale = 1.20f;
+        public float SurfaceLightWeightScale = 0.80f;   //H58 default (harness ran RADBAKE_LIGHTSCALE=0.8 throughout)
 
         /// <summary>
         /// Bounds applied to a mover's <c>EmissiveRadiosityMultiplier</c> before it reaches a
@@ -940,12 +1134,114 @@ namespace CathodeLib.Radiosity
         /// between them, and the energy-weighted mean colour is (136,134,129) - a chroma of about
         /// 7. Writing the mover's EmissiveTint verbatim gives a chroma near 29, skewed green by
         /// tints like (219,255,221), and that is what put a green cast over the whole render.</para>
-        /// <para>This is a calibration, not a decode. Retail's light RGB is not the emissive tint
-        /// at all - only 1 of Solace's 76 distinct tints appears anywhere in retail's 28-value set -
-        /// and the likeliest true source is the emitter's emissive map rather than its tint
-        /// constant. Until that is decoded, matching the measured chroma is the closest we get.</para>
+        /// <para>SUPERSEDED (2026-08-25) by <see cref="SurfaceLightGammaEncode"/>: the light RGB
+        /// IS the emissive tint, gamma-2.0 encoded. Only 1 of Solace's 76 tints appeared in
+        /// retail's set because a square root leaves only white and the pure primaries where
+        /// they were - and the two Solace greys cited above are exactly it: 174 = sqrt(255*119)
+        /// and 177 = sqrt(255*124), the encodes of the 0.467 and 0.486 greys CA authored. This
+        /// knob only applies while the gamma encode is off.</para>
         /// </remarks>
         public float SurfaceLightSaturation = 0.25f;
+
+        /// <summary>
+        /// Store a surface light's colour as <c>floor(sqrt(255 * tintByte))</c> - the gamma-2.0
+        /// encode retail uses - instead of desaturating the raw tint.
+        /// </summary>
+        /// <remarks>
+        /// Decoded 2026-08-25 by joining RADIOSITY_LEVEL.BIN's authored per-instance emissive
+        /// colours to the shipped RADIOSITY_RUNTIME light palette on CM3. All 12 colours checked
+        /// match exactly under truncation, across both levels tested:
+        ///   (0.929,0.839,0.643) -> 245,233,204   (0.557,0.792,0.929) -> 190,226,245
+        ///   (0.902,0.561,0.192) -> 242,190,111   (0.741,0.945,0.957) -> 219,247,249
+        ///   0.467 grey -> 174 (Solace's 2nd commonest)   0.486 grey -> 177 (its 3rd)
+        /// Truncation matters: 164 -> 204.5 stores 204, and rounding it to 205 is where our
+        /// "off-palette" light colours came from.
+        /// </remarks>
+        public bool SurfaceLightGammaEncode = true;   //H58 default: decoded, 2488/2488 CM3 lights
+
+        /// <summary>
+        /// Take a surface light's colour from the emissive material's DIFFUSE-map mean rather
+        /// than the mover's EmissiveTint. Retail's own source; pairs with
+        /// <see cref="SurfaceLightGammaEncode"/>, which encodes it.
+        /// </summary>
+        /// <remarks>
+        /// Decoded 2026-08-25 against RADIOSITY_LEVEL.BIN's authored colours. CA_ENVIRONMENT has
+        /// no emissive texture sampler - EMISSIVE is a shader FEATURE bit - so an emissive surface
+        /// is lit from its diffuse map, and the tint-graded linear mean of that map is what CA's
+        /// compiler recorded: STRIP_05M_DISPLAY (0.929,0.839,0.643) and BASE_DISPLAY (0.439,0,0)
+        /// both match to three places. Because the texture is shared per fixture family, so is
+        /// the colour - which is why retail records ONE value per family while our per-mover
+        /// EmissiveTint varies from instance to instance, giving identical fixtures different
+        /// light colours. End to end: mean 0.929,0.839,0.643 -> sqrt -> x255 -> 245,233,204,
+        /// exactly what retail ships on all 1,172 STRIP_05M lights in ChallengeMap3.
+        /// Only 29 of 1,527 emitters sit on a remapped material, so the CA pre-remap sampling bug
+        /// does NOT account for this - it is a real difference in source.
+        /// </remarks>
+        public bool SurfaceLightColourFromDiffuseMean = true;   //H58 default: retail's own colour source
+
+        /// <summary>
+        /// Force islands built from the same geometry to share one rect size, as retail does.
+        /// See <c>RadiosityBaker.ApplyPerModelRects</c> for the measurement and the mechanism.
+        /// </summary>
+        public bool PerModelRectSizes = false;
+
+        /// <summary>
+        /// Rigid translation applied to duplicated content, used to match each copied mover to
+        /// its TRUE retail twin when looking up light priors (position minus this offset).
+        /// Zero disables offset-aware matching.
+        /// </summary>
+        /// <remarks>
+        /// Nearest-in-space matching alone measured worse (24.73 vs 24.00) because a copy offset
+        /// 250 m sits 250 m from its own twin but only ~210 m from an unrelated instance of the
+        /// same fixture. It did return retail's EXACT byte where the merged fallback was one unit
+        /// off, so the pick - not the idea - was the problem. Removing the offset first makes the
+        /// twin exact, which matters because the merge flattens both colour and flux: on CM3's
+        /// cam9 room retail's dominant light is w=195 warm amber while ours is w=46 grey.
+        /// </remarks>
+        public System.Numerics.Vector3 DeltaPriorOffset = System.Numerics.Vector3.Zero;
+
+        /// <summary>
+        /// Snap every slice's volume-probe hash box out to a grid anchored at the world origin,
+        /// so all slices share one lattice instead of each deriving a grid from its own bounds.
+        /// </summary>
+        /// <remarks>
+        /// Retail's slices line up: their lattices coincide and their origins sit a whole number
+        /// of cells apart. Ours phase each grid off its own bounding box, so neighbouring slices
+        /// cut space differently and a dynamic object crossing a slice boundary jumps between two
+        /// misaligned fields - visible as ragged volume cell borders where retail's are clean.
+        /// Costs at most one extra cell per axis per slice.
+        /// </remarks>
+        public bool SharedVolumeLattice = false;
+
+        /// <summary>
+        /// Chunk the LIGHTMAP delta by ZONE rather than balancing island fill, so a room's
+        /// islands stay in one slice. Mirrors what the probe path already does.
+        /// </summary>
+        /// <remarks>
+        /// The default worst-fit chunker balances fill by sending each island to the emptiest
+        /// chunk, which necessarily scatters a room's islands across slices - and a slice cannot
+        /// be lit by another slice's lights. That is the failure
+        /// <see cref="UnbakedEmitterReach"/>'s remarks describe (walls in one slice, ceiling
+        /// fixtures in another, room renders black) and the reason that rescue reach has to span
+        /// a whole room. Retail's own slices follow zones: a zone's rooms live wholly in one
+        /// slice. Chunking by zone removes the cause rather than compensating for it.
+        /// </remarks>
+        public bool DeltaZoneChunks = false;
+
+        /// <summary>
+        /// Pack donor islands BEFORE members, so the donor shell keeps the space it was allocated
+        /// instead of being dropped when the slice overfills.
+        /// </summary>
+        /// <remarks>
+        /// Donor selection is clamped to (15800 - ESTIMATED groupTexels), but the demand estimator
+        /// runs ~26% under what the allocator really places, so the slice fills and the donors
+        /// chosen on that optimistic budget get dropped at pack time: 618 / 638 / 807 across three
+        /// CM3 runs, each time correlating with rooms losing bounce light (cam3 lost 187 donors
+        /// and 31% of its light when zone chunking made its slice fuller). Packing donors first
+        /// makes MEMBERS shrink instead, which is the better trade - a member with a smaller rect
+        /// still gathers, whereas a dropped donor removes a bounce source outright.
+        /// </remarks>
+        public bool DonorsPackFirst = false;
 
         /// <summary>
         /// Materials whose average albedo could not be decoded fall back to this grey level, as a

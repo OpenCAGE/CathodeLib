@@ -516,9 +516,10 @@ namespace CathodeLib
             {
                 globalTexture.UsageFlags &= ~Textures.TextureUsageFlag.IS_GLOBAL_PACK;
                 globalTexture.UsageFlags |= Textures.TextureUsageFlag.IS_LEVEL_PACK;
-                imported[globalTexture] = Textures.ImportEntry(globalTexture);
+                Textures.TEX4 levelCopy = Textures.ImportEntry(globalTexture);
                 globalTexture.UsageFlags |= Textures.TextureUsageFlag.IS_GLOBAL_PACK;
                 globalTexture.UsageFlags &= ~Textures.TextureUsageFlag.IS_LEVEL_PACK;
+                imported[globalTexture] = levelCopy;
             }
 
             int remapped = 0;

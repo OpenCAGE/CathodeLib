@@ -963,7 +963,7 @@ namespace CathodeLib.Radiosity
             return false;
         }
 
-        private static bool IsBakeable(Movers.MOVER_DESCRIPTOR mover, RadiosityBakeSettings settings)
+        internal static bool IsBakeable(Movers.MOVER_DESCRIPTOR mover, RadiosityBakeSettings settings)
         {
             if (mover?.RenderableElements == null || mover.RenderableElements.Count == 0)
                 return false;
@@ -1087,6 +1087,40 @@ namespace CathodeLib.Radiosity
                 : settings.DefaultEmissiveMultiplier;
             return Math.Max(settings.EmissiveMultiplierFloor,
                    Math.Min(settings.EmissiveMultiplierCeiling, multiplier));
+        }
+
+        /// <summary>
+        /// The MATERIAL behind a mover's strongest emissive element - the one whose diffuse map
+        /// gives the emitter its colour.
+        /// </summary>
+        /// <remarks>
+        /// CA_ENVIRONMENT has no emissive texture sampler at all (EMISSIVE is a shader FEATURE
+        /// bit), so an emissive surface is lit from its DIFFUSE map. Decoded 2026-08-25 against
+        /// RADIOSITY_LEVEL.BIN's authored colours: the tint-graded linear mean of that map IS the
+        /// colour CA's compiler recorded - STRIP_05M_DISPLAY's mean is (0.929,0.839,0.643) to
+        /// three places, exactly retail's authored value across all 569 of its instances, and
+        /// BASE_DISPLAY's is (0.439,0,0) likewise. It is shared per fixture family because the
+        /// texture is, which is why retail records ONE colour per family where our per-mover
+        /// EmissiveTint varies instance to instance.
+        /// </remarks>
+        public static Materials.Material ResolveMoverEmissiveMaterial(
+            Movers.MOVER_DESCRIPTOR mover, RadiosityBakeSettings settings)
+        {
+            if (mover?.RenderableElements == null)
+                return null;
+            Materials.Material best = null;
+            float bestStrength = 0.0f;
+            foreach (RenderableElements.Element element in mover.RenderableElements)
+            {
+                if (!IsEmissiveMaterial(element) || element.Material == null)
+                    continue;
+                float s = ResolveEmissiveStrength(mover, element, settings);
+                if (best != null && s <= bestStrength)
+                    continue;
+                bestStrength = s;
+                best = element.Material;
+            }
+            return best;
         }
 
         /// <summary>Strongest emissive element's strength, for the mover-level light passes.</summary>

@@ -230,20 +230,120 @@ namespace CathodeLib.Radiosity
                 HashSet<int> lightmapMovers = deltaMovers;
                 if (settings.DeltaDynamicProps)
                 {
+                    // Hybrid split (H12/H13): the lightmap delta path lights everything its
+                    // geometry collector can bake - including rooms the probe path never lit -
+                    // so only the movers it CANNOT bake (dynamic-class props) go down the
+                    // convert+probe route; the rest keep the lightmap path below.
+                    HashSet<int> convertSet = deltaMovers;
+                    if (settings.DeltaHybridSplit)
+                    {
+                        convertSet = new HashSet<int>();
+                        foreach (int mi in deltaMovers)
+                            if (!RadiosityGeometry.IsBakeable(level.Movers.Entries[mi], settings))
+                                convertSet.Add(mi);
+                        log?.Invoke("Radiosity patch hybrid: " + convertSet.Count + " of " + deltaMovers.Count +
+                                    " delta movers to the dynamic path, rest to the lightmap delta bake");
+                    }
+
                     // Probe field extension FIRST: content outside the retail volume field gets
                     // its own appended radiance slice + fine-celled hash. This must precede the
                     // converter - geometry collection excludes dynamic-class movers, so the
-                    // content is baked while its materials are still static-class.
-                    if (settings.DeltaProbeOnlySlice)
+                    // content is baked while its materials are still static-class. The FULL
+                    // delta set builds the field even in hybrid mode: the probes come from the
+                    // static surfaces, and the dynamic props (which contribute no bakeable
+                    // geometry of their own - H13 baked zero slices from the props alone) sample
+                    // that field at their bounds centres.
+                    if (settings.DeltaProbeOnlySlice && convertSet.Count > 0)
                         probeIslands = RadiosityBaker.AppendProbeOnlySlice(level, settings, deltaMovers, log);
 
-                    DynamicRadiosityConverter.Result conv = DynamicRadiosityConverter.Convert(level, deltaMovers, log, settings.DeltaDropInstanceMapRows);
+                    DynamicRadiosityConverter.Result conv = DynamicRadiosityConverter.Convert(level, convertSet, log, settings.DeltaDropInstanceMapRows,
+                        settings.DeltaMintedIslands);
                     dynConverted = conv.ConvertedMovers.Count;
                     lightmapMovers = new HashSet<int>(deltaMovers);
                     lightmapMovers.ExceptWith(conv.ConvertedMovers);
                 }
-                if (settings.PatchBakeDelta && lightmapMovers.Count > 0)
-                    deltaIslands = RadiosityBaker.AppendDeltaSlices(level, settings, lightmapMovers, log);
+                bool ranLightmapDelta = settings.PatchBakeDelta && lightmapMovers.Count > 0;
+                if (ranLightmapDelta)
+                {
+                    // AppendDeltaSlices bakes ONE slice per call - built for bounded edits.
+                    // A whole added environment overflows it (H12/H13: 2,507 islands parked on
+                    // 1x1 and rendered unmapped-dark), so large deltas are chunked by zone and
+                    // appended one slice per chunk.
+                    List<HashSet<int>> demandChunks = settings.DeltaAtlasFillTarget > 0.0f
+                        ? RadiosityBaker.ChunkDeltaByAtlasDemand(level, settings, lightmapMovers, log)
+                        : null;
+                    if (demandChunks != null)
+                    {
+                        // Each call only sees its own chunk; tell it the whole delta so another
+                        // chunk's geometry is not mistaken for donor material (DeltaAllMovers).
+                        HashSet<int> priorAll = settings.DeltaAllMovers;
+                        settings.DeltaAllMovers = lightmapMovers;
+                        try
+                        {
+                            foreach (HashSet<int> chunk in demandChunks)
+                                deltaIslands += RadiosityBaker.AppendDeltaSlices(level, settings, chunk, log);
+                        }
+                        finally { settings.DeltaAllMovers = priorAll; }
+                    }
+                    else if (settings.DeltaLightmapChunkMovers > 0 && lightmapMovers.Count > settings.DeltaLightmapChunkMovers)
+                    {
+                        // Chunked by ZONE. Grouping by island id instead was tried and REVERTED
+                        // (H28): at this point the delta movers have no instance-map rows yet -
+                        // the baker assigns their islands during each chunk's own bake - so 6249
+                        // of 6252 movers had no island to group on, the packing came out all but
+                        // identical, and the run measured slightly worse (cam16 0.77 -> 0.55,
+                        // cam3 0.74 -> 0.60). Any island-coherent scheme has to run inside the
+                        // baker where the assignment happens, not here.
+                        var byZone = new System.Collections.Generic.Dictionary<uint, System.Collections.Generic.List<int>>();
+                        foreach (int mi in lightmapMovers)
+                        {
+                            var z = level.Movers.Entries[mi].PrimaryZoneID;
+                            uint zk = z == CATHODE.Scripting.ShortGuid.Invalid ? 0u : z.AsUInt32;
+                            if (!byZone.TryGetValue(zk, out var zl)) byZone[zk] = zl = new System.Collections.Generic.List<int>();
+                            zl.Add(mi);
+                        }
+                        var chunks = new System.Collections.Generic.List<System.Collections.Generic.List<int>>();
+                        foreach (var zl in System.Linq.Enumerable.OrderByDescending(byZone.Values, l => l.Count))
+                        {
+                            System.Collections.Generic.List<int> target = null;
+                            foreach (var c in chunks)
+                                if (c.Count + zl.Count <= settings.DeltaLightmapChunkMovers) { target = c; break; }
+                            if (target == null) { target = new System.Collections.Generic.List<int>(); chunks.Add(target); }
+                            target.AddRange(zl);
+                        }
+                        log?.Invoke("Radiosity delta lightmap: " + lightmapMovers.Count + " movers in " + byZone.Count +
+                                    " zones -> " + chunks.Count + " slice chunks (cap " + settings.DeltaLightmapChunkMovers + ")");
+                        HashSet<int> priorAllZ = settings.DeltaAllMovers;
+                        settings.DeltaAllMovers = lightmapMovers;
+                        try
+                        {
+                            foreach (var chunk in chunks)
+                                deltaIslands += RadiosityBaker.AppendDeltaSlices(level, settings, new HashSet<int>(chunk), log);
+                        }
+                        finally { settings.DeltaAllMovers = priorAllZ; }
+                    }
+                    else
+                        deltaIslands = RadiosityBaker.AppendDeltaSlices(level, settings, lightmapMovers, log);
+                }
+
+                // Scheduling rows LAST: rendering follows a resource's FIRST map row, so these
+                // must land after the lightmap delta's real rect rows or they hijack their
+                // bound movers into dead-texel black (H16's doorway).
+                if (settings.DeltaPendingScheduleRows != null && settings.DeltaPendingScheduleRows.Count > 0 &&
+                    level.RadiosityInstanceMap?.Entries != null)
+                {
+                    foreach ((int island, object resource) in settings.DeltaPendingScheduleRows)
+                    {
+                        level.RadiosityInstanceMap.Entries.Add(new RadiosityInstanceMap.Entry
+                        {
+                            lightmap_transform = island,
+                            Resource = (Resources.Resource)resource
+                        });
+                        settings.DeltaMintedIslands?.Add(island);
+                    }
+                    log?.Invoke("Radiosity patch: " + settings.DeltaPendingScheduleRows.Count +
+                                " scheduling rows appended after the lightmap delta");
+                }
             }
 
             // Densify the KEPT retail slices' volume hashes: same probes, finer grid, so the

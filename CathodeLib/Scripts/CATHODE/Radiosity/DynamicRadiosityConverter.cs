@@ -60,7 +60,8 @@ namespace CathodeLib.Radiosity
             public int MapRowsDropped;
         }
 
-        public static Result Convert(Level level, ICollection<int> moverIndices, Action<string> log = null, bool dropInstanceMapRows = true)
+        public static Result Convert(Level level, ICollection<int> moverIndices, Action<string> log = null, bool dropInstanceMapRows = true,
+                                     ICollection<int> preserveIslandRows = null)
         {
             var result = new Result();
             if (moverIndices == null || moverIndices.Count == 0)
@@ -326,6 +327,15 @@ namespace CathodeLib.Radiosity
                 var keep = new List<RadiosityInstanceMap.Entry>(level.RadiosityInstanceMap.Entries.Count);
                 foreach (RadiosityInstanceMap.Entry e in level.RadiosityInstanceMap.Entries)
                 {
+                    // Minted scheduling rows survive conversion: the engine's relight only
+                    // processes slices an instance-map row's island points at, and the row's
+                    // mover being dynamic is the state KEEPROWS mode ran at scale without
+                    // incident (zeroed rect = nothing samples pages through it).
+                    if (preserveIslandRows != null && preserveIslandRows.Contains(e.lightmap_transform))
+                    {
+                        keep.Add(e);
+                        continue;
+                    }
                     Resources.Resource r = e.Resource ?? level.Resources.GetAtWriteIndex(e.resource_index);
                     if (r != null && convertedResources.Contains(r))
                     {
