@@ -650,6 +650,14 @@ namespace CathodeLib.Radiosity
         /// </summary>
         public bool SampleSecondaryDiffuse = false;   //OFF until the decoded fold validates against albmat on SCI_Hub (the earlier flat mean-fold guess measurably hurt; this one is the shader's real math but unproven against retail's compiler output).
 
+        /// <summary>
+        /// Diagnostic arm of the engine-corner carry (see CarryRetailCorners): also carry
+        /// retail's corner cluster positions and re-point the corner mangle at our probes.
+        /// Measured to REDISTRIBUTE per-room brightness (SCI_Hub cam4 fell to 0.33x while the
+        /// aggregate improved), so the shipping configuration carries the scatter bytes only.
+        /// </summary>
+        public bool CarryCornerPositions = false;
+
         /// <summary>Atlas texels the donor shell may spend (the slice atlas is 128x128 = 16,384;
         /// delta islands allocate first and donors never displace them). Nearest donors win.</summary>
         public int DeltaDonorTexelBudget = 8192;

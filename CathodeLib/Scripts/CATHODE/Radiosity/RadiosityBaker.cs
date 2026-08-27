@@ -861,13 +861,16 @@ namespace CathodeLib.Radiosity
             // Level.Save persists it in the normal pass.
             RadiosityRuntime runtime = level.RadiosityRuntime
                 ?? throw new InvalidOperationException("Level has no RADIOSITY_RUNTIME.BIN to rewrite.");
-            // The retail table must be captured BEFORE the in-place rewrite discards retail's
-            // slices - reading level.RadiosityRuntime at import time returns the freshly-baked
-            // table instead (the first verbatim validation silently imported our own 3,131 CM9
-            // lights back onto themselves with -1 bindings and rendered ungated).
+            // The retail slices must be captured BEFORE the in-place rewrite discards them -
+            // reading level.RadiosityRuntime at import time returns the freshly-baked table
+            // instead (the first verbatim validation silently imported our own 3,131 CM9
+            // lights back onto themselves with -1 bindings and rendered ungated). The snapshot
+            // also feeds the engine-corner carry below, so it is taken unconditionally.
+            List<RadiosityRuntime.RuntimeDataSlice> retailSlices =
+                new List<RadiosityRuntime.RuntimeDataSlice>(runtime.Slices);
             List<RadiosityRuntime.RuntimeDataSlice> retailSlicesForVerbatim =
                 settings.EmitSurfaceLights && settings.RetailLightTableVerbatim
-                    ? new List<RadiosityRuntime.RuntimeDataSlice>(runtime.Slices)
+                    ? retailSlices
                     : null;
             runtime.Slices.Clear();
             runtime.InstanceSliceIndices.Clear();
@@ -959,6 +962,15 @@ namespace CathodeLib.Radiosity
             int instanceIdCeiling = Math.Max(nextNewId, maxRetailId + 1);
             for (int i = 0; i < instanceIdCeiling; i++)
                 runtime.InstanceSliceIndices.Add(sliceForInstanceId.TryGetValue(i, out int s2) ? s2 : 0);
+
+            // The engine-owned 16x16 atlas corner: island rects are barred from it
+            // (AllocateAtlases) and its CONTENT is carried from retail's corresponding slice -
+            // real cluster positions and scatter, with the mangle re-pointed at OUR nearest
+            // surface probe. A nearest-live fill was not enough: a reserved-but-fill-grade
+            // corner deterministically exploded whole frames to 4-14x luma, while an island's
+            // real texels there only broke that island. Retail authors this block on every
+            // slice; whatever the engine does with it needs those values.
+            CarryRetailCorners(runtime, retailSlices, settings, log);
 
             if (settings.EmitSurfaceLights)
                 AddUnbakedEmitterLights(level, geometry, sliceData, settings, lightPriors, log);
@@ -3009,13 +3021,16 @@ namespace CathodeLib.Radiosity
             {
                 var atlas = new RadiosityAtlas(AtlasSize);
 
-                // Texel (0,0) is RESERVED: a MODEL_PARAMS rect with x AND y both zero reads as
-                // "no lightmap" - retail ships hundreds of x==0 rects and hundreds of y==0 rects
-                // per level but not one at the exact origin (0 of 32,747 across five levels).
-                // An island packed there renders unmapped-dark and ignores its slice entirely:
-                // it is immune to every fixup/weight/mangle change, which is what buried
-                // ChallengeMap7's moved shelving (and one island of every full bake ever run).
-                atlas.TryAllocate(1, 1, out _, out _);
+                // The atlas's top-left 16x16 corner is RESERVED - the engine owns it. Texel (0,0)
+                // alone is the "no lightmap" sentinel (a MODEL_PARAMS rect at the exact origin
+                // renders unmapped-dark, which buried ChallengeMap7's moved shelving), but the
+                // reservation is the whole corner: retail ships rects at y=0 (x>=16) and x=0
+                // (y>=16) freely, yet NO rect intersecting x<16 && y<16 exists in any measured
+                // level (0 of 16,511 rects across SCI_Hub/CM3/Solace) - and every island we
+                // packed there rendered BLACK (SCI_Hub cam7/9/12 ceilings) or FLICKERED
+                // (cam2/8/16) with bake data that passed every instrument: map rows, rects,
+                // slices, mangle, links and light diet all at retail parity.
+                atlas.TryAllocate(16, 16, out _, out _);
 
                 // Largest first: skyline packers waste far less space that way. Donors pack
                 // after every real island (they must never displace or shrink one) and are
@@ -3070,11 +3085,12 @@ namespace CathodeLib.Radiosity
                             droppedDonors.Add(instance);
                             continue;
                         }
-                        // Nothing left. Park it on a 1x1 beside the reserved origin: the island
-                        // still resolves to a valid texel, it just shares lighting with whatever
-                        // else is there. Never (0,0) - that is the "no lightmap" sentinel.
+                        // Nothing left. Park it on a 1x1 just outside the reserved corner: the
+                        // island still resolves to a valid texel, it just shares lighting with
+                        // whatever else is there. Never inside x<16 && y<16 - the engine owns
+                        // that corner (and (0,0) is the "no lightmap" sentinel).
                         instance.SliceIndex = s;
-                        instance.AtlasX = 1;
+                        instance.AtlasX = 16;
                         instance.AtlasY = 0;
                         instance.AtlasWidth = 1;
                         instance.AtlasHeight = 1;
@@ -3258,8 +3274,9 @@ namespace CathodeLib.Radiosity
             // arbitrary function of packing order. Filling the gutter with cluster-only clones of
             // the nearest live cell reproduces retail's observable state and removes the layout
             // lottery from the emitter field.
-            if (settings.FillAtlasGutters)
-                FillAtlasGutters(texels, log);
+            // The engine-owned 16x16 corner must be fully live even when gutters are not filled,
+            // so the fill always runs; without the setting it touches only the corner.
+            FillAtlasGutters(texels, !settings.FillAtlasGutters, log);
 
             int liveCount = 0;
             for (int i = 0; i < AtlasTexels; i++) if (texels[i].Live) liveCount++;
@@ -5013,10 +5030,15 @@ namespace CathodeLib.Radiosity
         /// resolved albedo) but no emissive - the surface-light pass must not gain emitter area -
         /// and never become surface probes.
         /// </summary>
-        private static void FillAtlasGutters(SurfaceTexel[] texels, Action<string> log)
+        private static void FillAtlasGutters(SurfaceTexel[] texels, bool cornerOnly, Action<string> log)
         {
             // Retail leaves a few percent dead on some slices, so the search is bounded: a dead
-            // cell more than MaxRing cells from any live one stays dead.
+            // cell more than MaxRing cells from any live one stays dead. EXCEPT the engine-owned
+            // 16x16 corner: island rects are barred from it (see AllocateAtlases) but it must
+            // never hold a dead texel - retail ships it 256/256 live on every slice measured,
+            // and leaving 100 of its cells dead exploded whole frames to 10-14x (SCI_Hub dirt6:
+            // the engine's own corner consumers read the dead cells as garbage). Corner cells
+            // therefore search as far as it takes.
             const int MaxRing = 6;
             int filled = 0, stillDead = 0;
             var fills = new List<(int cell, int source)>();
@@ -5027,8 +5049,12 @@ namespace CathodeLib.Radiosity
                     int i = y * AtlasSize + x;
                     if (texels[i].Live)
                         continue;
+                    bool corner = x < 16 && y < 16;
+                    if (cornerOnly && !corner)
+                        continue;
+                    int maxRing = corner ? AtlasSize : MaxRing;
                     int source = -1;
-                    for (int r = 1; r <= MaxRing && source < 0; r++)
+                    for (int r = 1; r <= maxRing && source < 0; r++)
                     {
                         for (int dy = -r; dy <= r && source < 0; dy++)
                         {
@@ -9491,6 +9517,84 @@ namespace CathodeLib.Radiosity
             Z = ToHalf(v.Z),
             W = ToHalf(w)
         };
+
+        /// <summary>
+        /// Copy retail's engine-owned 16x16 atlas corner into each of our slices: cluster
+        /// positions and scatter verbatim, mangle re-pointed to our nearest live surface probe
+        /// so the engine's reads resolve inside OUR probe layout. Slices correspond by index -
+        /// island grouping follows retail, so slice s covers the same rooms in both bakes.
+        /// </summary>
+        private static void CarryRetailCorners(RadiosityRuntime runtime,
+            List<RadiosityRuntime.RuntimeDataSlice> retailSlices, RadiosityBakeSettings settings, Action<string> log)
+        {
+            if (retailSlices == null || retailSlices.Count == 0)
+                return;
+            bool carryPositions = settings.CarryCornerPositions;
+
+            int carried = 0, slicesDone = 0;
+            for (int s = 0; s < runtime.Slices.Count && s < retailSlices.Count; s++)
+            {
+                RadiosityRuntime.RuntimeDataSlice ours = runtime.Slices[s];
+                RadiosityRuntime.RuntimeDataSlice retail = retailSlices[s];
+                if (ours.ClusterPositions.Count < AtlasTexels || retail.ClusterPositions.Count < AtlasTexels ||
+                    ours.MangleMap.Count < AtlasTexels)
+                    continue;
+
+                var probes = new List<(Vector3 p, int slot)>();
+                for (int i = 0; i < ours.SurfaceProbePositions.Count; i++)
+                {
+                    Vector4 sp = ours.SurfaceProbePositions[i];
+                    if (sp.X == 0 && sp.Y == 0 && sp.Z == 0 && sp.W == 0)
+                        continue;
+                    probes.Add((new Vector3(sp.X, sp.Y, sp.Z), i));
+                }
+                if (probes.Count == 0)
+                    continue;
+
+                for (int ty = 0; ty < 16; ty++)
+                {
+                    for (int tx = 0; tx < 16; tx++)
+                    {
+                        int i = ty * AtlasSize + tx;
+                        Vector4u16 rc = retail.ClusterPositions[i];
+                        if (rc.X == 0 && rc.Y == 0 && rc.Z == 0 && rc.W == 0)
+                            continue;
+
+                        // Retail's corner SCATTER bytes are the load-bearing payload: without
+                        // them the render deterministically explodes to 4-5x (dirt7/dirt9,
+                        // camera-for-camera identical blowouts), with them the level scores its
+                        // best ever (dirt8: 1.134 vs the albedo-splice ceiling 1.150). Their A
+                        // channel packs values in a (group<<4 | index)-looking scheme our
+                        // writer does not produce - undecoded, so carried verbatim.
+                        if (i < ours.Scatter.Count && i < retail.Scatter.Count)
+                            ours.Scatter[i] = retail.Scatter[i];
+                        if (carryPositions)
+                        {
+                            ours.ClusterPositions[i] = rc;
+                            var p = new Vector3(FromHalf(rc.X), FromHalf(rc.Y), FromHalf(rc.Z));
+                            int bestSlot = probes[0].slot;
+                            float bestD = float.MaxValue;
+                            foreach ((Vector3 pp, int slot) in probes)
+                            {
+                                float d = Vector3.DistanceSquared(pp, p);
+                                if (d < bestD) { bestD = d; bestSlot = slot; }
+                            }
+                            ours.MangleMap[i] = new ColourRGBA8
+                            {
+                                R = (byte)(bestSlot % ProbeTexWidth),
+                                G = (byte)(bestSlot / ProbeTexWidth),
+                                B = 255,
+                                A = 63
+                            };
+                        }
+                        carried++;
+                    }
+                }
+                slicesDone++;
+            }
+            log?.Invoke("    engine corner: " + carried + " texels carried from retail over " + slicesDone +
+                        " slices (positions+scatter, mangle re-pointed to our probes)");
+        }
 
         /// <summary>
         /// Deep-copy a slice through its own serialiser: complete by construction, and exactly
