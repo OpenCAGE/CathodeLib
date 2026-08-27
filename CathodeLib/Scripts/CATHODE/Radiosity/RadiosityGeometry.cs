@@ -342,6 +342,27 @@ namespace CathodeLib.Radiosity
                     continue;
                 }
 
+                // Retail's own instance map is the authority on WHICH resources may carry a
+                // lightmap. CollectLightmappedComposites admits a whole composite once any one of
+                // its movers asks for RADIOSITY_STATIC, and its remark claimed the surplus was
+                // inert. It is not: on CM3 that surplus was 28 resources retail never maps
+                // (REQUIRED_ASSETS weapons, _PROPS_\PHYSICS templates, MHQ_LIGHTS_B - pickups and
+                // physics props, 22 of which DO carry RADIOSITY_STATIC themselves, so no per-mover
+                // predicate separates them). Those 28 extra rows did not just mislight those props:
+                // unrelated CEILINGS AND WALLS lost their lightmap binding and fell back to dynamic
+                // volume probes. Deleting the 28 from the shipped map restored retail's own
+                // classification exactly - cam9 38.5% -> 3.4%, cam13 47.5% -> 0%, cam1 5.8% -> 0%.
+                if (settings.RetailMappedResources != null && mover.Resource != null)
+                {
+                    ulong key = ((ulong)mover.Resource.composite_instance_id.AsUInt32 << 32) | mover.Resource.resource_id.AsUInt32;
+                    if (!settings.RetailMappedResources.Contains(key))
+                    {
+                        geo.MoversSkipped++;
+                        geo.MoversNotLightmapped++;
+                        continue;
+                    }
+                }
+
                 int resourceIndex = level.Resources.GetWriteIndex(mover.Resource);
                 if (resourceIndex < 0)
                 {
@@ -1140,6 +1161,45 @@ namespace CathodeLib.Radiosity
         }
 
         /// <summary>
+        /// World-space area AND area-weighted centroid of a mover's emissive elements. The
+        /// centroid is what places surface-light samples for an emitter whose emissive surface
+        /// never claimed a live atlas texel - the mesh is then the only record of where it is.
+        /// Returns false when the mover has no emissive geometry at all.
+        /// </summary>
+        public static bool TryMeasureEmissiveCentroid(
+            Movers.MOVER_DESCRIPTOR mover, Dictionary<Models.CS2.Component.LOD.Submesh, cMesh> meshCache,
+            out Vector3 centroid, out float area)
+        {
+            centroid = Vector3.Zero;
+            area = 0.0f;
+            if (mover?.RenderableElements == null)
+                return false;
+
+            foreach (RenderableElements.Element element in mover.RenderableElements)
+            {
+                if (!IsEmissiveMaterial(element) || element.Model == null)
+                    continue;
+                if (!meshCache.TryGetValue(element.Model, out cMesh mesh))
+                    meshCache[element.Model] = mesh = element.Model.ToMesh();
+                if (mesh.Vertices.Count == 0)
+                    continue;
+                for (int i = 0; i + 2 < mesh.Indices.Count; i += 3)
+                {
+                    Vector3 a = Vector3.Transform(mesh.Vertices[mesh.Indices[i]], mover.Transform);
+                    Vector3 b = Vector3.Transform(mesh.Vertices[mesh.Indices[i + 1]], mover.Transform);
+                    Vector3 c = Vector3.Transform(mesh.Vertices[mesh.Indices[i + 2]], mover.Transform);
+                    float triArea = Vector3.Cross(b - a, c - a).Length() * 0.5f;
+                    centroid += (a + b + c) / 3.0f * triArea;
+                    area += triArea;
+                }
+            }
+            if (area <= 0.0f)
+                return false;
+            centroid /= area;
+            return true;
+        }
+
+        /// <summary>
         /// World-space area of a mover's emissive elements, measured from the meshes. For movers
         /// outside the bake geometry, whose area the triangle soup never recorded.
         /// </summary>
@@ -1170,6 +1230,10 @@ namespace CathodeLib.Radiosity
         }
 
         /// <summary>Resolve a material parameter index to its first constant slot, or false.</summary>
+        /// <summary>Diagnostic-visible form of <see cref="TryMaterialConstant"/> for external tooling.</summary>
+        public static bool TryMaterialConstantPublic(Materials.Material material, int parameter, int components, out int remap) =>
+            TryMaterialConstant(material, parameter, components, out remap);
+
         private static bool TryMaterialConstant(Materials.Material material, int parameter, int components, out int remap)
         {
             remap = -1;
@@ -1212,6 +1276,9 @@ namespace CathodeLib.Radiosity
                 return false;
             return (shader.UbershaderFeatureFlags & (1L << (int)CA_ENVIRONMENT.FEATURES.EMISSIVE)) != 0;
         }
+
+        /// <summary>Diagnostic-visible form of <see cref="IsEmissiveMaterial"/> for external tooling.</summary>
+        public static bool IsEmissiveMaterialPublic(RenderableElements.Element element) => IsEmissiveMaterial(element);
 
         /// <summary>Inverse-transpose of the upper 3x3, so non-uniform scales keep normals correct.</summary>
         private static Matrix4x4 NormalMatrix(Matrix4x4 transform)

@@ -233,6 +233,34 @@ namespace CathodeLib.Radiosity
         private static Vector3 EmissiveLightColour(
             Movers.MOVER_DESCRIPTOR mover, RadiosityGeometry geometry, RadiosityBakeSettings settings)
         {
+            // THE COLOUR SOURCE, decoded 2026-08-27: CA's authored emissive colour IS the
+            // material's DIFFUSE_TINT constant. Scored against RADIOSITY_LEVEL.BIN's authored
+            // records at a <0.02 exact threshold: 1,255/1,342 (93.5%) on Solace and 1,425/1,489
+            // (95.7%) on ChallengeMap3 - one rule, two levels, no fitting. Every earlier
+            // candidate is a decode trap on this data: EMISSIVE_TINT is a near-constant
+            // (0.808,0.988,0.992) across unrelated families, the whole-texture diffuse mean
+            // scores 17-54% because fixture textures are mostly housing, and the footprint mean
+            // fooled a session by sitting at ~1.5x the tint on grey plastics (which read as the
+            // engine's 0.665 albedo grade). The residual ~5% matches the pre-remap sampling
+            // class ([[ca-pre-remap-sampling-bug]]): CA read the tint before command-driven
+            // material remapping, we read it after, so on a remapped mover OUR value is correct.
+            if (settings.SurfaceLightColourFromDiffuseTint)
+            {
+                Materials.Material tintMat = RadiosityGeometry.ResolveMoverEmissiveMaterial(mover, settings);
+                if (tintMat != null && RadiosityGeometry.TryMaterialConstantPublic(
+                        tintMat, (int)CATHODE.ShaderTypes.CA_ENVIRONMENT.PARAMETERS.DIFFUSE_TINT, 3, out int tintRemap))
+                {
+                    float r = tintMat.PixelShaderConstants[tintRemap];
+                    float g = tintMat.PixelShaderConstants[tintRemap + 1];
+                    float b = tintMat.PixelShaderConstants[tintRemap + 2];
+                    if (!float.IsNaN(r) && !float.IsNaN(g) && !float.IsNaN(b))
+                        return EmissiveLightColour(new Vector3(
+                            Math.Max(0f, Math.Min(1f, r)),
+                            Math.Max(0f, Math.Min(1f, g)),
+                            Math.Max(0f, Math.Min(1f, b))) * 255.0f, settings);
+                }
+            }
+
             Vector3 tintBytes = mover.EmissiveTint;
             if (settings.SurfaceLightColourFromDiffuseMean && geometry?.MaterialSampler != null)
             {
@@ -293,7 +321,18 @@ namespace CathodeLib.Radiosity
         /// wanted 32 where BSP_TORRENS wanted 17.</para>
         /// </remarks>
         /// <summary>Fallback flux coefficient when no retail bake exists to calibrate against.</summary>
-        private const float DefaultWeightK = 500.0f;
+        /// <summary>
+        /// The universal flux constant in <c>sample Weight = K x sqrt(area / samples)</c> - see
+        /// <see cref="EmissiveWeightByte"/> for the decode. Fitted over every retail emitter on
+        /// two independent levels (RADIOSITY_LEVEL.BIN entity joins, not the ~10% GUID subsample
+        /// the old per-level fits saw): medians 169.9 / 175.6 with the implied constant piling
+        /// against the same 176-178 ceiling on both - the downward tail reads as area-measurement
+        /// error, so the ceiling is the constant. Supersedes 250 (this law at the modal n=2:
+        /// 250 = 176.8 x sqrt 2) and the original 500 (2x hot, rendered as 2.007x through
+        /// retail's scaffold). The per-level fitted Ks (CM3 352 ... Solace 1199) were sample
+        /// bias, not level physics.
+        /// </summary>
+        private const float DefaultWeightK = 177.0f;
 
         /// <summary>
         /// What the retail bake said about each emitting entity, plus the per-level flux
@@ -595,10 +634,15 @@ namespace CathodeLib.Radiosity
                 // only the established MVR-multiplier rule applies here.
                 return mover.EmissiveRadiosityMultiplier <= 0.0f;
             }
-            // Scratch bake, no retail reference: an authored radiosity_multiplier of 0 is the
-            // author's own exclusion flag and the best signal available.
-            return priors.AuthoredOff != null && mover.Entity != null &&
-                   priors.AuthoredOff.Contains((mover.Entity.composite_instance_id.AsUInt32, mover.Entity.entity_id.AsUInt32));
+            // Scratch bake, no retail reference: ADMIT EVERYTHING with a resolvable emissive.
+            // The authored radiosity_multiplier was honoured here as "the author's own exclusion
+            // flag" and that reading is measurably wrong: on Solace, 927 of the 1,148 emitters
+            // CA's own bake lit (RADIOSITY_LEVEL.BIN, 2026-08-26) carry multiplier 0, and CA lit
+            // them at exactly the strength ResolveMoverEmissiveStrength recovers. SCI_Hub earlier
+            // measured the same way (suppressing authored-0 dimmed the level, 16.7 -> 20.7). The
+            // multiplier is a runtime dynamic-light input, not a bake admission flag; honouring it
+            // here was the single largest cause of missing emitters (Solace lit 194 of 1,342).
+            return false;
         }
 
         /// <summary>
@@ -618,9 +662,21 @@ namespace CathodeLib.Radiosity
         /// p90 of 16x, because retail's spread is the area spread.</para>
         /// </remarks>
         private static RetailLightPriors CalibrateWeightCoefficient(
-            Level level, Dictionary<int, float> emissiveAreas, Action<string> log)
+            Level level, Dictionary<int, float> emissiveAreas, RadiosityBakeSettings settings, Action<string> log)
         {
             var result = new RetailLightPriors();
+
+            // Prior harvesting disabled: derive every light from mover/material data rather than
+            // reusing retail's shipped values. An empty prior set is already a supported state -
+            // Lookup returns null, SuppressedByRetail falls through to its authored-off rule, and
+            // K stays at DefaultWeightK - so no other branch is needed.
+            // See RadiosityBakeSettings.UseRetailLightPriors (TEMPORARILY OFF for validation).
+            if (settings != null && !settings.UseRetailLightPriors)
+            {
+                log?.Invoke("Radiosity light priors: DISABLED - every light derived, none reused from retail");
+                return result;
+            }
+
             RadiosityRuntime retail = level.RadiosityRuntime;
             if (retail == null || retail.Slices.Count == 0 || level.Resources == null)
                 return result;
@@ -712,14 +768,24 @@ namespace CathodeLib.Radiosity
         }
 
         /// <summary>
-        /// A sample's Weight: the entity's flux (<paramref name="weightK"/> x sqrt(area)) shared
-        /// over its <paramref name="samples"/>. Retail's per-sample weights vary within a slice
-        /// but their per-entity sum is the tracked quantity.
+        /// A sample's Weight: <paramref name="weightK"/> x sqrt(area / samples) - each sample
+        /// carries the sqrt-flux of its own AREA SHARE, so the per-entity sum is
+        /// K x sqrt(samples x area) and grows with sample count.
         /// </summary>
+        /// <remarks>
+        /// Decoded 2026-08-27 in two steps. First, per-emitter ratios of our flux-split table
+        /// against retail fell as n^-0.5 in retail's sample count (0.83 / 0.70 / 0.64 / 0.55 for
+        /// n=2..5) - flux-split predicts flat, per-light-full-flux predicts 1/n; only the area
+        /// SHARE form gives the square root. Second, adding SumW = C*sqrt(n*area) to the
+        /// every-emitter fit beats every other form on both levels - sd(lnC) 0.35 / 0.25 against
+        /// the old form's 0.39 / 0.29 - with C piling up against the same ceiling on both:
+        /// median 169.9 / 175.6, p90 176.4 / 178.3. The old "SumW = 250*sqrt(area)" was this law
+        /// seen at the modal n=2: 250 = 176.8 x sqrt(2).
+        /// </remarks>
         private static byte EmissiveWeightByte(float weightK, float emissiveArea, int samples)
         {
             if (emissiveArea <= 0.0f || samples <= 0) return 1;
-            int v = (int)Math.Round(weightK * Math.Sqrt(emissiveArea) / samples);
+            int v = (int)Math.Round(weightK * Math.Sqrt(emissiveArea / samples));
             return (byte)Math.Max(1, Math.Min(191, v));
         }
 
@@ -784,7 +850,7 @@ namespace CathodeLib.Radiosity
             // Per-mover emissive surface area, which is what a surface light's Weight encodes,
             // and the per-level flux coefficient calibrated from the retail bake being replaced.
             Dictionary<int, float> emissiveAreas = ComputeEmissiveAreas(geometry);
-            RetailLightPriors lightPriors = CalibrateWeightCoefficient(level, emissiveAreas, log);
+            RetailLightPriors lightPriors = CalibrateWeightCoefficient(level, emissiveAreas, settings, log);
             lightPriors.LooseLookup = settings.DeltaLoosePriors;
             lightPriors.TwinSuppression = settings.DeltaTwinSuppression;
             lightPriors.AuthoredOff = instancing?.RadiosityAuthoredOff;
@@ -795,6 +861,14 @@ namespace CathodeLib.Radiosity
             // Level.Save persists it in the normal pass.
             RadiosityRuntime runtime = level.RadiosityRuntime
                 ?? throw new InvalidOperationException("Level has no RADIOSITY_RUNTIME.BIN to rewrite.");
+            // The retail table must be captured BEFORE the in-place rewrite discards retail's
+            // slices - reading level.RadiosityRuntime at import time returns the freshly-baked
+            // table instead (the first verbatim validation silently imported our own 3,131 CM9
+            // lights back onto themselves with -1 bindings and rendered ungated).
+            List<RadiosityRuntime.RuntimeDataSlice> retailSlicesForVerbatim =
+                settings.EmitSurfaceLights && settings.RetailLightTableVerbatim
+                    ? new List<RadiosityRuntime.RuntimeDataSlice>(runtime.Slices)
+                    : null;
             runtime.Slices.Clear();
             runtime.InstanceSliceIndices.Clear();
             runtime.InfluenceFixups.Clear();
@@ -846,15 +920,29 @@ namespace CathodeLib.Radiosity
                     {
                         Movers.MOVER_DESCRIPTOR mover = level.Movers.Entries[instance.Movers[m]];
 
+                        // ONE ROW PER RENDERABLE ELEMENT, matching retail: CM3 ships 11,247 rows
+                        // over 6,101 resources and every resource's row count equals its element
+                        // count (resource 1021 has 6 elements and 6 identical rows, 509 has 8 and
+                        // 8, 5775 has 7 and 7; the histogram sums to 11,247 exactly). The rows are
+                        // identical (island, resource) pairs.
+                        //
+                        // This is convention, not correctness: reproducing it was measured to
+                        // change NOTHING in the engine's texcoord debug view, and so was sorting
+                        // the map island-ascending as retail ships it. instonly renders correctly
+                        // on 6,101 single rows. What actually decides whether an element keeps its
+                        // lightmap is WHICH resources appear at all - see instance-map extra rows.
+                        //
                         // Carry the Resource itself: this runs inside Instancing, long before
                         // Resources.Save renumbers RESOURCES.BIN, so an index captured now is stale
                         // by the time the file is written.
-                        instanceMapEntries.Add(new RadiosityInstanceMap.Entry
-                        {
-                            lightmap_transform = instanceIndex,
-                            Resource = mover.Resource,
-                            resource_index = -1
-                        });
+                        int rows = Math.Max(1, mover.RenderableElements?.Count ?? 1);
+                        for (int e = 0; e < rows; e++)
+                            instanceMapEntries.Add(new RadiosityInstanceMap.Entry
+                            {
+                                lightmap_transform = instanceIndex,
+                                Resource = mover.Resource,
+                                resource_index = -1
+                            });
                         WriteModelParams(mover, instance);
                         taggedMovers.Add(instance.Movers[m]);
                         result.MoversTagged++;
@@ -899,6 +987,18 @@ namespace CathodeLib.Radiosity
                 log?.Invoke("Surface light weights scaled by " + settings.SurfaceLightWeightScale.ToString("0.###") +
                             " over " + scaled + " lights");
             }
+
+            // After every derived-light pass (including the weight scale, which must not touch
+            // retail's bytes): on retail levels the shipped table replaces the derived one.
+            if (settings.EmitSurfaceLights && settings.RetailLightTableVerbatim)
+            {
+                ImportRetailLightTable(level, retailSlicesForVerbatim, sliceData, log);
+                result.SurfaceLights = 0;
+                foreach (SliceBake sb in sliceData)
+                    if (sb?.Slice?.SurfaceLights?.Lights != null)
+                        result.SurfaceLights += sb.Slice.SurfaceLights.Lights.Count;
+            }
+
             result.StaleRectsCleared = ClearStaleModelParams(level, taggedMovers);
 
             BuildSliceNeighbours(runtime);
@@ -1513,7 +1613,7 @@ namespace CathodeLib.Radiosity
                 AllocateAtlases(probeOnlySlices, settings, log);
 
                 Dictionary<int, float> emissiveAreas = ComputeEmissiveAreas(geometry);
-                RetailLightPriors lightPriors = CalibrateWeightCoefficient(level, emissiveAreas, log);
+                RetailLightPriors lightPriors = CalibrateWeightCoefficient(level, emissiveAreas, settings, log);
                 lightPriors.LooseLookup = settings.DeltaLoosePriors;
                 lightPriors.TwinSuppression = settings.DeltaTwinSuppression;
             lightPriors.TwinSuppression = settings.DeltaTwinSuppression;
@@ -2188,7 +2288,7 @@ namespace CathodeLib.Radiosity
             AllocateAtlases(deltaSlices, settings, log);
 
             Dictionary<int, float> emissiveAreas = ComputeEmissiveAreas(geometry);
-            RetailLightPriors lightPriors = CalibrateWeightCoefficient(level, emissiveAreas, log);
+            RetailLightPriors lightPriors = CalibrateWeightCoefficient(level, emissiveAreas, settings, log);
             lightPriors.LooseLookup = settings.DeltaLoosePriors;
             lightPriors.TwinSuppression = settings.DeltaTwinSuppression;
 
@@ -3294,6 +3394,47 @@ namespace CathodeLib.Radiosity
             // ---- 6. Visibility solve: influences per surface probe ---------------------------
             float[] texelArea = MeasureTexelAreas(instances, texels, out float medianTexelArea);
             int influenceCount = SolveInfluences(geometry, texels, surfaceSlotForTexel, nearestProbeForTexel, slice, settings, texelArea, medianTexelArea, out var transfers, out byte[] usedSlots, log);
+
+            // A texel whose probe came out of the solve with ZERO influences renders BLACK, and the
+            // mangle map's bilinear read smears that across the whole rect. The map above is built
+            // BEFORE the solve, so it cannot know which probes end up empty - it only routes around
+            // texels that were never claimed. Measured on CM3 cam16's wall terminal (island 2279,
+            // a 4x4 rect): retail leaves 2 of its 16 texels unresolved and has NO zero-influence
+            // probes, while we claimed all 16 and left 2 gathering nothing - link count p10 0
+            // against retail's 17 - which is the dark bar down that panel. Re-point those texels at
+            // the nearest neighbour that did gather, exactly as unclaimed texels are handled.
+            if (settings.RepointZeroInfluenceTexels && usedSlots != null)
+            {
+                var litSlotForTexel = (int[])surfaceSlotForTexel.Clone();
+                int dead = 0;
+                for (int i = 0; i < AtlasTexels; i++)
+                {
+                    int slot = surfaceSlotForTexel[i];
+                    if (slot >= 0 && slot < usedSlots.Length && usedSlots[slot] == 0)
+                    {
+                        litSlotForTexel[i] = -1;
+                        dead++;
+                    }
+                }
+                if (dead > 0)
+                {
+                    int[] litSource = BuildMangleSources(litSlotForTexel, instances);
+                    int repointed = 0;
+                    for (int i = 0; i < AtlasTexels; i++)
+                    {
+                        if (litSlotForTexel[i] >= 0) continue;   //still lit, leave it alone
+                        int src = litSource[i];
+                        if (src < 0) continue;                   //nothing lit anywhere to borrow from
+                        int slot = litSlotForTexel[src];
+                        if (slot < 0) continue;
+                        int px2 = slot % ProbeTexWidth, py2 = slot / ProbeTexWidth;
+                        slice.MangleMap[i] = new ColourRGBA8 { R = (byte)px2, G = (byte)py2, B = 255, A = 63 };
+                        repointed++;
+                    }
+                    log?.Invoke("    dead texels: " + dead + " zero-influence probes, " + repointed +
+                                " texels repointed to the nearest lit neighbour");
+                }
+            }
             // Which instances came out of the solve with no lit texel at all? An instance whose
             // whole rect is unlinked renders solid black however healthy the rest of the slice is,
             // and that is the shape of the remaining "randomly dark model" reports - so name them
@@ -3360,7 +3501,7 @@ namespace CathodeLib.Radiosity
 
             slice.VolumeProbeHash = settings.EmitVolumeProbes
 
-                ? BuildVolumeProbeHash(geometry, texels, nearestProbeForTexel, settings, out visGrids)
+                ? BuildVolumeProbeHash(geometry, texels, nearestProbeForTexel, surfaceSlotForTexel, settings, out visGrids)
 
                 // An absent hash is signalled by NumSubdivsPerLevel = 0, with a zero AABB and zero
                 // dims - that is exactly what BSP_LV426_PT01 slice 0 ships, the one retail slice of
@@ -5698,7 +5839,14 @@ namespace CathodeLib.Radiosity
 
             // The grid is built at the outer radius so the top-up passes can query it too; the
             // base neighbourhood is still bounded by `radius` when candidates are filtered.
-            var grid = new ProbeGrid(texels, clusterTexels, reach);
+            // Band stratification adds a far band out to ScatterMaxLinkDistance and an ultra-far
+            // tier to twice that (retail ships links to 11.2m - farlinks measured its cam13-room
+            // crossing links at p50 5.0 / max 11.2 where a 6m cap tops out at 5.8), so both the
+            // grid and the candidate sweep must extend there.
+            float candidateReach = settings.ScatterBandStratify
+                ? (settings.ScatterUltraFarFraction > 0 ? ScatterMaxLinkDistance * 2 : ScatterMaxLinkDistance)
+                : reach;
+            var grid = new ProbeGrid(texels, clusterTexels, candidateReach);
             var groups = new Dictionary<int, List<(int cluster, float weight)>>(probes.Count);
             var coveredClusters = new HashSet<int>();
 
@@ -5711,7 +5859,7 @@ namespace CathodeLib.Radiosity
                 foreach (int texel in grid.Neighbours(origin))
                 {
                     float d2 = Vector3.DistanceSquared(texels[texel].Position, origin);
-                    if (d2 > reach * reach)
+                    if (d2 > candidateReach * candidateReach)
                         continue;
                     bool agrees = Vector3.Dot(texels[texel].Normal, normal) > 0.2f;
                     near.Add((texel, d2, agrees));
@@ -5720,45 +5868,197 @@ namespace CathodeLib.Radiosity
 
                 float baseRadiusSq = radius * radius;
                 var chosen = new List<(int cluster, float weight)>();
-                foreach ((int cluster, float d2, bool agrees) in near)
+
+                if (settings.ScatterBandStratify)
                 {
-                    if (chosen.Count >= solveCap)
-                        break;
-                    if (agrees && d2 <= baseRadiusSq)
-                        chosen.Add((cluster, 1.0f / (1.0f + d2)));
-                }
-                // Normal-disjoint neighbourhood (a probe on a lone strut): take what is visible.
-                if (chosen.Count < 3)
-                {
+                    // Band-stratified selection: EVERY probe gets near, mid and far sources, not
+                    // just the starved ones. Decoded from retail's link-length distribution
+                    // (p50 0.75 / p90 2.45 / p99 6.1 - a 3.3x p90/p50 ratio no single ball can
+                    // produce) after the ablation series proved scatter is the ONLY structure
+                    // coupling surface lights into the standing field (emptying retail's list
+                    // collapses its ungated render 3.008 -> 0.359) and the two-hop census put
+                    // our all-local links at ~0.6x retail's delivered gather mass per light: a
+                    // ball's links all land in clusters the same nearby probes gather, while
+                    // retail's tail spreads each probe's radiance into distinct gather sets.
+                    // Quotas 4/2/1 at cap 7 reproduce all three retail percentiles at once.
+                    // 5/1/1, with the mid and far links picked DEEP in their bands: retail's
+                    // percentiles decompose exactly as this mixture - with 7 links, p90 IS the
+                    // 6th (the mid link, 2.45m = deep in the 1.25-3m band) and p99 IS the far
+                    // link (~6m). The first cut (4/2/1, nearest-in-band) measured +16% brightness
+                    // but dragged p50 to 1.05 and stopped the tail at 3.8 - right direction,
+                    // wrong mixture.
+                    float midSq = reach * reach;
+                    float farSq = ScatterMaxLinkDistance * ScatterMaxLinkDistance;
+                    int farQ = 1, midQ = 1;
+                    int nearQ = Math.Max(1, solveCap - midQ - farQ);
+
+                    // NEAR: the probe's own surface neighbourhood - same-facing, nearest-first.
                     foreach ((int cluster, float d2, bool agrees) in near)
                     {
-                        if (chosen.Count >= solveCap)
+                        if (chosen.Count >= nearQ)
                             break;
-                        if (agrees || d2 > baseRadiusSq || chosen.Exists(c => c.cluster == cluster))
-                            continue;
-                        if (geometry.Visible(origin + normal * settings.ProbeSurfaceOffset,
-                                             texels[cluster].Position + texels[cluster].Normal * settings.ProbeSurfaceOffset,
-                                             settings.RayEpsilon))
+                        if (agrees && d2 <= baseRadiusSq)
                             chosen.Add((cluster, 1.0f / (1.0f + d2)));
                     }
-                }
+                    // Normal-disjoint neighbourhood (a probe on a lone strut): take what is visible.
+                    if (chosen.Count < Math.Min(3, nearQ))
+                    {
+                        foreach ((int cluster, float d2, bool agrees) in near)
+                        {
+                            if (chosen.Count >= nearQ)
+                                break;
+                            if (agrees || d2 > baseRadiusSq || chosen.Exists(c => c.cluster == cluster))
+                                continue;
+                            if (geometry.Visible(origin + normal * settings.ProbeSurfaceOffset,
+                                                 texels[cluster].Position + texels[cluster].Normal * settings.ProbeSurfaceOffset,
+                                                 settings.RayEpsilon))
+                                chosen.Add((cluster, 1.0f / (1.0f + d2)));
+                        }
+                    }
 
-                // Reach pass: only for probes their own metre-scale ball could not fill. This is
-                // what puts retail's tail (p90 2.5 m) on the distribution without moving the
-                // sources of the probes that were already served, and it is what stops a probe in
-                // a sparse neighbourhood ending up with no radiance at all.
-                if (chosen.Count < solveCap)
+                    // MID and FAR: the room, not the surface. A far source FACES the probe (a
+                    // floor probe receiving from a wall shares no normal), and must be visible -
+                    // a link carries radiance with no runtime occlusion, so an unchecked one
+                    // lights the neighbouring room through the wall.
+                    // Pick each band's link nearest the band's MIDDLE. Retail's link-length shape
+                    // is the same on every level measured (p50 0.73-0.78, p90 2.45-2.74, p99
+                    // 5-6.1 on Solace, CM3 and CM9 alike) and its p90 sits mid-band, not at a
+                    // ceiling. The furthest-first variant pinned links at the band tops (p90 5.6)
+                    // - tolerated on Solace/CM3, but it over-coupled ChallengeMap9 to 1.25x
+                    // retail, which is the falsifier: the shape must be matched, not exceeded.
+                    // Returns how many links it added: the FAR band fires on a dithered MINORITY
+                    // of probes (see below) plus any probe whose mid band came up empty. Giving
+                    // EVERY probe a far link put the aggregate p90 at 4.5 and left CM9 1.17x hot;
+                    // giving NONE (fallback-only) capped every link at ~2.8m and fragmented the
+                    // graph at doorways.
+                    int Band(float loSq, float hiSq, int quota)
+                    {
+                        int lo = -1, hi = -1;   // candidate index range inside the band
+                        for (int i = 0; i < near.Count; i++)
+                        {
+                            if (near[i].d2 <= loSq) continue;
+                            if (near[i].d2 > hiSq) break;
+                            if (lo < 0) lo = i;
+                            hi = i;
+                        }
+                        if (lo < 0)
+                            return 0;
+
+                        int added = 0;
+                        int target = Math.Min(solveCap, chosen.Count + quota);
+                        int mid = (lo + hi) / 2;
+                        for (int step = 0; step <= hi - lo && chosen.Count < target; step++)
+                        {
+                            // middle outward: mid, mid+1, mid-1, mid+2, ...
+                            int i = mid + (step % 2 == 1 ? (step + 1) / 2 : -(step / 2));
+                            if (i < lo || i > hi)
+                                continue;
+                            (int cluster, float d2, bool _) = near[i];
+                            if (chosen.Exists(c => c.cluster == cluster))
+                                continue;
+                            Vector3 toProbe = origin - texels[cluster].Position;
+                            if (Vector3.Dot(texels[cluster].Normal, toProbe) <= 0.0f)
+                                continue;
+                            if (!geometry.Visible(origin + normal * settings.ProbeSurfaceOffset,
+                                                  texels[cluster].Position + texels[cluster].Normal * settings.ProbeSurfaceOffset,
+                                                  settings.RayEpsilon))
+                                continue;
+                            chosen.Add((cluster, 1.0f / (1.0f + d2)));
+                            added++;
+                        }
+                        return added;
+                    }
+                    int midAdded = Band(baseRadiusSq, midSq, midQ);
+                    // FAR is a MINORITY QUOTA, not just a fallback. Retail puts a >3m link on
+                    // 25-31% of destination probes (measured on Solace and CM3 alike; the long
+                    // links' length p50 is 3.9m = the 3-6m band's middle, so the middle-outward
+                    // pick reproduces their shape). Those minority links are what stitch the
+                    // scatter graph into ONE component: with far as a pure fallback every link
+                    // capped at ~2.8m and the graph fragmented at doorways - BFS reach from a
+                    // room saturated by hop 4 with 0.39x retail's reachable light (reachbox,
+                    // Solace cam13's room, the 0.16x cold-room transport case) while retail's
+                    // kept growing. A deterministic per-probe dither picks the minority so the
+                    // aggregate p90 stays mid-band (the ChallengeMap9 overshoot lesson);
+                    // mid-starved probes keep the fallback regardless of the dither.
+                    bool farFires = ((uint)p * 2654435761u) % 100u <
+                                    (uint)Math.Round(settings.ScatterFarBandFraction * 100.0f);
+                    // ULTRA-FAR: the thin tail beyond ScatterMaxLinkDistance. Retail's cross-room
+                    // spill links measure p50 5.0 / max 11.2m into a cold room where our 6m cap
+                    // tops out at 5.8 and carries HALF retail's crossing count (76 vs 142) - the
+                    // 6-12m minority is what actually imports light through doorways. ~1% of
+                    // retail's links exceed 6m (~6% of dests at ~7 links each). A different hash
+                    // constant so this minority is independent of the far dither.
+                    bool ultraFires = settings.ScatterUltraFarFraction > 0 &&
+                                      ((uint)p * 2246822519u) % 100u <
+                                      (uint)Math.Round(settings.ScatterUltraFarFraction * 100.0f);
+                    if (ultraFires)
+                        Band(farSq, farSq * 4.0f, 1);
+                    else if (farFires || midAdded == 0)
+                        Band(midSq, farSq, farQ);
+
+                    // Roll-down: a closet probe with no visible mid/far cluster spends the unused
+                    // quota nearer in, so degree stays ~solveCap and no probe is left short.
+                    if (chosen.Count < solveCap)
+                    {
+                        foreach ((int cluster, float d2, bool agrees) in near)
+                        {
+                            if (chosen.Count >= solveCap)
+                                break;
+                            if (chosen.Exists(c => c.cluster == cluster))
+                                continue;
+                            if (agrees && d2 <= baseRadiusSq)
+                                chosen.Add((cluster, 1.0f / (1.0f + d2)));
+                            else if (d2 <= midSq &&
+                                     Vector3.Dot(texels[cluster].Normal, origin - texels[cluster].Position) > 0.0f &&
+                                     geometry.Visible(origin + normal * settings.ProbeSurfaceOffset,
+                                                      texels[cluster].Position + texels[cluster].Normal * settings.ProbeSurfaceOffset,
+                                                      settings.RayEpsilon))
+                                chosen.Add((cluster, 1.0f / (1.0f + d2)));
+                        }
+                    }
+                }
+                else
                 {
                     foreach ((int cluster, float d2, bool agrees) in near)
                     {
                         if (chosen.Count >= solveCap)
                             break;
-                        if (d2 <= baseRadiusSq || !agrees || chosen.Exists(c => c.cluster == cluster))
-                            continue;
-                        if (geometry.Visible(origin + normal * settings.ProbeSurfaceOffset,
-                                             texels[cluster].Position + texels[cluster].Normal * settings.ProbeSurfaceOffset,
-                                             settings.RayEpsilon))
+                        if (agrees && d2 <= baseRadiusSq)
                             chosen.Add((cluster, 1.0f / (1.0f + d2)));
+                    }
+                    // Normal-disjoint neighbourhood (a probe on a lone strut): take what is visible.
+                    if (chosen.Count < 3)
+                    {
+                        foreach ((int cluster, float d2, bool agrees) in near)
+                        {
+                            if (chosen.Count >= solveCap)
+                                break;
+                            if (agrees || d2 > baseRadiusSq || chosen.Exists(c => c.cluster == cluster))
+                                continue;
+                            if (geometry.Visible(origin + normal * settings.ProbeSurfaceOffset,
+                                                 texels[cluster].Position + texels[cluster].Normal * settings.ProbeSurfaceOffset,
+                                                 settings.RayEpsilon))
+                                chosen.Add((cluster, 1.0f / (1.0f + d2)));
+                        }
+                    }
+
+                    // Reach pass: only for probes their own metre-scale ball could not fill. This is
+                    // what puts retail's tail (p90 2.5 m) on the distribution without moving the
+                    // sources of the probes that were already served, and it is what stops a probe in
+                    // a sparse neighbourhood ending up with no radiance at all.
+                    if (chosen.Count < solveCap)
+                    {
+                        foreach ((int cluster, float d2, bool agrees) in near)
+                        {
+                            if (chosen.Count >= solveCap)
+                                break;
+                            if (d2 <= baseRadiusSq || !agrees || chosen.Exists(c => c.cluster == cluster))
+                                continue;
+                            if (geometry.Visible(origin + normal * settings.ProbeSurfaceOffset,
+                                                 texels[cluster].Position + texels[cluster].Normal * settings.ProbeSurfaceOffset,
+                                                 settings.RayEpsilon))
+                                chosen.Add((cluster, 1.0f / (1.0f + d2)));
+                        }
                     }
                 }
 
@@ -6430,18 +6730,30 @@ namespace CathodeLib.Radiosity
         /// probe, used by CA_RADIOSITY_OBJECT_PROBE_INTERP to light dynamic objects.
         /// </summary>
         private static RadiosityRuntime.VolumeProbeHash BuildVolumeProbeHash(
-            RadiosityGeometry geometry, SurfaceTexel[] texels, int[] inputProbeForTexel, RadiosityBakeSettings settings,
-            out List<byte[]> visFaceGrids)
+            RadiosityGeometry geometry, SurfaceTexel[] texels, int[] inputProbeForTexel, int[] surfaceSlotForTexel,
+            RadiosityBakeSettings settings, out List<byte[]> visFaceGrids)
         {
             visFaceGrids = new List<byte[]>();
             var hash = new RadiosityRuntime.VolumeProbeHash { NumSubdivsPerLevel = settings.VolumeProbeSubdivsPerLevel };
 
             Vector3 min = new Vector3(float.MaxValue), max = new Vector3(float.MinValue);
             var sources = new List<int>();
+            int probeless = 0;
             for (int i = 0; i < AtlasTexels; i++)
             {
                 if (!texels[i].Live || inputProbeForTexel[i] < 0)
                     continue;
+                // A volume item is resolved by the ENGINE as atlas texel -> mangle map ->
+                // surface probe slot, so a cluster-only texel (donor shell, gutter fill - live
+                // in the atlas but with no surface probe, surfaceSlotForTexel -1) resolves to a
+                // DEAD slot and any prop blending that item reads black. This was 27.8% of our
+                // shipped items against retail's 1.9% (the tgamask 0.56x dynamic-prop deficit),
+                // and RADBAKE_FILL_GUTTERS multiplies exactly this texel class.
+                if (surfaceSlotForTexel != null && surfaceSlotForTexel[i] < 0)
+                {
+                    probeless++;
+                    continue;
+                }
                 min = Vector3.Min(min, texels[i].Position);
                 max = Vector3.Max(max, texels[i].Position);
                 sources.Add(i);
@@ -7013,6 +7325,214 @@ namespace CathodeLib.Radiosity
             return areas;
         }
 
+        /// <summary>
+        /// Replace every slice's derived surface-light table with retail's shipped table: each
+        /// light re-addressed to our nearest live input probe by world position, donor groups
+        /// kept contiguous, bindings carried both as the raw positional EntityInstanceIndex
+        /// (valid because instancing restores retail's row order with purged rows padded) and as
+        /// the resolved Resource object so Save re-derives the index.
+        ///
+        /// Why: the derived table reaches 0.88x retail's energy but distributes weight across
+        /// ENTITIES differently - flat per-emitter sample counts over-weight always-on fixtures
+        /// where retail's weight concentrates on big scripted (runtime-gated-off) ones - and the
+        /// gate turns that into SCI_Hub's 2.5x over-brightness and CM9's black cam13 ceiling.
+        /// Retail's own table through our transport renders at the transport ceiling on every
+        /// level measured, so on retail levels it is strictly better than deriving. Derived
+        /// lights remain the only path for levels without a retail runtime (added content).
+        /// </summary>
+        private static void ImportRetailLightTable(Level level, List<RadiosityRuntime.RuntimeDataSlice> retailSlices,
+            SliceBake[] sliceData, Action<string> log)
+        {
+            if (retailSlices == null || retailSlices.Count == 0)
+            {
+                log?.Invoke("Radiosity VERBATIM light table: no retail runtime available - derived lights kept");
+                return;
+            }
+
+            // Spatial grid over our live input probes, all slices.
+            const float cell = 2.0f;
+            var grid = new Dictionary<(int, int, int), List<int>>();
+            var pts = new List<Vector3>();
+            var src = new List<(int s, int t)>();
+            for (int s = 0; s < sliceData.Length; s++)
+            {
+                RadiosityRuntime.RuntimeDataSlice sl = sliceData[s]?.Slice;
+                if (sl == null) continue;
+                for (int t = 0; t < sl.InputProbePositions.Count; t++)
+                {
+                    if (sl.InputProbePositions[t].W == 0) continue;
+                    Vector4u16 q = sl.InputProbePositions[t];
+                    var p = new Vector3(FromHalf(q.X), FromHalf(q.Y), FromHalf(q.Z));
+                    (int, int, int) key = ((int)Math.Floor(p.X / cell), (int)Math.Floor(p.Y / cell), (int)Math.Floor(p.Z / cell));
+                    if (!grid.TryGetValue(key, out List<int> cellList)) grid[key] = cellList = new List<int>();
+                    cellList.Add(pts.Count);
+                    pts.Add(p);
+                    src.Add((s, t));
+                }
+            }
+            if (pts.Count == 0)
+            {
+                log?.Invoke("Radiosity VERBATIM light table: no live input probes - derived lights kept");
+                return;
+            }
+
+            bool Nearest(Vector3 p, out int bs, out int bt)
+            {
+                bs = bt = -1;
+                float bd = float.MaxValue;
+                int cx = (int)Math.Floor(p.X / cell), cy = (int)Math.Floor(p.Y / cell), cz = (int)Math.Floor(p.Z / cell);
+                int firstHit = -1;
+                for (int ring = 0; ring <= 4; ring++)
+                {
+                    if (firstHit >= 0 && ring > firstHit + 1) break;
+                    for (int dx = -ring; dx <= ring; dx++)
+                        for (int dy = -ring; dy <= ring; dy++)
+                            for (int dz = -ring; dz <= ring; dz++)
+                            {
+                                if (Math.Max(Math.Abs(dx), Math.Max(Math.Abs(dy), Math.Abs(dz))) != ring) continue;
+                                if (!grid.TryGetValue((cx + dx, cy + dy, cz + dz), out List<int> l)) continue;
+                                foreach (int i in l)
+                                {
+                                    float d = Vector3.DistanceSquared(p, pts[i]);
+                                    if (d < bd) { bd = d; bs = src[i].s; bt = src[i].t; }
+                                }
+                            }
+                    if (bs >= 0 && firstHit < 0) firstHit = ring;
+                }
+                return bs >= 0;
+            }
+
+            var perSlice = new List<List<(int gid, int rawIdx, Resources.Resource ent, ushort sibling,
+                                          RadiosityRuntime.RuntimeSurfaceLights.Light light)>>();
+            for (int i = 0; i < sliceData.Length; i++)
+                perSlice.Add(new List<(int, int, Resources.Resource, ushort,
+                                       RadiosityRuntime.RuntimeSurfaceLights.Light)>());
+
+            int total = 0, placed = 0, dropped = 0, gidNext = 0, resolvedEnts = 0;
+
+            void Place(RadiosityRuntime.RuntimeDataSlice ds, RadiosityRuntime.RuntimeSurfaceLights.Light L,
+                       int gid, int rawIdx, Resources.Resource ent, ushort sibling)
+            {
+                total++;
+                int t = L.V * ProbeTexWidth + L.U;
+                if (t < 0 || t >= ds.InputProbePositions.Count || ds.InputProbePositions[t].W == 0) { dropped++; return; }
+                Vector4u16 q = ds.InputProbePositions[t];
+                var p = new Vector3(FromHalf(q.X), FromHalf(q.Y), FromHalf(q.Z));
+                if (!Nearest(p, out int bs, out int bt)) { dropped++; return; }
+                RadiosityRuntime.RuntimeSurfaceLights.Light moved = L;
+                moved.U = (byte)(bt % ProbeTexWidth);
+                moved.V = (byte)(bt / ProbeTexWidth);
+                perSlice[bs].Add((gid, rawIdx, ent, sibling, moved));
+                placed++;
+            }
+
+            // Donor identity per gid, for the sibling remap below. SiblingIndex is an index into
+            // the donor SLICE's own group list; carrying it verbatim across the reorganised
+            // output CRASHES the engine on load wherever the referenced pair no longer sits at
+            // that index in the same slice - CM7 and SCI_Hub died on it (the sx1/sx2/sx3 field
+            // bisect: bindings-nulled loads, siblings-zeroed loads, Live-emptied still crashes).
+            var gidMeta = new Dictionary<int, (int dSlice, int dLocal, ushort sib)>();
+
+            int dSliceIdx = -1;
+            foreach (RadiosityRuntime.RuntimeDataSlice ds in retailSlices)
+            {
+                dSliceIdx++;
+                List<RadiosityRuntime.RuntimeSurfaceLights.Light> lights = ds.SurfaceLights?.Lights;
+                List<RadiosityRuntime.RuntimeSurfaceLights.LightSlice> groups = ds.SurfaceLights?.LightSlices;
+                if (lights == null || groups == null) continue;
+                var covered = new bool[lights.Count];
+                for (int gLocal = 0; gLocal < groups.Count; gLocal++)
+                {
+                    RadiosityRuntime.RuntimeSurfaceLights.LightSlice grp = groups[gLocal];
+                    int gid = gidNext++;
+                    gidMeta[gid] = (dSliceIdx, gLocal, grp.SiblingIndex);
+                    Resources.Resource ent = grp.EntityInstanceIndex >= 0
+                        ? level.Resources?.GetAtWriteIndex(grp.EntityInstanceIndex) : null;
+                    if (ent != null) resolvedEnts++;
+                    for (int k = 0; k < grp.NumItems; k++)
+                    {
+                        int li = (int)grp.FirstItem + k;
+                        if (li < 0 || li >= lights.Count) continue;
+                        covered[li] = true;
+                        Place(ds, lights[li], gid, grp.EntityInstanceIndex, ent, 0);
+                    }
+                }
+                for (int li = 0; li < lights.Count; li++)
+                    if (!covered[li]) Place(ds, lights[li], -1, -1, null, 0);
+            }
+
+            // Emit, recording where each donor group landed (a group split across output slices
+            // records its LARGEST output as canonical - the sibling either points there or is
+            // dropped).
+            var canonical = new Dictionary<(int dSlice, int dLocal), (int s, int idx, int n)>();
+            var outGidsPerSlice = new List<int>[sliceData.Length];
+            for (int s = 0; s < sliceData.Length; s++)
+            {
+                RadiosityRuntime.RuntimeDataSlice sl = sliceData[s]?.Slice;
+                if (sl == null) continue;
+                var outLights = new List<RadiosityRuntime.RuntimeSurfaceLights.Light>();
+                var outGroups = new List<RadiosityRuntime.RuntimeSurfaceLights.LightSlice>();
+                var outEnts = new List<Resources.Resource>();
+                var outGids = new List<int>();
+                foreach (var run in perSlice[s].Where(e => e.gid >= 0).GroupBy(e => e.gid))
+                {
+                    var f = run.First();
+                    int n = run.Count();
+                    (int dSlice, int dLocal, ushort _) = gidMeta[f.gid];
+                    if (!canonical.TryGetValue((dSlice, dLocal), out (int s, int idx, int n) prev) || n > prev.n)
+                        canonical[(dSlice, dLocal)] = (s, outGroups.Count, n);
+                    outGroups.Add(new RadiosityRuntime.RuntimeSurfaceLights.LightSlice
+                    {
+                        FirstItem = (uint)outLights.Count,
+                        NumItems = (ushort)n,
+                        EntityInstanceIndex = f.rawIdx,
+                        SiblingIndex = 0
+                    });
+                    // null is allowed: Save skips null entities and the raw index carries through
+                    outEnts.Add(f.ent);
+                    outGids.Add(f.gid);
+                    foreach (var e in run) outLights.Add(e.light);
+                }
+                foreach (var e in perSlice[s].Where(e => e.gid < 0)) outLights.Add(e.light);
+                sl.SurfaceLights.Lights = outLights;
+                sl.SurfaceLights.LightSlices = outGroups;
+                sl.SurfaceLights.LightSliceEntities = outEnts;
+                outGidsPerSlice[s] = outGids;
+            }
+
+            // Sibling fix-up: rewrite each donor sibling reference to the pair's canonical output
+            // index IF it landed in the same output slice; otherwise it stays 0 (SiblingIndex 0 is
+            // the no-sibling sentinel - group 0 is never a target in any retail file measured).
+            int sibKept = 0, sibDropped = 0;
+            for (int s = 0; s < sliceData.Length; s++)
+            {
+                RadiosityRuntime.RuntimeDataSlice sl = sliceData[s]?.Slice;
+                if (sl == null || outGidsPerSlice[s] == null) continue;
+                List<RadiosityRuntime.RuntimeSurfaceLights.LightSlice> outGroups = sl.SurfaceLights.LightSlices;
+                for (int i = 0; i < outGroups.Count; i++)
+                {
+                    (int dSlice, int _, ushort sib) = gidMeta[outGidsPerSlice[s][i]];
+                    if (sib == 0) continue;
+                    if (canonical.TryGetValue((dSlice, sib), out (int s, int idx, int n) tgt) && tgt.s == s && tgt.idx != i)
+                    {
+                        RadiosityRuntime.RuntimeSurfaceLights.LightSlice g = outGroups[i];
+                        g.SiblingIndex = (ushort)tgt.idx;
+                        outGroups[i] = g;
+                        sibKept++;
+                    }
+                    else
+                        sibDropped++;
+                }
+                sl.LiveSurfaceLights = new List<RadiosityRuntime.RuntimeSurfaceLights.LightSlice>(outGroups);
+                sl.LiveSurfaceLightEntities = new List<Resources.Resource>(sl.SurfaceLights.LightSliceEntities);
+            }
+
+            log?.Invoke("Radiosity VERBATIM light table: " + placed + " of " + total +
+                        " retail lights re-addressed (" + dropped + " dropped: dead donor probe or nothing within reach), " +
+                        resolvedEnts + " of " + gidNext + " groups entity-resolved, siblings " +
+                        sibKept + " remapped / " + sibDropped + " dropped");
+        }
+
         private static RadiosityRuntime.RuntimeSurfaceLights BuildSurfaceLights(
             Level level, RadiosityGeometry geometry, List<RadiosityGeometry.Instance> instances,
             SurfaceTexel[] texels, int[] inputProbeForTexel, RadiosityBakeSettings settings,
@@ -7033,7 +7553,7 @@ namespace CathodeLib.Radiosity
                 ? null : new ProbeGrid(texels, candidates, settings.MaxInfluenceDistance);
 
             BuildEmissiveSurfaceLights(level, geometry, texels, inputProbeForTexel, grid, lights, settings, emissiveAreas, lightPriors, log);
-            BuildLostEmitterLights(level, geometry, instances, texels, inputProbeForTexel, grid, lights, settings, lightPriors);
+            BuildLostEmitterLights(level, geometry, instances, texels, inputProbeForTexel, grid, lights, settings, lightPriors, log);
             if (settings.EmitLightEntitySamples)
                 BuildMoverLights(level, texels, inputProbeForTexel, grid, settings, lights);
             TrimLightSlices(lights, log);
@@ -7330,7 +7850,7 @@ namespace CathodeLib.Radiosity
             Level level, RadiosityGeometry geometry, List<RadiosityGeometry.Instance> instances,
             SurfaceTexel[] texels, int[] inputProbeForTexel, ProbeGrid grid,
             RadiosityRuntime.RuntimeSurfaceLights lights, RadiosityBakeSettings settings,
-            RetailLightPriors lightPriors)
+            RetailLightPriors lightPriors, Action<string> log = null)
         {
             if (grid == null)
                 return;
@@ -7393,7 +7913,21 @@ namespace CathodeLib.Radiosity
                         nearest.Add((texel, (texels[texel].Position - centre).LengthSquared()));
                     }
                     if (nearest.Count == 0)
-                        continue;
+                    {
+                        // Same buried-centroid failure as the off-geometry pass below: a centroid
+                        // inside the fixture's shell fails every ray and the emitter ships
+                        // nothing. Bounded blind fallback - nearest probes without the ray test,
+                        // tight enough to stay on the fixture's own wall.
+                        float blindSq = 1.5f * 1.5f;
+                        foreach (int texel in grid.Neighbours(centre))
+                        {
+                            float d = (texels[texel].Position - centre).LengthSquared();
+                            if (d <= blindSq)
+                                nearest.Add((texel, d));
+                        }
+                        if (nearest.Count == 0)
+                            continue;
+                    }
                     nearest.Sort((a, b) => a.distanceSq.CompareTo(b.distanceSq));
 
                     float radiusSq = settings.EmitterSampleRadius * settings.EmitterSampleRadius;
@@ -7456,6 +7990,151 @@ namespace CathodeLib.Radiosity
                     lights.LightSliceEntities.Add(mover.Resource);
                 }
             }
+
+            // ---- emitters with no emissive TRIANGLES in the bake geometry at all -----------
+            // The instance loop above recovers movers that lost the texel race but whose
+            // emissive triangles made it into an instance. A second class never gets that far:
+            // the emissive submesh was excluded from the bake geometry entirely - 219 of the
+            // 1,342 emitters CA lit on Solace (RADIOSITY_LEVEL.BIN, 2026-08-26), including 94 of
+            // 95 SPOTS_01 and 82 of 84 WARNING_LIGHTs. The mesh itself is the only record of
+            // those, and the SLICE ELECTION matters: slices follow islands, not space, so
+            // admitting a mover into "any slice with a probe nearby" ships its full flux into
+            // two or three interleaved slices (measured: 1,502 groups from ~560 emitters, and
+            // the spliced table rendered 2.23x retail). A mover is owned by the slice holding
+            // the nearest bake instance to its emissive centroid - computable identically from
+            // every slice, so exactly one slice emits it.
+            if (settings.EmitTexellessEmitters)
+            {
+                var sliceInstances = new HashSet<RadiosityGeometry.Instance>(instances);
+                var meshCache = new Dictionary<Models.CS2.Component.LOD.Submesh, cMesh>();
+                int fallbackEmitters = 0, fallbackLights = 0;
+                // Skip-reason census for the residual coverage tail: 141 authored emitters still
+                // shipped nothing after this pass first landed (whole families - CONDUIT_PIPES,
+                // LIFEBOAT_DOCK_CEILING - with healthy strength), and the suspects are all here.
+                int skipNoCentroid = 0, skipElection = 0, skipNoVisible = 0;
+
+                for (int moverIndex = 0; moverIndex < level.Movers.Entries.Count; moverIndex++)
+                {
+                    if (covered.Contains(moverIndex))
+                        continue;
+                    Movers.MOVER_DESCRIPTOR mover = level.Movers.Entries[moverIndex];
+                    if (mover?.RenderableElements == null || SuppressedByRetail(lightPriors, mover))
+                        continue;
+                    float multiplier = RadiosityGeometry.ResolveMoverEmissiveStrength(mover, settings);
+                    if (multiplier <= 0.0f)
+                        continue;
+                    if (!RadiosityGeometry.TryMeasureEmissiveCentroid(mover, meshCache, out Vector3 centre, out float area))
+                    { skipNoCentroid++; continue; }
+
+                    RadiosityGeometry.Instance nearestInstance = null;
+                    float bestDistSq = float.MaxValue;
+                    foreach (RadiosityGeometry.Instance inst in geometry.Instances)
+                    {
+                        if (inst.DonorOnly)
+                            continue;
+                        float d = (inst.Centre - centre).LengthSquared();
+                        if (d < bestDistSq) { bestDistSq = d; nearestInstance = inst; }
+                    }
+                    if (nearestInstance == null || !sliceInstances.Contains(nearestInstance))
+                    { skipElection++; continue; }
+
+                    var nearest = new List<(int texel, float distanceSq)>();
+                    foreach (int texel in grid.Neighbours(centre))
+                    {
+                        if (!geometry.Visible(centre, texels[texel].RayOrigin, settings.RayEpsilon))
+                            continue;
+                        nearest.Add((texel, (texels[texel].Position - centre).LengthSquared()));
+                    }
+                    if (nearest.Count == 0)
+                    {
+                        // A centroid buried inside the fixture's own shell fails every visibility
+                        // ray, and the emitter ships nothing however healthy its strength - the
+                        // shape of the whole-family residual misses. Retail lights these, so fall
+                        // back to the nearest probes WITHOUT the ray test, but keep the reach
+                        // tight: a bounded blind injection stays on the fixture's own wall, where
+                        // the unbounded version would light the neighbouring room through it.
+                        float blindSq = 1.5f * 1.5f;
+                        foreach (int texel in grid.Neighbours(centre))
+                        {
+                            float d = (texels[texel].Position - centre).LengthSquared();
+                            if (d <= blindSq)
+                                nearest.Add((texel, d));
+                        }
+                        if (nearest.Count == 0)
+                        { skipNoVisible++; continue; }
+                    }
+                    nearest.Sort((a, b) => a.distanceSq.CompareTo(b.distanceSq));
+
+                    RetailLightPriors.Prior prior = lightPriors?.Lookup(mover.Resource);
+                    float radiusSq = settings.EmitterSampleRadius * settings.EmitterSampleRadius;
+                    bool matchCount = prior != null && settings.MatchRetailSampleCounts;
+                    int wantProbes = matchCount
+                        ? Math.Max(1, Math.Min(MaxLightsPerEmitter, prior.Items))
+                        : settings.MinProbesPerEmitter;
+                    var chosen = new List<int>();
+                    var seen = new HashSet<int>();
+                    foreach ((int texel, float distanceSq) in nearest)
+                    {
+                        bool needed = seen.Count < wantProbes;
+                        if (!needed && distanceSq > radiusSq)
+                            break;
+                        if (seen.Count >= (matchCount ? wantProbes : MaxLightsPerEmitter))
+                            break;
+                        if (!seen.Add(inputProbeForTexel[texel]))
+                            continue;
+                        chosen.Add(texel);
+                    }
+                    if (chosen.Count == 0)
+                        continue;
+                    covered.Add(moverIndex);
+
+                    Vector3 tint = EmissiveLightColour(mover, geometry, settings);
+                    byte scale = prior != null ? prior.Scale : EmissiveScaleByte(multiplier * settings.EmissiveScale);
+                    byte weight = prior != null
+                        ? (settings.MatchRetailSampleCounts ? prior.WeightFor(chosen.Count) : prior.MeanWeight)
+                        : EmissiveWeightByte(lightPriors.K, area, chosen.Count);
+
+                    uint first = (uint)lights.Lights.Count;
+                    foreach (int texel in chosen)
+                    {
+                        InputProbeTexel(inputProbeForTexel[texel], out int px, out int py);
+                        lights.Lights.Add(new RadiosityRuntime.RuntimeSurfaceLights.Light
+                        {
+                            U = (byte)px,
+                            V = (byte)py,
+                            AnimHi = 4,
+                            AnimLo = 0,
+                            R = prior != null ? prior.R : ToByte(tint.X),
+                            G = prior != null ? prior.G : ToByte(tint.Y),
+                            B = prior != null ? prior.B : ToByte(tint.Z),
+                            Scale = scale,
+                            Weight = weight,
+                            TintR = 255,
+                            TintG = 255,
+                            TintB = 255,
+                            Flags = 0
+                        });
+                    }
+                    fallbackEmitters++;
+                    fallbackLights += (int)(lights.Lights.Count - first);
+
+                    lights.LightSlices.Add(new RadiosityRuntime.RuntimeSurfaceLights.LightSlice
+                    {
+                        FirstItem = first,
+                        NumItems = (ushort)(lights.Lights.Count - first),
+                        EntityInstanceIndex = -1,
+                        SiblingIndex = 0
+                    });
+                    lights.LightSliceEntities.Add(mover.Resource);
+                }
+
+                if (fallbackEmitters > 0 || skipNoVisible > 0)
+                    log?.Invoke("    off-geometry emitters: " + fallbackEmitters +
+                                " movers with no emissive triangles in geometry emitted " + fallbackLights +
+                                " lights (nearest-instance slice election; skipped: " +
+                                skipNoCentroid + " no-centroid, " + skipElection + " other-slice, " +
+                                skipNoVisible + " no-probe-even-blind)");
+            }
         }
 
         private static void BuildEmissiveSurfaceLights(
@@ -7464,6 +8143,9 @@ namespace CathodeLib.Radiosity
             Dictionary<int, float> emissiveAreas, RetailLightPriors lightPriors, Action<string> log)
         {
             int colourChecked = 0, colourExact = 0, colourNear = 0;
+            // How many LIGHTS ship retail's prior values versus our own derivation? The emitter-level
+            // prior count does not answer this - one emitter becomes several lights.
+            int lightsFromPrior = 0, lightsDerived = 0, emittersPrior = 0, emittersDerived = 0;
             var byMover = new Dictionary<int, List<int>>();
             for (int i = 0; i < AtlasTexels; i++)
             {
@@ -7643,6 +8325,7 @@ namespace CathodeLib.Radiosity
                         G = prior != null ? prior.G : ToByte(emissiveTint.Y),
                         B = prior != null ? prior.B : ToByte(emissiveTint.Z),
                         Scale = prior != null ? prior.Scale : emissiveScale,
+                        // counted below
                         // Patched once the slice's sample count is known.
                         Weight = 1,
                         // Retail leaves the tint neutral on every single light - 3915 of 3915 on
@@ -7657,6 +8340,8 @@ namespace CathodeLib.Radiosity
                 }
 
                 int count = lights.Lights.Count - (int)first;
+                if (prior != null) { lightsFromPrior += count; if (count > 0) emittersPrior++; }
+                else               { lightsDerived  += count; if (count > 0) emittersDerived++; }
                 if (count == 0)
                     continue;
 
@@ -7692,6 +8377,10 @@ namespace CathodeLib.Radiosity
                             " within 2, of " + colourChecked + " emitters with a prior (" +
                             (100.0 * colourExact / colourChecked).ToString("0.0") + "% exact)" +
                             (settings.SurfaceLightGammaEncode ? "  [gamma encode ON]" : "  [saturation " + settings.SurfaceLightSaturation + "]"));
+            log?.Invoke("    LIGHT SOURCE: " + lightsFromPrior + " lights from retail priors, " +
+                        lightsDerived + " derived by us  (" +
+                        (lightsFromPrior + lightsDerived > 0 ? (100.0 * lightsFromPrior / (lightsFromPrior + lightsDerived)).ToString("0.0") : "-") +
+                        "% scavenged);  emitters: " + emittersPrior + " prior, " + emittersDerived + " derived");
         }
 
         /// <summary>

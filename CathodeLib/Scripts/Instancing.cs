@@ -3896,7 +3896,7 @@ namespace CathodeLib
             }
 
             // Resource-table order restore (see SnapshotModelParams): retail pairs return to
-            // retail's index; new pairs fill the gaps in creation order.
+            // retail's index; purged retail rows are re-emitted in place; new pairs append.
             if (_retailResourceIndex != null && _retailResourceIndex.Count > 0 && _level.Resources?.Entries != null)
             {
                 List<Resources.Resource> entries = _level.Resources.Entries;
@@ -3915,16 +3915,35 @@ namespace CathodeLib
                     else
                         leftovers.Add(r);
                 }
-                var reordered = new List<Resources.Resource>(entries.Count);
-                int li = 0;
-                for (int i = 0; i < slots.Length && reordered.Count < entries.Count; i++)
+                // EntityInstanceIndex is POSITIONAL: the engine pairs table rows with its own
+                // instance enumeration, so a retail row our save purged (FX templates etc.) must
+                // be re-emitted at its retail index as a dangling placeholder - compacting shifts
+                // every later row onto the wrong runtime entity, which degraded surface-light
+                // gating into noise wherever rows were lost (SCI_Hub kept 14% of indices and
+                // rendered 2.5x; ChallengeMap9 kept 100% and gated normally).
+                var keyAt = new ulong[_retailResourceIndex.Count];
+                foreach (System.Collections.Generic.KeyValuePair<ulong, int> kv in _retailResourceIndex)
+                    if (kv.Value >= 0 && kv.Value < keyAt.Length) keyAt[kv.Value] = kv.Key;
+                var reordered = new List<Resources.Resource>(Math.Max(entries.Count, _retailResourceIndex.Count));
+                int padded = 0;
+                for (int i = 0; i < _retailResourceIndex.Count; i++)
                 {
-                    if (slots[i] != null) reordered.Add(slots[i]);
-                    else if (li < leftovers.Count) reordered.Add(leftovers[li++]);
+                    if (i < slots.Length && slots[i] != null) reordered.Add(slots[i]);
+                    else
+                    {
+                        reordered.Add(new Resources.Resource
+                        {
+                            composite_instance_id = new ShortGuid((uint)(keyAt[i] >> 32)),
+                            resource_id = new ShortGuid((uint)(keyAt[i] & 0xFFFFFFFF))
+                        });
+                        padded++;
+                    }
                 }
-                while (li < leftovers.Count) reordered.Add(leftovers[li++]);
+                foreach (Resources.Resource r in leftovers) reordered.Add(r);
                 _level.Resources.Entries = reordered;
-                Console.WriteLine("Instancing: restored retail resource-table order (" + matched + " of " + reordered.Count + " at retail index)");
+                Console.WriteLine("Instancing: restored retail resource-table order (" + matched + " of " +
+                    _retailResourceIndex.Count + " at retail index, " + padded + " purged rows re-emitted, " +
+                    leftovers.Count + " new appended)");
             }
         }
 

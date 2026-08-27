@@ -516,6 +516,128 @@ namespace CathodeLib.Radiosity
         /// </remarks>
         public System.Collections.Generic.HashSet<int> DeltaAllMovers = null;
 
+        /// <summary>
+        /// Resources retail's own RADIOSITY_INSTANCE_MAP lists, keyed
+        /// <c>(composite_instance_id &lt;&lt; 32) | resource_id</c>. When set, nothing outside it is
+        /// lightmapped. Null disables the check (required for genuinely new content, which retail
+        /// obviously never mapped).
+        /// </summary>
+        /// <remarks>
+        /// Retail is the authority on which resources may carry a lightmap, and no predicate we own
+        /// reproduces it. <see cref="RadiosityGeometry"/>'s composite filter admits a whole
+        /// composite once any one mover asks for RADIOSITY_STATIC; on CM3 that surplus was 28
+        /// resources retail never maps - REQUIRED_ASSETS weapons, _PROPS_\PHYSICS templates and
+        /// MHQ_LIGHTS_B, i.e. pickups, physics props and light fittings. 22 of the 28 carry
+        /// RADIOSITY_STATIC themselves and all 28 are Stationary, so neither flag separates them.
+        /// The damage was not confined to those props: the extra map rows cost unrelated ceilings
+        /// and walls their lightmap binding and dropped them onto dynamic volume probes (a single
+        /// probe lookup per instance, which renders flat and smeared). Removing exactly those 28
+        /// rows reproduced retail's classification to the decimal on every camera measured.
+        /// </remarks>
+        public System.Collections.Generic.HashSet<ulong> RetailMappedResources = null;
+
+        /// <summary>
+        /// After the influence solve, re-point any texel whose surface probe gathered NOTHING at the
+        /// nearest texel whose probe did.
+        /// </summary>
+        /// <remarks>
+        /// A claimed texel with zero influence links renders black, and the mangle map's bilinear
+        /// read smears it over the rect - a soft-edged dark bar rather than a hard texel step. The
+        /// mangle map is built before the solve, so it can only route around texels that were never
+        /// claimed, not ones that were claimed and came back empty. Measured on CM3 cam16's wall
+        /// terminal (island 2279, 4x4): retail leaves 2 of 16 texels unresolved and ships NO
+        /// zero-influence probes; we claimed all 16 and two gathered nothing (links p10 0 against
+        /// retail's 17, weight-sum mean 2878 against 4019), which is the dark bar down that panel.
+        /// </remarks>
+        public bool RepointZeroInfluenceTexels = true;
+
+        /// <summary>
+        /// Emit surface lights for emissive movers whose emissive triangles never entered the
+        /// bake geometry at all, placing their samples on the input probes nearest the emissive
+        /// mesh centroid, in the ONE slice that owns the nearest bake instance.
+        /// </summary>
+        /// <remarks>
+        /// The texel pass and the lost-emitter pass both require the emissive geometry to be in
+        /// an instance; small fixture meshes (the *_DISPLAY family) routinely are not, and ship
+        /// no light at all: 219 of the 1,342 emitters CA's own bake lit on Solace
+        /// (RADIOSITY_LEVEL.BIN, 2026-08-26), including 94 of 95 SPOTS_01 and 82 of 84
+        /// WARNING_LIGHTs. Retail's per-instance scale for these families equals what
+        /// ResolveMoverEmissiveStrength already recovers, so only the sample placement was
+        /// missing. The nearest-instance slice election is load-bearing: slices interleave
+        /// spatially, and a proximity-scoped version of this pass emitted each fixture's full
+        /// flux into 2-3 slices (1,502 groups from ~560 emitters; the table rendered 2.23x
+        /// retail through retail's own scaffold).
+        /// </remarks>
+        public bool EmitTexellessEmitters = true;
+
+        /// <summary>
+        /// Harvest the retail bake's own shipped light values and reuse them for entities we can
+        /// match ("priors"). <b>TEMPORARILY DEFAULTED OFF (2026-08-26) - restore to true before
+        /// shipping.</b>
+        /// </summary>
+        /// <remarks>
+        /// <para>When on, a matched entity's light takes retail's colour, Scale, Weight AND sample
+        /// count wholesale, and <c>SuppressedByRetail</c> drops any emitter that has no match. On a
+        /// retail level that is total: instrumented on Solace, all three slices reported
+        /// <b>100% scavenged, 0 lights derived</b> (322/409/699 from priors). Our own emissive
+        /// derivation therefore never ships anything there, and a rebake-vs-retail comparison is
+        /// largely retail compared against itself.</para>
+        /// <para>Matching is two-tier: exact on (composite_instance_id, resource_id), then - with
+        /// <see cref="DeltaLoosePriors"/> - a loose tier on resource_id alone that merges every
+        /// retail instance sharing it, i.e. "the same fixture in a different spot".</para>
+        /// <para>It is also STALE by construction: a prior is retail's OUTPUT, so if a material or
+        /// emissive is edited the reused light still describes the old one, silently.</para>
+        /// <para>Off, every light is derived from mover/material data and only authored
+        /// radiosity_multiplier = 0 suppresses an emitter - which is exactly how added content is
+        /// treated, so it is the honest setting for validating our own logic.</para>
+        /// </remarks>
+        public bool UseRetailLightPriors = false;
+
+        /// <summary>
+        /// Replace the ENTIRE derived surface-light table with retail's shipped one - every light
+        /// re-addressed to our nearest live input probe by world position, group structure,
+        /// weights, colours, anim channels and entity bindings carried verbatim (bindings are
+        /// positional indices, valid because instancing restores retail's resource-row order with
+        /// purged rows padded in place).
+        /// </summary>
+        /// <remarks>
+        /// <para>Measured motivation (2026-08-27): the derived table reaches 0.88x retail's
+        /// ungated energy, but distributes weight across ENTITIES differently - flat per-emitter
+        /// sample counts over-weight always-on fixtures where retail concentrates weight on big
+        /// scripted, runtime-gated-off ones. The gate amplifies that into SCI_Hub rendering 2.5x
+        /// retail from a weaker table, and CM9's black cam13 ceiling. Retail's table through our
+        /// transport renders at the transport ceiling on every level tried (Solace 0.678 vs our
+        /// 0.666; CM9 cam13 1.018 vs our 0.83), so on retail levels verbatim is strictly better
+        /// than deriving until the per-entity weight distribution is decoded.</para>
+        /// <para>No effect on levels with no retail RADIOSITY_RUNTIME (added content) - those
+        /// keep the derived path. Unlike <see cref="UseRetailLightPriors"/> scavenging this does
+        /// not blend the two sources per emitter; the table is one or the other.</para>
+        /// </remarks>
+        public bool RetailLightTableVerbatim = false;
+
+        /// <summary>
+        /// Fraction of destination probes whose scatter link set includes a FAR-band (3-6m) link.
+        /// Measured from retail (fartail): 25.6/27.3/30.4% per slice on Solace, 25.3/31.6% on
+        /// CM3 - a universal minority, mean ~27%. The minority long links are what make the
+        /// scatter graph percolate level-wide; without them (far as a mid-empty fallback only)
+        /// every link caps at ~2.8m, the graph fragments at doorways, and rooms whose own lights
+        /// are runtime-gated-off render near black (Solace cam13 at 0.16x with retail's own
+        /// table). Selection is a deterministic per-probe dither; the link itself is the
+        /// middle-outward pick, matching retail's long-link length p50 of 3.9m.
+        /// </summary>
+        public float ScatterFarBandFraction = 0.27f;
+
+        /// <summary>
+        /// Fraction of destination probes carrying an ULTRA-far scatter link, in the band from
+        /// ScatterMaxLinkDistance to twice it (6-12m). Retail's tail is not capped at 6m: ~1% of
+        /// its links exceed 6m (up to 11.2m measured), and around Solace's cold cam13 room those
+        /// are the links that IMPORT light across the room boundary - retail carries 142 crossing
+        /// links (p50 5.0m, max 11.2m) where the 6m-capped builder managed 76 (max 5.8m) and the
+        /// room rendered 4x dark. Selection is an independent per-probe dither; the link is the
+        /// middle-outward pick in the 6-12m band with the same facing + visibility tests.
+        /// </summary>
+        public float ScatterUltraFarFraction = 0.06f;
+
         /// <summary>Atlas texels the donor shell may spend (the slice atlas is 128x128 = 16,384;
         /// delta islands allocate first and donors never displace them). Nearest donors win.</summary>
         public int DeltaDonorTexelBudget = 8192;
@@ -1177,7 +1299,17 @@ namespace CathodeLib.Radiosity
         /// Only 29 of 1,527 emitters sit on a remapped material, so the CA pre-remap sampling bug
         /// does NOT account for this - it is a real difference in source.
         /// </remarks>
-        public bool SurfaceLightColourFromDiffuseMean = true;   //H58 default: retail's own colour source
+        public bool SurfaceLightColourFromDiffuseMean = true;   //fallback when the tint constant is unresolvable
+
+        /// <summary>
+        /// Surface light colour = the emissive material's DIFFUSE_TINT constant. THE decoded
+        /// source: it equals RADIOSITY_LEVEL.BIN's authored colour on 93.5% of Solace's and
+        /// 95.7% of ChallengeMap3's emitters at a &lt;0.02 exact threshold (2026-08-27), with the
+        /// residual matching the pre-remap sampling class where our value is the correct one.
+        /// Takes precedence over <see cref="SurfaceLightColourFromDiffuseMean"/>, which remains
+        /// as the fallback for materials whose shader does not remap the constant.
+        /// </summary>
+        public bool SurfaceLightColourFromDiffuseTint = true;
 
         /// <summary>
         /// Force islands built from the same geometry to share one rect size, as retail does.
@@ -1427,6 +1559,24 @@ namespace CathodeLib.Radiosity
         public float LocalScatterReachRadius = 3.0f;
 
         /// <summary>
+        /// Give EVERY input probe scatter sources from three distance bands - near (its own
+        /// surface, within <see cref="LocalScatterRadius"/>), mid (the room, to
+        /// <see cref="LocalScatterReachRadius"/>) and far (to the 6 m link ceiling) - with
+        /// quotas 4/2/1 at the 7-source cap, instead of an all-local ball.
+        /// </summary>
+        /// <remarks>
+        /// The Phase H ablation proved scatter is the ONLY structure coupling surface lights
+        /// into the standing field (emptying retail's list collapses its ungated render
+        /// 3.008 -> 0.359; doors, fixups and LiveSurfaceLights are all inert), and the two-hop
+        /// census put our all-local links at ~0.6x retail's delivered gather mass per light.
+        /// Retail's link-length distribution (p50 0.75 / p90 2.45 / p99 6.1) has a 3.3x p90/p50
+        /// ratio no single ball produces; the 4/2/1 band quotas reproduce all three percentiles
+        /// at once. Mid/far sources must FACE the probe (not share its normal) and pass a
+        /// visibility ray - a scatter link carries radiance with no runtime occlusion.
+        /// </remarks>
+        public bool ScatterBandStratify = true;
+
+        /// <summary>
         /// Influence falloff curve: weight at zero distance before facing modulation.
         /// </summary>
         /// <remarks>
@@ -1453,16 +1603,22 @@ namespace CathodeLib.Radiosity
         /// <see cref="SurfaceLightWeightScale"/> puts back. Use W0 to set the intercept to zero,
         /// then that to set the slope. Together (200, 1.20) they measure
         /// <c>0.916 x retail + 1.54</c> at rmse 12.00 / nrmse 11.72.</para>
-        /// <para>The retail-calibrated trio (227, 2.43, 0.46) measures WORSE here (14.83, and dim
-        /// surfaces go to 1.32) - see InfluenceWeight for the history.</para>
+        /// <para>HISTORY: the retail-calibrated trio (227, 2.43, 0.46) once measured WORSE here
+        /// (14.83, dim surfaces to 1.32) and was rejected - but that was judged against the
+        /// pre-2026-08-27 light table, which was missing 85% of its emitters at 2x weight.
+        /// Re-tested cleanly against the decoded table (AuthoredOff admission fix, texel-less
+        /// emitters, K=250), the retail trio wins or holds on both levels tried: ChallengeMap3
+        /// 0.763 -&gt; 0.854 luma AND stable rmse 16.28 -&gt; 14.53; Solace 0.562 -&gt; 0.640 luma at
+        /// flat rmse (17.93 -&gt; 18.03). It is now the default - it is retail's own calibration,
+        /// and every measurement that ever spoke against it is known to be confounded.</para>
         /// </remarks>
-        public float InfluenceCurveW0 = 200.0f;
+        public float InfluenceCurveW0 = 227.0f;
 
         /// <summary>Influence falloff curve: distance at which falloff reaches (1/2)^k.</summary>
-        public float InfluenceCurveD0 = 2.0f;
+        public float InfluenceCurveD0 = 2.43f;
 
         /// <summary>Influence falloff curve: how hard the curve compresses.</summary>
-        public float InfluenceCurveK = 0.32f;
+        public float InfluenceCurveK = 0.46f;
 
         /// <summary>
         /// Multiply sampled albedo by the material's DIFFUSE_TINT.
