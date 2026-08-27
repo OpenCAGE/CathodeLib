@@ -36,6 +36,19 @@ namespace CathodeLib.Radiosity
             public Vector3 Tint;
             public float UvScale = 1.0f;    // DIFFUSE_UV_MULT
             public Vector3 Mean;            // linear and graded, so it can be returned as-is
+            public byte[] Alpha;            // decoded alpha plane (Width*Height), or null
+            public float AlphaMean = 1.0f;  // mean of the alpha channel, 0..1; the DIRT lerp weight lives there
+            public Vector3 AlphaWeightedMean;   // E[a*rgb]/E[a]: what the alpha-weighted texels actually contribute
+
+            // Per-texel DIRT_MAP overlay. Retail samples the dirt per texel, not per material:
+            // within a single mover its stored albedo varies with sd 40-70 where a mean fold is
+            // flat, and its per-mover means range 28-165 on one material (albmat --detail on
+            // SCI_Hub's MUN_Plastic_Smooth_White_DTY). The overlay image is sampled at the
+            // diffuse UV times its own DIRT_UV_MULT, alongside the diffuse fetch.
+            public MaterialAlbedo Dirt;     // decoded dirt texture (a texture-cache entry), or null
+            public float DirtUvScale = 1f;  // DIRT_UV_MULT
+            public bool DirtMultiply;       // true = multiply mode; false = lerp by dirt alpha
+            public float DirtWeight;        // lerp mode: sat(DIRT_BLEND_MULT_SPEC_POWER) * vertex fade
         }
 
         /// <summary>
@@ -69,7 +82,23 @@ namespace CathodeLib.Radiosity
             new Dictionary<Materials.Material, int>();
         private readonly Dictionary<Textures.TEX4, MaterialAlbedo> _textures =
             new Dictionary<Textures.TEX4, MaterialAlbedo>();
+        private readonly Dictionary<Materials.Material, float> _dirtVertexFade =
+            new Dictionary<Materials.Material, float>();
         private readonly RadiosityBakeSettings _settings;
+
+        /// <summary>
+        /// Per-material expectation of the shader's lerp-dirt vertex-colour fade,
+        /// E[(1 - saturate(vcol.x*R0.x + vcol.y*R0.y))^2], measured over the geometry that uses
+        /// the material. Must be recorded before the material is first registered; the geometry
+        /// collector's pre-pass does this. Lerp-mode dirt weight is scaled by it; multiply-mode
+        /// dirt is not faded - retail's stored albedo on multiply materials sits at or below the
+        /// full-strength dirt, so the runtime fade demonstrably does not reach their compiler.
+        /// </summary>
+        public void SetDirtVertexFade(Materials.Material material, float fade)
+        {
+            if (material != null)
+                _dirtVertexFade[material] = Clamp01(fade);
+        }
 
         /// <summary>Slot meaning "no material", which resolves to the flat fallback albedo.</summary>
         public const int NoMaterial = -1;
@@ -122,8 +151,30 @@ namespace CathodeLib.Radiosity
             }
 
             Interlocked.Increment(ref _texelsSampled);
-            return Grade(Bilinear(entry, uv.X * entry.UvScale, uv.Y * entry.UvScale), entry.Tint);
+            Vector3 c = Bilinear(entry, uv.X * entry.UvScale, uv.Y * entry.UvScale) * entry.Tint;
+            if (entry.Dirt != null)
+            {
+                // The dirt folds in as a GREYSCALE factor, not its RGB: retail's stored albedo
+                // on the big multiply-dirt population is neutral (mover-aggregate R/B 1.03
+                // against the dirt map's 1.28 warm), so their compiler reads the overlay as a
+                // scalar. Folding the RGB tinted SCI_Hub's white transit corridors rust-red.
+                float du = uv.X * entry.DirtUvScale, dv = uv.Y * entry.DirtUvScale;
+                float s = Luma(Bilinear(entry.Dirt, du, dv));
+                if (entry.DirtMultiply)
+                {
+                    c *= s;
+                }
+                else
+                {
+                    float w = BilinearAlpha(entry.Dirt, du, dv) * entry.DirtWeight;
+                    c += (new Vector3(s) - c) * (w > 1f ? 1f : w);
+                }
+            }
+            return GradeFinal(c);
         }
+
+        private static float Luma(Vector3 linear) =>
+            0.2126f * linear.X + 0.7152f * linear.Y + 0.0722f * linear.Z;
 
         /// <summary>
         /// Average albedo for a slot, for surfaces with no usable diffuse UV and for the
@@ -137,9 +188,87 @@ namespace CathodeLib.Radiosity
         private MaterialAlbedo Build(Materials.Material material)
         {
             Vector3 tint = _settings.ApplyDiffuseTint ? ResolveDiffuseTint(material, _settings) : Vector3.One;
+
+            // The _DTY/_RST "dirty" family darkens its clean base with a DIRT_MAP overlay
+            // (SECONDARY_DIFFUSE is unbound on every one inspected). Sampling only DIFFUSE_MAP
+            // read those materials at 4-10x retail's stored albedo (albmat on SCI_Hub:
+            // Plastic_Matte_Black_DTY 10.4x, Smooth_White_DTY 5.7x, overlay-free materials
+            // ~1.0x), and the over-unity region diverged the runtime relaxation into SCI_Hub's
+            // full-frame whiteout. The fold is the runtime shader's own dirt math, read off the
+            // byte-identical CA_ENVIRONMENT master: both modes blend in linear space;
+            // DIRT_BLEND_MULTIPLY scales the diffuse by the dirt colour outright, and lerp mode
+            // mixes the TINTED diffuse toward the UNtinted dirt colour by the dirt map's ALPHA
+            // channel scaled by saturate(DIRT_BLEND_MULT_SPEC_POWER), further faded by the
+            // vertex-colour law measured in RadiosityGeometry.CollectDirtVertexFades.
+            // (DIRT_AO_AMOUNT only enters through an AO map's tint - dirtFactor =
+            // amount*(aoTint-1)+1 - so it is inert on materials without one; using it as the
+            // weight was the first fold's bug.) The overlay is applied PER TEXEL in Sample -
+            // retail's compiler does the same, which is why its stored albedo varies within a
+            // single mover - and at mean level here for the fallback paths.
+            MaterialAlbedo dirtImage = null;
+            float dirtUvScale = 1f;
+            bool dirtMultiply = false;
+            float dirtWeight = 0f;
+            if (_settings.SampleSecondaryDiffuse && material.Shader != null)
+            {
+                Shaders.Shader sh = material.Shader;
+                int dirtBit = -1, multiplyBit = -1, dirtSlot = -1, powerParam = -1, uvParam = -1;
+                if (sh.Ubershader == SHADER_LIST.CA_ENVIRONMENT)
+                {
+                    dirtBit = (int)CA_ENVIRONMENT.FEATURES.DIRT_MAPPING;
+                    multiplyBit = (int)CA_ENVIRONMENT.FEATURES.DIRT_BLEND_MULTIPLY;
+                    dirtSlot = (int)CA_ENVIRONMENT.SAMPLERS.DIRT_MAP;
+                    powerParam = (int)CA_ENVIRONMENT.PARAMETERS.DIRT_BLEND_MULT_SPEC_POWER;
+                    uvParam = (int)CA_ENVIRONMENT.PARAMETERS.DIRT_UV_MULT;
+                }
+                else if (sh.Ubershader == SHADER_LIST.CA_LIGHTMAP_ENVIRONMENT)
+                {
+                    dirtBit = (int)CA_LIGHTMAP_ENVIRONMENT.FEATURES.DIRT_MAPPING;
+                    multiplyBit = (int)CA_LIGHTMAP_ENVIRONMENT.FEATURES.DIRT_BLEND_MULTIPLY;
+                    dirtSlot = (int)CA_LIGHTMAP_ENVIRONMENT.SAMPLERS.DIRT_MAP;
+                    powerParam = (int)CA_LIGHTMAP_ENVIRONMENT.PARAMETERS.DIRT_BLEND_MULT_SPEC_POWER;
+                    uvParam = (int)CA_LIGHTMAP_ENVIRONMENT.PARAMETERS.DIRT_UV_MULT;
+                }
+
+                if (dirtBit >= 0 && ((sh.UbershaderFeatureFlags >> dirtBit) & 1) != 0)
+                {
+                    Textures.TEX4 dirtTexture = ResolveSamplerTexture(material, dirtSlot);
+                    MaterialAlbedo dirt = dirtTexture == null ? null : DecodeCached(dirtTexture);
+                    if (dirt?.Rgb != null)
+                    {
+                        dirtImage = dirt;
+                        dirtUvScale = ResolveUvMult(material, uvParam);
+                        dirtMultiply = ((sh.UbershaderFeatureFlags >> multiplyBit) & 1) != 0;
+                        if (!dirtMultiply)
+                        {
+                            float amount = 1.0f;
+                            if (TryConstant(material, powerParam, 1, out int remap))
+                                amount = Clamp01(material.PixelShaderConstants[remap]);
+                            if (!_dirtVertexFade.TryGetValue(material, out float fade))
+                                fade = 1f;
+                            dirtWeight = amount * fade;
+                        }
+                    }
+                }
+            }
+
             float uvScale = ResolveDiffuseUvMult(material);
             Textures.TEX4 diffuse = ResolveDiffuse(material);
             MaterialAlbedo image = diffuse == null ? null : DecodeCached(diffuse);
+
+            // The slot mean carries the dirt fold at expectation level, for the fallback and
+            // area-fill paths: multiply mode is a product of means, lerp mode is
+            // c*(1 - w*E[a]) + w*E[a*d], a lerp to the alpha-weighted dirt value. Greyscale,
+            // matching the per-texel path in Sample.
+            Vector3 baseMean = (image?.Mean ?? new Vector3(_settings.FallbackAlbedo)) * tint;
+            if (dirtImage != null)
+            {
+                if (dirtMultiply)
+                    baseMean *= Luma(dirtImage.Mean);
+                else
+                    baseMean += (new Vector3(Luma(dirtImage.AlphaWeightedMean)) - baseMean) *
+                                Clamp01(dirtImage.AlphaMean * dirtWeight);
+            }
 
             if (image?.Rgb == null)
             {
@@ -148,7 +277,7 @@ namespace CathodeLib.Radiosity
                 {
                     Tint = tint,
                     UvScale = uvScale,
-                    Mean = Grade(image?.Mean ?? new Vector3(_settings.FallbackAlbedo), tint),
+                    Mean = GradeFinal(baseMean),
                 };
             }
 
@@ -160,7 +289,11 @@ namespace CathodeLib.Radiosity
                 Height = image.Height,
                 Tint = tint,
                 UvScale = uvScale,
-                Mean = Grade(image.Mean, tint),
+                Dirt = dirtImage,
+                DirtUvScale = dirtUvScale,
+                DirtMultiply = dirtMultiply,
+                DirtWeight = dirtWeight,
+                Mean = GradeFinal(baseMean),
             };
         }
 
@@ -172,26 +305,44 @@ namespace CathodeLib.Radiosity
 
             var entry = new MaterialAlbedo();
             if (RadiosityTextureDecoder.TryDecode(texture, _settings.AlbedoTextureMaxEdge,
-                                                  out byte[] rgb, out int width, out int height))
+                                                  out byte[] rgb, out byte[] alpha, out int width, out int height))
             {
                 entry.Rgb = rgb;
+                entry.Alpha = alpha;
                 entry.Width = width;
                 entry.Height = height;
 
                 // Averaged in linear, not in the stored encoding: the mean of a set of sRGB values
                 // is not the encoding of their mean light, and this mean stands in for a whole
-                // surface wherever the UV rasteriser has nothing better.
-                double r = 0, g = 0, b = 0;
+                // surface wherever the UV rasteriser has nothing better. Alpha is mask data, not
+                // colour, so its mean is taken raw.
+                double r = 0, g = 0, b = 0, a = 0, wr = 0, wg = 0, wb = 0;
                 int pixels = width * height;
                 for (int i = 0; i < pixels; i++)
                 {
-                    r += SrgbToLinear[rgb[i * 3]];
-                    g += SrgbToLinear[rgb[i * 3 + 1]];
-                    b += SrgbToLinear[rgb[i * 3 + 2]];
+                    float lr = SrgbToLinear[rgb[i * 3]];
+                    float lg = SrgbToLinear[rgb[i * 3 + 1]];
+                    float lb = SrgbToLinear[rgb[i * 3 + 2]];
+                    r += lr;
+                    g += lg;
+                    b += lb;
+                    if (alpha != null)
+                    {
+                        float w = alpha[i];
+                        a += w;
+                        wr += w * lr;
+                        wg += w * lg;
+                        wb += w * lb;
+                    }
                 }
                 entry.Mean = pixels == 0
                     ? new Vector3(_settings.FallbackAlbedo)
                     : new Vector3((float)(r / pixels), (float)(g / pixels), (float)(b / pixels));
+                entry.AlphaMean = pixels == 0 || alpha == null ? 1f : (float)(a / (pixels * 255.0));
+                // The shader's lerp weight is per-texel alpha, so the expected blend target is the
+                // alpha-weighted colour: E[lerp(c, d, w*a)] = c*(1 - w*E[a]) + w*E[a*d]. Opaque
+                // texels are usually also the dark, dusty ones, so this sits below the plain mean.
+                entry.AlphaWeightedMean = a > 0 ? new Vector3((float)(wr / a), (float)(wg / a), (float)(wb / a)) : entry.Mean;
             }
             else
             {
@@ -232,6 +383,36 @@ namespace CathodeLib.Radiosity
             return top + (bottom - top) * fy;
         }
 
+        /// <summary>
+        /// Bilinear fetch of the alpha plane, wrap-addressed like the colour fetch. Alpha is mask
+        /// data, so no linearisation. Returns 1 when the texture shipped no alpha.
+        /// </summary>
+        private static float BilinearAlpha(MaterialAlbedo image, float u, float v)
+        {
+            if (image.Alpha == null)
+                return 1f;
+            if (!IsFinite(u) || !IsFinite(v))
+                return image.AlphaMean;
+
+            float x = u * image.Width - 0.5f;
+            float y = v * image.Height - 0.5f;
+            if (Math.Abs(x) > 1e7f || Math.Abs(y) > 1e7f)
+                return image.AlphaMean;
+
+            int x0 = (int)Math.Floor(x), y0 = (int)Math.Floor(y);
+            float fx = x - x0, fy = y - y0;
+
+            int x1 = Wrap(x0 + 1, image.Width), y1 = Wrap(y0 + 1, image.Height);
+            x0 = Wrap(x0, image.Width);
+            y0 = Wrap(y0, image.Height);
+
+            float a00 = image.Alpha[y0 * image.Width + x0], a10 = image.Alpha[y0 * image.Width + x1];
+            float a01 = image.Alpha[y1 * image.Width + x0], a11 = image.Alpha[y1 * image.Width + x1];
+            float top = a00 + (a10 - a00) * fx;
+            float bottom = a01 + (a11 - a01) * fx;
+            return (top + (bottom - top) * fy) * (1f / 255f);
+        }
+
         private static bool IsFinite(float v) => !float.IsNaN(v) && !float.IsInfinity(v);
 
         private static Vector3 Texel(MaterialAlbedo image, int x, int y)
@@ -249,9 +430,12 @@ namespace CathodeLib.Radiosity
         }
 
         /// <summary>Apply the material tint, the global scale, and the reflectance ceiling.</summary>
-        private Vector3 Grade(Vector3 colour, Vector3 tint)
+        private Vector3 Grade(Vector3 colour, Vector3 tint) => GradeFinal(colour * tint);
+
+        /// <summary>The global scale and the reflectance ceiling - the last step of every path.</summary>
+        private Vector3 GradeFinal(Vector3 result)
         {
-            Vector3 result = colour * tint * _settings.AlbedoScale;
+            result *= _settings.AlbedoScale;
             float max = _settings.MaxAlbedo;
             return new Vector3(
                 Math.Min(max, Math.Max(0f, result.X)),
@@ -259,18 +443,17 @@ namespace CathodeLib.Radiosity
                 Math.Min(max, Math.Max(0f, result.Z)));
         }
 
-        private static Textures.TEX4 ResolveDiffuse(Materials.Material material)
+        private static Textures.TEX4 ResolveDiffuse(Materials.Material material) =>
+            // DIFFUSE_MAP is sampler slot 1 across every ubershader that has one.
+            ResolveSamplerTexture(material, (int)CA_ENVIRONMENT.SAMPLERS.DIFFUSE_MAP);
+
+        private static Textures.TEX4 ResolveSamplerTexture(Materials.Material material, int samplerSlot)
         {
             Shaders.Shader shader = material.Shader;
-            if (shader == null)
+            if (shader == null || samplerSlot >= shader.SamplerRemaps.Count)
                 return null;
 
-            // DIFFUSE_MAP is sampler slot 1 across every ubershader that has one.
-            const int diffuseSampler = (int)CA_ENVIRONMENT.SAMPLERS.DIFFUSE_MAP;
-            if (diffuseSampler >= shader.SamplerRemaps.Count)
-                return null;
-
-            int remap = shader.SamplerRemaps[diffuseSampler];
+            int remap = shader.SamplerRemaps[samplerSlot];
             if (remap == 255 || remap < 0 || remap >= material.TextureReferences.Count)
                 return null;
 
@@ -355,10 +538,12 @@ namespace CathodeLib.Radiosity
         /// texture that one atlas texel integrates over by the same factor, so the albedo comes
         /// back less averaged and therefore more saturated than the surface really is.
         /// </remarks>
-        private static float ResolveDiffuseUvMult(Materials.Material material)
+        private static float ResolveDiffuseUvMult(Materials.Material material) =>
+            ResolveUvMult(material, DiffuseUvMultIndex(material.Shader?.Ubershader ?? (SHADER_LIST)(-1)));
+
+        private static float ResolveUvMult(Materials.Material material, int parameter)
         {
-            Shaders.Shader shader = material.Shader;
-            if (shader == null || !TryConstant(material, DiffuseUvMultIndex(shader.Ubershader), 1, out int remap))
+            if (!TryConstant(material, parameter, 1, out int remap))
                 return 1.0f;
 
             float value = material.PixelShaderConstants[remap];

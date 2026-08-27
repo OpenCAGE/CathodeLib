@@ -27,9 +27,20 @@ namespace CathodeLib.Radiosity
         /// in on demand and is absent for a quarter of a level's diffuse maps. Picking a mip rather
         /// than decoding mip 0 and downsampling gets the texture's own prefiltering for free.
         /// </remarks>
-        public static bool TryDecode(Textures.TEX4 texture, int maxEdge, out byte[] rgb, out int width, out int height)
+        public static bool TryDecode(Textures.TEX4 texture, int maxEdge, out byte[] rgb, out int width, out int height) =>
+            TryDecode(texture, maxEdge, false, out rgb, out _, out width, out height);
+
+        /// <summary>
+        /// As above, but also decodes the alpha channel (one byte per pixel). The dirt fold needs
+        /// it: a DIRT_MAP's alpha is the shader's lerp-mode blend weight, not cosmetic data.
+        /// </summary>
+        public static bool TryDecode(Textures.TEX4 texture, int maxEdge, out byte[] rgb, out byte[] alpha, out int width, out int height) =>
+            TryDecode(texture, maxEdge, true, out rgb, out alpha, out width, out height);
+
+        private static bool TryDecode(Textures.TEX4 texture, int maxEdge, bool wantAlpha, out byte[] rgb, out byte[] alpha, out int width, out int height)
         {
             rgb = null;
+            alpha = null;
             width = height = 0;
             if (texture == null)
                 return false;
@@ -42,27 +53,45 @@ namespace CathodeLib.Radiosity
                 return false;
 
             rgb = new byte[width * height * 3];
+            alpha = wantAlpha ? new byte[width * height] : null;
+            bool ok;
             switch (texture.Format)
             {
                 case Textures.TextureFormat.DXT1:
-                    return DecodeBlocks(part.Content, offset, rgb, width, height, 8, DecodeBc1Punchthrough);
+                    ok = DecodeBlocks(part.Content, offset, rgb, alpha, width, height, 8, DecodeBc1Punchthrough);
+                    break;
                 case Textures.TextureFormat.DXT3:
+                    ok = DecodeBlocks(part.Content, offset, rgb, alpha, width, height, 16, DecodeBc2);
+                    break;
                 case Textures.TextureFormat.DXT5:
-                    // Both prefix the colour block with 8 bytes of alpha; the colour block is
-                    // always in four-colour mode regardless of endpoint order.
-                    return DecodeBlocks(part.Content, offset, rgb, width, height, 16, DecodeBc23Colour);
+                    ok = DecodeBlocks(part.Content, offset, rgb, alpha, width, height, 16, DecodeBc3);
+                    break;
                 case Textures.TextureFormat.BC7:
-                    return DecodeBlocks(part.Content, offset, rgb, width, height, 16, DecodeBc7);
+                    ok = DecodeBlocks(part.Content, offset, rgb, alpha, width, height, 16, DecodeBc7);
+                    break;
                 case Textures.TextureFormat.A8R8G8B8:
+                    ok = DecodeUncompressed(part.Content, offset, rgb, alpha, width, height, 4, true);
+                    break;
                 case Textures.TextureFormat.X8R8G8B8:
-                    return DecodeUncompressed(part.Content, offset, rgb, width, height, 4);
+                    ok = DecodeUncompressed(part.Content, offset, rgb, alpha, width, height, 4, false);
+                    break;
                 case Textures.TextureFormat.L8:
+                    ok = DecodeUncompressed(part.Content, offset, rgb, alpha, width, height, 1, false);
+                    break;
                 case Textures.TextureFormat.A8:
-                    return DecodeUncompressed(part.Content, offset, rgb, width, height, 1);
+                    ok = DecodeUncompressed(part.Content, offset, rgb, alpha, width, height, 1, true);
+                    break;
                 default:
-                    rgb = null;
-                    return false;
+                    ok = false;
+                    break;
             }
+
+            if (!ok)
+            {
+                rgb = null;
+                alpha = null;
+            }
+            return ok;
         }
 
         /// <summary>
@@ -152,15 +181,15 @@ namespace CathodeLib.Radiosity
             }
         }
 
-        /// <summary>Writes 16 RGB triples for one 4x4 block.</summary>
+        /// <summary>Writes 16 RGBA quads for one 4x4 block.</summary>
         private delegate void BlockDecoder(byte[] src, int offset, byte[] block);
 
-        private static bool DecodeBlocks(byte[] src, int start, byte[] rgb, int width, int height,
+        private static bool DecodeBlocks(byte[] src, int start, byte[] rgb, byte[] alpha, int width, int height,
                                          int blockBytes, BlockDecoder decode)
         {
             int blocksX = Math.Max(1, (width + 3) / 4);
             int blocksY = Math.Max(1, (height + 3) / 4);
-            var block = new byte[16 * 3];
+            var block = new byte[16 * 4];
 
             for (int by = 0; by < blocksY; by++)
             {
@@ -180,11 +209,13 @@ namespace CathodeLib.Radiosity
                         {
                             int x = bx * 4 + tx;
                             if (x >= width) break;
-                            int s = (ty * 4 + tx) * 3;
+                            int s = (ty * 4 + tx) * 4;
                             int d = (y * width + x) * 3;
                             rgb[d] = block[s];
                             rgb[d + 1] = block[s + 1];
                             rgb[d + 2] = block[s + 2];
+                            if (alpha != null)
+                                alpha[y * width + x] = block[s + 3];
                         }
                     }
                 }
@@ -192,7 +223,8 @@ namespace CathodeLib.Radiosity
             return true;
         }
 
-        private static bool DecodeUncompressed(byte[] src, int start, byte[] rgb, int width, int height, int bytesPerPixel)
+        private static bool DecodeUncompressed(byte[] src, int start, byte[] rgb, byte[] alpha, int width, int height,
+                                               int bytesPerPixel, bool srcHasAlpha)
         {
             int pixels = width * height;
             if (start + pixels * bytesPerPixel > src.Length)
@@ -205,6 +237,8 @@ namespace CathodeLib.Radiosity
                 if (bytesPerPixel == 1)
                 {
                     rgb[d] = rgb[d + 1] = rgb[d + 2] = src[s];
+                    if (alpha != null)
+                        alpha[i] = srcHasAlpha ? src[s] : (byte)255;
                 }
                 else
                 {
@@ -212,6 +246,8 @@ namespace CathodeLib.Radiosity
                     rgb[d] = src[s + 2];
                     rgb[d + 1] = src[s + 1];
                     rgb[d + 2] = src[s];
+                    if (alpha != null)
+                        alpha[i] = srcHasAlpha ? src[s + 3] : (byte)255;
                 }
             }
             return true;
@@ -221,7 +257,45 @@ namespace CathodeLib.Radiosity
 
         private static void DecodeBc1Punchthrough(byte[] src, int offset, byte[] block) => DecodeBc1(src, offset, block, true);
 
-        private static void DecodeBc23Colour(byte[] src, int offset, byte[] block) => DecodeBc1(src, offset + 8, block, false);
+        /// <summary>BC2 (DXT3): 4-bit explicit alpha ahead of a four-colour BC1 block.</summary>
+        private static void DecodeBc2(byte[] src, int offset, byte[] block)
+        {
+            DecodeBc1(src, offset + 8, block, false);
+            for (int t = 0; t < 16; t++)
+            {
+                int nibble = (src[offset + t / 2] >> ((t & 1) * 4)) & 0xF;
+                block[t * 4 + 3] = (byte)(nibble * 17);
+            }
+        }
+
+        /// <summary>BC3 (DXT5): interpolated alpha block ahead of a four-colour BC1 block.</summary>
+        private static void DecodeBc3(byte[] src, int offset, byte[] block)
+        {
+            DecodeBc1(src, offset + 8, block, false);
+
+            int a0 = src[offset], a1 = src[offset + 1];
+            var palette = new int[8];
+            palette[0] = a0;
+            palette[1] = a1;
+            if (a0 > a1)
+            {
+                for (int i = 2; i < 8; i++)
+                    palette[i] = ((8 - i) * a0 + (i - 1) * a1) / 7;
+            }
+            else
+            {
+                for (int i = 2; i < 6; i++)
+                    palette[i] = ((6 - i) * a0 + (i - 1) * a1) / 5;
+                palette[6] = 0;
+                palette[7] = 255;
+            }
+
+            ulong indices = 0;
+            for (int i = 0; i < 6; i++)
+                indices |= (ulong)src[offset + 2 + i] << (8 * i);
+            for (int t = 0; t < 16; t++)
+                block[t * 4 + 3] = (byte)palette[(int)((indices >> (t * 3)) & 7)];
+        }
 
         /// <summary>
         /// Decode a BC1 colour block. <paramref name="punchthrough"/> enables the c0 &lt;= c1
@@ -249,13 +323,15 @@ namespace CathodeLib.Radiosity
                 r[3] = g[3] = b[3] = 0;
             }
 
+            bool transparentIndex3 = punchthrough && c0 <= c1;
             uint indices = (uint)(src[offset + 4] | (src[offset + 5] << 8) | (src[offset + 6] << 16) | (src[offset + 7] << 24));
             for (int t = 0; t < 16; t++)
             {
                 int i = (int)((indices >> (t * 2)) & 3);
-                block[t * 3] = (byte)r[i];
-                block[t * 3 + 1] = (byte)g[i];
-                block[t * 3 + 2] = (byte)b[i];
+                block[t * 4] = (byte)r[i];
+                block[t * 4 + 1] = (byte)g[i];
+                block[t * 4 + 2] = (byte)b[i];
+                block[t * 4 + 3] = (byte)(transparentIndex3 && i == 3 ? 0 : 255);
             }
         }
 
@@ -408,9 +484,10 @@ namespace CathodeLib.Radiosity
                     case 3: { int tmp = cb; cb = ca; ca = tmp; break; }
                 }
 
-                block[t * 3] = (byte)cr;
-                block[t * 3 + 1] = (byte)cg;
-                block[t * 3 + 2] = (byte)cb;
+                block[t * 4] = (byte)cr;
+                block[t * 4 + 1] = (byte)cg;
+                block[t * 4 + 2] = (byte)cb;
+                block[t * 4 + 3] = (byte)ca;
             }
         }
 

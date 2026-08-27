@@ -638,6 +638,18 @@ namespace CathodeLib.Radiosity
         /// </summary>
         public float ScatterUltraFarFraction = 0.06f;
 
+        /// <summary>
+        /// Fold the DIRT_MAP overlay into a material's sampled albedo, on the environment
+        /// shaders. Without this the _DTY/_RST material family sampled at its clean white BASE -
+        /// 4-10x retail's stored albedo (albmat, SCI_Hub) - and the over-unity region diverged
+        /// the runtime relaxation into a full-frame whiteout. The fold is the runtime shader's
+        /// own dirt math, read off the byte-identical CA_ENVIRONMENT master: MULTIPLY mode
+        /// scales the diffuse by the dirt colour, lerp mode mixes toward it by
+        /// dirt.alpha * saturate(DIRT_BLEND_MULT_SPEC_POWER), both in linear space. See
+        /// RadiosityMaterialSampler.Build.
+        /// </summary>
+        public bool SampleSecondaryDiffuse = false;   //OFF until the decoded fold validates against albmat on SCI_Hub (the earlier flat mean-fold guess measurably hurt; this one is the shader's real math but unproven against retail's compiler output).
+
         /// <summary>Atlas texels the donor shell may spend (the slice atlas is 128x128 = 16,384;
         /// delta islands allocate first and donors never displace them). Nearest donors win.</summary>
         public int DeltaDonorTexelBudget = 8192;

@@ -314,6 +314,14 @@ namespace CathodeLib.Radiosity
             // A CS2 submesh is shared between movers, so cache the decode.
             var meshCache = new Dictionary<Models.CS2.Component.LOD.Submesh, cMesh>();
 
+            // Lerp-mode dirt is faded per vertex by the shader - the VS's dirt lane computes
+            // vcx = saturate(vcol.x*R0.x + vcol.y*R0.y) and the PS scales the dirt weight by
+            // (1-vcx)^2 - so the material-mean dirt fold needs that fade's expectation over the
+            // geometry that actually uses each material. Runs before any Register so the fades
+            // are in place when materials build.
+            if (settings.SampleSecondaryDiffuse)
+                CollectDirtVertexFades(level, geo.MaterialSampler, meshCache, log);
+
             // Retail's island assignment per resource, resolved from the loaded instance map.
             // Grouping follows it wherever it has an answer so islands keep retail's shape and,
             // downstream, retail's id.
@@ -550,6 +558,77 @@ namespace CathodeLib.Radiosity
 
             return geo;
         }
+
+        /// <summary>
+        /// Measure, per lerp-dirt material, the expectation of the shader's vertex-colour dirt
+        /// fade over every mesh use: E[(1 - saturate(vcol.x*R0.x + vcol.y*R0.y))^2], with R0
+        /// read from each mover's GPU constants (RInstConstants[0], the vcol multiplier - the
+        /// first float4 of the 96-byte blob). Only shaders with VERTEX_COLOUR fade; multiply-mode
+        /// dirt is excluded by design (see RadiosityMaterialSampler.SetDirtVertexFade).
+        /// </summary>
+        private static void CollectDirtVertexFades(Level level, RadiosityMaterialSampler sampler,
+            Dictionary<Models.CS2.Component.LOD.Submesh, cMesh> meshCache, Action<string> log)
+        {
+            var sums = new Dictionary<Materials.Material, (double fade, double n)>();
+            foreach (Movers.MOVER_DESCRIPTOR mover in level.Movers.Entries)
+            {
+                if (mover.RenderableElements == null)
+                    continue;
+                byte[] raw = mover.GPUConstants?.RawBytes;
+                float r0x = 1f, r0y = 1f;
+                if (raw != null && raw.Length >= 16)
+                {
+                    r0x = BitConverter.ToSingle(raw, 0);
+                    r0y = BitConverter.ToSingle(raw, 4);
+                }
+
+                foreach (RenderableElements.Element element in mover.RenderableElements)
+                {
+                    Materials.Material material = element?.Material;
+                    Shaders.Shader shader = material?.Shader;
+                    if (shader == null || element.Model == null)
+                        continue;
+
+                    bool fades;
+                    long f = shader.UbershaderFeatureFlags;
+                    if (shader.Ubershader == SHADER_LIST.CA_ENVIRONMENT)
+                        fades = Bit(f, (int)CA_ENVIRONMENT.FEATURES.DIRT_MAPPING) &&
+                                !Bit(f, (int)CA_ENVIRONMENT.FEATURES.DIRT_BLEND_MULTIPLY) &&
+                                Bit(f, (int)CA_ENVIRONMENT.FEATURES.VERTEX_COLOUR);
+                    else if (shader.Ubershader == SHADER_LIST.CA_LIGHTMAP_ENVIRONMENT)
+                        fades = Bit(f, (int)CA_LIGHTMAP_ENVIRONMENT.FEATURES.DIRT_MAPPING) &&
+                                !Bit(f, (int)CA_LIGHTMAP_ENVIRONMENT.FEATURES.DIRT_BLEND_MULTIPLY) &&
+                                Bit(f, (int)CA_LIGHTMAP_ENVIRONMENT.FEATURES.VERTEX_COLOUR);
+                    else
+                        continue;
+                    if (!fades)
+                        continue;
+
+                    if (!meshCache.TryGetValue(element.Model, out cMesh mesh))
+                        meshCache[element.Model] = mesh = element.Model.ToMesh();
+                    if (mesh.Colours.Count == 0 || mesh.Colours.Count != mesh.Vertices.Count)
+                        continue;
+
+                    double sum = 0;
+                    foreach (var c in mesh.Colours)
+                    {
+                        float x = c.R / 255f * r0x + c.G / 255f * r0y;
+                        double inv = 1.0 - (x < 0f ? 0f : x > 1f ? 1f : x);
+                        sum += inv * inv;
+                    }
+                    sums[material] = sums.TryGetValue(material, out var acc)
+                        ? (acc.fade + sum, acc.n + mesh.Colours.Count)
+                        : (sum, (double)mesh.Colours.Count);
+                }
+            }
+
+            foreach (var kv in sums)
+                sampler.SetDirtVertexFade(kv.Key, (float)(kv.Value.fade / Math.Max(1.0, kv.Value.n)));
+            if (sums.Count > 0)
+                log?.Invoke("[radiosity] lerp-dirt vertex fade measured for " + sums.Count + " materials");
+        }
+
+        private static bool Bit(long flags, int bit) => ((flags >> bit) & 1) != 0;
 
         /// <summary>
         /// Resource GUID pair to retail island id (lightmap_transform), from the loaded retail

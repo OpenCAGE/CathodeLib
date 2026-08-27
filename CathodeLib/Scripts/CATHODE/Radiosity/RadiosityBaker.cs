@@ -7070,6 +7070,45 @@ namespace CathodeLib.Radiosity
                 System.Threading.Tasks.Parallel.For(0, grids.Length, TraceOne);
             else
                 for (int i = 0; i < grids.Length; i++) TraceOne(i);
+
+            // Retail's invariant, measured on every level and slice: a REFERENCED vis grid is
+            // never fully occluded (openness p10 15-22, minimum never 0). Ours shipped all-zero
+            // grids wherever a cell centre sat embedded in geometry (every ray occluded), and
+            // the engine's response to an all-black visibility grid is catastrophic - SCI_Hub's
+            // island -1 exterior sampled such cells and rendered a full-frame WHITEOUT (cam4/1/
+            // 7/12 at uniform 255, +1.1x on the level aggregate). Two-step repair: a fully
+            // embedded item (all six faces zero) re-traces from its elected surface texel
+            // nudged along the normal - open air by construction; any face still all-zero is
+            // floored to one visible sub-sample, the smallest value retail's encoder emits.
+            byte floorVis = EncodeVisibility(1, VisSubSamples);
+            int retraced = 0, floored = 0;
+            for (int i = 0; i < itemCells.Count; i++)
+            {
+                if (!hasProbe[i]) continue;
+                bool allZero = true;
+                for (int f = 0; f < 6 && allZero; f++)
+                    foreach (byte b in grids[i * 6 + f]) if (b != 0) { allZero = false; break; }
+                if (allZero)
+                {
+                    int texel = probeForCell[itemCells[i]];
+                    Vector3 fallback = texels[texel].Position + texels[texel].Normal * Math.Max(0.05f, settings.ProbeSurfaceOffset);
+                    for (int f = 0; f < 6; f++)
+                        grids[i * 6 + f] = TraceVisFace(geometry, fallback, f, settings);
+                    retraced++;
+                }
+                for (int f = 0; f < 6; f++)
+                {
+                    byte[] g = grids[i * 6 + f];
+                    bool zero = true;
+                    foreach (byte b in g) if (b != 0) { zero = false; break; }
+                    if (zero)
+                    {
+                        for (int c2 = 0; c2 < g.Length; c2++) g[c2] = floorVis;
+                        floored++;
+                    }
+                }
+            }
+
             visFaceGrids.AddRange(grids);
 
             return hash;
@@ -9408,13 +9447,33 @@ namespace CathodeLib.Radiosity
         /// over every surface where retail is cool and blue, because every bounce carried the
         /// mirrored colour.
         /// </remarks>
-        private static ColourRGBA8 EncodeAlbedo(Vector3 colour, byte alpha) => new ColourRGBA8
+        /// <summary>
+        /// Ceiling on stored input-probe albedo LUMA, decoded from retail: across SCI_Hub,
+        /// Solace, CM3 and CM9 no retail probe ever reaches pure white (max channel byte 252,
+        /// luma p99 pinned at 0.90-0.91 on every slice) while ours shipped 1.0 clusters. An
+        /// over-unity albedo region makes the runtime relaxation loop diverge - the standing
+        /// field saturates and the level renders a bloom WHITEOUT (SCI_Hub cam4/1/7/12 at
+        /// uniform 255, +1.1x on its aggregate; every transport improvement made it WORSE
+        /// because better coupling amplifies a divergent loop). The cap is colour-preserving:
+        /// channels stay high for saturated colours, only the luma is scaled down, which is
+        /// exactly the shape of retail's data.
+        /// </summary>
+        private const float MaxAlbedoLuma = 232.0f / 255.0f;
+
+        private static ColourRGBA8 EncodeAlbedo(Vector3 colour, byte alpha)
         {
-            R = ToByte(colour.Z),
-            G = ToByte(colour.Y),
-            B = ToByte(colour.X),
-            A = alpha
-        };
+            // colour arrives as (B, G, R) - see the swizzle below - so Z is the red channel.
+            float luma = 0.2126f * colour.Z + 0.7152f * colour.Y + 0.0722f * colour.X;
+            if (luma > MaxAlbedoLuma)
+                colour *= MaxAlbedoLuma / luma;
+            return new ColourRGBA8
+            {
+                R = ToByte(colour.Z),
+                G = ToByte(colour.Y),
+                B = ToByte(colour.X),
+                A = alpha
+            };
+        }
 
         /// <summary>Normals are stored biased into 0..255, so 127 is zero and 255 is +1.</summary>
         private static ColourRGBA8 EncodeNormal(Vector3 normal) => new ColourRGBA8
