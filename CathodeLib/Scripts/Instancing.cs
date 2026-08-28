@@ -5513,7 +5513,7 @@ namespace CathodeLib
                     if (entity.Strings.Has(ShortGuids.reverb_name))
                     {
                         string reverb = entity.Strings.Get(ShortGuids.reverb_name);
-                        bool shouldAdd = true;
+                        bool shouldAdd = !string.IsNullOrWhiteSpace(reverb);
                         for (int i = 0; i < _level.SoundEnvironmentData.Entries.Count; i++)
                         {
                             if (_level.SoundEnvironmentData.Entries[i].ToLower() == reverb.ToLower())
