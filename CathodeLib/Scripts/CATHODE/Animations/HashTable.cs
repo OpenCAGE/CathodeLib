@@ -39,9 +39,14 @@ namespace CATHODE.Animations
                 slotOrder?.Add(index);
             }
 
+            /* Every slot should have had a name written into it above, but the table says which slot
+             * each name belongs to and a file is free to name the same slot twice - which leaves the
+             * ones it skipped holding null. That null then travels out as a clip's or a context's
+             * name and reaches code with no reason to expect one. A slot nothing named is nameless,
+             * not null. */
             for (int i = 0; i < hashTableSize; i++)
             {
-                result.Add(itemReader(reader, names[i]));
+                result.Add(itemReader(reader, names[i] ?? ""));
             }
 
             return result;
