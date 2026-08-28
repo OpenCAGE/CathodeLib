@@ -1011,6 +1011,21 @@ namespace CathodeLib.Radiosity
                         result.SurfaceLights += sb.Slice.SurfaceLights.Lights.Count;
             }
 
+            // On retail levels, overlay retail's own stored input-probe albedo by world position.
+            // CA's compiler sampled albedo BEFORE command-driven material remapping, so on
+            // remapped movers retail's stored value is the AUTHORED material's - measured on
+            // BSP_Torrens: TEC_Plastic_Smooth_White_DTY movers store ~6 (the authored
+            // TEC_Metal_Smooth_Grey/Plastic_Black materials at tint 0.03-0.04; 36 mapping rows
+            // name the family) where our post-remap sampling stores the visible white at ~145.
+            // Our derivation is the "correct" one and stays (Matt's ruling), but retail's look
+            // is calibrated around its own stale bounce: splicing retail's albedo rendered
+            // Torrens 1.355 -> 1.203 (stable rmse 44.9 -> 32.7, best ever), SCI_Hub 1.120 ->
+            // 1.087, CM3 unchanged. Same philosophy as RetailLightTableVerbatim - reuse the
+            // shipped record on retail levels, derive for new content (unmatched probes keep
+            // our value).
+            if (settings.RetailAlbedoVerbatim)
+                ImportRetailAlbedo(runtime, retailSlices, settings, log);
+
             result.StaleRectsCleared = ClearStaleModelParams(level, taggedMovers);
 
             BuildSliceNeighbours(runtime);
@@ -3410,7 +3425,9 @@ namespace CathodeLib.Radiosity
 
             // ---- 6. Visibility solve: influences per surface probe ---------------------------
             float[] texelArea = MeasureTexelAreas(instances, texels, out float medianTexelArea);
-            int influenceCount = SolveInfluences(geometry, texels, surfaceSlotForTexel, nearestProbeForTexel, slice, settings, texelArea, medianTexelArea, out var transfers, out byte[] usedSlots, log);
+            int influenceCount = settings.InfluenceHemisphereSolve
+                ? SolveInfluencesHemisphere(geometry, texels, surfaceSlotForTexel, nearestProbeForTexel, slice, settings, out var transfers, out byte[] usedSlots, log)
+                : SolveInfluences(geometry, texels, surfaceSlotForTexel, nearestProbeForTexel, slice, settings, texelArea, medianTexelArea, out transfers, out usedSlots, log);
 
             // A texel whose probe came out of the solve with ZERO influences renders BLACK, and the
             // mangle map's bilinear read smears that across the whole rect. The map above is built
@@ -3516,9 +3533,22 @@ namespace CathodeLib.Radiosity
             // ---- 8. Volume probe hash for dynamic objects ------------------------------------
             List<byte[]> visGrids = new List<byte[]>();
 
+            // The hash box must cover the slice's CONSUMER space, not just its probe sources:
+            // retail's boxes extend well above the probes (CM3 slice 0 reaches y 12.8 with no
+            // probe above 6.8; CM9's reach 97.8 up its shafts), because dynamic movers sample
+            // the hash from the air of every room. Our probe-hugging box cut 6 m off CM3 slice
+            // 0 and sent every elevated dynamic instance out of bounds. The slice's instance
+            // geometry bounds are the available proxy for that consumer space.
+            float geoMinY = float.MaxValue, geoMaxY = float.MinValue;
+            foreach (RadiosityGeometry.Instance inst in instances)
+            {
+                if (inst.BoundsMin.Y < geoMinY) geoMinY = inst.BoundsMin.Y;
+                if (inst.BoundsMax.Y > geoMaxY) geoMaxY = inst.BoundsMax.Y;
+            }
+
             slice.VolumeProbeHash = settings.EmitVolumeProbes
 
-                ? BuildVolumeProbeHash(geometry, texels, nearestProbeForTexel, surfaceSlotForTexel, settings, out visGrids)
+                ? BuildVolumeProbeHash(geometry, texels, nearestProbeForTexel, surfaceSlotForTexel, settings, geoMinY, geoMaxY, out visGrids)
 
                 // An absent hash is signalled by NumSubdivsPerLevel = 0, with a zero AABB and zero
                 // dims - that is exactly what BSP_LV426_PT01 slice 0 ships, the one retail slice of
@@ -5445,6 +5475,341 @@ namespace CathodeLib.Radiosity
         /// <paramref name="usedSlots"/> comes back keyed by surface probe slot so the cross-slice
         /// pass can carry on filling the same records.
         /// </remarks>
+        /// <summary>
+        /// Hemisphere-sampled influence solve: cast cosine-weighted rays from every surface
+        /// probe and link the clusters its rays actually HIT, weighted by the existing distance
+        /// curve. Selection by what the probe SEES rather than by candidate proximity is the
+        /// working decode of retail's room-scoped gather: it reproduces, by construction, the
+        /// structures the proximity solve cannot - cluster-read concentration on each room's
+        /// dominant surfaces (retail top-decile Wshare 40-41% vs our 28), shared read sets
+        /// between a room's probes, bimodal empty-or-full link populations (rays that escape or
+        /// land on clusterless geometry produce NO link - retail leaves 8-12% of probes empty
+        /// where the proximity solve leaves ~1%), and genuinely starved boundary probes for the
+        /// cross-slice fixup pass to serve (retail ships 48k CM3 fixups carrying 19% of its
+        /// render; our proximity solve left fixups inert). The flat proximity gather measured as
+        /// THE overshoot mechanism: same totals, mixed provenance - CM3 1.33/Torrens 1.41 on the
+        /// interleaved 2-slice levels, dim on fragmented ones, colour casts wearing the import's
+        /// provenance (MU-TH-UR's orange diluted to white, SCI_Hub's yellow-green excess with
+        /// blue at exactly retail level).
+        /// </summary>
+        private static int SolveInfluencesHemisphere(
+            RadiosityGeometry geometry, SurfaceTexel[] texels, int[] surfaceSlotForTexel,
+            int[] inputProbeForTexel,
+            RadiosityRuntime.RuntimeDataSlice slice,
+            RadiosityBakeSettings settings, out List<(int emitter, int receiver, float weight)> transfers,
+            out byte[] usedSlots, Action<string> log)
+        {
+            transfers = new List<(int, int, float)>();
+            usedSlots = new byte[AtlasTexels];
+            byte[] used = usedSlots;
+            slice.SurfaceProbeInfluences = NewList<ColourRGBA8>(AtlasTexels * InfluencesPerProbe / 2);
+            slice.SurfaceProbeWeights = NewList<Vector4u8>(AtlasTexels * InfluencesPerProbe / 4);
+
+            var live = new List<int>();
+            for (int i = 0; i < AtlasTexels; i++)
+                if (texels[i].Live && surfaceSlotForTexel[i] >= 0) live.Add(i);
+            if (live.Count == 0)
+                return 0;
+
+            var clusters = new List<int>();
+            for (int i = 0; i < AtlasTexels; i++)
+                if (texels[i].Live && inputProbeForTexel[i] >= 0) clusters.Add(i);
+            if (clusters.Count == 0)
+                return 0;
+
+            float attrRadius = Math.Max(0.1f, settings.HemisphereAttributeRadius);
+            var grid = new ProbeGrid(texels, clusters, attrRadius);
+            int rays = Math.Max(16, settings.HemisphereRays);
+            float maxDist = settings.MaxInfluenceDistance;
+
+            // Pool augmentation: the pure-sight pool starves 40-66% of probes down to 10-12
+            // links (retail: full 32-link sets at 27-30.5 links/probe on every level), and the
+            // starved class is what broke the cross-level runs - SCI_Hub whiteout (all-sight
+            // cliques concentrate absolute-gain weight inside mutually visible bright rooms
+            // where retail spends ~34% of its links through walls), Solace dark-room lift and
+            // CM7 overshoot (small in-room sets amplify a room's one bright fixture where
+            // retail's full sets spend slots on soft/far candidates). Fill the pool to
+            // HemispherePoolTarget with the default builder's soft-vis proximity candidates -
+            // strongest curve byte first - before the quantile cut.
+            int poolTarget = settings.HemispherePoolTarget;
+            var candGrid = poolTarget > 0 ? new ProbeGrid(texels, clusters, maxDist) : null;
+
+            int total = 0;
+            long attributedAll = 0, escapedAll = 0, orphanAll = 0;
+            long[] poolBandAll = new long[3], keptBandAll = new long[3];
+            long augProbes = 0, augLinks = 0;
+            int emptyProbes = 0;
+            object statLock = new object();
+
+            void Solve(int liveIndex)
+            {
+                int probeTexel = live[liveIndex];
+                SurfaceTexel probe = texels[probeTexel];
+                Vector3 origin = probe.RayOrigin;
+                Vector3 n = probe.Normal;
+                Vector3 t1 = Tangent(n), t2 = Vector3.Cross(n, t1);
+
+                // hit accumulation per cluster: count, distance sum, receiver-cos sum
+                var acc = new Dictionary<int, (int hits, float distSum, float cosSum)>();
+                int attributed = 0, escaped = 0, orphan = 0;
+
+                uint seed = (uint)(probeTexel * 747796405) ^ 0x9E3779B9u;
+                for (int r = 0; r < rays; r++)
+                {
+                    seed = seed * 747796405u + 2891336453u;
+                    float u1 = ((seed >> 8) & 0xFFFFFF) / 16777216.0f;
+                    seed = seed * 747796405u + 2891336453u;
+                    float u2 = ((seed >> 8) & 0xFFFFFF) / 16777216.0f;
+
+                    // cosine-weighted hemisphere about the probe normal
+                    float rad = (float)Math.Sqrt(u1);
+                    double theta = 2.0 * Math.PI * u2;
+                    float lx = rad * (float)Math.Cos(theta);
+                    float ly = rad * (float)Math.Sin(theta);
+                    float lz = (float)Math.Sqrt(Math.Max(0.0f, 1.0f - u1));
+                    Vector3 dir = t1 * lx + t2 * ly + n * lz;
+
+                    float t = geometry.TraceClosest(origin, dir, maxDist, out Vector3 hitPos);
+                    if (t <= 0.0f) { escaped++; continue; }
+
+                    // Nearest live cluster to the hit point that FACES the incoming ray. Without
+                    // the facing test a hit snaps to the nearest cluster even when that cluster
+                    // sits on the far side of a thin wall or floor (well within the attribute
+                    // radius), which both links energy through geometry and steals reads from
+                    // the surface actually hit - V1 shipped it and read 30-48% of Torrens'
+                    // clusters never at all while retail reads 99%.
+                    int best = -1;
+                    float bestD2 = attrRadius * attrRadius;
+                    foreach (int cluster in grid.Neighbours(hitPos))
+                    {
+                        if (Vector3.Dot(texels[cluster].Normal, dir) >= -0.1f)
+                            continue;
+                        float d2 = Vector3.DistanceSquared(texels[cluster].Position, hitPos);
+                        if (d2 < bestD2) { bestD2 = d2; best = cluster; }
+                    }
+                    if (best < 0) { orphan++; continue; }
+
+                    attributed++;
+                    acc.TryGetValue(best, out (int hits, float distSum, float cosSum) a);
+                    acc[best] = (a.hits + 1, a.distSum + t, a.cosSum + lz);
+                }
+
+                int augAdded = 0;
+                if (candGrid != null && acc.Count < poolTarget)
+                {
+                    var extra = new List<(int cluster, float dist, float cosR, byte weightKey)>();
+                    foreach (int otherTexel in candGrid.Neighbours(probe.Position))
+                    {
+                        if (otherTexel == probeTexel || acc.ContainsKey(otherTexel))
+                            continue;
+                        SurfaceTexel other = texels[otherTexel];
+                        Vector3 delta = other.Position - origin;
+                        float distanceSq = delta.LengthSquared();
+                        if (distanceSq < 1e-6f || distanceSq > maxDist * maxDist)
+                            continue;
+                        float distance = (float)Math.Sqrt(distanceSq);
+                        Vector3 direction = delta / distance;
+                        float cosReceiver = Vector3.Dot(n, direction);
+                        if (cosReceiver <= 0.02f)
+                            continue;
+                        float cosEmitter = Vector3.Dot(other.Normal, -direction);
+                        if (cosEmitter <= 0.02f)
+                            continue;
+                        extra.Add((otherTexel, distance, cosReceiver,
+                                   InfluenceWeight(distance, cosReceiver * cosEmitter, settings)));
+                    }
+                    extra.Sort((a, b) => a.weightKey != b.weightKey
+                        ? b.weightKey.CompareTo(a.weightKey)
+                        : a.dist.CompareTo(b.dist));
+                    foreach ((int cluster, float dist, float cosR, byte _) in extra)
+                    {
+                        if (acc.Count >= poolTarget) break;
+                        SurfaceTexel other = texels[cluster];
+                        if (!VisibleSoft(geometry, origin, n, other.RayOrigin, other.Normal,
+                                         settings, probeTexel, cluster))
+                            continue;
+                        acc[cluster] = (1, dist, cosR);
+                        augAdded++;
+                    }
+                }
+
+                int keep = 0;
+                var poolBand = new long[3];
+                var keptBand = new long[3];
+                if (acc.Count > 0)
+                {
+                    // Rank candidates by the byte the link would carry, not by hit count. The
+                    // wlaw regression (retail Torrens/CM3/Solace files) measured retail's
+                    // per-link byte as a pure function of distance - residual 1.00 in every
+                    // context x distance cell, brightness tilt 1.00, facing worth at most +7% -
+                    // and its link sets keep a far tail hit ranking destroys: >4m is 25-30% of
+                    // retail's links (10m+ 2.3-4.1%) where hemi3 kept 11%, because near
+                    // clusters soak hundreds of rays and crowd single-hit far clusters out of
+                    // the top 32. That locality was hemi3's whole 1.44x: sub-metre links at
+                    // DOUBLE retail's share re-read the adjacent lit surfaces and pump the
+                    // loop. A cluster is a candidate because ANY ray saw it; hit count is
+                    // solid angle, and retail's bytes carry no solid-angle term at all.
+                    var scored = new List<(int cluster, float meanDist, byte weight, int hits)>(acc.Count);
+                    foreach (KeyValuePair<int, (int hits, float distSum, float cosSum)> kv in acc)
+                    {
+                        int cluster = kv.Key;
+                        (int hits, float distSum, float cosSum) = kv.Value;
+                        float meanDist = distSum / hits;
+                        Vector3 toProbe = origin - texels[cluster].Position;
+                        float len = toProbe.Length();
+                        float cosEmitter = len > 1e-5f
+                            ? Math.Max(0.02f, Vector3.Dot(texels[cluster].Normal, toProbe / len))
+                            : 0.02f;
+                        float cosProduct = (cosSum / hits) * cosEmitter;
+                        scored.Add((cluster, meanDist, InfluenceWeight(meanDist, cosProduct, settings), hits));
+                        poolBand[meanDist <= 2f ? 0 : meanDist <= 4f ? 1 : 2]++;
+                    }
+                    scored.Sort((a, b) => a.weight != b.weight
+                        ? b.weight.CompareTo(a.weight)
+                        : a.meanDist.CompareTo(b.meanDist));
+                    // Composition-preserving cut, dominance-ranked within strata. hemi4's pool
+                    // instrumentation measured the visible pool at 26-31/44/24-30% (<=2m/2-4m/
+                    // >4m) - ALREADY retail's kept composition (~34/41/25) - while a straight
+                    // top-32 cut collapses the far tail to 4-5% whether ranked by hits or by
+                    // byte (both decay with distance), so the cut must be distance-neutral:
+                    // partition the weight-sorted pool into 32 contiguous strata (hemi5 - this
+                    // alone took Torrens to 1.022 and CM3 to 1.035). But taking one arbitrary
+                    // member per stratum decorrelates picks between neighbouring probes and
+                    // FLATTENS cluster reads: SCI_Hub clusterreads measured our median cluster
+                    // taking 2x retail's incoming weight at top-decile Wshare 25-28% vs
+                    // retail's 42-49%, and the flat read field is the whiteout - the absorptive
+                    // barely-read tail retail leaves is gone. Within each stratum keep the
+                    // MOST-HIT candidate: solid-angle dominance makes a room's probes converge
+                    // on its dominant clusters (retail's shared read sets, readN median 8-12
+                    // vs our flat 19-23) while the strata preserve the distance histogram.
+                    if (scored.Count > InfluencesPerProbe)
+                    {
+                        var thinned = new List<(int cluster, float meanDist, byte weight, int hits)>(InfluencesPerProbe);
+                        for (int k = 0; k < InfluencesPerProbe; k++)
+                        {
+                            int lo = (int)((long)k * scored.Count / InfluencesPerProbe);
+                            int hi = (int)((long)(k + 1) * scored.Count / InfluencesPerProbe);
+                            int bestIdx = lo;
+                            for (int i = lo + 1; i < hi; i++)
+                                if (scored[i].hits > scored[bestIdx].hits) bestIdx = i;
+                            thinned.Add(scored[bestIdx]);
+                        }
+                        scored = thinned;
+                    }
+                    keep = scored.Count;
+                    for (int k = 0; k < keep; k++)
+                    {
+                        ClusterRef(scored[k].cluster, out byte cx, out byte cy);
+                        int influenceSlot = surfaceSlotForTexel[probeTexel] * InfluencesPerProbe + k;
+                        WriteInfluence(slice, influenceSlot, cx, cy, scored[k].weight);
+                        keptBand[scored[k].meanDist <= 2f ? 0 : scored[k].meanDist <= 4f ? 1 : 2]++;
+                    }
+                }
+
+                used[surfaceSlotForTexel[probeTexel]] = (byte)keep;
+                lock (statLock)
+                {
+                    total += keep;
+                    attributedAll += attributed; escapedAll += escaped; orphanAll += orphan;
+                    if (keep == 0) emptyProbes++;
+                    if (augAdded > 0) { augProbes++; augLinks += augAdded; }
+                    for (int g = 0; g < 3; g++)
+                    {
+                        poolBandAll[g] += poolBand[g];
+                        keptBandAll[g] += keptBand[g];
+                    }
+                }
+            }
+
+            if (settings.Parallel)
+                Parallel.For(0, live.Count, Solve);
+            else
+                for (int i = 0; i < live.Count; i++) Solve(i);
+
+            // Coverage fringe: retail reads 99% of its clusters (zeroRd 0.5-1.1% on Torrens)
+            // while pure hemisphere selection left 30-48% never read - its reads pile onto the
+            // visible dominant core. Retail's shape is that core PLUS a universal thin fringe.
+            // Source-side pass, same invariant as the scatter builder's: every cluster no
+            // probe's core links read is appended to the nearest visible same-facing probe's
+            // free slot at the curve weight.
+            {
+                // Track reads directly from the written influence arrays.
+                var readClusters = new HashSet<int>();
+                foreach (int t in live)
+                {
+                    int slot = surfaceSlotForTexel[t];
+                    for (int k = 0; k < used[slot]; k++)
+                    {
+                        int islot = slot * InfluencesPerProbe + k;
+                        ColourRGBA8 idx = slice.SurfaceProbeInfluences[islot / 2];
+                        int cx = (islot & 1) == 0 ? idx.R : idx.B;
+                        int cy = (islot & 1) == 0 ? idx.G : idx.A;
+                        readClusters.Add(cy * ProbeTexWidth + cx);
+                    }
+                }
+
+                var receiverGrid = new ProbeGrid(texels, live, 2.0f);
+                int fringed = 0, uncovered = 0;
+                foreach (int cluster in clusters)
+                {
+                    ClusterRef(cluster, out byte ccx, out byte ccy);
+                    if (readClusters.Contains(ccy * ProbeTexWidth + ccx))
+                        continue;
+                    // nearest receiver with a free slot that faces the cluster
+                    int bestProbe = -1;
+                    float bestD2 = 2.0f * 2.0f;
+                    Vector3 cpos = texels[cluster].Position;
+                    foreach (int rt in receiverGrid.Neighbours(cpos))
+                    {
+                        int slot = surfaceSlotForTexel[rt];
+                        if (used[slot] >= InfluencesPerProbe) continue;
+                        Vector3 toProbe = texels[rt].Position - cpos;
+                        float d2 = toProbe.LengthSquared();
+                        if (d2 >= bestD2 || d2 < 1e-6f) continue;
+                        if (Vector3.Dot(texels[cluster].Normal, toProbe) <= 0.0f) continue;
+                        bestD2 = d2; bestProbe = rt;
+                    }
+                    if (bestProbe < 0) { uncovered++; continue; }
+                    int pslot = surfaceSlotForTexel[bestProbe];
+                    float dist = (float)Math.Sqrt(bestD2);
+                    Vector3 dirToProbe = (texels[bestProbe].Position - cpos) / Math.Max(1e-5f, dist);
+                    float cosProduct = Math.Max(0.02f, Vector3.Dot(texels[cluster].Normal, dirToProbe)) *
+                                       Math.Max(0.02f, Vector3.Dot(texels[bestProbe].Normal, -dirToProbe));
+                    byte w = InfluenceWeight(dist, cosProduct, settings);
+                    int islot = pslot * InfluencesPerProbe + used[pslot];
+                    WriteInfluence(slice, islot, ccx, ccy, w);
+                    used[pslot]++;
+                    total++;
+                    fringed++;
+                }
+                log?.Invoke("Hemisphere coverage fringe: " + fringed + " unread clusters homed, " +
+                            uncovered + " uncoverable");
+            }
+
+            long castAll = (long)live.Count * rays;
+            log?.Invoke("Hemisphere influence solve: " + live.Count + " probes x " + rays +
+                        " rays; hits attributed " + (100.0 * attributedAll / Math.Max(1, castAll)).ToString("0.0") +
+                        "% escaped " + (100.0 * escapedAll / Math.Max(1, castAll)).ToString("0.0") +
+                        "% clusterless " + (100.0 * orphanAll / Math.Max(1, castAll)).ToString("0.0") +
+                        "%; links/probe " + ((double)total / live.Count).ToString("0.0") +
+                        "; empty probes " + (100.0 * emptyProbes / live.Count).ToString("0.0") + "%");
+            long poolSum = Math.Max(1, poolBandAll[0] + poolBandAll[1] + poolBandAll[2]);
+            long keptSum = Math.Max(1, keptBandAll[0] + keptBandAll[1] + keptBandAll[2]);
+            log?.Invoke("Hemisphere candidate pool <=2m/2-4m/>4m: " +
+                        string.Join("/", poolBandAll) + " (" +
+                        (100.0 * poolBandAll[0] / poolSum).ToString("0") + "/" +
+                        (100.0 * poolBandAll[1] / poolSum).ToString("0") + "/" +
+                        (100.0 * poolBandAll[2] / poolSum).ToString("0") + "%), kept " +
+                        string.Join("/", keptBandAll) + " (" +
+                        (100.0 * keptBandAll[0] / keptSum).ToString("0") + "/" +
+                        (100.0 * keptBandAll[1] / keptSum).ToString("0") + "/" +
+                        (100.0 * keptBandAll[2] / keptSum).ToString("0") + "%)  [retail keeps ~34/41/25]");
+            if (poolTarget > 0)
+                log?.Invoke("Hemisphere pool augmentation (target " + poolTarget + "): " +
+                            augProbes + " probes topped up with " + augLinks + " soft-vis links");
+            return total;
+        }
+
         private static int SolveInfluences(
             RadiosityGeometry geometry, SurfaceTexel[] texels, int[] surfaceSlotForTexel,
             int[] inputProbeForTexel,
@@ -5927,7 +6292,7 @@ namespace CathodeLib.Radiosity
                             chosen.Add((cluster, 1.0f / (1.0f + d2)));
                     }
                     // Normal-disjoint neighbourhood (a probe on a lone strut): take what is visible.
-                    if (chosen.Count < Math.Min(3, nearQ))
+                    if (settings.ScatterStarvationRescue && chosen.Count < Math.Min(3, nearQ))
                     {
                         foreach ((int cluster, float d2, bool agrees) in near)
                         {
@@ -5957,7 +6322,9 @@ namespace CathodeLib.Radiosity
                     // EVERY probe a far link put the aggregate p90 at 4.5 and left CM9 1.17x hot;
                     // giving NONE (fallback-only) capped every link at ~2.8m and fragmented the
                     // graph at doorways.
-                    int Band(float loSq, float hiSq, int quota)
+                    // targetSq >= 0 centres the outward walk on the candidate nearest that
+                    // length instead of the band's index middle (the long-tail pick below).
+                    int Band(float loSq, float hiSq, int quota, float targetSq = -1f)
                     {
                         int lo = -1, hi = -1;   // candidate index range inside the band
                         for (int i = 0; i < near.Count; i++)
@@ -5973,6 +6340,13 @@ namespace CathodeLib.Radiosity
                         int added = 0;
                         int target = Math.Min(solveCap, chosen.Count + quota);
                         int mid = (lo + hi) / 2;
+                        if (targetSq >= 0f)
+                        {
+                            mid = lo;
+                            for (int i = lo + 1; i <= hi; i++)
+                                if (Math.Abs(near[i].d2 - targetSq) < Math.Abs(near[mid].d2 - targetSq))
+                                    mid = i;
+                        }
                         for (int step = 0; step <= hi - lo && chosen.Count < target; step++)
                         {
                             // middle outward: mid, mid+1, mid-1, mid+2, ...
@@ -6017,14 +6391,41 @@ namespace CathodeLib.Radiosity
                     bool ultraFires = settings.ScatterUltraFarFraction > 0 &&
                                       ((uint)p * 2246822519u) % 100u <
                                       (uint)Math.Round(settings.ScatterUltraFarFraction * 100.0f);
-                    if (ultraFires)
+                    // ONE decaying tail, not two banded picks. fartail across 12 retail slices
+                    // (Solace/CM3/Torrens/SCI_Hub, 2026-08-28): long-link length p10 is pinned
+                    // at 3.1m on EVERY slice, p50 3.8-4.2, p90 5.9-7.8 - a single distribution
+                    // decaying from the 3m reach floor with no structure at the 6m "band edge"
+                    // (several slices' p90 EXCEEDS 6m). It fits length = floor + Exp(mean 1.4m):
+                    // p10 3.15 / p50 3.97 / p90 6.3. The middle-outward two-band pick instead
+                    // piled links at 4.5m and 9m (our p10 4.0-4.3, p50 4.7-4.8, p90 8.7-10.4,
+                    // >4m rate DOUBLE retail's on every level) - the same excess-coupling class
+                    // that rendered CM9 1.25x hot. Per-probe deterministic hash draws the
+                    // target length; the outward walk from the nearest candidate keeps the
+                    // facing + visibility discipline.
+                    if (settings.ScatterLongLinkMean > 0.0f)
+                    {
+                        if (farFires || ultraFires || midAdded == 0)
+                        {
+                            uint th = (uint)p * 3266489917u;
+                            float u = ((th >> 8) % 10000u + 0.5f) / 10000.0f;
+                            float tail = reach + settings.ScatterLongLinkMean * (0.0f - (float)Math.Log(u));
+                            float tailCap = ScatterMaxLinkDistance * 2.0f;
+                            if (tail > tailCap) tail = tailCap;
+                            Band(midSq, farSq * 4.0f, farQ, tail * tail);
+                        }
+                    }
+                    else if (ultraFires)
                         Band(farSq, farSq * 4.0f, 1);
                     else if (farFires || midAdded == 0)
                         Band(midSq, farSq, farQ);
 
                     // Roll-down: a closet probe with no visible mid/far cluster spends the unused
                     // quota nearer in, so degree stays ~solveCap and no probe is left short.
-                    if (chosen.Count < solveCap)
+                    // RETAIL DOES NOT DO THIS (scatstat/radvol): its per-dest degree SPREADS with
+                    // local availability - p10 3 / p50 6 / p90 8, mean 6.1 - where the padding
+                    // holds ours flat at 7 (mean 6.9, +14-28% total entries over retail on CM3).
+                    // ScatterRollDownFill=false drops the padding so degree follows availability.
+                    if (settings.ScatterRollDownFill && chosen.Count < solveCap)
                     {
                         foreach ((int cluster, float d2, bool agrees) in near)
                         {
@@ -6091,7 +6492,7 @@ namespace CathodeLib.Radiosity
                 // Last resort: an unfed probe is a hole in the field, so take the nearest clusters
                 // on any terms rather than leave it dark. Retail leaves 0.2% of its probes unfed;
                 // a plain radius ball left 5% of ours.
-                if (chosen.Count == 0)
+                if (settings.ScatterStarvationRescue && chosen.Count == 0)
                 {
                     foreach ((int cluster, float d2, bool agrees) in near)
                     {
@@ -6757,7 +7158,7 @@ namespace CathodeLib.Radiosity
         /// </summary>
         private static RadiosityRuntime.VolumeProbeHash BuildVolumeProbeHash(
             RadiosityGeometry geometry, SurfaceTexel[] texels, int[] inputProbeForTexel, int[] surfaceSlotForTexel,
-            RadiosityBakeSettings settings, out List<byte[]> visFaceGrids)
+            RadiosityBakeSettings settings, float consumerMinY, float consumerMaxY, out List<byte[]> visFaceGrids)
         {
             visFaceGrids = new List<byte[]>();
             var hash = new RadiosityRuntime.VolumeProbeHash { NumSubdivsPerLevel = settings.VolumeProbeSubdivsPerLevel };
@@ -6792,6 +7193,12 @@ namespace CathodeLib.Radiosity
                 hash.Dims = new Vector3u32 { X = 0, Y = 0, Z = 0 };
                 return hash;
             }
+
+            // Vertical consumer-space extension (see the call site): the box grows to the slice's
+            // instance geometry range so elevated dynamic movers stay in bounds. X/Z stay
+            // probe-driven - the measured retail boxes match our probe footprints there.
+            if (consumerMinY < float.MaxValue && consumerMinY < min.Y) min.Y = consumerMinY;
+            if (consumerMaxY > float.MinValue && consumerMaxY > max.Y) max.Y = consumerMaxY;
 
             float cell = Math.Max(0.25f, settings.VolumeProbeCellSize);
 
@@ -8782,6 +9189,13 @@ namespace CathodeLib.Radiosity
 
                 foreach (RadiosityDoors.Barrier barrier in doors.Barriers)
                 {
+                    // Per-slice ceiling: transfers past retail's envelope (<=161 per slice on
+                    // every level measured) overrun an engine buffer - CM3 shipped 440/731 and
+                    // heap-corrupted in RADIOSITY::destroy on every level close. Whole doors are
+                    // dropped rather than partially emitted.
+                    if (info.Transfers.Count + settings.MaxTransfersPerDoor > settings.MaxDoorTransfersPerSlice)
+                        break;
+
                     float reach = settings.DoorTransferRadius + barrier.Radius;
                     float reachSq = reach * reach;
 
@@ -8956,7 +9370,23 @@ namespace CathodeLib.Radiosity
                     // (retail 78294) but mean rmse 12.49 -> 13.17, because the extra energy lands
                     // in rooms that were already at parity rather than the dim ones (cam13 1.06x
                     // -> 1.18x). The cross-boundary path is not what retail's dim-room wash rides.
-                    if (!geometry.Visible(origin, other.Position + other.Normal * settings.ProbeSurfaceOffset, settings.RayEpsilon))
+                    // CAVEAT (2026-08-28): that measurement was pure ADDITION - extra fixups on top
+                    // of full in-slice gather, in the corner-contaminated scoring era. Under
+                    // CrossSliceOnePool the semantics change to fair DISPLACEMENT: cross-slice
+                    // candidates compete on the same soft test and same curve as the in-slice
+                    // solve, and each win overlays (removes) an in-slice link, so total gather is
+                    // conserved and only its slice split moves. Retail's boundary probes are
+                    // overlay-served (fixups carry 19% of CM3's render; raw in-slice p10 0-1031
+                    // rising to 3371 with the overlay) while ours were in-slice-served with inert
+                    // fixups - the measured mechanism of the 2-slice-level overshoot.
+                    if (settings.CrossSliceOnePool)
+                    {
+                        Vector3 emitterOrigin = other.Position + other.Normal * settings.ProbeSurfaceOffset;
+                        if (!VisibleSoft(geometry, origin, probe.Normal, emitterOrigin, other.Normal,
+                                         settings, probeTexel, otherTexel))
+                            continue;
+                    }
+                    else if (!geometry.Visible(origin, other.Position + other.Normal * settings.ProbeSurfaceOffset, settings.RayEpsilon))
                         continue;
 
                     candidates.Add((otherTexel, rank, distance, cosReceiver * cosEmitter));
@@ -8965,7 +9395,13 @@ namespace CathodeLib.Radiosity
                 if (candidates.Count == 0)
                     return;
 
-                candidates.Sort((a, b) => b.weight.CompareTo(a.weight));
+                // One-pool competition sorts by the BYTE the candidate would carry, so the
+                // early-stop below ("no candidate can beat the current weakest") is sound.
+                if (settings.CrossSliceOnePool)
+                    candidates.Sort((a, b) => InfluenceWeight(b.distance, b.cosProduct, settings)
+                        .CompareTo(InfluenceWeight(a.distance, a.cosProduct, settings)));
+                else
+                    candidates.Sort((a, b) => b.weight.CompareTo(a.weight));
                 var emittedList = new List<RadiosityRuntime.RuntimeInfluenceFixup>();
 
                 // Working copy of the probe's slot weights, updated as fixups claim slots. The
@@ -9524,6 +9960,84 @@ namespace CathodeLib.Radiosity
         /// so the engine's reads resolve inside OUR probe layout. Slices correspond by index -
         /// island grouping follows retail, so slice s covers the same rooms in both bakes.
         /// </summary>
+        /// <summary>
+        /// Overlay retail's stored input-probe albedo onto ours, matched by world position
+        /// (nearest live retail probe within <see cref="RadiosityBakeSettings.RetailAlbedoMatchRadius"/>;
+        /// the probeswap splice this ports matched 100% of probes at mean 0.33m on Torrens,
+        /// SCI_Hub and CM3). Unmatched probes keep the derived value, so added content is
+        /// unaffected. See the call site for the pre-remap rationale and render evidence.
+        /// </summary>
+        private static void ImportRetailAlbedo(RadiosityRuntime runtime,
+            List<RadiosityRuntime.RuntimeDataSlice> retailSlices, RadiosityBakeSettings settings, Action<string> log)
+        {
+            if (retailSlices == null || retailSlices.Count == 0)
+                return;
+
+            float cell = Math.Max(0.25f, settings.RetailAlbedoMatchRadius);
+            var donors = new Dictionary<(int, int, int), List<(Vector3 pos, ColourRGBA8 albedo, ColourRGBA8 normal, bool hasNormal)>>();
+            foreach (RadiosityRuntime.RuntimeDataSlice rs in retailSlices)
+            {
+                if (rs?.InputProbePositions == null || rs.InputProbeAlbedo == null)
+                    continue;
+                int n = Math.Min(rs.InputProbePositions.Count, rs.InputProbeAlbedo.Count);
+                for (int i = 0; i < n; i++)
+                {
+                    Vector4u16 q = rs.InputProbePositions[i];
+                    if (q.W == 0) continue;
+                    var p = new Vector3(FromHalf(q.X), FromHalf(q.Y), FromHalf(q.Z));
+                    (int, int, int) key = ((int)Math.Floor(p.X / cell), (int)Math.Floor(p.Y / cell), (int)Math.Floor(p.Z / cell));
+                    if (!donors.TryGetValue(key, out List<(Vector3 pos, ColourRGBA8 albedo, ColourRGBA8 normal, bool hasNormal)> list))
+                        donors[key] = list = new List<(Vector3 pos, ColourRGBA8 albedo, ColourRGBA8 normal, bool hasNormal)>();
+                    bool hasNormal = rs.InputProbeNormals != null && i < rs.InputProbeNormals.Count;
+                    list.Add((p, rs.InputProbeAlbedo[i], hasNormal ? rs.InputProbeNormals[i] : default, hasNormal));
+                }
+            }
+            if (donors.Count == 0)
+                return;
+
+            float maxDistSq = settings.RetailAlbedoMatchRadius * settings.RetailAlbedoMatchRadius;
+            int matched = 0, total = 0;
+            foreach (RadiosityRuntime.RuntimeDataSlice slice in runtime.Slices)
+            {
+                if (slice?.InputProbePositions == null || slice.InputProbeAlbedo == null)
+                    continue;
+                int n = Math.Min(slice.InputProbePositions.Count, slice.InputProbeAlbedo.Count);
+                for (int i = 0; i < n; i++)
+                {
+                    Vector4u16 q = slice.InputProbePositions[i];
+                    if (q.W == 0) continue;
+                    total++;
+                    var p = new Vector3(FromHalf(q.X), FromHalf(q.Y), FromHalf(q.Z));
+                    int cx = (int)Math.Floor(p.X / cell), cy = (int)Math.Floor(p.Y / cell), cz = (int)Math.Floor(p.Z / cell);
+                    float best = maxDistSq;
+                    (ColourRGBA8 albedo, ColourRGBA8 normal, bool hasNormal) bestDonor = default;
+                    bool found = false;
+                    for (int dx = -1; dx <= 1; dx++)
+                        for (int dy = -1; dy <= 1; dy++)
+                            for (int dz = -1; dz <= 1; dz++)
+                            {
+                                if (!donors.TryGetValue((cx + dx, cy + dy, cz + dz), out List<(Vector3 pos, ColourRGBA8 albedo, ColourRGBA8 normal, bool hasNormal)> list))
+                                    continue;
+                                foreach ((Vector3 pos, ColourRGBA8 albedo, ColourRGBA8 normal, bool hasNormal) in list)
+                                {
+                                    float d2 = Vector3.DistanceSquared(pos, p);
+                                    if (d2 < best) { best = d2; bestDonor = (albedo, normal, hasNormal); found = true; }
+                                }
+                            }
+                    if (!found) continue;
+                    slice.InputProbeAlbedo[i] = bestDonor.albedo;
+                    // The normals payload is load-bearing: SCI_Hub with retail albedo alone
+                    // rendered 1.173 where albedo+normals renders 1.087 == the validating
+                    // splice, reproduced across recaptures - the whole gap was the normals.
+                    if (bestDonor.hasNormal && slice.InputProbeNormals != null && i < slice.InputProbeNormals.Count)
+                        slice.InputProbeNormals[i] = bestDonor.normal;
+                    matched++;
+                }
+            }
+            log?.Invoke("Retail albedo+normals verbatim: " + matched + " of " + total +
+                        " input probes matched within " + settings.RetailAlbedoMatchRadius.ToString("0.##") + "m");
+        }
+
         private static void CarryRetailCorners(RadiosityRuntime runtime,
             List<RadiosityRuntime.RuntimeDataSlice> retailSlices, RadiosityBakeSettings settings, Action<string> log)
         {
@@ -9560,13 +10074,28 @@ namespace CathodeLib.Radiosity
                         if (rc.X == 0 && rc.Y == 0 && rc.Z == 0 && rc.W == 0)
                             continue;
 
-                        // Retail's corner SCATTER bytes are the load-bearing payload: without
-                        // them the render deterministically explodes to 4-5x (dirt7/dirt9,
-                        // camera-for-camera identical blowouts), with them the level scores its
-                        // best ever (dirt8: 1.134 vs the albedo-splice ceiling 1.150). Their A
-                        // channel packs values in a (group<<4 | index)-looking scheme our
-                        // writer does not produce - undecoded, so carried verbatim.
-                        if (i < ours.Scatter.Count && i < retail.Scatter.Count)
+                        // Retail's corner SCATTER bytes are carried whole. The A channel is
+                        // load-bearing everywhere: it packs (group<<4 | index)-shaped values our
+                        // writer does not produce, and shipping our own A pattern there
+                        // deterministically explodes the render 4-5x (dirt7/dirt9,
+                        // camera-for-camera identical blowouts). The RGB matters on some levels
+                        // and not others - measured: swapping retail RGB for our fill RGB left
+                        // Torrens/CM3 IDENTICAL to three decimals but cost SCI_Hub 1.131 ->
+                        // 1.384 (cora run) - so the full copy is strictly the better default.
+                        // The Torrens/CM3 post-fix overshoot is insensitive to every corner
+                        // value tested and remains an open engine-side question.
+                        // REINTERPRETED (2026-08-28 evening, scatjoin): Scatter is a LINK LIST,
+                        // so indexing it by corner texel index overwrites ~256 of the first
+                        // ~1,900 list entries - the first ~280 probes' links - with foreign-
+                        // layout pairs that decode in our file as random 14-17m cross-level
+                        // links (the MU-TH-UR room measured 9.7% out-of-room scatter sources at
+                        // p50 14.5m vs retail's 1.4% at 4m; retail's own corner region needs no
+                        // such entries because in ITS file these positions hold its real first
+                        // islands' links). CarryCornerScatter=false skips only this copy,
+                        // keeping the corner reservation, positions and mangle handling intact.
+                        // SCI_Hub is the falsifier: the dirt6/7-era 4.4x blowouts were what
+                        // originally forced the full copy.
+                        if (settings.CarryCornerScatter && i < ours.Scatter.Count && i < retail.Scatter.Count)
                             ours.Scatter[i] = retail.Scatter[i];
                         if (carryPositions)
                         {
@@ -9593,7 +10122,8 @@ namespace CathodeLib.Radiosity
                 slicesDone++;
             }
             log?.Invoke("    engine corner: " + carried + " texels carried from retail over " + slicesDone +
-                        " slices (positions+scatter, mangle re-pointed to our probes)");
+                        " slices (retail scatter" +
+                        (settings.CarryCornerPositions ? " + positions, mangle re-pointed" : "") + ")");
         }
 
         /// <summary>

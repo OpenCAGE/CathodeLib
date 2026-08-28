@@ -92,8 +92,12 @@ namespace CATHODE
                 {
                     Contexts.Add(new Context
                     {
-                        //The table indexes contexts by value, so find the name pointing at this slot
-                        Name = _contextNames.FirstOrDefault(o => o.Value == i).Key,
+                        /* The table indexes contexts by value, so find the name pointing at this
+                         * slot. KeyValuePair is a struct, so a slot nothing points at hands back a
+                         * default whose Key is null - which then travels all the way out to the UI
+                         * and takes the animation window down on a search. An unnamed context is
+                         * nameless, not null. */
+                        Name = _contextNames.FirstOrDefault(o => o.Value == i).Key ?? "",
                         Animations = ReadClips(reader),
                         BlendSets = ReadBlendSets(reader),
                     });
@@ -164,7 +168,7 @@ namespace CATHODE
                 //Rebuild the context name table from the load order where it still lines up
                 List<KeyValuePair<string, uint>> names = _contextNames.Count == Contexts.Count
                     ? _contextNames
-                    : Contexts.Select((x, i) => new KeyValuePair<string, uint>(x.Name, (uint)i)).ToList();
+                    : Contexts.Select((x, i) => new KeyValuePair<string, uint>(x.Name ?? "", (uint)i)).ToList();
                 HashTable.Write(writer, names, x => x.Key, (w, x) => w.Write(x.Value), _strings, TakeSlotOrder());
 
                 for (int i = 0; i < Contexts.Count; i++)

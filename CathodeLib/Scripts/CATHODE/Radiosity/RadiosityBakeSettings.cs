@@ -639,6 +639,51 @@ namespace CathodeLib.Radiosity
         public float ScatterUltraFarFraction = 0.06f;
 
         /// <summary>
+        /// Mean excess length (metres past the 3m reach floor) of the long-link tail. fartail
+        /// across 12 retail slices (Solace/CM3/Torrens/SCI_Hub, 2026-08-28) shows retail's long
+        /// links are ONE distribution decaying from the floor - p10 pinned at 3.1m on every
+        /// slice, p50 3.8-4.2, p90 5.9-7.8, with no structure at the 6m "band edge" - which
+        /// length = 3m + Exp(1.4m) reproduces (p10 3.15 / p50 3.97 / p90 6.3; mean derived as
+        /// (pooled p50 - floor)/ln2). The previous far+ultra middle-outward picks piled our
+        /// links at 4.5m and 9m: p10 4.0-4.3, p50 4.7-4.8, p90 8.7-10.4, and a >4m rate DOUBLE
+        /// retail's on every level measured - the same excess-coupling class that rendered CM9
+        /// 1.25x hot with a healthy light table. When &gt; 0, probes selected by either dither
+        /// draw a per-probe hashed target length from this distribution and take the candidate
+        /// nearest it (facing + visibility still enforced); &lt;= 0 restores the legacy two-band
+        /// pick for A/B.
+        /// </summary>
+        public float ScatterLongLinkMean = 1.4f;
+
+        /// <summary>
+        /// Pad every destination probe's scatter group up to the solve cap when its bands come
+        /// up short. Retail does NOT pad: its per-dest degree spreads with local cluster
+        /// availability (p10 3 / p50 6 / p90 8, mean 6.1 on CM3) where the padding holds ours
+        /// flat at 7 (mean 6.9) and ships +14-28% total entries over retail. Since the engine's
+        /// gather makes source count an energy multiplier, uniform-degree padding is a
+        /// candidate for the universal brightness excess on low-slice-count levels. False =
+        /// degree follows availability, retail-style.
+        /// DEFAULT FALSE (2026-08-28): with the decoded long-link tail the padding's removal
+        /// brings CM3's entries to retail's exact envelope (51k vs retail 53.5k, degree spread
+        /// open) and the pair renders neutral vs the legacy graph (1.348 vs 1.325, within
+        /// noise) - both retail-decoded behaviours ship together.
+        /// </summary>
+        public bool ScatterRollDownFill = false;
+
+        /// <summary>
+        /// Rescue passes that guarantee every scatter destination a minimum feed (the
+        /// normal-disjoint visibility fallback and the any-terms last-resort feed for unfed
+        /// probes). Retail LETS ITS BOTTOM DECILE STARVE - measured on every axis: scatter
+        /// degree p10 3, 8-10% of probes influence-empty per room, per-room gather weight p10
+        /// 0-1180 vs our 2141-2691, and its shipped light table's two-hop delivered weight p10
+        /// 1.3-2.7k vs our 11-12k after re-addressing (lightcoup2, CM3). With the engine's
+        /// compressive response (~exponent 0.3), floor-lifting is a level-wide brightness pump
+        /// invisible to mean-based parity - the CM3 light-strip decomposition put the verbatim
+        /// table's delivered luma at 1.63x retail's through our graph. False = starved probes
+        /// stay starved, retail-style.
+        /// </summary>
+        public bool ScatterStarvationRescue = true;
+
+        /// <summary>
         /// Fold the DIRT_MAP overlay into a material's sampled albedo, on the environment
         /// shaders. Without this the _DTY/_RST material family sampled at its clean white BASE -
         /// 4-10x retail's stored albedo (albmat, SCI_Hub) - and the over-unity region diverged
@@ -962,8 +1007,100 @@ namespace CathodeLib.Radiosity
         /// <summary>Transfers emitted per door. Retail averages around six.</summary>
         public int MaxTransfersPerDoor = 10;
 
+        /// <summary>
+        /// Hard ceiling on door transfers per SLICE. The engine's door buffer overruns past
+        /// retail's envelope: retail never ships more than 161 in any slice measured (five
+        /// levels), our CM3 bake shipped 440/731 and the game heap-corrupted in
+        /// RADIOSITY::destroy at level close, every run - doors off, no crash (2026-08-28).
+        /// Doors that would push a slice past the ceiling are dropped whole.
+        /// </summary>
+        public int MaxDoorTransfersPerSlice = 160;
+
         /// <summary>Cross-slice influence patches emitted per surface probe.</summary>
         public int MaxCrossSliceFixupsPerProbe = 4;
+
+        /// <summary>
+        /// Treat the influence solve as ONE candidate pool across slices: cross-slice candidates
+        /// compete for a boundary probe's 32 slots on the same soft-visibility test and weight
+        /// curve as the in-slice solve, each win overlaying (displacing) an in-slice link. This
+        /// is retail's measured structure on CM3: 48,419 fixups (6.3 per target vs our 2.8),
+        /// boundary probes' raw in-slice sums at half/near-zero (p10 0-1031, rising to 3371 with
+        /// the overlay applied), and the ablation verdict - retail minus fixups renders 0.813
+        /// (fixups carry 19% of the scene) while ours minus ours renders unchanged (inert,
+        /// because they replaced weakest in-slice links with similar values). Our in-slice
+        /// serving of boundary probes concentrates gather gain inside each slice's own feedback
+        /// loop - the measured mechanism of the 2-slice-level overshoot (CM3 1.33/Torrens 1.41
+        /// hottest, fragmented CM7/Solace dim). Raise MaxCrossSliceFixupsPerProbe (retail mean
+        /// 6.3/target) when enabling.
+        /// </summary>
+        public bool CrossSliceOnePool = false;
+
+        /// <summary>
+        /// On retail levels, overlay retail's own stored input-probe albedo by world position
+        /// (unmatched probes keep the derived value, so added content is unaffected). CA's
+        /// compiler sampled albedo BEFORE command-driven material remapping - on Torrens the
+        /// cockpit/corridor ceilings authored as TEC_Metal_Grey/Plastic_Black (tint 0.03-0.04)
+        /// but remapped to white plastic store ~6 in retail where our post-remap sampling
+        /// stores ~145 - and retail's engine look is calibrated around its own stale bounce.
+        /// Splice-validated: Torrens 1.355 -> 1.203 (stable rmse 44.9 -> 32.7, best ever),
+        /// SCI_Hub 1.120 -> 1.087, CM3 unchanged. Same reuse philosophy as
+        /// RetailLightTableVerbatim; our post-remap derivation stays for new content per
+        /// Matt's ruling. CARRIES NORMALS TOO: albedo alone rendered SCI_Hub 1.173 where
+        /// albedo+normals renders 1.087 == the splice (reproduced) - the normals payload is
+        /// load-bearing there.
+        /// </summary>
+        public bool RetailAlbedoVerbatim = false;
+
+        /// <summary>Match radius for RetailAlbedoVerbatim (splice mean match distance 0.33m).</summary>
+        public float RetailAlbedoMatchRadius = 0.75f;
+
+        /// <summary>
+        /// Solve surface-probe influences by HEMISPHERE SAMPLING - cast cosine-weighted rays
+        /// from each probe and link the clusters the rays actually hit (weights still from the
+        /// decoded distance curve) - instead of the proximity-candidate solve. The working
+        /// decode of retail's room-scoped gather: selection-by-sight reproduces retail's
+        /// cluster-read concentration, shared per-room read sets, bimodal empty-or-full link
+        /// populations and genuinely starved boundary probes (the cross-slice fixup pass then
+        /// serves them, as retail's 48k CM3 fixups do). The proximity solve's flat mixed-
+        /// provenance gather measured as the overshoot mechanism on interleaved levels and the
+        /// carrier of both colour-cast defects. See SolveInfluencesHemisphere.
+        /// </summary>
+        public bool InfluenceHemisphereSolve = false;
+
+        /// <summary>
+        /// Copy retail's corner-region Scatter entries verbatim (the dirt8/dirt10-era carry).
+        /// Scatter is a LINK LIST, so this overwrites ~256 of the first ~1,900 entries per
+        /// slice - the first ~280 probes' links - with foreign-layout pairs that decode as
+        /// random 14-17m cross-level links (measured: the MU-TH-UR room's input probes take
+        /// 9.7% of their scatter sources out-of-room at p50 14.5m vs retail's 1.4% at 4m -
+        /// the cool-white import that kills the room's orange). False skips only the scatter
+        /// copy; the corner reservation, gutter fill and mangle handling stay.
+        /// DEFAULT FALSE (2026-08-28 evening): cross-level validation - SCI_Hub 1.036 (best
+        /// ever, the dirt6/7-era blowout did NOT return on the current stack), Torrens 1.140,
+        /// Solace stable rmse 15.35 and CM7 16.42 (both best ever, corner-off neutral vs
+        /// overlay-only), CM3 neutral, CM9 a small ambiguous cost (+0.7 stable, confounded
+        /// with the overlay). The copy was pure list-head corruption; the blowouts that
+        /// originally forced it were that era's other corner defects.
+        /// </summary>
+        public bool CarryCornerScatter = false;
+
+        /// <summary>Rays per surface probe for the hemisphere solve.</summary>
+        public int HemisphereRays = 256;
+
+        /// <summary>A ray hit attributes to the nearest live cluster within this radius; hits
+        /// with no cluster in range produce no link (absorbed - the natural starvation class).</summary>
+        public float HemisphereAttributeRadius = 0.75f;
+
+        /// <summary>When the hemisphere's visible pool holds fewer candidates than this, top it
+        /// up with the default builder's soft-vis proximity candidates (strongest curve byte
+        /// first) before the quantile cut. The pure-sight pool starves 40-66% of probes to
+        /// 10-12 links where retail carries full 32-link sets at 27-30.5 links/probe, and that
+        /// starved class broke the cross-level runs: SCI_Hub whiteout (all-sight cliques
+        /// concentrate absolute-gain weight inside mutually visible rooms; retail routes ~34%
+        /// of its links through walls, de-concentrating them) and the Solace/CM7 dark-room
+        /// lifts (a 10-link in-room set over-represents the room's one bright fixture where
+        /// retail's full set dilutes it). 0 disables augmentation.</summary>
+        public int HemispherePoolTarget = 48;
 
         /// <summary>
         /// Per-probe cap for a DELTA slice's fixups into retail clusters. The full 32: a retail

@@ -896,6 +896,23 @@ namespace CathodeLib.Radiosity
             return !bvh.Occluded(ref ray);
         }
 
+        /// <summary>
+        /// Closest render-mesh hit along a ray, or -1 when nothing is hit within maxDist.
+        /// Uses the full render BVH (not the occluder set): the hemisphere influence solve asks
+        /// "what surface does this probe actually see", which is a render-mesh question.
+        /// </summary>
+        public float TraceClosest(Vector3 from, Vector3 direction, float maxDist, out Vector3 hitPos)
+        {
+            var ray = new Ray(from, direction, 0.0f, maxDist);
+            if (!Bvh.Traverse(ref ray, out Hit hit))
+            {
+                hitPos = default;
+                return -1.0f;
+            }
+            hitPos = from + direction * hit.T;
+            return hit.T;
+        }
+
         public Vector3 TriangleCentroid(int tri)
         {
             Vector3 a = At(Tris[tri * 3 + 0]);
