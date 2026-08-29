@@ -145,18 +145,72 @@ namespace CathodeLib.NavMesh
         }
 
         /// <summary>
+
+        /// <summary>
+        /// How tall the thing in front of a job position is. Retail's assault positions all have
+        /// something to fight from behind - 0 of 46 on SCI_Hub face open floor, and their tenth
+        /// percentile obstacle stands 1.5 m - while ours face nothing 31% of the time.
+        /// </summary>
+        public sealed class ObstacleProbe
+        {
+            BVHAccel _solid;
+
+            public static ObstacleProbe FromLevel(Level level, Action<string> log = null)
+            {
+                if (!RadiosityOccluders.TryCollect(level, null, out float[] verts, out int[] tris, null, true, null))
+                {
+                    log?.Invoke("  obstacle probe: no collision packfile, skipped");
+                    return null;
+                }
+                if (tris.Length < 3)
+                    return null;
+                var probe = new ObstacleProbe { _solid = new BVHAccel() };
+                probe._solid.Build(verts, tris);
+                return probe;
+            }
+
+            /// <summary>
+            /// Height of the highest unbroken run of surface in front of <paramref name="at"/>,
+            /// starting from the floor. A ceiling three metres up with nothing under it is not
+            /// cover, so the scan stops at the first gap.
+            /// </summary>
+            public float TopInFront(Vector3 at, Vector3 facing, float distance, float maxHeight, float step)
+            {
+                if (_solid == null)
+                    return 0f;
+                var flat = new Vector3(facing.X, 0f, facing.Z);
+                if (flat.LengthSquared() < 1e-8f)
+                    return 0f;
+                flat = Vector3.Normalize(flat);
+
+                float top = 0f;
+                for (float h = step; h <= maxHeight + 1e-4f; h += step)
+                {
+                    var origin = new Vector3(at.X, at.Y + h, at.Z);
+                    var ray = new Ray(origin, flat, 0f, distance);
+                    if (!_solid.Traverse(ref ray, out Hit _))
+                        break;
+                    top = h;
+                }
+                return top;
+            }
+        }
         /// Fill in the three job-position files on every state that has a navmesh. Nothing is
         /// written to disk - <see cref="Level.Save"/> persists them with the rest of the level.
         /// </summary>
-        public static void BakeLevel(Level level, JobPositionBakeSettings settings = null, Action<string> log = null)
+        public static void BakeLevel(Level level, JobPositionBakeSettings settings, Action<string> log = null)
         {
+            // No settings means the caller did not ask for job positions; leave the files alone.
+            if (settings == null)
+                return;
             if (level == null)
                 throw new ArgumentNullException(nameof(level));
             if (level.StateResources == null || level.StateResources.Count == 0)
                 throw new ArgumentException("No state resources to bake.", nameof(level));
 
-            settings ??= JobPositionBakeSettings.CreateDefault();
             GlassProbe glass = null;
+            ObstacleProbe obstacles = null;
+            bool obstaclesTried = false;
 
             for (int i = 0; i < level.StateResources.Count; i++)
             {
@@ -168,7 +222,12 @@ namespace CathodeLib.NavMesh
                 }
 
                 glass ??= settings.GlassWallTest ? GlassProbe.FromLevel(level, log) : null;
-                BakeResult result = Bake(state.NavMesh, settings, glass);
+                if (!obstaclesTried && (settings.AssaultRequireObstacle || settings.SpottingRequireObstacle))
+                {
+                    obstacles = ObstacleProbe.FromLevel(level, log);
+                    obstaclesTried = true;
+                }
+                BakeResult result = Bake(state.NavMesh, settings, glass, state.Cover, obstacles);
                 state.SpottingPositions = result.Spotting;
                 state.CrawlSpaceSpottingPositions = result.CrawlSpace;
                 state.AssaultPositions = result.Assault;
@@ -176,7 +235,7 @@ namespace CathodeLib.NavMesh
             }
         }
 
-        public static BakeResult Bake(NavigationMesh nav, JobPositionBakeSettings settings = null, GlassProbe glass = null)
+        public static BakeResult Bake(NavigationMesh nav, JobPositionBakeSettings settings = null, GlassProbe glass = null, Cover cover = null, ObstacleProbe obstacles = null)
         {
             if (nav == null)
                 throw new ArgumentNullException(nameof(nav));
@@ -188,7 +247,23 @@ namespace CathodeLib.NavMesh
             List<RimEdge> rim = CollectRim(nav, null);
             List<RimEdge> crawlRim = CollectRim(nav, NavigationMesh.AreaHeight.DeepCrouch);
 
-            List<List<RimEdge>> runs = ChainRuns(rim, settings.RunMaxTurnDegrees);
+            // Neither the spotting nor the assault pass wants crouch rim. For assault that was
+            // already known - retail puts 46 of 46 SCI_Hub and 44 of 44 BSP_TORRENS positions on
+            // standing floor. For spotting it is newer and stronger: filtering to standing rim loses
+            // NO retail job on any of the 31 levels while cutting the surplus everywhere. See
+            // SpottingRequireStandingFloor. Both passes share the chaining when both flags are on.
+            List<List<RimEdge>> allRuns = null, standingRuns = null;
+            List<List<RimEdge>> AllRuns() => allRuns ??= ChainRuns(rim, settings.RunMaxTurnDegrees);
+            List<List<RimEdge>> StandingRuns() => standingRuns ??=
+                ChainRuns(CollectRim(nav, NavigationMesh.AreaHeight.Standing, matchHeight: true), settings.RunMaxTurnDegrees);
+
+            List<List<RimEdge>> spottingRuns = settings.SpottingRequireStandingFloor ? StandingRuns() : AllRuns();
+
+            List<List<RimEdge>> assaultRuns;
+            if (settings.AssaultFromCover && cover != null && cover.Entries != null && cover.Entries.Count > 0)
+                assaultRuns = ChainCoverRuns(cover.Entries, settings);
+            else
+                assaultRuns = settings.AssaultRequireStandingFloor ? StandingRuns() : AllRuns();
 
             // The job sits just off the collision surface, which is a walkable radius outside the
             // eroded rim - hence retail's spotting jobs being off the navmesh. The task is measured
@@ -200,7 +275,7 @@ namespace CathodeLib.NavMesh
             var placed = new List<Vector3>();
             float mergeSq = settings.SpottingMergeDistance * settings.SpottingMergeDistance;
             foreach ((Vector3 on, Vector3 inward) in SampleRuns(
-                         runs,
+                         spottingRuns,
                          settings.SpottingCoverLengthToGenerateOnePoint,
                          settings.SpottingCoverLengthToGenerateAtBothEnds,
                          settings.SpottingMinDistanceFromEdgeOfCover,
@@ -215,6 +290,12 @@ namespace CathodeLib.NavMesh
                 }
 
                 Vector3 job = on - inward * spottingOut;
+
+                if (settings.SpottingRequireObstacle && obstacles != null &&
+                    obstacles.TopInFront(job, -inward, settings.AssaultObstacleProbeDistance,
+                                         settings.AssaultObstacleMaxHeight, settings.AssaultObstacleHeightStep)
+                        < settings.SpottingMinObstacleHeight)
+                    continue;
 
                 bool merged = false;
                 for (int i = 0; i < placed.Count; i++)
@@ -235,7 +316,9 @@ namespace CathodeLib.NavMesh
                 });
             }
 
-            List<AssaultPositions.JobInfo> assaultJobs = BuildAssaultAlongCover(runs, settings, glass, ref glassRejected);
+            int obstacleRejected = 0;
+            List<AssaultPositions.JobInfo> assaultJobs = BuildAssaultAlongCover(
+                assaultRuns, settings, glass, obstacles, ref glassRejected, ref obstacleRejected);
 
             List<SpottingPositions.JobInfo> crawlJobs = BuildCrawlSpace(nav, crawlRim, settings);
 
@@ -249,7 +332,8 @@ namespace CathodeLib.NavMesh
                              (glass == null ? "" : "   glass tris " + glass.TriangleCount + " rejected " + glassRejected) +
                              "   spotting " + spottingJobs.Count +
                              "   crawl " + crawlJobs.Count +
-                             "   assault " + assaultJobs.Count;
+                             "   assault " + assaultJobs.Count +
+                             (obstacleRejected == 0 ? "" : " (obstacle gate rejected " + obstacleRejected + ")");
             return result;
         }
 
@@ -268,7 +352,12 @@ namespace CathodeLib.NavMesh
         /// an edge counts as rim if the neighbour is missing OR of a different class, which is
         /// what bounds a crawl space inside otherwise open floor.
         /// </summary>
-        static List<RimEdge> CollectRim(NavigationMesh nav, NavigationMesh.AreaHeight? onlyHeight)
+        /// <param name="matchHeight">
+        /// Restrict which polygons contribute to <paramref name="onlyHeight"/>, but keep the plain
+        /// meaning of rim - an edge with nothing on the far side - rather than the crawl-space
+        /// mouth rule. This is how the assault pass asks for "the rim of standing floor only".
+        /// </param>
+        static List<RimEdge> CollectRim(NavigationMesh nav, NavigationMesh.AreaHeight? onlyHeight, bool matchHeight = false)
         {
             var rim = new List<RimEdge>();
             if (nav?.Polygons == null || nav.Vertices == null)
@@ -278,6 +367,15 @@ namespace CathodeLib.NavMesh
             {
                 NavigationMesh.dtPoly poly = nav.Polygons[p];
                 if (poly.verts == null || poly.vertCount < 3)
+                    continue;
+                // Floor only. The alien's backstage sheet is part of the same mesh, and its edges
+                // read as rim: before the obstacle gate went in, 30 of our 66 assault positions on
+                // ENG_Alien_Nest stood on the ceiling against retail's 0 of 27. The gate happens to
+                // reject them now because a floating sheet has nothing in front of it, but that is
+                // an accident and this is the rule.
+                if (poly.area.GetPolyType() != NavigationMesh.dtPolyTypes.DT_POLYTYPE_GROUND)
+                    continue;
+                if (((uint)poly.area.GetMarkupFlags() & 2u) != 0)
                     continue;
                 if (onlyHeight.HasValue && poly.area.GetHeightLimitedAmount() != onlyHeight.Value)
                     continue;
@@ -289,7 +387,7 @@ namespace CathodeLib.NavMesh
 
                 for (int i = 0; i < poly.vertCount; i++)
                 {
-                    if (!IsRim(nav, poly, i, onlyHeight))
+                    if (!IsRim(nav, poly, i, matchHeight ? null : onlyHeight))
                         continue;
 
                     Vector3 a = nav.Vertices[poly.verts[i]];
@@ -350,10 +448,28 @@ namespace CathodeLib.NavMesh
         /// BSP_TORRENS / Solace / SCI_Hub.
         /// </remarks>
         static List<AssaultPositions.JobInfo> BuildAssaultAlongCover(
-            List<List<RimEdge>> runs, JobPositionBakeSettings settings, GlassProbe glass, ref int glassRejected)
+            List<List<RimEdge>> runs, JobPositionBakeSettings settings, GlassProbe glass,
+            ObstacleProbe obstacles, ref int glassRejected, ref int obstacleRejected)
         {
             var jobs = new List<AssaultPositions.JobInfo>();
             float inset = settings.AssaultDistanceFromGeometry - settings.WalkableRadius;
+
+            // Decide the WALL first, then place on it. The obstacle test used to run per position,
+            // which reads one point through whatever happens to be in front of it; averaging over
+            // the whole run is the measurement that actually separates the walls retail assaults
+            // from. See AssaultRunMeanObstacleHeight.
+            if (settings.AssaultRequireRunObstacle && obstacles != null)
+            {
+                var kept = new List<List<RimEdge>>(runs.Count);
+                foreach (List<RimEdge> run in runs)
+                {
+                    if (RunMeanObstacleTop(run, obstacles, settings, inset) >= settings.AssaultRunMeanObstacleHeight)
+                        kept.Add(run);
+                    else
+                        obstacleRejected++;
+                }
+                runs = kept;
+            }
 
             foreach ((Vector3 on, Vector3 inward) in SampleRuns(
                          runs,
@@ -370,14 +486,48 @@ namespace CathodeLib.NavMesh
                     continue;
                 }
 
+                Vector3 stand = on + inward * inset;
+                if (settings.AssaultRequireObstacle && obstacles != null &&
+                    obstacles.TopInFront(stand, -inward, settings.AssaultObstacleProbeDistance,
+                                         settings.AssaultObstacleMaxHeight, settings.AssaultObstacleHeightStep)
+                        < settings.AssaultMinObstacleHeight)
+                {
+                    obstacleRejected++;
+                    continue;
+                }
+
                 jobs.Add(new AssaultPositions.JobInfo
                 {
-                    Position = on + inward * inset,
+                    Position = stand,
                     // Facing the cover, which is the way retail's yaws point.
                     Yaw = MathF.Atan2(-inward.X, -inward.Z)
                 });
             }
             return jobs;
+        }
+
+        /// <summary>
+        /// Mean height of the thing in front of a run, sampled along its whole length. Length
+        /// weighted, so a long edge counts for more than a sliver.
+        /// </summary>
+        static float RunMeanObstacleTop(List<RimEdge> run, ObstacleProbe obstacles,
+                                        JobPositionBakeSettings settings, float inset)
+        {
+            double sum = 0, total = 0;
+            foreach (RimEdge e in run)
+            {
+                int steps = Math.Max(1, (int)Math.Round(e.Length / 0.5f));
+                float w = e.Length / steps;
+                for (int i = 0; i < steps; i++)
+                {
+                    Vector3 on = Vector3.Lerp(e.A, e.B, (i + 0.5f) / steps);
+                    Vector3 stand = on + e.Inward * inset;
+                    sum += w * obstacles.TopInFront(stand, -e.Inward, settings.AssaultObstacleProbeDistance,
+                                                    settings.AssaultObstacleMaxHeight, settings.AssaultObstacleHeightStep);
+                    total += w;
+                }
+            }
+            return total <= 0 ? 0f : (float)(sum / total);
         }
 
         /// <summary>
@@ -502,6 +652,109 @@ namespace CathodeLib.NavMesh
             return runs;
         }
 
+
+        /// <summary>
+        /// Turn baked cover segments back into runs the assault sampler can walk. A segment's face
+        /// sits <see cref="JobPositionBakeSettings.AssaultCoverRimOffset"/> outside the navmesh rim,
+        /// so it is put back on the rim first and the usual inset applied from there.
+        /// </summary>
+        /// <remarks>
+        /// Chaining is endpoint-based and flip-tolerant: the cover baker cuts a continuous run into
+        /// segments of at most its maximum length, and adjacent polygons hand out their boundary in
+        /// opposite directions, so a segment's Left is as likely to meet the neighbour's Left as its
+        /// Right.
+        /// </remarks>
+        static List<List<RimEdge>> ChainCoverRuns(List<Cover.CoverSegment> segments, JobPositionBakeSettings settings)
+        {
+            var edges = new List<RimEdge>(segments.Count);
+            foreach (Cover.CoverSegment s in segments)
+            {
+                var normal = new Vector3(s.Normal.X, 0f, s.Normal.Z);
+                if (normal.LengthSquared() < 1e-8f)
+                    continue;
+                normal = Vector3.Normalize(normal);
+                Vector3 a = s.Left + normal * settings.AssaultCoverRimOffset;
+                Vector3 b = s.Right + normal * settings.AssaultCoverRimOffset;
+                float length = new Vector3(b.X - a.X, 0f, b.Z - a.Z).Length();
+                if (length < 1e-4f)
+                    continue;
+                edges.Add(new RimEdge { A = a, B = b, Inward = normal, Length = length });
+            }
+
+            var at = new Dictionary<(long, long, long), List<int>>();
+            for (int i = 0; i < edges.Count; i++)
+            {
+                IndexEnd(at, edges[i].A, i);
+                IndexEnd(at, edges[i].B, i);
+            }
+
+            float cosLimit = MathF.Cos(Math.Max(0f, settings.RunMaxTurnDegrees) * MathF.PI / 180f);
+            var used = new bool[edges.Count];
+            var runs = new List<List<RimEdge>>();
+
+            for (int i = 0; i < edges.Count; i++)
+            {
+                if (used[i])
+                    continue;
+                used[i] = true;
+                var run = new List<RimEdge> { edges[i] };
+
+                Extend(run, edges, at, used, cosLimit, forward: true);
+                Extend(run, edges, at, used, cosLimit, forward: false);
+                runs.Add(run);
+            }
+            return runs;
+        }
+
+        static void IndexEnd(Dictionary<(long, long, long), List<int>> at, Vector3 p, int i)
+        {
+            (long, long, long) key = Quantise(p);
+            if (!at.TryGetValue(key, out List<int> l))
+                at[key] = l = new List<int>();
+            l.Add(i);
+        }
+
+        /// <summary>Walk off one end of a run, flipping candidates whose direction is reversed.</summary>
+        static void Extend(List<RimEdge> run, List<RimEdge> edges, Dictionary<(long, long, long), List<int>> at,
+                           bool[] used, float cosLimit, bool forward)
+        {
+            while (true)
+            {
+                RimEdge end = forward ? run[run.Count - 1] : run[0];
+                Vector3 tail = forward ? end.B : end.A;
+                Vector3 direction = Direction(end);
+                if (!at.TryGetValue(Quantise(tail), out List<int> candidates))
+                    return;
+
+                int pick = -1;
+                RimEdge chosen = default;
+                foreach (int j in candidates)
+                {
+                    if (used[j])
+                        continue;
+                    RimEdge e = edges[j];
+                    bool meetsA = Quantise(e.A) == Quantise(tail);
+                    // Continuing forward the next edge must start where we stopped; going backwards
+                    // it must end there. Either way the other endpoint means the edge runs the
+                    // wrong way and has to be flipped.
+                    if (forward ? !meetsA : meetsA)
+                        e = new RimEdge { A = e.B, B = e.A, Inward = e.Inward, Length = e.Length };
+                    if (Vector3.Dot(Direction(e), direction) < cosLimit)
+                        continue;
+                    pick = j;
+                    chosen = e;
+                    break;
+                }
+                if (pick < 0)
+                    return;
+
+                used[pick] = true;
+                if (forward)
+                    run.Add(chosen);
+                else
+                    run.Insert(0, chosen);
+            }
+        }
         static Vector3 Direction(RimEdge e) =>
             Vector3.Normalize(new Vector3(e.B.X - e.A.X, 0f, e.B.Z - e.A.Z));
 
@@ -552,20 +805,29 @@ namespace CathodeLib.NavMesh
                 RimEdge mouth = mouths[e];
                 Vector3 centre = (mouth.A + mouth.B) * 0.5f;
 
-                // Probe back into the crawl space along the edge normal: the spot goes as deep as
-                // the offset asks for, or as deep as the region actually runs, whichever is less.
+                // Probe back into the crawl space: the spot goes as deep as the offset asks for, or
+                // as deep as the region actually runs, whichever is less. Probing only along the
+                // edge normal reads a vent entered from its SIDE as shallow and throws the job away,
+                // so the probe fans out and keeps the deepest direction that stays inside.
                 float depth = 0f;
+                Vector3 inward = mouth.Inward;
                 const float step = 0.0625f;
-                for (float d = step; d <= reach + 1e-4f; d += step)
+                foreach (float degrees in settings.CrawlProbeFanDegrees)
                 {
-                    if (!InsideAny(deep, centre + mouth.Inward * d))
-                        break;
-                    depth = d;
+                    Vector3 dir = RotateY(mouth.Inward, degrees);
+                    float reached = 0f;
+                    for (float d = step; d <= reach + 1e-4f; d += step)
+                    {
+                        if (!InsideAny(deep, centre + dir * d))
+                            break;
+                        reached = d;
+                    }
+                    if (reached > depth) { depth = reached; inward = dir; }
                 }
                 if (depth < minInside)
                     continue;
 
-                Vector3 spot = centre + mouth.Inward * depth;
+                Vector3 spot = centre + inward * depth;
                 Vector3 path = centre - mouth.Inward * settings.CrawlPathPositionDistanceOffset;
                 if (Vector3.Distance(spot, path) <= settings.CrawlMinSpotToPathDistance)
                     continue;
@@ -587,12 +849,26 @@ namespace CathodeLib.NavMesh
             return jobs;
         }
 
+        /// <summary>Rotate a horizontal direction about Y.</summary>
+        static Vector3 RotateY(Vector3 v, float degrees)
+        {
+            if (Math.Abs(degrees) < 1e-4f) return v;
+            float r = (float)(degrees * Math.PI / 180.0);
+            float c = (float)Math.Cos(r), s = (float)Math.Sin(r);
+            return new Vector3(v.X * c - v.Z * s, v.Y, v.X * s + v.Z * c);
+        }
+
         static List<Vector3[]> HeightPolys(NavigationMesh nav, NavigationMesh.AreaHeight height)
         {
             var list = new List<Vector3[]>();
             foreach (NavigationMesh.dtPoly poly in nav.Polygons)
             {
                 if (poly.verts == null || poly.vertCount < 3)
+                    continue;
+                // Backstage is the alien's ceiling network, not playspace.
+                if (poly.area.GetPolyType() != NavigationMesh.dtPolyTypes.DT_POLYTYPE_GROUND)
+                    continue;
+                if (((uint)poly.area.GetMarkupFlags() & 2u) != 0)
                     continue;
                 if (poly.area.GetHeightLimitedAmount() != height)
                     continue;

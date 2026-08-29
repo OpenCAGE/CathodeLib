@@ -35,11 +35,14 @@ namespace CathodeLib.NavMesh
         /// Generate cover for state 0 (and copy to other states for now) from collision.
         /// Does not write disk — <see cref="Level.Save"/> persists COVER.
         /// </summary>
-        public static BakeResult BakeLevel(Level level, Instancing placement = null, CoverBakeSettings settings = null)
+        public static BakeResult BakeLevel(Level level, Instancing placement, CoverBakeSettings settings)
         {
+            // No settings means the caller did not ask for cover, so nothing is baked and the
+            // level keeps whatever COVER it already had.
+            if (settings == null)
+                return null;
             if (level == null)
                 throw new ArgumentNullException(nameof(level));
-            settings ??= new CoverBakeSettings();
 
             var navSettings = NavMeshBakeSettings.CreateDefault();
             navSettings.SkipSmallPropCollision = !settings.IncludeSmallPropCollision;
@@ -80,6 +83,9 @@ namespace CathodeLib.NavMesh
                 result.Message = "No collision triangles.";
                 return result;
             }
+
+            if (settings.UseRimGenerator && navMesh?.Polygons != null)
+                return BakeFromRim(soup, settings, navMesh, result);
 
             float cellSize = settings.CoverGridCellSize > 0 ? settings.CoverGridCellSize : settings.SamplingSizeXZ;
             float cell = Math.Max(0.025f, cellSize);
@@ -229,6 +235,7 @@ namespace CathodeLib.NavMesh
 
             // A segment whose every slot was rejected is not usable cover.
             segments = RemoveUnoccupiableSegments(segments);
+            ApplyLinkFlags(segments, settings);
 
             result.SlotsWithoutLineOfSight = aimSolver.SlotsWithoutLineOfSight;
             result.SlotsOffNavMesh = aimSolver.SlotsOffNavMesh;
@@ -251,6 +258,90 @@ namespace CathodeLib.NavMesh
             result.Message = $"Cover bake: tris={result.InputTriangles} islands={islandCount} solidCells={solidCells} samples={result.SampleCount} segs={result.SegmentCount} slots={result.SlotCount}";
             return result;
         }
+
+        /// <summary>
+        /// Rim-driven generation. Everything after the segments themselves - UIDs, corner and
+        /// colinear links, occupancy slots, the traversal grid - is shared with the older path.
+        /// </summary>
+        static BakeResult BakeFromRim(CollisionNavMeshSoup soup, CoverBakeSettings settings, NavigationMesh navMesh, BakeResult result)
+        {
+            List<Cover.CoverSegment> segments = RimCoverGenerator.Generate(soup, navMesh, settings, out string message);
+            int raw = segments.Count;
+
+            // Spans come out fragmented wherever a probe flickers; stitch them back into runs before
+            // the length cull, then drop what is still too short to stand behind.
+            segments = MergeColinearSegments(segments, settings);
+            segments = DeduplicateSegments(segments, 0.35f);
+            segments.RemoveAll(s => SegmentLengthXZ(s) < settings.MinimumLength);
+            message += $" merged {raw}->{segments.Count}";
+
+            for (int i = 0; i < segments.Count; i++)
+            {
+                segments[i].UID = i + 1;
+                segments[i].CathodeIndex = -1;
+                segments[i].CathodeEnt = ShortGuid.Invalid;
+                segments[i].CathodeParent = ShortGuid.Invalid;
+                segments[i].LeftCornerUID = 0;
+                segments[i].RightCornerUID = 0;
+                segments[i].LeftColinearUID = 0;
+                segments[i].RightColinearUID = 0;
+                segments[i].TraversalUID = 0;
+            }
+            LinkCornersAndColinear(segments, settings);
+
+            var aimSolver = new CoverAimSolver(soup, navMesh, settings);
+            PlaceSlots(segments, settings, aimSolver);
+            segments = RemoveUnoccupiableSegments(segments);
+
+            result.SlotsWithoutLineOfSight = aimSolver.SlotsWithoutLineOfSight;
+            result.SlotsOffNavMesh = aimSolver.SlotsOffNavMesh;
+
+            int slotUid = 0, slotCount = 0;
+            foreach (var seg in segments)
+            {
+                foreach (var slot in seg.OccupancySlots)
+                    slot.UID = slotUid++;
+                slotCount += seg.OccupancySlots.Count;
+            }
+
+            // UIDs have to be dense and 1-based after the unoccupiable pass removed segments, or the
+            // corner/colinear links point at nothing.
+            RenumberSegments(segments);
+            ApplyLinkFlags(segments, settings);
+
+            Cover cover = CreateEmptyCover();
+            cover.Entries.AddRange(segments);
+            BuildTraversalGrid(cover, settings.TraversalUnitSize);
+            result.Cover = cover;
+            result.SegmentCount = segments.Count;
+            result.SlotCount = slotCount;
+            result.Message = message + $" -> kept {segments.Count} after occupancy, slots={slotCount}";
+            return result;
+        }
+
+        /// <summary>
+        /// Give the surviving segments consecutive UIDs and rewrite the links that referred to the
+        /// old ones.
+        /// </summary>
+        static void RenumberSegments(List<Cover.CoverSegment> segments)
+        {
+            var remap = new Dictionary<int, int>();
+            for (int i = 0; i < segments.Count; i++)
+                remap[segments[i].UID] = i + 1;
+
+            foreach (Cover.CoverSegment s in segments)
+            {
+                s.LeftCornerUID = Remap(remap, s.LeftCornerUID);
+                s.RightCornerUID = Remap(remap, s.RightCornerUID);
+                s.LeftColinearUID = Remap(remap, s.LeftColinearUID);
+                s.RightColinearUID = Remap(remap, s.RightColinearUID);
+            }
+            for (int i = 0; i < segments.Count; i++)
+                segments[i].UID = i + 1;
+        }
+
+        static int Remap(Dictionary<int, int> remap, int uid) =>
+            uid != 0 && remap.TryGetValue(uid, out int mapped) ? mapped : 0;
 
         static Cover CreateEmptyCover()
         {
@@ -412,6 +503,9 @@ namespace CathodeLib.NavMesh
                 if (poly.vertCount < 3)
                     continue;
                 if (poly.area.GetPolyType() != NavigationMesh.dtPolyTypes.DT_POLYTYPE_GROUND)
+                    continue;
+                // Backstage is the alien's ceiling network, not playspace.
+                if (((uint)poly.area.GetMarkupFlags() & (uint)NavigationMesh.NavMeshAreaTypeFlags.BackstageFlag) != 0)
                     continue;
 
                 for (int i = 0; i < poly.vertCount; i++)
@@ -1025,6 +1119,9 @@ namespace CathodeLib.NavMesh
                     continue;
                 if (poly.area.GetPolyType() != NavigationMesh.dtPolyTypes.DT_POLYTYPE_GROUND)
                     continue;
+                // Backstage is the alien's ceiling network, not playspace.
+                if (((uint)poly.area.GetMarkupFlags() & (uint)NavigationMesh.NavMeshAreaTypeFlags.BackstageFlag) != 0)
+                    continue;
                 for (int i = 0; i < poly.vertCount; i++)
                 {
                     ushort nei = poly.neis[i];
@@ -1301,6 +1398,36 @@ namespace CathodeLib.NavMesh
             return segments;
         }
 
+        /// <summary>
+        /// Restate the corner and colinear links in each segment's Flags field, the way retail does.
+        /// </summary>
+        /// <remarks>
+        /// <para>Cross-tabulated over all 7,361 cover segments the game ships: 0x0008 is set on 2,044
+        /// segments and every one of them has a left corner link (2,061 segments have one at all);
+        /// 0x0010 is the same for right corners, 0x0020 for left colinear links and 0x0040 for right.
+        /// Each is a 100% correlation. 0x2000 is set on 4,218 segments and every one is low cover.</para>
+        /// <para>Retail also uses 0x0080/0x0100, 0x0200/0x0400 and 0x0800/0x1000 - the same left/right
+        /// pairing, and only ever on segments that already carry the primary bit, so they refine a
+        /// corner or colinear link (external versus internal, most likely, given the generator has
+        /// angle thresholds for exactly that) rather than stating anything new. Which of the three
+        /// states applies is not established, so they are left clear: guessing would be worse.</para>
+        /// </remarks>
+        static void ApplyLinkFlags(List<Cover.CoverSegment> segments, CoverBakeSettings settings)
+        {
+            if (!settings.WriteLinkFlags)
+                return;
+
+            foreach (Cover.CoverSegment s in segments)
+            {
+                int flags = s.Height < settings.LowHighDividingLine ? 0x2000 : 0;
+                if (s.LeftCornerUID != 0) flags |= 0x0008;
+                if (s.RightCornerUID != 0) flags |= 0x0010;
+                if (s.LeftColinearUID != 0) flags |= 0x0020;
+                if (s.RightColinearUID != 0) flags |= 0x0040;
+                s.Flags = flags;
+            }
+        }
+
         static void LinkCornersAndColinear(List<Cover.CoverSegment> segments, CoverBakeSettings settings)
         {
             for (int i = 0; i < segments.Count; i++)
@@ -1372,8 +1499,14 @@ namespace CathodeLib.NavMesh
             bool corner = distSq <= cornerDist * cornerDist
                 && turn >= minCornerDeg && turn <= maxCornerDeg;
 
+            // NOT Math.Abs: a colinear partner has to face the SAME way, not merely lie on the same
+            // line. Retail's 1,724 colinear links have 0.0 degrees between the two normals on 100%
+            // of them (p90 3.6); with the absolute value, 66% of ours pointed at a segment facing
+            // the opposite way - the far side of a wall, or across a corridor - median 177.4
+            // degrees. That tells the engine an NPC can slide from one to the other along the same
+            // cover when the two face apart. Measured with `diag coverlinks`.
             bool colinear = distSq <= colinearDist * colinearDist
-                && Math.Abs(dot) >= settings.LinkColinearDotProductThreshold;
+                && dot >= settings.LinkColinearDotProductThreshold;
 
             if (corner)
             {
@@ -1514,8 +1647,11 @@ namespace CathodeLib.NavMesh
                     if (aimSolver != null)
                     {
                         Vector3 slotPos = seg.Left + d * pct;
-                        // Where the occupant actually stands: behind the cover line.
-                        Vector3 stand = slotPos - normal * settings.DistanceFromGeometry;
+                        // Where the occupant actually stands: on the walkable side of the cover line.
+                        // The face is written almost against the collision surface, so tracing sight
+                        // lines from it puts the eye inside the wall and every ray comes back
+                        // blocked - which was discarding nearly half the segments.
+                        Vector3 stand = slotPos + normal * settings.SlotStandOffset;
 
                         if (aimSolver.HasNavMesh && !aimSolver.IsOnNavMesh(stand, settings.NavMeshProximity))
                         {
@@ -1523,12 +1659,44 @@ namespace CathodeLib.NavMesh
                             continue;
                         }
 
-                        if (!aimSolver.SolveSlot(slot, slotPos, normal, tangent,
+                        if (!aimSolver.SolveSlot(slot, stand, normal, tangent,
                                                  len * pct, len * (1f - pct), seg.Height))
                             continue;
+
+                        // The low bits of Flags say WHICH firing positions this slot actually has,
+                        // so they have to follow the arcs the solver just found rather than being a
+                        // constant per height class. Cross-tabbed over retail's 9,085 slots the
+                        // implication is exact: 0x1 set means a live lean-left arc on 100% of 3,480
+                        // slots, 0x2 a live lean-right on 100% of 3,459, 0x4 a live over-the-top on
+                        // 100% of 4,984 - and 0x2000 marks low cover on exactly its 5,815. Writing
+                        // 0x4001 for every high segment told the engine they all lean LEFT.
+                        const float halfPi = (float)(Math.PI / 2.0);
+                        bool leanL = slot.LeftEdgeRightmostHorizontal + halfPi > 0.01f;
+                        bool leanR = halfPi - slot.RightEdgeLeftmostHorizontal > 0.01f;
+                        bool overT = slot.OverTopRightmostHorizontal - slot.OverTopLeftmostHorizontal > 0.01f;
+                        slot.Flags = (low ? 0x6000 : 0x4000)
+                                   | (leanL ? 0x1 : 0) | (leanR ? 0x2 : 0) | (overT ? 0x4 : 0);
                     }
 
                     seg.OccupancySlots.Add(slot);
+                }
+
+                // Retail keeps a slot on every segment it ships - 160 segments carry 175 slots on
+                // SCI_Hub - so cover with a real obstacle behind it is not thrown away merely because
+                // the sight-line sweep found nothing.
+                if (seg.OccupancySlots.Count == 0 && settings.KeepSegmentsWithoutClearAim)
+                {
+                    Vector3 centre = seg.Left + d * 0.5f + normal * settings.SlotStandOffset;
+                    if (aimSolver == null || !aimSolver.HasNavMesh || aimSolver.IsOnNavMesh(centre, settings.NavMeshProximity))
+                    {
+                        seg.OccupancySlots.Add(new Cover.CoverSegment.CoverSlot
+                        {
+                            PctAlongCoverSegment = 0.5f,
+                            Flags = low ? 24580 : 16385,
+                            ClearAimAnglesHorizontal = low ? 0x00FF : unchecked((short)0x800F),
+                            ClearAimAnglesVertical = low ? 0x00690000 : unchecked(0x59000000)
+                        });
+                    }
                 }
             }
         }

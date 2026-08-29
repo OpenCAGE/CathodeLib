@@ -286,13 +286,13 @@ namespace CATHODE
                 }
                 private float GetVerticalAngle(int indexFromMsb)
                 {
-                    int shift = (5 - indexFromMsb) * 4;
+                    int shift = (7 - indexFromMsb) * 4;
                     int nibble = (ClearAimAnglesVertical >> shift) & 0xF;
                     return DecodeAngleNibble(nibble);
                 }
                 private int SetVerticalAngle(int packed, int indexFromMsb, float angle)
                 {
-                    int shift = (5 - indexFromMsb) * 4;
+                    int shift = (7 - indexFromMsb) * 4;
                     int nibble = EncodeAngleNibble(angle);
                     packed &= ~(0xF << shift);
                     packed |= (nibble & 0xF) << shift;

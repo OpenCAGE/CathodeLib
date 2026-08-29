@@ -126,7 +126,10 @@ namespace CathodeLib.NavMesh
                 CollectBarrierVolumes(level, hkx, host, barrierEntities, soup.Barriers, skip);
             }
 
-            CollectSoundBarrierSkip(level, skip);
+            CollectSoundBarrierSkip(level, skip, settings);
+
+            if (settings.SkipPlayerOnlyCollision)
+                CollectPlayerOnlySkip(level, skip);
 
             if (settings.SkipGhostedCollision)
                 CollectGhostedSkip(level, skip);
@@ -140,6 +143,9 @@ namespace CathodeLib.NavMesh
                     if (inst != null)
                         skip.Add(inst);
             }
+
+            if (!settings.SkipBarrierCollision)
+                skip.Clear();
 
             HavokPackfile.PreviewMesh mesh = hkx.BuildBakeMesh(host, skip);
             if (mesh.Positions.Count == 0 || mesh.Indices.Count < 3)
@@ -278,10 +284,18 @@ namespace CathodeLib.NavMesh
         /// it only drops boxes below crate scale, so a barrier spanning a doorway or window - the
         /// normal case - always survived into the soup.
         /// </remarks>
-        static void CollectSoundBarrierSkip(Level level, HashSet<HavokPackfile.CompoundInstance> skip)
+        static void CollectSoundBarrierSkip(Level level, HashSet<HavokPackfile.CompoundInstance> skip, NavMeshBakeSettings settings)
         {
             if (level?.CollisionMaps?.Entries == null || skip == null)
                 return;
+
+            // SOUND and SOUND_BARRIER both exist only for sound node network occlusion; neither is
+            // navigation geometry. What DOES matter is that an instance can be named by several
+            // mappings, so it is only skipped when EVERY mapping naming it is a sound type: on
+            // ENG_Alien_Nest one instance is named once as STANDARD and once as SOUND_BARRIER, and
+            // dropping it took real floor with it.
+            var sound = new HashSet<HavokPackfile.CompoundInstance>();
+            var solid = new HashSet<HavokPackfile.CompoundInstance>();
 
             foreach (CollisionMaps.COLLISION_MAPPING entry in level.CollisionMaps.Entries)
             {
@@ -290,7 +304,35 @@ namespace CathodeLib.NavMesh
 
                 CollisionMaps.CollisionType type =
                     (CollisionMaps.CollisionType)((uint)entry.Flags & (uint)CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK);
-                if (type == CollisionMaps.CollisionType.SOUND || type == CollisionMaps.CollisionType.SOUND_BARRIER)
+                if (type == CollisionMaps.CollisionType.SOUND_BARRIER ||
+                    (settings.SkipSoundFlaggedCollision && type == CollisionMaps.CollisionType.SOUND))
+                    sound.Add(entry.CollisionInstance);
+                else
+                    solid.Add(entry.CollisionInstance);
+            }
+
+            foreach (HavokPackfile.CompoundInstance instance in sound)
+                if (!solid.Contains(instance))
+                    skip.Add(instance);
+        }
+
+        /// <summary>
+        /// Omit collision only the player interacts with - the invisible walls that keep Ripley on a
+        /// hull or off a ledge. A character never touches it, so it must not become floor they can
+        /// walk on or a wall they path around.
+        /// </summary>
+        static void CollectPlayerOnlySkip(Level level, HashSet<HavokPackfile.CompoundInstance> skip)
+        {
+            if (level?.CollisionMaps?.Entries == null || skip == null)
+                return;
+
+            foreach (CollisionMaps.COLLISION_MAPPING entry in level.CollisionMaps.Entries)
+            {
+                if (entry?.CollisionInstance == null)
+                    continue;
+                CollisionMaps.CollisionType type =
+                    (CollisionMaps.CollisionType)((uint)entry.Flags & (uint)CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK);
+                if (type == CollisionMaps.CollisionType.PLAYER_ONLY)
                     skip.Add(entry.CollisionInstance);
             }
         }

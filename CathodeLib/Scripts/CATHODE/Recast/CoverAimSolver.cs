@@ -23,7 +23,9 @@ namespace CathodeLib.NavMesh
     {
         private readonly BVHAccel _bvh;
         private readonly CoverBakeSettings _settings;
-        private readonly List<Vector3> _navPoints;
+        private readonly List<Vector3[]> _navPolys = new List<Vector3[]>();
+        private readonly Dictionary<long, List<int>> _navGrid = new Dictionary<long, List<int>>();
+        private const float NavCell = 2.0f;
 
         /// <summary>Slots rejected because nothing was visible from any firing position.</summary>
         public int SlotsWithoutLineOfSight { get; private set; }
@@ -41,43 +43,114 @@ namespace CathodeLib.NavMesh
                 _bvh.Build(soup.Verts, soup.Tris);
             }
 
-            _navPoints = new List<Vector3>();
             if (navMesh?.Polygons != null && navMesh.Vertices != null)
             {
                 foreach (NavigationMesh.dtPoly poly in navMesh.Polygons)
                 {
                     if (poly.area.GetPolyType() != NavigationMesh.dtPolyTypes.DT_POLYTYPE_GROUND)
                         continue;
+                    // Backstage is the alien's ceiling network, not somewhere an NPC can stand.
+                    if (((uint)poly.area.GetMarkupFlags() & (uint)NavigationMesh.NavMeshAreaTypeFlags.BackstageFlag) != 0)
+                        continue;
+                    if (poly.vertCount < 3 || poly.verts == null)
+                        continue;
+                    var verts = new Vector3[poly.vertCount];
                     for (int i = 0; i < poly.vertCount; i++)
-                        _navPoints.Add(navMesh.Vertices[poly.verts[i]]);
+                        verts[i] = navMesh.Vertices[poly.verts[i]];
+
+                    int index = _navPolys.Count;
+                    _navPolys.Add(verts);
+
+                    float minX = verts[0].X, maxX = verts[0].X, minZ = verts[0].Z, maxZ = verts[0].Z;
+                    for (int i = 1; i < verts.Length; i++)
+                    {
+                        if (verts[i].X < minX) minX = verts[i].X;
+                        if (verts[i].X > maxX) maxX = verts[i].X;
+                        if (verts[i].Z < minZ) minZ = verts[i].Z;
+                        if (verts[i].Z > maxZ) maxZ = verts[i].Z;
+                    }
+                    int x0 = (int)Math.Floor(minX / NavCell), x1 = (int)Math.Floor(maxX / NavCell);
+                    int z0 = (int)Math.Floor(minZ / NavCell), z1 = (int)Math.Floor(maxZ / NavCell);
+                    if ((long)(x1 - x0 + 1) * (z1 - z0 + 1) > 100000)
+                        continue;
+                    for (int x = x0; x <= x1; x++)
+                        for (int z = z0; z <= z1; z++)
+                        {
+                            long k = ((long)x << 32) ^ (uint)z;
+                            if (!_navGrid.TryGetValue(k, out List<int> l)) _navGrid[k] = l = new List<int>();
+                            l.Add(index);
+                        }
                 }
             }
         }
 
         public bool HasGeometry => _bvh != null;
-        public bool HasNavMesh => _navPoints.Count > 0;
+        public bool HasNavMesh => _navPolys.Count > 0;
 
         public void NoteSlotOffNavMesh() => SlotsOffNavMesh++;
 
         /// <summary>
         /// Is there navmesh close enough to <paramref name="position"/> for an NPC to occupy it?
         /// </summary>
+        /// <remarks>
+        /// This is polygon containment, not proximity to a vertex. A long straight wall is one
+        /// navmesh edge with vertices only at its ends, so testing against vertices rejected every
+        /// slot along the middle of it - which is exactly where cover matters most.
+        /// </remarks>
         public bool IsOnNavMesh(Vector3 position, float tolerance)
         {
-            if (_navPoints.Count == 0)
+            if (_navPolys.Count == 0)
                 return true;
 
-            float toleranceSq = tolerance * tolerance;
-            for (int i = 0; i < _navPoints.Count; i++)
+            int cx = (int)Math.Floor(position.X / NavCell), cz = (int)Math.Floor(position.Z / NavCell);
+            float best = float.MaxValue;
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dz = -1; dz <= 1; dz++)
+                {
+                    if (!_navGrid.TryGetValue(((long)(cx + dx) << 32) ^ (uint)(cz + dz), out List<int> l))
+                        continue;
+                    foreach (int i in l)
+                    {
+                        Vector3[] v = _navPolys[i];
+                        float y = 0;
+                        for (int k = 0; k < v.Length; k++) y += v[k].Y;
+                        y /= v.Length;
+                        // A walkway above a floor must not latch onto the floor below it.
+                        if (Math.Abs(y - position.Y) > 1.0f)
+                            continue;
+                        if (ContainsXZ(v, position))
+                            return true;
+                        float d = DistanceToEdgesXZ(v, position);
+                        if (d < best) best = d;
+                    }
+                }
+            return best <= tolerance;
+        }
+
+        private static bool ContainsXZ(Vector3[] v, Vector3 p)
+        {
+            bool inside = false;
+            for (int i = 0, j = v.Length - 1; i < v.Length; j = i++)
+                if ((v[i].Z > p.Z) != (v[j].Z > p.Z) &&
+                    p.X < (v[j].X - v[i].X) * (p.Z - v[i].Z) / (v[j].Z - v[i].Z) + v[i].X)
+                    inside = !inside;
+            return inside;
+        }
+
+        private static float DistanceToEdgesXZ(Vector3[] v, Vector3 p)
+        {
+            float best = float.MaxValue;
+            for (int i = 0, j = v.Length - 1; i < v.Length; j = i++)
             {
-                Vector3 v = _navPoints[i];
-                float dx = v.X - position.X, dz = v.Z - position.Z, dy = v.Y - position.Y;
-                // Vertical slack is tighter than horizontal - cover on a walkway above a floor
-                // must not latch onto the floor below it.
-                if (dx * dx + dz * dz + dy * dy * 4.0f <= toleranceSq)
-                    return true;
+                float abx = v[i].X - v[j].X, abz = v[i].Z - v[j].Z;
+                float apx = p.X - v[j].X, apz = p.Z - v[j].Z;
+                float ab2 = abx * abx + abz * abz;
+                float t = ab2 > 1e-12f ? Math.Max(0f, Math.Min(1f, (apx * abx + apz * abz) / ab2)) : 0f;
+                float qx = v[j].X + abx * t - p.X, qz = v[j].Z + abz * t - p.Z;
+                float d = (float)Math.Sqrt(qx * qx + qz * qz);
+                if (d < best) best = d;
             }
-            return false;
+            return best;
         }
 
         /// <summary>
@@ -114,24 +187,56 @@ namespace CathodeLib.NavMesh
             bool anyTop = Sweep(topEye, normal, out float topMin, out float topMax, out float topLow, out float topHigh);
             bool anyRight = Sweep(rightEye, normal, out float rightMin, out float rightMax, out float rightLow, out float rightHigh);
 
+            // You can only lean a way the cover does not keep going. Clamping the lean eye to the
+            // segment end (above) stops it walking through the wall, but it still leaves the eye
+            // flat against a wall that carries on past it, and sweeping from there reports an arc
+            // retail does not have: its lean arcs are DEAD on 38.0% / 37.3% of slots, ours on
+            // 4.2% / 10.1%. A slot in the middle of a long segment cannot lean either way.
+            if (_settings.LeanNeedsAnEnd)
+            {
+                if (distanceToLeftEnd > lean) { anyLeft = false; leftMin = leftMax = leftLow = leftHigh = 0f; }
+                if (distanceToRightEnd > lean) { anyRight = false; rightMin = rightMax = rightLow = rightHigh = 0f; }
+            }
+
+            // You never shoot over HIGH cover. Retail writes a zero-width over-the-top arc on 3,270
+            // of 3,270 shipped high slots - both nibbles are 0, so the arc reads -90 to -90 - against
+            // a 180 degree median on low cover, where it is zero on only 0.2%. That is a rule, not a
+            // measurement, and without it 78% of our high slots tell the AI it can fire over a 1.6 m
+            // wall. Measured with `diag coverslots`.
+            if (coverHeight >= _settings.LowHighDividingLine)
+            {
+                anyTop = false;
+                topMin = topMax = topLow = topHigh = 0f;
+            }
+
             if (!anyLeft && !anyTop && !anyRight)
             {
                 SlotsWithoutLineOfSight++;
                 return false;
             }
 
-            // Horizontal: the inner bound of each lean, plus the span visible over the top.
-            slot.LeftEdgeRightmostHorizontal = anyLeft ? leftMax : 0f;
-            slot.OverTopLeftmostHorizontal = anyTop ? topMin : 0f;
-            slot.OverTopRightmostHorizontal = anyTop ? topMax : 0f;
-            slot.RightEdgeLeftmostHorizontal = anyRight ? rightMin : 0f;
+            // Horizontal: the inner bound of each lean, plus the span visible over the top. A DEAD
+            // arc has to be written as a degenerate one, and which end it degenerates to differs per
+            // field: the left lean runs from -90 up to LeftEdgeRightmost, so dead is -90; the right
+            // lean runs from RightEdgeLeftmost up to +90, so dead is +90. Writing a zero ANGLE
+            // instead - which is what this did - encodes nibble 8 and leaves a 90 degree arc on a
+            // firing position that does not exist.
+            const float halfPi = (float)(Math.PI / 2.0);
+            slot.LeftEdgeRightmostHorizontal = anyLeft ? leftMax : -halfPi;
+            slot.OverTopLeftmostHorizontal = anyTop ? topMin : -halfPi;
+            slot.OverTopRightmostHorizontal = anyTop ? topMax : -halfPi;
+            slot.RightEdgeLeftmostHorizontal = anyRight ? rightMin : halfPi;
 
-            slot.LeftEdgeBottomVertical = anyLeft ? leftLow : 0f;
-            slot.LeftEdgeTopVertical = anyLeft ? leftHigh : 0f;
-            slot.OverTopBottomVertical = anyTop ? topLow : 0f;
-            slot.OverTopTopVertical = anyTop ? topHigh : 0f;
-            slot.RightEdgeBottomVertical = anyRight ? rightLow : 0f;
-            slot.RightEdgeTopVertical = anyRight ? rightHigh : 0f;
+            // Vertical: a dead firing position is spelled -90/-90, the way retail spells it. Its own
+            // files are unambiguous - the vertical arc is dead on 100.0% of high-cover over-top
+            // positions and 40.0/40.2% of the lean ones, matching the horizontal dead rates to
+            // within two points once the packing is read correctly (see Cover.GetVerticalAngle).
+            slot.LeftEdgeBottomVertical = anyLeft ? leftLow : -halfPi;
+            slot.LeftEdgeTopVertical = anyLeft ? leftHigh : -halfPi;
+            slot.OverTopBottomVertical = anyTop ? topLow : -halfPi;
+            slot.OverTopTopVertical = anyTop ? topHigh : -halfPi;
+            slot.RightEdgeBottomVertical = anyRight ? rightLow : -halfPi;
+            slot.RightEdgeTopVertical = anyRight ? rightHigh : -halfPi;
 
             return true;
         }
@@ -144,7 +249,7 @@ namespace CathodeLib.NavMesh
         {
             const int yawSamples = 13;   // every 15 degrees across the 180 degree window
             const int pitchSamples = 5;
-            const float range = 8.0f;
+            float range = _settings.AimClearRange > 0f ? _settings.AimClearRange : 8.0f;
 
             minYaw = 0; maxYaw = 0; minPitch = 0; maxPitch = 0;
 

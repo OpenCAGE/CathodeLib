@@ -7,6 +7,7 @@ using CathodeLib.Alphalight;
 using CathodeLib.NavMesh;
 using CathodeLib.ObjectExtensions;
 using CathodeLib.Radiosity;
+using CathodeLib.Sound;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -2491,10 +2492,16 @@ namespace CathodeLib
         public readonly HashSet<(uint, uint)> RadiosityAuthoredOff = new HashSet<(uint, uint)>();
 
         /// <summary>
-        /// Skip the navmesh / cover / job position / sound network bakes even though their
-        /// settings are supplied. For fast lighting-only iteration from test harnesses; the
-        /// previously saved data for those systems is left as-is on disk.
+        /// Skip the navmesh / cover / job position / sound network bakes even though their settings
+        /// are supplied. For fast lighting-only iteration from test harnesses; the previously saved
+        /// data for those systems is left as-is on disk.
         /// </summary>
+        /// <remarks>
+        /// Not the normal way to turn a bake off - each of the four is opted into by passing its
+        /// settings and skipped by passing null, so a caller that wants three of them simply omits
+        /// the fourth. This flag is the blunt instrument that suppresses all four at once regardless
+        /// of what was passed.
+        /// </remarks>
         public static bool SkipAgentBakes = false;
 
         /// <summary>
@@ -2520,7 +2527,7 @@ namespace CathodeLib
         /// </summary>
         public static bool EmitRequiredAssetParticles = true;
 
-        public Instancing(Level level, NavMeshBakeSettings navMeshSettings = null, CoverBakeSettings coverSettings = null, RadiosityBakeSettings radiositySettings = null, JobPositionBakeSettings jobPositionSettings = null, AlphalightBakeSettings alphalightSettings = null)
+        public Instancing(Level level, NavMeshBakeSettings navMeshSettings = null, CoverBakeSettings coverSettings = null, RadiosityBakeSettings radiositySettings = null, JobPositionBakeSettings jobPositionSettings = null, AlphalightBakeSettings alphalightSettings = null, SoundNetworkBakeSettings soundSettings = null)
         {
             _level = level;
 
@@ -2554,12 +2561,20 @@ namespace CathodeLib
             BuildStateProperties();
             CarryRetailModelParams();
 
+            // Each of the four agent bakes is opted into by supplying its settings, the same way
+            // the radiosity bake below is. Null means the caller does not want that system rebuilt
+            // and whatever is already on disk is left alone - so a save that only touched scripts
+            // or textures no longer silently regenerates a level's navmesh, cover, jobs and sound.
             if (!SkipAgentBakes)
             {
-                RunOptionalBake("navmesh", () => NavMeshBaker.BakeLevel(level, this, navMeshSettings));
-                RunOptionalBake("cover", () => CoverBaker.BakeLevel(level, this, coverSettings));
-                RunOptionalBake("job positions", () => JobPositionBaker.BakeLevel(level, jobPositionSettings, Console.WriteLine));
-                RunOptionalBake("sound networks", () => SoundNodeNetworkGenerator.Generate(level, AllEntities, Console.WriteLine));
+                if (navMeshSettings != null)
+                    RunOptionalBake("navmesh", () => NavMeshBaker.BakeLevel(level, this, navMeshSettings));
+                if (coverSettings != null)
+                    RunOptionalBake("cover", () => CoverBaker.BakeLevel(level, this, coverSettings));
+                if (jobPositionSettings != null)
+                    RunOptionalBake("job positions", () => JobPositionBaker.BakeLevel(level, jobPositionSettings, Console.WriteLine));
+                if (soundSettings != null)
+                    RunOptionalBake("sound networks", () => SoundNodeNetworkGenerator.Generate(level, AllEntities, soundSettings, Console.WriteLine));
             }
 
             if (!SkipAlphalightBake)

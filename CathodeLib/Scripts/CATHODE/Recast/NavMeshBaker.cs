@@ -44,9 +44,13 @@ namespace CathodeLib.NavMesh
         public static void BakeLevel(
             Level level,
             Instancing instancing,
-            NavMeshBakeSettings settings = null,
+            NavMeshBakeSettings settings,
             Action<string> log = null)
         {
+            // No settings means the caller did not ask for a navmesh, so nothing is baked and
+            // whatever the level already carries is left untouched.
+            if (settings == null)
+                return;
             if (level == null)
                 throw new ArgumentNullException(nameof(level));
             if (instancing == null)
@@ -55,8 +59,6 @@ namespace CathodeLib.NavMesh
             IReadOnlyList<Instancing.StateProperties> states = instancing.States;
             if (states == null || states.Count == 0)
                 throw new ArgumentException("No state data to bake - needs a full Instancing pass.", nameof(instancing));
-
-            settings ??= NavMeshBakeSettings.CreateDefault();
 
             //State 0 collects the authoring data (seeds, off-mesh links, barriers) that later states reuse.
             CollisionNavMeshSoup sharedAuthoring = null;
@@ -100,7 +102,7 @@ namespace CathodeLib.NavMesh
         {
             if (soup == null)
                 throw new ArgumentNullException(nameof(soup));
-            settings ??= NavMeshBakeSettings.CreateDefault();
+
 
             if (soup.TriangleCount <= 0)
                 throw new InvalidOperationException("No triangles to bake.");
@@ -209,7 +211,7 @@ namespace CathodeLib.NavMesh
 
                 // If seeds only reach a tiny island (common when ExclusiveMaster
                 // excludes large regions), fall through to island cull / keep exclusions.
-                int minKeep = Math.Max(50, polyCount / 10);
+                int minKeep = Math.Max(settings.SeedFilterMinKeepPolys, (int)(polyCount * settings.SeedFilterMinKeepFraction));
                 if (reachableCount >= minKeep)
                 {
                     if (keep == null)

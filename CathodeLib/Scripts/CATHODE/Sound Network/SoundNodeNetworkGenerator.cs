@@ -2,6 +2,7 @@ using CATHODE;
 using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using CathodeLib.Radiosity;
+using CathodeLib.Sound;
 using NanoRT;
 using System;
 using System.Collections.Generic;
@@ -42,52 +43,6 @@ namespace CathodeLib
         private const float MaxLinkDistance = 150.0f;
 
         /// <summary>
-        /// Spacing between two generated nodes, as a multiple of network_node_min_spacing.
-        /// </summary>
-        /// <remarks>
-        /// 1.00 - the authored spacing, used directly. The old 1.30 was fitted on BSP_TORRENS, which
-        /// is one of only six levels with no backstage sheet, at a time when the scatter was also
-        /// filling the alien's ceiling; the surplus those ceiling nodes created is what a wider
-        /// spacing was compensating for. With the sheet excluded, node F1 over five levels reads
-        /// 79.2% at 1.00 against 77.6% at 1.30, and the level that gains most is the one that had
-        /// most ceiling - ENG_Alien_Nest, 64.9% to 73.6%, where 268 nodes against retail's 259 and a
-        /// nearest-neighbour median of 1.58 m against 1.63 both land. BSP_TORRENS still prefers 1.30
-        /// by 2.6 points and is the only level tested that does.
-        /// </remarks>
-        public static float AutoSpacingScale = 1.00f;
-        /// <summary>
-        /// Which points on a navmesh polygon are offered to the fill, and in what order.
-        /// </summary>
-        /// <remarks>
-        /// <para>4 (default) - as 0, but every polygon's centroid is appended after the rest, and
-        /// the fill walks the pending list backwards, so the middle of a piece of floor is taken
-        /// before its edges. Nothing else changes and it is better on every level measured: node F1
-        /// +2.2 on BSP_TORRENS, +1.2 on Tech_RnD_HzdLab, +1.1 on ENG_Alien_Nest, +1.0 on
-        /// DLC/SalvageMode2, +0.6 on DLC/ChallengeMap12, with the node count moving toward retail's
-        /// every time and per-network count agreement never falling. Edge midpoints were only
-        /// winning because of the order they happened to be appended in.</para>
-        /// <para>0 - corners, centroid, edge midpoints and edge-to-centre midpoints, in that order.
-        /// 1 - centroid only. 2 - centroid and corners. 3 - a uniform lattice over the polygon at
-        /// <see cref="CandidateLatticeStep"/>.</para>
-        /// <para>The fill takes every candidate that clears the spacing, so the candidate set sets
-        /// the density. Two alternatives were measured and rejected. Centroids alone (1) is a big
-        /// win exactly where we overshoot retail's node count (+4.1 on DLC/SalvageMode2) and a big
-        /// loss where it is already right (-6.3 on ENG_Alien_Nest, -5.6 on DLC/ChallengeMap12) - a
-        /// fit, not a rule. A uniform lattice (3) is worse than geometry-derived candidates at
-        /// matched node counts on four levels of five, which is itself the finding: retail's node
-        /// positions follow the navmesh, they are not a grid.</para>
-        /// </remarks>
-        public static int CandidateMode = 4;
-
-        /// <summary>Lattice step for CandidateMode 3, as a multiple of the authored spacing.</summary>
-        public static float CandidateLatticeStep = 0.5f;
-
-        /// <summary>
-        /// Scales the per-class cap on how far a marker's network may reach. 0 disables the cap.
-        /// </summary>
-        public static float RoomExtentScale = 1.0f;
-
-        /// <summary>
         /// Furthest a network of each authored <c>room_size</c> class may reach from its marker.
         /// </summary>
         /// <remarks>
@@ -111,7 +66,6 @@ namespace CathodeLib
                 default: return float.MaxValue;
             }
         }
-
 
         /// <summary>
         /// Most surfaces a link may cross before it is dropped rather than merely marked obstructed.
@@ -152,121 +106,24 @@ namespace CathodeLib
         /// </remarks>
         private static readonly Vector3 VisibilityTestHeight = new Vector3(0.0f, 0.5f, 0.0f);
 
-        /// <summary>
-        /// How close two networks' nodes must come for the networks to count as adjoining.
-        /// </summary>
-        /// <remarks>
-        /// <para>Every one of retail's 26 network links on BSP_TORRENS is stored against a node pair
-        /// 1.50 or 1.61 m apart - the spacing of the pair the door_audio prefab puts either side of
-        /// a doorway - and the same 1.5 m spike dominates every level. But the tail matters: fitted
-        /// at two metres this found only 38 of SCI_Hub's 62 boundaries, and because NetworkPaths are
-        /// laid over the connected components of this graph, the missing dozen left 12 networks
-        /// isolated and gave 92 paths against retail's 378.</para>
-        /// <para>Four metres closes it: SCI_Hub comes out at 66 boundaries against 62 and 378 paths
-        /// against 378 exactly, while BSP_TORRENS and ENG_Alien_Nest do not move at all. Solace is
-        /// the one that overshoots, 86 against 56.</para>
-        /// </remarks>
-        public static float AdjoinDistance = 4.0f;
-        /// <summary>
-        /// Whether a sealed network - one no marker reached, so written with no name and no reverb -
-        /// may hold a boundary. 0 never (default), 1 only when it holds at most
-        /// <see cref="SealedLinkMaxNodes"/> nodes, 2 always, 3 only when a barrier sits at the
-        /// crossing.
-        /// </summary>
-        /// <remarks>
-        /// <para>Retail is not uniform about this and the pattern is exact at one end: across all 32
-        /// shipped files, **every one of the 100 one-node sealed networks holds a boundary**, and
-        /// the share falls away immediately above that - 37% at two nodes, 26% at three, 0% at six.
-        /// A one-node sealed network is the lone door node in a doorway that no marker claimed;
-        /// larger ones are sealed pockets. That is why BSP_TORRENS gives all five of its sealed
-        /// networks no link and no path while DLC/ChallengeMap12 links ten of its eleven.
-        /// `diag sealedlinks` prints the table.</para>
-        /// <para>**It is still off by default, because the rule is about retail's sealed networks
-        /// and ours are not the same population.** We generate more of them (BSP_TORRENS 9 against
-        /// retail's 5, DLC/SalvageMode2 7 against 4), so admitting them adds boundaries retail does
-        /// not have. Measured over five levels, paths against retail: mode 0 gives 210/438, 78/78,
-        /// 780/781, 55/66, 254/276 - total absolute error 262. Mode 1 gives 351/438, 105/78,
-        /// 946/781, 66/66 and 326/276 - error 329. It halves ChallengeMap12's deficit and lands
-        /// ENG_Alien_Nest exactly, and pays for it by breaking SalvageMode2, which mode 0 gets to
-        /// within one path. Turning this on is worth revisiting once our sealed-network count
-        /// matches retail's; that, not the linking rule, is the defect.</para>
-        /// <para>Mode 3 was tried on the theory that the door is the qualification: it barely
-        /// filters anything (ChallengeMap12 comes out identical to mode 2) and is worse than 1.</para>
-        /// </remarks>
-        public static int SealedNetworkLinking = 0;
-
-        /// <summary>
-        /// How a marker claims its first nodes. 0 - the nearest node it can see, seeded at cost zero.
-        /// 1 - every node it can see, each seeded at its straight-line distance.
-        /// </summary>
-        public static int MarkerSeedMode = 0;
-
-        /// <summary>
-        /// Leave the PATH_CLOSED collider of a door out of the sound occluder soup, so a doorway
-        /// does not seal a node off from the room it stands in. The radiosity bake already treats
-        /// doors as open for the same reason.
-        /// </summary>
-        public static bool SkipDoorBarriers = false;
-
-        /// <summary>
-        /// Leave CollisionBarrier volumes out of the sound occluder soup - see
-        /// <see cref="GameplayBarrierInstances"/>.
-        /// </summary>
-        public static bool SkipGameplayBarriers = true;
-
-        /// <summary>
-        /// Drop an authored node that can see no other node AND has no navmesh beneath it - see
-        /// <see cref="DiscardOrphanedManualNodes"/>.
-        /// </summary>
-        /// <remarks>
-        /// **OFF, because it does not generalise.** It is exact on BSP_TORRENS - the two nodes it
-        /// drops are precisely the two retail omits, taking that level to 18 networks against
-        /// retail's 18 - and it moves DLC/SalvageMode2 one closer. But on DLC/ChallengeMap12 seven
-        /// nodes are both blind and floorless and retail KEEPS FOUR of them, giving them 8, 23 and
-        /// even 50 links of its own; the level goes from 32 networks to 26 against retail's 34.
-        /// ENG_Alien_Nest loses its exact 13. Every refinement tried fails too: distance to navmesh
-        /// does not separate them (ChallengeMap12 drops one at 1.28 m and keeps one at 1.90 m), nor
-        /// does solid collision beneath (it keeps two with nothing below and drops two with floor at
-        /// 0.43 m). Our "sees nothing" is partly a measure of our own occlusion rather than of the
-        /// level, since retail links these nodes freely and records the obstruction.
-        /// </remarks>
-        public static bool DiscardOrphanNodes = false;
-
-        /// <summary>
-        /// Keep a group of nodes the marker flood never reached, as a nameless network with no
-        /// reverb. False discards them outright.
-        /// </summary>
-        public static bool KeepUnreachedNodes = true;
-
-        /// <summary>
-        /// Drop a network that links to nothing and holds fewer than two nodes. Retail ships none:
-        /// 0 of 1,364 networks across all 32 levels.
-        /// </summary>
-        public static bool DropLinklessSingletons = true;
-
-        /// <summary>
-        /// Free space, in metres, under which a sealed pocket counts as a container standing in a
-        /// room rather than a passage of its own, and is folded into the room. 0 disables it.
-        /// </summary>
-        /// <remarks>
-        /// **Off, because it does not work.** The idea was that a vent duct or ladder shaft runs
-        /// away from you and the inside of a hiding cupboard does not, so free space would tell a
-        /// container from a passage. On BSP_TORRENS it does not: its vents are floor STUBS, and
-        /// `Vent_Floor_Filler` measures 1.9 m of free space - exactly what a hiding cupboard
-        /// measures. At 2.0 m the rule folds five pockets, three of them vents retail keeps sealed;
-        /// at 1.5 m it folds one, and that one is a vent as well, while both cupboards stay out.
-        /// It gets the wrong answer at every threshold. See rule 19 in the notes: the discriminator
-        /// is prefab identity, not shape.
-        /// </remarks>
-        public static float EnclosedPocketExtent = 0.0f;
-
-        /// <summary>Largest sealed network that may hold a boundary under SealedNetworkLinking 1.</summary>
-        public static int SealedLinkMaxNodes = 1;
-
         private static readonly ShortGuid DisableNetworkCreation = ShortGuidUtils.Generate("disable_network_creation");
 
-        public static void Generate(Level level, IEnumerable<InstancedEntity> entities, Action<string> log = null)
+        /// <summary>
+        /// The settings the running bake was given. The generator is a static pipeline whose
+        /// helpers all read the same knobs, and a bake is not re-entrant, so one field is enough -
+        /// Generate sets it before it does anything else.
+        /// </summary>
+        private static SoundNetworkBakeSettings _settings = new SoundNetworkBakeSettings();
+
+        /// <summary>
+        /// Build the level's sound node networks. Passing null settings does nothing at all,
+        /// which is how a caller opts out of the bake and keeps whatever is already on disk.
+        /// </summary>
+        public static void Generate(Level level, IEnumerable<InstancedEntity> entities, SoundNetworkBakeSettings settings, Action<string> log = null)
         {
+            if (settings == null) return;
+            _settings = settings;
+
             if (level?.SoundNodeNetwork == null) return;
 
             var markers = new List<InstancedEntity>();
@@ -311,10 +168,10 @@ namespace CathodeLib
             // sealed-pocket report can name what is doing the blocking.
             List<CollisionMaps.CollisionFlags> occluderFlags = log == null ? null : new List<CollisionMaps.CollisionFlags>();
             HashSet<HavokPackfile.CompoundInstance> gameplayBarriers =
-                SkipGameplayBarriers ? GameplayBarrierInstances(level, entities) : null;
+                _settings.SkipGameplayBarriers ? GameplayBarrierInstances(level, entities) : null;
             if (gameplayBarriers != null && gameplayBarriers.Count > 0)
                 log?.Invoke("Sound occluders: ignoring " + gameplayBarriers.Count + " CollisionBarrier volume(s) - they stop the player, not sound");
-            if (RadiosityOccluders.TryCollect(level, null, out float[] verts, out int[] tris, log, true, occluderFlags, SkipDoorBarriers, null, gameplayBarriers) &&
+            if (RadiosityOccluders.TryCollect(level, null, out float[] verts, out int[] tris, log, true, occluderFlags, _settings.SkipDoorBarriers, null, gameplayBarriers) &&
                 tris != null && tris.Length >= 3)
             {
                 occluders = new BVHAccel();
@@ -412,7 +269,7 @@ namespace CathodeLib
             // removes the last spurious pockets - on BSP_TORRENS the two nodes a door package puts
             // on the far side of a fake corridor door, out in the abyss.
             int linkless = 0;
-            if (DropLinklessSingletons)
+            if (_settings.DropLinklessSingletons)
                 linkless = networks.RemoveAll(o => o.Nodes.Count > 0 && o.Nodes.Count < 2 && o.LinkedNetworks.Count == 0);
             if (linkless > 0)
                 log?.Invoke("Sound networks: dropped " + linkless + " network(s) of one node with no link to anything.");
@@ -437,7 +294,7 @@ namespace CathodeLib
         /// boundary's crossings in all 26 cases - of up to 71 candidates. The endpoints come out
         /// 1.50 m apart, which is the spacing of the node pairs the door_audio prefab puts either
         /// side of a doorway, and the nearest collision mapping to each midpoint is a door.</para>
-        /// <para>Two networks adjoin only when their nodes come within <see cref="AdjoinDistance"/>
+        /// <para>Two networks adjoin only when their nodes come within <see cref="SoundNetworkBakeSettings.AdjoinDistance"/>
         /// of each other. Our link set reaches further than retail's, so counting every crossing
         /// declared 35 boundaries against its 13. Requiring a clear line of sight instead declares
         /// none at all, which is itself the tell: a boundary between two rooms is a doorway, and the
@@ -465,9 +322,9 @@ namespace CathodeLib
             // pocket. ChallengeMap12's own 3-node sealed network has no link either.
             var eligible = new bool[networks.Count];
             for (int i = 0; i < networks.Count; i++)
-                eligible[i] = i < markerNetworks || SealedNetworkLinking == 2 ||
-                              SealedNetworkLinking == 3 ||
-                              (SealedNetworkLinking == 1 && networks[i].Nodes.Count <= SealedLinkMaxNodes);
+                eligible[i] = i < markerNetworks || _settings.SealedNetworkLinking == 2 ||
+                              _settings.SealedNetworkLinking == 3 ||
+                              (_settings.SealedNetworkLinking == 1 && networks[i].Nodes.Count <= _settings.SealedLinkMaxNodes);
 
             // Shortest crossing per pair of networks.
             //
@@ -479,7 +336,7 @@ namespace CathodeLib
             var shortest = new Dictionary<(int, int), (int a, int b, float dist)>();
             {
                 var grid = new Dictionary<(int, int, int), List<int>>();
-                float cell = Math.Max(AdjoinDistance, 0.5f);
+                float cell = Math.Max(_settings.AdjoinDistance, 0.5f);
                 for (int i = 0; i < nodes.Length; i++)
                 {
                     if (nodes[i] == null || owner[i] < 0 || !eligible[owner[i]]) continue;
@@ -503,7 +360,7 @@ namespace CathodeLib
                                     int a = owner[i], b = owner[j];
                                     if (a == b) continue;
                                     float dist = Vector3.Distance(nodes[i].Position, nodes[j].Position);
-                                    if (dist > AdjoinDistance) continue;
+                                    if (dist > _settings.AdjoinDistance) continue;
 
                                     var key = a < b ? (a, b) : (b, a);
                                     int lo = a < b ? i : j, hi = a < b ? j : i;
@@ -530,7 +387,7 @@ namespace CathodeLib
                 // the crossing. The sealed networks retail links are door nodes - the lone node in
                 // a doorway that no marker claimed - so the door itself is the qualification, not
                 // the size of the network.
-                if (SealedNetworkLinking == 3 && barrier == 0u &&
+                if (_settings.SealedNetworkLinking == 3 && barrier == 0u &&
                     (a >= markerNetworks || b >= markerNetworks)) continue;
 
                 if (barrier == 0u) unbarriered++;
@@ -568,7 +425,6 @@ namespace CathodeLib
 
         private static (int, int, int) CellOf(Vector3 p, float cell) =>
             ((int)Math.Floor(p.X / cell), (int)Math.Floor(p.Y / cell), (int)Math.Floor(p.Z / cell));
-
 
         /// <summary>
         /// Collision instances owned by CollisionBarrier entities - invisible volumes that stop the
@@ -655,14 +511,14 @@ namespace CathodeLib
         /// them in 'Torrens Bridge'. Someone hiding in a locker hears the room.</para>
         /// <para>A duct or a shaft runs away from you in some direction; the inside of a cupboard
         /// does not. So the test is free space: cast along all six axes from every node in the
-        /// pocket, and if nothing can see further than <see cref="EnclosedPocketExtent"/> in ANY
+        /// pocket, and if nothing can see further than <see cref="SoundNetworkBakeSettings.EnclosedPocketExtent"/> in ANY
         /// direction, the pocket is a container standing in a room and its nodes join the network of
         /// the nearest node that has one.</para>
         /// </remarks>
         private static int AbsorbEnclosedPockets(List<Vector3> positions, int[] owner, int markerNetworks,
                                                  BVHAccel occluders, Action<string> log)
         {
-            if (EnclosedPocketExtent <= 0.0f || occluders == null) return 0;
+            if (_settings.EnclosedPocketExtent <= 0.0f || occluders == null) return 0;
 
             var owned = new List<int>();
             for (int i = 0; i < positions.Count; i++)
@@ -692,11 +548,11 @@ namespace CathodeLib
                 foreach (int node in group.Value)
                     foreach (Vector3 axis in axes)
                     {
-                        var ray = new Ray(positions[node], axis, 0.0f, EnclosedPocketExtent * 2.0f);
-                        float free = occluders.Traverse(ray: ref ray, hit: out Hit hit) ? hit.T : EnclosedPocketExtent * 2.0f;
+                        var ray = new Ray(positions[node], axis, 0.0f, _settings.EnclosedPocketExtent * 2.0f);
+                        float free = occluders.Traverse(ray: ref ray, hit: out Hit hit) ? hit.T : _settings.EnclosedPocketExtent * 2.0f;
                         if (free > widest) widest = free;
                     }
-                if (widest > EnclosedPocketExtent) continue;
+                if (widest > _settings.EnclosedPocketExtent) continue;
 
                 // Join the network of the nearest node that already has one.
                 int best = -1;
@@ -936,7 +792,7 @@ namespace CathodeLib
         private static int DiscardOrphanedManualNodes(Level level, List<Vector3> positions, int manualCount,
                                                       BVHAccel occluders, Action<string> log)
         {
-            if (!DiscardOrphanNodes || manualCount <= 0 || occluders == null) return 0;
+            if (!_settings.DiscardOrphanNodes || manualCount <= 0 || occluders == null) return 0;
 
             NavigationMesh nav = level?.StateResources != null && level.StateResources.Count > 0
                 ? level.StateResources[0].NavMesh : null;
@@ -1030,7 +886,7 @@ namespace CathodeLib
                                                List<SoundNodeNetwork.NetworkInfo> networks, ref int[] owner)
         {
             var hasManual = new bool[networks.Count];
-            if (KeepUnreachedNodes)
+            if (_settings.KeepUnreachedNodes)
                 for (int i = 0; i < manualCount; i++) hasManual[owner[i]] = true;
 
             // Networks survive if they came from a marker or hold a hand-placed node. Renumbering
@@ -1133,7 +989,7 @@ namespace CathodeLib
                 // against retail's 0 of 259, all at y 7.05 where retail's sit at 1.1-1.5.
                 if (poly.area.GetPolyType() != NavigationMesh.dtPolyTypes.DT_POLYTYPE_GROUND) continue;
                 if (((uint)poly.area.GetMarkupFlags() & 2u) != 0) continue;
-                if (CandidateMode == 3)
+                if (_settings.CandidateMode == 3)
                 {
                     // Sample the polygon on a lattice of its own, so how many candidates a piece of
                     // floor offers depends on its AREA and not on how finely Recast happened to cut
@@ -1141,7 +997,7 @@ namespace CathodeLib
                     // on DLC/SalvageMode2, finely cut, the fill reaches 96% of a perfect hexagonal
                     // packing at the authored spacing, while ENG_Alien_Nest's big open polygons only
                     // reach 79% - so the same authored spacing produced two different densities.
-                    float step = Math.Max(0.25f, minSpacing * CandidateLatticeStep);
+                    float step = Math.Max(0.25f, minSpacing * _settings.CandidateLatticeStep);
                     for (int t = 1; t + 1 < poly.vertCount; t++)
                     {
                         int i0 = poly.verts[0], i1 = poly.verts[t], i2 = poly.verts[t + 1];
@@ -1165,14 +1021,14 @@ namespace CathodeLib
                     int index = poly.verts[i];
                     if (index < 0 || index >= nav.Vertices.Length) continue;
                     Vector3 vertex = nav.Vertices[index];
-                    if (CandidateMode != 1) candidates.Add(vertex);
+                    if (_settings.CandidateMode != 1) candidates.Add(vertex);
                     centre += vertex;
                     count++;
                 }
                 if (count == 0) continue;
                 centre /= count;
-                if (CandidateMode == 4) cores.Add(centre); else candidates.Add(centre);
-                if (CandidateMode != 0 && CandidateMode != 4) continue;
+                if (_settings.CandidateMode == 4) cores.Add(centre); else candidates.Add(centre);
+                if (_settings.CandidateMode != 0 && _settings.CandidateMode != 4) continue;
                 for (int i = 0; i < poly.vertCount; i++)
                 {
                     int a = poly.verts[i], b = poly.verts[(i + 1) % poly.vertCount];
@@ -1233,7 +1089,7 @@ namespace CathodeLib
             seedCount = Math.Max(seedCount, accepted.Count);
 
             int added = 0;
-            float autoMinSq = (minSpacing * AutoSpacingScale) * (minSpacing * AutoSpacingScale);
+            float autoMinSq = (minSpacing * _settings.AutoSpacingScale) * (minSpacing * _settings.AutoSpacingScale);
             bool progress = true;
             while (progress)
             {
@@ -1414,7 +1270,7 @@ namespace CathodeLib
             // beside the bridge come out sealed while retail has those exact positions in 'Torrens
             // Bridge'. Seeding at distance rather than zero keeps the marker that is actually in a
             // room ahead of one peering in through a window from further away.
-            if (MarkerSeedMode == 1)
+            if (_settings.MarkerSeedMode == 1)
                 for (int m = 0; m < markers.Count; m++)
                 {
                     if (blind[m]) continue;
@@ -1440,10 +1296,10 @@ namespace CathodeLib
 
                 int reaching = owner[node];
                 float cap = float.MaxValue;
-                if (RoomExtentScale > 0.0f && reaching >= 0 && reaching < markers.Count && reaching < networks.Count)
+                if (_settings.RoomExtentScale > 0.0f && reaching >= 0 && reaching < markers.Count && reaching < networks.Count)
                 {
                     float classCap = ExtentCap(networks[reaching].RoomSizeValue);
-                    if (classCap < float.MaxValue) cap = classCap * RoomExtentScale;
+                    if (classCap < float.MaxValue) cap = classCap * _settings.RoomExtentScale;
                 }
 
                 foreach (var (to, step) in adjacency[node])

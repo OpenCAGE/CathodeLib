@@ -10,7 +10,18 @@ namespace CathodeLib.NavMesh
         public float DeepCrouchHeight = 0.875f;
         public float CrouchHeight = 1.625f;
         public float WalkableRadius = 0.3125f;
-        public float WalkableSlopeAngle = 40.0f;
+        /// <summary>
+        /// Steepest surface Recast will call walkable.
+        /// </summary>
+        /// <remarks>
+        /// 38, not the 40 this used to be. ENG_TowPlatform's exterior hull plating sits at about
+        /// 38.2 degrees: at 40 Recast covers it and the level bakes 19,198 m2 of navmesh against
+        /// retail's 9,413, at 38 it bakes 9,058 and the match goes from 63.1% to 97.7%. The cliff is
+        /// between 38.0 and 38.5 and nothing else in the campaign is near it - swept over all 32
+        /// levels, 38 costs BSP_LV426_Pt02 1.1 points and BSP_Torrens 0.3, and moves no other level
+        /// by more than 0.2.
+        /// </remarks>
+        public float WalkableSlopeAngle = 38.0f;
         public float MaxContourError = 1.3f;
         public float MaxEdgeLength = 10.0f;
         public int MaxVertsInPolyMeshTriangle = 6;
@@ -36,6 +47,17 @@ namespace CathodeLib.NavMesh
         public bool CullUnseededIslands = true;
 
         /// <summary>
+        /// The seed flood is only trusted if it reaches at least this many polys, or this fraction
+        /// of the mesh, whichever is larger. Below that the level is assumed to be seeded for a
+        /// sub-region only (ExclusiveMaster levels do this) and the filter is skipped. Set both to
+        /// zero to always trust the seeds.
+        /// </summary>
+        public int SeedFilterMinKeepPolys = 50;
+
+        /// <summary>See <see cref="SeedFilterMinKeepPolys"/>.</summary>
+        public float SeedFilterMinKeepFraction = 0.1f;
+
+        /// <summary>
         /// Half-height (metres) around the primary floor component median Y used by
         /// <see cref="CullUnseededIslands"/>.
         /// </summary>
@@ -45,6 +67,28 @@ namespace CathodeLib.NavMesh
         /// Skip COLLISION.MAP rows flagged GHOSTED / PRE_GHOSTED when building the Recast soup.
         /// </summary>
         public bool SkipGhostedCollision = true;
+
+        /// <summary>
+        /// Skip the collision instances of PATH_CLOSED NavMeshBarriers, which are carved as area ids
+        /// instead. Diagnostic switch: turning it off shows whether the barrier-to-instance
+        /// resolution is taking real floor with it.
+        /// </summary>
+        public bool SkipBarrierCollision = true;
+
+        /// <summary>
+        /// Skip collision instances typed SOUND as well as SOUND_BARRIER. Both exist only for sound
+        /// node network occlusion and neither is navigation geometry, so both stay out of the soup.
+        /// Including SOUND was measured and is wrong: it costs Solace 2.2 points of navmesh because
+        /// those instances are room-shaped occlusion hulls that carve real floor away (786 polys down
+        /// to 721).
+        /// </summary>
+        public bool SkipSoundFlaggedCollision = true;
+
+        /// <summary>
+        /// Skip PLAYER_ONLY collision when building the Recast soup - the invisible surfaces that
+        /// exist to keep Ripley somewhere, which no AI ever touches.
+        /// </summary>
+        public bool SkipPlayerOnlyCollision = false;
 
         /// <summary>
         /// Skip small bake-host <c>hkpBoxShape</c> colliders (crate-scale props) from the Recast

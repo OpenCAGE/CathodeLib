@@ -400,11 +400,18 @@ namespace CathodeLib
         /// <summary>
         /// Save all data for the level
         /// </summary>
+        /// <remarks>
+        /// The navmesh, cover, job position, sound network and radiosity bakes are all opt-in: pass
+        /// a system's settings to rebuild it, pass null (the default) to leave whatever is already
+        /// on disk alone, so a save that only changed scripts or textures does not quietly
+        /// regenerate a level's AI data. Alphalight is the exception - it still runs on every
+        /// instancing pass and is suppressed only by <see cref="Instancing.SkipAlphalightBake"/>.
+        /// </remarks>
 #if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
-        public void Save(bool doInstancing = false, NavMesh.NavMeshBakeSettings navMeshSettings = null, NavMesh.CoverBakeSettings coverSettings = null, Radiosity.RadiosityBakeSettings radiositySettings = null, NavMesh.JobPositionBakeSettings jobPositionSettings = null, Alphalight.AlphalightBakeSettings alphalightSettings = null)
+        public void Save(bool doInstancing = false, NavMesh.NavMeshBakeSettings navMeshSettings = null, NavMesh.CoverBakeSettings coverSettings = null, Radiosity.RadiosityBakeSettings radiositySettings = null, NavMesh.JobPositionBakeSettings jobPositionSettings = null, Alphalight.AlphalightBakeSettings alphalightSettings = null, Sound.SoundNetworkBakeSettings soundSettings = null)
         {
             if (doInstancing)
-                new Instancing(this, navMeshSettings, coverSettings, radiositySettings, jobPositionSettings, alphalightSettings);
+                new Instancing(this, navMeshSettings, coverSettings, radiositySettings, jobPositionSettings, alphalightSettings, soundSettings);
 #else
         public void Save()
         {
