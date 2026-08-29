@@ -32,6 +32,8 @@ namespace CathodeLib
             MAC_LINUX,
 
             UNKNOWN
+
+            //This is used like a flag in some instances, so only append values.
         }
 
         /// <summary>

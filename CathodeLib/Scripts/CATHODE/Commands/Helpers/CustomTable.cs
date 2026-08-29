@@ -1431,13 +1431,28 @@ namespace CathodeLib
 
         public class Entry
         {
-            public string Path;   //Relative to the game root, forward slashes, uppercase
+            public string Path; //Relative to the game root, forward slashes, uppercase
             public long Size;
             public byte[] Sha256; //32 bytes
+            public int Platforms; //Bitmask of PlatformBit(PatchManager.Platform) values
+
+            public bool SameContent(long size, byte[] sha256)
+            {
+                if (Size != size || Sha256 == null || sha256 == null || Sha256.Length != sha256.Length)
+                    return false;
+                for (int i = 0; i < sha256.Length; i++)
+                    if (Sha256[i] != sha256[i])
+                        return false;
+                return true;
+            }
         }
 
-        //Hash sets keyed by the shipped build they describe (e.g. "STEAM_PC"), then by normalised path
-        public Dictionary<string, Dictionary<string, Entry>> sets = new Dictionary<string, Dictionary<string, Entry>>();
+        public static int PlatformBit(PatchManager.Platform platform)
+        {
+            return 1 << (int)platform;
+        }
+
+        public Dictionary<string, List<Entry>> files = new Dictionary<string, List<Entry>>();
 
         /// <summary>
         /// The one true spelling of a path in this table: relative to the game root, forward slashes, uppercase.
@@ -1447,60 +1462,86 @@ namespace CathodeLib
             return (path ?? "").Replace('\\', '/').TrimStart('/').ToUpperInvariant();
         }
 
-        public Entry Lookup(string set, string path)
+        /// <summary>
+        /// Get the expected hash info for a file on the given platform.
+        /// </summary>
+        public Entry Lookup(PatchManager.Platform platform, string path)
         {
-            Dictionary<string, Entry> entries;
-            if (!sets.TryGetValue(set, out entries))
+            List<Entry> variants;
+            if (!files.TryGetValue(NormalisePath(path), out variants))
                 return null;
-            Entry entry;
-            entries.TryGetValue(NormalisePath(path), out entry);
+            int bit = PlatformBit(platform);
+            for (int i = 0; i < variants.Count; i++)
+                if ((variants[i].Platforms & bit) != 0)
+                    return variants[i];
+            return null;
+        }
+
+        /// <summary>
+        /// Record that the given platforms ship these bytes for this path. 
+        /// </summary>
+        public Entry Merge(int platformMask, string path, long size, byte[] sha256)
+        {
+            string normalised = NormalisePath(path);
+            List<Entry> variants;
+            if (!files.TryGetValue(normalised, out variants))
+                files[normalised] = variants = new List<Entry>();
+            for (int i = 0; i < variants.Count; i++)
+            {
+                if (variants[i].SameContent(size, sha256))
+                {
+                    variants[i].Platforms |= platformMask;
+                    return variants[i];
+                }
+            }
+            Entry entry = new Entry() { Path = normalised, Size = size, Sha256 = sha256, Platforms = platformMask };
+            variants.Add(entry);
             return entry;
         }
 
         public override void Read(BinaryReader reader)
         {
-            sets.Clear();
+            files.Clear();
 
             if (reader == null)
                 return;
 
-            /* An absent table is stored as a single zero int32, and that can be the last thing in
-             * the file - so nothing further may be read until the version says the table is real */
             int version = reader.ReadInt32();
-            if (version <= 0)
+            if (version < 2)
                 return;
 
-            int setCount = reader.ReadInt32();
-            for (int i = 0; i < setCount; i++)
+            int fileCount = reader.ReadInt32();
+            for (int i = 0; i < fileCount; i++)
             {
-                string setName = reader.ReadString();
-                int entryCount = reader.ReadInt32();
-                Dictionary<string, Entry> entries = new Dictionary<string, Entry>(entryCount);
-                for (int x = 0; x < entryCount; x++)
+                string path = reader.ReadString();
+                int variantCount = reader.ReadInt32();
+                List<Entry> variants = new List<Entry>(variantCount);
+                for (int x = 0; x < variantCount; x++)
                 {
                     Entry entry = new Entry();
-                    entry.Path = reader.ReadString();
+                    entry.Path = path;
+                    entry.Platforms = reader.ReadInt32();
                     entry.Size = reader.ReadInt64();
                     entry.Sha256 = reader.ReadBytes(32);
-                    entries[entry.Path] = entry;
+                    variants.Add(entry);
                 }
-                sets[setName] = entries;
+                files[path] = variants;
             }
         }
 
         public override void Write(BinaryWriter writer)
         {
-            writer.Write((Int32)1);
-            writer.Write(sets.Count);
-            foreach (KeyValuePair<string, Dictionary<string, Entry>> set in sets)
+            writer.Write((Int32)2);
+            writer.Write(files.Count);
+            foreach (KeyValuePair<string, List<Entry>> file in files)
             {
-                writer.Write(set.Key ?? string.Empty);
-                writer.Write(set.Value.Count);
-                foreach (KeyValuePair<string, Entry> entry in set.Value)
+                writer.Write(file.Key ?? string.Empty);
+                writer.Write(file.Value.Count);
+                foreach (Entry entry in file.Value)
                 {
-                    writer.Write(entry.Value.Path ?? string.Empty);
-                    writer.Write(entry.Value.Size);
-                    writer.Write(entry.Value.Sha256);
+                    writer.Write(entry.Platforms);
+                    writer.Write(entry.Size);
+                    writer.Write(entry.Sha256);
                 }
             }
         }
