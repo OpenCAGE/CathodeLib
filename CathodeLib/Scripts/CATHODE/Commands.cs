@@ -174,6 +174,13 @@ namespace CATHODE
                 var functions = Entries[i].functions_dictionary.Values;
                 Parallel.ForEach(functions, function =>
                 {
+                    if (function.resources != null)
+                        function.resources.RemoveAll(r => r.resource_type == ResourceType.RENDERABLE_INSTANCE && (r.RenderableInstance == null || r.RenderableInstance.Count == 0));
+                    if (function.parameters != null)
+                        foreach (Parameter param in function.parameters)
+                            if (param?.content is cResource paramResource && paramResource.value != null)
+                                paramResource.value.RemoveAll(r => r.resource_type == ResourceType.RENDERABLE_INSTANCE && (r.RenderableInstance == null || r.RenderableInstance.Count == 0));
+                    
                     if (function.function.IsFunctionType)
                     {
                         switch (function.function.AsFunctionType)
