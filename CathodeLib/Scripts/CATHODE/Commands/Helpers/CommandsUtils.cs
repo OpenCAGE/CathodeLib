@@ -1667,6 +1667,13 @@ namespace CATHODE.Scripting
         }
 
         /// <summary>
+        /// True when any composite carries OpenCAGE modification metadata - i.e. this level has
+        /// been edited by the tool at some point, so shipped compiler outputs can no longer be
+        /// assumed to reflect the current Commands.
+        /// </summary>
+        public bool HasAnyModificationInfo => _modificationInfo?.modification_info?.Count > 0;
+
+        /// <summary>
         /// Get the modification metadata for a composite (if it exists)
         /// </summary>
         public CompositeModificationInfoTable.ModificationInfo GetModificationInfo(Composite composite) => GetModificationInfo(composite.shortGUID);

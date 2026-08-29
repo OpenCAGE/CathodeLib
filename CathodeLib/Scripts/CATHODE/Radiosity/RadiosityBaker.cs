@@ -826,7 +826,19 @@ namespace CathodeLib.Radiosity
 
             // Delta mode: keep the shipped radiosity and patch only what the edit invalidated.
             if (settings.PatchRetailRuntime)
+            {
+                // Patch is the product DEFAULT, so a level whose runtime is missing or already
+                // wiped (older library versions cleared radiosity on every instanced save) must
+                // not fail the whole save - warn and leave the radiosity files untouched; a
+                // full regeneration stays an explicit request (PatchRetailRuntime = false).
+                if (level.RadiosityRuntime == null || level.RadiosityRuntime.Slices == null ||
+                    level.RadiosityRuntime.Slices.Count == 0)
+                {
+                    log?.Invoke("Radiosity patch: RADIOSITY_RUNTIME.BIN is missing or empty - nothing to patch, radiosity left as-is (set PatchRetailRuntime=false for a full bake)");
+                    return new BakeResult();
+                }
                 return RadiosityPatcher.PatchLevel(level, settings, log);
+            }
 
             RadiosityGeometry geometry = RadiosityGeometry.CollectFromLevel(level, settings, log);
             if (geometry.TriangleCount == 0)
@@ -5682,6 +5694,14 @@ namespace CathodeLib.Radiosity
                     // MOST-HIT candidate: solid-angle dominance makes a room's probes converge
                     // on its dominant clusters (retail's shared read sets, readN median 8-12
                     // vs our flat 19-23) while the strata preserve the distance histogram.
+                    // Within-stratum rank: raw hit count (hemi9). The area estimate hits*d^2
+                    // was tried (hemi12) on the coreid read-from-far signature and FALSIFIED
+                    // on all three corners - CM3 stayed broken (1.259), Solace worsened, and
+                    // SCI_Hub re-whiteouted (4.83): the raw solid-angle concentration is
+                    // specifically what damps the knee there, area concentration is not.
+                    // Raw hits remain the best-known dominance; note the CM3 tension (quantile
+                    // 1.035 vs any dominance ~1.25) is still unresolved - retail's one rule
+                    // satisfies both and its key is still undecoded.
                     if (scored.Count > InfluencesPerProbe)
                     {
                         var thinned = new List<(int cluster, float meanDist, byte weight, int hits)>(InfluencesPerProbe);

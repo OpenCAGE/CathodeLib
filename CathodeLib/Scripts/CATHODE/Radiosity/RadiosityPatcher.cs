@@ -191,8 +191,12 @@ namespace CathodeLib.Radiosity
             // Rigid group move detection: when the moved movers overwhelmingly share one
             // translation (a shifted room or a shifted level), delta probes should reference
             // the retail lighting of the place the group CAME FROM - set the calibration
-            // offset to map their positions back.
-            if (movedDeltas.Count > 0)
+            // offset to map their positions back. A minimum cohort guards it: a duplicated
+            // environment manufactures 2-3 PHANTOM "moves" (added movers whose GUID pair
+            // collides with a pristine mover's), and on Torrens their consensus pointed 30m
+            // away from the true copy translation - every delta probe missed the retail exp
+            // mass and the whole duplicate whited out at the flat fallback bias.
+            if (movedDeltas.Count >= 8)
             {
                 var sx = new List<float>(); var sy = new List<float>(); var sz = new List<float>();
                 foreach (System.Numerics.Vector3 d in movedDeltas) { sx.Add(d.X); sy.Add(d.Y); sz.Add(d.Z); }
@@ -207,6 +211,57 @@ namespace CathodeLib.Radiosity
                     log?.Invoke("Radiosity patch census: rigid group move " + median.Length().ToString("0.0") +
                                 "m shared by " + agree + "/" + movedDeltas.Count +
                                 " moved movers - delta calibration references the original position");
+                }
+            }
+
+            // Added-group provenance: a duplicated environment's movers are NEW to the census
+            // (fresh composite instance GUIDs) but each shares its resource_id with the
+            // pristine mover it was copied from. Where the pristine level places that resource
+            // exactly once the pairing is unambiguous, and every such added mover votes for
+            // the translation it was copied across - a duplicate casts thousands of identical
+            // votes where the phantom collisions above cast 2. Genuinely new content scatters
+            // its votes and never reaches consensus, leaving the offset at zero (in-place
+            // calibration, the pre-existing behaviour).
+            if (settings.DeltaCalibrationOffset == System.Numerics.Vector3.Zero &&
+                settings.RetailTransforms != null && deltaMovers.Count > 0)
+            {
+                var ridCount = new Dictionary<uint, int>();
+                var ridPos = new Dictionary<uint, System.Numerics.Vector3>();
+                foreach (KeyValuePair<ulong, System.Numerics.Matrix4x4> kv in settings.RetailTransforms)
+                {
+                    uint rid = (uint)kv.Key;
+                    ridCount[rid] = ridCount.TryGetValue(rid, out int c) ? c + 1 : 1;
+                    ridPos[rid] = new System.Numerics.Vector3(kv.Value.M41, kv.Value.M42, kv.Value.M43);
+                }
+                var votes = new List<System.Numerics.Vector3>();
+                foreach (int mi in deltaMovers)
+                {
+                    Movers.MOVER_DESCRIPTOR mv = level.Movers.Entries[mi];
+                    if (mv.Resource == null) continue;
+                    uint rid = mv.Resource.resource_id.AsUInt32;
+                    if (!ridCount.TryGetValue(rid, out int c) || c != 1) continue;
+                    // ADDED movers only: a full-key hit means the census matched this mover as
+                    // moved (or a phantom collision) - either way it is not provenance evidence.
+                    ulong key = ((ulong)mv.Resource.composite_instance_id.AsUInt32 << 32) | rid;
+                    if (settings.RetailTransforms.ContainsKey(key)) continue;
+                    votes.Add(new System.Numerics.Vector3(mv.Transform.M41, mv.Transform.M42, mv.Transform.M43) - ridPos[rid]);
+                }
+                if (votes.Count >= 24)
+                {
+                    var vx = new List<float>(); var vy = new List<float>(); var vz = new List<float>();
+                    foreach (System.Numerics.Vector3 d in votes) { vx.Add(d.X); vy.Add(d.Y); vz.Add(d.Z); }
+                    vx.Sort(); vy.Sort(); vz.Sort();
+                    var median = new System.Numerics.Vector3(vx[vx.Count / 2], vy[vy.Count / 2], vz[vz.Count / 2]);
+                    int agree = 0;
+                    foreach (System.Numerics.Vector3 d in votes)
+                        if ((d - median).Length() < 0.25f) agree++;
+                    if (median.Length() > 1.0f && agree >= votes.Count * 8 / 10)
+                    {
+                        settings.DeltaCalibrationOffset = -median;
+                        log?.Invoke("Radiosity patch census: added group copied " + median.Length().ToString("0.0") +
+                                    "m shared by " + agree + "/" + votes.Count +
+                                    " added movers - delta calibration references the copied-from position");
+                    }
                 }
             }
             // A rigid whole-level move keeps every lightmap valid (they are UV-addressed):

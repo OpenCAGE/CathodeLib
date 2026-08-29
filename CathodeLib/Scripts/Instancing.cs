@@ -2524,6 +2524,31 @@ namespace CathodeLib
         {
             _level = level;
 
+            //Patch mode (the product default): the census that decides which movers were MOVED
+            //or ADDED needs the PRISTINE mover state, harvested before instancing rebuilds the
+            //list. The parity harness harvests these itself; a bare Save(true, radiositySettings)
+            //from the tool gets them here - without the snapshots every instancing-manufactured
+            //mover whose GUID never joins the retail instance map would count as "new" (Solace
+            //ships 11,907 of them before any edit) and be pointlessly rebaked.
+            if (radiositySettings != null && radiositySettings.PatchRetailRuntime && level?.Movers?.Entries != null)
+            {
+                if (radiositySettings.RetailModelParams == null)
+                    radiositySettings.RetailModelParams = HarvestPristineModelParams(level);
+                if (radiositySettings.RetailTransforms == null)
+                {
+                    var pristineTransforms = new System.Collections.Generic.Dictionary<ulong, System.Numerics.Matrix4x4>();
+                    foreach (Movers.MOVER_DESCRIPTOR m in level.Movers.Entries)
+                    {
+                        if (m.Resource == null)
+                            continue;
+                        ulong key = ((ulong)m.Resource.composite_instance_id.AsUInt32 << 32) | m.Resource.resource_id.AsUInt32;
+                        if (!pristineTransforms.ContainsKey(key))
+                            pristineTransforms[key] = m.Transform;
+                    }
+                    radiositySettings.RetailTransforms = pristineTransforms;
+                }
+            }
+
             GenerateInstances();
             ProcessInstances();
             BuildStateProperties();
@@ -3726,6 +3751,37 @@ namespace CathodeLib
                 Array.Copy(raw, copy, 16);
                 _retailModelParams[key] = copy;
             }
+        }
+
+        //Pristine MODEL_PARAMS (first 16 bytes of RENDER_CONSTANTS) per resource GUID for the
+        //radiosity patch census, taken from the LOADED movers before instancing mutates them.
+        //Environment renderable types only - a LIGHT's first 16 constant bytes are
+        //DEFERRED_PARAMS and must never be treated as a lightmap rect.
+        private static System.Collections.Generic.Dictionary<ulong, byte[]> HarvestPristineModelParams(Level level)
+        {
+            var result = new System.Collections.Generic.Dictionary<ulong, byte[]>();
+            foreach (Movers.MOVER_DESCRIPTOR m in level.Movers.Entries)
+            {
+                if (m.Resource == null || m.RenderableElements == null || m.RenderableElements.Count == 0)
+                    continue;
+                RenderableInstanceType type;
+                try { type = m.GetRenderableType(); }
+                catch { continue; }
+                if (type != RenderableInstanceType.ENVIRONMENT &&
+                    type != RenderableInstanceType.ENVIRONMENT_EXTRA &&
+                    type != RenderableInstanceType.MISC)
+                    continue;
+                byte[] raw = m.RenderConstants?.RawBytes;
+                if (raw == null || raw.Length < 16)
+                    continue;
+                ulong key = ((ulong)m.Resource.composite_instance_id.AsUInt32 << 32) | m.Resource.resource_id.AsUInt32;
+                if (result.ContainsKey(key))
+                    continue;
+                byte[] copy = new byte[16];
+                Array.Copy(raw, copy, 16);
+                result[key] = copy;
+            }
+            return result;
         }
 
         private void CarryRetailModelParams()

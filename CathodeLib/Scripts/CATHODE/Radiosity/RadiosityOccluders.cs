@@ -44,11 +44,14 @@ namespace CathodeLib.Radiosity
                                       out float[] verts, out int[] tris, Action<string> log = null,
                                       bool staticOnly = false,
                                       List<CollisionMaps.CollisionFlags> triangleFlags = null,
-                                      bool skipDoorBarriers = false)
+                                      bool skipDoorBarriers = false,
+                                      List<HavokPackfile.CompoundInstance> triangleInstances = null,
+                                      ISet<HavokPackfile.CompoundInstance> alsoSkip = null)
         {
             verts = null;
             tris = null;
             triangleFlags?.Clear();
+            triangleInstances?.Clear();
 
             HavokPackfile hkx = level?.Collision;
             if (hkx == null)
@@ -62,6 +65,7 @@ namespace CathodeLib.Radiosity
             int hosts = 0;
 
             ISet<HavokPackfile.CompoundInstance> skipped = SkippedInstances(level, staticOnly, skipDoorBarriers);
+            if (alsoSkip != null) foreach (HavokPackfile.CompoundInstance extra in alsoSkip) skipped.Add(extra);
             log?.Invoke("Radiosity occluders: skipping " + skipped.Count + " collider instance(s) of " +
                         (level.CollisionMaps?.Entries?.Count ?? 0) + " mapping(s)" +
                         (staticOnly ? " (static only)" : ""));
@@ -72,7 +76,7 @@ namespace CathodeLib.Radiosity
             foreach (HavokPackfile.StaticCompoundShape host in Hosts(hkx))
             {
                 HavokPackfile.PreviewMesh mesh;
-                try { mesh = hkx.BuildBakeMesh(host, skipped, triangleFlags != null); }
+                try { mesh = hkx.BuildBakeMesh(host, skipped, triangleFlags != null || triangleInstances != null); }
                 catch (Exception e) { log?.Invoke("Radiosity occluders: " + e.Message); continue; }
                 if (mesh == null || mesh.Positions.Count == 0 || mesh.Indices.Count < 3)
                     continue;
@@ -88,10 +92,12 @@ namespace CathodeLib.Radiosity
                 foreach (int i in mesh.Indices)
                     indices.Add(baseVertex + i);
 
-                if (triangleFlags == null) continue;
+                if (triangleFlags == null && triangleInstances == null) continue;
                 for (int tri = 0; tri < mesh.TriangleCount; tri++)
                 {
                     HavokPackfile.CompoundInstance owner = mesh.InstanceOf(tri);
+                    triangleInstances?.Add(owner);
+                    if (triangleFlags == null) continue;
                     triangleFlags.Add(owner != null && flagsByInstance.TryGetValue(owner, out CollisionMaps.CollisionFlags f)
                                       ? f : 0);
                 }
@@ -105,8 +111,7 @@ namespace CathodeLib.Radiosity
 
             int collisionTris = indices.Count / 3;
             int fallbackTris = AppendUncoveredRenderGeometry(level, geometry, positions, indices, out int fallbackInstances);
-            if (triangleFlags != null)
-                for (int i = 0; i < fallbackTris; i++) triangleFlags.Add(0);
+            for (int i = 0; i < fallbackTris; i++) { triangleFlags?.Add(0); triangleInstances?.Add(null); }
 
             verts = positions.ToArray();
             tris = indices.ToArray();

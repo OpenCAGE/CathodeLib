@@ -67,7 +67,12 @@ namespace CathodeLib.Radiosity
         /// Requires the level's RADIOSITY_RUNTIME.BIN to still be a real bake (retail's or a
         /// previous full bake); throws when it carries no slices.
         /// </summary>
-        public bool PatchRetailRuntime = false;
+        /// <remarks>DEFAULT TRUE since 2026-08-29 (Matt): an OpenCAGE save preserves the
+        /// shipped radiosity wholesale and only moved/newly-added movers get radiosity of
+        /// their own via the delta paths. Full regeneration is the explicit opt-out
+        /// (set false). Note older library versions CLEARED the level radiosity on every
+        /// instanced save without radiosity settings.</remarks>
+        public bool PatchRetailRuntime = true;
 
         /// <summary>
         /// Pristine MODEL_PARAMS lightmap transforms (first 16 bytes of RENDER_CONSTANTS), keyed
@@ -591,7 +596,7 @@ namespace CathodeLib.Radiosity
         /// radiosity_multiplier = 0 suppresses an emitter - which is exactly how added content is
         /// treated, so it is the honest setting for validating our own logic.</para>
         /// </remarks>
-        public bool UseRetailLightPriors = false;
+        public bool UseRetailLightPriors = true;   //restored 2026-08-29 (was temporarily false for the no-priors validation arc; harness sets it explicitly from RADBAKE_PRIORS)
 
         /// <summary>
         /// Replace the ENTIRE derived surface-light table with retail's shipped one - every light
