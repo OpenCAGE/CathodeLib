@@ -58,9 +58,22 @@ namespace CathodeLib
         /// <summary>Texture paths we could not resolve, with the first light that asked for each.</summary>
         public readonly Dictionary<string, string> UnresolvedTextures = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>
+        /// When a rebuilt material matches its level-shipped template in everything but the
+        /// constant VALUES, hand back the template instead of minting a colliding copy. Retail's
+        /// compiler produced the shipped constants from the same Commands we are rebuilding
+        /// from, so on an unedited level a real drift means per-instance work the parameter
+        /// conversions cannot reproduce - and the copy detaches the mover from the material the
+        /// Commands resource points at, which the engine refuses to draw (CM9 poison gas,
+        /// SCI_AndroidLab fog carpet). Defaults to true only while the level carries no
+        /// OpenCAGE modification metadata; an edited level keeps rebuild-wins so edits land.
+        /// </summary>
+        public bool PreferShippedOnConstantDrift;
+
         public MaterialFactory(Level level)
         {
             _level = level;
+            PreferShippedOnConstantDrift = !(_level?.Commands?.Utils?.HasAnyModificationInfo ?? false);
             if (_level?.Materials?.Entries == null)
                 return;
 
@@ -362,6 +375,26 @@ namespace CathodeLib
                         MaterialsReused++;
                         return existing;
                     }
+
+                    //On an UNEDITED level the shipped constants are authoritative: retail's
+                    //compiler produced the template from these same Commands, and where our
+                    //parameter conversions drift by more than roundtrip noise the difference is
+                    //per-instance work CA's tool did that the conversions cannot reproduce (the
+                    //regenverify residue - scaled instances, lowered PARTICLE_COUNTs). Rebuilding
+                    //anyway minted "[00000N]" copies of 89 CA_PARTICLE and 10 CA_EFFECT_OVERLAY
+                    //per-instance materials on SCI_AndroidLab, detaching each mover's REDS run
+                    //from the material the Commands-side resource still points at - and the
+                    //engine refuses to draw such an emitter (the ChallengeMap9 poison-gas
+                    //condition through a different door; here it erased cam11's fog carpet,
+                    //while a no-instancing save of the same level rendered it at ratio 1.014).
+                    //Gated on the level carrying no modification metadata, so a genuinely
+                    //edited level keeps propagating its edits.
+                    if (PreferShippedOnConstantDrift && flagsAlreadyClear &&
+                        !_generated.Contains(template) && SameContentExceptConstants(template, built))
+                    {
+                        MaterialsReused++;
+                        return template;
+                    }
                 }
 
                 built.Name = ClaimName(nameSuffix != null ? nameSuffix
@@ -565,6 +598,27 @@ namespace CathodeLib
         private static bool NeedsConstants(Materials.Material m)
         {
             return m.EngineConstants.Count != 0 || m.VertexShaderConstants.Count != 0 || m.PixelShaderConstants.Count != 0;
+        }
+
+        /// <summary>
+        /// Everything the engine reads off a material matches EXCEPT the constant values (their
+        /// counts must still agree): the shape a rebuild has when only the parameter-to-constant
+        /// conversions disagree with what retail shipped. Used by the shipped-constants
+        /// preference in <see cref="GetShaderFeatureMaterial"/>.
+        /// </summary>
+        private static bool SameContentExceptConstants(Materials.Material a, Materials.Material b)
+        {
+            if (a == null || b == null) return false;
+            if (!ReferenceEquals(a.Shader, b.Shader)) return false;
+            if ((a.OfflineLightFeatures?.Value ?? 0) != (b.OfflineLightFeatures?.Value ?? 0)) return false;
+            if (a.PhysicalMaterialIndex != b.PhysicalMaterialIndex || a.EnvironmentMapIndex != b.EnvironmentMapIndex || a.Priority != b.Priority) return false;
+            if (a.TextureReferences.Count != b.TextureReferences.Count) return false;
+            for (int i = 0; i < a.TextureReferences.Count; i++)
+                if (a.TextureReferences[i]?.Location != b.TextureReferences[i]?.Location ||
+                    !ReferenceEquals(a.TextureReferences[i]?.Texture, b.TextureReferences[i]?.Texture)) return false;
+            for (int s = 0; s < 5; s++)
+                if (Constants(a, s).Count != Constants(b, s).Count) return false;
+            return true;
         }
 
         /// <summary>SameContent, but constants may differ by float-roundtrip noise (the parameter
