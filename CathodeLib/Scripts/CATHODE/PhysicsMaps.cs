@@ -117,9 +117,9 @@ namespace CATHODE
                     entry.Rotation = Quaternion.LookRotation(matrix4x4.GetColumn(2), matrix4x4.GetColumn(1));
 #else
                     entry.Rotation = Quaternion.CreateFromRotationMatrix(new Matrix4x4(
-                        (float)matrix[0, 0], (float)matrix[0, 1], (float)matrix[0, 2], 0,
-                        (float)matrix[1, 0], (float)matrix[1, 1], (float)matrix[1, 2], 0,
-                        (float)matrix[2, 0], (float)matrix[2, 1], (float)matrix[2, 2], 0,
+                        (float)matrix[0, 0], (float)matrix[1, 0], (float)matrix[2, 0], 0,
+                        (float)matrix[0, 1], (float)matrix[1, 1], (float)matrix[2, 1], 0,
+                        (float)matrix[0, 2], (float)matrix[1, 2], (float)matrix[2, 2], 0,
                         0, 0, 0, 1
                     ));
 #endif
@@ -154,9 +154,9 @@ namespace CATHODE
                     Vector4 Row2 = new Vector4(rotationMatrix4x4.m31, rotationMatrix4x4.m32, rotationMatrix4x4.m33, Entries[i].Position.z);
 #else
                     Matrix4x4 rotationMatrix4x4 = Matrix4x4.CreateFromQuaternion(Entries[i].Rotation);
-                    Vector4 Row0 = new Vector4(rotationMatrix4x4.M11, rotationMatrix4x4.M12, rotationMatrix4x4.M13, Entries[i].Position.X);
-                    Vector4 Row1 = new Vector4(rotationMatrix4x4.M21, rotationMatrix4x4.M22, rotationMatrix4x4.M23, Entries[i].Position.Y);
-                    Vector4 Row2 = new Vector4(rotationMatrix4x4.M31, rotationMatrix4x4.M32, rotationMatrix4x4.M33, Entries[i].Position.Z);
+                    Vector4 Row0 = new Vector4(rotationMatrix4x4.M11, rotationMatrix4x4.M21, rotationMatrix4x4.M31, Entries[i].Position.X);
+                    Vector4 Row1 = new Vector4(rotationMatrix4x4.M12, rotationMatrix4x4.M22, rotationMatrix4x4.M32, Entries[i].Position.Y);
+                    Vector4 Row2 = new Vector4(rotationMatrix4x4.M13, rotationMatrix4x4.M23, rotationMatrix4x4.M33, Entries[i].Position.Z);
 #endif
 
                     Utilities.Write<Vector4>(writer, Row0);
