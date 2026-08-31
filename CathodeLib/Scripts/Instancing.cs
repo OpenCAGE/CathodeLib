@@ -2688,7 +2688,7 @@ namespace CathodeLib
         {
             try
             {
-                bake();
+                Phase("bake: " + stage, bake);
             }
             catch (Exception e)
             {
@@ -2799,7 +2799,7 @@ namespace CathodeLib
 
             if (radiositySettings != null)
             {
-                RadiosityBaker.BakeLevel(level, this, radiositySettings, Console.WriteLine);
+                Phase("bake: radiosity", () => RadiosityBaker.BakeLevel(level, this, radiositySettings, Console.WriteLine));
 
                 if (_level.Patched)
                     Utilities.ClearRadiosityPatchOnDisk(_level);

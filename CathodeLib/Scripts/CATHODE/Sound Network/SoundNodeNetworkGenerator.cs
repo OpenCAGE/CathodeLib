@@ -179,6 +179,7 @@ namespace CathodeLib
                 log?.Invoke("Sound occluders: " + (tris.Length / 3) + " triangles");
             }
 
+
             // One network per marker, named after the marker entity.
             var networks = new List<SoundNodeNetwork.NetworkInfo>(markers.Count);
             var markerPositions = new List<Vector3>(markers.Count);
@@ -1380,6 +1381,16 @@ namespace CathodeLib
 
             int added = 0;
             float autoMinSq = (minSpacing * _settings.AutoSpacingScale) * (minSpacing * _settings.AutoSpacingScale);
+
+            /* How many accepted nodes each pending candidate has already been measured against.
+             * Both tests below are a plain OR over the accepted set - too close to ANY of them, or
+             * visible from ANY of them - so a node that has already been ruled out for a candidate
+             * can never change that candidate's answer, and only the ones added since need looking
+             * at. Without this every surviving candidate re-tested the whole accepted set on every
+             * pass, and each test is a raycast: Solace spent 18 of its 24 seconds of sound bake here. */
+            var testedAgainst = new List<int>(pending.Count);
+            for (int i = 0; i < pending.Count; i++)
+                testedAgainst.Add(0);
             bool progress = true;
             while (progress)
             {
@@ -1387,22 +1398,40 @@ namespace CathodeLib
                 for (int i = pending.Count - 1; i >= 0; i--)
                 {
                     Vector3 position = pending[i];
+                    int from = testedAgainst[i];
+                    int count = accepted.Count;
+                    testedAgainst[i] = count;
 
-                    bool toClose = false, visible = false;
-                    for (int j = 0; j < accepted.Count; j++)
+                    /* Spacing first, then sight. Both tests ask whether ANY accepted node answers
+                     * to them, so neither depends on the order they are asked in - but too-close
+                     * wins outright, and doing the arithmetic pass first means a candidate that is
+                     * going to be thrown away never pays for a raycast. Nearly all of them are
+                     * thrown away, so nearly all of the raycasts were being wasted. */
+                    bool toClose = false;
+                    for (int j = from; j < count; j++)
                     {
                         float distanceSq = Vector3.DistanceSquared(position, accepted[j]);
                         // Hand-placed nodes sit as close together as 0.14 m and are kept as they
                         // are, but a generated node has to clear its own spacing from everything.
                         if (distanceSq < (j < seedCount ? minSq : autoMinSq)) { toClose = true; break; }
-                        if (!visible && Visible(occluders, position, accepted[j])) visible = true;
                     }
 
-                    if (toClose) { pending.RemoveAt(i); continue; }
+                    if (toClose)
+                    {
+                        pending.RemoveAt(i);
+                        testedAgainst.RemoveAt(i);
+                        continue;
+                    }
+
+                    bool visible = false;
+                    for (int j = from; j < count && !visible; j++)
+                        if (Visible(occluders, position, accepted[j])) visible = true;
+
                     if (!visible) continue;   // may become reachable once the fill gets closer
 
                     accepted.Add(position);
                     pending.RemoveAt(i);
+                    testedAgainst.RemoveAt(i);
                     added++;
                     progress = true;
                 }
@@ -1416,7 +1445,32 @@ namespace CathodeLib
         /// </summary>
         private static bool Visible(BVHAccel occluders, Vector3 from, Vector3 to)
         {
-            return Crossings(occluders, from, to) == 0;
+            if (occluders == null) return true;
+
+            /* Crossings walks the whole ray, stepping past surface after surface, because callers
+             * that want the obstruction count need all of them. This one only asks whether the
+             * count is zero, and Crossings is zero exactly when one of its two lines is unbroken -
+             * min(raised, ground) == 0 iff either is - so a single first-hit test on each answers
+             * it. The scatter fires about a million of these on a level and nearly all of them are
+             * blocked, which is the case the walk is slowest on. */
+            return !AnyCrossingAt(occluders, from + VisibilityTestHeight, to + VisibilityTestHeight)
+                || !AnyCrossingAt(occluders, from, to);
+        }
+
+        /// <summary>
+        /// Does this line cross anything at all? Matches the first step of <see cref="CrossingsAt"/>:
+        /// that returns zero exactly when its opening traversal misses.
+        /// </summary>
+        private static bool AnyCrossingAt(BVHAccel occluders, Vector3 from, Vector3 to)
+        {
+            Vector3 delta = to - from;
+            float distance = delta.Length();
+            if (distance <= 0.05f) return false;
+            Vector3 direction = delta / distance;
+
+            const float slack = 0.02f;
+            var ray = new Ray(from + direction * slack, direction, 0.0f, distance - slack - slack);
+            return occluders.Traverse(ref ray, out Hit _);
         }
 
         /// <summary>
@@ -1446,10 +1500,15 @@ namespace CathodeLib
         private static List<Link> BuildLinks(List<Vector3> positions, BVHAccel occluders,
                                              float radius, Action<string> log)
         {
-            var links = new List<Link>();
+            /* Every pair is independent and the raycast dominates, so the rows are built in
+             * parallel and then concatenated in order - the link list stays exactly as the
+             * sequential loop produced it, which matters because the writer's order follows it. */
+            var rows = new List<Link>[positions.Count];
             int obstructed = 0;
-            for (int i = 0; i < positions.Count; i++)
+            System.Threading.Tasks.Parallel.For(0, positions.Count, i =>
             {
+                List<Link> row = null;
+                int rowObstructed = 0;
                 for (int j = i + 1; j < positions.Count; j++)
                 {
                     float distance = Vector3.Distance(positions[i], positions[j]);
@@ -1463,8 +1522,8 @@ namespace CathodeLib
                     // every node in the level links to every other through any amount of solid
                     // geometry, which is not what retail's ObstructedDistance distribution shows.
                     if (block > MaxObstruction) continue;
-                    if (block > 0) obstructed++;
-                    links.Add(new Link
+                    if (block > 0) rowObstructed++;
+                    (row ??= new List<Link>()).Add(new Link
                     {
                         A = i,
                         B = j,
@@ -1474,7 +1533,17 @@ namespace CathodeLib
                         Crossed = crossed,
                     });
                 }
-            }
+                rows[i] = row;
+                if (rowObstructed != 0)
+                    System.Threading.Interlocked.Add(ref obstructed, rowObstructed);
+            });
+
+            int total = 0;
+            for (int i = 0; i < rows.Length; i++)
+                if (rows[i] != null) total += rows[i].Count;
+            var links = new List<Link>(total);
+            for (int i = 0; i < rows.Length; i++)
+                if (rows[i] != null) links.AddRange(rows[i]);
             log?.Invoke("Sound links: " + links.Count + " within " + radius.ToString("0.#") + " m, " +
                         obstructed + " obstructed (" + (100.0 * obstructed / Math.Max(1, links.Count)).ToString("0.0") + "%)");
             return links;
