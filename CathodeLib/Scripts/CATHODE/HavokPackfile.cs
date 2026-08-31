@@ -4814,6 +4814,21 @@ namespace CATHODE
             for (int i = 0; i < GlobalFixups.Count; i++)
                 globalBySrc[GlobalFixups[i].Src] = GlobalFixups[i].Dst;
 
+            /* Index the local fixups once for the whole pass. Every compound needs two lookups in
+             * here - where its instance array lives, and the range scan TryGetCompoundArrayFields
+             * does - and doing them by scanning the list is quadratic in a file that holds
+             * thousands of compounds and tens of thousands of fixups. Porting a composite calls
+             * this once per imported compound, so it was most of the cost of a port. */
+            var localBySrc = new Dictionary<uint, uint>(LocalFixups.Count);
+            uint[] sortedLocalSrc = new uint[LocalFixups.Count];
+            for (int i = 0; i < LocalFixups.Count; i++)
+            {
+                sortedLocalSrc[i] = LocalFixups[i].Src;
+                if (!localBySrc.ContainsKey(LocalFixups[i].Src))
+                    localBySrc[LocalFixups[i].Src] = LocalFixups[i].Dst;
+            }
+            Array.Sort(sortedLocalSrc);
+
             int ptrSize = Header.PointerSize;
             int instancesArrayOffset = ptrSize == 8 ? 0x38 : 0x20;
             int instanceStride = ptrSize == 8 ? 80 : 64;
@@ -4842,17 +4857,8 @@ namespace CATHODE
                 int count = BitConverter.ToInt32(DataPayload, sizePos);
                 if (count < 0) count = 0;
 
-                uint arrayDataOffset = 0;
-                bool foundLocal = false;
-                for (int f = 0; f < LocalFixups.Count; f++)
-                {
-                    if (LocalFixups[f].Src == (uint)arrayField)
-                    {
-                        arrayDataOffset = LocalFixups[f].Dst;
-                        foundLocal = true;
-                        break;
-                    }
-                }
+                uint arrayDataOffset;
+                bool foundLocal = localBySrc.TryGetValue((uint)arrayField, out arrayDataOffset);
 
                 if (foundLocal && count > 0)
                 {
@@ -4868,7 +4874,7 @@ namespace CATHODE
                 }
 
                 // Domain AABB sits in the embedded tree header (after the nodes hkArray field).
-                if (TryGetCompoundTreeField(compound.DataOffset, out uint treeField, out uint domainOff))
+                if (TryGetCompoundTreeField(compound.DataOffset, out uint treeField, out uint domainOff, sortedLocalSrc))
                 {
                     if (domainOff + 32 <= (uint)DataPayload.Length)
                     {
@@ -4881,7 +4887,11 @@ namespace CATHODE
             }
         }
 
-        bool TryGetCompoundArrayFields(uint compoundDataOffset, out uint instancesField, out uint treeField)
+        /// <param name="sortedLocalSrc">
+        /// Optional: every local fixup's Src, sorted. Pass it when calling this in a loop - without
+        /// it the two fields are found by scanning the whole fixup list.
+        /// </param>
+        bool TryGetCompoundArrayFields(uint compoundDataOffset, out uint instancesField, out uint treeField, uint[] sortedLocalSrc = null)
         {
             instancesField = 0;
             treeField = 0;
@@ -4899,8 +4909,27 @@ namespace CATHODE
                 return true;
             }
 
-            var fields = new List<uint>();
             uint end = compoundDataOffset + 0x100;
+
+            if (sortedLocalSrc != null)
+            {
+                //Same answer as the scan below: the list is sorted, so the first two in range are
+                //the two lowest.
+                int at = Array.BinarySearch(sortedLocalSrc, compoundDataOffset);
+                if (at < 0) at = ~at;
+                while (at > 0 && sortedLocalSrc[at - 1] >= compoundDataOffset) at--;
+                int found = 0;
+                for (; at < sortedLocalSrc.Length && sortedLocalSrc[at] < end; at++)
+                {
+                    if (sortedLocalSrc[at] < compoundDataOffset) continue;
+                    if (found == 0) instancesField = sortedLocalSrc[at];
+                    else { treeField = sortedLocalSrc[at]; return true; }
+                    found++;
+                }
+                return false;
+            }
+
+            var fields = new List<uint>();
             for (int i = 0; i < LocalFixups.Count; i++)
             {
                 uint src = LocalFixups[i].Src;
@@ -4915,10 +4944,10 @@ namespace CATHODE
             return true;
         }
 
-        bool TryGetCompoundTreeField(uint compoundDataOffset, out uint treeField, out uint domainOffset)
+        bool TryGetCompoundTreeField(uint compoundDataOffset, out uint treeField, out uint domainOffset, uint[] sortedLocalSrc = null)
         {
             domainOffset = 0;
-            if (!TryGetCompoundArrayFields(compoundDataOffset, out _, out treeField))
+            if (!TryGetCompoundArrayFields(compoundDataOffset, out _, out treeField, sortedLocalSrc))
                 return false;
 
             if (Tagfile != null)

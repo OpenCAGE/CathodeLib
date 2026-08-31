@@ -2,6 +2,7 @@
 using CathodeLib.Properties;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -30,6 +31,23 @@ namespace CATHODE
 
         public bool Compressed { get { return _compressed; } set { _compressed = value; } }
         private bool _compressed = false;
+
+        /// <summary>
+        /// True when this radiosity was generated from scratch rather than shipped with the game.
+        /// </summary>
+        /// <remarks>
+        /// The delta bake exists to protect CA's shipped lighting, which we cannot reproduce at
+        /// parity: it keeps every retail slice verbatim and lights only what an edit invalidated.
+        /// None of that applies to data we generated ourselves - there is no retail bake left
+        /// underneath to protect, and patching our own output just compounds the delta path's
+        /// approximations with every save. <see cref="Radiosity.RadiosityBaker.BakeLevel"/>
+        /// therefore regenerates the whole level whenever this is set.
+        ///
+        /// Persisted as a small text marker beside the BIN rather than inside it: the file opens
+        /// with a fixed 8-byte header (magic + 44, constant across every retail level) that the
+        /// engine reads, and there is no spare field to claim.
+        /// </remarks>
+        public bool FullyRegenerated = false;
 
         private Resources _resources;
 
@@ -81,6 +99,8 @@ namespace CATHODE
                     Slices.Add(new RuntimeDataSlice(reader));
                 }
             }
+
+            FullyRegenerated = ReadOwnershipMarker(_filepath);
             return true;
         }
 
@@ -142,8 +162,91 @@ namespace CATHODE
             if (_compressed)
                 Utilities.GZIPCompress(_filepath);
 
+            WriteOwnershipMarker(_filepath, FullyRegenerated);
             return true;
         }
+
+        #region OWNERSHIP_MARKER
+
+        /// <summary>
+        /// Where the <see cref="FullyRegenerated"/> marker for a given RADIOSITY_RUNTIME.BIN (or
+        /// .BIN.GZ) lives. Nothing in the game reads it; deleting it only costs the next bake its
+        /// knowledge that the data is ours, and it will patch instead of regenerating.
+        /// </summary>
+        /// <remarks>
+        /// Named to match the sidecar convention the Commands custom tables already use - the
+        /// original path with .META appended - so all of OpenCAGE's out-of-band level data reads
+        /// the same way on disk. See <see cref="CathodeLib.CustomTable"/>.
+        /// </remarks>
+        public static string GetOwnershipMarkerPath(string runtimePath)
+        {
+            return string.IsNullOrEmpty(runtimePath) ? null : runtimePath + ".META";
+        }
+
+        private const string OwnershipMarkerLengthKey = "runtime_bytes=";
+
+        private static bool ReadOwnershipMarker(string runtimePath)
+        {
+            string marker = GetOwnershipMarkerPath(runtimePath);
+            if (marker == null || !File.Exists(marker) || !File.Exists(runtimePath))
+                return false;
+
+            try
+            {
+                long actualLength = new FileInfo(runtimePath).Length;
+                foreach (string line in File.ReadAllLines(marker))
+                {
+                    if (!line.StartsWith(OwnershipMarkerLengthKey, StringComparison.Ordinal))
+                        continue;
+
+                    /* The recorded length is what stops a STALE marker claiming data that is no
+                     * longer ours: putting the vanilla BIN back (a mod uninstall, a verified
+                     * install, a restore from a pristine copy) leaves the marker behind, and the
+                     * level would then throw CA's bake away on the next save. Any two distinct
+                     * bakes differ in length in practice, and the only cost of a collision is a
+                     * regeneration we did not need. */
+                    return long.TryParse(
+                               line.Substring(OwnershipMarkerLengthKey.Length).Trim(),
+                               NumberStyles.Integer,
+                               CultureInfo.InvariantCulture,
+                               out long recordedLength)
+                           && recordedLength == actualLength;
+                }
+            }
+            catch { }
+
+            return false;
+        }
+
+        private static void WriteOwnershipMarker(string runtimePath, bool fullyRegenerated)
+        {
+            string marker = GetOwnershipMarkerPath(runtimePath);
+            if (marker == null)
+                return;
+
+            try
+            {
+                if (!fullyRegenerated)
+                {
+                    //A patched bake still rests on CA's data, so a marker left over from an
+                    //earlier full regeneration would now be claiming something untrue.
+                    File.Delete(marker);
+                    return;
+                }
+
+                File.WriteAllText(marker,
+                    "# OpenCAGE radiosity ownership marker." + Environment.NewLine +
+                    "# This level's lighting was generated from scratch rather than shipped with" + Environment.NewLine +
+                    "# the game, so future saves regenerate it instead of patching it. The game" + Environment.NewLine +
+                    "# never reads this file and it is safe to delete." + Environment.NewLine +
+                    "version=1" + Environment.NewLine +
+                    "generated=" + DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture) + Environment.NewLine +
+                    OwnershipMarkerLengthKey + new FileInfo(runtimePath).Length.ToString(CultureInfo.InvariantCulture) + Environment.NewLine);
+            }
+            catch { }
+        }
+
+        #endregion
 
         private void ResolveSurfaceLightEntities()
         {

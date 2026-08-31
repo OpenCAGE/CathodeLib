@@ -26,6 +26,32 @@ namespace CATHODE
 
         public List<TEX4> _writeList = new List<TEX4>();
 
+        //Which texture answers to a given path-normalised name, for ImportEntry. Grown as Entries
+        //is; a Clear resets the count and it rebuilds. Importing one material asks about a dozen
+        //textures and the old scan normalised every name in the table for each question, which on
+        //a level with thousands of textures is millions of throwaway strings per port.
+        private Dictionary<string, TEX4> _byNormalisedName = null;
+        private int _byNormalisedNameCount = 0;
+
+        private TEX4 FindByNormalisedName(string normalisedName)
+        {
+            if (_byNormalisedName == null || _byNormalisedNameCount > Entries.Count)
+            {
+                _byNormalisedName = new Dictionary<string, TEX4>(StringComparer.Ordinal);
+                _byNormalisedNameCount = 0;
+            }
+            for (; _byNormalisedNameCount < Entries.Count; _byNormalisedNameCount++)
+            {
+                TEX4 entry = Entries[_byNormalisedNameCount];
+                if (entry == null) continue;
+                string key = NormaliseTextureName(entry.Name);
+                if (!_byNormalisedName.ContainsKey(key))
+                    _byNormalisedName[key] = entry;
+            }
+            TEX4 found;
+            return _byNormalisedName.TryGetValue(normalisedName, out found) ? found : null;
+        }
+
         public Textures(string path) : base(path) { }
 
         ~Textures()
@@ -391,7 +417,7 @@ namespace CATHODE
                 return null;
 
             string normalisedName = NormaliseTextureName(texture.Name);
-            TEX4 existingByName = Entries.FirstOrDefault(o => NormaliseTextureName(o.Name) == normalisedName);
+            TEX4 existingByName = FindByNormalisedName(normalisedName);
             if (existingByName != null && !overwriteExisting)
                 return existingByName;
 
@@ -399,6 +425,7 @@ namespace CATHODE
             if (existingByName != null)
             {
                 Entries[Entries.IndexOf(existingByName)] = newTexture;
+                _byNormalisedName = null; //an entry was replaced in place, so the count says nothing
                 return newTexture;
             }
 

@@ -29,10 +29,31 @@ namespace CATHODE
 
         private List<MaterialMapping> _writeList = new List<MaterialMapping>();
 
+        //Where each mapping sits in the file, for the per-row lookups CollisionMaps does when it
+        //saves. MaterialMapping hashes its Mappings list by reference while == compares it by value,
+        //so the comparer below hashes the name and the count instead.
+        private Dictionary<MaterialMapping, int> _writeIndex = null;
+        private int _writeIndexCount = 0;
+        private readonly object _writeIndexLock = new object();
+
+        private sealed class MappingIdentity : IEqualityComparer<MaterialMapping>
+        {
+            public static readonly MappingIdentity Instance = new MappingIdentity();
+            public bool Equals(MaterialMapping x, MaterialMapping y) { return x == y; }
+            public int GetHashCode(MaterialMapping mapping)
+            {
+                if (mapping == null) return 0;
+                int hash = mapping.Name == null ? 0 : mapping.Name.GetHashCode();
+                hash = hash * 31 + (mapping.Mappings == null ? 0 : mapping.Mappings.Count);
+                return hash;
+            }
+        }
+
         ~MaterialMappings()         
         {
             Entries.Clear();
             _writeList.Clear();
+            _writeIndex = null;
         }
 
         #region FILE_IO
@@ -65,6 +86,7 @@ namespace CATHODE
                 }
             }
             _writeList.AddRange(Entries);
+            _writeIndex = null;
             return true;
         }
 
@@ -94,7 +116,9 @@ namespace CATHODE
                 }
             }
             _writeList.Clear();
+            _writeIndex = null;
             _writeList.AddRange(Entries);
+            _writeIndex = null;
             return true;
         }
         #endregion
@@ -106,8 +130,35 @@ namespace CATHODE
         /// </summary>
         public int GetWriteIndex(MaterialMapping map)
         {
-            if (!_writeList.Contains(map)) return -1;
-            return _writeList.IndexOf(map);
+            if (map == null) return -1;
+
+            /* The lookup is built under the lock but read outside it: the Commands writers resolve
+             * rows to indices from a Parallel.For, and holding a lock for every one of those was
+             * slower than the scan it replaced. The dictionary is built complete and then published
+             * in one assignment, so a reader always sees a finished one. */
+            Dictionary<MaterialMapping, int> index = _writeIndex;
+            if (index == null || _writeIndexCount != _writeList.Count)
+            {
+                lock (_writeIndexLock)
+                {
+                    if (_writeIndex == null || _writeIndexCount != _writeList.Count)
+                    {
+                        Dictionary<MaterialMapping, int> built = new Dictionary<MaterialMapping, int>(_writeList.Count, MappingIdentity.Instance);
+                        for (int i = 0; i < _writeList.Count; i++)
+                        {
+                            MaterialMapping entry = _writeList[i];
+                            if (entry != null && !built.ContainsKey(entry))
+                                built[entry] = i;
+                        }
+                        _writeIndexCount = _writeList.Count;
+                        _writeIndex = built;
+                    }
+                    index = _writeIndex;
+                }
+            }
+
+            int found;
+            return index.TryGetValue(map, out found) ? found : -1;
         }
 
         /// <summary>

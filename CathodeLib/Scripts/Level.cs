@@ -77,9 +77,11 @@ namespace CathodeLib
         public HavokPackfile PhysicsHKX;
         public HavokPackfile PhysicsHKX64;
         public CollisionMaps CollisionMaps;
+#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
         public RadiosityInstanceMap RadiosityInstanceMap;
         public RadiosityCollisionMap RadiosityCollisionMap;
         public RadiosityRuntime RadiosityRuntime;
+#endif
         public AlphaLightLevel AlphaLight;
         public CharacterAccessorySets AccessorySets;
         public Commands Commands;
@@ -198,9 +200,11 @@ namespace CathodeLib
             PhysicsHKX = null;
             PhysicsHKX64 = null;
             CollisionMaps = null;
+#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
             RadiosityInstanceMap = null;
             RadiosityCollisionMap = null;
             RadiosityRuntime = null;
+#endif
             AlphaLight = null;
             AccessorySets = null;
             Commands = null;
@@ -257,7 +261,7 @@ namespace CathodeLib
 
             Parallel.Invoke(
                 () =>
-                {
+                {                    
                     if (File.Exists(world + "COLLISION.HKX"))
                     {
                         CollisionHKX = new HavokPackfile(world + "COLLISION.HKX");
@@ -306,9 +310,11 @@ namespace CathodeLib
             );
 
             Parallel.Invoke(
+#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
                 () => { RadiosityRuntime = new RadiosityRuntime(File.Exists(renderable + "RADIOSITY_RUNTIME.BIN.GZ") ? renderable + "RADIOSITY_RUNTIME.BIN.GZ" : renderable + "RADIOSITY_RUNTIME.BIN", Resources); OnLoadTick?.Invoke(); },
                 () => { RadiosityInstanceMap = new RadiosityInstanceMap(renderable + "RADIOSITY_INSTANCE_MAP.TXT", Resources); OnLoadTick?.Invoke(); },
                 () => { RadiosityCollisionMap = new RadiosityCollisionMap(world + "RADIOSITY_COLLISION_MAPPING.BIN"); OnLoadTick?.Invoke(); },
+#endif
                 () => { AlphaLight = new AlphaLightLevel(world + "ALPHALIGHT_LEVEL.BIN"); OnLoadTick?.Invoke(); },
                 () => { AccessorySets = new CharacterAccessorySets(world + "CHARACTERACCESSORYSETS.BIN"); OnLoadTick?.Invoke(); },
                 () => { EnvironmentAnimations = new EnvironmentAnimations(world + "ENVIRONMENT_ANIMATION.DAT", _global.AnimationStrings_Debug); OnLoadTick?.Invoke(); },
@@ -547,8 +553,10 @@ namespace CathodeLib
                     {
                         if (reference == null || reference.Location != TexturePtr.Source.GLOBAL || reference.Texture == null)
                             continue;
+                        if (!imported.TryGetValue(reference.Texture, out Textures.TEX4 levelTexture))
+                            continue;
 
-                        reference.Texture = imported[reference.Texture];
+                        reference.Texture = levelTexture;
                         reference.Location = TexturePtr.Source.LEVEL;
                         remapped++;
                     }

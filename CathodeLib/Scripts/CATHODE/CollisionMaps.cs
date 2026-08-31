@@ -30,6 +30,31 @@ namespace CATHODE
 
         private List<COLLISION_MAPPING> _writeList = new List<COLLISION_MAPPING>();
 
+        //Where each row sits in the file. Both Commands writers resolve a row to its index once per
+        //collision resource, and the old Contains-then-IndexOf pair walked the whole table twice for
+        //each. COLLISION_MAPPING's own GetHashCode leans on Material and MaterialMapping, whose
+        //hashes are not consistent with their equality, so RowIdentity hashes only what == compares
+        //directly and lets Equals settle collisions.
+        private Dictionary<COLLISION_MAPPING, int> _writeIndex = null;
+        private int _writeIndexCount = 0;
+        private readonly object _writeIndexLock = new object();
+
+        private sealed class RowIdentity : IEqualityComparer<COLLISION_MAPPING>
+        {
+            public static readonly RowIdentity Instance = new RowIdentity();
+            public bool Equals(COLLISION_MAPPING x, COLLISION_MAPPING y) { return x == y; }
+            public int GetHashCode(COLLISION_MAPPING row)
+            {
+                if (row == null) return 0;
+                int hash = (int)row.Flags;
+                hash = hash * 31 + row.CollisionInstanceIndex;
+                hash = hash * 31 + (int)row.ResourceGUID.AsUInt32;
+                hash = hash * 31 + row.CollisionProxyIndex;
+                hash = hash * 31 + (int)row.ZoneID.AsUInt32;
+                return hash;
+            }
+        }
+
         public CollisionMaps(string path, Materials materials, MaterialMappings materialMaps, HavokPackfile collisionHKX = null) : base(path)
         {
             _materials = materials;
@@ -51,6 +76,7 @@ namespace CATHODE
             ClearReferences();
             Entries.Clear();
             _writeList.Clear();
+            _writeIndex = null;
         }
 
         #region FILE_IO
@@ -110,6 +136,7 @@ namespace CATHODE
                 Utilities.GZIPCompress(_filepath);
 
             _writeList.Clear();
+            _writeIndex = null;
             _writeList.AddRange(Entries);
             return true;
         }
@@ -152,8 +179,35 @@ namespace CATHODE
         /// </summary>
         public int GetWriteIndex(COLLISION_MAPPING colMap)
         {
-            if (!_writeList.Contains(colMap)) return -1;
-            return _writeList.IndexOf(colMap);
+            if (colMap == null) return -1;
+
+            /* The lookup is built under the lock but read outside it: the Commands writers resolve
+             * rows to indices from a Parallel.For, and holding a lock for every one of those was
+             * slower than the scan it replaced. The dictionary is built complete and then published
+             * in one assignment, so a reader always sees a finished one. */
+            Dictionary<COLLISION_MAPPING, int> index = _writeIndex;
+            if (index == null || _writeIndexCount != _writeList.Count)
+            {
+                lock (_writeIndexLock)
+                {
+                    if (_writeIndex == null || _writeIndexCount != _writeList.Count)
+                    {
+                        Dictionary<COLLISION_MAPPING, int> built = new Dictionary<COLLISION_MAPPING, int>(_writeList.Count, RowIdentity.Instance);
+                        for (int i = 0; i < _writeList.Count; i++)
+                        {
+                            COLLISION_MAPPING entry = _writeList[i];
+                            if (entry != null && !built.ContainsKey(entry))
+                                built[entry] = i;
+                        }
+                        _writeIndexCount = _writeList.Count;
+                        _writeIndex = built;
+                    }
+                    index = _writeIndex;
+                }
+            }
+
+            int found;
+            return index.TryGetValue(colMap, out found) ? found : -1;
         }
 
         /// <summary>

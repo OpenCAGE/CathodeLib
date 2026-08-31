@@ -1802,9 +1802,50 @@ namespace CATHODE.Scripting
         /// <summary>
         /// Handle loading/saving "purge states" -> this tracks the composites that have had unresolvable entities removed from
         /// </summary>
+        /// <summary>
+        /// Tell ShortGuidUtils about every id this script graph already uses, so a newly generated
+        /// random one cannot duplicate it. The ids themselves are the record of what is taken - the
+        /// SHORT_GUIDS name table used to serve this purpose, which meant persisting a meaningless
+        /// name for every random id ever minted.
+        /// </summary>
+        private void ReserveInUseGuids()
+        {
+            if (_commands?.Entries == null)
+                return;
+
+            List<ShortGuid> inUse = new List<ShortGuid>();
+            for (int i = 0; i < _commands.Entries.Count; i++)
+            {
+                Composite composite = _commands.Entries[i];
+                if (composite == null)
+                    continue;
+
+                inUse.Add(composite.shortGUID);
+                foreach (Entity entity in composite.GetEntities())
+                {
+                    if (entity == null)
+                        continue;
+
+                    inUse.Add(entity.shortGUID);
+                    if (entity.childLinks != null)
+                        for (int l = 0; l < entity.childLinks.Count; l++)
+                            inUse.Add(entity.childLinks[l].ID);
+
+                    if (entity.parameters == null)
+                        continue;
+                    for (int p = 0; p < entity.parameters.Count; p++)
+                        if (entity.parameters[p]?.content is cResource resource)
+                            inUse.Add(resource.shortGUID);
+                }
+            }
+
+            ShortGuidUtils.ReserveInUse(inUse);
+        }
+
         private void LoadInfo(string filepath)
         {
             ShortGuidUtils.LoadCustomNames(_commands.Filepath);
+            ReserveInUseGuids();
 
             _compPurges = (CompositePurgeTable)CustomTable.ReadTable(filepath, CustomTableType.COMPOSITE_PURGE_STATES);
             if (_compPurges == null) 

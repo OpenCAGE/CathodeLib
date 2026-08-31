@@ -28,6 +28,70 @@ namespace CATHODE
 
         private List<Element> _writeList = new List<Element>();
 
+        //Where each element sits in Entries, so a run can be found without scanning the table.
+        //Two lookups, because GetWriteIndex answers reference matches before value matches and the
+        //distinction is load-bearing: retail keeps value-identical duplicate runs on purpose.
+        //Element's own GetHashCode is not usable as a key (it hashes LODs by reference while ==
+        //compares it by value), hence ElementIdentity.
+        private Dictionary<Element, List<int>> _startsByRef = null;
+        private Dictionary<Element, List<int>> _startsByValue = null;
+        private List<Element> _startsList = null;
+        private int _startsCount = 0;
+        //Save serialises elements in parallel and each one resolves its LOD run here.
+        private readonly object _startsLock = new object();
+
+        private sealed class ElementReference : IEqualityComparer<Element>
+        {
+            public static readonly ElementReference Instance = new ElementReference();
+            public bool Equals(Element x, Element y) { return ReferenceEquals(x, y); }
+            public int GetHashCode(Element element) { return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(element); }
+        }
+
+        private sealed class ElementIdentity : IEqualityComparer<Element>
+        {
+            public static readonly ElementIdentity Instance = new ElementIdentity();
+            public bool Equals(Element x, Element y) { return x == y; }
+            public int GetHashCode(Element element)
+            {
+                if (element == null) return 0;
+                int hash = (int)element.ModelLocation;
+                hash = hash * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(element.Model);
+                hash = hash * 31 + (element.ModelSubplatformDependent ? 1 : 0);
+                hash = hash * 31 + (int)element.MaterialLocation;
+                hash = hash * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(element.Material);
+                hash = hash * 31 + (element.MaterialSubplatformDependent ? 1 : 0);
+                hash = hash * 31 + (element.LODs == null ? 0 : element.LODs.Count);
+                return hash;
+            }
+        }
+
+        //Entries is only ever appended to, so the lookups are extended rather than rebuilt.
+        private void EnsureStartIndex()
+        {
+            if (_startsByRef == null || !ReferenceEquals(_startsList, Entries) || _startsCount > Entries.Count)
+            {
+                _startsByRef = new Dictionary<Element, List<int>>(ElementReference.Instance);
+                _startsByValue = new Dictionary<Element, List<int>>(ElementIdentity.Instance);
+                _startsList = Entries;
+                _startsCount = 0;
+            }
+            for (; _startsCount < Entries.Count; _startsCount++)
+            {
+                Element entry = Entries[_startsCount];
+                if (entry == null) continue;
+                AddStart(_startsByRef, entry, _startsCount);
+                AddStart(_startsByValue, entry, _startsCount);
+            }
+        }
+
+        private static void AddStart(Dictionary<Element, List<int>> index, Element element, int at)
+        {
+            List<int> starts;
+            if (!index.TryGetValue(element, out starts))
+                index[element] = starts = new List<int>(1);
+            starts.Add(at);
+        }
+
         public RenderableElements(string path, Models models, Materials materials) : base(path)
         {
             _models = models;
@@ -140,42 +204,46 @@ namespace CATHODE
             if (greaterThan >= Entries.Count)
                 return -1;
 
-            //Reference match first: retail's file holds VALUE-identical duplicate runs on purpose
-            //(every instanced FX mover gets its own entry), and matching by value alone collapsed
-            //them all onto the first copy on save - a plain load+save moved every fogsphere mover's
-            //redsIndex, which is a fidelity loss even before instancing edits anything.
-            for (int i = greaterThan; i < Entries.Count; i++)
+            lock (_startsLock)
             {
-                if (!ReferenceEquals(Entries[i], element[0]))
-                    continue;
-                bool all = true;
-                for (int x = 1; x < element.Count; x++)
-                    if (i + x >= Entries.Count || !ReferenceEquals(Entries[i + x], element[x])) { all = false; break; }
-                if (all)
-                    return i;
-            }
+                EnsureStartIndex();
 
-            for (int i = greaterThan; i < Entries.Count; i++)
-            {
-                if (Entries[i] != element[0])
-                    continue;
-
-                if (element.Count == 1)
+                //Reference match first: retail's file holds VALUE-identical duplicate runs on purpose
+                //(every instanced FX mover gets its own entry), and matching by value alone collapsed
+                //them all onto the first copy on save - a plain load+save moved every fogsphere mover's
+                //redsIndex, which is a fidelity loss even before instancing edits anything.
+                List<int> starts;
+                if (_startsByRef.TryGetValue(element[0], out starts))
                 {
-                    return i;
-                }
-                else
-                {
-                    for (int x = 1; x < element.Count; x++)
+                    for (int s = 0; s < starts.Count; s++)
                     {
-                        if (i + x >= Entries.Count || Entries[i + x] != element[x])
-                            break;
-                        if (x == element.Count - 1)
+                        int i = starts[s];
+                        if (i < greaterThan) continue;
+                        bool all = true;
+                        for (int x = 1; x < element.Count; x++)
+                            if (i + x >= Entries.Count || !ReferenceEquals(Entries[i + x], element[x])) { all = false; break; }
+                        if (all)
                             return i;
                     }
                 }
+
+                if (_startsByValue.TryGetValue(element[0], out starts))
+                {
+                    for (int s = 0; s < starts.Count; s++)
+                    {
+                        int i = starts[s];
+                        if (i < greaterThan) continue;
+                        if (element.Count == 1)
+                            return i;
+                        bool all = true;
+                        for (int x = 1; x < element.Count; x++)
+                            if (i + x >= Entries.Count || Entries[i + x] != element[x]) { all = false; break; }
+                        if (all)
+                            return i;
+                    }
+                }
+                return -1;
             }
-            return -1;
         }
 
         /// <summary>
@@ -322,6 +390,25 @@ namespace CATHODE
             public bool MaterialSubplatformDependent = false;
 
             public List<Element> LODs = new List<Element>();
+
+            /// <summary>
+            /// Copy this element. The model, the material and the LOD elements are SHARED with the
+            /// original, not cloned - an element is a three-field pointer record, and the things it
+            /// points at belong to the level's model and material tables.
+            /// </summary>
+            public Element Copy()
+            {
+                return new Element()
+                {
+                    ModelLocation = ModelLocation,
+                    Model = Model,
+                    ModelSubplatformDependent = ModelSubplatformDependent,
+                    MaterialLocation = MaterialLocation,
+                    Material = Material,
+                    MaterialSubplatformDependent = MaterialSubplatformDependent,
+                    LODs = LODs == null ? null : new List<Element>(LODs),
+                };
+            }
 
             public static bool operator ==(Element x, Element y)
             {

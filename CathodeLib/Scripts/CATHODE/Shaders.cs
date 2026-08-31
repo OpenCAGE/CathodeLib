@@ -603,25 +603,10 @@ namespace CATHODE
                     hash = hash * 23 + CycleCount.GetHashCode();
                     hash = hash * 23 + RegisterCount.GetHashCode();
                     hash = hash * 23 + PermutationHash.GetHashCode();
-                    hash = hash * 23 + Samplers.Count.GetHashCode();
-                    foreach (var sampler in Samplers)
-                    {
-                        hash = hash * 23 + (sampler?.GetHashCode() ?? 0);
-                    }
-                    hash = hash * 23 + (RenderStates?.GetHashCode() ?? 0);
-                    hash = hash * 23 + GetListHashCode(SamplerStageBindings);
-                    hash = hash * 23 + GetListHashCode(SamplerRemaps);
-                    hash = hash * 23 + GetListHashCode(EngineParameterRemaps);
-                    hash = hash * 23 + GetListHashCode(VertexShaderParameterRemaps);
-                    hash = hash * 23 + GetListHashCode(PixelShaderParameterRemaps);
-                    hash = hash * 23 + GetListHashCode(HullShaderParameterRemaps);
-                    hash = hash * 23 + GetListHashCode(DomainShaderParameterRemaps);
-                    hash = hash * 23 + GetByteArrayHashCode(VertexShader);
-                    hash = hash * 23 + GetByteArrayHashCode(PixelShader);
-                    hash = hash * 23 + GetByteArrayHashCode(HullShader);
-                    hash = hash * 23 + GetByteArrayHashCode(DomainShader);
-                    hash = hash * 23 + GetByteArrayHashCode(GeometryShader);
-                    hash = hash * 23 + GetByteArrayHashCode(ComputeShader);
+                    hash = hash * 23 + (Samplers == null ? 0 : Samplers.Count);
+                    hash = hash * 23 + (SamplerRemaps == null ? 0 : SamplerRemaps.Count);
+                    hash = hash * 23 + (VertexShader == null ? 0 : VertexShader.Length);
+                    hash = hash * 23 + (PixelShader == null ? 0 : PixelShader.Length);
                     return hash;
                 }
             }

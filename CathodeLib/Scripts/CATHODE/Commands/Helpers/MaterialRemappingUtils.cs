@@ -468,7 +468,16 @@ namespace CathodeLib
             }
         }
 
-        private static readonly Dictionary<Models, Dictionary<Materials.Material, HashSet<string>>> _vertexFormatCache = new Dictionary<Models, Dictionary<Materials.Material, HashSet<string>>>();
+        /// <summary>
+        /// Which vertex layouts each material is known to be drawn with, per model table.
+        /// </summary>
+        /// <remarks>
+        /// Weak-keyed on purpose. A plain static dictionary kept every model table it had ever been
+        /// asked about alive for the life of the process, so a tool that opens one level after
+        /// another never gave back the memory of the ones it had closed.
+        /// </remarks>
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Models, Dictionary<Materials.Material, HashSet<string>>> _vertexFormatCache =
+            new System.Runtime.CompilerServices.ConditionalWeakTable<Models, Dictionary<Materials.Material, HashSet<string>>>();
 
         private static HashSet<string> VertexFormatsFor(Models models, Materials.Material material)
         {
@@ -492,7 +501,7 @@ namespace CathodeLib
                                         map[submesh.Material] = set = new HashSet<string>();
                                     set.Add(DescribeVertexFormat(submesh.VertexFormatFull));
                                 }
-                    _vertexFormatCache[models] = map;
+                    _vertexFormatCache.Add(models, map);
                 }
             }
 

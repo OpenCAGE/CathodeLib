@@ -30,11 +30,51 @@ namespace CathodeLib
     {
         public class Parameters<T> : IComparable<Parameters<T>>
         {
-            //Values set on the entity itself at initialisation time
+            /// <summary>
+            /// Values set on the entity itself at initialisation time.
+            /// </summary>
+            /// <remarks>
+            /// READ ONLY from outside this class. Until something writes through one of the methods
+            /// below, this is the entity template's own dictionary, shared with every other instance
+            /// of the same entity - writing to it directly would change all of them. A level the size
+            /// of Solace instances 556,288 entities and hardly any of them ever have a value written,
+            /// so giving each one its own copy of both dictionaries up front cost about 500MB.
+            /// </remarks>
             public Dictionary<ShortGuid, T> Values;
 
-            //Any links to other entities that set parameter values
+            /// <summary>
+            /// Any links to other entities that set parameter values. READ ONLY from outside this
+            /// class, for the same reason as <see cref="Values"/> - it starts out as a shared empty.
+            /// </summary>
             public Dictionary<ShortGuid, List<Tuple<ShortGuid, InstancedEntity>>> Links;
+
+            private static readonly Dictionary<ShortGuid, T> NoValues = new Dictionary<ShortGuid, T>();
+            private static readonly Dictionary<ShortGuid, List<Tuple<ShortGuid, InstancedEntity>>> NoLinks = new Dictionary<ShortGuid, List<Tuple<ShortGuid, InstancedEntity>>>();
+
+            //True while Values is still someone else's dictionary.
+            private bool _valuesShared = false;
+
+            //Take a private copy of Values before writing to it.
+            private void OwnValues()
+            {
+                if (!_valuesShared) return;
+                Values = Values.Count == 0 ? new Dictionary<ShortGuid, T>() : new Dictionary<ShortGuid, T>(Values);
+                _valuesShared = false;
+            }
+
+            //Same for Links, which starts life as the shared empty.
+            private void OwnLinks()
+            {
+                if (!ReferenceEquals(Links, NoLinks)) return;
+                Links = new Dictionary<ShortGuid, List<Tuple<ShortGuid, InstancedEntity>>>();
+            }
+
+            /// <summary>Set a value on this instance, taking a private copy of the template first.</summary>
+            public void Set(ShortGuid guid, T value)
+            {
+                OwnValues();
+                Values[guid] = value;
+            }
 
             //The entity these belong to, so a resolution can be seeded on whoever asked for it.
             public InstancedEntity Owner;
@@ -43,6 +83,29 @@ namespace CathodeLib
             {
                 Values = new Dictionary<ShortGuid, T>(capacity);
                 Links = new Dictionary<ShortGuid, List<Tuple<ShortGuid, InstancedEntity>>>(capacity);
+            }
+
+            /// <summary>
+            /// Start from an entity template's already-resolved values. The dictionary is copied,
+            /// not shared - an instance goes on to have zones, aliases and parent variables written
+            /// into it, and those are per-instance.
+            /// </summary>
+            public Parameters(Dictionary<ShortGuid, T> seed)
+            {
+                Values = seed ?? NoValues;
+                Links = NoLinks;
+                _valuesShared = true;
+            }
+
+            /// <summary>
+            /// Start from a dictionary this instance owns outright - for the one type (transforms)
+            /// whose values are mutable objects and so cannot be shared with the template.
+            /// </summary>
+            public Parameters(Dictionary<ShortGuid, T> owned, bool takeOwnership)
+            {
+                Values = owned ?? new Dictionary<ShortGuid, T>();
+                Links = NoLinks;
+                _valuesShared = !takeOwnership;
             }
 
             public bool Has(ShortGuid guid)
@@ -109,6 +172,7 @@ namespace CathodeLib
 
             public void AddLinks(ShortGuid guid, List<Tuple<ShortGuid, InstancedEntity>> links)
             {
+                OwnLinks();
                 if (Links.ContainsKey(guid))
                     Links[guid].AddRange(links);
                 else
@@ -120,10 +184,12 @@ namespace CathodeLib
             {
                 if (compInstParams.Values.TryGetValue(varGuid, out T value))
                 {
+                    OwnValues();
                     Values[varGuid] = value;
                 }
                 if (compInstParams.Links.TryGetValue(varGuid, out List<Tuple<ShortGuid, InstancedEntity>> parentLinks))
                 {
+                    OwnLinks();
                     if (!Links.TryGetValue(varGuid, out List<Tuple<ShortGuid, InstancedEntity>> existingLinks))
                     {
                         existingLinks = new List<Tuple<ShortGuid, InstancedEntity>>(parentLinks.Count);
@@ -136,6 +202,8 @@ namespace CathodeLib
             //Any entity can have an Alias override the values on it, kinda similar to the above 
             public void PopulateAliasInfo(Parameters<T> aliasParams)
             {
+                if (aliasParams.Values.Count != 0)
+                    OwnValues();
                 foreach (KeyValuePair<ShortGuid, T> value in aliasParams.Values)
                 {
                     Values[value.Key] = value.Value;
@@ -400,14 +468,15 @@ namespace CathodeLib
             #endregion
         }
 
-        public Parameters<bool> Bools = new Parameters<bool>();
-        public Parameters<int> Integers = new Parameters<int>();
-        public Parameters<float> Floats = new Parameters<float>();
-        public Parameters<int> EnumIndexes = new Parameters<int>();
-        public Parameters<Vector3> Vectors = new Parameters<Vector3>();
-        public Parameters<Transform> Transforms = new Parameters<Transform>();
-        public Parameters<cResource> Resources = new Parameters<cResource>();
-        public Parameters<string> Strings = new Parameters<string>();
+        //Assigned by the constructor, seeded from this entity's EntityTemplate.
+        public Parameters<bool> Bools;
+        public Parameters<int> Integers;
+        public Parameters<float> Floats;
+        public Parameters<int> EnumIndexes;
+        public Parameters<Vector3> Vectors;
+        public Parameters<Transform> Transforms;
+        public Parameters<cResource> Resources;
+        public Parameters<string> Strings;
 
         public Level Level = null;
         public Entity Entity = null;
@@ -448,75 +517,147 @@ namespace CathodeLib
         //The composite instanced by this entity, one step forward in the path: will be null if this doesn't instance one
         public InstancedComposite ChildCompositeInstance = null;
 
-        private HashSet<(ShortGuid, ParameterVariant, DataType)> _parameters = new HashSet<(ShortGuid, ParameterVariant, DataType)>();
+        //Everything about this entity's parameters that cannot differ between two instances of it,
+        //worked out once and shared - see EntityTemplate.
+        private EntityTemplate _template = null;
+        private bool _linksPopulated = false;
 
-        public InstancedEntity(Level level, Composite composite, Entity entity, EntityPath path, ConcurrentDictionary<(Entity, Composite), List<(ShortGuid, ParameterVariant, DataType)>> parameterCache, ConcurrentDictionary<(Composite, ShortGuid), Entity> entityLookupCache)
+        /// <summary>
+        /// The per-(entity, composite) half of an instanced entity: which parameters it has, the
+        /// value each one starts at, and which of them something is linked to.
+        /// </summary>
+        /// <remarks>
+        /// Instancing Solace creates 556,288 InstancedEntity objects from far fewer distinct
+        /// entities. Every instance used to re-derive the same parameter list, resolve the same
+        /// default for each parameter (a read out of the vanilla entity table on every miss), and
+        /// re-scan the entity's childLinks once per parameter. None of that can come out differently
+        /// for two instances of the same entity in the same composite, so it is done once here and
+        /// an instance only copies the answers.
+        /// </remarks>
+        public class EntityTemplate
+        {
+            //Filtered (pins and methods dropped) and deduped, in the order values were resolved in.
+            public (ShortGuid, ParameterVariant, DataType)[] Parameters = new (ShortGuid, ParameterVariant, DataType)[0];
+
+            //Only the parameters something is linked to, with each link's target already resolved to
+            //the entity GUID PopulateLinks looks up. Empty for most entities.
+            public LinkedParameter[] LinkedParameters = new LinkedParameter[0];
+
+            //Null rather than empty when the entity has nothing of that type - most entities carry
+            //parameters of two or three types, and an unused type should not cost a dictionary.
+            public Dictionary<ShortGuid, bool> Bools;
+            public Dictionary<ShortGuid, int> Integers;
+            public Dictionary<ShortGuid, float> Floats;
+            public Dictionary<ShortGuid, int> EnumIndexes;
+            public Dictionary<ShortGuid, Vector3> Vectors;
+            public Dictionary<ShortGuid, Transform> Transforms;
+            public Dictionary<ShortGuid, cResource> Resources;
+            public Dictionary<ShortGuid, string> Strings;
+
+            public struct LinkedParameter
+            {
+                public ShortGuid Guid;
+                public DataType Type;
+                public (ShortGuid LinkedParamID, ShortGuid ConnectedEntity)[] Links;
+            }
+        }
+
+        public InstancedEntity(Level level, Composite composite, Entity entity, EntityPath path, ConcurrentDictionary<(Entity, Composite), EntityTemplate> parameterCache, ConcurrentDictionary<(Composite, ShortGuid), Entity> entityLookupCache)
         {
             Level = level;
             Entity = entity;
             Path = path;
             Composite = composite;
+
+            _template = parameterCache != null
+                ? parameterCache.GetOrAdd((entity, composite), key => BuildTemplate(level, key.Item1, key.Item2))
+                : BuildTemplate(level, entity, composite);
+
+            Bools = new Parameters<bool>(_template.Bools);
+            Integers = new Parameters<int>(_template.Integers);
+            Floats = new Parameters<float>(_template.Floats);
+            EnumIndexes = new Parameters<int>(_template.EnumIndexes);
+            Vectors = new Parameters<Vector3>(_template.Vectors);
+            Resources = new Parameters<cResource>(_template.Resources);
+            Strings = new Parameters<string>(_template.Strings);
+
+            //Transforms are the one type an instance cannot share with the template: the value is a
+            //mutable object rather than a struct or a string, and callers hold on to it.
+            Dictionary<ShortGuid, Transform> transforms = null;
+            if (_template.Transforms != null)
+            {
+                transforms = new Dictionary<ShortGuid, Transform>(_template.Transforms.Count);
+                foreach (KeyValuePair<ShortGuid, Transform> transform in _template.Transforms)
+                    transforms.Add(transform.Key, new Transform() { Position = transform.Value.Position, Rotation = transform.Value.Rotation });
+            }
+            Transforms = new Parameters<Transform>(transforms, true);
+
             Bools.Owner = this; Integers.Owner = this; Floats.Owner = this; EnumIndexes.Owner = this;
             Vectors.Owner = this; Transforms.Owner = this; Resources.Owner = this; Strings.Owner = this;
 
-            //Get all parameters that supply values - use cache if available
-            List<(ShortGuid, ParameterVariant, DataType)> parameters;
-            if (parameterCache != null)
-            {
-                var cacheKey = (entity, composite);
-                parameters = parameterCache.GetOrAdd(cacheKey, key => Level.Commands.Utils.GetAllParameters(key.Item1, key.Item2));
-                parameters = new List<(ShortGuid, ParameterVariant, DataType)>(parameters);
-            }
-            else
-            {
-                parameters = Level.Commands.Utils.GetAllParameters(entity, composite);
-            }
-            
+            //TODO: need to handle triggersequences a bit different i think? they can apply parameter data down
+        }
+
+        private static EntityTemplate BuildTemplate(Level level, Entity entity, Composite composite)
+        {
+            EntityTemplate template = new EntityTemplate();
+
+            //Get all parameters that supply values
+            List<(ShortGuid, ParameterVariant, DataType)> parameters = level.Commands.Utils.GetAllParameters(entity, composite);
             if (parameters == null)
                 parameters = new List<(ShortGuid, ParameterVariant, DataType)>();
-            
+
             parameters.RemoveAll(o =>
                 o.Item2 == ParameterVariant.REFERENCE_PIN ||
                 o.Item2 == ParameterVariant.TARGET_PIN ||
                 o.Item2 == ParameterVariant.METHOD_FUNCTION ||
                 o.Item2 == ParameterVariant.METHOD_PIN
             );
-            Dictionary<ShortGuid, (ShortGuid, ParameterVariant, DataType)> paramLookup = new Dictionary<ShortGuid, (ShortGuid, ParameterVariant, DataType)>(parameters.Count);
-            foreach (var param in parameters)
-            {
-                if (!paramLookup.ContainsKey(param.Item1))
-                    paramLookup[param.Item1] = param;
-            }
+
+            //NOTE: GetAllParameters does not check for duplicates, so do that now - need to fix that.
+            // An example of another issue is {UI_ReactionGame} - the child UI_Attached should not add another 'success' entry - parent should override it
+            HashSet<(ShortGuid, ParameterVariant, DataType)> seen = new HashSet<(ShortGuid, ParameterVariant, DataType)>();
+            List<(ShortGuid, ParameterVariant, DataType)> selected = new List<(ShortGuid, ParameterVariant, DataType)>(parameters.Count);
 
             switch (entity.variant)
             {
                 //For aliases, only factor in the parameters and links that are actually set, since these are OVERRIDES
                 case EntityVariant.ALIAS:
-                    foreach (Parameter p in entity.parameters)
                     {
-                        if (p.content == null)
-                            continue;
-                        if (paramLookup.TryGetValue(p.name, out var param))
-                            _parameters.Add(param);
-                    }
-                    //TODO: also need to factor in parent links somehow (?) -> actually, i think we can disregard logic links?
-                    foreach (EntityConnector c in entity.childLinks)
-                    {
-                        if (paramLookup.TryGetValue(c.thisParamID, out var param))
-                            _parameters.Add(param);
+                        Dictionary<ShortGuid, (ShortGuid, ParameterVariant, DataType)> paramLookup = new Dictionary<ShortGuid, (ShortGuid, ParameterVariant, DataType)>(parameters.Count);
+                        foreach (var param in parameters)
+                        {
+                            if (!paramLookup.ContainsKey(param.Item1))
+                                paramLookup[param.Item1] = param;
+                        }
+
+                        foreach (Parameter p in entity.parameters)
+                        {
+                            if (p.content == null)
+                                continue;
+                            if (paramLookup.TryGetValue(p.name, out var param) && seen.Add(param))
+                                selected.Add(param);
+                        }
+                        //TODO: also need to factor in parent links somehow (?) -> actually, i think we can disregard logic links?
+                        foreach (EntityConnector c in entity.childLinks)
+                        {
+                            if (paramLookup.TryGetValue(c.thisParamID, out var param) && seen.Add(param))
+                                selected.Add(param);
+                        }
                     }
                     break;
                 //For others, get all default values, as well as ones that are set
                 default:
-                    //NOTE: GetAllParameters does not check for duplicates, so do that now - need to fix that.
-                    // An example of another issue is {UI_ReactionGame} - the child UI_Attached should not add another 'success' entry - parent should override it
                     foreach (var entry in parameters)
-                        _parameters.Add(entry);
+                        if (seen.Add(entry))
+                            selected.Add(entry);
                     break;
             }
 
+            template.Parameters = selected.ToArray();
+
             //Get the values off the entity, or create the default value if its not set
-            foreach ((ShortGuid guid, ParameterVariant variant, DataType datatype) in _parameters)
+            foreach ((ShortGuid guid, ParameterVariant variant, DataType datatype) in template.Parameters)
             {
                 switch (datatype)
                 {
@@ -542,10 +683,11 @@ namespace CathodeLib
                                     value = ((cString)p.content).value.ToUpper() == "TRUE";
                                     break;
                                 default:
-                                    value = ((cBool)Level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid)).value;
+                                    value = ((cBool)level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid)).value;
                                     break;
                             }
-                            Bools.Values.Add(guid, value);
+                            if (template.Bools == null) template.Bools = new Dictionary<ShortGuid, bool>();
+                            template.Bools.Add(guid, value);
                         }
                         break;
                     case DataType.INTEGER:
@@ -576,10 +718,11 @@ namespace CathodeLib
                                     catch { }
                                     break;
                                 default:
-                                    value = ((cInteger)Level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid)).value;
+                                    value = ((cInteger)level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid)).value;
                                     break;
                             }
-                            Integers.Values.Add(guid, value);
+                            if (template.Integers == null) template.Integers = new Dictionary<ShortGuid, int>();
+                            template.Integers.Add(guid, value);
                         }
                         break;
                     case DataType.FLOAT:
@@ -611,11 +754,12 @@ namespace CathodeLib
                                     catch { }
                                     break;
                                 default:
-                                    value = ((cFloat)Level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid)).value;
+                                    value = ((cFloat)level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid)).value;
                                     break;
                             }
-                            if (!Floats.Values.ContainsKey(guid)) //todo - deprecate this when the hashset above is fixed
-                                Floats.Values.Add(guid, value);
+                            if (template.Floats == null) template.Floats = new Dictionary<ShortGuid, float>();
+                            if (!template.Floats.ContainsKey(guid)) //todo - deprecate this when the hashset above is fixed
+                                template.Floats.Add(guid, value);
                         }
                         break;
                     case DataType.ENUM:
@@ -646,10 +790,11 @@ namespace CathodeLib
                                     catch { }
                                     break;
                                 default:
-                                    value = ((cEnum)Level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid)).enumIndex;
+                                    value = ((cEnum)level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid)).enumIndex;
                                     break;
                             }
-                            EnumIndexes.Values.Add(guid, value);
+                            if (template.EnumIndexes == null) template.EnumIndexes = new Dictionary<ShortGuid, int>();
+                            template.EnumIndexes.Add(guid, value);
                         }
                         break;
                     case DataType.VECTOR:
@@ -665,10 +810,11 @@ namespace CathodeLib
                                     value = ((cTransform)p.content).position;
                                     break;
                                 default:
-                                    value = ((cVector3)Level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid)).value;
+                                    value = ((cVector3)level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid)).value;
                                     break;
                             }
-                            Vectors.Values.Add(guid, value);
+                            if (template.Vectors == null) template.Vectors = new Dictionary<ShortGuid, Vector3>();
+                            template.Vectors.Add(guid, value);
                         }
                         break;
                     case DataType.TRANSFORM:
@@ -685,12 +831,13 @@ namespace CathodeLib
                                     value = new Transform() { Position = t.position, Rotation = t.rotation };
                                     break;
                                 default:
-                                    cTransform tD = (cTransform)Level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid);
+                                    cTransform tD = (cTransform)level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid);
                                     value = new Transform() { Position = tD.position, Rotation = tD.rotation };
                                     break;
                             }
 
-                            Transforms.Values.Add(guid, value);
+                            if (template.Transforms == null) template.Transforms = new Dictionary<ShortGuid, Transform>();
+                            template.Transforms.Add(guid, value);
                         }
                         break;
                     case DataType.RESOURCE:
@@ -703,7 +850,8 @@ namespace CathodeLib
                                     value = (cResource)p.content;
                                     break;
                             }
-                            Resources.Values.Add(guid, value);
+                            if (template.Resources == null) template.Resources = new Dictionary<ShortGuid, cResource>();
+                            template.Resources.Add(guid, value);
                         }
                         break;
                     case DataType.FILEPATH:
@@ -720,7 +868,8 @@ namespace CathodeLib
                                         value = (cResource)p.content;
                                         break;
                                 }
-                                Resources.Values.Add(guid, value);
+                                if (template.Resources == null) template.Resources = new Dictionary<ShortGuid, cResource>();
+                                template.Resources.Add(guid, value);
                             }
                             else
                             {
@@ -733,11 +882,12 @@ namespace CathodeLib
                                         value = ((cString)p.content).value;
                                         break;
                                     default:
-                                        cString sD = (cString)Level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid);
+                                        cString sD = (cString)level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid);
                                         value = sD?.value ?? "";
                                         break;
                                 }
-                                Strings.Values.Add(guid, value);
+                                if (template.Strings == null) template.Strings = new Dictionary<ShortGuid, string>();
+                                template.Strings.Add(guid, value);
                             }
                         }
                         break;
@@ -754,7 +904,7 @@ namespace CathodeLib
                                     value = ((cString)p.content).value;
                                     break;
                                 case DataType.ENUM:
-                                    value = Level.Commands.Utils.GetEnum(((cEnum)p.content).enumID).Entries.FirstOrDefault(o => o.Index == ((cEnum)p.content).enumIndex).ToString(); //todo is this right?
+                                    value = level.Commands.Utils.GetEnum(((cEnum)p.content).enumID).Entries.FirstOrDefault(o => o.Index == ((cEnum)p.content).enumIndex).ToString(); //todo is this right?
                                     break;
                                 case DataType.INTEGER:
                                     value = ((cInteger)p.content).value.ToString();
@@ -766,19 +916,46 @@ namespace CathodeLib
                                     value = ((cBool)p.content).value ? "TRUE" : "FALSE";
                                     break;
                                 default:
-                                    cString sD = (cString)Level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid);
+                                    cString sD = (cString)level.Commands.Utils.CreateDefaultParameterData(entity, composite, guid);
                                     value = sD.value;
                                     break;
                             }
 
-                            Strings.Values.Add(guid, value);
+                            if (template.Strings == null) template.Strings = new Dictionary<ShortGuid, string>();
+                            template.Strings.Add(guid, value);
                         }
                         break;
                 }
             }
 
-            //TODO: need to handle triggersequences a bit different i think? they can apply parameter data down
+            //Which parameters something is linked to, and where each link points. Resolving the
+            //target entity here rather than once per instance drops a scan of childLinks per
+            //parameter and a composite lookup per link, on every one of the level's instances.
+            List<EntityTemplate.LinkedParameter> linked = new List<EntityTemplate.LinkedParameter>();
+            foreach ((ShortGuid guid, ParameterVariant variant, DataType datatype) in template.Parameters)
+            {
+                List<(ShortGuid, ShortGuid)> targets = null;
+                for (int i = 0; i < entity.childLinks.Count; i++)
+                {
+                    EntityConnector connector = entity.childLinks[i];
+                    if (connector.thisParamID != guid)
+                        continue;
+                    Entity connectedEnt = composite.GetEntityByID(connector.linkedEntityID);
+                    if (connectedEnt == null)
+                        continue;
+                    if (targets == null) targets = new List<(ShortGuid, ShortGuid)>();
+                    targets.Add((connector.linkedParamID, connectedEnt.shortGUID));
+                }
+                if (targets == null)
+                    continue;
+                linked.Add(new EntityTemplate.LinkedParameter() { Guid = guid, Type = datatype, Links = targets.ToArray() });
+            }
+            if (linked.Count != 0)
+                template.LinkedParameters = linked.ToArray();
+
+            return template;
         }
+
 
         public void PopulateLinks(List<InstancedEntity> entities)
         {
@@ -796,22 +973,20 @@ namespace CathodeLib
                 }
             }
 
-            if (_parameters != null)
+            if (!_linksPopulated)
             {
-                foreach ((ShortGuid guid, ParameterVariant variant, DataType datatype) in _parameters)
+                _linksPopulated = true;
+                foreach (EntityTemplate.LinkedParameter linked in _template.LinkedParameters)
                 {
-                    List<EntityConnector> links = Entity.childLinks.FindAll(o => o.thisParamID == guid);
-                    if (links.Count == 0)
-                        continue;
+                    ShortGuid guid = linked.Guid;
+                    DataType datatype = linked.Type;
 
-                    List<Tuple<ShortGuid, InstancedEntity>> linksParsed = new List<Tuple<ShortGuid, InstancedEntity>>(links.Count);
-                    for (int i = 0; i < links.Count; i++)
+                    List<Tuple<ShortGuid, InstancedEntity>> linksParsed = new List<Tuple<ShortGuid, InstancedEntity>>(linked.Links.Length);
+                    for (int i = 0; i < linked.Links.Length; i++)
                     {
-                        Entity connectedEnt = Composite.GetEntityByID(links[i].linkedEntityID);
-                        if (connectedEnt == null) continue;
-                        if (entityByGuid.TryGetValue(connectedEnt.shortGUID, out InstancedEntity instancedEntity))
+                        if (entityByGuid.TryGetValue(linked.Links[i].ConnectedEntity, out InstancedEntity instancedEntity))
                         {
-                            linksParsed.Add(new Tuple<ShortGuid, InstancedEntity>(links[i].linkedParamID, instancedEntity));
+                            linksParsed.Add(new Tuple<ShortGuid, InstancedEntity>(linked.Links[i].LinkedParamID, instancedEntity));
                         }
                     }
 
@@ -853,7 +1028,6 @@ namespace CathodeLib
                             break;
                     }
                 }
-                _parameters = null;
             }
 
             //If this entity is a Composite interface type, we need to look for the parent entity that instanced our composite and forward the links on.
@@ -2397,7 +2571,7 @@ namespace CathodeLib
         //Creates (or finds) the materials an instance needs that the authored data has no entry for.
         private MaterialFactory _materialFactory = null;
 
-        private readonly ConcurrentDictionary<(Entity, Composite), List<(ShortGuid, ParameterVariant, DataType)>> _parameterCache = new ConcurrentDictionary<(Entity, Composite), List<(ShortGuid, ParameterVariant, DataType)>>();
+        private readonly ConcurrentDictionary<(Entity, Composite), InstancedEntity.EntityTemplate> _parameterCache = new ConcurrentDictionary<(Entity, Composite), InstancedEntity.EntityTemplate>();
         private readonly ConcurrentDictionary<(Composite, ShortGuid), Entity> _entityLookupCache = new ConcurrentDictionary<(Composite, ShortGuid), Entity>();
 
         private readonly object _resourcesLock = new object();
@@ -2483,6 +2657,32 @@ namespace CathodeLib
 
         public IReadOnlyList<string> BakeWarnings => _bakeWarnings;
         private readonly List<string> _bakeWarnings = new List<string>();
+
+        /// <summary>
+        /// Emit a per-phase time and heap reading to the console while instancing. Profiling only -
+        /// off by default, and the timing calls cost nothing when it is off.
+        /// </summary>
+        public static bool ProfilePhases = false;
+
+        /// <summary>Force a full collection around every phase so the heap readings are live bytes
+        /// rather than allocated bytes. Accurate, but it distorts the timings on a large heap.</summary>
+        public static bool ProfileForceGC = false;
+
+        private void Phase(string name, Action work)
+        {
+            if (!ProfilePhases) { work(); return; }
+            long before = GC.GetTotalMemory(ProfileForceGC);
+            int g0 = GC.CollectionCount(0), g2 = GC.CollectionCount(2);
+            System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+            work();
+            sw.Stop();
+            long after = GC.GetTotalMemory(ProfileForceGC);
+            Console.WriteLine("  [phase] " + name.PadRight(22)
+                + sw.Elapsed.TotalSeconds.ToString("F2").PadLeft(7) + "s"
+                + (ProfileForceGC ? "   live heap " : "   heap ") + (after / 1048576).ToString().PadLeft(5) + "MB"
+                + "  (" + ((after - before) / 1048576).ToString("+#;-#;0").PadLeft(6) + "MB)"
+                + "   gc " + (GC.CollectionCount(0) - g0) + "/" + (GC.CollectionCount(2) - g2));
+        }
 
         private void RunOptionalBake(string stage, Action bake)
         {
@@ -2571,10 +2771,12 @@ namespace CathodeLib
                 }
             }
 
-            GenerateInstances();
-            ProcessInstances();
-            BuildStateProperties();
-            CarryRetailModelParams();
+            Phase("GenerateInstances", GenerateInstances);
+            if (ProfilePhases)
+                Console.WriteLine("  [phase]   -> " + AllEntities.Count + " instanced entities in " + AllComposites.Count + " composite instances");
+            Phase("ProcessInstances", ProcessInstances);
+            Phase("BuildStateProperties", BuildStateProperties);
+            Phase("CarryRetailModelParams", CarryRetailModelParams);
 
             // Each of the four agent bakes is opted into by supplying its settings, the same way
             // the radiosity bake below is. Null means the caller does not want that system rebuilt
@@ -2762,7 +2964,7 @@ namespace CathodeLib
 
             //Snapshot everything the carries need BEFORE any table is cleared - the resource
             //table snapshot read an empty list when this ran after the clears.
-            SnapshotModelParams();
+            Phase("  snapshot", SnapshotModelParams);
 
             //Clear other various bits we'll re-write
             _level.Resources.Entries.Clear();
@@ -2813,8 +3015,8 @@ namespace CathodeLib
             }
 
             //Now calculate linked entity logic - zone and environment map assignment
-            CalculateZones();
-            CalculateEnvironmentMaps();
+            Phase("  zones", CalculateZones);
+            Phase("  envmaps", CalculateEnvironmentMaps);
 
             //The required models are indexed positionally by the engine and everything below
             //points at them by position, so make sure nothing has shuffled them out of the head.
@@ -2829,7 +3031,7 @@ namespace CathodeLib
 
             //Do the instancing!
             _sharedComposites.Clear();
-            ProcessInstances(Root, false, false, false, false, false, false);
+            Phase("  walk", () => ProcessInstances(Root, false, false, false, false, false, false));
 
             if (_materialFactory.MaterialsCreated != 0 || _materialFactory.TexturesNotFound != 0)
             {
@@ -2853,25 +3055,24 @@ namespace CathodeLib
                 Console.WriteLine("WARNING: no shader for " + failed.Key + " - " + failed.Value);
 
             //Re-write Commands-only (not instanced) REDs back to REDs since we cleared it out earlier
-            PopulateCommandsREDs();
+            Phase("  commandsREDs", PopulateCommandsREDs);
 
             //Rebuild Havok data
-            ApplyHavokUserRows();
-            _collision?.Packfile.CommitInstanceRebuild();
-            _collisionMirror?.Packfile.CommitInstanceRebuild();
+            Phase("  havok rows", ApplyHavokUserRows);
+            Phase("  havok commit", () => { _collision?.Packfile.CommitInstanceRebuild(); _collisionMirror?.Packfile.CommitInstanceRebuild(); });
 
             //Placing geometry on a host widens the key space its children can produce.
             _collision?.Packfile.RefreshCompoundShapeKeyBits();
             _collisionMirror?.Packfile.RefreshCompoundShapeKeyBits();
 
             //Regenerate level states (navmesh, cover, etc)
-            BuildExclusiveMasterStates();
+            Phase("  masterStates", BuildExclusiveMasterStates);
 
             //Rebuild the BVH for lights
-            _level.Lights.RebuildFromMovers(_level.Movers);
+            Phase("  lightBVH", () => _level.Lights.RebuildFromMovers(_level.Movers));
 
             //Rebuild the BVH for occluder triangles (CA_OCCLUSION_CULLING meshes)
-            _level.OccluderTriangleBVH.RebuildFromMovers(_level.Movers);
+            Phase("  occluderBVH", () => _level.OccluderTriangleBVH.RebuildFromMovers(_level.Movers));
         }
 
         private void BuildStateProperties()

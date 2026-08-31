@@ -43,6 +43,46 @@ namespace CATHODE
 
         private List<CS2.Component.LOD.Submesh> _writeList = new List<CS2.Component.LOD.Submesh>();
 
+        //First-index lookup over _writeList. Submesh's own GetHashCode hashes its vertex buffer by
+        //reference while == compares it by value, so it cannot key a dictionary; SubmeshIdentity
+        //hashes the one field that is both immutable and required by == and lets Equals settle the
+        //rest.
+        private Dictionary<CS2.Component.LOD.Submesh, int> _writeIndex = null;
+        private int _writeIndexCount = 0;
+        //Save serialises submeshes in parallel, so the lookup is built and read under a lock.
+        private readonly object _writeIndexLock = new object();
+
+        private sealed class SubmeshIdentity : IEqualityComparer<CS2.Component.LOD.Submesh>
+        {
+            public static readonly SubmeshIdentity Instance = new SubmeshIdentity();
+            public bool Equals(CS2.Component.LOD.Submesh x, CS2.Component.LOD.Submesh y) { return x == y; }
+            public int GetHashCode(CS2.Component.LOD.Submesh submesh)
+            {
+                return submesh == null ? 0 : submesh.Identity.GetHashCode();
+            }
+        }
+
+        private int WriteIndexOf(CS2.Component.LOD.Submesh submesh)
+        {
+            if (submesh == null) return -1;
+            lock (_writeIndexLock)
+            {
+                if (_writeIndex == null || _writeIndexCount > _writeList.Count)
+                {
+                    _writeIndex = new Dictionary<CS2.Component.LOD.Submesh, int>(SubmeshIdentity.Instance);
+                    _writeIndexCount = 0;
+                }
+                for (; _writeIndexCount < _writeList.Count; _writeIndexCount++)
+                {
+                    CS2.Component.LOD.Submesh entry = _writeList[_writeIndexCount];
+                    if (entry != null && !_writeIndex.ContainsKey(entry))
+                        _writeIndex[entry] = _writeIndexCount;
+                }
+                int index;
+                return _writeIndex.TryGetValue(submesh, out index) ? index : -1;
+            }
+        }
+
         public Models(string path, Materials materials, Collisions weightedCollisions, MorphTargets morphTargets) : base (path)
         {
             _materials = materials;
@@ -79,6 +119,7 @@ namespace CATHODE
 
             Entries.Clear();
             _writeList.Clear();
+            _writeIndex = null;
         }
 
         #region FILE_IO
@@ -316,6 +357,7 @@ namespace CATHODE
             {
                 bin.BaseStream.SetLength(0);
                 _writeList.Clear();
+                _writeIndex = null;
 
                 //Write header
                 Utilities.WriteString("XMDB", bin);
@@ -715,15 +757,12 @@ namespace CATHODE
         /// </summary>
         public int GetWriteIndex(CS2.Component.LOD.Submesh submesh)
         {
-            if (submesh == null) return -1;
-            if (!_writeList.Contains(submesh)) return -1;
-            return _writeList.IndexOf(submesh);
+            return WriteIndexOf(submesh);
         }
         public int GetWriteIndex(CS2.Component mesh)
         {
             if (mesh == null) return -1;
-            if (!_writeList.Contains(mesh.LODs[0].Submeshes[0])) return -1;
-            return _writeList.IndexOf(mesh.LODs[0].Submeshes[0]);
+            return WriteIndexOf(mesh.LODs[0].Submeshes[0]);
         }
 
         /// <summary>
@@ -1212,6 +1251,8 @@ namespace CATHODE
 
                         //I've added in unique GUIDs to help track submeshes even if their properties are identical, which can happen, E.G. for LV426 NPC spacesuits.
                         private Guid guid = Guid.NewGuid();
+
+                        internal Guid Identity { get { return guid; } }
 
                         public static bool operator ==(Submesh x, Submesh y)
                         {

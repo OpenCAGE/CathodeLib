@@ -101,8 +101,35 @@ namespace CathodeLib
             if (File.Exists(filepath + ".META"))
                 filepath = filepath + ".META";
 
+            /* A gzipped COMMANDS.BIN cannot carry tables after its content: the reader would have to
+             * decompress to find where they start, and TableExists has no end position for it - so
+             * writing in place truncates the whole script file to nothing but tables. The mobile and
+             * Switch builds ship only that form. Use the sidecar reads already prefer. */
+            else if (GetFileType(filepath) == CustomTableFileType.COMMANDS_COMPRESSED)
+                filepath = filepath + ".META";
+
             if (!File.Exists(filepath))
                 File.WriteAllBytes(filepath, new byte[0]);
+
+            //Guard: files with unrecognised names are treated as STANDALONE, which assumes the whole
+            //file is table data and truncates from position zero. If such a file has content but no
+            //valid table structure (e.g. a COMMANDS.PAK saved under a different name), truncating
+            //would destroy it - write to a .META sidecar alongside it instead. Reads already prefer
+            //the .META when it exists, so this stays consistent.
+            if (GetFileType(filepath) == CustomTableFileType.STANDALONE
+                && !filepath.EndsWith(".META", StringComparison.OrdinalIgnoreCase))
+            {
+                bool isTableFile;
+                using (BinaryReader reader = new BinaryReader(File.OpenRead(filepath)))
+                    isTableFile = reader.BaseStream.Length == 0 || TableExists(reader, CustomTableFileType.STANDALONE, out _);
+
+                if (!isTableFile)
+                {
+                    filepath = filepath + ".META";
+                    if (!File.Exists(filepath))
+                        File.WriteAllBytes(filepath, new byte[0]);
+                }
+            }
 
             Dictionary<CustomTableType, Table> toWrite = new Dictionary<CustomTableType, Table>();
             for (int i = 0; i < (int)CustomTableType.NUMBER_OF_END_TABLES; i++)
@@ -119,6 +146,12 @@ namespace CathodeLib
             {
                 TableExists(reader, GetFileType(filepath), out endPos);
             }
+
+            //Appending means truncating to where the host file's content ends, so a file that will
+            //not say where that is must be left alone rather than written to at a guessed position.
+            if (endPos < 0)
+                throw new InvalidDataException("Cannot write CathodeLib tables to " + filepath
+                    + ": its header does not say where its content ends.");
 
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(filepath)))
             {
@@ -323,23 +356,49 @@ namespace CathodeLib
             return CustomTableFileType.STANDALONE;
         }
 
+        /// <summary>
+        /// Is there a CathodeLib table block in this file, and where does the file's own content end?
+        /// </summary>
+        /// <param name="endPos">
+        /// Where the host file's content ends and a table block may begin, or -1 when its header does
+        /// not give a usable one. WriteTable truncates to this, so it must never be a guess.
+        /// </param>
         private static bool TableExists(BinaryReader reader, CustomTableFileType type, out int endPos)
         {
+            long length = reader.BaseStream.Length;
             switch (type)
             {
                 case CustomTableFileType.COMMANDS_PAK:
+                    if (length < 28) { endPos = -1; return false; }
                     reader.BaseStream.Position = 20;
                     endPos = (reader.ReadInt32() * 4) + (reader.ReadInt32() * 4);
                     break;
                 case CustomTableFileType.COMMANDS_BIN:
+                    if (length < 4) { endPos = -1; return false; }
+                    reader.BaseStream.Position = 0;
                     endPos = reader.ReadInt32();
                     break;
                 default:
+                    //The whole of a standalone file is table data, so there is no header to trust.
                     endPos = 0;
                     break;
             }
+
+            /* An end position outside the file means the header is not what we think it is. Say so
+             * rather than seeking there: reads then simply find no tables, and the write path - which
+             * truncates to this - refuses instead of taking the file's content with it. */
+            if (endPos < 0 || endPos > length)
+            {
+                endPos = -1;
+                return false;
+            }
+
+            //Nothing written after the content yet.
+            if (endPos == length)
+                return false;
+
             reader.BaseStream.Position = endPos;
-            return (int)reader.BaseStream.Length - endPos != 0 && reader.ReadByte() == _version;
+            return reader.ReadByte() == _version;
         }
 
         public class Table

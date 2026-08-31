@@ -261,53 +261,50 @@ namespace CATHODE
             });
             #endregion
 
+            string extension = Path.GetExtension(_filepath).ToUpper();
+            if (extension != ".PAK" && extension != ".GZ" && extension != ".BIN")
+                return false;
+
+            /* A level carries the same script data in both formats, and building the second one was
+             * the single largest thing left in a save. Neither writer reads the other's output and
+             * both only read the composite graph - the fixup pass above is what mutates it - so they
+             * are built at the same time. Everything they share (the ShortGuid cache, and the write
+             * indexes of REDS, collision maps and material mappings) is safe to call concurrently. */
+            bool alsoSibling = !_compressed;
+            string siblingPath = alsoSibling ? Path.ChangeExtension(_filepath, extension == ".PAK" ? ".BIN" : ".PAK") : null;
+
             byte[] content = null;
-            switch (Path.GetExtension(_filepath).ToUpper())
-            {
-                case ".PAK":
-                    CommandsPAK.Write(_entryPoints, Entries, out content, _envAnims, _colMaps, _reds);
-                    break;
-                case ".GZ":
-                case ".BIN":
-                    CommandsBIN.Write(_entryPoints, Entries, out content, _envAnims, _colMaps, _reds);
-                    break;
-                default:
-                    return false;
-            }
+            byte[] siblingContent = null;
+            Parallel.Invoke(
+                () =>
+                {
+                    byte[] written;
+                    if (extension == ".PAK")
+                        CommandsPAK.Write(_entryPoints, Entries, out written, _envAnims, _colMaps, _reds);
+                    else
+                        CommandsBIN.Write(_entryPoints, Entries, out written, _envAnims, _colMaps, _reds);
+                    content = written;
+                },
+                () =>
+                {
+                    if (!alsoSibling) return;
+                    byte[] written;
+                    if (extension == ".PAK")
+                        CommandsBIN.Write(_entryPoints, Entries, out written, _envAnims, _colMaps, _reds);
+                    else
+                        CommandsPAK.Write(_entryPoints, Entries, out written, _envAnims, _colMaps, _reds);
+                    siblingContent = written;
+                }
+            );
 
             WriteToDisk(_filepath, content);
 
             if (_compressed)
                 Utilities.GZIPCompress(_filepath);
-            else
-                SaveSibling();
+            else if (siblingContent != null)
+                WriteToDisk(siblingPath, siblingContent);
 
             return true;
-        }
-
-        /// <summary>
-        /// Write the same script data out in the other of the two formats a level carries.
-        /// </summary>
-        private void SaveSibling()
-        {
-            string siblingPath;
-            byte[] siblingContent;
-
-            switch (Path.GetExtension(_filepath).ToUpper())
-            {
-                case ".PAK":
-                    siblingPath = Path.ChangeExtension(_filepath, ".BIN");
-                    CommandsBIN.Write(_entryPoints, Entries, out siblingContent, _envAnims, _colMaps, _reds);
-                    break;
-                case ".BIN":
-                    siblingPath = Path.ChangeExtension(_filepath, ".PAK");
-                    CommandsPAK.Write(_entryPoints, Entries, out siblingContent, _envAnims, _colMaps, _reds);
-                    break;
-                default:
-                    return;
-            }
-
-            WriteToDisk(siblingPath, siblingContent);
         }
 
         private static void WriteToDisk(string path, byte[] content)
