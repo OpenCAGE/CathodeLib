@@ -64,14 +64,20 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// Delta-bake: keep the level's shipped radiosity wholesale and patch only what the edit
         /// invalidated, instead of regenerating everything. See <see cref="RadiosityPatcher"/>.
-        /// Requires the level's RADIOSITY_RUNTIME.BIN to still be a real bake (retail's or a
-        /// previous full bake); throws when it carries no slices.
         /// </summary>
-        /// <remarks>DEFAULT TRUE since 2026-08-29 (Matt): an OpenCAGE save preserves the
+        /// <remarks>
+        /// <para>DEFAULT TRUE since 2026-08-29 (Matt): an OpenCAGE save preserves the
         /// shipped radiosity wholesale and only moved/newly-added movers get radiosity of
-        /// their own via the delta paths. Full regeneration is the explicit opt-out
-        /// (set false). Note older library versions CLEARED the level radiosity on every
-        /// instanced save without radiosity settings.</remarks>
+        /// their own via the delta paths. Setting this false regenerates the whole level
+        /// every time. Note older library versions CLEARED the level radiosity on every
+        /// instanced save without radiosity settings.</para>
+        /// <para>Even when this is on, the bake falls back to a full regeneration when there is
+        /// no retail bake worth preserving: when the level's RADIOSITY_RUNTIME.BIN carries no
+        /// slices (missing, empty, or wiped by one of those older saves), and when it is data
+        /// we generated ourselves - see <see cref="CATHODE.RadiosityRuntime.FullyRegenerated"/>.
+        /// So this flag chooses the behaviour for retail lighting; it never leaves a level
+        /// unlit.</para>
+        /// </remarks>
         public bool PatchRetailRuntime = true;
 
         /// <summary>

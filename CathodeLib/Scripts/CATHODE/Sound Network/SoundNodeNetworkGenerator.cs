@@ -230,7 +230,12 @@ namespace CathodeLib
                 nodes[link.A].NodeLinks.Add(new SoundNodeNetwork.NodeLinkData(nodes[link.B], link.Path, link.Obstruction));
             }
 
-            LinkNetworks(networks, markerNetworks, nodes, links, owner, CollectBarriers(level, barriers), manualCount, log);
+            uint[] barrierTriangleInstance = null;
+            BVHAccel openingGeometry = _settings.BarrierBoundaryTest == 3 ? BuildOpeningGeometry(level, barriers, log) : null;
+            BVHAccel barrierGeometry = _settings.BarrierBoundaryTest == 2
+                ? BuildBarrierGeometry(level, barriers, out barrierTriangleInstance, log) : null;
+            LinkNetworks(networks, markerNetworks, nodes, links, owner, CollectBarriers(level, barriers),
+                         barrierGeometry, barrierTriangleInstance, openingGeometry, manualCount, log);
             var starved = new List<string>();
             for (int i = 0; i < networks.Count; i++)
             {
@@ -310,7 +315,9 @@ namespace CathodeLib
         /// </remarks>
         private static void LinkNetworks(List<SoundNodeNetwork.NetworkInfo> networks, int markerNetworks,
                                          SoundNodeNetwork.NetworkNode[] nodes, List<Link> links, int[] owner,
-                                         List<(Vector3 position, uint instance)> barriers, int manualCount, Action<string> log)
+                                         List<(Vector3 position, uint instance)> barriers,
+                                         BVHAccel barrierGeometry, uint[] barrierTriangleInstance, BVHAccel openingGeometry,
+                                         int manualCount, Action<string> log)
         {
             // Which networks may hold a boundary at all. Sealed networks - the ones no marker
             // reached, written with no name and no reverb - are not uniformly excluded, because
@@ -361,7 +368,8 @@ namespace CathodeLib
             // so the pair either side of it frequently has no link at all - which was costing us
             // around a third of retail's boundaries (65 of its 104 on HAB_Airport) and, through the
             // smaller connected components that followed, most of its NetworkPaths.
-            var shortest = new Dictionary<(int, int), (int a, int b, float dist)>();
+            var shortest = new Dictionary<(int, int), (int a, int b, float dist, uint barrier, bool ok)>();
+            bool weighBarrier = _settings.BarrierBoundaryTest > 0;
             {
                 var grid = new Dictionary<(int, int, int), List<int>>();
                 float cell = Math.Max(_settings.AdjoinDistance, 0.5f);
@@ -392,11 +400,74 @@ namespace CathodeLib
 
                                     var key = a < b ? (a, b) : (b, a);
                                     int lo = a < b ? i : j, hi = a < b ? j : i;
-                                    if (shortest.TryGetValue(key, out var held) && held.dist <= dist) continue;
-                                    shortest[key] = (lo, hi, dist);
+
+                                    // With the barrier required, the crossing we keep for a pair is
+                                    // the shortest one AT A DOOR rather than the shortest one
+                                    // anywhere. Two rooms are routinely near each other along a
+                                    // shared wall as well as through the doorway that joins them,
+                                    // and the wall is always the closer of the two - so ranking on
+                                    // distance alone hands the pair a crossing with no barrier and
+                                    // then throws the whole boundary away.
+                                    uint bar = 0u;
+                                    bool ok = true;
+                                    if (_settings.BarrierBoundaryTest == 2)
+                                    {
+                                        bar = BarrierCrossed(barrierGeometry, barrierTriangleInstance,
+                                                             nodes[i].Position, nodes[j].Position);
+                                        ok = bar != 0u;
+                                    }
+                                    else if (_settings.BarrierBoundaryTest == 3)
+                                    {
+                                        // The opening test is about whether two ROOMS adjoin, so it
+                                        // applies between two marker networks and not to a sealed
+                                        // one. A sealed network that holds a boundary at all is the
+                                        // lone door node standing IN the doorway - what qualifies it
+                                        // is being that node, which is SealedNetworkLinking's
+                                        // question, and gating it on seeing through the opening it
+                                        // is sitting in admits none of them.
+                                        ok = a >= markerNetworks || b >= markerNetworks ||
+                                             SeesThroughOpening(openingGeometry, nodes[i].Position, nodes[j].Position);
+                                        // The guid still names the nearest barrier - the OPENING is
+                                        // what qualifies the pair, so a doorway whose barrier sits
+                                        // out of range keeps its boundary and writes no guid.
+                                        bar = NearestBarrier(barriers, (nodes[i].Position + nodes[j].Position) * 0.5f);
+                                    }
+                                    else if (weighBarrier)
+                                    {
+                                        bar = NearestBarrier(barriers, (nodes[i].Position + nodes[j].Position) * 0.5f);
+                                        ok = bar != 0u;
+                                    }
+
+                                    if (shortest.TryGetValue(key, out var held))
+                                    {
+                                        if (weighBarrier && held.ok && !ok) continue;
+                                        if (!(weighBarrier && !held.ok && ok) && held.dist <= dist) continue;
+                                    }
+                                    shortest[key] = (lo, hi, dist, bar, ok);
                                 }
                             }
                 }
+            }
+
+            // A boundary IS a sound barrier. Retail is unambiguous about this: across all 32
+            // shipped files every one of its 3,050 network links carries a non-zero
+            // BarrierInstanceGuid - 2,682 named-to-named and 368 touching a sealed network, with
+            // no exceptions anywhere (`diag barrshare`). Our own rule was proximity alone, with
+            // the barrier looked up afterwards and a zero tolerated, which is what let two rooms
+            // that merely pass close to one another declare a boundary they have no door for.
+            // Our barrier set is able to serve retail's own boundaries, so this is safe to
+            // require rather than merely record: at retail's stored crossings the nearest barrier
+            // WE can see is within 2 m of 100% of them (`diag barrcover`).
+            if (weighBarrier)
+            {
+                var noDoor = new List<(int, int)>();
+                foreach (var pair in shortest)
+                    if (!pair.Value.ok) noDoor.Add(pair.Key);
+                foreach ((int, int) key in noDoor) shortest.Remove(key);
+                if (noDoor.Count > 0)
+                    log?.Invoke("Sound networks: dropped " + noDoor.Count + " of " +
+                                (noDoor.Count + shortest.Count) + " candidate boundary(s) with no barrier within " +
+                                BarrierSearchRadius.ToString("0.#") + " m - a boundary is a doorway.");
             }
 
 
@@ -435,7 +506,8 @@ namespace CathodeLib
                 SoundNodeNetwork.NetworkNode inA = nodes[pair.Value.a];
                 SoundNodeNetwork.NetworkNode inB = nodes[pair.Value.b];
 
-                uint barrier = NearestBarrier(barriers, (inA.Position + inB.Position) * 0.5f);
+                uint barrier = weighBarrier ? pair.Value.barrier
+                             : NearestBarrier(barriers, (inA.Position + inB.Position) * 0.5f);
 
                 // Under mode 3 a sealed network only holds a boundary when there is a barrier at
                 // the crossing. The sealed networks retail links are door nodes - the lone node in
@@ -783,7 +855,7 @@ namespace CathodeLib
         /// How far from a boundary a barrier may sit and still be taken as the barrier for it.
         /// Retail's are 0.94 to 1.66 m from the midpoint of the node pair either side of the door.
         /// </summary>
-        private const float BarrierSearchRadius = 4.0f;
+        private static float BarrierSearchRadius => _settings.BarrierSearchRadius;
 
         private static uint NearestBarrier(List<(Vector3 position, uint instance)> barriers, Vector3 at)
         {
@@ -797,6 +869,170 @@ namespace CathodeLib
                 best = barrier.instance;
             }
             return best;
+        }
+
+        /// <summary>Collision instances belonging to the level's sound and navmesh barriers.</summary>
+        private static HashSet<HavokPackfile.CompoundInstance> BarrierInstances(Level level, List<InstancedEntity> barriers)
+        {
+            var wanted = new HashSet<HavokPackfile.CompoundInstance>();
+            if (level?.CollisionMaps?.Entries == null) return wanted;
+
+            var instanceOf = new Dictionary<(ShortGuid, ShortGuid), HavokPackfile.CompoundInstance>();
+            foreach (CollisionMaps.COLLISION_MAPPING entry in level.CollisionMaps.Entries)
+            {
+                if (entry?.Entity == null || entry.CollisionInstance == null) continue;
+                instanceOf[(entry.Entity.composite_instance_id, entry.Entity.entity_id)] = entry.CollisionInstance;
+            }
+            foreach (InstancedEntity barrier in barriers)
+            {
+                if (barrier.ThisCompositeInstance == null) continue;
+                if (instanceOf.TryGetValue((barrier.ThisCompositeInstance.InstanceID, barrier.Entity.shortGUID),
+                                           out HavokPackfile.CompoundInstance ci) && ci != null) wanted.Add(ci);
+            }
+            return wanted;
+        }
+
+        /// <summary>
+        /// The level's collision with every sound barrier taken OUT of it, so a candidate boundary
+        /// can be asked whether the two rooms are joined by an opening.
+        /// </summary>
+        /// <remarks>
+        /// Two rooms adjoin when you can get from one to the other, and what stands between them at
+        /// a doorway is the door - which is a barrier. Requiring plain line of sight was tried early
+        /// and declared no boundaries at all on BSP_TORRENS, but that was measured against the full
+        /// soup, in which the closed door leaf is itself an occluder: the test was asking whether
+        /// the rooms are joined by a HOLE, not by a DOORWAY. Subtracting the barriers asks the
+        /// second question. It also uses the barrier set the way retail's own file suggests - as
+        /// what sits IN the opening - rather than as a solid the crossing must pierce, which
+        /// <see cref="BuildBarrierGeometry"/> records as refuted.
+        /// </remarks>
+        private static BVHAccel BuildOpeningGeometry(Level level, List<InstancedEntity> barriers, Action<string> log)
+        {
+            HashSet<HavokPackfile.CompoundInstance> skip = BarrierInstances(level, barriers);
+            if (!RadiosityOccluders.TryCollect(level, null, out float[] verts, out int[] tris, null, true,
+                                               null, false, null, skip) ||
+                tris == null || tris.Length < 3) return null;
+            var bvh = new BVHAccel();
+            bvh.Build(verts, tris);
+            log?.Invoke("Sound boundaries: " + (tris.Length / 3) + " occluder triangle(s) with " + skip.Count +
+                        " barrier instance(s) removed - two networks adjoin only through an opening.");
+            return bvh;
+        }
+
+        /// <summary>
+        /// Whether a run between two nodes is clear of everything but the door, tried at several
+        /// heights.
+        /// </summary>
+        /// <remarks>
+        /// A node sits on the navmesh, so a single run between two of them skims the floor and any
+        /// threshold, step, ramp lip or door sill stands in its way - which reads as "these rooms do
+        /// not adjoin" for a great many doorways that plainly do. A wall blocks at every height, so
+        /// sampling upward costs no precision and is what separates a sill from a partition.
+        /// </remarks>
+        private static bool SeesThroughOpening(BVHAccel openingGeometry, Vector3 a, Vector3 b)
+        {
+            if (openingGeometry == null) return true;
+            foreach (float lift in OpeningHeights)
+                if (ClearRun(openingGeometry, a + new Vector3(0f, lift, 0f), b + new Vector3(0f, lift, 0f)))
+                    return true;
+            return false;
+        }
+
+        /// <summary>Heights above the node a boundary's run is tried at, in metres.</summary>
+        private static readonly float[] OpeningHeights = { 0.0f, 0.6f, 1.2f };
+
+        private static bool ClearRun(BVHAccel openingGeometry, Vector3 a, Vector3 b)
+        {
+            if (openingGeometry == null) return true;
+            Vector3 delta = b - a;
+            float length = delta.Length();
+            if (length <= 1e-4f) return true;
+            Vector3 direction = delta / length;
+            // Both ends start on a node that sits just off the floor, so the run is lifted to chest
+            // height the way the link builder does rather than skimming the ground.
+            var ray = new Ray(a, direction, 0.02f, length - 0.02f);
+            return !openingGeometry.Traverse(ref ray, out Hit _);
+        }
+
+        /// <summary>
+        /// Collision geometry of the level's sound barriers alone, so a candidate boundary can be
+        /// asked whether it passes THROUGH a door rather than merely near one.
+        /// </summary>
+        /// <remarks>
+        /// <para>Distance to a barrier's pivot cannot make the distinction that matters. Retail's
+        /// own boundaries sit a median 0.90 m from one, so the pivots are genuinely at the doorways
+        /// - but so are the false boundaries we declare between two rooms that meet in a wall beside
+        /// a door.</para>
+        /// <para>**Requiring the crossing to intersect this geometry is refuted by retail's own
+        /// file** (31 Aug 2026). Taking the node pair retail stored for each of ChallengeMap11's
+        /// 132 boundaries and casting between them, only **39%** pass through any barrier - and 39%
+        /// again when the segment is extended a metre past each end, so it is not a near miss. Its
+        /// endpoints are 1.50 m apart at the median, the door_audio prefab's spacing, and the
+        /// barrier sits about 0.90 m to one SIDE of their midpoint rather than between them. A
+        /// barrier is a label retail attaches to a boundary, not a solid the boundary passes
+        /// through. `diag barrcross` prints it.</para>
+        /// </remarks>
+        private static BVHAccel BuildBarrierGeometry(Level level, List<InstancedEntity> barriers,
+                                                     out uint[] triangleInstance, Action<string> log)
+        {
+            triangleInstance = null;
+            if (level?.CollisionMaps?.Entries == null || barriers.Count == 0) return null;
+
+            HashSet<HavokPackfile.CompoundInstance> wanted = BarrierInstances(level, barriers);
+            if (wanted.Count == 0) return null;
+
+            var owners = new List<HavokPackfile.CompoundInstance>();
+            if (!RadiosityOccluders.TryCollect(level, null, out float[] verts, out int[] tris, null, true,
+                                               null, false, owners, null) ||
+                tris == null || tris.Length < 3 || owners.Count * 3 != tris.Length) return null;
+
+            var keepVerts = new List<float>();
+            var keepTris = new List<int>();
+            var keepInstance = new List<uint>();
+            var remap = new Dictionary<int, int>();
+            for (int t = 0; t < owners.Count; t++)
+            {
+                if (owners[t] == null || !wanted.Contains(owners[t])) continue;
+                for (int c = 0; c < 3; c++)
+                {
+                    int v = tris[t * 3 + c];
+                    if (!remap.TryGetValue(v, out int nv))
+                    {
+                        nv = keepVerts.Count / 3;
+                        remap[v] = nv;
+                        keepVerts.Add(verts[v * 3]);
+                        keepVerts.Add(verts[v * 3 + 1]);
+                        keepVerts.Add(verts[v * 3 + 2]);
+                    }
+                    keepTris.Add(nv);
+                }
+                keepInstance.Add((uint)owners[t].Index);
+            }
+            if (keepTris.Count < 3) return null;
+
+            var bvh = new BVHAccel();
+            bvh.Build(keepVerts.ToArray(), keepTris.ToArray());
+            triangleInstance = keepInstance.ToArray();
+            log?.Invoke("Sound barriers: " + (keepTris.Count / 3) + " triangle(s) over " + wanted.Count +
+                        " barrier instance(s) - boundaries must cross one.");
+            return bvh;
+        }
+
+        /// <summary>
+        /// The barrier a straight run between two nodes passes through, or 0 for none. Both ends are
+        /// pulled in slightly so a node sitting flush against the door leaf still reads as crossing.
+        /// </summary>
+        private static uint BarrierCrossed(BVHAccel barrierGeometry, uint[] triangleInstance, Vector3 a, Vector3 b)
+        {
+            if (barrierGeometry == null) return 0u;
+            Vector3 delta = b - a;
+            float length = delta.Length();
+            if (length <= 1e-4f) return 0u;
+            Vector3 direction = delta / length;
+            var ray = new Ray(a, direction, 0.0f, length);
+            if (!barrierGeometry.Traverse(ref ray, out Hit hit)) return 0u;
+            if (triangleInstance == null || hit.PrimId < 0 || hit.PrimId >= triangleInstance.Length) return 0u;
+            return triangleInstance[hit.PrimId];
         }
 
         /// <summary>Predecessor of every network reachable from <paramref name="from"/>.</summary>

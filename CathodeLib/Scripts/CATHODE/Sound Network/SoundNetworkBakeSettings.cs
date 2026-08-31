@@ -84,6 +84,87 @@ namespace CathodeLib.Sound
         public float AdjoinDistance = 3.5f;
 
         /// <summary>
+        /// How a candidate boundary must answer for a sound barrier. 0 not at all (default - the
+        /// barrier is still looked up for the guid we write, and a miss tolerated), 1 a barrier
+        /// pivot within <see cref="BarrierSearchRadius"/> of the crossing's midpoint, 2 the crossing
+        /// must pass THROUGH barrier collision geometry, 3 the two networks must see each other
+        /// with every barrier taken OUT of the occluders - they adjoin through an opening.
+        /// </summary>
+        /// <remarks>
+        /// <para>A boundary IS a doorway. Retail leaves no room for doubt: across all 32 shipped
+        /// files, **every one of its 3,050 network links carries a non-zero BarrierInstanceGuid** -
+        /// 2,682 named-to-named and 368 touching a sealed network, with not one exception on any
+        /// level (`diag barrshare`). <see cref="AdjoinDistance"/> alone cannot express that, because
+        /// two rooms are near each other along every shared wall as well as through the door that
+        /// joins them, so proximity declares boundaries that no door backs.</para>
+        /// <para>Our barrier set is good enough to gate on: taking the node pair retail stored for
+        /// each of its links and asking for the nearest barrier WE can see from the midpoint, one is
+        /// within 2 m of 95-100% of them, median 0.90 to 1.08 m over seven levels
+        /// (`diag barrcover`). What none of these modes has yet produced is a NET WIN, and the
+        /// three failures are each worth keeping.</para>
+        /// <para>**The instrument that made this measurable** is the boundary SET rather than the
+        /// boundary count: pair our networks to retail's by position the way the harness does, then
+        /// ask which of retail's adjoining pairs we also declare (`diag sounditer`, want/have/tp).
+        /// A count cannot tell a redundant chord from a bridge. It says the shipped rule already has
+        /// **87-91% recall of retail's boundaries at 42-59% precision** - we find nearly all the
+        /// real ones and declare about 1.7x too many, so precision is the whole defect.</para>
+        /// <para>**Mode 1 measured and rejected** (31 Aug 2026). Requiring a pivot within a radius
+        /// buys precision only by losing more recall: on ChallengeMap11 the set goes from 87% / 57%
+        /// to 76% / 62% at two metres, and on Tech_Hub 91% / 59% to 68% / 70%. F1 never beats the
+        /// shipped rule at any radius from 0.75 to 3.0 m. At the shipped 4.0 m the gate is inert -
+        /// with 76 to 194 barriers per level, everything finds one.</para>
+        /// <para>**Mode 2 refuted by retail's own file.** Only **39%** of ChallengeMap11's 132
+        /// stored crossings pass through any barrier's collision geometry, and 39% again when the
+        /// segment is extended a metre past each end. The barrier sits about 0.90 m to one SIDE of
+        /// the midpoint of a pair 1.50 m apart. A barrier is a LABEL retail attaches to a boundary,
+        /// not a solid the boundary pierces (`diag barrcross`).</para>
+        /// <para>**Mode 3 is the correct rule and still does not win on the harness.** Two rooms
+        /// adjoin when you can get from one to the other, and what stands between them at a doorway
+        /// is the door - so the test is line of sight with the barriers subtracted from the
+        /// occluders. Plain line of sight was tried early and found no boundaries at all on
+        /// BSP_TORRENS, but that was measured against the full soup in which the closed door leaf is
+        /// itself an occluder: it was asking whether the rooms are joined by a HOLE. Over 14 levels
+        /// the boundary set improves on ten, is unchanged on four and regresses on none - Tech_Hub
+        /// 72 to 83, TECH_MuthrCore 71 to 90, HAB_CorporatePent 79 to 93, ChallengeMap11 69 to 80 -
+        /// while BSP_TORRENS stays exact at 100% and SCI_Hub at 92%. But the harness scores count
+        /// RATIOS, and our remaining missing boundaries fragment the graph where the false ones we
+        /// ship today were holding it together: NetworkPaths fall, and the dev four go from an
+        /// overall 78.5 to 78.2. **Closing the recall gap is what would make this shippable**, and
+        /// it is worth roughly 0.25 of the sound score in the links and paths terms alone.</para>
+        /// <para>Under mode 3 the run is tried at <c>SoundNodeNetworkGenerator.OpeningHeights</c>
+        /// above each node, because a node sits on the navmesh and a single floor-level run is
+        /// stopped by any threshold or door sill. It is worth a lot of connectivity - TECH_MuthrCore
+        /// goes from 302 paths to 596 against retail's 703, and its links from 80 to 90 against
+        /// retail's 88 - for a few points of precision.</para>
+        /// <para>**Do not pair mode 3 with <see cref="SealedNetworkLinking"/> 1 to recover the
+        /// difference.** It is the only combination that beats the shipped score (78.6 against
+        /// 78.5, sound 89.0 against 88.6) and it buys that by breaking the one level we reproduce
+        /// exactly: BSP_TORRENS goes from 18 networks, 26 links and 78 paths - retail's numbers to
+        /// the digit - to 20, 30 and 105, and SCI_Hub from 92% to 89%. Retail gives all five of
+        /// TORRENS' sealed networks no link and no path deliberately. Sealed mode 3 does not
+        /// separate them either: it is worse again on TORRENS, 36 links against retail's 26.</para>
+        /// </remarks>
+        public int BarrierBoundaryTest = 0;
+
+        /// <summary>
+        /// How far from a boundary a barrier may sit and still count as the barrier for it.
+        /// </summary>
+        /// <remarks>
+        /// <para>4.0 m was fine while this only chose which guid to write, but it is far too loose
+        /// to gate on: our levels carry 76 to 194 barriers each, so at four metres almost any two
+        /// rooms that pass near each other find one and <see cref="RequireBarrierForBoundary"/>
+        /// rejects nothing at all - measured on ChallengeMap11, the gate left all 140 links
+        /// standing.</para>
+        /// <para>Retail's own boundaries are much tighter than that. Taking the node pair it stored
+        /// for each of its 3,050 links and measuring to the nearest barrier we can see, the median
+        /// is 0.90 to 1.08 m and the 90th percentile 1.08 to 1.79 m across seven levels
+        /// (`diag barrcover`), with 95-100% inside two metres. So the doorway a boundary sits in is
+        /// within about a metre of it, and the barriers two to four metres away belong to some
+        /// other door.</para>
+        /// </remarks>
+        public float BarrierSearchRadius = 4.0f;
+
+        /// <summary>
         /// Whether a sealed network - one no marker reached, so written with no name and no reverb -
         /// may hold a boundary. 0 never (default), 1 only when it holds at most
         /// <see cref="SealedLinkMaxNodes"/> nodes, 2 always, 3 only when a barrier sits at the
