@@ -2600,11 +2600,11 @@ namespace CathodeLib
                 RadiosityBaker.BakeLevel(level, this, radiositySettings, Console.WriteLine);
 
                 if (_level.Patched)
-                    ClearRadiosityPatch();
+                    Utilities.ClearRadiosityPatchOnDisk(_level);
             }
             else if (!SkipRadiosityClear)
             {
-                ClearRadiosity();
+                Utilities.ClearRadiosityOnDisk(_level);
             }
         }
 
@@ -2654,32 +2654,6 @@ namespace CathodeLib
         /// flipped, this flag is the cause and the rule is worth decoding properly.
         /// </remarks>
         public static bool MoverRequiresScript = true;
-
-        private void ClearRadiosity()
-        {
-            ClearRadiosityAt(_level.Filepath);
-            if (_level.Patched)
-                ClearRadiosityPatch();
-        }
-
-        private void ClearRadiosityPatch()
-        {
-            ClearRadiosityAt(_level.Filepath.TrimEnd('/').TrimEnd('\\') + "_PATCH");
-        }
-
-        private static void ClearRadiosityAt(string root)
-        {
-            string world = root + "/WORLD/";
-            if (Directory.Exists(world))
-                File.WriteAllBytes(world + "RADIOSITY_COLLISION_MAPPING.BIN", new byte[4]);
-
-            string renderable = root + "/RENDERABLE/";
-            if (Directory.Exists(renderable))
-            {
-                File.WriteAllBytes(renderable + "RADIOSITY_RUNTIME.BIN", new byte[0]);
-                File.Delete(renderable + "RADIOSITY_INSTANCE_MAP.TXT");
-            }
-        }
 
         // -----
         //todo - remove these!! - for test code in opencage app.

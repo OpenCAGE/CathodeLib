@@ -710,7 +710,7 @@ namespace CathodeLib
              * to keep whatever material its template carried, so the toggle did nothing.
              *
              * The permutation service tries the level pool again (cheap, and it is the authority on
-             * sampler layout), then any harvested catalogue the host registered, then a compile from
+             * sampler layout), then any database the host registered, then a compile from
              * the reconstructed master. No game root is passed - instancing has none, and the
              * catalogue tier is the host application's business. Everything failable in there
              * returns null with a message rather than throwing, so a missing master, an absent

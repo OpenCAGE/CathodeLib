@@ -22,7 +22,7 @@ namespace CathodeLib.Ubershaders
      *
      * A rebind keeps the material's texture assignments: sampler remap values index into the
      * material's own TextureReferences, so they are carried from the old entry rather than taken
-     * from whatever material the harvested entry shipped with. */
+     * from whatever material the database entry shipped with. */
     public static class ShaderPermutationService
     {
         private static IUbershaderCatalogue _database;

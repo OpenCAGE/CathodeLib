@@ -397,26 +397,37 @@ namespace CathodeLib
             OnLoadTick?.Invoke();
         }
 
+#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
+        /// <summary>
+        /// Generate instanced structures for the level, and save.
+        /// </summary>
+        public void SaveInstanced(NavMesh.NavMeshBakeSettings navMeshSettings = null, NavMesh.CoverBakeSettings coverSettings = null, Radiosity.RadiosityBakeSettings radiositySettings = null, NavMesh.JobPositionBakeSettings jobPositionSettings = null, Alphalight.AlphalightBakeSettings alphalightSettings = null, Sound.SoundNetworkBakeSettings soundSettings = null)
+        {
+            //Generate instancing data with the given settings
+            new Instancing(this, navMeshSettings, coverSettings, radiositySettings, jobPositionSettings, alphalightSettings, soundSettings);
+            Save();
+
+            //If the user didn't enable radiosity, we should clear it out, else it'll point to the wrong movers.
+            if (radiositySettings == null)
+            {
+                Utilities.ClearRadiosityOnDisk(this);
+            }
+            else
+            {
+                Parallel.Invoke(
+                    () => { RadiosityInstanceMap.Save(); OnSaveTick?.Invoke(); },
+                    () => { RadiosityCollisionMap.Save(); OnSaveTick?.Invoke(); },
+                    () => { RadiosityRuntime?.Save(); OnSaveTick?.Invoke(); }
+                );
+            }
+        }
+#endif
+
         /// <summary>
         /// Save all data for the level
         /// </summary>
-        /// <remarks>
-        /// The navmesh, cover, job position, sound network and radiosity bakes are all opt-in: pass
-        /// a system's settings to rebuild it, pass null (the default) to leave whatever is already
-        /// on disk alone, so a save that only changed scripts or textures does not quietly
-        /// regenerate a level's AI data. Alphalight is the exception - it still runs on every
-        /// instancing pass and is suppressed only by <see cref="Instancing.SkipAlphalightBake"/>.
-        /// </remarks>
-#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
-        public void Save(bool doInstancing = false, NavMesh.NavMeshBakeSettings navMeshSettings = null, NavMesh.CoverBakeSettings coverSettings = null, Radiosity.RadiosityBakeSettings radiositySettings = null, NavMesh.JobPositionBakeSettings jobPositionSettings = null, Alphalight.AlphalightBakeSettings alphalightSettings = null, Sound.SoundNetworkBakeSettings soundSettings = null)
-        {
-            if (doInstancing)
-                new Instancing(this, navMeshSettings, coverSettings, radiositySettings, jobPositionSettings, alphalightSettings, soundSettings);
-#else
         public void Save()
         {
-#endif
-
             //OpenCAGE never modifies Global - but since people might, re-run the global importer again.
             ImportFromGlobal();
 
@@ -464,18 +475,7 @@ namespace CathodeLib
 
             Commands.Save(); OnSaveTick?.Invoke();
 
-#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
-            if (radiositySettings != null)
-            {
-                Parallel.Invoke(
-                    () => { RadiosityInstanceMap.Save(); OnSaveTick?.Invoke(); },
-                    () => { RadiosityCollisionMap.Save(); OnSaveTick?.Invoke(); },
-                    () => { RadiosityRuntime?.Save(); OnSaveTick?.Invoke(); }
-                );
-            }
-#else
-            //todo - clear radiosity data out, see Instancing
-#endif
+            //NOTE - We do not re-save radiosity here. Radiosity is only handled when using SaveInstanced.
 
             Parallel.Invoke(
                 () => { GalaxyItems.Save(); OnSaveTick?.Invoke(); },
