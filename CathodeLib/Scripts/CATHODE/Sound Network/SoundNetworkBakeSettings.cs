@@ -73,14 +73,21 @@ namespace CathodeLib.Sound
         /// <para>Four metres closes it: SCI_Hub comes out at 66 boundaries against 62 and 378 paths
         /// against 378 exactly, while BSP_TORRENS and ENG_Alien_Nest do not move at all. Solace is
         /// the one that overshoots, 86 against 56.</para>
+        /// <para>**3.5 m, not 4.0** (29 Aug 2026). 4.0 was fitted when it gave SCI_Hub 66 boundaries
+        /// against retail's 62; the node set has moved since and it now gives 76. Sweeping shows a
+        /// clean cliff: 2.0 and 2.5 give 54 boundaries and only 276 paths, 3.0 gives 58 and 300, and
+        /// 3.5 gives **64 boundaries with all 378 paths** - the last value that keeps the component
+        /// structure whole while shedding the redundant chords. Nothing else moves: nodes, recall,
+        /// node F1 and per-network count agreement are identical at every adjoin distance, because
+        /// boundaries do not scale with node count. Worth about 1.9 points of the sound score.</para>
         /// </remarks>
-        public float AdjoinDistance = 4.0f;
+        public float AdjoinDistance = 3.5f;
 
         /// <summary>
         /// Whether a sealed network - one no marker reached, so written with no name and no reverb -
         /// may hold a boundary. 0 never (default), 1 only when it holds at most
         /// <see cref="SealedLinkMaxNodes"/> nodes, 2 always, 3 only when a barrier sits at the
-        /// crossing.
+        /// crossing, 4 only when it is that small AND made entirely of AUTHORED nodes.
         /// </summary>
         /// <remarks>
         /// <para>Retail is not uniform about this and the pattern is exact at one end: across all 32
@@ -168,6 +175,25 @@ namespace CathodeLib.Sound
         /// is prefab identity, not shape.
         /// </remarks>
         public float EnclosedPocketExtent = 0.0f;
+
+        /// <summary>
+        /// The most boundaries a SEALED network may hold. 0 lets it hold as many as
+        /// <see cref="AdjoinDistance"/> finds, which is how the marker networks work.
+        /// </summary>
+        /// <remarks>
+        /// Retail is emphatic about this, and it is a different rule from which sealed networks get
+        /// linked at all (<see cref="SealedNetworkLinking"/>). Of the 100 one-node sealed networks
+        /// across all 32 shipped files, **97 hold exactly one link**; two hold two and one holds
+        /// three (`diag sealedlinks` prints the degree table). A door node hangs off the room it
+        /// opens onto as a LEAF - it is not a bridge between two rooms, which is what you would
+        /// expect it to be - and the paths it takes part in are the ones it inherits from the
+        /// component it is attached to.
+        /// <para>Without the cap, admitting sealed networks hands each one every neighbour within
+        /// AdjoinDistance, and that is what makes the boundary count overshoot the moment
+        /// <see cref="SealedNetworkLinking"/> is turned on at all: on ChallengeMap9 boundaries go
+        /// 26 -> 40 against retail's 28, and on ChallengeMap11 70 -> 86 against retail's 66.</para>
+        /// </remarks>
+        public int SealedMaxBoundaries = 1;
 
         /// <summary>Largest sealed network that may hold a boundary under SealedNetworkLinking 1.</summary>
         public int SealedLinkMaxNodes = 1;

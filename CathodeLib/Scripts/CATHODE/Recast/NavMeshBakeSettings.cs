@@ -32,9 +32,106 @@ namespace CathodeLib.NavMesh
         public float RecastMaxBoundsSize = 1024.0f;
         public float RecastMaxBoundsSizeY => (1 << 13) * CellHeight;
         public int HeightLimitedAreaModeFilterPasses = 0;
-        public int HeightLimitedAreaSpread = 4;
+
+        /// <summary>
+        /// How far each height class grows outwards over the heightfield once the classes are
+        /// marked, in cells. Only used with <see cref="HeightLimitedMarkedBeforePolygons"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para>The spread is not decoration. A clearance measured at the cell is only low under
+        /// the table itself, while retail's deep-crouch region runs out to where a character stops
+        /// fitting: marked and left alone the surface is almost perfectly right and far too small
+        /// (ChallengeMap11 32.5 m2 against retail's 52.5, but only 1% of it spurious).</para>
+        /// <para><b>The engine's own file says 4 and we ship 2</b>, which is deliberate. Swept with
+        /// the crawl gates over ChallengeMap11 / TECH_RND / Tech_Hub, crawl F1 means are 82.2 at
+        /// spread 2, 75.9 at 3 and 69.9 at 4 - at 4 the surface is the closest match to retail's
+        /// (86-91% covered) but it grows enough extra mouths to emit 118-162 crawl positions against
+        /// retail's 87-89. Our spread is a four-connected walk over span connectivity, which is a
+        /// diamond rather than whatever metric the engine used, so the two numbers are not measuring
+        /// the same distance. Re-derive this if the engine's spread is ever decoded properly.</para>
+        /// </remarks>
+        public int HeightLimitedAreaSpread = 2;
+
+        /// <summary>
+        /// Crouch grows by <see cref="HeightLimitedAreaSpread"/> plus this; deep crouch grows by the
+        /// spread alone, and wins any overlap.
+        /// </summary>
+        /// <remarks>
+        /// The engine's value of 1 is confirmed rather than assumed. Sweeping the crouch spread over
+        /// 0 / 1 / 2 / 3 cells at deep spread 2, crawl F1 is 80.0 / 80.8 / 82.1 / 81.9 on
+        /// ChallengeMap11 and 72.6 / 72.3 / 72.3 / 75.2 on Tech_Hub - 3 (= 2 + 1) is best or tied on
+        /// both, and it costs nothing in assault even though crouch spreading eats standing rim.
+        /// </remarks>
         public int HeightLimitedAreaSpreadExtraForNonDeepCrouch = 1;
         public float HeightLimitedClearanceBias = 0.0f;
+
+        /// <summary>
+        /// Classify a polygon's height by the share of its own surface that is low, rather than by
+        /// the single worst reading anywhere on it.
+        /// </summary>
+        /// <remarks>
+        /// With the worst-reading rule our deep-crouch surface came out at 1,845 m2 against retail's
+        /// 797 over 31 levels, and 62% of it is floor retail calls Standing - one low column under a
+        /// desk condemns the whole open-floor polygon Recast merged around it. Crawl-space jobs are
+        /// generated from exactly this surface, so it is also what makes the alien's under-table
+        /// behaviour fire in the wrong places.
+        /// </remarks>
+        public bool HeightLimitedInteriorSampling = true;
+
+        /// <summary>Share of a polygon that must read deep-crouch for the polygon to be deep-crouch.</summary>
+        public float HeightLimitedDeepShare = 0.15f;
+
+        /// <summary>Share of a polygon that must read crouch or lower for the polygon to be crouch.</summary>
+        public float HeightLimitedCrouchShare = 0.15f;
+
+        /// <summary>
+        /// Grow deep-crouch onto a neighbouring polygon that is partly low, in the spirit of the
+        /// engine's own <c>height_limited_area_spread</c> of 4 cells. Zero disables it.
+        /// </summary>
+        /// <remarks>
+        /// <para>After the share fix we cover 76-78% of retail's deep-crouch floor and no clearance
+        /// bias moves that - crawl recall sits frozen at the same value for every bias at or below
+        /// zero - so the rest is polygon granularity rather than a threshold.</para>
+        /// <para>Measured and left OFF. On ChallengeMap11 it does what it says: deep-crouch area
+        /// goes 46.8 to 52.4 m2 against retail's 52.5 and coverage 76% to 78%. But the extra area is
+        /// in the wrong places, spurious goes 20% to 25% and crawl F1 falls 69.4 to 67.1 (64.1 with
+        /// no share floor at all). The totals match while the locations do not, which is the same
+        /// shape of answer the clearance-bias sweep gave.</para>
+        /// </remarks>
+        public float HeightLimitedDeepNeighbourShare = 0f;
+
+        /// <summary>How many times <see cref="HeightLimitedDeepNeighbourShare"/> may grow outwards.</summary>
+        public int HeightLimitedDeepNeighbourPasses = 1;
+
+        /// <summary>
+        /// Fold the height class into the Recast area id BEFORE the regions are built, so the
+        /// contour is cut along the class boundary and a crawl space becomes its own polygons.
+        /// </summary>
+        /// <remarks>
+        /// This is what the engine appears to do - retail's deep-crouch regions are one or two
+        /// polygons of about half a square metre, far smaller than Recast merges to on its own, and
+        /// the three <c>height_limited_area_*</c> settings only make sense on the heightfield. The
+        /// cost is the 6-bit area id: it now carries <c>1 + class + 3 * slot</c>, so barriers get 20
+        /// slots instead of 62 ids and any beyond that stop cutting the contour (they still get
+        /// stamped geometrically). Sampling a polygon's interior becomes unnecessary when this is on
+        /// - the class is already in the id. Worth +12.9 of crawl F1 over interior sampling across
+        /// four levels, for no change in the navmesh score.
+        /// </remarks>
+        public bool HeightLimitedMarkedBeforePolygons = true;
+
+        /// <summary>
+        /// Minimum region area (m2) to use when <see cref="HeightLimitedMarkedBeforePolygons"/> is
+        /// on. Negative keeps <see cref="MinRegionArea"/>.
+        /// </summary>
+        /// <remarks>
+        /// Splitting on class boundaries turns a crawl space that used to belong to a big standing
+        /// region into a region of its own, and Recast DELETES a region below the minimum when no
+        /// neighbour shares its area type - which would punch holes in exactly the floor this is
+        /// meant to keep. Measured on ChallengeMap11 it makes no difference at 0, 0.0625 or 0.125
+        /// against the default, so the default stands.
+        /// </remarks>
+        public float HeightLimitedRegionArea = -1f;
+
         public bool FilterUnreachable = true;
         public float ReachabilitySeedHeightToleranceAbove = 0.1875f;
         public float ReachabilitySeedHeightToleranceBelow = 0.3125f;

@@ -230,7 +230,7 @@ namespace CathodeLib
                 nodes[link.A].NodeLinks.Add(new SoundNodeNetwork.NodeLinkData(nodes[link.B], link.Path, link.Obstruction));
             }
 
-            LinkNetworks(networks, markerNetworks, nodes, links, owner, CollectBarriers(level, barriers), log);
+            LinkNetworks(networks, markerNetworks, nodes, links, owner, CollectBarriers(level, barriers), manualCount, log);
             var starved = new List<string>();
             for (int i = 0; i < networks.Count; i++)
             {
@@ -310,7 +310,7 @@ namespace CathodeLib
         /// </remarks>
         private static void LinkNetworks(List<SoundNodeNetwork.NetworkInfo> networks, int markerNetworks,
                                          SoundNodeNetwork.NetworkNode[] nodes, List<Link> links, int[] owner,
-                                         List<(Vector3 position, uint instance)> barriers, Action<string> log)
+                                         List<(Vector3 position, uint instance)> barriers, int manualCount, Action<string> log)
         {
             // Which networks may hold a boundary at all. Sealed networks - the ones no marker
             // reached, written with no name and no reverb - are not uniformly excluded, because
@@ -320,11 +320,39 @@ namespace CathodeLib
             // they are the lone door node a marker never claimed, sitting in the doorway between
             // two rooms - and the ones it leaves alone hold two or three, which is a sealed vent
             // pocket. ChallengeMap12's own 3-node sealed network has no link either.
+            // Which sealed networks are made only of AUTHORED nodes. Retail's door node comes out
+            // of the door_audio prefab, so it is hand-placed; a sealed network made of scattered
+            // fill is a pocket we invented. Admitting sealed networks by SIZE alone resurrects both
+            // kinds - measured on four levels it gains 2.8 on ChallengeMap9 and loses 2.5 to 4.3 on
+            // the other three, because their one-node sealed networks are mostly fill.
+            var authoredOnly = new bool[networks.Count];
+            var hasFill = new bool[networks.Count];
+            var hasAny = new bool[networks.Count];
+            for (int i = 0; i < owner.Length && i < nodes.Length; i++)
+            {
+                int o = owner[i];
+                if (o < 0 || o >= networks.Count) continue;
+                hasAny[o] = true;
+                if (i >= manualCount) hasFill[o] = true;
+            }
+            int authoredSealed = 0, fillSealed = 0;
+            for (int i = 0; i < networks.Count; i++)
+            {
+                authoredOnly[i] = hasAny[i] && !hasFill[i];
+                if (i < markerNetworks) continue;
+                if (authoredOnly[i]) authoredSealed++; else fillSealed++;
+            }
+            if (authoredSealed + fillSealed > 0)
+                log?.Invoke("Sound networks: of " + (authoredSealed + fillSealed) + " sealed network(s), " +
+                            authoredSealed + " are authored nodes only and " + fillSealed + " contain scattered fill.");
+
             var eligible = new bool[networks.Count];
             for (int i = 0; i < networks.Count; i++)
                 eligible[i] = i < markerNetworks || _settings.SealedNetworkLinking == 2 ||
                               _settings.SealedNetworkLinking == 3 ||
-                              (_settings.SealedNetworkLinking == 1 && networks[i].Nodes.Count <= _settings.SealedLinkMaxNodes);
+                              (_settings.SealedNetworkLinking == 1 && networks[i].Nodes.Count <= _settings.SealedLinkMaxNodes) ||
+                              (_settings.SealedNetworkLinking == 4 && authoredOnly[i] &&
+                               networks[i].Nodes.Count <= _settings.SealedLinkMaxNodes);
 
             // Shortest crossing per pair of networks.
             //
@@ -369,6 +397,32 @@ namespace CathodeLib
                                 }
                             }
                 }
+            }
+
+
+            // A sealed network holds ONE boundary, not every neighbour within AdjoinDistance.
+            // Retail is emphatic: of its 100 one-node sealed networks, 97 hold exactly one link,
+            // two hold two and one holds three (`diag sealedlinks`). A door node hangs off the room
+            // it opens onto as a LEAF - it is not a bridge between two rooms - and giving it every
+            // neighbour is what makes the link count overshoot as soon as sealed networks are
+            // admitted at all. See SoundNetworkBakeSettings.SealedMaxBoundaries.
+            if (_settings.SealedMaxBoundaries > 0)
+            {
+                var drop = new HashSet<(int, int)>();
+                for (int n = markerNetworks; n < networks.Count; n++)
+                {
+                    var mine = new List<((int, int) key, float dist)>();
+                    foreach (var pair in shortest)
+                        if (pair.Key.Item1 == n || pair.Key.Item2 == n) mine.Add((pair.Key, pair.Value.dist));
+                    if (mine.Count <= _settings.SealedMaxBoundaries) continue;
+                    mine.Sort((x, y) => x.dist.CompareTo(y.dist));
+                    for (int k = _settings.SealedMaxBoundaries; k < mine.Count; k++) drop.Add(mine[k].key);
+                }
+                foreach ((int, int) key in drop) shortest.Remove(key);
+                if (drop.Count > 0)
+                    log?.Invoke("Sound networks: dropped " + drop.Count +
+                                " surplus boundary(s) from sealed networks - each holds at most " +
+                                _settings.SealedMaxBoundaries + ".");
             }
 
             var adjacency = new List<int>[networks.Count];

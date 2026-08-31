@@ -194,6 +194,37 @@ namespace CathodeLib.NavMesh
                 }
                 return top;
             }
+
+            /// <summary>
+            /// How far the wall in front of <paramref name="rimPoint"/> carries on before it ends,
+            /// in whichever of the two directions along it ends sooner. Walks out in quarter-metre
+            /// steps casting a short ray at chest height and stops at the first step that finds
+            /// nothing, so a stub of wall reads short and the middle of a long one reads
+            /// <paramref name="limit"/>.
+            /// </summary>
+            public float WallEndDistance(Vector3 rimPoint, Vector3 outward, float floorY, float limit)
+            {
+                if (_solid == null)
+                    return limit;
+                var along = new Vector3(outward.Z, 0f, -outward.X);
+                float best = limit;
+                for (int dir = -1; dir <= 1; dir += 2)
+                {
+                    for (float d = 0.25f; d <= limit; d += 0.25f)
+                    {
+                        Vector3 q = rimPoint + along * (dir * d);
+                        var origin = new Vector3(q.X, floorY + 1.2f, q.Z);
+                        var ray = new Ray(origin, outward, 0.02f, 1.0f);
+                        if (_solid.Traverse(ref ray, out Hit _))
+                            continue;
+                        if (d < best)
+                            best = d;
+                        break;
+                    }
+                }
+                return best;
+            }
+
         }
         /// Fill in the three job-position files on every state that has a navmesh. Nothing is
         /// written to disk - <see cref="Level.Save"/> persists them with the rest of the level.
@@ -274,7 +305,7 @@ namespace CathodeLib.NavMesh
             var spottingJobs = new List<SpottingPositions.JobInfo>();
             var placed = new List<Vector3>();
             float mergeSq = settings.SpottingMergeDistance * settings.SpottingMergeDistance;
-            foreach ((Vector3 on, Vector3 inward) in SampleRuns(
+            foreach ((Vector3 on, Vector3 inward, Vector3 localInward) in SampleRuns(
                          spottingRuns,
                          settings.SpottingCoverLengthToGenerateOnePoint,
                          settings.SpottingCoverLengthToGenerateAtBothEnds,
@@ -317,8 +348,9 @@ namespace CathodeLib.NavMesh
             }
 
             int obstacleRejected = 0;
+            int wallRejected = 0;
             List<AssaultPositions.JobInfo> assaultJobs = BuildAssaultAlongCover(
-                assaultRuns, settings, glass, obstacles, ref glassRejected, ref obstacleRejected);
+                assaultRuns, settings, glass, obstacles, ref glassRejected, ref obstacleRejected, ref wallRejected);
 
             List<SpottingPositions.JobInfo> crawlJobs = BuildCrawlSpace(nav, crawlRim, settings);
 
@@ -333,7 +365,8 @@ namespace CathodeLib.NavMesh
                              "   spotting " + spottingJobs.Count +
                              "   crawl " + crawlJobs.Count +
                              "   assault " + assaultJobs.Count +
-                             (obstacleRejected == 0 ? "" : " (obstacle gate rejected " + obstacleRejected + ")");
+                             (obstacleRejected == 0 ? "" : " (obstacle gate rejected " + obstacleRejected + ")") +
+                             (wallRejected == 0 ? "" : " (wall-length gate rejected " + wallRejected + " runs)");
             return result;
         }
 
@@ -344,6 +377,8 @@ namespace CathodeLib.NavMesh
             /// <summary>Unit, flat in XZ, pointing into the polygon the edge came from.</summary>
             public Vector3 Inward;
             public float Length;
+            /// <summary>Index of the polygon the edge came off, so a mouth can be traced to its region.</summary>
+            public int Poly;
         }
 
         /// <summary>
@@ -402,7 +437,7 @@ namespace CathodeLib.NavMesh
                     if (Vector3.Dot(new Vector3(centre.X - mid.X, 0f, centre.Z - mid.Z), normal) < 0f)
                         normal = -normal;
 
-                    rim.Add(new RimEdge { A = a, B = b, Inward = normal, Length = length });
+                    rim.Add(new RimEdge { A = a, B = b, Inward = normal, Length = length, Poly = p });
                 }
             }
             return rim;
@@ -449,10 +484,12 @@ namespace CathodeLib.NavMesh
         /// </remarks>
         static List<AssaultPositions.JobInfo> BuildAssaultAlongCover(
             List<List<RimEdge>> runs, JobPositionBakeSettings settings, GlassProbe glass,
-            ObstacleProbe obstacles, ref int glassRejected, ref int obstacleRejected)
+            ObstacleProbe obstacles, ref int glassRejected, ref int obstacleRejected, ref int wallRejected)
         {
             var jobs = new List<AssaultPositions.JobInfo>();
-            float inset = settings.AssaultDistanceFromGeometry - settings.WalkableRadius;
+            // Measured from the COLLISION surface, which the eroded rim sits AssaultRimToCollision
+            // inside of - not the walkable radius. See AssaultRimToCollision.
+            float inset = settings.AssaultDistanceFromGeometry - settings.AssaultRimToCollision;
 
             // Decide the WALL first, then place on it. The obstacle test used to run per position,
             // which reads one point through whatever happens to be in front of it; averaging over
@@ -471,7 +508,43 @@ namespace CathodeLib.NavMesh
                 runs = kept;
             }
 
-            foreach ((Vector3 on, Vector3 inward) in SampleRuns(
+            // Reject a whole wall that is too short to be a wall. This is the single biggest thing
+            // separating retail's assault positions from ours - see AssaultMinWallEndDistance.
+            if (settings.AssaultRequireWallLength && obstacles != null)
+            {
+                var walls = new List<List<RimEdge>>(runs.Count);
+                foreach (List<RimEdge> run in runs)
+                {
+                    // A run too short to carry a position at all is not worth probing.
+                    float runLength = 0f;
+                    foreach (RimEdge e in run)
+                        runLength += e.Length;
+                    if (runLength < settings.AssaultCoverLengthToGenerateOnePoint)
+                    {
+                        walls.Add(run);
+                        continue;
+                    }
+
+                    float far = 0f;
+                    foreach (RimEdge e in run)
+                    {
+                        Vector3 mid = (e.A + e.B) * 0.5f;
+                        float d = obstacles.WallEndDistance(mid, -e.Inward, mid.Y,
+                                                            settings.AssaultMinWallEndDistance + 0.25f);
+                        if (d > far)
+                            far = d;
+                        if (far >= settings.AssaultMinWallEndDistance)
+                            break;
+                    }
+                    if (far >= settings.AssaultMinWallEndDistance)
+                        walls.Add(run);
+                    else
+                        wallRejected++;
+                }
+                runs = walls;
+            }
+
+            foreach ((Vector3 on, Vector3 inward, Vector3 localInward) in SampleRuns(
                          runs,
                          settings.AssaultCoverLengthToGenerateOnePoint,
                          settings.AssaultCoverLengthToGenerateAtBothEnds,
@@ -487,6 +560,7 @@ namespace CathodeLib.NavMesh
                 }
 
                 Vector3 stand = on + inward * inset;
+                Vector3 yawInward = settings.AssaultYawFromLocalEdge ? localInward : inward;
                 if (settings.AssaultRequireObstacle && obstacles != null &&
                     obstacles.TopInFront(stand, -inward, settings.AssaultObstacleProbeDistance,
                                          settings.AssaultObstacleMaxHeight, settings.AssaultObstacleHeightStep)
@@ -496,11 +570,24 @@ namespace CathodeLib.NavMesh
                     continue;
                 }
 
+                // Two assault positions on top of each other are one position. Retail never puts a
+                // pair closer than about a metre along the same wall - see AssaultMergeDistance.
+                if (settings.AssaultMergeDistance > 0f)
+                {
+                    float m2 = settings.AssaultMergeDistance * settings.AssaultMergeDistance;
+                    bool merged = false;
+                    foreach (AssaultPositions.JobInfo j in jobs)
+                        if (Vector3.DistanceSquared(j.Position, stand) < m2) { merged = true; break; }
+                    if (merged)
+                        continue;
+                }
+
                 jobs.Add(new AssaultPositions.JobInfo
                 {
                     Position = stand,
-                    // Facing the cover, which is the way retail's yaws point.
-                    Yaw = MathF.Atan2(-inward.X, -inward.Z)
+                    // Facing the cover, which is the way retail's yaws point. The run's mean normal
+                    // is the wrong thing to face on a curved wall - see AssaultYawFromLocalEdge.
+                    Yaw = MathF.Atan2(-yawInward.X, -yawInward.Z)
                 });
             }
             return jobs;
@@ -536,7 +623,7 @@ namespace CathodeLib.NavMesh
         /// <paramref name="edgeInset"/> in from each end with more spread evenly between so no gap
         /// exceeds <paramref name="maxGap"/>. Yields the point on the run and the run's normal.
         /// </summary>
-        static IEnumerable<(Vector3 on, Vector3 inward)> SampleRuns(
+        static IEnumerable<(Vector3 on, Vector3 inward, Vector3 localInward)> SampleRuns(
             List<List<RimEdge>> runs,
             float minLength,
             float bothEndsLength,
@@ -565,7 +652,7 @@ namespace CathodeLib.NavMesh
 
                 if (length < bothEndsLength)
                 {
-                    yield return (AlongRun(run, length * 0.5f), inward);
+                    yield return (AlongRun(run, length * 0.5f), inward, InwardAlongRun(run, length * 0.5f));
                     continue;
                 }
 
@@ -573,7 +660,10 @@ namespace CathodeLib.NavMesh
                 float last = length - inset;
                 int steps = Math.Max(1, (int)MathF.Ceiling((last - first) / gap));
                 for (int i = 0; i <= steps; i++)
-                    yield return (AlongRun(run, first + (last - first) * i / steps), inward);
+                {
+                    float at = first + (last - first) * i / steps;
+                    yield return (AlongRun(run, at), inward, InwardAlongRun(run, at));
+                }
             }
         }
 
@@ -776,6 +866,133 @@ namespace CathodeLib.NavMesh
             return run[run.Count - 1].B;
         }
 
+        /// <summary>The inward normal of the rim edge the walk lands on, rather than the run's mean.</summary>
+        static Vector3 InwardAlongRun(List<RimEdge> run, float distance)
+        {
+            float walked = 0f;
+            for (int i = 0; i < run.Count; i++)
+            {
+                if (walked + run[i].Length >= distance)
+                    return run[i].Inward;
+                walked += run[i].Length;
+            }
+            return run[run.Count - 1].Inward;
+        }
+
+
+        /// <summary>
+        /// Deep-crouch polygons flooded into connected regions, with the depth of each: the
+        /// furthest any of the region's own outer wall gets from a way into it. A vent you cannot
+        /// get properly inside is not a crawl space worth a job.
+        /// </summary>
+        /// <remarks>
+        /// The existing depth test is per MOUTH - it probes inward from one edge and caps at the
+        /// spot offset - so a region with one deep pocket and one shallow entrance is judged twice
+        /// and inconsistently. Retail decides per region: searching region features against its own
+        /// files at position level, <c>maxDepth &gt;= 0.48</c> is the only term that pays, and it is
+        /// worth 72.1 -> 76.6. See CrawlMinRegionDepth.
+        /// </remarks>
+        static float[] CrawlRegionDepths(NavigationMesh nav, out int[] regionOf)
+        {
+            int n = nav.Polygons.Length;
+            regionOf = new int[n];
+            for (int i = 0; i < n; i++)
+                regionOf[i] = -1;
+
+            bool Deep(int p)
+            {
+                if (p < 0 || p >= n)
+                    return false;
+                NavigationMesh.dtPoly q = nav.Polygons[p];
+                if (q.verts == null || q.vertCount < 3)
+                    return false;
+                if (q.area.GetPolyType() != NavigationMesh.dtPolyTypes.DT_POLYTYPE_GROUND)
+                    return false;
+                if (((uint)q.area.GetMarkupFlags() & 2u) != 0)
+                    return false;
+                return q.area.GetHeightLimitedAmount() == NavigationMesh.AreaHeight.DeepCrouch;
+            }
+
+            int regions = 0;
+            var stack = new Stack<int>();
+            for (int p = 0; p < n; p++)
+            {
+                if (!Deep(p) || regionOf[p] >= 0)
+                    continue;
+                int id = regions++;
+                stack.Push(p);
+                regionOf[p] = id;
+                while (stack.Count > 0)
+                {
+                    int c = stack.Pop();
+                    NavigationMesh.dtPoly poly = nav.Polygons[c];
+                    if (poly.neis == null)
+                        continue;
+                    for (int i = 0; i < poly.vertCount && i < poly.neis.Length; i++)
+                    {
+                        int nei = poly.neis[i] - 1;
+                        if (nei < 0 || !Deep(nei) || regionOf[nei] >= 0)
+                            continue;
+                        regionOf[nei] = id;
+                        stack.Push(nei);
+                    }
+                }
+            }
+
+            // Each region's ways in and its own outer wall, then how far the wall gets from a way in.
+            var mouths = new List<(Vector3 a, Vector3 b)>[regions];
+            var walls = new List<Vector3>[regions];
+            for (int i = 0; i < regions; i++)
+            {
+                mouths[i] = new List<(Vector3, Vector3)>();
+                walls[i] = new List<Vector3>();
+            }
+            for (int p = 0; p < n; p++)
+            {
+                int id = regionOf[p];
+                if (id < 0)
+                    continue;
+                NavigationMesh.dtPoly poly = nav.Polygons[p];
+                for (int i = 0; i < poly.vertCount; i++)
+                {
+                    Vector3 a = nav.Vertices[poly.verts[i]];
+                    Vector3 b = nav.Vertices[poly.verts[(i + 1) % poly.vertCount]];
+                    int nei = poly.neis == null || i >= poly.neis.Length ? 0 : poly.neis[i];
+                    if (nei == 0)
+                        walls[id].Add((a + b) * 0.5f);
+                    else if (nei - 1 >= 0 && nei - 1 < n && !Deep(nei - 1))
+                        mouths[id].Add((a, b));   // out of range is neither, as CollectRim has it
+                }
+            }
+
+            var depth = new float[regions];
+            for (int i = 0; i < regions; i++)
+            {
+                if (mouths[i].Count == 0)
+                    continue;
+                float far = 0f;
+                foreach (Vector3 w in walls[i])
+                {
+                    float d = float.MaxValue;
+                    foreach ((Vector3 a, Vector3 b) mo in mouths[i])
+                        d = MathF.Min(d, PointToSegment(w, mo.a, mo.b));
+                    if (d < float.MaxValue && d > far)
+                        far = d;
+                }
+                depth[i] = far;
+            }
+            return depth;
+        }
+
+        static float PointToSegment(Vector3 p, Vector3 a, Vector3 b)
+        {
+            Vector3 ab = b - a;
+            float l2 = ab.LengthSquared();
+            float t = l2 < 1e-9f ? 0f : Vector3.Dot(p - a, ab) / l2;
+            if (t < 0f) t = 0f; else if (t > 1f) t = 1f;
+            return Vector3.Distance(p, a + ab * t);
+        }
+
         /// <summary>
         /// Crawl spaces: the job is the spot inside the vent worth checking, the task is where an
         /// NPC stands outside it to look in.
@@ -795,6 +1012,13 @@ namespace CathodeLib.NavMesh
                 return jobs;
 
             List<Vector3[]> deep = HeightPolys(nav, NavigationMesh.AreaHeight.DeepCrouch);
+
+            // Decide the REGION first, then place in it. See CrawlMinRegionDepth.
+            float[] regionDepth = null;
+            int[] regionOf = null;
+            if (settings.CrawlRequireRegionDepth)
+                regionDepth = CrawlRegionDepths(nav, out regionOf);
+
             float mergeSq = settings.CrawlMinSeparation * settings.CrawlMinSeparation;
             float reach = settings.CrawlSpottingPositionDistanceOffset;
             float minInside = settings.CrawlMinDistanceInsideDeepCrouchForSpotPosition;
@@ -803,6 +1027,13 @@ namespace CathodeLib.NavMesh
             for (int e = 0; e < mouths.Count; e++)
             {
                 RimEdge mouth = mouths[e];
+                if (regionDepth != null)
+                {
+                    int region = mouth.Poly >= 0 && mouth.Poly < regionOf.Length ? regionOf[mouth.Poly] : -1;
+                    if (region < 0 || regionDepth[region] < settings.CrawlMinRegionDepth)
+                        continue;
+                }
+
                 Vector3 centre = (mouth.A + mouth.B) * 0.5f;
 
                 // Probe back into the crawl space: the spot goes as deep as the offset asks for, or
