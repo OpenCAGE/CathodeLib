@@ -399,7 +399,16 @@ namespace CathodeLib
 
 #if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
         /// <summary>
+        /// Perform a full instanced save, complete with radiosity, cover, navmesh, etc.
+        /// </summary>
+        public void SaveInstancedFull()
+        {
+            SaveInstanced(new NavMesh.NavMeshBakeSettings(), new NavMesh.CoverBakeSettings(), new Radiosity.RadiosityBakeSettings(), new NavMesh.JobPositionBakeSettings(), new Alphalight.AlphalightBakeSettings(), new Sound.SoundNetworkBakeSettings());
+        }
+
+        /// <summary>
         /// Generate instanced structures for the level, and save.
+        /// Pass settings here for the various bakers - leaving them null will skip.
         /// </summary>
         public void SaveInstanced(NavMesh.NavMeshBakeSettings navMeshSettings = null, NavMesh.CoverBakeSettings coverSettings = null, Radiosity.RadiosityBakeSettings radiositySettings = null, NavMesh.JobPositionBakeSettings jobPositionSettings = null, Alphalight.AlphalightBakeSettings alphalightSettings = null, Sound.SoundNetworkBakeSettings soundSettings = null)
         {
