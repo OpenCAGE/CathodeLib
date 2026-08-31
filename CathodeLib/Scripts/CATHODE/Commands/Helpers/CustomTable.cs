@@ -1,3 +1,4 @@
+using CATHODE.ShaderTypes;
 using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using System;
@@ -58,6 +59,36 @@ namespace CathodeLib
             public readonly MaterialMappingTable MaterialMappings;
             public readonly MaterialNameTable MaterialNames;
             public readonly FileHashTable FileHashes;
+        }
+
+        private static byte[] _embeddedContent = null;
+        private static readonly object _embeddedLock = new object();
+
+        /// <summary>
+        /// Read a table from the info.dat CathodeLib ships, ignoring any local override.
+        /// </summary>
+        public static Table ReadEmbeddedTable(CustomTableType table)
+        {
+            lock (_embeddedLock)
+            {
+                if (_embeddedContent == null)
+                {
+#if UNITY_EDITOR || UNITY_STANDALONE
+                    byte[] content = File.ReadAllBytes(UnityEngine.Application.streamingAssetsPath + "/info.dat");
+#elif GODOT
+                    byte[] content = Utilities.ReadStreamingAsset("info.dat");
+#else
+                    byte[] content = CathodeLib.Properties.Resources.info;
+#endif
+                    using (MemoryStream stream = new MemoryStream())
+                    using (GZipStream compressedStream = new GZipStream(new MemoryStream(content), CompressionMode.Decompress))
+                    {
+                        compressedStream.CopyTo(stream);
+                        _embeddedContent = stream.ToArray();
+                    }
+                }
+            }
+            return ReadTable(_embeddedContent, table);
         }
 
         /// <summary>
@@ -165,6 +196,9 @@ namespace CathodeLib
                             case CustomTableType.FILE_HASHES:
                                 ((FileHashTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomTableType.UBERSHADER_PATCHES:
+                                ((UbershaderPatchTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
 #if DEBUG
                         if (tableType == table)
@@ -266,6 +300,9 @@ namespace CathodeLib
                         break;
                     case CustomTableType.FILE_HASHES:
                         data = new FileHashTable(reader);
+                        break;
+                    case CustomTableType.UBERSHADER_PATCHES:
+                        data = new UbershaderPatchTable(reader);
                         break;
                 }
             }
@@ -1542,6 +1579,109 @@ namespace CathodeLib
                     writer.Write(entry.Platforms);
                     writer.Write(entry.Size);
                     writer.Write(entry.Sha256);
+                }
+            }
+        }
+    }
+    public class UbershaderPatchTable : CustomTable.Table
+    {
+        public UbershaderPatchTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.UBERSHADER_PATCHES;
+        }
+
+        public class Patch
+        {
+            public SHADER_LIST Ubershader;
+            public int Platforms; //Bitmask of FileHashTable.PlatformBit values. Zero means every build.
+            public Dictionary<string, string> Stages = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); //Stage suffix ("vs"/"ps"/"hs"/"ds") to its master HLSL.
+
+            public bool SupportsPlatform(PatchManager.Platform platform)
+            {
+                return Platforms == 0 || (Platforms & FileHashTable.PlatformBit(platform)) != 0;
+            }
+        }
+
+        public List<Patch> patches = new List<Patch>();
+
+        /// <summary>
+        /// The master set for an ubershader on a build, or null when nothing here claims it.
+        /// </summary>
+        public Patch Lookup(SHADER_LIST ubershader, PatchManager.Platform platform)
+        {
+            Patch fallback = null;
+            for (int i = 0; i < patches.Count; i++)
+            {
+                if (patches[i].Ubershader != ubershader) continue;
+                if (patches[i].Platforms != 0 && patches[i].SupportsPlatform(platform)) return patches[i];
+                if (patches[i].Platforms == 0) fallback = patches[i];
+            }
+            return fallback;
+        }
+
+        /// <summary>
+        /// Add or replace the entry for an (ubershader, platform mask) pair, so regenerating over an
+        /// existing info.dat patches it in place rather than appending a duplicate.
+        /// </summary>
+        public void Set(SHADER_LIST ubershader, int platforms, Dictionary<string, string> stages)
+        {
+            for (int i = 0; i < patches.Count; i++)
+            {
+                if (patches[i].Ubershader != ubershader || patches[i].Platforms != platforms) continue;
+                patches[i].Stages = stages;
+                return;
+            }
+            patches.Add(new Patch() { Ubershader = ubershader, Platforms = platforms, Stages = stages });
+        }
+
+        /// <summary>
+        /// Drop every entry for an ubershader, whatever build it claims.
+        /// </summary>
+        public void Remove(SHADER_LIST ubershader)
+        {
+            patches.RemoveAll(o => o.Ubershader == ubershader);
+        }
+
+        public override void Read(BinaryReader reader)
+        {
+            patches.Clear();
+
+            if (reader == null)
+                return;
+
+            int version = reader.ReadInt32();
+            if (version < 1)
+                return;
+
+            int count = reader.ReadInt32();
+            for (int i = 0; i < count; i++)
+            {
+                Patch patch = new Patch();
+                patch.Ubershader = (SHADER_LIST)reader.ReadInt32();
+                patch.Platforms = reader.ReadInt32();
+                int stageCount = reader.ReadInt32();
+                for (int x = 0; x < stageCount; x++)
+                {
+                    string stage = reader.ReadString();
+                    patch.Stages[stage] = reader.ReadString();
+                }
+                patches.Add(patch);
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write((Int32)1);
+            writer.Write(patches.Count);
+            foreach (Patch patch in patches)
+            {
+                writer.Write((Int32)patch.Ubershader);
+                writer.Write(patch.Platforms);
+                writer.Write(patch.Stages.Count);
+                foreach (KeyValuePair<string, string> stage in patch.Stages)
+                {
+                    writer.Write(stage.Key ?? string.Empty);
+                    writer.Write(stage.Value ?? string.Empty);
                 }
             }
         }

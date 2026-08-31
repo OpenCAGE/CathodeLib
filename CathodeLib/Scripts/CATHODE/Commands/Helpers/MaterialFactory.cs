@@ -261,6 +261,99 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// The same run on a different mesh. The FX and light entities all draw a required model
+        /// chosen by their parameters - a light's proxy volume by its type, a fog box's by its
+        /// geometry type - while the material stays whatever the parameters resolved to.
+        /// </summary>
+        public List<RenderableElements.Element> WithModel(List<RenderableElements.Element> source, Models.CS2.Component.LOD.Submesh model)
+        {
+            if (model == null || source == null || source.Count != 1 || source[0] == null)
+                return source;
+            if (ReferenceEquals(source[0].Model, model))
+                return source;
+            return BuildRun(model, source[0].Material, source[0].MaterialLocation);
+        }
+
+        /// <summary>
+        /// A one-element renderable run, for the entities that have no authored renderable at all.
+        /// Shares a run per (model, material) exactly as ApplyMaterial does, so repeated instances
+        /// of the same thing collapse to one REDS entry.
+        /// </summary>
+        public List<RenderableElements.Element> BuildRun(Models.CS2.Component.LOD.Submesh model, Materials.Material material, PakLocation materialLocation = PakLocation.LEVEL)
+        {
+            if (model == null || material == null)
+                return null;
+
+            lock (_lock)
+            {
+                var key = (model, material);
+                if (_runs.TryGetValue(key, out List<RenderableElements.Element> cached))
+                    return cached;
+
+                RenderableElements.Element element = new RenderableElements.Element
+                {
+                    ModelLocation = PakLocation.LEVEL,
+                    Model = model,
+                    ModelSubplatformDependent = false,
+                    MaterialLocation = materialLocation,
+                    Material = material,
+                    MaterialSubplatformDependent = false,
+                    LODs = new List<RenderableElements.Element>()
+                };
+
+                var run = new List<RenderableElements.Element> { element };
+                _runs[key] = run;
+                return run;
+            }
+        }
+
+        /// <summary>
+        /// A material on an exact (family, feature mask), reusing one the level already carries
+        /// before making a new one. For the entities that have no authored material to start from -
+        /// ProjectiveDecal wants a plain CA_DECAL with no features at all.
+        /// </summary>
+        public Materials.Material GetOrCreateMaterial(CATHODE.ShaderTypes.SHADER_LIST ubershader, long features, string name)
+        {
+            if (_level?.Materials?.Entries == null)
+                return null;
+
+            lock (_lock)
+            {
+                //An existing material on exactly this shader is preferable to a new one: it keeps
+                //the material table the size retail ships and the REDS runs share an entry.
+                for (int i = 0; i < _level.Materials.Entries.Count; i++)
+                {
+                    Materials.Material candidate = _level.Materials.Entries[i];
+                    if (candidate?.Shader == null) continue;
+                    if (candidate.Shader.Ubershader != ubershader) continue;
+                    if (candidate.Shader.UbershaderFeatureFlags != features) continue;
+                    if (NeedsConstants(candidate)) continue;
+                    return candidate;
+                }
+
+                Shaders.Shader shader = FindShader(ubershader, features);
+                if (shader == null)
+                {
+                    string key = ubershader + " 0x" + features.ToString("X16");
+                    if (!UnavailableShaders.ContainsKey(key))
+                        UnavailableShaders[key] = name ?? "";
+                    ShadersNotFound++;
+                    return null;
+                }
+
+                Materials.Material built = new Materials.Material()
+                {
+                    Name = ClaimName(name ?? ubershader.ToString()),
+                    Shader = shader,
+                };
+                _level.Materials.Entries.Add(built);
+                _generated.Add(built);
+                MaterialsCreated++;
+                return built;
+            }
+        }
+
+        /// <summary>
         /// Resolve a texture parameter path ("N:\Content\Build\Textures\Gobo\GOBO_Square_01.dds")
         /// against the level's textures and then the global ones, the way the engine's own content
         /// paths are rooted. Returns null if no texture of that name is packed with the level.
@@ -344,7 +437,7 @@ namespace CathodeLib
                 //the material the Commands resource points at (ChallengeMap9's floor gas emitter).
                 Shaders.Shader shader = template.Shader.UbershaderFeatureFlags == required
                     ? template.Shader
-                    : FindShader(template.Shader.Ubershader, required);
+                    : FindShader(template.Shader.Ubershader, required, template.Shader);
                 if (shader == null)
                 {
                     if (!UnavailableShaders.ContainsKey(template.Shader.Ubershader + " 0x" + required.ToString("X16")))
@@ -586,13 +679,72 @@ namespace CathodeLib
             }
         }
 
-        private Shaders.Shader FindShader(CATHODE.ShaderTypes.SHADER_LIST ubershader, long features)
+        /// <summary>
+        /// Compile a permutation the level does not ship, rather than giving up on it.
+        ///
+        /// OFF by default, and that is not timidity. Minting a shader also mints a MATERIAL, and a
+        /// new material detaches the mover's renderable run from the material the Commands-side
+        /// resource still points at - which the engine refuses to draw. Measured on ENG_ALIEN_NEST:
+        /// turning this on compiled 8 permutations, created 13 materials, and lost the floor water
+        /// and several thrown-flare effects in game. It is the same failure the ChallengeMap9
+        /// poison-gas note in GetShaderFeatureMaterial describes, reached through a new door.
+        ///
+        /// Generating the shader is the easy half; rebinding the Commands resource to the new
+        /// material is the half that makes it safe, and it is not written yet.
+        /// </summary>
+        public bool GenerateMissingShaders = false;
+
+        /// <summary>Permutations minted by the recompiler, and the masks that could not be.</summary>
+        public int ShadersGenerated { get; private set; }
+        public readonly Dictionary<string, string> ShaderGenerationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        private Shaders.Shader FindShader(CATHODE.ShaderTypes.SHADER_LIST ubershader, long features, Shaders.Shader carryFrom = null)
         {
             if (_level?.Shaders?.Entries == null) return null;
             foreach (Shaders.Shader s in _level.Shaders.Entries)
                 if (s != null && s.Ubershader == ubershader && s.UbershaderFeatureFlags == features)
                     return s;
-            return null;
+
+            /* Nothing in the level ships it. This is the case that used to end the road: an entity
+             * whose parameters ask for a feature combination the level was never authored with had
+             * to keep whatever material its template carried, so the toggle did nothing.
+             *
+             * The permutation service tries the level pool again (cheap, and it is the authority on
+             * sampler layout), then any harvested catalogue the host registered, then a compile from
+             * the reconstructed master. No game root is passed - instancing has none, and the
+             * catalogue tier is the host application's business. Everything failable in there
+             * returns null with a message rather than throwing, so a missing master, an absent
+             * d3dcompiler_43, or a build the master does not claim all land back here as "no
+             * shader", exactly as before. */
+            if (!GenerateMissingShaders)
+                return null;
+
+            string key = ubershader + " 0x" + features.ToString("X16");
+            if (ShaderGenerationErrors.ContainsKey(key))
+                return null;
+
+            CathodeLib.Ubershaders.PermutationSource source;
+            string error;
+            Shaders.Shader generated;
+            try
+            {
+                generated = CathodeLib.Ubershaders.ShaderPermutationService.Resolve(
+                    _level.Shaders, ubershader, features, carryFrom, null, out source, out error);
+            }
+            catch (Exception e)
+            {
+                generated = null;
+                error = e.Message;
+            }
+
+            if (generated == null)
+            {
+                ShaderGenerationErrors[key] = error ?? "unknown";
+                return null;
+            }
+
+            ShadersGenerated++;
+            return generated;
         }
 
         private static bool NeedsConstants(Materials.Material m)

@@ -140,14 +140,14 @@ namespace CathodeLib
             if (TryFindMappingTarget(mapping, material.Name, out string targetName))
             {
                 Materials.Material remapped = FindMaterialByName(level.Materials, targetName, material, level.Models);
-                return KeepIfRadiosityCompatible(remapped, material);
+                return TakeRemap(remapped, material);
             }
 
             MaterialMappings.MaterialMapping.Mapping reverseEntry = FindMappingEntryByTarget(mapping, material.Name);
             if (reverseEntry != null && TryFindMappingTarget(mapping, reverseEntry.from, out string refreshedTargetName))
             {
                 Materials.Material remapped = FindMaterialByName(level.Materials, refreshedTargetName, material, level.Models);
-                return KeepIfRadiosityCompatible(remapped, material);
+                return TakeRemap(remapped, material);
             }
 
             return material;
@@ -196,15 +196,14 @@ namespace CathodeLib
             return (sa.UbershaderFeatureFlags & mask) == (sb.UbershaderFeatureFlags & mask);
         }
 
-        private static Materials.Material KeepIfRadiosityCompatible(Materials.Material remapped, Materials.Material original)
+        //Retail applies a mapping whenever the table answers to the name, even when the target
+        //material sits in a different radiosity class (e.g. TEC_Vinyl_GreyDark_DTY is RADIOSITY_STATIC
+        //and its TEC_Vinyl_Tan_DTY target is RADIOSITY_DYNAMIC). Vetoing those left 293 movers across
+        //six levels on the pre-remap material. Radiosity/alpha-lighting flags are still used as a
+        //*preference* when several materials share the target name - see FindMaterialByName.
+        private static Materials.Material TakeRemap(Materials.Material remapped, Materials.Material original)
         {
-            if (remapped == null)
-                return original;
-            if (RadiosityClass(remapped) != RadiosityClass(original))
-                return original;
-            if (!AlphaLightingMatches(remapped, original))
-                return original;
-            return remapped;
+            return remapped ?? original;
         }
 
         public static List<RenderableElements.Element> ApplyMaterialParameterOverride(Level level, string materialName, List<RenderableElements.Element> renderables)
@@ -212,6 +211,26 @@ namespace CathodeLib
             if (level?.Materials == null || renderables == null || renderables.Count != 1)
                 return renderables;
             if (string.IsNullOrWhiteSpace(materialName))
+                return renderables;
+
+            // A material's name is "<slot>-><assignment>": the slot is the material the MODEL was
+            // authored against, and the assignment is what the level swapped into it. The
+            // parameter can only re-assign within its own slot, so an override naming a slot this
+            // renderable does not use is not for it. Measured on HAB_Airport: 114 movers carry a
+            // 'material' of "screenBlueTextScroll->..." on renderables sitting in the
+            // MUN_Plastic_Smooth_Black_DTY and EMI_TV_Screen_Placeholder_2 slots, and retail
+            // leaves every one of them alone. Only enforced when both names carry a slot - a bare
+            // name is a whole-material assignment and still applies.
+            string overrideSlot = SlotOf(materialName);
+            string currentSlot = SlotOf(renderables[0]?.Material?.Name);
+            if (overrideSlot != null && currentSlot != null &&
+                !string.Equals(overrideSlot, currentSlot, StringComparison.OrdinalIgnoreCase))
+                return renderables;
+
+            // An override naming the material the renderable already has is a no-op, not a reason
+            // to re-run the variant picker - re-picking moves InactiveScreen[000002] to [000000].
+            if (renderables[0]?.Material?.Name != null &&
+                NormalizeMaterialNameForLookup(renderables[0].Material.Name) == NormalizeMaterialNameForLookup(materialName))
                 return renderables;
 
             // Several entries answer to one name: an authoring material and a run of [NNNNNN]
@@ -270,6 +289,20 @@ namespace CathodeLib
                     return entry;
             }
 
+            string strippedMaterialName = NormalizeMaterialNameForLookup(StripAuthoringSlot(materialName));
+            if (strippedMaterialName != normalizedMaterialName)
+            {
+                for (int i = 0; i < mapping.Mappings.Count; i++)
+                {
+                    MaterialMappings.MaterialMapping.Mapping entry = mapping.Mappings[i];
+                    if (entry == null || string.IsNullOrEmpty(entry.from))
+                        continue;
+
+                    if (NormalizeMaterialNameForLookup(entry.from) == strippedMaterialName)
+                        return entry;
+                }
+            }
+
             return null;
         }
 
@@ -293,6 +326,20 @@ namespace CathodeLib
                     return entry;
             }
 
+            string strippedTargetName = NormalizeMaterialNameForLookup(StripAuthoringSlot(targetMaterialName));
+            if (strippedTargetName != normalizedTargetName)
+            {
+                for (int i = 0; i < mapping.Mappings.Count; i++)
+                {
+                    MaterialMappings.MaterialMapping.Mapping entry = mapping.Mappings[i];
+                    if (entry == null || string.IsNullOrEmpty(entry.to))
+                        continue;
+
+                    if (NormalizeMaterialNameForLookup(entry.to) == strippedTargetName)
+                        return entry;
+                }
+            }
+
             return null;
         }
 
@@ -302,10 +349,52 @@ namespace CathodeLib
                 return string.Empty;
 
             string normalized = StripTrailingVariantSuffix(materialName).ToUpperInvariant();
+            //Not trimmed. HAB_Airport ships a 'material' reading
+            //"screenBlueTextScroll -> screen_anim_non_14" and retail's own mover for it keeps
+            //InactiveScreen, so retail does not tidy the spaces either - the name simply matches
+            //nothing. Trimming resolves a material retail leaves alone, and was the one structural
+            //screen difference left on the level once the slot rule went in.
             if (normalized.IndexOf("->", StringComparison.Ordinal) < 0)
                 normalized += "->" + normalized;
 
             return normalized;
+        }
+
+        /// <summary>
+        /// Drops a leading 3ds Max authoring slot, so "MULTIMATERIAL-&gt;X-&gt;Y" becomes "X-&gt;Y".
+        /// Mapping entries are always keyed on the two-part form, so a material that still carries
+        /// its authoring slot can never match one. Measured on HAB_Airport: 658 of 681
+        /// MUN_Plastic_Gloss movers resolve their mapping correctly and then miss this lookup,
+        /// keeping MUN_Plastic_Gloss_Tan_DTY where the mapping says MUN_Plastic_Gloss_White_DTY and
+        /// retail ships White. Two-part names come back unchanged.
+        /// </summary>
+        private static string StripAuthoringSlot(string materialName)
+        {
+            if (string.IsNullOrEmpty(materialName))
+                return materialName;
+
+            int last = materialName.LastIndexOf("->", StringComparison.Ordinal);
+            if (last <= 0)
+                return materialName;
+
+            int previous = materialName.LastIndexOf("->", last - 1, StringComparison.Ordinal);
+            if (previous < 0)
+                return materialName;
+
+            return materialName.Substring(previous + 2);
+        }
+
+        /// <summary>The slot half of a "&lt;slot&gt;-&gt;&lt;assignment&gt;" material name, or null if it has no slot.</summary>
+        private static string SlotOf(string materialName)
+        {
+            if (string.IsNullOrEmpty(materialName))
+                return null;
+
+            int arrow = materialName.IndexOf("->", StringComparison.Ordinal);
+            if (arrow < 0)
+                return null;
+
+            return materialName.Substring(0, arrow).Trim();
         }
 
         private static string StripTrailingVariantSuffix(string name)

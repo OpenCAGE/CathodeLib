@@ -2076,7 +2076,15 @@ namespace CathodeLib
                 return false;
 
             int seed = GetDeterministicSeed();
-            if (Floats.Has(ShortGuids.Seed) || (Floats.Links != null && Floats.Links.ContainsKey(ShortGuids.Seed)))
+            //Seed carries an authored default of 0.5 on every RandomSelect in the game - Values is
+            //filled from the type default when the entity does not set one - and a default is not
+            //an instruction. Honouring it collapses a whole level to one roll: HAB_Airport resolves
+            //the VDU screen randomiser 248 times and every one of them seeded on 0.5f.GetHashCode()
+            //(1056964608) and picked input 3 of 25, where retail spreads its VDUs over twenty
+            //screens. Only a Seed the entity actually carries, or one driven by a link, overrides
+            //the per-instance seed.
+            if (Entity?.GetParameter(ShortGuids.Seed) != null ||
+                (Floats.Links != null && Floats.Links.ContainsKey(ShortGuids.Seed)))
             {
                 float seedFloat = Floats.Get(ShortGuids.Seed);
                 if (seedFloat != 0.0f)
@@ -2126,10 +2134,17 @@ namespace CathodeLib
                 //nothing is being resolved through a link.
                 InstancedEntity subject = _resolutionRoot ?? this;
                 int seed = subject.Entity != null ? (int)subject.Entity.shortGUID.AsUInt32 : 0;
+                //The instance the subject itself lives in is what makes it unique - the parent
+                //entity's own composite instance is shared by every sibling, so seeding on that
+                //alone hands a whole roomful of screens the same roll. Measured on HAB_Airport:
+                //184 instances of one VDU ModelReference have 184 distinct composite instance ids
+                //but landed on seven materials in a 74/50/44/8/1/1/1 split, where retail spreads
+                //them over twenty. Both are mixed in - the parent adds nothing unique but costs
+                //nothing, and keeps two entities of the same name under different parents apart.
+                if (subject.ThisCompositeInstance != null)
+                    seed = (seed * 397) ^ (int)subject.ThisCompositeInstance.InstanceID.AsUInt32;
                 if (subject.ParentCompositeInstanceEntity?.ThisCompositeInstance != null)
                     seed = (seed * 397) ^ (int)subject.ParentCompositeInstanceEntity.ThisCompositeInstance.InstanceID.AsUInt32;
-                else if (subject.ThisCompositeInstance != null)
-                    seed = (seed * 397) ^ (int)subject.ThisCompositeInstance.InstanceID.AsUInt32;
                 //Mix the randomiser's own identity back in so two different randomisers reached by
                 //the same caller do not roll in lockstep.
                 if (!ReferenceEquals(subject, this) && Entity != null)
@@ -2827,6 +2842,14 @@ namespace CathodeLib
             CalculateZones();
             CalculateEnvironmentMaps();
 
+            //The required models are indexed positionally by the engine and everything below
+            //points at them by position, so make sure nothing has shuffled them out of the head.
+            List<RequiredModels.Model> missingRequired;
+            if (RequiredModels.EnsureOrdered(_level.Models, out missingRequired))
+                Console.WriteLine("Restored the required models to the head of the model pak.");
+            foreach (RequiredModels.Model missingModel in missingRequired)
+                Console.WriteLine("WARNING: this level is missing required model " + missingModel + ".");
+
             //Materials an instance needs but the authored data doesn't hold - see MaterialFactory.
             _materialFactory = new MaterialFactory(_level);
 
@@ -2845,6 +2868,15 @@ namespace CathodeLib
                     Console.WriteLine("WARNING: gobo texture not packed with this level: " + unresolved.Key +
                                       (unresolved.Value == "" ? "" : "  (first requested by " + unresolved.Value + ")"));
             }
+
+            //Permutations the level never shipped, compiled from the reconstructed masters. A mask
+            //that could not be built is not fatal - the instance keeps its template material, which
+            //is what happened to every one of them before the recompiler existed - but it does mean
+            //an entity parameter did not reach the screen, so it is worth saying out loud.
+            if (_materialFactory.ShadersGenerated != 0)
+                Console.WriteLine("Compiled " + _materialFactory.ShadersGenerated + " shader permutation(s) this level does not ship.");
+            foreach (KeyValuePair<string, string> failed in _materialFactory.ShaderGenerationErrors)
+                Console.WriteLine("WARNING: no shader for " + failed.Key + " - " + failed.Value);
 
             //Re-write Commands-only (not instanced) REDs back to REDs since we cleared it out earlier
             PopulateCommandsREDs();
@@ -4222,6 +4254,26 @@ namespace CathodeLib
         // ChallengeMap4 volume from its entity reproduces retail's material exactly: 662 of 662 fog
         // spheres, 24 of 24 fog boxes, 2 of 2 surface effect boxes. Returns the run unchanged when
         // nothing needs to change or when the level has no shader for the combination asked for.
+        /// <summary>
+        /// Draw this run on one of the level's required models. The FX and light entities pick their
+        /// mesh from their own parameters - a light's proxy volume by type, a fog box's by geometry
+        /// type - rather than from whatever renderable happens to be authored on the composite.
+        /// A level missing the model is reported once and left alone rather than losing its mover.
+        /// </summary>
+        private List<RenderableElements.Element> UseRequiredModel(List<RenderableElements.Element> reds, RequiredModels.Model model)
+        {
+            if (_materialFactory == null) return reds;
+            Models.CS2.Component.LOD.Submesh submesh = RequiredModels.Resolve(_level?.Models, model);
+            if (submesh == null)
+            {
+                if (_missingRequiredModels.Add(model))
+                    Console.WriteLine("WARNING: this level has no " + model + " - movers that need it keep their authored mesh.");
+                return reds;
+            }
+            return _materialFactory.WithModel(reds, submesh);
+        }
+        private readonly HashSet<RequiredModels.Model> _missingRequiredModels = new HashSet<RequiredModels.Model>();
+
         private List<RenderableElements.Element> ApplyShaderFeatureMaterial(List<RenderableElements.Element> reds, InstancedEntity entity, long features)
         {
             if (_materialFactory == null || reds == null || reds.Count != 1 || reds[0]?.Material?.Shader == null)
@@ -4736,33 +4788,44 @@ namespace CathodeLib
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                     {
                         FOG_BOX_TYPE type = (FOG_BOX_TYPE)entity.EnumIndexes.Get(ShortGuids.GEOMETRY_TYPE); //defines the model to use
-
-                        CA_FOGPLANE.FEATURES features = 0;
+                        /* A FEATURES member is a bit INDEX, not a flag value (WS_LOCKED = 0, SPHERE = 1,
+                         * BOX = 2...), so the mask is 1L << index. ORing the members themselves - which
+                         * this used to do - produced a mask that named entirely different features, and
+                         * made WS_LOCKED = 0 a silent no-op. It went unnoticed because a nonsense mask
+                         * usually matches no shader at all, GetShaderFeatureMaterial returns null and the
+                         * template material is kept - right by accident. Where the nonsense mask DID hit a
+                         * real shader it was visible: a SurfaceEffectBox shipped 0x04 (BOX) while we built
+                         * 0x02 (SPHERE). MaterialFactory.AlwaysOnFeature already used the shift. */
+                        long features = 0;
                         if (entity.Bools.Get(ShortGuids.BILLBOARD))
-                            features |= CA_FOGPLANE.FEATURES.BILLBOARD;
+                            features |= 1L << (int)CA_FOGPLANE.FEATURES.BILLBOARD;
                         if (entity.Bools.Get(ShortGuids.LOW_RES) & !entity.Bools.Get(ShortGuids.EARLY_ALPHA))
-                            features |= CA_FOGPLANE.FEATURES.LOW_RES;
+                            features |= 1L << (int)CA_FOGPLANE.FEATURES.LOW_RES;
                         if (entity.Bools.Get(ShortGuids.EARLY_ALPHA))
-                            features |= CA_FOGPLANE.FEATURES.EARLY_ALPHA;
+                            features |= 1L << (int)CA_FOGPLANE.FEATURES.EARLY_ALPHA;
                         if (entity.Bools.Get(ShortGuids.CONVEX_GEOM))
-                            features |= CA_FOGPLANE.FEATURES.CONVEX_GEOM;
+                            features |= 1L << (int)CA_FOGPLANE.FEATURES.CONVEX_GEOM;
                         if (entity.Bools.Get(ShortGuids.START_DISTANT_CLIP))
-                            features |= CA_FOGPLANE.FEATURES.START_DISTANT_CLIP;
+                            features |= 1L << (int)CA_FOGPLANE.FEATURES.START_DISTANT_CLIP;
                         if (entity.Bools.Get(ShortGuids.SOFTNESS))
-                            features |= CA_FOGPLANE.FEATURES.SOFTNESS;
+                            features |= 1L << (int)CA_FOGPLANE.FEATURES.SOFTNESS;
                         if (entity.Bools.Get(ShortGuids.LINEAR_HEIGHT_DENSITY))
-                            features |= CA_FOGPLANE.FEATURES.LINEAR_HEIGHT_DENSITY;
+                            features |= 1L << (int)CA_FOGPLANE.FEATURES.LINEAR_HEIGHT_DENSITY;
                         if (entity.Bools.Get(ShortGuids.FRESNEL_FALLOFF))
-                            features |= CA_FOGPLANE.FEATURES.FRESNEL_FALLOFF;
+                            features |= 1L << (int)CA_FOGPLANE.FEATURES.FRESNEL_FALLOFF;
                         if (entity.Bools.Get(ShortGuids.DEPTH_INTERSECT_COLOUR))
-                            features |= CA_FOGPLANE.FEATURES.DEPTH_INTERSECT_COLOUR;
+                            features |= 1L << (int)CA_FOGPLANE.FEATURES.DEPTH_INTERSECT_COLOUR;
 
                         Resources.Resource resource = AddResourceEntry(entity);
 
                         Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
                         List<RenderableElements.Element> reds = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
-                        reds = ApplyShaderFeatureMaterial(reds, entity, (long)features);
+                        reds = ApplyShaderFeatureMaterial(reds, entity, features);
+                        //PLANE and BOX are two different meshes, not two ways of drawing one
+                        reds = UseRequiredModel(reds, type == FOG_BOX_TYPE.BOX
+                            ? RequiredModels.Model.REQUIRED_MODEL_FOGBOX
+                            : RequiredModels.Model.REQUIRED_MODEL_FOGPLANE);
                         if (reds != null && reds.Count > 0 && reds[0].Material != null && reds[0].Material.Shader != null)
                         {
                             switch (reds[0].Material.Shader.Ubershader)
@@ -4830,35 +4893,35 @@ namespace CathodeLib
                 case FunctionType.FogSphere:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                     {
-                        CA_FOGSPHERE.FEATURES features = 0;
+                        long features = 0;
                         if (entity.Bools.Get(ShortGuids.EXPONENTIAL_DENSITY))
-                            features |= CA_FOGSPHERE.FEATURES.EXPONENTIAL_DENSITY;
+                            features |= 1L << (int)CA_FOGSPHERE.FEATURES.EXPONENTIAL_DENSITY;
                         if (entity.Bools.Get(ShortGuids.SCENE_DEPENDANT_DENSITY))
-                            features |= CA_FOGSPHERE.FEATURES.SCENE_DEPENDANT_DENSITY;
+                            features |= 1L << (int)CA_FOGSPHERE.FEATURES.SCENE_DEPENDANT_DENSITY;
                         if (entity.Bools.Get(ShortGuids.FRESNEL_TERM))
-                            features |= CA_FOGSPHERE.FEATURES.FRESNEL_TERM;
+                            features |= 1L << (int)CA_FOGSPHERE.FEATURES.FRESNEL_TERM;
                         if (entity.Bools.Get(ShortGuids.SOFTNESS))
-                            features |= CA_FOGSPHERE.FEATURES.SOFTNESS;
+                            features |= 1L << (int)CA_FOGSPHERE.FEATURES.SOFTNESS;
                         if (entity.Bools.Get(ShortGuids.LOW_RES_ALPHA) & !entity.Bools.Get(ShortGuids.EARLY_ALPHA))
-                            features |= CA_FOGSPHERE.FEATURES.LOW_RES_ALPHA;
+                            features |= 1L << (int)CA_FOGSPHERE.FEATURES.LOW_RES_ALPHA;
                         if (entity.Bools.Get(ShortGuids.EARLY_ALPHA))
-                            features |= CA_FOGSPHERE.FEATURES.EARLY_ALPHA;
+                            features |= 1L << (int)CA_FOGSPHERE.FEATURES.EARLY_ALPHA;
                         if (entity.Bools.Get(ShortGuids.BLEND_ALPHA_OVER_DISTANCE))
-                            features |= CA_FOGSPHERE.FEATURES.BLEND_ALPHA_OVER_DISTANCE;
+                            features |= 1L << (int)CA_FOGSPHERE.FEATURES.BLEND_ALPHA_OVER_DISTANCE;
                         if (entity.Bools.Get(ShortGuids.SECONDARY_BLEND_ALPHA_OVER_DISTANCE))
-                            features |= CA_FOGSPHERE.FEATURES.SECONDARY_BLEND_ALPHA_OVER_DISTANCE;
+                            features |= 1L << (int)CA_FOGSPHERE.FEATURES.SECONDARY_BLEND_ALPHA_OVER_DISTANCE;
                         if (entity.Bools.Get(ShortGuids.CONVEX_GEOM))
-                            features |= CA_FOGSPHERE.FEATURES.CONVEX_GEOM;
+                            features |= 1L << (int)CA_FOGSPHERE.FEATURES.CONVEX_GEOM;
                         if (entity.Bools.Get(ShortGuids.ALPHA_LIGHTING))
                         {
-                            features |= CA_FOGSPHERE.FEATURES.ALPHA_LIGHTING;
+                            features |= 1L << (int)CA_FOGSPHERE.FEATURES.ALPHA_LIGHTING;
                             if (entity.Bools.Get(ShortGuids.DYNAMIC_ALPHA_LIGHTING))
-                                features |= CA_FOGSPHERE.FEATURES.DYNAMIC_ALPHA_LIGHTING;
+                                features |= 1L << (int)CA_FOGSPHERE.FEATURES.DYNAMIC_ALPHA_LIGHTING;
                         }
                         if (entity.Bools.Get(ShortGuids.DEPTH_INTERSECT_COLOUR))
-                            features |= CA_FOGSPHERE.FEATURES.DEPTH_INTERSECT_COLOUR;
+                            features |= 1L << (int)CA_FOGSPHERE.FEATURES.DEPTH_INTERSECT_COLOUR;
                         if (entity.Bools.Get(ShortGuids.NO_CLIP))
-                            features |= CA_FOGSPHERE.FEATURES.NO_CLIP;
+                            features |= 1L << (int)CA_FOGSPHERE.FEATURES.NO_CLIP;
 
                         //exit if template init mode
 
@@ -4867,7 +4930,8 @@ namespace CathodeLib
                         Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
                         List<RenderableElements.Element> reds = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
-                        reds = ApplyShaderFeatureMaterial(reds, entity, (long)features);
+                        reds = ApplyShaderFeatureMaterial(reds, entity, features);
+                        reds = UseRequiredModel(reds, RequiredModels.Model.REQUIRED_MODEL_FOGSPHERE);
                         if (reds != null && reds.Count > 0 && reds[0].Material != null && reds[0].Material.Shader != null)
                         {
                             switch (reds[0].Material.Shader.Ubershader)
@@ -5045,6 +5109,9 @@ namespace CathodeLib
                         mvr.RenderableElements = _materialFactory != null
                             ? _materialFactory.ApplyMaterial(lightReds, lightMaterial)
                             : lightReds;
+                        //The deferred volume is per light TYPE - retail partitions point/spot/strip
+                        //across the three proxy meshes with no overlap in 41,376 light movers.
+                        mvr.RenderableElements = UseRequiredModel(mvr.RenderableElements, RequiredModels.ForLight(cpuConstants.Type));
                         mvr.Resource = resource;
                         if (entity.Bools.Get(ShortGuids.include_in_planar_reflections))
                             mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
@@ -5341,6 +5408,10 @@ namespace CathodeLib
                             mvr.RenderConstants.SetAs<PARTICLE_PARAMS>(cpuConstants);
                         }
                         mvr.RenderableElements = ApplyFxMaterial(((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance, entity);
+                        mvr.RenderableElements = UseRequiredModel(mvr.RenderableElements,
+                            entity.Integers.Get(ShortGuids.CPU) == 1
+                                ? RequiredModels.Model.REQUIRED_MODEL_CPU_PARTICLE_MODEL
+                                : RequiredModels.Model.REQUIRED_MODEL_1000_PARTICLE_CUBE);
                         mvr.Resource = resource;
                         if (mvr.RenderableElements != null && mvr.RenderableElements.Count > 0 && mvr.RenderableElements[0].Material != null && mvr.RenderableElements[0].Material.Shader != null)
                         {
@@ -5431,7 +5502,19 @@ namespace CathodeLib
                     {
                         Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
-                        mvr.RenderableElements = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                        /* A projective decal is a plain CA_DECAL with no features, projected through the
+                         * unit box - it has no authored renderable of its own to start from. No shipped
+                         * level places one, so there is no retail mover to check this against; the shape
+                         * comes from the required-model block, where UNITBOX is the only entry nothing
+                         * else claims. If the material cannot be made (no CA_DECAL shader in the level
+                         * and none compilable) we keep whatever was authored rather than losing the mover. */
+                        List<RenderableElements.Element> decalReds =
+                            ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                        Materials.Material decalMaterial = _materialFactory?.GetOrCreateMaterial(SHADER_LIST.CA_DECAL, 0, "PROJECTIVE_DECAL");
+                        Models.CS2.Component.LOD.Submesh decalModel = RequiredModels.Resolve(_level?.Models, RequiredModels.Model.REQUIRED_MODEL_UNITBOX);
+                        if (decalMaterial != null && decalModel != null)
+                            decalReds = _materialFactory.BuildRun(decalModel, decalMaterial) ?? decalReds;
+                        mvr.RenderableElements = decalReds;
                         mvr.Resource = AddResourceEntry(entity);
                         if (entity.Bools.Get(ShortGuids.include_in_planar_reflections))
                             mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
@@ -5491,6 +5574,7 @@ namespace CathodeLib
                             Entity = entity.Handle
                         });
                         mvr.RenderableElements = ApplyFxMaterial(((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance, entity);
+                        mvr.RenderableElements = UseRequiredModel(mvr.RenderableElements, RequiredModels.Model.REQUIRED_MODEL_CPU_RIBBON_MODEL);
                         mvr.Resource = resource;
                         if (mvr.RenderableElements != null && mvr.RenderableElements.Count > 0 && mvr.RenderableElements[0].Material != null && mvr.RenderableElements[0].Material.Shader != null)
                         {
@@ -5518,39 +5602,83 @@ namespace CathodeLib
                 case FunctionType.SimpleRefraction:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                     {
-                        CA_SIMPLE_REFRACTION.FEATURES features = 0;
+                        long features = 0;
                         if (entity.Bools.Get(ShortGuids.SECONDARY_NORMAL_MAPPING))
-                            features |= CA_SIMPLE_REFRACTION.FEATURES.SECONDARY_NORMAL_MAPPING;
+                            features |= 1L << (int)CA_SIMPLE_REFRACTION.FEATURES.SECONDARY_NORMAL_MAPPING;
                         if (entity.Bools.Get(ShortGuids.ALPHA_MASKING))
-                            features |= CA_SIMPLE_REFRACTION.FEATURES.ALPHA_MASKING;
+                            features |= 1L << (int)CA_SIMPLE_REFRACTION.FEATURES.ALPHA_MASKING;
                         if (entity.Bools.Get(ShortGuids.DISTORTION_OCCLUSION))
-                            features |= CA_SIMPLE_REFRACTION.FEATURES.DISTORTION_OCCLUSION;
+                            features |= 1L << (int)CA_SIMPLE_REFRACTION.FEATURES.DISTORTION_OCCLUSION;
                         if (entity.Bools.Get(ShortGuids.FLOW_UV_ANIMATION))
-                            features |= CA_SIMPLE_REFRACTION.FEATURES.FLOW_UV_ANIMATION;
-                        AddResourceEntry(entity);
+                            features |= 1L << (int)CA_SIMPLE_REFRACTION.FEATURES.FLOW_UV_ANIMATION;
+
+                        /* Retail ships a mover for every one of these: 4 SimpleWater entities across the
+                         * campaign and 4 SimpleWater movers, 1 SimpleRefraction entity and 1 mover. The
+                         * feature mask above used to be computed and thrown away. The authored material
+                         * carries the textures, so it is kept and only re-pointed at the required mesh. */
+                        Resources.Resource resource = AddResourceEntry(entity);
+                        Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
+                        mvr.Transform = entity.CalculateWorldTransformMatrix();
+                        List<RenderableElements.Element> reds = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                        /* The mask above is NOT applied. Read off ENG_ALIEN_NEST, the entity parameters
+                         * give 0x07 (LOW_RES_ALPHA_PASS|SECONDARY_NORMAL_MAPPING|ALPHA_MASKING) while the
+                         * material retail ships for that very entity is 0x8A (SECONDARY_NORMAL_MAPPING|
+                         * FLOW_UV_ANIMATION|REFLECTIVE_MAPPING) - so the parameter-to-feature mapping is
+                         * wrong somewhere, and applying it swapped the material for a fresh one and lost
+                         * the water. The authored material is correct; only the mesh needs choosing. */
+                        reds = UseRequiredModel(reds, RequiredModels.Model.REQUIRED_MODEL_REFRACTION);
+                        mvr.RenderableElements = reds;
+                        mvr.Resource = resource;
+                        mvr.CullFlags |= Movers.CullFlag.NO_CAST_SHADOWS;
+                        mvr.Entity = entity.Handle;
+                        ApplyMoverZones(mvr, entity);
+                        mvr.LightingMasterID = entity.LightingMaster;
+                        AddMover(entity, mvr, isTemplate);
                     }
                     break;
                 case FunctionType.SimpleWater:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                     {
-                        AddResourceEntry(entity);
-                        CA_SIMPLEWATER.FEATURES features = 0;
+                        Resources.Resource resource = AddResourceEntry(entity);
+                        long features = 0;
                         if (entity.Bools.Get(ShortGuids.SECONDARY_NORMAL_MAPPING))
-                            features |= CA_SIMPLEWATER.FEATURES.SECONDARY_NORMAL_MAPPING;
+                            features |= 1L << (int)CA_SIMPLEWATER.FEATURES.SECONDARY_NORMAL_MAPPING;
                         if (entity.Bools.Get(ShortGuids.LOW_RES_ALPHA_PASS))
-                            features |= CA_SIMPLEWATER.FEATURES.LOW_RES_ALPHA_PASS;
+                            features |= 1L << (int)CA_SIMPLEWATER.FEATURES.LOW_RES_ALPHA_PASS;
                         if (entity.Bools.Get(ShortGuids.ALPHA_MASKING))
-                            features |= CA_SIMPLEWATER.FEATURES.ALPHA_MASKING;
+                            features |= 1L << (int)CA_SIMPLEWATER.FEATURES.ALPHA_MASKING;
                         if (entity.Bools.Get(ShortGuids.FLOW_MAPPING))
-                            features |= CA_SIMPLEWATER.FEATURES.FLOW_UV_ANIMATION;
+                            features |= 1L << (int)CA_SIMPLEWATER.FEATURES.FLOW_UV_ANIMATION;
                         if (entity.Bools.Get(ShortGuids.ENVIRONMENT_MAPPING))
-                            features |= CA_SIMPLEWATER.FEATURES.ENVIRONMENT_MAPPING;
+                            features |= 1L << (int)CA_SIMPLEWATER.FEATURES.ENVIRONMENT_MAPPING;
                         if (entity.Bools.Get(ShortGuids.LOCALISED_ENVIRONMENT_MAPPING))
-                            features |= CA_SIMPLEWATER.FEATURES.LOCALISED_ENVIRONMENT_MAPPING;
+                            features |= 1L << (int)CA_SIMPLEWATER.FEATURES.LOCALISED_ENVIRONMENT_MAPPING;
                         if (entity.Bools.Get(ShortGuids.LOCALISED_ENVMAP_BOX_PROJECTION))
-                            features |= CA_SIMPLEWATER.FEATURES.LOCALISED_ENVMAP_BOX_PROJECTION;
+                            features |= 1L << (int)CA_SIMPLEWATER.FEATURES.LOCALISED_ENVMAP_BOX_PROJECTION;
                         if (entity.Bools.Get(ShortGuids.REFLECTIVE_MAPPING))
-                            features |= CA_SIMPLEWATER.FEATURES.REFLECTIVE_MAPPING;
+                            features |= 1L << (int)CA_SIMPLEWATER.FEATURES.REFLECTIVE_MAPPING;
+
+                        /* Retail ships a mover for every one of these: 4 SimpleWater entities across the
+                         * campaign and 4 SimpleWater movers, 1 SimpleRefraction entity and 1 mover. The
+                         * feature mask above used to be computed and thrown away. The authored material
+                         * carries the textures, so it is kept and only re-pointed at the required mesh. */
+                        Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
+                        mvr.Transform = entity.CalculateWorldTransformMatrix();
+                        List<RenderableElements.Element> reds = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                        /* The mask above is NOT applied. Read off ENG_ALIEN_NEST, the entity parameters
+                         * give 0x07 (LOW_RES_ALPHA_PASS|SECONDARY_NORMAL_MAPPING|ALPHA_MASKING) while the
+                         * material retail ships for that very entity is 0x8A (SECONDARY_NORMAL_MAPPING|
+                         * FLOW_UV_ANIMATION|REFLECTIVE_MAPPING) - so the parameter-to-feature mapping is
+                         * wrong somewhere, and applying it swapped the material for a fresh one and lost
+                         * the water. The authored material is correct; only the mesh needs choosing. */
+                        reds = UseRequiredModel(reds, RequiredModels.Model.REQUIRED_MODEL_WATER);
+                        mvr.RenderableElements = reds;
+                        mvr.Resource = resource;
+                        mvr.CullFlags |= Movers.CullFlag.NO_CAST_SHADOWS;
+                        mvr.Entity = entity.Handle;
+                        ApplyMoverZones(mvr, entity);
+                        mvr.LightingMasterID = entity.LightingMaster;
+                        AddMover(entity, mvr, isTemplate);
                     }
                     break;
                 case FunctionType.SoundBarrier:
@@ -5609,17 +5737,18 @@ namespace CathodeLib
                 case FunctionType.SurfaceEffectBox:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                     {
-                        CA_EFFECT_OVERLAY.FEATURES features = CA_EFFECT_OVERLAY.FEATURES.BOX;
+                        long features = 1L << (int)CA_EFFECT_OVERLAY.FEATURES.BOX;
                         if (entity.Bools.Get(ShortGuids.WS_LOCKED))
-                            features |= CA_EFFECT_OVERLAY.FEATURES.WS_LOCKED;
+                            features |= 1L << (int)CA_EFFECT_OVERLAY.FEATURES.WS_LOCKED;
                         if (entity.Bools.Get(ShortGuids.ENVMAP))
-                            features |= CA_EFFECT_OVERLAY.FEATURES.ENVMAP;
+                            features |= 1L << (int)CA_EFFECT_OVERLAY.FEATURES.ENVMAP;
                         Resources.Resource resource = AddResourceEntry(entity);
                         Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
                         mvr.RenderableElements = ApplyShaderFeatureMaterial(
                             ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance,
-                            entity, (long)features);
+                            entity, features);
+                        mvr.RenderableElements = UseRequiredModel(mvr.RenderableElements, RequiredModels.Model.REQUIRED_MODEL_FOGBOX);
                         mvr.Resource = resource;
                         mvr.Entity = entity.Handle;
                         mvr.CullFlags |= Movers.CullFlag.NO_CAST_SHADOWS; // i think?
@@ -5633,17 +5762,18 @@ namespace CathodeLib
                 case FunctionType.SurfaceEffectSphere:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                     {
-                        CA_EFFECT_OVERLAY.FEATURES features = CA_EFFECT_OVERLAY.FEATURES.SPHERE;
+                        long features = 1L << (int)CA_EFFECT_OVERLAY.FEATURES.SPHERE;
                         if (entity.Bools.Get(ShortGuids.WS_LOCKED))
-                            features |= CA_EFFECT_OVERLAY.FEATURES.WS_LOCKED;
+                            features |= 1L << (int)CA_EFFECT_OVERLAY.FEATURES.WS_LOCKED;
                         if (entity.Bools.Get(ShortGuids.ENVMAP))
-                            features |= CA_EFFECT_OVERLAY.FEATURES.ENVMAP;
+                            features |= 1L << (int)CA_EFFECT_OVERLAY.FEATURES.ENVMAP;
                         Resources.Resource resource = AddResourceEntry(entity);
                         Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
                         mvr.RenderableElements = ApplyShaderFeatureMaterial(
                             ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance,
-                            entity, (long)features);
+                            entity, features);
+                        mvr.RenderableElements = UseRequiredModel(mvr.RenderableElements, RequiredModels.Model.REQUIRED_MODEL_FOGSPHERE);
                         mvr.Resource = resource;
                         mvr.Entity = entity.Handle;
                         mvr.CullFlags |= Movers.CullFlag.NO_CAST_SHADOWS;
