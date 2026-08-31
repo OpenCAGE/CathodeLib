@@ -2303,10 +2303,23 @@ namespace CATHODE
                     if (bytes > 0)
                         extraRanges.Add((lf.Dst, lf.Dst + (uint)bytes));
 
-                    // Globals inside the array region → more objects.
-                    uint arrEnd = lf.Dst + (uint)Math.Max(bytes, 0);
-                    if (bytes <= 0)
-                        arrEnd = lf.Dst + 256; // small probe window
+                    /* Which slots of this array can point at further objects. A zero length array
+                     * points at nothing, so probing past it just sweeps up whatever the allocator
+                     * put next - and a fixed byte window holds twice as many pointer slots on a
+                     * 32 bit packfile as on a 64 bit one, so the same content imported 35 extra
+                     * unreferenced objects at 32 bit and none at 64. Follow an empty array nowhere,
+                     * and keep the probe for targets that are not arrays at all (a name string,
+                     * say) inside the room before the next object. */
+                    int slotCount = (int)lf.Src + source.Header.PointerSize + 4 <= source.DataPayload.Length
+                        ? BitConverter.ToInt32(source.DataPayload, (int)lf.Src + source.Header.PointerSize)
+                        : -1;
+                    uint arrEnd;
+                    if (bytes > 0)
+                        arrEnd = lf.Dst + (uint)bytes;
+                    else if (slotCount == 0)
+                        arrEnd = lf.Dst;
+                    else
+                        arrEnd = lf.Dst + (uint)Math.Min(256, RoomBeforeNextObject(source, lf.Dst));
                     for (int g = 0; g < source.GlobalFixups.Count; g++)
                     {
                         GlobalFixup gf = source.GlobalFixups[g];
@@ -2331,7 +2344,16 @@ namespace CATHODE
             }
 
             // Expand extras for nested local fixups (mesh internal arrays / strings).
+            /* Ranges already scheduled. Without this the loop re-adds every range it already holds
+             * on every pass, so `expanded` never goes false and extraRanges grows geometrically
+             * until the pass guard trips: importing one BSP_Torrens door into Solace reached
+             * 2,140,188 ranges by pass 8 and never finished, against 720 and 6.3s with the check.
+             * MergeRanges dedupes afterwards, so the duplicates were only ever a cost, never a
+             * correctness problem - which is why this hid for so long. It bites the 64-bit
+             * packfiles far harder than the 32-bit ones. */
+            var seenExtras = new HashSet<(uint, uint)>(extraRanges);
             int expandGuard = 0;
+
             bool expanded;
             do
             {
@@ -2360,8 +2382,11 @@ namespace CATHODE
                             bytes = Math.Max(1, strEnd - (int)lf.Dst);
                         }
                         uint newEnd = lf.Dst + (uint)bytes;
-                        extraRanges.Add((lf.Dst, newEnd));
-                        expanded = true;
+                        if (seenExtras.Add((lf.Dst, newEnd)))
+                        {
+                            extraRanges.Add((lf.Dst, newEnd));
+                            expanded = true;
+                        }
 
                         for (int g = 0; g < source.GlobalFixups.Count; g++)
                         {
@@ -2408,6 +2433,37 @@ namespace CATHODE
             } while (expanded);
         }
 
+        /// <summary>
+        /// An array's data cannot run into the next object, so no inferred length may either.
+        /// The stride guess below borrows the gap between the first two global fixups at or after
+        /// the array - which for an array with no internal pointers belong to some later object
+        /// entirely, giving strides that overshoot wildly (count 176 x stride 80 = 14,080 bytes into
+        /// 944 bytes of room). Unclamped that dragged unrelated objects into the copied graph, and it
+        /// did so differently per pointer width: 8,088 inference calls on the 32-bit packfile against
+        /// 23,835 on the 64-bit one for the same content, so the two widths imported different
+        /// object sets from structurally identical sources.
+        /// </summary>
+        static int ClampArrayToNextObject(HavokPackfile source, uint arrayDataDst, int bytes)
+        {
+            if (bytes <= 0)
+                return bytes;
+            int room = RoomBeforeNextObject(source, arrayDataDst);
+            return bytes > room ? room : bytes;
+        }
+
+        /// <summary>How many bytes an array at this offset has before the next object starts.</summary>
+        static int RoomBeforeNextObject(HavokPackfile source, uint arrayDataDst)
+        {
+            uint roomEnd = (uint)source.DataPayload.Length;
+            for (int i = 0; i < source.Objects.Count; i++)
+            {
+                uint off = source.Objects[i].DataOffset;
+                if (off > arrayDataDst && off < roomEnd)
+                    roomEnd = off;
+            }
+            return arrayDataDst >= roomEnd ? 0 : (int)(roomEnd - arrayDataDst);
+        }
+
         static int InferArrayByteLength(HavokPackfile source, uint arrayFieldSrc, uint arrayDataDst)
         {
             int ptrSize = source.Header.PointerSize;
@@ -2438,7 +2494,16 @@ namespace CATHODE
             if (found == 2)
             {
                 uint stride = second - first;
-                if (stride > 0 && stride <= 512)
+                int room = RoomBeforeNextObject(source, arrayDataDst);
+                /* Those two fixups only describe this array if they sit inside it, and a stride
+                 * that makes the array overrun the next object was borrowed from a later object
+                 * entirely - which is what happens for an array holding no pointers of its own.
+                 * Reject the guess instead of truncating it: truncation still copies whatever
+                 * the over-long range swept up, which on 32 bit packfiles left 35 unreferenced
+                 * objects in a port the 64 bit file imported cleanly. */
+                if (stride > 0 && stride <= 512
+                    && first < arrayDataDst + (uint)room
+                    && count * (int)stride <= room)
                     return count * (int)stride;
             }
 
@@ -2452,11 +2517,11 @@ namespace CATHODE
                     StaticCompoundShape compound = source.StaticCompoundShapes[c];
                     int instancesArrayOffset = ptrSize == 8 ? 0x38 : 0x20;
                     if (arrayFieldSrc == compound.DataOffset + (uint)instancesArrayOffset)
-                        return count * instanceStride;
+                        return ClampArrayToNextObject(source, arrayDataDst, count * instanceStride);
                 }
             }
 
-            return count * ptrSize;
+            return ClampArrayToNextObject(source, arrayDataDst, count * ptrSize);
         }
 
         static List<(uint Start, uint End)> MergeRanges(List<(uint Start, uint End)> ranges)
@@ -2515,6 +2580,45 @@ namespace CATHODE
             return MergeRanges(result);
         }
 
+        /// <summary>
+        /// Cut trailing section padding (0xFF filler, or stray NULs beyond the last entry's own
+        /// terminator) so a newly appended classname entry continues the packed run.
+        /// </summary>
+        /// <summary>
+        /// Retail pads the classnames section with 0xFF so __data__ begins on a 16 byte boundary,
+        /// and the engine depends on it: hkpMoppBvTreeShape's finish constructor copies
+        /// m_code->m_info.m_offset as an aligned hkVector4, which faults outright on a data section
+        /// that starts off-boundary (finishLoadedObjecthkpMoppBvTreeShape, under _applyVirtualFixups).
+        /// Appending a classname changes that section's length - and TrimClassnamePadding drops the
+        /// existing filler so the appended entry continues the packed run - so re-pad before writing.
+        /// </summary>
+        void PadClassnamesForDataAlignment(int classnamesAbsoluteStart)
+        {
+            int pad = (0x10 - ((classnamesAbsoluteStart + ClassnamesData.Length) % 0x10)) % 0x10;
+            if (pad == 0)
+                return;
+            byte[] padded = new byte[ClassnamesData.Length + pad];
+            Buffer.BlockCopy(ClassnamesData, 0, padded, 0, ClassnamesData.Length);
+            for (int i = ClassnamesData.Length; i < padded.Length; i++)
+                padded[i] = 0xFF;
+            ClassnamesData = padded;
+        }
+
+        void TrimClassnamePadding()
+        {
+            int end = ClassnamesData.Length;
+            while (end > 0 && ClassnamesData[end - 1] == 0xFF)
+                end--;
+            //keep exactly one NUL: it terminates the last real entry
+            while (end > 1 && ClassnamesData[end - 1] == 0 && ClassnamesData[end - 2] == 0)
+                end--;
+            if (end == ClassnamesData.Length)
+                return;
+            byte[] trimmed = new byte[end];
+            Buffer.BlockCopy(ClassnamesData, 0, trimmed, 0, end);
+            ClassnamesData = trimmed;
+        }
+
         int EnsureClassName(HavokPackfile source, PackfileObject srcObj, Dictionary<string, int> destClassByName)
         {
             string name = srcObj.ClassName ?? "";
@@ -2534,9 +2638,19 @@ namespace CATHODE
                 srcEnd++; // NUL
 
             int copyLen = srcEnd - srcEntryStart;
+
+            /* The classnames stream is a packed run of [u32 sig][u8][name][NUL] and ParseClassNames
+             * walks it sequentially, so an entry appended after the section's trailing padding is
+             * never reached: the walk desyncs on the padding and the new name resolves to "".
+             * COLLISION sections end tightly, but PHYSICS ones are padded with 0xFF - which is why
+             * only physics imports of a class the destination lacked (hkpMoppBvTreeShape) came out
+             * with no class name. Drop the padding so the appended entry continues the run. */
+            TrimClassnamePadding();
+
             int destEntryStart = ClassnamesData.Length;
             // Align not required for classnames stream; append raw.
             byte[] grown = new byte[destEntryStart + copyLen];
+
             Buffer.BlockCopy(ClassnamesData, 0, grown, 0, ClassnamesData.Length);
             Buffer.BlockCopy(source.ClassnamesData, srcEntryStart, grown, destEntryStart, copyLen);
             ClassnamesData = grown;
@@ -2648,7 +2762,7 @@ namespace CATHODE
             //2018 grew hkReferencedObject, so the array is not where the 2012 arithmetic puts it
             int systemsMember = Tagfile == null ? -1 : Tagfile.OffsetOf("hkpPhysicsData", "systems");
             uint systemsField = physicsData.DataOffset
-                + (systemsMember >= 0 ? (uint)systemsMember : 16 + (uint)ptrSize);
+                + (systemsMember >= 0 ? (uint)systemsMember : ObjectHeaderSize + (uint)ptrSize);
 
             TryReadPointerArray(systemsField, out List<uint> existing);
             if (existing == null)
@@ -2807,8 +2921,14 @@ namespace CATHODE
             Dictionary<int, string> classNames = ParseClassNames(ClassnamesData);
             ParseStaticCompoundInstances(classNames);
             ParsePhysicsSystemIndexes();
+            /* Clearing the cached hosts is not enough on its own - ResolveWorldHosts early-returns on
+             * _worldHostsResolved, so leaving it set means the hosts stay null for the rest of the
+             * packfile's life. Importing one compound into Solace took its hosts from 1367/1369 to
+             * none, and the next instancing pass then threw "compound has zero instances". The
+             * tagfile branch above already resets all three. */
             _worldHostPrimary = null;
             _worldHostSecondary = null;
+            _worldHostsResolved = false;
         }
         #endregion
 
@@ -2940,7 +3060,9 @@ namespace CATHODE
             int headerSize = 0x40;
             int sectionHeaderSize = Header.NumSections * 0x30;
             int classAbs = headerSize + sectionHeaderSize;
+            PadClassnamesForDataAlignment(classAbs);
             int dataAbs = classAbs + ClassnamesData.Length;
+
 
             int localBytes = LocalFixups.Count * 8;
             int globalBytes = GlobalFixups.Count * 12;
@@ -4215,8 +4337,13 @@ namespace CATHODE
             if (physicsData != null)
             {
                 int ptrSize = Header.PointerSize;
-                // hkpPhysicsData: hkReferencedObject (16) + worldCinfo ptr + systems hkArray
-                uint systemsField = physicsData.DataOffset + 16 + (uint)ptrSize;
+                /* hkpPhysicsData: hkReferencedObject + worldCinfo ptr + systems hkArray. The
+                 * header is 16 bytes on 64 bit but only 8 on 32 bit, so it cannot be a constant:
+                 * assuming 16 put the field 8 bytes past the array on every 32 bit packfile,
+                 * which read as "no systems" here and, worse, made AppendPhysicsSystem write a
+                 * second systems array over hkArray::m_capacityAndFlags - leaving the real array
+                 * untouched, so ported physics systems were never wired into hkpPhysicsData. */
+                uint systemsField = physicsData.DataOffset + ObjectHeaderSize + (uint)ptrSize;
                 if (TryReadPointerArray(systemsField, out List<uint> systemOffsets) && systemOffsets.Count > 0)
                 {
                     ordered = new List<PhysicsSystem>(systemOffsets.Count);
