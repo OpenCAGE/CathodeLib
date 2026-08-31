@@ -440,6 +440,38 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// Clear radiosity data from the level's directory - this directly modifies the files on disk, not the files in the Level object.
+        /// </summary>
+        public static void ClearRadiosityOnDisk(Level level)
+        {
+            ClearRadiosityAt(level.Filepath);
+            if (level.Patched)
+                ClearRadiosityPatchOnDisk(level);
+        }
+
+        /// <summary>
+        /// Clear radiosity data from the level's patch directory - this directly modifies the files on disk, not the files in the Level object.
+        /// </summary>
+        public static void ClearRadiosityPatchOnDisk(Level level)
+        {
+            ClearRadiosityAt(level.Filepath.TrimEnd('/').TrimEnd('\\') + "_PATCH");
+        }
+
+        private static void ClearRadiosityAt(string root)
+        {
+            string world = root + "/WORLD/";
+            if (Directory.Exists(world))
+                File.WriteAllBytes(world + "RADIOSITY_COLLISION_MAPPING.BIN", new byte[4]);
+
+            string renderable = root + "/RENDERABLE/";
+            if (Directory.Exists(renderable))
+            {
+                File.WriteAllBytes(renderable + "RADIOSITY_RUNTIME.BIN", new byte[0]);
+                File.Delete(renderable + "RADIOSITY_INSTANCE_MAP.TXT");
+            }
+        }
+
+        /// <summary>
         /// Checks a given filepath to see if it's a valid path to the Alien: Isolation root folder
         /// </summary>
         public static bool IsGameDirectoryValid(string directory)
