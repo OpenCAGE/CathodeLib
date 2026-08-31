@@ -486,17 +486,11 @@ namespace CATHODE
             if (shader == null)
                 return null;
 
-            Shader existingByName = Entries.FirstOrDefault(o => o.Technique == shader.Technique);
-            if (existingByName != null && !overwriteExisting)
-                return existingByName;
+            Shader identical = Entries.FirstOrDefault(o => o == shader);
+            if (identical != null)
+                return identical;
 
             Shader newShader = shader.Copy();
-            if (existingByName != null)
-            {
-                Entries[Entries.IndexOf(existingByName)] = newShader;
-                return newShader;
-            }
-
             Entries.Add(newShader);
             return newShader;
         }

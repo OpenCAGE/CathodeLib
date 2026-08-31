@@ -342,10 +342,6 @@ namespace CATHODE
             if (material == null)
                 return null;
 
-            Material existingByName = Entries.FirstOrDefault(o => o.Name == material.Name);
-            if (existingByName != null && !overwriteExisting)
-                return existingByName;
-
             Material newMaterial = material.Copy();
 
             for (int i = 0; i < newMaterial.TextureReferences.Count; i++)
@@ -359,11 +355,9 @@ namespace CATHODE
             newMaterial.Shader = _shaders.ImportEntry(newMaterial.Shader, overwriteExisting);
             //newMaterial.EnvironmentMapIndex = 255; //TEMP! should remap
 
-            if (existingByName != null)
-            {
-                Entries[Entries.IndexOf(existingByName)] = newMaterial;
-                return newMaterial;
-            }
+            Material identical = Entries.FirstOrDefault(o => o == newMaterial);
+            if (identical != null)
+                return identical;
 
             Entries.Add(newMaterial);
             return newMaterial;
