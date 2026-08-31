@@ -1756,6 +1756,87 @@ namespace CATHODE
         /// Returns the new shape's data offset for use as <see cref="CompoundInstance.ShapeDataOffset"/>.
         /// Object size / halfExtents field offset differ between 32-bit (48 / +32) and 64-bit (64 / +48) packs.
         /// </summary>
+        /* hkpBoxShape's classnames entry: the 2012 type signature, then the 0x09 kind byte that
+         * every entry in the stream carries. */
+        static readonly byte[] BoxShapeClassEntryPrefix = new byte[] { 0xEA, 0x12, 0x11, 0x0C, 0x09 };
+
+        /// <summary>
+        /// Write an hkpBoxShape from nothing, for a collision file that has never held one. Retail's
+        /// boxes are all the same object apart from their half extents: every field zero except
+        /// hkpShape::m_userData, which is 1024. The vtable and m_type are filled in by the loader.
+        /// A level with no boxes at all is not exotic - Frontend is one - and before this the first
+        /// nav barrier or trigger volume instanced into such a level threw instead.
+        /// </summary>
+        uint AppendSynthesisedBoxShape(Vector3 halfExtents)
+        {
+            if (Tagfile != null)
+                throw new InvalidOperationException("No existing hkpBoxShape to clone - a tagfile cannot describe a new one.");
+
+            int boxSize = BoxShapeObjectSize;
+            int dst = AlignPayload(DataPayload.Length, 16);
+            byte[] grown = new byte[dst + boxSize];
+            Buffer.BlockCopy(DataPayload, 0, grown, 0, DataPayload.Length);
+            DataPayload = grown;
+
+            WriteUInt32(DataPayload, dst + (int)ObjectHeaderSize, 1024u); //hkpShape::m_userData
+
+            float hx = Math.Abs(halfExtents.X);
+            float hy = Math.Abs(halfExtents.Y);
+            float hz = Math.Abs(halfExtents.Z);
+            if (hx < 1e-4f) hx = 1e-4f;
+            if (hy < 1e-4f) hy = 1e-4f;
+            if (hz < 1e-4f) hz = 1e-4f;
+            float hw = Math.Min(hx, Math.Min(hy, hz));
+            WriteVector4(DataPayload, dst + BoxShapeHalfExtentsOffset, new Vector4(hx, hy, hz, hw));
+
+            int nameOffset = EnsureClassNameLiteral("hkpBoxShape", BoxShapeClassEntryPrefix);
+            VirtualFixups.Add(new VirtualFixup
+            {
+                Src = (uint)dst,
+                SectionIndex = 0,
+                NameOffset = nameOffset,
+            });
+            Objects.Add(new PackfileObject
+            {
+                DataOffset = (uint)dst,
+                ClassNameOffset = nameOffset,
+                ClassName = "hkpBoxShape",
+                Class = ObjectClass.BoxShape,
+                ProxyIndex = -1,
+            });
+            return (uint)dst;
+        }
+
+        /// <summary>
+        /// Offset of a class name in the classnames stream, appending the entry if the file has
+        /// never named that class. Same packed [u32 sig][u8][name][NUL] run as
+        /// <see cref="EnsureClassName"/>, but written from a literal rather than copied from
+        /// another packfile.
+        /// </summary>
+        int EnsureClassNameLiteral(string name, byte[] entryPrefix)
+        {
+            byte[] wanted = Encoding.ASCII.GetBytes(name);
+            for (int i = 0; i + wanted.Length < ClassnamesData.Length; i++)
+            {
+                bool hit = true;
+                for (int k = 0; k < wanted.Length && hit; k++)
+                    if (ClassnamesData[i + k] != wanted[k])
+                        hit = false;
+                if (hit && ClassnamesData[i + wanted.Length] == 0)
+                    return i;
+            }
+
+            TrimClassnamePadding();
+
+            int start = ClassnamesData.Length;
+            byte[] grown = new byte[start + entryPrefix.Length + wanted.Length + 1];
+            Buffer.BlockCopy(ClassnamesData, 0, grown, 0, ClassnamesData.Length);
+            Buffer.BlockCopy(entryPrefix, 0, grown, start, entryPrefix.Length);
+            Buffer.BlockCopy(wanted, 0, grown, start + entryPrefix.Length, wanted.Length);
+            ClassnamesData = grown;
+            return start + entryPrefix.Length;
+        }
+
         public uint AppendBoxShape(Vector3 halfExtents)
         {
             PackfileObject template = null;
@@ -1768,7 +1849,7 @@ namespace CATHODE
                 }
             }
             if (template == null)
-                throw new InvalidOperationException("No existing hkpBoxShape to clone — packfile has no box templates.");
+                return AppendSynthesisedBoxShape(halfExtents);
 
             int boxSize = BoxShapeObjectSize;
             int heOff = BoxShapeHalfExtentsOffset;
@@ -1940,6 +2021,216 @@ namespace CATHODE
         }
 
         /// <summary>Find the static compound for a COLLISION.MAP CollisionProxyIndex, or null.</summary>
+        /* hkpListShape, packfile layout: the child array pointer, then its size and capacity, and
+         * one ChildInfo per child (a shape pointer plus three zeroed words). */
+        int ListChildArrayField => Header.PointerSize == 8 ? 0x30 : 0x18;
+        int ListChildEntryStride => Header.PointerSize == 8 ? 32 : 16;
+
+        /// <summary>
+        /// The level's proxy list - the hkpListShape a rigid body carries. That body's collision
+        /// filter is NOTHING (18), so the list never collides: it is the registry that makes every
+        /// per-mesh compound addressable by the ordinal a COLLISION.MAP row stores.
+        /// </summary>
+        PackfileObject FindProxyListShape()
+        {
+            if (Tagfile != null)
+                return null;
+
+            Dictionary<uint, PackfileObject> byOffset = new Dictionary<uint, PackfileObject>();
+            for (int i = 0; i < Objects.Count; i++)
+                byOffset[Objects[i].DataOffset] = Objects[i];
+
+            for (int i = 0; i < Objects.Count; i++)
+            {
+                if (!string.Equals(Objects[i].ClassName, "hkpRigidBody", StringComparison.Ordinal))
+                    continue;
+                uint start = Objects[i].DataOffset;
+                uint end = ObjectEnd(start);
+                for (int g = 0; g < GlobalFixups.Count; g++)
+                {
+                    if (GlobalFixups[g].Src < start || GlobalFixups[g].Src >= end)
+                        continue;
+                    if (byOffset.TryGetValue(GlobalFixups[g].Dst, out PackfileObject shape)
+                        && string.Equals(shape.ClassName, "hkpListShape", StringComparison.Ordinal))
+                        return shape;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Extend the proxy list until a child exists at every compound ordinal.
+        /// <para>
+        /// Retail satisfies this exactly: the highest proxy index any COLLISION.MAP row names is
+        /// always the list's last child, because the list holds every per-mesh compound and the
+        /// three rigid-body-owned hosts are the remainder. An imported compound lands at the end of
+        /// the payload - past those hosts - so its ordinal falls outside the list, and a ported row
+        /// then names a shape past the end of the array the engine looks it up in.
+        /// </para>
+        /// Ordinals are rank in the payload and cannot simply be renumbered: models store
+        /// <c>Submesh.CollisionProxyIndex</c> against them, so renumbering would silently repoint
+        /// every mesh's collision. Padding the list keeps every existing ordinal where it is, and
+        /// the slots the hosts land in cost nothing on a list that never collides.
+        /// </summary>
+        public void EnsureProxyListCoversCompounds()
+        {
+            PackfileObject list = FindProxyListShape();
+            if (list == null)
+                return;
+
+            int ptrSize = Header.PointerSize;
+            int stride = ListChildEntryStride;
+            uint arrayField = list.DataOffset + (uint)ListChildArrayField;
+            int sizePos = (int)arrayField + ptrSize;
+            if (sizePos + 8 > DataPayload.Length)
+                return;
+
+            int existing = BitConverter.ToInt32(DataPayload, sizePos);
+            if (existing < 0)
+                existing = 0;
+            int wanted = StaticCompoundShapes.Count;
+            if (wanted <= existing)
+                return;
+
+            uint oldArray = 0;
+            bool hadOld = false;
+            for (int i = 0; i < LocalFixups.Count; i++)
+            {
+                if (LocalFixups[i].Src != arrayField)
+                    continue;
+                oldArray = LocalFixups[i].Dst;
+                hadOld = true;
+                break;
+            }
+
+            //Keep whatever the existing slots pointed at rather than re-deriving them.
+            uint[] slots = new uint[wanted];
+            if (hadOld)
+            {
+                uint oldEnd = oldArray + (uint)(existing * stride);
+                for (int g = 0; g < GlobalFixups.Count; g++)
+                {
+                    uint src = GlobalFixups[g].Src;
+                    if (src < oldArray || src >= oldEnd)
+                        continue;
+                    int slot = (int)((src - oldArray) / (uint)stride);
+                    if (slot >= 0 && slot < existing)
+                        slots[slot] = GlobalFixups[g].Dst;
+                }
+            }
+            for (int i = existing; i < wanted; i++)
+            {
+                StaticCompoundShape compound = GetCompound(i);
+                slots[i] = compound == null ? 0 : compound.DataOffset;
+            }
+
+            int newArrOff = AlignPayload(DataPayload.Length, 16);
+            byte[] grown = new byte[newArrOff + wanted * stride];
+            Buffer.BlockCopy(DataPayload, 0, grown, 0, DataPayload.Length);
+            if (hadOld && existing > 0 && oldArray + (uint)(existing * stride) <= (uint)DataPayload.Length)
+                Buffer.BlockCopy(DataPayload, (int)oldArray, grown, newArrOff, existing * stride);
+            DataPayload = grown;
+
+            if (hadOld)
+            {
+                uint oldEnd = oldArray + (uint)(existing * stride);
+                for (int g = GlobalFixups.Count - 1; g >= 0; g--)
+                    if (GlobalFixups[g].Src >= oldArray && GlobalFixups[g].Src < oldEnd)
+                        GlobalFixups.RemoveAt(g);
+            }
+            for (int i = LocalFixups.Count - 1; i >= 0; i--)
+                if (LocalFixups[i].Src == arrayField)
+                    LocalFixups.RemoveAt(i);
+
+            LocalFixups.Add(new LocalFixup { Src = arrayField, Dst = (uint)newArrOff });
+            WriteUInt32(DataPayload, sizePos, (uint)wanted);
+            WriteUInt32(DataPayload, sizePos + 4, (uint)wanted | 0x80000000u);
+
+            for (int i = 0; i < wanted; i++)
+            {
+                if (slots[i] == 0)
+                    continue;
+                GlobalFixups.Add(new GlobalFixup
+                {
+                    Src = (uint)(newArrOff + i * stride),
+                    DstSectionIndex = 2,
+                    Dst = slots[i],
+                });
+            }
+        }
+
+        /// <summary>
+        /// Resize every compound's child shape key field to fit what it now holds.
+        /// <para>
+        /// hkpStaticCompoundShape packs a hit as <c>(instanceIndex &lt;&lt; m_numBitsForChildShapeKey)
+        /// | childKey</c>, so that field has to cover the largest key space any child can produce.
+        /// Retail sizes it as the maximum over instances of the child's own bits plus the bits its
+        /// instance index needs - which reproduces every predictable compound in Frontend, Solace
+        /// and BSP_Torrens exactly.
+        /// </para>
+        /// Placing a level's geometry onto a host without updating it lets a hit inside a bigger
+        /// child overflow into the instance index, and hkpStaticCompoundShape::getCollisionFilterInfo
+        /// then reads past m_instances. Retail Frontend's hosts carry one instance each and reserve
+        /// six bits, which stops being enough the moment anything is built into that level.
+        /// </summary>
+        public void RefreshCompoundShapeKeyBits()
+        {
+            if (Tagfile != null)
+                return;
+
+            int ptrSize = Header.PointerSize;
+            int bitsField = (ptrSize == 8 ? 0x38 : 0x20) - 8;
+
+            Dictionary<uint, StaticCompoundShape> byOffset = new Dictionary<uint, StaticCompoundShape>();
+            for (int i = 0; i < StaticCompoundShapes.Count; i++)
+                byOffset[StaticCompoundShapes[i].DataOffset] = StaticCompoundShapes[i];
+
+            /* A host references templates and never the other way round, so one pass in ordinal
+             * order sees every child already at its final width. */
+            List<StaticCompoundShape> ordered = StaticCompoundShapes
+                .OrderBy(c => c.ProxyIndex)
+                .ToList();
+
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                StaticCompoundShape compound = ordered[i];
+                if (compound.Instances.Count == 0)
+                    continue;   //retail leaves the unused spare at 0xFF
+                int at = (int)compound.DataOffset + bitsField;
+                if (at < 0 || at >= DataPayload.Length)
+                    continue;
+
+                int required = 0;
+                for (int n = 0; n < compound.Instances.Count; n++)
+                {
+                    if (!byOffset.TryGetValue(compound.Instances[n].ShapeDataOffset, out StaticCompoundShape child))
+                        continue;   //a box or a mesh child contributes no instance bits of its own
+                    int childAt = (int)child.DataOffset + bitsField;
+                    if (childAt < 0 || childAt >= DataPayload.Length)
+                        continue;
+                    int childBits = DataPayload[childAt];
+                    if (childBits == 0xFF)
+                        childBits = 0;
+                    required = Math.Max(required, childBits + BitsToIndex(child.Instances.Count));
+                }
+
+                //Only ever widen: a child whose key space we cannot compute must not narrow it.
+                int stored = DataPayload[at];
+                if (stored != 0xFF && required <= stored)
+                    continue;
+                DataPayload[at] = (byte)Math.Min(required, 31);
+            }
+        }
+
+        /// <summary>Bits needed to hold indices 0..count-1.</summary>
+        static int BitsToIndex(int count)
+        {
+            int bits = 0;
+            while ((1 << bits) < count)
+                bits++;
+            return bits;
+        }
+
         public StaticCompoundShape GetCompound(int proxyIndex)
         {
             for (int i = 0; i < StaticCompoundShapes.Count; i++)
@@ -1985,8 +2276,8 @@ namespace CATHODE
         }
 
         /// <summary>
-        /// Identify the world hosts as the largest compounds whose instances mostly reference other
-        /// compounds (Torrens: ~2623 + ~1033). Cached, because rebuilding empties them.
+        /// Identify the world hosts from the packfile's structure: they are the compounds a rigid
+        /// body carries as its shape. Cached, because rebuilding empties them.
         /// </summary>
         void ResolveWorldHosts()
         {
@@ -1994,6 +2285,22 @@ namespace CATHODE
                 return;
             _worldHostsResolved = true;
 
+            /* Every level lays its collision file out the same way - four hkpRigidBody objects,
+             * the first carrying an hkpListShape that enumerates the per-mesh template compounds,
+             * then three compounds: the ballistic host, an empty spare, and the walkable host.
+             * Read the hosts off that layout rather than guessing from instance counts. Frontend
+             * ships exactly those four bodies with a single instance on each host, and a size
+             * threshold rejected them - which left the level with nowhere to place collision, so
+             * every COLLISION.MAP row came out with no instance and nothing was collidable. */
+            List<StaticCompoundShape> owned = CompoundsOwnedByRigidBodies();
+            if (owned.Count != 0)
+            {
+                _worldHostPrimary = owned[0];
+                _worldHostSecondary = owned.Count > 2 ? owned[2] : owned[owned.Count - 1];
+                return;
+            }
+
+            //A tagfile has no packfile object graph to read, so fall back to the shape of the data.
             List<StaticCompoundShape> hosts = StaticCompoundShapes
                 .Where(c => c != null && c.Instances != null && c.Instances.Count >= 16)
                 .Where(c => c.Instances.Count(i =>
@@ -2006,6 +2313,45 @@ namespace CATHODE
                 return;
             _worldHostPrimary = hosts[0];
             _worldHostSecondary = hosts.Count > 1 ? hosts[1] : hosts[0];
+        }
+
+        /// <summary>
+        /// The compounds that hkpRigidBody objects point straight at, in file order. The body that
+        /// carries the template hkpListShape contributes nothing, so what comes back is the host
+        /// list: [ballistic, spare, walkable].
+        /// </summary>
+        List<StaticCompoundShape> CompoundsOwnedByRigidBodies()
+        {
+            List<StaticCompoundShape> owned = new List<StaticCompoundShape>();
+            if (Tagfile != null)
+                return owned;
+
+            Dictionary<uint, StaticCompoundShape> compoundByOffset = new Dictionary<uint, StaticCompoundShape>();
+            for (int i = 0; i < StaticCompoundShapes.Count; i++)
+                if (StaticCompoundShapes[i] != null)
+                    compoundByOffset[StaticCompoundShapes[i].DataOffset] = StaticCompoundShapes[i];
+
+            List<PackfileObject> bodies = Objects
+                .Where(o => o != null && string.Equals(o.ClassName, "hkpRigidBody", StringComparison.Ordinal))
+                .OrderBy(o => o.DataOffset)
+                .ToList();
+
+            for (int b = 0; b < bodies.Count; b++)
+            {
+                uint start = bodies[b].DataOffset;
+                uint end = ObjectEnd(start);
+                for (int g = 0; g < GlobalFixups.Count; g++)
+                {
+                    if (GlobalFixups[g].Src < start || GlobalFixups[g].Src >= end)
+                        continue;
+                    if (compoundByOffset.TryGetValue(GlobalFixups[g].Dst, out StaticCompoundShape shape))
+                    {
+                        owned.Add(shape);
+                        break;
+                    }
+                }
+            }
+            return owned;
         }
 
         #region CROSS_PACKFILE_IMPORT
@@ -2034,6 +2380,7 @@ namespace CATHODE
 
             uint newRoot = ImportObjectGraph(source, src.DataOffset, remapCache);
             RebuildTypedViewsFromObjects();
+            EnsureProxyListCoversCompounds();
 
             for (int i = 0; i < StaticCompoundShapes.Count; i++)
             {

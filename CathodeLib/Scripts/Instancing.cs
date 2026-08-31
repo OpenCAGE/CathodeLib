@@ -2860,6 +2860,10 @@ namespace CathodeLib
             _collision?.Packfile.CommitInstanceRebuild();
             _collisionMirror?.Packfile.CommitInstanceRebuild();
 
+            //Placing geometry on a host widens the key space its children can produce.
+            _collision?.Packfile.RefreshCompoundShapeKeyBits();
+            _collisionMirror?.Packfile.RefreshCompoundShapeKeyBits();
+
             //Regenerate level states (navmesh, cover, etc)
             BuildExclusiveMasterStates();
 
@@ -2949,11 +2953,63 @@ namespace CathodeLib
                     hostMirror.Instances[slot].UserData = (ulong)i;
             }
 
+            /* The stamping above only reaches the instances a row points at. The engine reads
+             * UserData as a COLLISION.MAP row index on whatever leaf a ray actually lands on,
+             * including the instances inside the per-mesh template compounds - and those can
+             * hold indices into a different table entirely. An imported compound carries the
+             * source level's indices across verbatim, and retail leaves stale ones behind in
+             * levels whose geometry is never placed (Frontend ships 150 of them, pointing as
+             * far as row 1066 in a 256 row table). None of that matters while nothing in the
+             * level is collidable; the moment it is, a ray reaching such a leaf indexes past
+             * the end of the table and the Havok raycast task faults. Retail's own playable
+             * levels never do this - every instance in Solace and Torrens names a real row. */
+            ClampInstanceUserData(_collision?.Packfile, rows.Count);
+            ClampInstanceUserData(_collisionMirror?.Packfile, rows.Count);
+
             //todo - i think maybe navmesh barrier uses a different id system?
 
             int orphans = CountUnstamped(_collision?.PrimaryHost, stamped) + CountUnstamped(_collision?.SecondaryHost, stamped);
             if (orphans > 0)
                 Console.WriteLine("  WARNING: {0} Havok instances have no COLLISION.MAP row (zone lookup will miss)", orphans);
+        }
+
+        /// <summary>
+        /// Point any instance whose collision row index is outside the table at row 0. It reports the
+        /// wrong row, but it no longer reads off the end. Handing these the definition row retail
+        /// gives them - non-host instances there name the rows that carry no placement, many sharing
+        /// one - is a separate piece of work.
+        /// </summary>
+        static void ClampInstanceUserData(HavokPackfile packfile, int rowCount)
+        {
+            if (packfile == null || rowCount <= 0)
+                return;
+
+            int clamped = 0;
+            for (int c = 0; c < packfile.StaticCompoundShapes.Count; c++)
+            {
+                HavokPackfile.StaticCompoundShape compound = packfile.StaticCompoundShapes[c];
+                bool stray = false;
+                for (int i = 0; i < compound.Instances.Count && !stray; i++)
+                    stray = compound.Instances[i].UserData >= (ulong)rowCount;
+                if (!stray)
+                    continue;
+
+                //Rewriting an instance means rewriting the compound that holds it.
+                List<HavokPackfile.CompoundInstance> saved = new List<HavokPackfile.CompoundInstance>(compound.Instances);
+                packfile.PrepareCompoundForRebuild(compound);
+                for (int i = 0; i < saved.Count; i++)
+                {
+                    if (saved[i].UserData >= (ulong)rowCount)
+                    {
+                        saved[i].UserData = 0;
+                        clamped++;
+                    }
+                    compound.AddInstance(saved[i]);
+                }
+            }
+
+            if (clamped != 0)
+                Console.WriteLine("  Repointed {0} compound instance(s) carrying a collision row index outside this level's table", clamped);
         }
 
         static int CountUnstamped(HavokPackfile.StaticCompoundShape host, HashSet<HavokPackfile.CompoundInstance> stamped)
