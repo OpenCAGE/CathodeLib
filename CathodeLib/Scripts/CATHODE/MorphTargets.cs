@@ -39,6 +39,12 @@ namespace CATHODE
 
         private List<MorphTarget> _writeList = new List<MorphTarget>();
 
+        /* The name table is a dictionary in its own right, not a projection of the models. Retail
+         * ships levels carrying names and NO models at all - 19 of the 33 production levels are that
+         * shape - so rebuilding it from Entries wrote those back as an empty 12 byte file and lost
+         * the table. Keep what was loaded, in its original order, and append only what is new. */
+        private List<string> _names = new List<string>();
+
         ~MorphTargets()
         {
             Entries.Clear();
@@ -52,11 +58,13 @@ namespace CATHODE
             {
                 int morphCount = reader.ReadInt32();
                 reader.BaseStream.Position += 4;
-                List<string> names = new List<string>();
+                List<string> names = new List<string>(morphCount);
                 for (int i = 0; i < morphCount; i++)
                 {
                     names.Add(new string(reader.ReadChars(reader.ReadInt32())));
                 }
+                _names.Clear();
+                _names.AddRange(names);
 
                 int modelCount = reader.ReadInt32();
                 for (int i = 0; i < modelCount; i++)
@@ -87,16 +95,23 @@ namespace CATHODE
             {
                 writer.BaseStream.SetLength(0);
 
-                List<string> names;
+                List<string> names = new List<string>(_names);
+                Dictionary<string, int> nameIndex = new Dictionary<string, int>(names.Count);
+                for (int i = 0; i < names.Count; i++)
+                    if (!nameIndex.ContainsKey(names[i])) nameIndex[names[i]] = i;
+                for (int i = 0; i < Entries.Count; i++)
+                    for (int x = 0; x < Entries[i].Targets.Count; x++)
+                    {
+                        string name = Entries[i].Targets[x].Name ?? "";
+                        if (nameIndex.ContainsKey(name)) continue;
+                        nameIndex[name] = names.Count;
+                        names.Add(name);
+                    }
+
+                //The header counts a terminator per name that the payload does not actually write.
                 int namesLength = 0;
-                {
-                    HashSet<string> namesHashSet = new HashSet<string>();
-                    for (int i = 0; i < Entries.Count; i++)
-                        for (int x = 0; x < Entries[i].Targets.Count; x++)
-                            if (namesHashSet.Add(Entries[i].Targets[x].Name))
-                                namesLength += Entries[i].Targets[x].Name.Length + 1;
-                    names = namesHashSet.ToList();
-                }
+                for (int i = 0; i < names.Count; i++)
+                    namesLength += names[i].Length + 1;
                 writer.Write(names.Count);
                 writer.Write(namesLength);
                 for (int i = 0; i < names.Count; i++)
@@ -111,7 +126,7 @@ namespace CATHODE
                     writer.Write(Entries[i].Targets.Count);
                     for (int x = 0; x < Entries[i].Targets.Count; x++)
                     {
-                        writer.Write(names.IndexOf(Entries[i].Targets[x].Name));
+                        writer.Write(nameIndex[Entries[i].Targets[x].Name ?? ""]);
                         writer.Write(Entries[i].Targets[x].Points.Count);
                         for (int z = 0; z < Entries[i].Targets[x].Points.Count; z++)
                         {

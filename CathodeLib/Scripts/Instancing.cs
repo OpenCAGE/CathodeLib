@@ -2534,13 +2534,52 @@ namespace CathodeLib
 
     public class Instancing
     {
-        private ConcurrentBag<InstancedEntity> AllEntities = new ConcurrentBag<InstancedEntity>();
-        private ConcurrentBag<InstancedComposite> AllComposites = new ConcurrentBag<InstancedComposite>();
+        /* Filled by the parallel walk and then put back into walk order by OrderInstancesDeterministically.
+         * These were ConcurrentBags, whose enumeration order is thread-local and varies run to run - and
+         * the order is load-bearing: zone and environment-map assignment are first-arrival state machines
+         * over it, and the sound network bake consumes it. Two saves of the same level disagreed on
+         * COMMANDS.PAK, SndNodeNetwork.dat and nav_mesh because of it. */
+        private List<InstancedEntity> AllEntities = new List<InstancedEntity>();
+        private List<InstancedComposite> AllComposites = new List<InstancedComposite>();
+        private readonly object _allInstancesLock = new object();
 
         private List<InstancedComposite> RequiredAssets = new List<InstancedComposite>();
         private InstancedComposite Root = new InstancedComposite();
 
         private Level _level = null;
+
+        /// <summary>
+        /// The renderable instance type a run resolves to, or null when it cannot be classified.
+        /// <see cref="Utilities.CalculateRenderableType"/> indexes element 0 and walks every
+        /// material's shader, so an incomplete run has to answer "do not know" rather than throw.
+        /// </summary>
+        private static RenderableInstanceType? SafeRenderableType(List<RenderableElements.Element> elements)
+        {
+            if (elements == null || elements.Count == 0) return null;
+            if (elements[0]?.Material?.Shader == null) return null;
+            foreach (RenderableElements.Element e in elements)
+                if (e?.Material?.Shader == null) return null;
+            try { return elements.CalculateRenderableType(); }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Trace every is_shared composite the walk claims or skips. A shared composite is walked
+        /// ONCE and the first arrival wins, so which occurrence that is decides which instance ids
+        /// the whole subtree below it gets - and those ids are what the shipped MVR and the baked
+        /// radiosity are keyed on. Diagnostic only.
+        /// </summary>
+        public static bool LogSharedSkips = false;
+
+        //Where a composite sits in COMMANDS, for working out what order retail's build saw them in.
+        private int PakIndexOf(Composite c)
+        {
+            if (c == null || _level?.Commands?.Entries == null) return -1;
+            return _level.Commands.Entries.IndexOf(c);
+        }
+
+        //Remaps declined because they would have moved the mover to a different instance list.
+        private int _remapTypeReverts = 0;
 
         //Creates (or finds) the materials an instance needs that the authored data has no entry for.
         private MaterialFactory _materialFactory = null;
@@ -2554,7 +2593,11 @@ namespace CathodeLib
         private readonly object _mvrLock = new object();
         private readonly ConcurrentBag<InstancedEntity> _exclusiveMasters = new ConcurrentBag<InstancedEntity>();
 
-        private List<ShortGuid> _sharedComposites = new List<ShortGuid>();
+        /* Shared composites already claimed. A composite marked is_shared is instanced ONCE and
+         * every user links to that one instance, so the FIRST arrival claims it and later ones are
+         * skipped - which means the order the root's children are walked in decides which occurrence
+         * the whole subtree below it belongs to. See the root ordering in ProcessInstances. */
+        private readonly HashSet<ShortGuid> _sharedComposites = new HashSet<ShortGuid>();
         private ShortGuid _globalGUID;
 
         private static readonly ShortGuid GlobalZoneId = new ShortGuid("01-00-00-00");
@@ -2739,6 +2782,9 @@ namespace CathodeLib
                 Console.WriteLine("  [phase]   -> " + AllEntities.Count + " instanced entities in " + AllComposites.Count + " composite instances");
             Phase("ProcessInstances", ProcessInstances);
             Phase("BuildStateProperties", BuildStateProperties);
+            if (_remapTypeReverts != 0)
+                Console.WriteLine("Instancing: kept the authored material on " + _remapTypeReverts +
+                                  " mover(s) - the remap would have changed their renderable instance type.");
             Phase("CarryRetailModelParams", CarryRetailModelParams);
 
             // Each of the four agent bakes is opted into by supplying its settings, the same way
@@ -2748,7 +2794,7 @@ namespace CathodeLib
             if (!SkipAgentBakes)
             {
                 if (navMeshSettings != null)
-                    RunOptionalBake("navmesh", () => NavMeshBaker.BakeLevel(level, this, navMeshSettings));
+                    RunOptionalBake("navmesh", () => NavMeshBaker.BakeLevel(level, this, navMeshSettings, Console.WriteLine));
                 if (coverSettings != null)
                     RunOptionalBake("cover", () => CoverBaker.BakeLevel(level, this, coverSettings));
                 if (jobPositionSettings != null)
@@ -2884,6 +2930,56 @@ namespace CathodeLib
                 InstanceID = ShortGuid.InstanceGuid
             };
             GenerateInstances(Root.Composite, new EntityPath(), Root, null, null, new List<InstancedAlias>(), false, null);
+            OrderInstancesDeterministically();
+        }
+
+        /// <summary>
+        /// Put the instance lists back into walk order - required assets first, then the root, each
+        /// composite followed by the composites its own entities open. The parallel walk builds the
+        /// same tree every time; only the order things land in the lists varies, so a sequential
+        /// descent over the finished tree recovers the order a single-threaded walk would have given.
+        /// </summary>
+        private void OrderInstancesDeterministically()
+        {
+            List<InstancedComposite> composites = new List<InstancedComposite>(AllComposites.Count);
+            List<InstancedEntity> entities = new List<InstancedEntity>(AllEntities.Count);
+            //By reference: InstancedComposite equates on InstanceID, and a shared composite deliberately
+            //carries the same ID on every occurrence, so value equality would drop all but the first.
+            HashSet<InstancedComposite> seen = new HashSet<InstancedComposite>(InstanceReference.Default);
+
+            foreach (InstancedComposite required in RequiredAssets)
+                Descend(required, composites, entities, seen);
+            Descend(Root, composites, entities, seen);
+
+            //Nothing should be unreachable, but never drop an instance over an ordering change.
+            foreach (InstancedComposite composite in AllComposites)
+            {
+                if (!seen.Add(composite)) continue;
+                composites.Add(composite);
+                entities.AddRange(composite.Entities);
+            }
+
+            AllComposites = composites;
+            AllEntities = entities;
+        }
+
+        private sealed class InstanceReference : IEqualityComparer<InstancedComposite>
+        {
+            public static readonly InstanceReference Default = new InstanceReference();
+            public bool Equals(InstancedComposite x, InstancedComposite y) { return ReferenceEquals(x, y); }
+            public int GetHashCode(InstancedComposite obj) { return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj); }
+        }
+
+        private void Descend(InstancedComposite composite, List<InstancedComposite> composites,
+                             List<InstancedEntity> entities, HashSet<InstancedComposite> seen)
+        {
+            if (composite == null || !seen.Add(composite))
+                return;
+
+            composites.Add(composite);
+            entities.AddRange(composite.Entities);
+            foreach (InstancedEntity entity in composite.Entities)
+                Descend(entity.ChildCompositeInstance, composites, entities, seen);
         }
 
         private void ProcessInstances()
@@ -2971,6 +3067,8 @@ namespace CathodeLib
 
             //Do the instancing!
             _sharedComposites.Clear();
+            //FX movers claim a renderable run each, reusing the ones a previous save left behind.
+            _level.RenderableElements?.ResetDuplicateRunReuse();
             Phase("  walk", () => ProcessInstances(Root, false, false, false, false, false, false));
 
             if (_materialFactory.MaterialsCreated != 0 || _materialFactory.TexturesNotFound != 0)
@@ -4669,11 +4767,13 @@ namespace CathodeLib
                 }
             }
 
-            foreach (var entity in compositeInstance.Entities)
+            //Order here is whatever the threads produce; OrderInstancesDeterministically fixes it up.
+            lock (_allInstancesLock)
             {
-                AllEntities.Add(entity);
+                foreach (var entity in compositeInstance.Entities)
+                    AllEntities.Add(entity);
+                AllComposites.Add(compositeInstance);
             }
-            AllComposites.Add(compositeInstance);
 
             //Now, traverse down in to any child composites, and rinse and repeat
             List<(FunctionEntity function, Composite child, List<InstancedAlias> childAliases, EntityPath newPath, InstancedEntity instancedEnt, bool childUnderShared, List<ShortGuid> childSharedPath)> childComposites = new List<(FunctionEntity, Composite, List<InstancedAlias>, EntityPath, InstancedEntity, bool, List<ShortGuid>)>();
@@ -4758,7 +4858,17 @@ namespace CathodeLib
 
             if (isRoot)
             {
-                composites = composites.OrderByDescending(e => e.Entity.shortGUID.AsUInt32).ToList();
+                /* Child composites in LIST ORDER, and it matters more than ordering usually does.
+                 * A composite marked is_shared is instanced once and the FIRST arrival claims it, so
+                 * the order the root's children are walked in decides which occurrence owns the whole
+                 * subtree below it - and that is what the shipped MVR and the baked radiosity are
+                 * keyed on. List order is the order they were authored in, which is retail's, and it
+                 * reproduces retail's mover set exactly. Sorting by entity id does too, but only by
+                 * luck: entity ids of content added later are random, so a sort can drop a newly
+                 * placed composite ahead of the level's own and hand it the claim - placing a single
+                 * Hiding_Cupboard took Hiding_logic_common off ENVIRONMENT's Hiding_Door, dropped the
+                 * movers underneath it and faulted the level on load. List order cannot: anything
+                 * added is appended, so the level's own content is always reached first. */
                 foreach (InstancedEntity entity in composites)
                     ProcessInstanceEntityAndChildren(entity, isTemplate, isShared, isRequiredAssets, deleteStandardCollision, deleteBallisticCollision, isDeleted);
                 foreach (InstancedEntity entity in functionTypes)
@@ -4787,9 +4897,25 @@ namespace CathodeLib
             if (thisIsShared && !isRequiredAssets && !thisIsDeleted)
             {
                 if (_sharedComposites.Contains(entity.ChildCompositeInstance.Composite.shortGUID))
+                {
+                    if (LogSharedSkips)
+                        Console.WriteLine("  [shared] SKIP " + entity.ChildCompositeInstance.Composite.name +
+                                          "  inst " + entity.ChildCompositeInstance.InstanceID.ToString() +
+                                          "  by ent " + entity.Entity.shortGUID.ToString() +
+                                          "  in " + (entity.Composite != null ? entity.Composite.name : "?") +
+                                          "  pakIndex " + PakIndexOf(entity.Composite));
                     return;
+                }
                 if (!thisIsTemplate)
+                {
                     _sharedComposites.Add(entity.ChildCompositeInstance.Composite.shortGUID);
+                    if (LogSharedSkips)
+                        Console.WriteLine("  [shared] WALK " + entity.ChildCompositeInstance.Composite.name +
+                                          "  inst " + entity.ChildCompositeInstance.InstanceID.ToString() +
+                                          "  by ent " + entity.Entity.shortGUID.ToString() +
+                                          "  in " + (entity.Composite != null ? entity.Composite.name : "?") +
+                                          "  pakIndex " + PakIndexOf(entity.Composite));
+                }
             }
 
             ProcessInstances(
@@ -5283,6 +5409,32 @@ namespace CathodeLib
                                 string materialOverride = entity.Strings.Get(ShortGuids.material);
                                 if (materialOverride != "" && materialOverride != null)
                                     reds = MaterialRemappingUtils.ApplyMaterialParameterOverride(_level, materialOverride, reds);
+                            }
+
+                            /* A remap may change how a mover LOOKS, never which renderable instance
+                             * LIST it joins. The engine keeps one list per RenderableInstanceType and
+                             * retail's baked radiosity indexes into it, so a mover moving between
+                             * ENVIRONMENT and ENVIRONMENT_EXTRA renumbers that list and
+                             * RADIOSITY::pr_load_runtime_data then binds a slice to an instance that
+                             * is not there. That is the ChallengeMap5 / ChallengeMap14 load crash:
+                             * four Train_side movers whose three-part authored name now matches a
+                             * mapping keyed on the two-part form (StripAuthoringSlot) and resolves to
+                             * a target with no APPROXIMATE_LIGHTING. Retail leaves those movers on
+                             * their authored material, so when the type would move, so do we. */
+                            if (reds != null && ogReds != null && !ReferenceEquals(reds, ogReds))
+                            {
+                                RenderableInstanceType? wasType = SafeRenderableType(ogReds);
+                                RenderableInstanceType? nowType = SafeRenderableType(reds);
+                                //Only the LOSING direction. A remap that gains the class (a sign
+                                //placeholder resolving to real emissive signage) is the remap doing its
+                                //job and retail ships the result; a remap that drops it is the
+                                //StripAuthoringSlot over-match retail does not apply.
+                                if (wasType == RenderableInstanceType.ENVIRONMENT_EXTRA &&
+                                    nowType == RenderableInstanceType.ENVIRONMENT)
+                                {
+                                    reds = ogReds;
+                                    System.Threading.Interlocked.Increment(ref _remapTypeReverts);
+                                }
                             }
                         }
 

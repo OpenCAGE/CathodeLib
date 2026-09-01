@@ -407,19 +407,20 @@ namespace CathodeLib
         /// <summary>
         /// Perform a full instanced save, complete with radiosity, cover, navmesh, etc.
         /// </summary>
-        public void SaveInstanced()
+        public Instancing SaveInstanced()
         {
-            SaveInstanced(new NavMesh.NavMeshBakeSettings(), new NavMesh.CoverBakeSettings(), new Radiosity.RadiosityBakeSettings(), new NavMesh.JobPositionBakeSettings(), new Alphalight.AlphalightBakeSettings(), new Sound.SoundNetworkBakeSettings());
+            return SaveInstanced(new NavMesh.NavMeshBakeSettings(), new NavMesh.CoverBakeSettings(), new Radiosity.RadiosityBakeSettings(), new NavMesh.JobPositionBakeSettings(), new Alphalight.AlphalightBakeSettings(), new Sound.SoundNetworkBakeSettings());
         }
 
         /// <summary>
         /// Generate instanced structures for the level, and save.
         /// Pass settings here for the various bakers - leaving them null will skip.
         /// </summary>
-        public void SaveInstanced(NavMesh.NavMeshBakeSettings navMeshSettings, NavMesh.CoverBakeSettings coverSettings, Radiosity.RadiosityBakeSettings radiositySettings, NavMesh.JobPositionBakeSettings jobPositionSettings, Alphalight.AlphalightBakeSettings alphalightSettings, Sound.SoundNetworkBakeSettings soundSettings)
+        /// <returns>The pass that ran, so a caller can read <see cref="Instancing.BakeWarnings"/>.</returns>
+        public Instancing SaveInstanced(NavMesh.NavMeshBakeSettings navMeshSettings, NavMesh.CoverBakeSettings coverSettings, Radiosity.RadiosityBakeSettings radiositySettings, NavMesh.JobPositionBakeSettings jobPositionSettings, Alphalight.AlphalightBakeSettings alphalightSettings, Sound.SoundNetworkBakeSettings soundSettings)
         {
             //Generate instancing data with the given settings
-            new Instancing(this, navMeshSettings, coverSettings, radiositySettings, jobPositionSettings, alphalightSettings, soundSettings);
+            Instancing instancing = new Instancing(this, navMeshSettings, coverSettings, radiositySettings, jobPositionSettings, alphalightSettings, soundSettings);
             Save();
 
             //If the user didn't enable radiosity, we should clear it out, else it'll point to the wrong movers.
@@ -435,6 +436,8 @@ namespace CathodeLib
                     () => { RadiosityRuntime?.Save(); OnSaveTick?.Invoke(); }
                 );
             }
+
+            return instancing;
         }
 #endif
 

@@ -31,6 +31,13 @@ namespace CathodeLib.NavMesh
         public float MergeRegionArea = 16.0f;
         public float RecastMaxBoundsSize = 1024.0f;
         public float RecastMaxBoundsSizeY => (1 << 13) * CellHeight;
+        /// <summary>
+        /// How many times to double <see cref="CellHeight"/> and retry when Recast cannot encode a
+        /// column (more than 62 walkable spans stacked in one cell). Only reached by levels that
+        /// would otherwise bake no navmesh at all; SCI_AndroidLab needs one retry.
+        /// </summary>
+        public int CellHeightRetries = 2;
+
         public int HeightLimitedAreaModeFilterPasses = 0;
 
         /// <summary>

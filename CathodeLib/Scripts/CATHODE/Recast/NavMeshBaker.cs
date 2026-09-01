@@ -42,7 +42,59 @@ namespace CathodeLib.NavMesh
         /// <see cref="Level.Save"/> persists it in the same pass as the rest of the level so
         /// resource indexes stay consistent.
         /// </summary>
+        /// <summary>
+        /// Bake the level's navmesh, retrying at a coarser vertical voxel if Recast cannot encode it.
+        /// </summary>
+        /// <remarks>
+        /// Recast packs a span's neighbour link into six bits, so a column holding more than 62
+        /// walkable spans has no encodable connection and BuildCompactHeightfield throws outright.
+        /// SCI_AndroidLab has such a column at the authored 0.0625 m cell height (79 layers), and
+        /// because Instancing.RunOptionalBake swallows a failed bake the level was silently keeping
+        /// retail's NAV_MESH - scoring a meaningless 100% against itself. Doubling the cell height
+        /// merges the thin stacked spans and costs very little: at 0.125 m that level bakes 4,533
+        /// polys against retail's 4,450, and scores 97.2%. Only levels that would otherwise produce
+        /// NOTHING are affected - everything else succeeds on the first pass at the authored value.
+        /// </remarks>
         public static void BakeLevel(
+            Level level,
+            Instancing instancing,
+            NavMeshBakeSettings settings,
+            Action<string> log = null)
+        {
+            if (settings == null)
+                return;
+
+            float authoredCellHeight = settings.CellHeight;
+            try
+            {
+                for (int attempt = 0; ; attempt++)
+                {
+                    try
+                    {
+                        BakeLevelOnce(level, instancing, settings, log);
+                        return;
+                    }
+                    catch (Exception e) when (attempt < settings.CellHeightRetries && IsTooManyLayers(e))
+                    {
+                        settings.CellHeight *= 2.0f;
+                        log?.Invoke("NavMesh: " + e.Message + " - retrying at cell height " +
+                                    settings.CellHeight.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".");
+                    }
+                }
+            }
+            finally
+            {
+                settings.CellHeight = authoredCellHeight;
+            }
+        }
+
+        /// <summary>The one failure a coarser vertical voxel can actually clear.</summary>
+        private static bool IsTooManyLayers(Exception e)
+        {
+            return e != null && e.Message != null && e.Message.IndexOf("too many layers", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static void BakeLevelOnce(
             Level level,
             Instancing instancing,
             NavMeshBakeSettings settings,

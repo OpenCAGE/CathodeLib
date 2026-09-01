@@ -579,14 +579,22 @@ namespace CATHODE.Scripting.Internal.Parsers
                 resourceReferences[i] = resourceReferences[i].Distinct().ToList();
             });
 
+            /* Collect per composite and concatenate in index order. Appending to one shared list under a
+             * lock let the threads interleave differently on every run, and since Distinct() keeps first
+             * occurrences that reordered the whole parameter table - two saves of an unchanged level
+             * disagreed on ~20% of COMMANDS.PAK, because every parameter reference indexes into it. */
+            List<ParameterData>[] parametersPerComposite = new List<ParameterData>[Entries.Count];
             Parallel.For(0, Entries.Count, i =>
             {
                 List<Entity> ents = Entries[i].GetEntities();
+                List<ParameterData> local = new List<ParameterData>();
                 for (int x = 0; x < ents.Count; x++)
                     for (int y = 0; y < ents[x].parameters.Count; y++)
-                        lock (parameters)
-                            parameters.Add(ents[x].parameters[y].content);
+                        local.Add(ents[x].parameters[y].content);
+                parametersPerComposite[i] = local;
             });
+            for (int i = 0; i < parametersPerComposite.Length; i++)
+                parameters.AddRange(parametersPerComposite[i]);
             parameters = parameters.Distinct().ToList();
 
             using (MemoryStream stream = new MemoryStream())

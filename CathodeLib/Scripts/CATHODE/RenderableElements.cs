@@ -262,15 +262,68 @@ namespace CATHODE
         }
 
         /// <summary>
-        /// Append a fresh copy of a run and return the copies, even when a value-identical run is
-        /// already registered. Retail gives every instanced FX mover (fogsphere / particle /
-        /// ribbon) its OWN renderable entry rather than sharing the composite resource's - the
-        /// per-instance entry is the mover's identity to the engine.
+        /// Forget which duplicate runs have been handed out, so the next instancing pass starts
+        /// reusing from the beginning again. Must be called once per pass - without it a second save
+        /// in the same session finds the cursors already past every run and appends instead.
+        /// </summary>
+        public void ResetDuplicateRunReuse()
+        {
+            lock (Entries) _duplicateCursor.Clear();
+        }
+
+        //Per base run, the index to resume looking for a free duplicate from. See RegisterDuplicateRun.
+        private readonly Dictionary<int, int> _duplicateCursor = new Dictionary<int, int>();
+
+        //Escape hatch for measuring the reuse against the old append-always behaviour. Off means the
+        //table grows by every FX mover's run on every save.
+        public static bool ReuseDuplicateRuns = true;
+
+        /// <summary>
+        /// Claim a renderable run of this shape that no other caller has taken this pass, appending a
+        /// fresh copy only when none is left. Retail gives every instanced FX mover (fogsphere /
+        /// particle / ribbon) its OWN renderable entry rather than sharing the composite resource's -
+        /// the per-instance entry is the mover's identity to the engine.
         /// </summary>
         public List<Element> RegisterDuplicateRun(List<Element> elements)
         {
             if (elements == null || elements.Count == 0)
                 return elements;
+
+            lock (Entries)
+            {
+                /* Reuse a duplicate the table already holds before adding another. Instancing rebuilds
+                 * every mover from COMMANDS on each save, so without this the previous save's copies are
+                 * orphaned and a fresh set appended - REDS grew by a fixed amount on every save forever
+                 * (ChallengeMap14 +1,138 entries, TECH_HUB +4,354) and registration is quadratic.
+                 * The search starts PAST the first match: that one is the run the composite resource
+                 * itself points at, and not sharing it is the entire point of a duplicate. */
+                int baseAt = ReuseDuplicateRuns ? GetWriteIndex(elements, 0) : -1;
+                if (baseAt >= 0)
+                {
+                    int from;
+                    if (!_duplicateCursor.TryGetValue(baseAt, out from))
+                        from = baseAt + 1;
+
+                    int reuse = GetWriteIndex(elements, from);
+                    if (reuse >= 0)
+                    {
+                        _duplicateCursor[baseAt] = reuse + 1;
+                        var existing = new List<Element>(elements.Count);
+                        for (int i = 0; i < elements.Count; i++)
+                            existing.Add(Entries[reuse + i]);
+                        return existing;
+                    }
+
+                    //Nothing left to claim for this shape - every later call appends too.
+                    _duplicateCursor[baseAt] = Entries.Count;
+                }
+
+                return Append(elements);
+            }
+        }
+
+        private List<Element> Append(List<Element> elements)
+        {
             var copies = new List<Element>(elements.Count);
             foreach (Element el in elements)
             {
@@ -286,12 +339,9 @@ namespace CATHODE
                     LODs = el.LODs != null ? new List<Element>(el.LODs) : new List<Element>()
                 });
             }
-            lock (Entries)
-            {
-                foreach (Element el in copies)
-                    if (el != null)
-                        Entries.Add(el);
-            }
+            foreach (Element el in copies)
+                if (el != null)
+                    Entries.Add(el);
             return copies;
         }
 
