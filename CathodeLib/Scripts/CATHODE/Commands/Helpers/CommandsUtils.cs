@@ -796,6 +796,7 @@ namespace CATHODE.Scripting
                 ParameterData defaultValue = baseEntity.GetParameter(ShortGuids.resource)?.content;
                 if (defaultValue is cResource existingResource && (existingResource.value == null || existingResource.value.Count == 0))
                     defaultValue = null;
+                bool carried = defaultValue != null;
                 if (defaultValue == null)
                     defaultValue = CreateDefaultParameterData(functionType.Value, ShortGuids.resource, ParameterVariant.INTERNAL);
                 if (defaultValue == null)
@@ -803,15 +804,30 @@ namespace CATHODE.Scripting
 
                 if (defaultValue is cResource)
                 {
-                    if (!ReferenceEquals(baseEntity, targetEntity))
+                    cResource targetResource = targetEntity.GetParameter(ShortGuids.resource)?.content as cResource;
+                    bool targetPopulated = targetResource != null && targetResource.value != null && targetResource.value.Count > 0;
+
+                    // Nothing to fill in - and it matters that this returns BEFORE AddParameter.
+                    // AddParameter binds a resource to the entity (rewrites the cResource's id and
+                    // every ref's resource_id to the entity id) ahead of its own overwrite check,
+                    // and when the base entity IS the target that cResource is the entity's live
+                    // parameter. Retail ids are name hashes for some functions - the ModelReference
+                    // in AYZ\Science\Lighting\Small_Floor_Light carries "Light", not its entity id -
+                    // so a plain defaults pass from the inspector silently re-identified the
+                    // resource; every mover instancing then emitted for it wore the new id and
+                    // retail's radiosity rows for the old one dangled (BSP_Torrens, 2026-09-01).
+                    if (!overwrite && targetPopulated)
+                        return;
+
+                    bool fromTemplate = !ReferenceEquals(baseEntity, targetEntity);
+                    if (fromTemplate)
                         defaultValue = (ParameterData)defaultValue.Clone();
 
-                    bool forceOverwrite = overwrite;
-                    if (!forceOverwrite && targetEntity.GetParameter(ShortGuids.resource)?.content is cResource targetResource
-                        && (targetResource.value == null || targetResource.value.Count == 0))
-                        forceOverwrite = true;
-
-                    targetEntity.AddParameter(ShortGuids.resource, defaultValue, ParameterVariant.INTERNAL, forceOverwrite);
+                    // A resource copied from a template entity, or created fresh, belongs to the
+                    // entity receiving it and is bound to it. One the entity already carried keeps
+                    // its id, for the reason above.
+                    bool own = carried && !fromTemplate;
+                    targetEntity.AddParameter(ShortGuids.resource, defaultValue, ParameterVariant.INTERNAL, true, bindResourceToEntity: !own);
                     return;
                 }
 

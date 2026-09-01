@@ -118,6 +118,25 @@ namespace CathodeLib.Radiosity
                         mapOrphaned++;
                     }
                 }
+
+                // Resolving by GUID above is not enough to catch a stale index, because instancing
+                // re-emits every purged retail resource as a dangling placeholder so the
+                // runtime's positional EntityInstanceIndex values stay aligned - so the GUID of a
+                // retail-lit entity that no longer produces a mover still "resolves". The rows
+                // that hit this are exactly the ones for geometry an edit removed or re-identified
+                // (a deleted ModelReference, a light whose resource parameter was lost so its
+                // resource id fell back to the entity id); their lighting has nowhere to go and
+                // the row must not be written. Unresolved rows are dropped for the same reason:
+                // left in, they would be saved with their stale retail index.
+                var moverResources = new HashSet<(uint, uint)>();
+                foreach (Movers.MOVER_DESCRIPTOR mover in level.Movers.Entries)
+                    if (mover.Resource != null)
+                        moverResources.Add((mover.Resource.composite_instance_id.AsUInt32, mover.Resource.resource_id.AsUInt32));
+                int mapDropped = level.RadiosityInstanceMap.Entries.RemoveAll(entry =>
+                    entry.Resource == null ||
+                    !moverResources.Contains((entry.Resource.composite_instance_id.AsUInt32, entry.Resource.resource_id.AsUInt32)));
+                if (mapDropped > 0)
+                    log?.Invoke("Radiosity patch: dropped " + mapDropped + " instance-map row(s) whose resource no longer has a mover - the engine cannot bind them and crashes on load if they are kept");
             }
 
             // New content census: movers whose resource GUID has no island in the shipped map
