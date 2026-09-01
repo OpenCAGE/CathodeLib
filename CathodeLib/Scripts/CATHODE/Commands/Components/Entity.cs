@@ -835,10 +835,10 @@ namespace CATHODE.Scripting
             return val;
         }
 
-                 /// <summary>
-         /// Get the ID of the entity that this path points to
-         /// </summary>
-         public ShortGuid GetPointedEntityID()
+        /// <summary>
+        /// Get the ID of the entity that this path points to
+        /// </summary>
+        public ShortGuid GetPointedEntityID()
         {
             ShortGuid id = ShortGuid.Invalid;
             for (int i = path.Length - 1; i >= 0; i--)
@@ -850,10 +850,10 @@ namespace CATHODE.Scripting
             return id;
         }
 
-                 /// <summary>
-         /// Generate the checksum used identify the path
-         /// </summary>
-         public ShortGuid GeneratePathHash()
+        /// <summary>
+        /// Generate the checksum used identify the path
+        /// </summary>
+        public ShortGuid GeneratePathHash()
         {
             if (path.Length == 0) return ShortGuid.Invalid;
             EnsureFinalIsEmpty();
@@ -866,26 +866,26 @@ namespace CATHODE.Scripting
             return checksumGenerated;
         }
 
-                 /// <summary>
-         /// Generate the instance ID used to identify the instanced composite we're executed in
-         /// </summary>
-         public ShortGuid GenerateCompositeInstanceID(bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
+        /// <summary>
+        /// Generate the instance ID used to identify the instanced composite we're executed in
+        /// </summary>
+        public ShortGuid GenerateCompositeInstanceID(bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
         {
             return path.GenerateCompositeInstanceID(hasInternalEntityID);
         }
 
-                 /// <summary>
-         /// Generate a zone ID (use this when the EntityHandle points to a Zone entity)
-         /// </summary>
-         public ShortGuid GenerateZoneID()
+        /// <summary>
+        /// Generate a zone ID (use this when the EntityHandle points to a Zone entity)
+        /// </summary>
+        public ShortGuid GenerateZoneID()
         {
             return new ShortGuid(0 + GenerateCompositeInstanceID().AsUInt32 + GetPointedEntityID().AsUInt32 + 1);
         }
 
-                 /// <summary>
-         /// Add the next entity GUID along the path
-         /// </summary>
-         public void AddNextStep(Entity entity)
+        /// <summary>
+        /// Add the next entity GUID along the path
+        /// </summary>
+        public void AddNextStep(Entity entity)
         {
             AddNextStep(entity.shortGUID);
         }
@@ -903,9 +903,9 @@ namespace CATHODE.Scripting
             EnsureFinalIsEmpty();
         }
 
-                 /// <summary>
-         /// Remove the last entity GUID along the path
-         /// </summary>
+        /// <summary>
+        /// Remove the last entity GUID along the path
+        /// </summary>
         public void GoBackOneStep()
         {
             if (path.Length > 0 && path[path.Length - 1] == ShortGuid.Invalid)
@@ -936,9 +936,9 @@ namespace CATHODE.Scripting
             return new EntityPath(newPath);
         }
         
-                 /// <summary>
-         /// Updates this path to have the path to another entity prepended to it
-         /// </summary>
+        /// <summary>
+        /// Updates this path to have the path to another entity prepended to it
+        /// </summary>
         //public void PrependPath(EntityPath otherPath)
         //{
         //    int length = otherPath.path[otherPath.path.Count - 1] == ShortGuid.Invalid ? otherPath.path.Count - 2 : otherPath.path.Count - 1;

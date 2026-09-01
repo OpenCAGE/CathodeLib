@@ -1764,8 +1764,7 @@ namespace CATHODE
         /// Write an hkpBoxShape from nothing, for a collision file that has never held one. Retail's
         /// boxes are all the same object apart from their half extents: every field zero except
         /// hkpShape::m_userData, which is 1024. The vtable and m_type are filled in by the loader.
-        /// A level with no boxes at all is not exotic - Frontend is one - and before this the first
-        /// nav barrier or trigger volume instanced into such a level threw instead.
+        /// A level with no boxes at all is not exotic - Frontend is one.
         /// </summary>
         uint AppendSynthesisedBoxShape(Vector3 halfExtents)
         {
@@ -2061,16 +2060,13 @@ namespace CATHODE
         /// <summary>
         /// Extend the proxy list until a child exists at every compound ordinal.
         /// <para>
-        /// Retail satisfies this exactly: the highest proxy index any COLLISION.MAP row names is
-        /// always the list's last child, because the list holds every per-mesh compound and the
-        /// three rigid-body-owned hosts are the remainder. An imported compound lands at the end of
-        /// the payload - past those hosts - so its ordinal falls outside the list, and a ported row
-        /// then names a shape past the end of the array the engine looks it up in.
+        /// Retail satisfies this exactly, but an imported compound lands at the end of the payload -
+        /// past the three rigid-body-owned hosts - so its ordinal falls outside the list, and a ported
+        /// row then names a shape past the end of the array the engine looks it up in.
         /// </para>
         /// Ordinals are rank in the payload and cannot simply be renumbered: models store
-        /// <c>Submesh.CollisionProxyIndex</c> against them, so renumbering would silently repoint
-        /// every mesh's collision. Padding the list keeps every existing ordinal where it is, and
-        /// the slots the hosts land in cost nothing on a list that never collides.
+        /// <c>Submesh.CollisionProxyIndex</c> against them. Padding the list keeps every existing
+        /// ordinal where it is, and the extra slots cost nothing on a list that never collides.
         /// </summary>
         public void EnsureProxyListCoversCompounds()
         {
@@ -2165,13 +2161,11 @@ namespace CATHODE
         /// hkpStaticCompoundShape packs a hit as <c>(instanceIndex &lt;&lt; m_numBitsForChildShapeKey)
         /// | childKey</c>, so that field has to cover the largest key space any child can produce.
         /// Retail sizes it as the maximum over instances of the child's own bits plus the bits its
-        /// instance index needs - which reproduces every predictable compound in Frontend, Solace
-        /// and BSP_Torrens exactly.
+        /// instance index needs.
         /// </para>
-        /// Placing a level's geometry onto a host without updating it lets a hit inside a bigger
-        /// child overflow into the instance index, and hkpStaticCompoundShape::getCollisionFilterInfo
-        /// then reads past m_instances. Retail Frontend's hosts carry one instance each and reserve
-        /// six bits, which stops being enough the moment anything is built into that level.
+        /// Placing a level's geometry onto a host without updating it lets a hit inside a bigger child
+        /// overflow into the instance index, and hkpStaticCompoundShape::getCollisionFilterInfo then
+        /// reads past m_instances.
         /// </summary>
         public void RefreshCompoundShapeKeyBits()
         {
@@ -2285,13 +2279,11 @@ namespace CATHODE
                 return;
             _worldHostsResolved = true;
 
-            /* Every level lays its collision file out the same way - four hkpRigidBody objects,
-             * the first carrying an hkpListShape that enumerates the per-mesh template compounds,
-             * then three compounds: the ballistic host, an empty spare, and the walkable host.
-             * Read the hosts off that layout rather than guessing from instance counts. Frontend
-             * ships exactly those four bodies with a single instance on each host, and a size
-             * threshold rejected them - which left the level with nowhere to place collision, so
-             * every COLLISION.MAP row came out with no instance and nothing was collidable. */
+            /* Every level lays its collision file out the same way - four hkpRigidBody objects, the
+             * first carrying an hkpListShape that enumerates the per-mesh template compounds, then
+             * three compounds: the ballistic host, an empty spare, and the walkable host. Read the
+             * hosts off that layout rather than guessing from instance counts - a size threshold
+             * rejected Frontend's single-instance hosts and left it with nothing collidable. */
             List<StaticCompoundShape> owned = CompoundsOwnedByRigidBodies();
             if (owned.Count != 0)
             {
@@ -2651,12 +2643,10 @@ namespace CATHODE
                         extraRanges.Add((lf.Dst, lf.Dst + (uint)bytes));
 
                     /* Which slots of this array can point at further objects. A zero length array
-                     * points at nothing, so probing past it just sweeps up whatever the allocator
-                     * put next - and a fixed byte window holds twice as many pointer slots on a
-                     * 32 bit packfile as on a 64 bit one, so the same content imported 35 extra
-                     * unreferenced objects at 32 bit and none at 64. Follow an empty array nowhere,
-                     * and keep the probe for targets that are not arrays at all (a name string,
-                     * say) inside the room before the next object. */
+                     * points at nothing, so probing past it just sweeps up whatever the allocator put
+                     * next - and a fixed byte window holds twice as many pointer slots on a 32 bit
+                     * packfile as on a 64 bit one. Follow an empty array nowhere, and keep the probe
+                     * for targets that are not arrays at all inside the room before the next object. */
                     int slotCount = (int)lf.Src + source.Header.PointerSize + 4 <= source.DataPayload.Length
                         ? BitConverter.ToInt32(source.DataPayload, (int)lf.Src + source.Header.PointerSize)
                         : -1;
@@ -2691,13 +2681,10 @@ namespace CATHODE
             }
 
             // Expand extras for nested local fixups (mesh internal arrays / strings).
-            /* Ranges already scheduled. Without this the loop re-adds every range it already holds
-             * on every pass, so `expanded` never goes false and extraRanges grows geometrically
-             * until the pass guard trips: importing one BSP_Torrens door into Solace reached
-             * 2,140,188 ranges by pass 8 and never finished, against 720 and 6.3s with the check.
-             * MergeRanges dedupes afterwards, so the duplicates were only ever a cost, never a
-             * correctness problem - which is why this hid for so long. It bites the 64-bit
-             * packfiles far harder than the 32-bit ones. */
+            /* Ranges already scheduled. Without this the loop re-adds every range it already holds on
+             * every pass, so `expanded` never goes false and extraRanges grows geometrically until the
+             * pass guard trips. MergeRanges dedupes afterwards, so the duplicates were only ever a
+             * cost, never a correctness problem - which is why this hid for so long. */
             var seenExtras = new HashSet<(uint, uint)>(extraRanges);
             int expandGuard = 0;
 
@@ -2781,14 +2768,12 @@ namespace CATHODE
         }
 
         /// <summary>
-        /// An array's data cannot run into the next object, so no inferred length may either.
-        /// The stride guess below borrows the gap between the first two global fixups at or after
-        /// the array - which for an array with no internal pointers belong to some later object
-        /// entirely, giving strides that overshoot wildly (count 176 x stride 80 = 14,080 bytes into
-        /// 944 bytes of room). Unclamped that dragged unrelated objects into the copied graph, and it
-        /// did so differently per pointer width: 8,088 inference calls on the 32-bit packfile against
-        /// 23,835 on the 64-bit one for the same content, so the two widths imported different
-        /// object sets from structurally identical sources.
+        /// An array's data cannot run into the next object, so no inferred length may either. The
+        /// stride guess below borrows the gap between the first two global fixups at or after the
+        /// array, which for an array with no internal pointers belong to some later object entirely
+        /// and overshoot wildly. Unclamped that dragged unrelated objects into the copied graph, and
+        /// did so differently per pointer width - so the two widths imported different object sets
+        /// from structurally identical sources.
         /// </summary>
         static int ClampArrayToNextObject(HavokPackfile source, uint arrayDataDst, int bytes)
         {
@@ -2842,12 +2827,10 @@ namespace CATHODE
             {
                 uint stride = second - first;
                 int room = RoomBeforeNextObject(source, arrayDataDst);
-                /* Those two fixups only describe this array if they sit inside it, and a stride
-                 * that makes the array overrun the next object was borrowed from a later object
-                 * entirely - which is what happens for an array holding no pointers of its own.
-                 * Reject the guess instead of truncating it: truncation still copies whatever
-                 * the over-long range swept up, which on 32 bit packfiles left 35 unreferenced
-                 * objects in a port the 64 bit file imported cleanly. */
+                /* Those two fixups only describe this array if they sit inside it, and a stride that
+                 * makes the array overrun the next object was borrowed from a later object entirely.
+                 * Reject the guess instead of truncating it: truncation still copies whatever the
+                 * over-long range swept up. */
                 if (stride > 0 && stride <= 512
                     && first < arrayDataDst + (uint)room
                     && count * (int)stride <= room)
@@ -2928,16 +2911,11 @@ namespace CATHODE
         }
 
         /// <summary>
-        /// Cut trailing section padding (0xFF filler, or stray NULs beyond the last entry's own
-        /// terminator) so a newly appended classname entry continues the packed run.
-        /// </summary>
-        /// <summary>
-        /// Retail pads the classnames section with 0xFF so __data__ begins on a 16 byte boundary,
-        /// and the engine depends on it: hkpMoppBvTreeShape's finish constructor copies
+        /// Retail pads the classnames section with 0xFF so __data__ begins on a 16 byte boundary, and
+        /// the engine depends on it: hkpMoppBvTreeShape's finish constructor copies
         /// m_code->m_info.m_offset as an aligned hkVector4, which faults outright on a data section
-        /// that starts off-boundary (finishLoadedObjecthkpMoppBvTreeShape, under _applyVirtualFixups).
-        /// Appending a classname changes that section's length - and TrimClassnamePadding drops the
-        /// existing filler so the appended entry continues the packed run - so re-pad before writing.
+        /// that starts off-boundary. Appending a classname changes that section's length, and
+        /// TrimClassnamePadding drops the existing filler, so re-pad before writing.
         /// </summary>
         void PadClassnamesForDataAlignment(int classnamesAbsoluteStart)
         {
@@ -2951,6 +2929,10 @@ namespace CATHODE
             ClassnamesData = padded;
         }
 
+        /// <summary>
+        /// Cut trailing section padding (0xFF filler, or stray NULs beyond the last entry's own
+        /// terminator) so a newly appended classname entry continues the packed run.
+        /// </summary>
         void TrimClassnamePadding()
         {
             int end = ClassnamesData.Length;
@@ -2989,9 +2971,7 @@ namespace CATHODE
             /* The classnames stream is a packed run of [u32 sig][u8][name][NUL] and ParseClassNames
              * walks it sequentially, so an entry appended after the section's trailing padding is
              * never reached: the walk desyncs on the padding and the new name resolves to "".
-             * COLLISION sections end tightly, but PHYSICS ones are padded with 0xFF - which is why
-             * only physics imports of a class the destination lacked (hkpMoppBvTreeShape) came out
-             * with no class name. Drop the padding so the appended entry continues the run. */
+             * COLLISION sections end tightly, but PHYSICS ones are padded with 0xFF. */
             TrimClassnamePadding();
 
             int destEntryStart = ClassnamesData.Length;
@@ -3270,9 +3250,7 @@ namespace CATHODE
             ParsePhysicsSystemIndexes();
             /* Clearing the cached hosts is not enough on its own - ResolveWorldHosts early-returns on
              * _worldHostsResolved, so leaving it set means the hosts stay null for the rest of the
-             * packfile's life. Importing one compound into Solace took its hosts from 1367/1369 to
-             * none, and the next instancing pass then threw "compound has zero instances". The
-             * tagfile branch above already resets all three. */
+             * packfile's life, and the next instancing pass throws "compound has zero instances". */
             _worldHostPrimary = null;
             _worldHostSecondary = null;
             _worldHostsResolved = false;
@@ -3777,14 +3755,11 @@ namespace CATHODE
                 }
             }
 
-            /* The splined axes share one curve, and their control points are stored a point at a
-             * time rather than an axis at a time: x0 y0 z0, x1 y1 z1, ... So each axis starts one
-             * value further in than the last and then steps over the others.
-             *
-             * The total is the same either way, which is why the block accounting never noticed:
-             * reading them as three contiguous lanes consumes exactly as many bytes and still lands
-             * on the end of the block. It just samples x, y, z, x, y, z into the x axis, which shows
-             * up as a violent wobble with a period equal to the number of splined axes. */
+            /* The splined axes share one curve, and their control points are stored a point at a time
+             * rather than an axis at a time: x0 y0 z0, x1 y1 z1, ... So each axis starts one value
+             * further in than the last and then steps over the others. The total is the same either
+             * way, which is why the block accounting never noticed - reading them as three contiguous
+             * lanes still lands on the end of the block, it just samples x, y, z into the x axis. */
             int lanes = 0;
             for (int c = 0; c < 3; c++) if ((spline & (1 << c)) != 0) lanes++;
 

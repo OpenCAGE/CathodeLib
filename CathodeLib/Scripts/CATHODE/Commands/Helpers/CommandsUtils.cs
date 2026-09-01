@@ -1800,9 +1800,6 @@ namespace CATHODE.Scripting
 
         #region Table Management
         /// <summary>
-        /// Handle loading/saving "purge states" -> this tracks the composites that have had unresolvable entities removed from
-        /// </summary>
-        /// <summary>
         /// Tell ShortGuidUtils about every id this script graph already uses, so a newly generated
         /// random one cannot duplicate it. The ids themselves are the record of what is taken - the
         /// SHORT_GUIDS name table used to serve this purpose, which meant persisting a meaningless
@@ -1842,6 +1839,9 @@ namespace CATHODE.Scripting
             ShortGuidUtils.ReserveInUse(inUse);
         }
 
+        /// <summary>
+        /// Handle loading/saving "purge states" -> this tracks the composites that have had unresolvable entities removed from
+        /// </summary>
         private void LoadInfo(string filepath)
         {
             ShortGuidUtils.LoadCustomNames(_commands.Filepath);

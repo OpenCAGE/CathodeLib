@@ -793,13 +793,11 @@ namespace CathodeLib
     {
         public static (decimal, decimal, decimal) ToYawPitchRoll(this Quaternion q)
         {
-            // Helper function to safely convert double to decimal
             decimal SafeConvertToDecimal(double value)
             {
                 if (double.IsNaN(value) || double.IsInfinity(value))
                     return 0m;
 
-                // Clamp to decimal range to prevent overflow
                 const double maxDecimal = (double)decimal.MaxValue;
                 const double minDecimal = (double)decimal.MinValue;
 
@@ -816,14 +814,12 @@ namespace CathodeLib
                 }
             }
 
-            // Check for invalid quaternion
             if (float.IsNaN(q.X) || float.IsNaN(q.Y) || float.IsNaN(q.Z) || float.IsNaN(q.W) ||
                 float.IsInfinity(q.X) || float.IsInfinity(q.Y) || float.IsInfinity(q.Z) || float.IsInfinity(q.W))
             {
                 return (0m, 0m, 0m);
             }
 
-            // Calculate yaw, pitch, roll with safe conversion
             double yawRad = Math.Atan2(2 * (q.Y * q.W + q.X * q.Z), 1 - 2 * (q.Y * q.Y + q.X * q.X));
             double pitchRad = Math.Asin(Math.Max(-1, Math.Min(1, 2 * (q.X * q.W - q.Z * q.Y)))); // Clamp to [-1, 1] to prevent domain error
             double rollRad = Math.Atan2(2 * (q.Z * q.W + q.X * q.Y), 1 - 2 * (q.X * q.X + q.Z * q.Z));

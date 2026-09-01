@@ -117,10 +117,6 @@ namespace CATHODE
 
         #region HELPERS
         /// <summary>
-        /// Get the write index (useful for cross-ref'ing with compiled binaries)
-        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
-        /// </summary>
-        /// <summary>
         /// Rebuild the write-index lookup from the current entry list. The lookup is otherwise
         /// only refreshed at load and save, so resources appended mid-pipeline (instancing adds
         /// one per new renderable entity) resolve to -1 until the next save - which silently
@@ -133,6 +129,10 @@ namespace CATHODE
             _writeIndex = null;
         }
 
+        /// <summary>
+        /// Get the write index (useful for cross-ref'ing with compiled binaries)
+        /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
+        /// </summary>
         public int GetWriteIndex(Resource resource)
         {
             if (resource == null) return -1;

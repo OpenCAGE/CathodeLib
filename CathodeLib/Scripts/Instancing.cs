@@ -31,15 +31,11 @@ namespace CathodeLib
         public class Parameters<T> : IComparable<Parameters<T>>
         {
             /// <summary>
-            /// Values set on the entity itself at initialisation time.
+            /// Values set on the entity itself at initialisation time. READ ONLY from outside this
+            /// class: until something writes through one of the methods below, this is the entity
+            /// template's own dictionary, shared with every other instance of the same entity.
+            /// Giving each instance its own copy up front costs ~500MB on a level the size of Solace.
             /// </summary>
-            /// <remarks>
-            /// READ ONLY from outside this class. Until something writes through one of the methods
-            /// below, this is the entity template's own dictionary, shared with every other instance
-            /// of the same entity - writing to it directly would change all of them. A level the size
-            /// of Solace instances 556,288 entities and hardly any of them ever have a value written,
-            /// so giving each one its own copy of both dictionaries up front cost about 500MB.
-            /// </remarks>
             public Dictionary<ShortGuid, T> Values;
 
             /// <summary>
@@ -118,13 +114,7 @@ namespace CathodeLib
                 //Check links first, these override the values.
                 //When several links drive one parameter the LAST one wins, in the order the
                 //connections are authored - links push their value in, so the final write is what
-                //the parameter ends up holding. Scored against the light flags retail ships (which
-                //equal their movers' own DEFERRED_PARAMS exactly, so they are a reliable witness):
-                //last-link is exact on all 14,641 light movers of ChallengeMap4, SCI_HospitalUpper,
-                //BSP_Torrens, Solace, Tech_Hub and HAB_Airport, where taking the first link instead
-                //misses 76 of them (5/0/40/4/23/4). The cases that separate the two are lights
-                //whose is_specular is fed by both a composite variable and a PlatformConstantBool,
-                //and it is always the constant - the later connection - retail agrees with.
+                //the parameter ends up holding.
                 if (Links.TryGetValue(guid, out List<Tuple<ShortGuid, InstancedEntity>> links))
                     if (links.Count != 0)
                     {
@@ -524,16 +514,11 @@ namespace CathodeLib
 
         /// <summary>
         /// The per-(entity, composite) half of an instanced entity: which parameters it has, the
-        /// value each one starts at, and which of them something is linked to.
+        /// value each one starts at, and which of them something is linked to. None of that can come
+        /// out differently for two instances of the same entity in the same composite, so it is done
+        /// once here and an instance only copies the answers - Solace creates 556,288 InstancedEntity
+        /// objects from far fewer distinct entities.
         /// </summary>
-        /// <remarks>
-        /// Instancing Solace creates 556,288 InstancedEntity objects from far fewer distinct
-        /// entities. Every instance used to re-derive the same parameter list, resolve the same
-        /// default for each parameter (a read out of the vanilla entity table on every miss), and
-        /// re-scan the entity's childLinks once per parameter. None of that can come out differently
-        /// for two instances of the same entity in the same composite, so it is done once here and
-        /// an instance only copies the answers.
-        /// </remarks>
         public class EntityTemplate
         {
             //Filtered (pins and methods dropped) and deduped, in the order values were resolved in.
@@ -2250,13 +2235,9 @@ namespace CathodeLib
                 return false;
 
             int seed = GetDeterministicSeed();
-            //Seed carries an authored default of 0.5 on every RandomSelect in the game - Values is
-            //filled from the type default when the entity does not set one - and a default is not
-            //an instruction. Honouring it collapses a whole level to one roll: HAB_Airport resolves
-            //the VDU screen randomiser 248 times and every one of them seeded on 0.5f.GetHashCode()
-            //(1056964608) and picked input 3 of 25, where retail spreads its VDUs over twenty
-            //screens. Only a Seed the entity actually carries, or one driven by a link, overrides
-            //the per-instance seed.
+            //A type default is not an instruction: every RandomSelect in the game carries an authored
+            //Seed of 0.5, and honouring it collapses a whole level to a single roll. Only a Seed the
+            //entity actually carries, or one driven by a link, overrides the per-instance seed.
             if (Entity?.GetParameter(ShortGuids.Seed) != null ||
                 (Floats.Links != null && Floats.Links.ContainsKey(ShortGuids.Seed)))
             {
@@ -2275,14 +2256,11 @@ namespace CathodeLib
         }
 
         // The entity whose parameter is being resolved right now, for the length of that resolution.
-        // A composite marked is_shared is instanced ONCE and every user links to that one instance,
-        // so a randomiser inside it would hand all of them the same roll - every VDU in
-        // ChallengeMap4 ends up showing the same screen where retail's show a spread of fifteen.
-        // Seeding on the entity that ASKED restores the variety. It has to be tracked rather than
-        // passed down because the chain from a parameter to the randomiser runs through several
-        // entities (SCREEN.material -> Material -> MaterialStringSelect -> MaterialString ->
-        // RandomStaticVDUscreen.RandomVDUString -> RandomSelect_1), and only the outermost caller
-        // is the one to seed on. Thread-static because the instancing pass resolves in parallel.
+        // A composite marked is_shared is instanced ONCE and every user links to that one instance, so
+        // a randomiser inside it would hand all of them the same roll - seeding on the entity that
+        // ASKED restores the variety. It has to be tracked rather than passed down because the chain
+        // from a parameter to the randomiser runs through several entities and only the outermost
+        // caller is the one to seed on. Thread-static because the instancing pass resolves in parallel.
         [ThreadStatic] private static InstancedEntity _resolutionRoot;
 
         //The murmur3 32-bit finaliser: spreads a clustered input across the whole range.
@@ -2308,13 +2286,10 @@ namespace CathodeLib
                 //nothing is being resolved through a link.
                 InstancedEntity subject = _resolutionRoot ?? this;
                 int seed = subject.Entity != null ? (int)subject.Entity.shortGUID.AsUInt32 : 0;
-                //The instance the subject itself lives in is what makes it unique - the parent
-                //entity's own composite instance is shared by every sibling, so seeding on that
-                //alone hands a whole roomful of screens the same roll. Measured on HAB_Airport:
-                //184 instances of one VDU ModelReference have 184 distinct composite instance ids
-                //but landed on seven materials in a 74/50/44/8/1/1/1 split, where retail spreads
-                //them over twenty. Both are mixed in - the parent adds nothing unique but costs
-                //nothing, and keeps two entities of the same name under different parents apart.
+                //The instance the subject itself lives in is what makes it unique - the parent entity's
+                //own composite instance is shared by every sibling, so seeding on that alone hands a
+                //roomful of screens the same roll. Both are mixed in: the parent adds nothing unique
+                //but costs nothing, and keeps two entities of the same name under different parents apart.
                 if (subject.ThisCompositeInstance != null)
                     seed = (seed * 397) ^ (int)subject.ThisCompositeInstance.InstanceID.AsUInt32;
                 if (subject.ParentCompositeInstanceEntity?.ThisCompositeInstance != null)
@@ -2324,8 +2299,7 @@ namespace CathodeLib
                 if (!ReferenceEquals(subject, this) && Entity != null)
                     seed = (seed * 397) ^ (int)Entity.shortGUID.AsUInt32;
                 //Avalanche it. Composite instance ids come out in clusters, and Random(seed).Next(n)
-                //returns the same value for a whole run of nearby seeds - ChallengeMap4's 318 VDUs
-                //landed on six of their randomiser's twenty-five screens until this was added.
+                //returns the same value for a whole run of nearby seeds.
                 seed = Avalanche(seed);
                 return seed == 0 ? 1 : seed;
             }
@@ -2658,10 +2632,8 @@ namespace CathodeLib
         public IReadOnlyList<string> BakeWarnings => _bakeWarnings;
         private readonly List<string> _bakeWarnings = new List<string>();
 
-        /// <summary>
-        /// Emit a per-phase time and heap reading to the console while instancing. Profiling only -
-        /// off by default, and the timing calls cost nothing when it is off.
-        /// </summary>
+        /// <summary>Emit a per-phase time and heap reading to the console while instancing. Profiling
+        /// only - off by default, and the timing calls cost nothing when it is off.</summary>
         public static bool ProfilePhases = false;
 
         /// <summary>Force a full collection around every phase so the heap readings are live bytes
@@ -2707,16 +2679,11 @@ namespace CathodeLib
         public readonly HashSet<(uint, uint)> RadiosityAuthoredOff = new HashSet<(uint, uint)>();
 
         /// <summary>
-        /// Skip the navmesh / cover / job position / sound network bakes even though their settings
-        /// are supplied. For fast lighting-only iteration from test harnesses; the previously saved
-        /// data for those systems is left as-is on disk.
+        /// Skip the navmesh / cover / job position / sound network bakes even though their settings are
+        /// supplied. For fast lighting-only iteration from test harnesses; the previously saved data for
+        /// those systems is left as-is on disk. Not the normal way to turn a bake off - each of the four
+        /// is opted into by passing its settings and skipped by passing null.
         /// </summary>
-        /// <remarks>
-        /// Not the normal way to turn a bake off - each of the four is opted into by passing its
-        /// settings and skipped by passing null, so a caller that wants three of them simply omits
-        /// the fourth. This flag is the blunt instrument that suppresses all four at once regardless
-        /// of what was passed.
-        /// </remarks>
         public static bool SkipAgentBakes = false;
 
         /// <summary>
@@ -2726,19 +2693,17 @@ namespace CathodeLib
         public static bool SkipAlphalightBake = false;
  
         /// <summary>
-        /// Obsolete. Template FX emitters are never given movers now - retail's own MVR shows
-        /// isTemplate is the discriminator, so there is no longer a per-level choice to make.
-        /// Retained only so existing callers still compile; it has no effect.
+        /// Obsolete. Template FX emitters are never given movers now - retail's own MVR shows isTemplate
+        /// is the discriminator. Retained so existing callers still compile; it has no effect.
         /// </summary>
         [Obsolete("Template FX emitters are never emitted; this flag no longer has any effect.")]
         public static bool EmitFxTemplates = true;
 
         /// <summary>
         /// Emit movers for particle emitters inside REQUIRED_ASSETS composites (weapons, gadgets -
-        /// content that spawns as temporary entities at runtime). The ribbon case has always
-        /// skipped these; the particle case did not, and a pre-instanced mover for an emitter the
-        /// engine expects to instantiate fresh at spawn is the current suspect for Solace's
-        /// weapon-spawn fault in PARTICLE_EMITTER_REFERENCE::update_parameters.
+        /// content that spawns as temporary entities at runtime). The ribbon case has always skipped
+        /// these; a pre-instanced mover for an emitter the engine expects to instantiate fresh at spawn
+        /// is the current suspect for Solace's weapon-spawn fault.
         /// </summary>
         public static bool EmitRequiredAssetParticles = true;
 
@@ -2746,12 +2711,10 @@ namespace CathodeLib
         {
             _level = level;
 
-            //Patch mode (the product default): the census that decides which movers were MOVED
-            //or ADDED needs the PRISTINE mover state, harvested before instancing rebuilds the
-            //list. The parity harness harvests these itself; a bare Save(true, radiositySettings)
-            //from the tool gets them here - without the snapshots every instancing-manufactured
-            //mover whose GUID never joins the retail instance map would count as "new" (Solace
-            //ships 11,907 of them before any edit) and be pointlessly rebaked.
+            //Patch mode (the product default): the census that decides which movers were MOVED or ADDED
+            //needs the PRISTINE mover state, harvested before instancing rebuilds the list. Without the
+            //snapshots every instancing-manufactured mover whose GUID never joins the retail instance
+            //map would count as "new" and be pointlessly rebaked.
             if (radiositySettings != null && radiositySettings.PatchRetailRuntime && level?.Movers?.Entries != null)
             {
                 if (radiositySettings.RetailModelParams == null)
@@ -2813,9 +2776,8 @@ namespace CathodeLib
         /// <summary>
         /// Do not blank the level's radiosity files when instancing without radiosity settings.
         /// Constructing an Instancing WRITES TO DISK - it empties RADIOSITY_RUNTIME.BIN and deletes
-        /// RADIOSITY_INSTANCE_MAP.TXT in the level's own folder - even though nothing asked it to
-        /// save. Anything that instances a level only to read the result (a diagnostic, a
-        /// comparison against retail) must set this first, or it destroys the copy it is measuring.
+        /// RADIOSITY_INSTANCE_MAP.TXT - even though nothing asked it to save. Anything that instances a
+        /// level only to read the result must set this first, or it destroys the copy it is measuring.
         /// </summary>
         public static bool SkipRadiosityClear = false;
 
@@ -2823,20 +2785,11 @@ namespace CathodeLib
         /// Swap every mover's primary and secondary zone when it has two.
         /// </summary>
         /// <remarks>
-        /// A FLICKER EXPERIMENT, not a fix - leave it false unless you are testing.
-        ///
-        /// Measured on ChallengeMap4: 95.8% of movers carry both zones exactly as retail does, and
-        /// of the 529 that do not, 468 (88.5%) are our pair the RIGHT way up but the WRONG way
-        /// round. Zones drive culling and streaming, and the level carries 3584 deliberately
-        /// coincident movers (door, VDU and light state variants sharing a transform), so a mover
-        /// whose zones are backwards is a candidate for models popping in and out.
-        ///
-        /// What to look for: if the flickering changes character at all - different models, or it
-        /// stops - zones are implicated. Turning this on trades errors rather than removing them
-        /// (the 468 become right and roughly 277 currently-correct ones become wrong), so a level
-        /// that looks BETTER with it on is still evidence even though this is not the real rule.
-        /// The real rule is not spatial: containment picks retail's primary only 64.6% of the time
-        /// and nearest-centroid 45.9%, worse than chance.
+        /// A FLICKER EXPERIMENT, not a fix - leave it false unless you are testing. 95.8% of movers carry
+        /// both zones exactly as retail does, and most of the rest are our pair the RIGHT way up but the
+        /// WRONG way round. Turning this on trades errors rather than removing them, so a level that looks
+        /// BETTER with it on is still evidence even though this is not the real rule - which is not
+        /// spatial: containment picks retail's primary 64.6% of the time, worse than chance.
         /// </remarks>
         public static bool SwapTwoZoneMoverOrder = false;
 
@@ -2844,16 +2797,10 @@ namespace CathodeLib
         /// The value written to every mover's <c>Flags.RequiresScript</c>.
         /// </summary>
         /// <remarks>
-        /// ANOTHER FLICKER EXPERIMENT. We hardcode true and retail disagrees on 4049 of
-        /// ChallengeMap4's 12672 movers - retail says false for 2172 ENVIRONMENT, 1438
-        /// ENVIRONMENT_EXTRA, 203 LIGHT and 174 DYNAMICFX movers. "Always true" agrees with retail
-        /// 68.5% of the time and no predicate tried beats it, so the rule is undecoded.
-        ///
-        /// If the engine expects a script to drive a mover marked this way and nothing does, that
-        /// is a plausible source of a model appearing and disappearing. Setting this false makes us
-        /// agree with retail on the 4049 and disagree on the 8623 that should be true, so neither
-        /// setting is correct - but if the flickering moves to a DIFFERENT set of models when it is
-        /// flipped, this flag is the cause and the rule is worth decoding properly.
+        /// ANOTHER FLICKER EXPERIMENT. We hardcode true and retail disagrees on about a third of a level's
+        /// movers, but no predicate tried beats "always true", so the rule is undecoded. Neither setting
+        /// is correct - but if the flickering moves to a DIFFERENT set of models when this is flipped, the
+        /// flag is the cause and the rule is worth decoding properly.
         /// </remarks>
         public static bool MoverRequiresScript = true;
 
@@ -2969,27 +2916,20 @@ namespace CathodeLib
             //Clear other various bits we'll re-write
             _level.Resources.Entries.Clear();
             _level.PhysicsMaps.Entries.Clear();
-            // NOTE: RenderableElements is deliberately NOT cleared. Indices into it are held by
-            // systems this pass does not renumber, so clearing it and rebuilding renumbered every
-            // entry underneath them - the engine then read a character's renderable run out of
-            // range and faulted in calculate_renderable_instance_type the moment ACTIVE_CHARACTERS
-            // finalised its first temporary entity, on most levels in the game. Retail's own file
-            // is mostly entries that no mover or Commands resource points at, which is the same
-            // shape. EnsureRegistered reuses identical runs, so appending keeps it at retail's size
-            // (18635 vs retail's 18633 on BSP_LV426_Pt01).
+            // NOTE: RenderableElements is deliberately NOT cleared. Indices into it are held by systems
+            // this pass does not renumber, so clearing it and rebuilding renumbered every entry underneath
+            // them - the engine then read a character's renderable run out of range and faulted.
+            // EnsureRegistered reuses identical runs, so appending keeps it at retail's size.
             _level.SoundEnvironmentData.Entries.Clear();
             while (!_exclusiveMasters.IsEmpty)
                 _exclusiveMasters.TryTake(out _);
 
             //First 12 movers are required assets used by various things like particle systems, etc - keep them!
             //If building a level from scratch I'll need to add these somehow - store them? They're the same everywhere.
-            //Before the old list goes: keep every environment mover's MODEL_PARAMS lightmap
-            //transform, keyed by resource GUID. Instancing rebuilds movers from Commands and
-            //cannot compute this - it is bake output - so without carrying it every rebuilt wall
-            //samples a wrong atlas region (ChallengeMap3's vent wall rendered its neighbouring
-            //tube-lights' yellow; ceiling pieces degenerated entirely). A full radiosity bake
-            //rewrites these afterwards, so carrying is harmless there and essential everywhere
-            //else (instonly, delta patches). NOTE: the snapshot itself now runs earlier, before
+            //Before the old list goes: keep every environment mover's MODEL_PARAMS lightmap transform,
+            //keyed by resource GUID. Instancing rebuilds movers from Commands and cannot compute this -
+            //it is bake output - so without carrying it every rebuilt wall samples a wrong atlas region.
+            //A full radiosity bake rewrites these afterwards, so carrying is harmless there.
             //the table clears above.
             List<Movers.MOVER_DESCRIPTOR> requiredAssets = new List<Movers.MOVER_DESCRIPTOR>();
             if (_level.Movers.Entries.Count >= 12)
@@ -3045,10 +2985,9 @@ namespace CathodeLib
                                       (unresolved.Value == "" ? "" : "  (first requested by " + unresolved.Value + ")"));
             }
 
-            //Permutations the level never shipped, compiled from the reconstructed masters. A mask
-            //that could not be built is not fatal - the instance keeps its template material, which
-            //is what happened to every one of them before the recompiler existed - but it does mean
-            //an entity parameter did not reach the screen, so it is worth saying out loud.
+            //Permutations the level never shipped, compiled from the reconstructed masters. A mask that
+            //could not be built is not fatal - the instance keeps its template material - but it does
+            //mean an entity parameter did not reach the screen, so it is worth saying out loud.
             if (_materialFactory.ShadersGenerated != 0)
                 Console.WriteLine("Compiled " + _materialFactory.ShadersGenerated + " shader permutation(s) this level does not ship.");
             foreach (KeyValuePair<string, string> failed in _materialFactory.ShaderGenerationErrors)
@@ -3154,16 +3093,11 @@ namespace CathodeLib
                     hostMirror.Instances[slot].UserData = (ulong)i;
             }
 
-            /* The stamping above only reaches the instances a row points at. The engine reads
-             * UserData as a COLLISION.MAP row index on whatever leaf a ray actually lands on,
-             * including the instances inside the per-mesh template compounds - and those can
-             * hold indices into a different table entirely. An imported compound carries the
-             * source level's indices across verbatim, and retail leaves stale ones behind in
-             * levels whose geometry is never placed (Frontend ships 150 of them, pointing as
-             * far as row 1066 in a 256 row table). None of that matters while nothing in the
-             * level is collidable; the moment it is, a ray reaching such a leaf indexes past
-             * the end of the table and the Havok raycast task faults. Retail's own playable
-             * levels never do this - every instance in Solace and Torrens names a real row. */
+            /* The stamping above only reaches the instances a row points at. The engine reads UserData
+             * as a COLLISION.MAP row index on whatever leaf a ray actually lands on, including the ones
+             * inside per-mesh template compounds - and an imported compound carries the source level's
+             * indices across verbatim. A ray reaching such a leaf indexes past the end of the table and
+             * the Havok raycast task faults. */
             ClampInstanceUserData(_collision?.Packfile, rows.Count);
             ClampInstanceUserData(_collisionMirror?.Packfile, rows.Count);
 
@@ -3176,9 +3110,7 @@ namespace CathodeLib
 
         /// <summary>
         /// Point any instance whose collision row index is outside the table at row 0. It reports the
-        /// wrong row, but it no longer reads off the end. Handing these the definition row retail
-        /// gives them - non-host instances there name the rows that carry no placement, many sharing
-        /// one - is a separate piece of work.
+        /// wrong row, but it no longer reads off the end.
         /// </summary>
         static void ClampInstanceUserData(HavokPackfile packfile, int rowCount)
         {
@@ -3414,13 +3346,10 @@ namespace CathodeLib
                 zones.Add(entity);
             }
 
-            //SEQUENTIAL on purpose. AssignZone is a first-arrival state machine (first zone to
-            //reach an entity becomes primary, later arrivals fight for secondary), so running the
-            //zones in Parallel.ForEach made arrival order a thread race: two runs of the same code
-            //disagreed on ~800 movers, and ChallengeMap9 put 4,757 of 12,485 movers (38%) in a
-            //different zone from retail - which flips zone streaming states, and that is visible:
-            //rooms rendered that retail keeps unloaded (cam4), the vent exterior black (cam11),
-            //required-asset FX pulled out of the persistent global zone. Iterating in AllEntities
+            //SEQUENTIAL on purpose. AssignZone is a first-arrival state machine (first zone to reach an
+            //entity becomes primary, later arrivals fight for secondary), so running the zones in
+            //Parallel.ForEach made arrival order a thread race - two runs disagreed on ~800 movers, and
+            //zone membership flips streaming states, which is visible in-game. Iterating in AllEntities
             //order is deterministic; zones per level number in the dozens, so this costs nothing.
             foreach (InstancedEntity entity in zones)
                 ApplyZoneLinks(entity, variablePinsOnly: false);
@@ -3936,12 +3865,10 @@ namespace CathodeLib
             _retailRuntimeRefs = new System.Collections.Generic.Dictionary<ulong, (byte[], int)>();
             _retailZones = new System.Collections.Generic.Dictionary<ulong, (ShortGuid, ShortGuid)>();
 
-            // RESOURCES.BIN index assignment: a row's index is just its position in the runtime
-            // list, and the rebuild hands out positions in instancing order - 16,891 of
-            // ChallengeMap9's 18,468 pairs landed at a different index than retail even though the
-            // pair SETS are identical. The engine resolves entities through this table at spawn
-            // (PARTICLE_EMITTER_REFERENCE::on_initialise faulted when the table and MVR came from
-            // different builds), so retail's assignment is restored before save.
+            // RESOURCES.BIN index assignment: a row's index is just its position in the runtime list, and
+            // the rebuild hands out positions in instancing order, so almost every pair lands at an index
+            // retail did not use. The engine resolves entities through this table at spawn, so retail's
+            // assignment is restored before save.
             _retailResourceIndex = new System.Collections.Generic.Dictionary<ulong, int>();
             if (_level.Resources?.Entries != null)
                 for (int ri = 0; ri < _level.Resources.Entries.Count; ri++)
@@ -3953,12 +3880,10 @@ namespace CathodeLib
                         _retailResourceIndex[rkey] = ri;
                 }
 
-            // Collision-row zones and flags: COLLISION.MAP feeds the engine's position->zone
-            // lookup and collider state, and its rows take the same computed PrimaryZone the
-            // movers do plus the ShouldApplyFrozen best-guess for the state bits. The measured
-            // CM9 delta vs retail is ~550 rows differing ONLY in the state nibble (we add
-            // FROZEN|PRE_FROZEN where retail leaves colliders live, and drop GHOSTED|PRE_GHOSTED
-            // where retail ghosts them) - retail's own answer is carried per row.
+            // Collision-row zones and flags: COLLISION.MAP feeds the engine's position->zone lookup and
+            // collider state. Its rows take the same computed PrimaryZone the movers do plus the
+            // ShouldApplyFrozen best-guess for the state bits, and both differ from retail, so retail's
+            // own answer is carried per row.
             _retailCollisionZones = new System.Collections.Generic.Dictionary<(uint, uint, uint), (ShortGuid, CollisionMaps.CollisionFlags)>();
             if (_level.CollisionMaps?.Entries != null)
                 foreach (CollisionMaps.COLLISION_MAPPING row in _level.CollisionMaps.Entries)
@@ -3989,20 +3914,18 @@ namespace CathodeLib
                 if (!_retailRuntimeRefs.ContainsKey(key))
                     _retailRuntimeRefs[key] = (m.RuntimeRefs, m.RuntimeIndex);
 
-                // Zones: our AssignZone pass disagrees with retail's per-entity arrival order on
-                // ~4% of ChallengeMap4's movers and 38% (!) of ChallengeMap9's - retail resolves
-                // the same contested zone PAIR both ways depending on the entity, so the true rule
-                // is per-entity and still undecoded. Zone membership drives streaming: CM9 rendered
-                // rooms retail keeps unloaded and blacked out the vent exterior. Retail's own pair
-                // is carried per mover; the computed pass still covers new content.
+                // Zones: our AssignZone pass disagrees with retail's per-entity arrival order on up to
+                // 38% of a level's movers - retail resolves the same contested zone PAIR both ways
+                // depending on the entity, so the true rule is per-entity and still undecoded. Zone
+                // membership drives streaming. Retail's own pair is carried per mover; the computed pass
+                // still covers new content.
                 if (!_retailZones.ContainsKey(key))
                     _retailZones[key] = (m.PrimaryZoneID, m.SecondaryZoneID);
 
-                // FX movers: the whole constant pair is carried verbatim. Retail's fogsphere GPU
-                // block is NOT the authored-parameter layout our generation writes (it opens with
-                // a rotation matrix and carries packed fields) - the mismatch rendered CM9's
-                // vented-gas floor fog invisible. Until that layout is decoded, retail's bytes
-                // are strictly better for every unedited FX entity.
+                // FX movers: the whole constant pair is carried verbatim. Retail's fogsphere GPU block is
+                // NOT the authored-parameter layout our generation writes, and the mismatch rendered
+                // vented-gas floor fog invisible. Until that layout is decoded, retail's bytes are
+                // strictly better for every unedited FX entity.
                 if (type == RenderableInstanceType.FOGSPHERE ||
                     type == RenderableInstanceType.DYNAMICFX ||
                     type == RenderableInstanceType.DYNAMICFX_UNIQUE_MAT)
@@ -4249,12 +4172,10 @@ namespace CathodeLib
                     else
                         leftovers.Add(r);
                 }
-                // EntityInstanceIndex is POSITIONAL: the engine pairs table rows with its own
-                // instance enumeration, so a retail row our save purged (FX templates etc.) must
-                // be re-emitted at its retail index as a dangling placeholder - compacting shifts
-                // every later row onto the wrong runtime entity, which degraded surface-light
-                // gating into noise wherever rows were lost (SCI_Hub kept 14% of indices and
-                // rendered 2.5x; ChallengeMap9 kept 100% and gated normally).
+                // EntityInstanceIndex is POSITIONAL: the engine pairs table rows with its own instance
+                // enumeration, so a retail row our save purged (FX templates etc.) must be re-emitted at
+                // its retail index as a dangling placeholder - compacting shifts every later row onto the
+                // wrong runtime entity.
                 var keyAt = new ulong[_retailResourceIndex.Count];
                 foreach (System.Collections.Generic.KeyValuePair<ulong, int> kv in _retailResourceIndex)
                     if (kv.Value >= 0 && kv.Value < keyAt.Length) keyAt[kv.Value] = kv.Key;
@@ -4294,11 +4215,10 @@ namespace CathodeLib
 
             lock (_mvrLock)
             {
-                //Retail's tool gives every instanced FX mover its OWN renderable entry - value
-                //duplicates of the composite resource's run, one per placed instance (measured on
-                //ChallengeMap9: fogspheres 6226/6235/6244..., particle emitters 6230/6239...).
-                //Sharing the resource's single entry across all instances is the wrong shape, and
-                //the fogsphere gas carpet never rendered under it.
+                //Retail's tool gives every instanced FX mover its OWN renderable entry - value duplicates
+                //of the composite resource's run, one per placed instance. Sharing the resource's single
+                //entry across all instances is the wrong shape, and the fogsphere gas carpet never
+                //rendered under it.
                 RenderableInstanceType renderType = RenderableInstanceType.MISC;
                 try { renderType = mvr.GetRenderableType(); } catch { }
                 if (!isTemplate && (renderType == RenderableInstanceType.FOGSPHERE ||
@@ -4442,9 +4362,8 @@ namespace CathodeLib
         }
 
         // Reads an ubershader's named PARAMETER off the entity, in the shape the material's constant
-        // slots want it. A parameter the entity does not itself supply returns null so the material
-        // being replaced keeps its own value - a fog box declares the DEPTH_INTERSECT colours but
-        // only authors them when that feature is on, and retail leaves the material's alone.
+        // slots want it. A parameter the entity does not itself supply returns null so the material being
+        // replaced keeps its own value.
         private static MaterialFactory.ParameterLookup EntityShaderParameters(InstancedEntity entity, SHADER_LIST ubershader)
         {
             return (name, width) =>
@@ -4482,9 +4401,8 @@ namespace CathodeLib
 
         // Give a volume the material its own parameters call for. Its shader's feature mask IS those
         // parameters, and its constants are the ubershader's named parameters - regenerating every
-        // ChallengeMap4 volume from its entity reproduces retail's material exactly: 662 of 662 fog
-        // spheres, 24 of 24 fog boxes, 2 of 2 surface effect boxes. Returns the run unchanged when
-        // nothing needs to change or when the level has no shader for the combination asked for.
+        // ChallengeMap4 volume from its entity reproduces retail's material exactly. Returns the run
+        // unchanged when nothing needs to change, or when the level has no shader for the combination.
         /// <summary>
         /// Draw this run on one of the level's required models. The FX and light entities pick their
         /// mesh from their own parameters - a light's proxy volume by type, a fog box's by geometry
@@ -4521,14 +4439,11 @@ namespace CathodeLib
 
         // Give an FX emitter the material its own parameters call for. The shader stays the one the
         // composite authored - nothing here computes CA_PARTICLE features - but the constants are
-        // rebuilt, because they ARE the emitter's parameters and retail bakes each instance's own
-        // values into a material of its own. Regenerating every ChallengeMap4 emitter this way
-        // reproduces retail's material exactly on 585 of 588 particle movers and 59 of 59 ribbons;
-        // the three that differ have a PARTICLE_COUNT retail lowered (60 -> 8, 20 -> 7, 34 -> 1).
+        // rebuilt, because they ARE the emitter's parameters and retail bakes each instance's own values
+        // into a material of its own.
         //
         // An emitter with unique_material set gets a material nobody else shares, which is what the
-        // offline flags value of 1 marks (Utilities.CalculateRenderableType reads it as
-        // DYNAMICFX_UNIQUE_MAT) - so those are never deduplicated against an existing entry.
+        // offline flags value of 1 marks, so those are never deduplicated against an existing entry.
         private List<RenderableElements.Element> ApplyFxMaterial(List<RenderableElements.Element> reds, InstancedEntity entity)
         {
             if (_materialFactory == null || reds == null || reds.Count != 1 || reds[0]?.Material?.Shader == null)
@@ -4546,14 +4461,11 @@ namespace CathodeLib
                 if (lastUnderscore > 32) stem = stem.Substring(0, lastUnderscore);
                 name = stem + "_" + (entity.ThisCompositeInstance?.InstanceID.AsUInt32 ?? 0).ToString("X8");
 
-                //When the level already ships a material with this exact name, THIS instance is the
-                //one it was authored for - use it rather than regenerating. Regenerating collided
-                //with the shipped name (ClaimName suffixed it "[000000]") and detached the mover's
-                //REDS run from the material the Commands-side resource still points at; the engine
-                //then never drew the emitter. ChallengeMap9's poison-gas carpet was the proof: its
-                //renderable chain was byte-identical to retail EXCEPT the mover's material was the
-                //"[000000]" copy, and the gas simply did not render. 547 materials per level were
-                //duplicated this way before the lookup.
+                //When the level already ships a material with this exact name, THIS instance is the one
+                //it was authored for - use it rather than regenerating. Regenerating collided with the
+                //shipped name (ClaimName suffixed it "[000000]") and detached the mover's REDS run from
+                //the material the Commands-side resource still points at; the engine then never drew
+                //the emitter.
                 if (name == template.Name)
                     return reds;
                 Materials.Material shipped = _materialFactory.FindByName(name);
@@ -4561,13 +4473,11 @@ namespace CathodeLib
                     return _materialFactory.ApplyMaterial(reds, shipped);
             }
 
-            //The offline dword is cleared, never set. Retail ships 0 on EVERY emitter mover of
-            //ChallengeMap4, BSP_Torrens, Sci_Hub and Tech_RnD_HzdLab - 56 distinct
-            //(retail, authored, unique_material, sharing, CPU) groups and not one with a 1 - while
-            //six ChallengeMap4 ribbons have a composite material that carries 1 and a shipped one
-            //that does not. So the 1 lives only on an authored material and means "this needs its
-            //own copy": it is an instruction to the build, spent once the copy exists, not a
-            //property of the copy. Writing it onto the instance instead was tried and is wrong.
+            //The offline dword is cleared, never set. Retail ships 0 on EVERY emitter mover, while some
+            //composite materials carry a 1 that the shipped copy does not - so the 1 lives only on an
+            //authored material and means "this needs its own copy": an instruction to the build, spent
+            //once the copy exists, not a property of the copy. Writing it onto the instance was tried
+            //and is wrong.
             Materials.Material material = _materialFactory.GetShaderFeatureMaterial(
                 template, template.Shader.UbershaderFeatureFlags, null,
                 EntityShaderParameters(entity, template.Shader.Ubershader), DescribeForLog(entity), !unique, name,
@@ -5020,13 +4930,10 @@ namespace CathodeLib
                     {
                         FOG_BOX_TYPE type = (FOG_BOX_TYPE)entity.EnumIndexes.Get(ShortGuids.GEOMETRY_TYPE); //defines the model to use
                         /* A FEATURES member is a bit INDEX, not a flag value (WS_LOCKED = 0, SPHERE = 1,
-                         * BOX = 2...), so the mask is 1L << index. ORing the members themselves - which
-                         * this used to do - produced a mask that named entirely different features, and
-                         * made WS_LOCKED = 0 a silent no-op. It went unnoticed because a nonsense mask
-                         * usually matches no shader at all, GetShaderFeatureMaterial returns null and the
-                         * template material is kept - right by accident. Where the nonsense mask DID hit a
-                         * real shader it was visible: a SurfaceEffectBox shipped 0x04 (BOX) while we built
-                         * 0x02 (SPHERE). MaterialFactory.AlwaysOnFeature already used the shift. */
+                         * BOX = 2...), so the mask is 1L << index. ORing the members themselves names
+                         * entirely different features and makes WS_LOCKED = 0 a silent no-op - usually
+                         * invisible, because a nonsense mask matches no shader, GetShaderFeatureMaterial
+                         * returns null and the template material is kept, right by accident. */
                         long features = 0;
                         if (entity.Bools.Get(ShortGuids.BILLBOARD))
                             features |= 1L << (int)CA_FOGPLANE.FEATURES.BILLBOARD;
@@ -5230,13 +5137,9 @@ namespace CathodeLib
                             cpuConstants.Features |= LightFeature.PhysicalAttenuation;
                         if (entity.Bools.Get(ShortGuids.horizontal_gobo_flip))
                             cpuConstants.Features |= LightFeature.HorizontalGoboFlip;
-                        // Reading the entity's own value ahead of its links was tried here and is
-                        // wrong: every light in ChallengeMap4 that disagreed with retail (112 of
-                        // 1838) has is_specular driven by a PlatformConstantBool, and retail
-                        // follows the link in BOTH directions - 104 where the own value is true and
-                        // the link false, 8 the other way. Retail's light materials and their
-                        // movers' DEFERRED_PARAMS agree on all 1862, so the material table is a
-                        // second witness to the same answer.
+                        // Reading the entity's own value ahead of its links was tried here and is wrong:
+                        // every light that disagreed with retail has is_specular driven by a
+                        // PlatformConstantBool, and retail follows the link in BOTH directions.
                         if (entity.Bools.Get(ShortGuids.is_specular))
                             cpuConstants.Features |= LightFeature.Specular;
                         if (entity.Bools.Get(ShortGuids.no_alphalight))
@@ -5262,11 +5165,10 @@ namespace CathodeLib
                         cpuConstants.FlareOccluderRadius = entity.Floats.Get(ShortGuids.flare_occluder_radius);
                         cpuConstants.FlareSpotOffset = entity.Floats.Get(ShortGuids.flare_spot_offset);
                         cpuConstants.DepthBias = entity.Floats.Get(ShortGuids.depth_bias);
-                        // The material comes from these same resolved parameters, and is settled
-                        // before the constants are written because the factory can drop the GOBO
-                        // feature when the named texture is not packed with the level - retail's
-                        // material flags equal their mover's DEFERRED_PARAMS on all 1862 of
-                        // ChallengeMap4's light movers, so the two must never part company.
+                        // The material comes from these same resolved parameters, and is settled before
+                        // the constants are written because the factory can drop the GOBO feature when the
+                        // named texture is not packed with the level - a light material's flags equal its
+                        // mover's DEFERRED_PARAMS in retail, so the two must never part company.
                         Materials.Material lightMaterial = _materialFactory?.GetLightMaterial(
                             cpuConstants.Type, cpuConstants.Features, goboTexture, DescribeForLog(entity));
                         if (lightMaterial?.OfflineLightFeatures != null)
@@ -5329,12 +5231,10 @@ namespace CathodeLib
                         float volumeEndAttenuation = entity.Floats.Get(ShortGuids.volume_end_attenuation);
                         gpuConstants.VolumeAttenuationEnd = volumeEndAttenuation > 0.0f ? volumeEndAttenuation : entity.Floats.Get(ShortGuids.end_attenuation);
                         mvr.GPUConstants.SetAs<DEFERRED_GPU_CONSTANTS>(gpuConstants);
-                        // The renderable run belongs to the COMPOSITE, so every instance of a light
-                        // prefab shares one material - but the features above and the gobo are
-                        // per-instance, freely rewritten by aliases anywhere up the tree. Give the
-                        // instance the material its own resolved parameters call for, which is what
-                        // retail ships: 485 of ChallengeMap4's 1862 light movers point somewhere
-                        // other than their composite's authored material.
+                        // The renderable run belongs to the COMPOSITE, so every instance of a light prefab
+                        // shares one material - but the features above and the gobo are per-instance,
+                        // freely rewritten by aliases anywhere up the tree. Give the instance the material
+                        // its own resolved parameters call for, which is what retail ships.
                         List<RenderableElements.Element> lightReds =
                             ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
                         mvr.RenderableElements = _materialFactory != null
@@ -5492,14 +5392,10 @@ namespace CathodeLib
                                 mvr.EmissiveFlags |= Movers.EmissiveFlag.ReplaceTint;
                             mvr.EmissiveIntensityMultiplier = ResolveModelReferenceEmissiveIntensity(entity, isTemplate);
                             mvr.EmissiveRadiosityMultiplier = Math.Max(0.0f, entity.Floats.Get(ShortGuids.radiosity_multiplier));
-                            // An AUTHORED radiosity_multiplier of 0 excludes the model from the
-                            // radiosity bake - retail Solace drops exactly its 4 such fixtures
-                            // while lighting 900 whose multiplier is merely absent (also 0 in the
-                            // MVR, so the distinction only exists here where the parameter table
-                            // is in hand). The value itself does not scale the baked output:
-                            // retail's per-entity Weight/sqrt(area) is flat (~270) across every
-                            // authored value from 0.2 to >1.5, and Scale stays on the material
-                            // EMISSIVE_MULT grid, so nonzero values are runtime-side.
+                            // An AUTHORED radiosity_multiplier of 0 excludes the model from the radiosity
+                            // bake, where a merely absent one does not - the distinction exists only here,
+                            // with the parameter table in hand, because both store 0 in the MVR. The value
+                            // itself does not scale the baked output; nonzero values are runtime-side.
                             if (entity.Floats.Values.TryGetValue(ShortGuids.radiosity_multiplier, out float authoredRadiosity) &&
                                 authoredRadiosity <= 0.0f)
                                 RadiosityAuthoredOff.Add((entity.Handle.composite_instance_id.AsUInt32, entity.Handle.entity_id.AsUInt32));
@@ -5548,27 +5444,15 @@ namespace CathodeLib
                     break;
                 case FunctionType.ParticleEmitterReference:
                     {
-                        // See task #43 - this guard is the SCI_Hub / Tech_Hub trade-off. Emitting
-                        // templates fixes SCI_Hub's load crash but breaks Tech_Hub, which then
-                        // crashes in update_parameters ~28s in.
+                        // See task #43 - this guard is the SCI_Hub / Tech_Hub trade-off. Emitting templates
+                        // fixes SCI_Hub's load crash but breaks Tech_Hub, which then crashes in
+                        // update_parameters ~28s in.
                         //
-                        // Measured against retail BSP_TORRENS: with templates emitted we write 1053
-                        // more movers than retail (+18.6%), 4079 more REDS entries (+14.4%) and 1023
-                        // more resources (+12.5%), and nothing retail writes is missing - it is a
-                        // strict superset. Retail emits FX movers for 31 composites where we emit
-                        // for 92, and 61 of the extra 61 are composites retail never instances at
-                        // all: *_Template prefabs, Character_Burning\AndroidBurn*, Blood\FX_*_On_Lens,
-                        // Debris\Bottle*, Pistol_VFX\Tazer_* - all spawned at runtime rather than
-                        // placed. They are correctly marked invisible, but still occupy a slot each.
-                        //
-                        // Retail never ships a mover for a template (prefab) FX emitter. Joining
-                        // our instanced mover set to the shipped MVR by entity handle, isTemplate
-                        // separates the two sets exactly on BSP_LV426_Pt01, SCI_Hub, Solace,
-                        // BSP_Torrens and HAB_Airport: every emitter reached only through a
-                        // template path has no retail mover, and every non-template one has
-                        // precisely one. A template is a definition the spawner instantiates at
-                        // runtime, so pre-instancing it hands the engine a second copy of an
-                        // emitter it is about to create itself.
+                        // Retail never ships a mover for a template (prefab) FX emitter. Joining our
+                        // instanced mover set to the shipped MVR by entity handle, isTemplate separates
+                        // the two sets exactly on every level checked. A template is a definition the
+                        // spawner instantiates at runtime, so pre-instancing it hands the engine a second
+                        // copy of an emitter it is about to create itself.
                         if (isDeleted || isTemplate)
                             break;
                         if (isRequiredAssets && !EmitRequiredAssetParticles)
@@ -5619,12 +5503,10 @@ namespace CathodeLib
                             gpuConstants.ParticleExpiryTimeMin = entity.Floats.Get(ShortGuids.PARTICLE_EXPIRY_TIME_MIN);
                             gpuConstants.ParticleExpiryTimeMax = entity.Floats.Get(ShortGuids.PARTICLE_EXPIRY_TIME_MAX);
                             gpuConstants.Wind = new Vector3(entity.Floats.Get(ShortGuids.WIND_X), entity.Floats.Get(ShortGuids.WIND_Y), entity.Floats.Get(ShortGuids.WIND_Z));
-                            // Retail stores a random per-system slot in RandomNumber/VertexOffset,
-                            // but the pool layout it indexes is the RETAIL tool's, not ours -
-                            // randomising them here KILLED live FX (ChallengeMap3 cam10's door
-                            // light-shaft vanished; offsets pointing at garbage verts). All-zero
-                            // offsets are what we have always shipped and they render correctly,
-                            // so they stay zero deliberately.
+                            // Retail stores a random per-system slot in RandomNumber/VertexOffset, but the
+                            // pool layout it indexes is the RETAIL tool's, not ours - randomising them here
+                            // KILLED live FX. All-zero offsets are what we have always shipped and they
+                            // render correctly, so they stay zero deliberately.
                             mvr.GPUConstants.SetAs<PARTICLE_GPU_CONSTANTS>(gpuConstants);
 
                             PARTICLE_PARAMS cpuConstants = new PARTICLE_PARAMS();
@@ -5735,10 +5617,8 @@ namespace CathodeLib
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
                         /* A projective decal is a plain CA_DECAL with no features, projected through the
                          * unit box - it has no authored renderable of its own to start from. No shipped
-                         * level places one, so there is no retail mover to check this against; the shape
-                         * comes from the required-model block, where UNITBOX is the only entry nothing
-                         * else claims. If the material cannot be made (no CA_DECAL shader in the level
-                         * and none compilable) we keep whatever was authored rather than losing the mover. */
+                         * level places one, so the shape comes from the required-model block, where
+                         * UNITBOX is the only entry nothing else claims. */
                         List<RenderableElements.Element> decalReds =
                             ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
                         Materials.Material decalMaterial = _materialFactory?.GetOrCreateMaterial(SHADER_LIST.CA_DECAL, 0, "PROJECTIVE_DECAL");
@@ -5826,10 +5706,6 @@ namespace CathodeLib
                         AddMover(entity, mvr, isTemplate);
                     }
                     break;
-                //SimpleWater and SimpleRefraction produce no mover - retail emits none for either, on
-                //any level (6 and 3 entities across the whole game) - so there is no renderable to
-                //hang a material on. The feature mask is still derived so that whoever gives these a
-                //renderable does not have to rediscover it.
                 case FunctionType.SimpleRefraction:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
                     {
@@ -5843,20 +5719,17 @@ namespace CathodeLib
                         if (entity.Bools.Get(ShortGuids.FLOW_UV_ANIMATION))
                             features |= 1L << (int)CA_SIMPLE_REFRACTION.FEATURES.FLOW_UV_ANIMATION;
 
-                        /* Retail ships a mover for every one of these: 4 SimpleWater entities across the
-                         * campaign and 4 SimpleWater movers, 1 SimpleRefraction entity and 1 mover. The
-                         * feature mask above used to be computed and thrown away. The authored material
-                         * carries the textures, so it is kept and only re-pointed at the required mesh. */
+                        /* Retail ships a mover for every one of these, so the authored material is kept
+                         * and only re-pointed at the required mesh. */
                         Resources.Resource resource = AddResourceEntry(entity);
                         Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
                         List<RenderableElements.Element> reds = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
-                        /* The mask above is NOT applied. Read off ENG_ALIEN_NEST, the entity parameters
-                         * give 0x07 (LOW_RES_ALPHA_PASS|SECONDARY_NORMAL_MAPPING|ALPHA_MASKING) while the
-                         * material retail ships for that very entity is 0x8A (SECONDARY_NORMAL_MAPPING|
-                         * FLOW_UV_ANIMATION|REFLECTIVE_MAPPING) - so the parameter-to-feature mapping is
-                         * wrong somewhere, and applying it swapped the material for a fresh one and lost
-                         * the water. The authored material is correct; only the mesh needs choosing. */
+                        /* The mask above is NOT applied. Read off ENG_ALIEN_NEST the entity parameters
+                         * give 0x07 where the material retail ships for that same entity is 0x8A, so the
+                         * parameter-to-feature mapping is wrong somewhere, and applying it swapped the
+                         * material for a fresh one and lost the water. It is derived anyway so whoever
+                         * fixes the mapping has it to hand. */
                         reds = UseRequiredModel(reds, RequiredModels.Model.REQUIRED_MODEL_REFRACTION);
                         mvr.RenderableElements = reds;
                         mvr.Resource = resource;
@@ -5889,19 +5762,16 @@ namespace CathodeLib
                         if (entity.Bools.Get(ShortGuids.REFLECTIVE_MAPPING))
                             features |= 1L << (int)CA_SIMPLEWATER.FEATURES.REFLECTIVE_MAPPING;
 
-                        /* Retail ships a mover for every one of these: 4 SimpleWater entities across the
-                         * campaign and 4 SimpleWater movers, 1 SimpleRefraction entity and 1 mover. The
-                         * feature mask above used to be computed and thrown away. The authored material
-                         * carries the textures, so it is kept and only re-pointed at the required mesh. */
+                        /* Retail ships a mover for every one of these, so the authored material is kept
+                         * and only re-pointed at the required mesh. */
                         Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
                         List<RenderableElements.Element> reds = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
-                        /* The mask above is NOT applied. Read off ENG_ALIEN_NEST, the entity parameters
-                         * give 0x07 (LOW_RES_ALPHA_PASS|SECONDARY_NORMAL_MAPPING|ALPHA_MASKING) while the
-                         * material retail ships for that very entity is 0x8A (SECONDARY_NORMAL_MAPPING|
-                         * FLOW_UV_ANIMATION|REFLECTIVE_MAPPING) - so the parameter-to-feature mapping is
-                         * wrong somewhere, and applying it swapped the material for a fresh one and lost
-                         * the water. The authored material is correct; only the mesh needs choosing. */
+                        /* The mask above is NOT applied. Read off ENG_ALIEN_NEST the entity parameters
+                         * give 0x07 where the material retail ships for that same entity is 0x8A, so the
+                         * parameter-to-feature mapping is wrong somewhere, and applying it swapped the
+                         * material for a fresh one and lost the water. It is derived anyway so whoever
+                         * fixes the mapping has it to hand. */
                         reds = UseRequiredModel(reds, RequiredModels.Model.REQUIRED_MODEL_WATER);
                         mvr.RenderableElements = reds;
                         mvr.Resource = resource;
@@ -6169,10 +6039,8 @@ namespace CathodeLib
             if (!entity.Bools.Get(ShortGuids.light_on_reset))
                 return 0.0f;
 
-            // Follows the link the same way a light's intensity does, and for the same measured
-            // reason: on the 7611 ChallengeMap4 model references this pass lights, following it
-            // matches retail's own EmissiveIntensityMultiplier 7559 times against 7409 for the
-            // "only some link sources count" test, which reads 1.0 where the level authored 0.05.
+            // Follows the link the same way a light's intensity does, and for the same measured reason:
+            // the "only some link sources count" test reads 1.0 where the level authored 0.05.
             float intensity;
             if (entity.Floats.Links.TryGetValue(ShortGuids.intensity_multiplier, out List<Tuple<ShortGuid, InstancedEntity>> links) && links.Count > 0)
             {
@@ -6189,17 +6057,12 @@ namespace CathodeLib
             return Math.Max(0.0f, intensity);
         }
 
-        // A light's intensity_multiplier resolves like any other parameter: whatever drives it wins,
-        // then the entity's own value, then 1 for a light that never mentions it. Judging which
-        // link sources count as "static" and falling back to the local value for the rest was tried
-        // and is much worse - scored against the Colour retail's own light movers carry (their
-        // attenuation terms already agree exactly, so colour isolates the intensity), following the
-        // link is right on 92-99.5% of lights on every level while the static test manages 43-77%:
-        // ChallengeMap4 1829/1838 against 1415, SCI_HospitalUpper 2101/2125 against 1063,
-        // BSP_Torrens 731/740 against 496, Solace 1644/1677 against 723, Tech_Hub 3361/3452
-        // against 2582, HAB_Airport 4453/4814 against 2979. Gating on light_on_reset was tried too
-        // and is wrong in the other direction: it darkens 165-1292 lights a level that retail
-        // leaves lit.
+        // A light's intensity_multiplier resolves like any other parameter: whatever drives it wins, then
+        // the entity's own value, then 1 for a light that never mentions it. Judging which link sources
+        // count as "static" and falling back to the local value for the rest was tried and is much worse
+        // - scored against the Colour retail's own light movers carry, following the link is right on
+        // 92-99.5% of lights on every level while the static test manages 43-77%. Gating on
+        // light_on_reset is wrong in the other direction: it darkens lights retail leaves lit.
         private static float ResolveLightIntensityMultiplier(InstancedEntity entity)
         {
             if (entity.Floats.Links.TryGetValue(ShortGuids.intensity_multiplier, out List<Tuple<ShortGuid, InstancedEntity>> links) && links.Count > 0)

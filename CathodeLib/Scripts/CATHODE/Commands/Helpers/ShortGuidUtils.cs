@@ -21,12 +21,11 @@ namespace CATHODE.Scripting
 
         /* Every ShortGuid that is already spoken for, so GenerateRandom never hands out one that is
          * in use. This used to be the name cache itself, which meant every random id ever minted was
-         * written into the SHORT_GUIDS table to be read back next time - and since a save mints one
-         * per new entity, composite, resource and link, an instanced save of Solace added ~7,300
-         * entries and ~300KB to COMMANDS.PAK, every time, without bound. The strings were never worth
-         * keeping: nothing looks a random id up by name, and FindString falls back to the byte string.
-         * Seeded instead from what a loaded script graph actually uses (ReserveInUse), which covers
-         * more than the old table did - vanilla ids were never in it at all. */
+         * written into the SHORT_GUIDS table - and since a save mints one per new entity, composite,
+         * resource and link, an instanced save of Solace added ~7,300 entries to COMMANDS.PAK every
+         * time, without bound. Nothing looks a random id up by name, and FindString falls back to the
+         * byte string. Seeded instead from what a loaded script graph actually uses (ReserveInUse),
+         * which covers more than the old table did - vanilla ids were never in it at all. */
         private static readonly HashSet<ShortGuid> _reserved = new HashSet<ShortGuid>();
 
         /* One hasher per thread rather than one per call. Generate is the library's name-to-id

@@ -15,12 +15,8 @@ namespace CathodeLib
     /// The case this exists for is deferred lights. A LightReference's renderable run lives on the
     /// COMPOSITE, so every instance of a prefab shares one material - but the light's features and
     /// its gobo texture are per-instance values, freely overridden by aliases further up the tree.
-    /// Retail resolves this by giving the instance a material of its own: in ChallengeMap4 485 of
-    /// 1862 light movers (26%) point at a material other than their composite's authored one, and
-    /// AYZ\Habitation\Feature_Sml\Executive\Projector is exactly the case - authored against
-    /// SPOT_SHADOW_SPECULAR_GOBO_MAT_134915 (gobo_bespoke_hospupper_proyector.tga), shipped in that
-    /// level as SPOT_SPECULAR_GOBO_MAT_142083 (ayz\flash\screen_static_11.tga) because the
-    /// ENVIRONMENT_ChallengeMap4 alias swaps the gobo, drops the shadow and adds a lens flare.
+    /// Retail resolves this by giving the instance a material of its own: 485 of ChallengeMap4's
+    /// 1862 light movers point at a material other than their composite's authored one.
     ///
     /// The gobo texture goes on the material's FIRST sampler even though the deferred shader
     /// declares no sampler slots, and the material's offline light flags carry the GOBO bit - but
@@ -397,15 +393,12 @@ namespace CathodeLib
         //  * the CONSTANTS, which are the ubershader's own named PARAMETERS. Shader.*ParameterRemaps
         //    is indexed BY the PARAMETERS enum value and holds the constant slot that parameter
         //    lives in, 255 meaning this permutation does not use it; the array is padded up to a
-        //    multiple of four. Every parameter an emitter entity carries matches its material's
-        //    slot on ChallengeMap4 (fog boxes 288 of 288, ribbons 2304 of 2620 with the rest being
-        //    the unit conversions below), and the slots left over are ones the entity has no
-        //    parameter for, which come from the material being replaced.
+        //    multiple of four. The slots left over are ones the entity has no parameter for, which
+        //    come from the material being replaced.
         //
         // The hard limit is that a permutation cannot be compiled here: if no shader in the level
         // has the mask an edited entity asks for, the material cannot be built and the caller is
-        // told so. Pooling every level's shaders would roughly double the reach (CA_FOGPLANE 15
-        // masks in the richest level against 37 across the game, CA_PARTICLE 1158 against 2369).
+        // told so.
 
         /// <summary>
         /// The material for an entity whose features have resolved to <paramref name="features"/>,
@@ -469,18 +462,13 @@ namespace CathodeLib
                         return existing;
                     }
 
-                    //On an UNEDITED level the shipped constants are authoritative: retail's
-                    //compiler produced the template from these same Commands, and where our
-                    //parameter conversions drift by more than roundtrip noise the difference is
-                    //per-instance work CA's tool did that the conversions cannot reproduce (the
-                    //regenverify residue - scaled instances, lowered PARTICLE_COUNTs). Rebuilding
-                    //anyway minted "[00000N]" copies of 89 CA_PARTICLE and 10 CA_EFFECT_OVERLAY
-                    //per-instance materials on SCI_AndroidLab, detaching each mover's REDS run
-                    //from the material the Commands-side resource still points at - and the
-                    //engine refuses to draw such an emitter (the ChallengeMap9 poison-gas
-                    //condition through a different door; here it erased cam11's fog carpet,
-                    //while a no-instancing save of the same level rendered it at ratio 1.014).
-                    //Gated on the level carrying no modification metadata, so a genuinely
+                    //On an UNEDITED level the shipped constants are authoritative: retail's compiler
+                    //produced the template from these same Commands, and where our parameter
+                    //conversions drift by more than roundtrip noise the difference is per-instance
+                    //work CA's tool did that the conversions cannot reproduce. Rebuilding anyway
+                    //minted "[00000N]" copies, detaching each mover's REDS run from the material the
+                    //Commands-side resource still points at - and the engine refuses to draw such an
+                    //emitter. Gated on the level carrying no modification metadata, so a genuinely
                     //edited level keeps propagating its edits.
                     if (PreferShippedOnConstantDrift && flagsAlreadyClear &&
                         !_generated.Contains(template) && SameContentExceptConstants(template, built))
@@ -685,9 +673,8 @@ namespace CathodeLib
         /// OFF by default, and that is not timidity. Minting a shader also mints a MATERIAL, and a
         /// new material detaches the mover's renderable run from the material the Commands-side
         /// resource still points at - which the engine refuses to draw. Measured on ENG_ALIEN_NEST:
-        /// turning this on compiled 8 permutations, created 13 materials, and lost the floor water
-        /// and several thrown-flare effects in game. It is the same failure the ChallengeMap9
-        /// poison-gas note in GetShaderFeatureMaterial describes, reached through a new door.
+        /// 8 permutations compiled, 13 materials created, and the floor water and several
+        /// thrown-flare effects lost in game.
         ///
         /// Generating the shader is the easy half; rebinding the Commands resource to the new
         /// material is the half that makes it safe, and it is not written yet.
@@ -705,17 +692,13 @@ namespace CathodeLib
                 if (s != null && s.Ubershader == ubershader && s.UbershaderFeatureFlags == features)
                     return s;
 
-            /* Nothing in the level ships it. This is the case that used to end the road: an entity
-             * whose parameters ask for a feature combination the level was never authored with had
-             * to keep whatever material its template carried, so the toggle did nothing.
-             *
-             * The permutation service tries the level pool again (cheap, and it is the authority on
-             * sampler layout), then any database the host registered, then a compile from
-             * the reconstructed master. No game root is passed - instancing has none, and the
-             * catalogue tier is the host application's business. Everything failable in there
-             * returns null with a message rather than throwing, so a missing master, an absent
-             * d3dcompiler_43, or a build the master does not claim all land back here as "no
-             * shader", exactly as before. */
+            /* Nothing in the level ships it. The permutation service tries the level pool again
+             * (cheap, and it is the authority on sampler layout), then any database the host
+             * registered, then a compile from the reconstructed master. No game root is passed -
+             * instancing has none, and the catalogue tier is the host application's business.
+             * Everything failable in there returns null with a message rather than throwing, so a
+             * missing master, an absent d3dcompiler_43, or a build the master does not claim all
+             * land back here as "no shader", exactly as before. */
             if (!GenerateMissingShaders)
                 return null;
 
@@ -855,16 +838,6 @@ namespace CathodeLib
         }
 
         /// <summary>
-        /// What a vector parameter has to be multiplied by. Only colours are ever rescaled, and only
-        /// on the fog and overlay ubershaders, which take them authored 0-255 like the rest of the
-        /// editor; the FX ones store their tints 0-1 already. Measured on ChallengeMap4: every
-        /// particle and ribbon tint round trips at 1.0, every fog box DEPTH_INTERSECT colour and
-        /// every surface effect COLOUR_TINT at 1/255, and a surface effect FALLOFF unscaled.
-        /// </summary>
-
-        /// <summary>
-
-        /// <summary>
         /// True when a parameter the entity does carry should still be left to the material being
         /// replaced, judging by the value itself.
         /// </summary>
@@ -883,23 +856,29 @@ namespace CathodeLib
                 return false;
             return value[0] == 0.0f && value[1] == 0.0f && value[2] == 0.0f;
         }
+
+        /// <summary>
         /// True for a parameter that the entity authors but retail never writes into the material,
         /// so the material being replaced keeps its own value.
         /// </summary>
         /// <remarks>
-        /// Only one so far: a surface effect's FALLOFF. Every CA_EFFECT_OVERLAY material retail
-        /// ships holds 1,1,1 in FALLOFF's three slots whatever the entity says - 120 of Solace's
-        /// 125 surface effect boxes author 0.05 and get 1, and ChallengeMap4's two author
-        /// &lt;0.5,0.5,1&gt; and get 1,1,1 - while every other constant in the block rebuilds exactly.
-        /// So the shader declares the parameter and the runtime must supply it from somewhere else.
-        /// Writing the authored value instead is what made these the last material type we could
-        /// not generate.
+        /// Only one so far: a surface effect's FALLOFF. Every CA_EFFECT_OVERLAY material retail ships
+        /// holds 1,1,1 in FALLOFF's three slots whatever the entity says, while every other constant
+        /// in the block rebuilds exactly - so the shader declares the parameter and the runtime must
+        /// supply it from somewhere else. Writing the authored value instead is what made these the
+        /// last material type we could not generate.
         /// </remarks>
         public static bool NotBakedIntoMaterial(CATHODE.ShaderTypes.SHADER_LIST ubershader, string parameterName)
         {
             return ubershader == CATHODE.ShaderTypes.SHADER_LIST.CA_EFFECT_OVERLAY &&
                    string.Equals(parameterName, "FALLOFF", StringComparison.Ordinal);
         }
+
+        /// <summary>
+        /// What a vector parameter has to be multiplied by. Only colours are ever rescaled, and only
+        /// on the fog and overlay ubershaders, which take them authored 0-255 like the rest of the
+        /// editor; the FX ones store their tints 0-1 already.
+        /// </summary>
         public static float VectorScale(CATHODE.ShaderTypes.SHADER_LIST ubershader, string parameterName)
         {
             if (parameterName == null) return 1.0f;

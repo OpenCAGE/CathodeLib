@@ -15,66 +15,51 @@ namespace CathodeLib.Alphalight
     /// go with it on every ModelReference that samples the atlas.
     /// </summary>
     /// <remarks>
-    /// <para>Despite the name, the file holds no lighting. It is a <b>sample position atlas</b>:
-    /// an A16B16G16R16F image whose RGB is an <i>object-space position</i> on the alpha-lit
-    /// surface and whose A is a per-model scalar. Lighting is a runtime job - CA_ALPHALIGHT_POSITION
-    /// transforms these local positions per instance, CA_ALPHALIGHT_CLEAR / CA_ALPHALIGHT_LIGHT
-    /// accumulate the live lights at them, and the alpha surface reads the result back through the
-    /// transform in its <c>alpha_light_offset_*</c> / <c>alpha_light_scale_*</c> parameters. So
-    /// nothing here needs to know where the lights are.</para>
+    /// <para>Despite the name, the file holds no lighting. It is a <b>sample position atlas</b>: an
+    /// A16B16G16R16F image whose RGB is an <i>object-space position</i> on the alpha-lit surface and
+    /// whose A is a per-model scalar. Lighting is a runtime job - CA_ALPHALIGHT_POSITION transforms
+    /// these local positions per instance, CA_ALPHALIGHT_CLEAR / CA_ALPHALIGHT_LIGHT accumulate the
+    /// live lights at them, and the alpha surface reads the result back through the transform in its
+    /// <c>alpha_light_offset_*</c> / <c>alpha_light_scale_*</c> parameters. So nothing here needs to
+    /// know where the lights are.</para>
     ///
-    /// <para>How the atlas is laid out, verified against retail BSP_TORRENS (70 samples):</para>
+    /// <para>How the atlas is laid out, verified against retail BSP_TORRENS:</para>
     /// <list type="bullet">
     /// <item>Each participating ModelReference owns a <b>box</b> of <c>(W+1) x (H+1)</c> texels.
     /// <c>W x H</c> of those are probes; the extra row and column are a dilation border on the
-    /// <i>left and top</i>. Boxes never overlap and every live texel is inside one - measured
-    /// exactly on retail, 0 overlaps and 0 stragglers either way.</item>
+    /// <i>left and top</i>. Boxes never overlap and every live texel is inside one.</item>
     /// <item>The parameters point at the first <i>probe</i>, not at the box:
     /// <c>offset = (probeX / resolution, probeY / resolution)</c> and
     /// <c>scale = (W / resolution, H / resolution)</c>. Since a shader maps surface UV 0..1 onto
-    /// <c>probeX - 0.5 .. probeX + W - 1</c> in texel space, the border texel at
-    /// <c>probeX - 1</c> is what makes the bilinear tap at UV 0 land on probe 0 cleanly.</item>
-    /// <item>The border column repeats each row's first probe; the border row is a flat fill of
-    /// probe (0,0). Retail matches on 411/411 border texels and 70/70 border rows.</item>
-    /// <item>Texels no box claimed are <c>(0, 0, 0, -1024)</c>.</item>
+    /// <c>probeX - 0.5 .. probeX + W - 1</c> in texel space, the border texel at <c>probeX - 1</c> is
+    /// what makes the bilinear tap at UV 0 land on probe 0 cleanly.</item>
+    /// <item>The border column repeats each row's first probe; the border row is a flat fill of probe
+    /// (0,0). Texels no box claimed are <c>(0, 0, 0, -1024)</c>.</item>
     /// </list>
     ///
     /// <para>How a probe grid is built: the mesh is rasterised in its <b>alphalight unwrap</b> -
     /// TexCoord3 on most vertex formats, TexCoord2 on the few that stop there - sampling grid
     /// <i>nodes</i> at <c>(i / (W-1), j / (H-1))</c> rather than texel centres, and storing the
-    /// interpolated position. Nodes the charts do not cover take the closest point on the mesh in
-    /// UV space, which is what reproduces retail's clamped grid edges. Where a node lands inside a
-    /// triangle, the position matches retail to ~1e-4.</para>
+    /// interpolated position. Nodes the charts do not cover take the closest point on the mesh in UV
+    /// space, which is what reproduces retail's clamped grid edges.
+    /// <c>alpha_light_average_normal</c> is the mean of the probes' interpolated normals, left
+    /// unnormalised, so its length falls away as the surface curves.</para>
     ///
-    /// <para><c>alpha_light_average_normal</c> is the mean of the probes' interpolated normals,
-    /// left unnormalised - so its length falls away as the surface curves.</para>
-    ///
-    /// <para>Measured against retail on 19 levels: sample counts and atlas resolution match
-    /// exactly, boxes never overlap, and grid sizes match on all but a handful. Probe positions
-    /// land within 5 mm on 65% of BSP_TORRENS' texels and within 5 cm on 82%. Two things retail
-    /// knows that the shipped data does not carry account for most of the rest:</para>
+    /// <para>Two things retail knows that the shipped data does not carry:</para>
     /// <list type="bullet">
-    /// <item><b>Grid size.</b> Deterministic, but not yet reproduced. Over 2004 retail samples on
-    /// every level, no two entities whose <i>whole renderable set</i> matches byte for byte -
-    /// geometry and unwrap, across every element, not just the first - were ever given different
-    /// grids. So it is a pure function of data we hold; we simply do not have the function. It is
-    /// not a world-space texel density: <c>Glass_Impact_VFX\Glass_Frozen_Static</c> is a flat
-    /// 3.59 x 1.15 quad whose unwrap fills the unit square once and gets a <i>10x10</i> grid in all
-    /// eight levels it appears in. Nor is it a span of any shipped UV channel - two window
-    /// composites with identical uv2 and uv3 spans get 16x6 and 17x4, differing only in that one
-    /// carries a second Glass_Edges renderable. The shape is right though: the reported formula is
-    /// <c>width = (uvMax - uvMin) + 2</c> with <c>scale = (width - 1) / resolution</c>, i.e.
-    /// <c>W = span + 1</c>, and those UVs are in lightmap texel space - so the missing piece is the
-    /// density the radiosity probe pass rasterises at. Fitting
-    /// <c>grid = round(length / texel) + 1</c> in world space peaks at texel 0.24 and gets 50% of
-    /// axes exactly right, 77% within one. Until the lightmap-space step is reproduced,
+    /// <item><b>Grid size.</b> Deterministic, but not reproduced. Over 2004 retail samples, no two
+    /// entities whose whole renderable set matches byte for byte were ever given different grids, so
+    /// it is a pure function of data we hold - we simply do not have the function. It is not a
+    /// world-space texel density, nor a span of any shipped UV channel. The shape is right though:
+    /// the reported formula is <c>W = span + 1</c> with those UVs in lightmap texel space, so the
+    /// missing piece is the density the radiosity probe pass rasterises at. Until that is reproduced,
     /// <see cref="AlphalightBakeSettings.PreserveExistingResolution"/> reuses what COMMANDS already
-    /// records, and only new content falls back to <see cref="AlphalightBakeSettings.TargetTexelSize"/>.</item>
+    /// records, and only new content falls back to
+    /// <see cref="AlphalightBakeSettings.TargetTexelSize"/>.</item>
     /// <item><b>Per-model normal push.</b> About a fifth of retail's models store probes displaced
-    /// along the surface normal by an authored distance (0.004 - 0.05 on BSP_TORRENS; the residual
-    /// is along the normal to |cos| = 1.000). There is no source for it in the level, so probes are
-    /// left on the surface. Those models still land within 5 cm, which is what leaves the near
-    /// figure so far above the exact one.</item>
+    /// along the surface normal by an authored distance (0.004 - 0.05 on BSP_TORRENS). There is no
+    /// source for it in the level, so probes are left on the surface; those models still land within
+    /// 5 cm.</item>
     /// </list>
     /// </remarks>
     public static class AlphalightBaker

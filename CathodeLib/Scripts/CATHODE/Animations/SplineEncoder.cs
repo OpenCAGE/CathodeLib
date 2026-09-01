@@ -260,10 +260,6 @@ namespace CATHODE
 
         #region PACKFILE
         /// <summary>
-        /// Lay the whole thing out as a 32 bit packfile, borrowing the header and class name table
-        /// from a section that already ships - they are the same three classes every time.
-        /// </summary>
-        /// <summary>
         /// Lay the animation out into <paramref name="target"/>, which supplies the packfile header
         /// and class name table - both are the same for every animation section in the game, so any
         /// of them will do, and its pointer size decides whether a 32 or 64 bit copy comes out.

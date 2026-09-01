@@ -809,15 +809,11 @@ namespace CathodeLib
         /// it about, which is what someone watching calls a limb left in the rest pose. Named in
         /// plain words ("right arm"), ready to show.
         ///
-        /// This asks the question the viewer asks, not the one <see cref="BonesLeftAtRest"/> asks. A
-        /// bone whose own transform never changes is not the same thing as a limb that doesn't move:
-        /// a shoulder can hold its angle while the elbow below it bends, and the arm is plainly
-        /// moving. So the limb is compared against its rest shape in the frame of the bone it hangs
-        /// off, and only counts as left behind when the whole chain holds still.
-        ///
-        /// Fingers and toes are left out on purpose - they carry small motions of their own, and an
-        /// arm nobody would call moving shouldn't stop being worth mentioning because a finger
-        /// twitched.
+        /// This asks the question the viewer asks, not the one <see cref="BonesLeftAtRest"/> asks: a
+        /// shoulder can hold its angle while the elbow below it bends, and the arm is plainly moving.
+        /// So the limb is compared against its rest shape in the frame of the bone it hangs off, and
+        /// only counts as left behind when the whole chain holds still. Fingers and toes are left out
+        /// on purpose - they carry small motions of their own.
         /// </summary>
         public static List<string> LimbsLeftAtRest(ClipReference clip, Skeleton skeleton, Retargeter retarget = null)
         {
@@ -931,15 +927,9 @@ namespace CathodeLib
             {
                 /* No reference bone - the environment rigs. Their clips are authored in place
                  * already, so there is nothing to anchor and the root is left exactly as the clip
-                 * wrote it.
-                 *
-                 * This used to overwrite the root with the rig's rest transform, on the theory that
-                 * the clip put something there the mesh wasn't built around. It doesn't: 392 of the
-                 * 548 environment clips already start with the root at rest, and the ones that
-                 * don't are the "close" halves of door pairs, which are supposed to begin open. The
-                 * rule was throwing away the whole animation of 87 clips whose root is the moving
-                 * part - a ceiling fan or a nodding bird is a single bone, and that bone is the
-                 * root. */
+                 * wrote it. Overwriting it with the rig's rest transform throws away the whole
+                 * animation of the 87 clips whose root IS the moving part - a ceiling fan or a
+                 * nodding bird is a single bone, and that bone is the root. */
                 return pose;
             }
 

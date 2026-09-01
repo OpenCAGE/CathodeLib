@@ -1506,12 +1506,6 @@ namespace CathodeLib.Ubershaders
             return result;
         }
 
-        /// <summary>
-        /// Synthesize the parameter remap tables for a mastered family's mask, in place on the
-        /// shader. Only fills tables for families whose inclusion rules are known; leaves donor
-        /// tables intact otherwise.
-        /// </summary>
-
         /// CA_PLANET vertex parameters.
         private static IEnumerable<int> PlanetVSParams(long m)
         {
@@ -2181,6 +2175,11 @@ namespace CathodeLib.Ubershaders
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Synthesize the parameter remap tables for a mastered family's mask, in place on the
+        /// shader. Only fills tables for families whose inclusion rules are known; leaves donor
+        /// tables intact otherwise.
+        /// </summary>
         public static void SynthesizeRemaps(SHADER_LIST family, long mask, Shaders.Shader shader)
         {
             if (family == SHADER_LIST.CA_RADIOSITY_INDIRECT || family == SHADER_LIST.CA_RADIOSITY_DIRECT_SPOT)

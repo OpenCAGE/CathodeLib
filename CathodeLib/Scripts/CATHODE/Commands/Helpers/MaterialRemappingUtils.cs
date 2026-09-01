@@ -214,13 +214,10 @@ namespace CathodeLib
                 return renderables;
 
             // A material's name is "<slot>-><assignment>": the slot is the material the MODEL was
-            // authored against, and the assignment is what the level swapped into it. The
-            // parameter can only re-assign within its own slot, so an override naming a slot this
-            // renderable does not use is not for it. Measured on HAB_Airport: 114 movers carry a
-            // 'material' of "screenBlueTextScroll->..." on renderables sitting in the
-            // MUN_Plastic_Smooth_Black_DTY and EMI_TV_Screen_Placeholder_2 slots, and retail
-            // leaves every one of them alone. Only enforced when both names carry a slot - a bare
-            // name is a whole-material assignment and still applies.
+            // authored against, and the assignment is what the level swapped into it. The parameter
+            // can only re-assign within its own slot, so an override naming a slot this renderable
+            // does not use is not for it - retail leaves every such mover alone. Only enforced when
+            // both names carry a slot; a bare name is a whole-material assignment and still applies.
             string overrideSlot = SlotOf(materialName);
             string currentSlot = SlotOf(renderables[0]?.Material?.Name);
             if (overrideSlot != null && currentSlot != null &&
@@ -363,10 +360,9 @@ namespace CathodeLib
         /// <summary>
         /// Drops a leading 3ds Max authoring slot, so "MULTIMATERIAL-&gt;X-&gt;Y" becomes "X-&gt;Y".
         /// Mapping entries are always keyed on the two-part form, so a material that still carries
-        /// its authoring slot can never match one. Measured on HAB_Airport: 658 of 681
-        /// MUN_Plastic_Gloss movers resolve their mapping correctly and then miss this lookup,
-        /// keeping MUN_Plastic_Gloss_Tan_DTY where the mapping says MUN_Plastic_Gloss_White_DTY and
-        /// retail ships White. Two-part names come back unchanged.
+        /// its authoring slot can never match one - which left 658 of HAB_Airport's 681
+        /// MUN_Plastic_Gloss movers resolving their mapping correctly and then missing this lookup.
+        /// Two-part names come back unchanged.
         /// </summary>
         private static string StripAuthoringSlot(string materialName)
         {
