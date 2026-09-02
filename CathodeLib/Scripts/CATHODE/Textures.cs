@@ -424,9 +424,13 @@ namespace CATHODE
             TEX4 newTexture = texture.Copy();
             if (existingByName != null)
             {
-                Entries[Entries.IndexOf(existingByName)] = newTexture;
+                existingByName.Format = newTexture.Format;
+                existingByName.StateFlags = newTexture.StateFlags;
+                existingByName.UsageFlags = newTexture.UsageFlags;
+                existingByName.TexturePersistent = newTexture.TexturePersistent;
+                existingByName.TextureStreamed = newTexture.TextureStreamed;
                 _byNormalisedName = null; //an entry was replaced in place, so the count says nothing
-                return newTexture;
+                return existingByName;
             }
 
             Entries.Add(newTexture);

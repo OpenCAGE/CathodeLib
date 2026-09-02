@@ -132,10 +132,6 @@ namespace CATHODE
         {
             if (map == null) return -1;
 
-            /* The lookup is built under the lock but read outside it: the Commands writers resolve
-             * rows to indices from a Parallel.For, and holding a lock for every one of those was
-             * slower than the scan it replaced. The dictionary is built complete and then published
-             * in one assignment, so a reader always sees a finished one. */
             Dictionary<MaterialMapping, int> index = _writeIndex;
             if (index == null || _writeIndexCount != _writeList.Count)
             {
@@ -187,8 +183,9 @@ namespace CATHODE
             MaterialMapping newMatMap = matMap.Copy();
             if (existingByName != null)
             {
-                Entries[Entries.IndexOf(existingByName)] = newMatMap;
-                return newMatMap;
+                existingByName.ID = newMatMap.ID;
+                existingByName.Mappings = newMatMap.Mappings;
+                return existingByName;
             }
 
             Entries.Add(newMatMap);

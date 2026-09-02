@@ -804,12 +804,59 @@ namespace CATHODE
 
             if (existingByName != null)
             {
-                Entries[Entries.IndexOf(existingByName)] = newModel;
-                return newModel;
+                if (!SameLayout(existingByName, newModel))
+                {
+                    return existingByName;
+                }
+                for (int c = 0; c < newModel.Components.Count; c++)
+                {
+                    for (int l = 0; l < newModel.Components[c].LODs.Count; l++)
+                    {
+                        CS2.Component.LOD from = newModel.Components[c].LODs[l];
+                        CS2.Component.LOD into = existingByName.Components[c].LODs[l];
+                        into.Name = from.Name;
+                        for (int s = 0; s < from.Submeshes.Count; s++)
+                            CopySubmeshInto(from.Submeshes[s], into.Submeshes[s]);
+                    }
+                }
+                return existingByName;
             }
 
             Entries.Add(newModel);
             return newModel;
+        }
+
+        private static bool SameLayout(CS2 a, CS2 b)
+        {
+            if (a.Components.Count != b.Components.Count) return false;
+            for (int c = 0; c < a.Components.Count; c++)
+            {
+                if (a.Components[c].LODs.Count != b.Components[c].LODs.Count) return false;
+                for (int l = 0; l < a.Components[c].LODs.Count; l++)
+                    if (a.Components[c].LODs[l].Submeshes.Count != b.Components[c].LODs[l].Submeshes.Count) return false;
+            }
+            return true;
+        }
+
+        /* Everything but CollisionProxyIndex: that is an index into THIS level's COLLISION.HKX, and the
+         * source's value addresses the source's file, so the destination's own binding is kept. */
+        private static void CopySubmeshInto(CS2.Component.LOD.Submesh from, CS2.Component.LOD.Submesh into)
+        {
+            into.MinBounds = from.MinBounds;
+            into.MaxBounds = from.MaxBounds;
+            into.MinLODRange = from.MinLODRange;
+            into.MaxLODRange = from.MaxLODRange;
+            into.RenderFlags = from.RenderFlags;
+            into.Material = from.Material;
+            into.WeightedCollision = from.WeightedCollision;
+            into.MorphAnimSet = from.MorphAnimSet;
+            into.VertexFormatFull = from.VertexFormatFull;
+            into.VertexFormatPartial = from.VertexFormatPartial;
+            into.VertexScale = from.VertexScale;
+            into.VertexCount = from.VertexCount;
+            into.IndexCount = from.IndexCount;
+            into.Bones = from.Bones;
+            into.Data = from.Data;
         }
         #endregion
 
