@@ -265,14 +265,6 @@ namespace CATHODE
             if (extension != ".PAK" && extension != ".GZ" && extension != ".BIN")
                 return false;
 
-            /* A level carries the same script data in both formats, and building the second one was
-             * the single largest thing left in a save. Neither writer reads the other's output and
-             * both only read the composite graph - the fixup pass above is what mutates it - so they
-             * are built at the same time. Everything they share (the ShortGuid cache, and the write
-             * indexes of REDS, collision maps and material mappings) is safe to call concurrently. */
-            bool alsoSibling = !_compressed;
-            string siblingPath = alsoSibling ? Path.ChangeExtension(_filepath, extension == ".PAK" ? ".BIN" : ".PAK") : null;
-
             byte[] content = null;
             byte[] siblingContent = null;
             Parallel.Invoke(
@@ -287,13 +279,15 @@ namespace CATHODE
                 },
                 () =>
                 {
-                    if (!alsoSibling) return;
-                    byte[] written;
-                    if (extension == ".PAK")
-                        CommandsBIN.Write(_entryPoints, Entries, out written, _envAnims, _colMaps, _reds);
-                    else
-                        CommandsPAK.Write(_entryPoints, Entries, out written, _envAnims, _colMaps, _reds);
-                    siblingContent = written;
+                    if (!_compressed)
+                    {
+                        byte[] written;
+                        if (extension == ".PAK")
+                            CommandsBIN.Write(_entryPoints, Entries, out written, _envAnims, _colMaps, _reds);
+                        else
+                            CommandsPAK.Write(_entryPoints, Entries, out written, _envAnims, _colMaps, _reds);
+                        siblingContent = written;
+                    }
                 }
             );
 
@@ -302,7 +296,7 @@ namespace CATHODE
             if (_compressed)
                 Utilities.GZIPCompress(_filepath);
             else if (siblingContent != null)
-                WriteToDisk(siblingPath, siblingContent);
+                WriteToDisk(Path.ChangeExtension(_filepath, extension == ".PAK" ? ".BIN" : ".PAK"), siblingContent);
 
             return true;
         }
