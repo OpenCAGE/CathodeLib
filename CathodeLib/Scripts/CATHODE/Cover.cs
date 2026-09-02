@@ -176,6 +176,35 @@ namespace CATHODE
         #region STRUCTURES
         public class CoverSegment
         {
+            /// <summary>
+            /// The Flags layout, verified against
+            /// retail with <c>diag coverbits all</c>.
+            /// </summary>
+            /// <remarks>
+            /// One enum serves both words, each using the bits that mean something to it. On the
+            /// SEGMENT word the four link bits and <see cref="IsLowCoverBit"/> are exact in both
+            /// directions over the whole campaign - 2,829 LEFT_CORNER_LINK bits against exactly the
+            /// 2,829 segments carrying a left corner UID, and the same for the other three - while
+            /// the peek and terminating bits are never set. On the SLOT word the peek bits and
+            /// IS_LOW_COVER are the ones that carry meaning.
+            /// </remarks>
+            public const int LeftPeekBit = 1 << 0;
+            public const int RightPeekBit = 1 << 1;
+            public const int OverPeekBit = 1 << 2;
+            public const int LeftCornerLinkBit = 1 << 3;
+            public const int RightCornerLinkBit = 1 << 4;
+            public const int LeftColinearLinkBit = 1 << 5;
+            public const int RightColinearLinkBit = 1 << 6;
+            public const int LeftCornerAutoBit = 1 << 7;
+            public const int RightCornerAutoBit = 1 << 8;
+            public const int LeftColinearAutoBit = 1 << 9;
+            public const int RightColinearAutoBit = 1 << 10;
+            public const int LeftCornerExternalBit = 1 << 11;
+            public const int RightCornerExternalBit = 1 << 12;
+            public const int IsLowCoverBit = 1 << 13;
+            public const int IsTerminatingLeftEdgeBit = 1 << 14;
+            public const int IsTerminatingRightEdgeBit = 1 << 15;
+
             public Vector3 Left;
             public Vector3 Right;
             public Vector3 Normal; 
@@ -284,6 +313,15 @@ namespace CATHODE
                     packed |= (nibble & 0xF) << shift;
                     return packed;
                 }
+                /// <summary>
+                /// The six vertical nibbles sit in the TOP 24 bits, not the bottom - shift
+                /// (7 - index) * 4, so LeftEdgeBottom is bits 28-31 and RightEdgeTop is bits 8-11.
+                /// The low byte is unused: it is zero on 100.0% of the 9,085 slots the campaign
+                /// ships. Reading them two nibbles low, as this did, scrambles which firing position
+                /// each cone belongs to - the giveaway is that the dead-arc rates stop matching the
+                /// horizontal ones. Read correctly they agree to within two points on every one of
+                /// the six positions (`diag coverslots`).
+                /// </summary>
                 private float GetVerticalAngle(int indexFromMsb)
                 {
                     int shift = (7 - indexFromMsb) * 4;

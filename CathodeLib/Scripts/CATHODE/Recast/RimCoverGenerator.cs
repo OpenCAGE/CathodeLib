@@ -730,12 +730,30 @@ namespace CathodeLib.NavMesh
                 float top = 0f;
                 float step = Math.Max(0.05f, settings.RayTopStep);
                 float reach = settings.RayTopReach;
+                float firstMiss = -1f;
                 for (float h = step; h <= settings.MaximumObstacleHeight + 1.5f; h += step)
                 {
                     var origin = new Vector3(rimPoint.X, floorY + h, rimPoint.Z);
                     var ray = new Ray(origin, flat, 0f, reach);
-                    if (_bvh.Traverse(ref ray, out Hit _)) top = h;
-                    else if (h > 0.3f) break;
+                    if (_bvh.Traverse(ref ray, out Hit _)) { top = h; firstMiss = -1f; }
+                    else if (h > 0.3f) { firstMiss = h; break; }
+                }
+
+                // The scan above reports the last height that still HIT, so the real top is
+                // somewhere in the step above it and we under-report by up to a whole RayTopStep.
+                // That is 0.15 m, which is exactly the distance between our fitted MinimumHeight of
+                // 0.65 and the 0.8 it started from - a waist-high desk at 0.85 m reads as 0.75 and
+                // fails a gate it should pass. Close the interval by bisection.
+                if (settings.RayTopRefineSteps > 0 && top > 0f && firstMiss > top)
+                {
+                    float lo = top, hi = firstMiss;
+                    for (int i = 0; i < settings.RayTopRefineSteps; i++)
+                    {
+                        float mid = 0.5f * (lo + hi);
+                        var probe = new Ray(new Vector3(rimPoint.X, floorY + mid, rimPoint.Z), flat, 0f, reach);
+                        if (_bvh.Traverse(ref probe, out Hit _)) lo = mid; else hi = mid;
+                    }
+                    top = lo;
                 }
                 return top;
             }

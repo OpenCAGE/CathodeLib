@@ -134,6 +134,9 @@ namespace CathodeLib.NavMesh
             if (settings.SkipGhostedCollision)
                 CollectGhostedSkip(level, skip);
 
+            if (settings.SkipTransparentCollision)
+                CollectTransparentSkip(level, skip);
+
             if (settings.SkipSmallPropCollision)
                 soup.PropInstancesSkipped = CollectSmallPropSkip(level, hkx, host, settings, skip);
 
@@ -333,6 +336,25 @@ namespace CathodeLib.NavMesh
                 CollisionMaps.CollisionType type =
                     (CollisionMaps.CollisionType)((uint)entry.Flags & (uint)CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK);
                 if (type == CollisionMaps.CollisionType.PLAYER_ONLY)
+                    skip.Add(entry.CollisionInstance);
+            }
+        }
+
+        /// <summary>
+        /// Omit glass. See <see cref="NavMeshBakeSettings.SkipTransparentCollision"/>.
+        /// </summary>
+        static void CollectTransparentSkip(Level level, HashSet<HavokPackfile.CompoundInstance> skip)
+        {
+            if (level?.CollisionMaps?.Entries == null || skip == null)
+                return;
+            foreach (CollisionMaps.COLLISION_MAPPING entry in level.CollisionMaps.Entries)
+            {
+                if (entry?.CollisionInstance == null)
+                    continue;
+                CollisionMaps.CollisionType type =
+                    (CollisionMaps.CollisionType)((uint)entry.Flags & (uint)CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK);
+                if (type == CollisionMaps.CollisionType.TRANSPARENT
+                    || type == CollisionMaps.CollisionType.DYNAMIC_TRANSPARENT)
                     skip.Add(entry.CollisionInstance);
             }
         }

@@ -54,13 +54,13 @@ namespace CathodeLib.NavMesh
         /// the table itself, while retail's deep-crouch region runs out to where a character stops
         /// fitting: marked and left alone the surface is almost perfectly right and far too small
         /// (ChallengeMap11 32.5 m2 against retail's 52.5, but only 1% of it spurious).</para>
-        /// <para><b>The engine's own file says 4 and we ship 2</b>, which is deliberate. Swept with
+        /// <para><b>This started at 4 and we ship 2</b>, which is deliberate. Swept with
         /// the crawl gates over ChallengeMap11 / TECH_RND / Tech_Hub, crawl F1 means are 82.2 at
         /// spread 2, 75.9 at 3 and 69.9 at 4 - at 4 the surface is the closest match to retail's
         /// (86-91% covered) but it grows enough extra mouths to emit 118-162 crawl positions against
         /// retail's 87-89. Our spread is a four-connected walk over span connectivity, which is a
-        /// diamond rather than whatever metric the engine used, so the two numbers are not measuring
-        /// the same distance. Re-derive this if the engine's spread is ever decoded properly.</para>
+        /// diamond rather than whatever metric produced retail's regions, so the two numbers are not
+        /// measuring the same distance. Re-derive this if retail's spread is ever understood properly.</para>
         /// </remarks>
         public int HeightLimitedAreaSpread = 2;
 
@@ -69,7 +69,7 @@ namespace CathodeLib.NavMesh
         /// spread alone, and wins any overlap.
         /// </summary>
         /// <remarks>
-        /// The engine's value of 1 is confirmed rather than assumed. Sweeping the crouch spread over
+        /// The value of 1 is confirmed rather than assumed. Sweeping the crouch spread over
         /// 0 / 1 / 2 / 3 cells at deep spread 2, crawl F1 is 80.0 / 80.8 / 82.1 / 81.9 on
         /// ChallengeMap11 and 72.6 / 72.3 / 72.3 / 75.2 on Tech_Hub - 3 (= 2 + 1) is best or tied on
         /// both, and it costs nothing in assault even though crouch spreading eats standing rim.
@@ -97,8 +97,8 @@ namespace CathodeLib.NavMesh
         public float HeightLimitedCrouchShare = 0.15f;
 
         /// <summary>
-        /// Grow deep-crouch onto a neighbouring polygon that is partly low, in the spirit of the
-        /// engine's own <c>height_limited_area_spread</c> of 4 cells. Zero disables it.
+        /// Grow deep-crouch onto a neighbouring polygon that is partly low, in the spirit of a
+        /// <c>height_limited_area_spread</c> of 4 cells. Zero disables it.
         /// </summary>
         /// <remarks>
         /// <para>After the share fix we cover 76-78% of retail's deep-crouch floor and no clearance
@@ -120,7 +120,7 @@ namespace CathodeLib.NavMesh
         /// contour is cut along the class boundary and a crawl space becomes its own polygons.
         /// </summary>
         /// <remarks>
-        /// This is what the engine appears to do - retail's deep-crouch regions are one or two
+        /// This is what retail's data suggests - its deep-crouch regions are one or two
         /// polygons of about half a square metre, far smaller than Recast merges to on its own, and
         /// the three <c>height_limited_area_*</c> settings only make sense on the heightfield. The
         /// cost is the 6-bit area id: it now carries <c>1 + class + 3 * slot</c>, so barriers get 20
@@ -282,6 +282,19 @@ namespace CathodeLib.NavMesh
         /// the node's TopMarker entity is ignored by the generator.
         /// </summary>
         public float BackstageNodeHeight = 6.0f;
+
+        /// <summary>
+        /// Leave glass out of the soup. Off for the navmesh - a window still stops you walking
+        /// through it - and ON for the cover bake.
+        /// </summary>
+        /// <remarks>
+        /// Glass is collision type TRANSPARENT / DYNAMIC_TRANSPARENT. You cannot take cover behind
+        /// a window and you can see straight through one, so for cover it is not an obstacle at
+        /// all - but the probe measures it as a full-height solid and runs cover along it. Matt
+        /// spotted exactly that on the top floor of ENG_TowPlatform, where we covered the front
+        /// window and retail has nothing there.
+        /// </remarks>
+        public bool SkipTransparentCollision = false;
 
         public static NavMeshBakeSettings CreateDefault() => new NavMeshBakeSettings();
     }

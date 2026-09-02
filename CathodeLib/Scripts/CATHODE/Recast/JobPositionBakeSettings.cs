@@ -9,7 +9,7 @@ namespace CathodeLib.NavMesh
     public sealed class JobPositionBakeSettings
     {
         // Spotting positions are laid out along a run of cover exactly as assault positions are,
-        // with their own set of the engine's constants. The pair is written relative to the wall:
+        // with their own set of constants. The pair is written relative to the wall:
         // the job sits ExtraDistanceFromCollision out from the collision surface - so just outside
         // the eroded navmesh - and the task PathPositionDistanceOffset further in from the job.
 
@@ -41,8 +41,8 @@ namespace CathodeLib.NavMesh
         /// <summary>Spotting jobs closer together than this collapse into one.</summary>
         public float SpottingMergeDistance = 0.25f;
 
-        // Assault positions are laid out along a run of cover, and these five carry the engine's
-        // own names and values for that. A run shorter than OnePoint gets nothing; up to BothEnds
+        // Assault positions are laid out along a run of cover, and these five carry the
+        // names and values for that. A run shorter than OnePoint gets nothing; up to BothEnds
         // it gets a single point at its middle; beyond that one point MinDistanceFromEdgeOfCover
         // in from each end, with more spaced evenly between them so no gap exceeds
         // MaxDistanceBetweenPositionsOnSameCover.
@@ -98,8 +98,8 @@ namespace CathodeLib.NavMesh
         /// Build the assault runs from the baked COVER rather than from raw navmesh rim.
         /// </summary>
         /// <remarks>
-        /// The engine's own parameter names for this pass all say "cover" - one point per run of
-        /// cover, a minimum distance from the edge of cover - and it runs over cover volumes. Bare
+        /// The parameter names for this pass all say "cover" - one point per run of
+        /// cover, a minimum distance from the edge of cover - and retail's run over cover volumes. Bare
         /// rim stands in for those badly: 35% of the positions we produce are more than 5 m from
         /// any retail one, because a stretch of wall with nothing to hide behind still counts as a
         /// run. Cover carries the obstacle, thickness and open-floor gates already.
@@ -254,8 +254,20 @@ namespace CathodeLib.NavMesh
         public float SpottingMinObstacleHeight = 0.7f;
 
         /// <summary>
+        /// A spotting run at least this long keeps its positions even where the per-position obstacle
+        /// test fails; 0 applies the test to every run. Bake-free on retail's mesh (`diag spotsweep all
+        /// exempt`, 13 levels, 2 Sep 2026): a leave-one-level-out tree over the run profile says that
+        /// with an obstacle a run needs ~0.9 m, and WITHOUT one retail still places from ~2.4 m, which
+        /// the gate refused outright. Gate alone F1 73.9; exempting runs of 1.5 / 2.0 / 2.4 m: 74.4 /
+        /// 74.4 / 74.4 (recall +2.4, precision -0.9). In the baker (`diag jobiter`) it is noise - CM11
+        /// 70.2 -> 70.2 at 2.4 and worse below, Tech_Hub 70.1 -> 70.5 - because the collision-read
+        /// obstacle probe already passes most of what the navmesh-soup probe refused. Left off.
+        /// </summary>
+        public float SpottingObstacleExemptLength = 0f;
+
+        /// <summary>
         /// How far consecutive rim edges may turn and still count as one continuous run of cover.
-        /// Ours, not the engine's - the engine works from cover volumes, we have to rebuild the
+        /// Ours alone - retail's positions follow cover volumes, we have to rebuild the
         /// runs from the navmesh rim. Swept at 5 / 15 / 30 degrees against retail; 15 is the best
         /// balance of match against over-production.
         /// </summary>

@@ -50,6 +50,26 @@ namespace CathodeLib
         /// which accounts for nearly all of our node over-production - the MEDIAN network is already
         /// 1.00x retail's count, it is a tail of vents blown up 5-145x.
         /// </remarks>
+        /// <summary>
+        /// Seed cost of a marker's flood by its authored <c>room_size</c>: rooms 0, then corridors,
+        /// small rooms, vents, each one step of <see cref="SoundNetworkBakeSettings.ClassSeedBias"/>
+        /// further behind. A contested node goes to the bigger space.
+        /// </summary>
+        private static float ClassBias(uint roomSize)
+        {
+            float step = _settings.ClassSeedBias;
+            if (step <= 0.0f) return 0.0f;
+            switch (roomSize)
+            {
+                case 2585319144: return 0.0f;        // large_room
+                case 1834233174: return step;        // medium_room
+                case 4063189299: return step * 2f;   // corridor
+                case 4103918620: return step * 3f;   // small_room
+                case 3321711160: return step * 4f;   // vent
+                default: return step * 2f;
+            }
+        }
+
         private static float ExtentCap(uint roomSize)
         {
             switch (roomSize)
@@ -140,6 +160,27 @@ namespace CathodeLib
                 }
             }
 
+            // Retail deduplicates hand-placed nodes: two SoundNetworkNode entities within about half
+            // a metre of each other - a freestanding cupboard's node beside the door_audio pair, a
+            // ladder's beside a landing's - come through as one. Kept in entity order, first wins.
+            // See SoundNetworkBakeSettings.AuthoredDedupDistance.
+            if (_settings.AuthoredDedupDistance > 0.0f && manualNodes.Count > 1)
+            {
+                float ddSq = _settings.AuthoredDedupDistance * _settings.AuthoredDedupDistance;
+                var keptNodes = new List<Vector3>(manualNodes.Count);
+                foreach (Vector3 p in manualNodes)
+                {
+                    bool dup = false;
+                    for (int i = 0; i < keptNodes.Count; i++)
+                        if (Vector3.DistanceSquared(keptNodes[i], p) <= ddSq) { dup = true; break; }
+                    if (!dup) keptNodes.Add(p);
+                }
+                if (keptNodes.Count < manualNodes.Count)
+                    log?.Invoke("Sound networks: dropped " + (manualNodes.Count - keptNodes.Count) + " hand-placed node(s) within " +
+                                _settings.AuthoredDedupDistance.ToString("0.##") + " m of another - retail keeps one of such a pair.");
+                manualNodes = keptNodes;
+            }
+
             if (markers.Count == 0) { log?.Invoke("Sound networks: no SoundEnvironmentMarker, nothing to build."); return; }
 
             // With no SoundLevelInitialiser at all the fill still runs. Five DLC levels ship without
@@ -147,6 +188,9 @@ namespace CathodeLib
             // those levels with only their authored nodes.
             bool autoGenerate = initialiser == null || initialiser.Bools.Get(ShortGuidUtils.Generate("auto_generate_networks"));
             float minSpacing = initialiser == null ? 1.4f : initialiser.Floats.Get(ShortGuidUtils.Generate("network_node_min_spacing"));
+            // The initialiser's other parameter. No initialiser, no cap - which is the split between
+            // the DLC maps that land on retail's node count and the campaign levels that overshoot.
+            float markerSight = initialiser == null ? 0.0f : initialiser.Floats.Get(ShortGuidUtils.Generate("network_node_max_visibility"));
             if (minSpacing <= 0.0f) minSpacing = 1.4f;
             log?.Invoke("Sound networks: initialiser " + (initialiser == null ? "absent" : "present") +
                         ", auto_generate_networks=" + autoGenerate + ", min spacing=" + minSpacing.ToString("0.##") +
@@ -162,6 +206,22 @@ namespace CathodeLib
                 _settings.SkipGameplayBarriers ? GameplayBarrierInstances(level, entities) : null;
             if (gameplayBarriers != null && gameplayBarriers.Count > 0)
                 log?.Invoke("Sound occluders: ignoring " + gameplayBarriers.Count + " CollisionBarrier volume(s) - they stop the player, not sound");
+            // The authored sound hulls out of the FLOOD's occluders too, if asked: they attenuate
+            // what passes a doorway, and a marker flood that cannot pass them leaves whole chunks of
+            // a room as sealed pockets. See SoundNetworkBakeSettings.FloodSkipsSoundHulls.
+            if (_settings.FloodSkipsSoundHulls && level?.CollisionMaps?.Entries != null)
+            {
+                gameplayBarriers = gameplayBarriers == null ? new HashSet<HavokPackfile.CompoundInstance>() : new HashSet<HavokPackfile.CompoundInstance>(gameplayBarriers);
+                int hulls = 0;
+                foreach (CollisionMaps.COLLISION_MAPPING entry in level.CollisionMaps.Entries)
+                {
+                    if (entry?.CollisionInstance == null) continue;
+                    var type = (CollisionMaps.CollisionType)((uint)entry.Flags & (uint)CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK);
+                    if (type != CollisionMaps.CollisionType.SOUND && type != CollisionMaps.CollisionType.SOUND_BARRIER) continue;
+                    if (gameplayBarriers.Add(entry.CollisionInstance)) hulls++;
+                }
+                log?.Invoke("Sound occluders: ignoring " + hulls + " SOUND-typed hull instance(s) for the marker flood");
+            }
             if (RadiosityOccluders.TryCollect(level, null, out float[] verts, out int[] tris, log, true, occluderFlags, _settings.SkipDoorBarriers, null, gameplayBarriers) &&
                 tris != null && tris.Length >= 3)
             {
@@ -187,7 +247,7 @@ namespace CathodeLib
             int autoCount = 0;
             if (autoGenerate)
             {
-                autoCount = ScatterOverNavmesh(level, positions, minSpacing, occluders, markerPositions);
+                autoCount = ScatterOverNavmesh(level, positions, minSpacing, occluders, markerPositions, markerSight, log);
             }
 
             List<Link> links = BuildLinks(positions, occluders, MaxLinkDistance, log);
@@ -196,7 +256,29 @@ namespace CathodeLib
 
             int dropped = DiscardStrandedFill(positions, manualCount, markerNetworks, networks, ref owner);
 
+            // Retail's fill never enters a vent - every Vent-class network it ships is hand-placed
+            // nodes only - so the generated nodes the flood hands to one are dropped here.
+            // See SoundNetworkBakeSettings.NoFillInVents.
+            if (_settings.NoFillInVents)
+            {
+                int ventFill = 0;
+                for (int i = manualCount; i < positions.Count; i++)
+                {
+                    int o = owner[i];
+                    if (o < 0 || o >= markerNetworks || networks[o].RoomSizeValue != 3321711160u) continue;
+                    owner[i] = -1;
+                    ventFill++;
+                }
+                if (ventFill > 0)
+                {
+                    dropped += ventFill;
+                    log?.Invoke("Sound networks: dropped " + ventFill + " generated node(s) inside vent networks - retail's fill never enters a vent.");
+                }
+            }
+
             AbsorbEnclosedPockets(positions, owner, markerNetworks, occluders, log);
+            if (_settings.AbsorbStandingPocketsThroughHulls)
+                AbsorbStandingPockets(level, positions, owner, markerNetworks, BuildOpeningGeometry(level, barriers, true, null), log);
             ReportSealedReachability(positions, owner, markerNetworks, networks, occluders, occluderFlags, log);
 
             // Nodes are created in their owning network so the writer's grouping is stable.
@@ -223,11 +305,17 @@ namespace CathodeLib
             }
 
             uint[] barrierTriangleInstance = null;
-            BVHAccel openingGeometry = _settings.BarrierBoundaryTest == 3 ? BuildOpeningGeometry(level, barriers, log) : null;
+            BVHAccel openingGeometry = _settings.BarrierBoundaryTest == 3
+                ? BuildOpeningGeometry(level, barriers, _settings.OpeningSkipsSoundCollision, log) : null;
+            // The sound hulls seal a pocket and wrongly block a doorway - two different jobs - so a
+            // sealed network is tested against the soup that keeps them when the named test skips them.
+            BVHAccel openingStrict = _settings.BarrierBoundaryTest == 3 && _settings.OpeningSkipsSoundCollision &&
+                                     _settings.SealedOpeningKeepsSoundHulls && _settings.SealedNetworkLinking != 0
+                ? BuildOpeningGeometry(level, barriers, false, log) : null;
             BVHAccel barrierGeometry = _settings.BarrierBoundaryTest == 2
                 ? BuildBarrierGeometry(level, barriers, out barrierTriangleInstance, log) : null;
             LinkNetworks(networks, markerNetworks, nodes, links, owner, CollectBarriers(level, barriers),
-                         barrierGeometry, barrierTriangleInstance, openingGeometry, manualCount, log);
+                         barrierGeometry, barrierTriangleInstance, openingGeometry, openingStrict, manualCount, log);
             var starved = new List<string>();
             for (int i = 0; i < networks.Count; i++)
             {
@@ -304,6 +392,7 @@ namespace CathodeLib
                                          SoundNodeNetwork.NetworkNode[] nodes, List<Link> links, int[] owner,
                                          List<(Vector3 position, uint instance)> barriers,
                                          BVHAccel barrierGeometry, uint[] barrierTriangleInstance, BVHAccel openingGeometry,
+                                         BVHAccel openingStrict,
                                          int manualCount, Action<string> log)
         {
             // Which networks may hold a boundary at all. Sealed networks - the ones no marker
@@ -350,6 +439,8 @@ namespace CathodeLib
             // around a third of retail's boundaries and, through the smaller connected components
             // that followed, most of its NetworkPaths.
             var shortest = new Dictionary<(int, int), (int a, int b, float dist, uint barrier, bool ok)>();
+            // XZ extent of every candidate crossing's midpoint per pair - how WIDE the join is.
+            var spread = new Dictionary<(int, int), (float x0, float x1, float z0, float z1)>();
             bool weighBarrier = _settings.BarrierBoundaryTest > 0;
             {
                 var grid = new Dictionary<(int, int, int), List<int>>();
@@ -382,6 +473,15 @@ namespace CathodeLib
                                     var key = a < b ? (a, b) : (b, a);
                                     int lo = a < b ? i : j, hi = a < b ? j : i;
 
+                                    if (_settings.BarrierBoundaryTest == 3 && _settings.OpeningMaxWidth > 0f)
+                                    {
+                                        Vector3 m = (nodes[i].Position + nodes[j].Position) * 0.5f;
+                                        if (spread.TryGetValue(key, out var s))
+                                            spread[key] = (Math.Min(s.x0, m.X), Math.Max(s.x1, m.X), Math.Min(s.z0, m.Z), Math.Max(s.z1, m.Z));
+                                        else
+                                            spread[key] = (m.X, m.X, m.Z, m.Z);
+                                    }
+
                                     // With the barrier required, the crossing we keep for a pair is
                                     // the shortest one AT A DOOR rather than the shortest one
                                     // anywhere. Two rooms are routinely near each other along a
@@ -402,12 +502,22 @@ namespace CathodeLib
                                         // one: a sealed network that holds a boundary at all is the
                                         // lone door node standing IN the doorway, and gating it on
                                         // seeing through that opening admits none of them.
-                                        ok = a >= markerNetworks || b >= markerNetworks ||
-                                             SeesThroughOpening(openingGeometry, nodes[i].Position, nodes[j].Position);
+                                        bool sealedPair = a >= markerNetworks || b >= markerNetworks;
+                                        ok = (_settings.OpeningExemptsSealed && sealedPair) ||
+                                             SeesThroughOpening(sealedPair && openingStrict != null ? openingStrict : openingGeometry,
+                                                                nodes[i].Position, nodes[j].Position);
                                         // The guid still names the nearest barrier - the OPENING is
                                         // what qualifies the pair, so a doorway whose barrier sits
                                         // out of range keeps its boundary and writes no guid.
                                         bar = NearestBarrier(barriers, (nodes[i].Position + nodes[j].Position) * 0.5f);
+                                        // ...unless asked to insist on the door as well, for the
+                                        // named-to-named joins that have no barrier anywhere near.
+                                        if (_settings.OpeningRequiresBarrier && a < markerNetworks && b < markerNetworks && bar == 0u)
+                                            ok = false;
+                                        // A door node has a door: a sealed network's crossing must
+                                        // have a barrier by it, or it is a pocket that merely sees out.
+                                        if (_settings.SealedRequiresBarrier && (a >= markerNetworks || b >= markerNetworks) && bar == 0u)
+                                            ok = false;
                                     }
                                     else if (weighBarrier)
                                     {
@@ -443,6 +553,24 @@ namespace CathodeLib
                                 BarrierSearchRadius.ToString("0.#") + " m - a boundary is a doorway.");
             }
 
+            // A doorway is NARROW. Two markers that meet across open floor put dozens of node pairs
+            // within reach of each other along a join metres wide; a door puts a handful through a
+            // gap the width of the door. See SoundNetworkBakeSettings.OpeningMaxWidth.
+            if (_settings.BarrierBoundaryTest == 3 && _settings.OpeningMaxWidth > 0f)
+            {
+                var wide = new List<(int, int)>();
+                foreach (var pair in shortest)
+                {
+                    if (!spread.TryGetValue(pair.Key, out var s)) continue;
+                    float w = (float)Math.Sqrt((s.x1 - s.x0) * (s.x1 - s.x0) + (s.z1 - s.z0) * (s.z1 - s.z0));
+                    if (w > _settings.OpeningMaxWidth) wide.Add(pair.Key);
+                }
+                foreach ((int, int) key in wide) shortest.Remove(key);
+                if (wide.Count > 0)
+                    log?.Invoke("Sound networks: dropped " + wide.Count + " boundary(s) whose join is wider than " +
+                                _settings.OpeningMaxWidth.ToString("0.#") + " m - a doorway is narrow.");
+            }
+
 
             // A sealed network holds ONE boundary, not every neighbour within AdjoinDistance. Of
             // retail's 100 one-node sealed networks, 97 hold exactly one link. A door node hangs off
@@ -456,9 +584,15 @@ namespace CathodeLib
                     var mine = new List<((int, int) key, float dist)>();
                     foreach (var pair in shortest)
                         if (pair.Key.Item1 == n || pair.Key.Item2 == n) mine.Add((pair.Key, pair.Value.dist));
-                    if (mine.Count <= _settings.SealedMaxBoundaries) continue;
+                    // One boundary per NODE when asked: retail's one-node door leaves hold one link,
+                    // but a lift's two-node shaft pair links to both stops and its three-node front
+                    // group to both stops and the door beyond. See SealedBoundariesPerNode.
+                    int cap = _settings.SealedBoundariesPerNode
+                        ? _settings.SealedMaxBoundaries * Math.Max(1, networks[n].Nodes.Count)
+                        : _settings.SealedMaxBoundaries;
+                    if (mine.Count <= cap) continue;
                     mine.Sort((x, y) => x.dist.CompareTo(y.dist));
-                    for (int k = _settings.SealedMaxBoundaries; k < mine.Count; k++) drop.Add(mine[k].key);
+                    for (int k = cap; k < mine.Count; k++) drop.Add(mine[k].key);
                 }
                 foreach ((int, int) key in drop) shortest.Remove(key);
                 if (drop.Count > 0)
@@ -675,6 +809,98 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// Fold a sealed pocket that stands on STANDING navmesh into the named network one of its
+        /// nodes can see through the hull-free soup. A pocket on crouch floor - a duct, a shaft -
+        /// stays sealed. See <see cref="SoundNetworkBakeSettings.AbsorbStandingPocketsThroughHulls"/>.
+        /// </summary>
+        private static int AbsorbStandingPockets(Level level, List<Vector3> positions, int[] owner, int markerNetworks,
+                                                 BVHAccel openSoup, Action<string> log)
+        {
+            if (openSoup == null) return 0;
+            NavigationMesh nav = level?.StateResources != null && level.StateResources.Count > 0
+                ? level.StateResources[0].NavMesh : null;
+            if (nav?.Vertices == null || nav.Polygons == null) return 0;
+
+            // Standing ground polygons, gridded for point lookup.
+            var cells = new Dictionary<(int, int), List<Vector3[]>>();
+            const float cell = 2.0f;
+            foreach (NavigationMesh.dtPoly poly in nav.Polygons)
+            {
+                if (poly.verts == null || poly.vertCount < 3) continue;
+                if (poly.area.GetPolyType() != NavigationMesh.dtPolyTypes.DT_POLYTYPE_GROUND) continue;
+                if (((uint)poly.area.GetMarkupFlags() & 2u) != 0) continue;
+                if (poly.area.GetHeightLimitedAmount() != NavigationMesh.AreaHeight.Standing) continue;
+                var v = new Vector3[poly.vertCount];
+                for (int i = 0; i < poly.vertCount; i++) v[i] = nav.Vertices[poly.verts[i]];
+                int x0 = (int)Math.Floor(v.Min(a => a.X) / cell), x1 = (int)Math.Floor(v.Max(a => a.X) / cell);
+                int z0 = (int)Math.Floor(v.Min(a => a.Z) / cell), z1 = (int)Math.Floor(v.Max(a => a.Z) / cell);
+                for (int x = x0; x <= x1; x++)
+                    for (int z = z0; z <= z1; z++)
+                    {
+                        if (!cells.TryGetValue((x, z), out List<Vector3[]> l)) cells[(x, z)] = l = new List<Vector3[]>();
+                        l.Add(v);
+                    }
+            }
+            bool OnStanding(Vector3 p)
+            {
+                if (!cells.TryGetValue(((int)Math.Floor(p.X / cell), (int)Math.Floor(p.Z / cell)), out List<Vector3[]> l)) return false;
+                foreach (Vector3[] v in l)
+                {
+                    bool inside = false;
+                    for (int a = 0, b = v.Length - 1; a < v.Length; b = a++)
+                        if ((v[a].Z > p.Z) != (v[b].Z > p.Z) && p.X < (v[b].X - v[a].X) * (p.Z - v[a].Z) / (v[b].Z - v[a].Z) + v[a].X)
+                            inside = !inside;
+                    if (!inside) continue;
+                    float y = 0; foreach (Vector3 q in v) y += q.Y; y /= v.Length;
+                    if (Math.Abs(y - p.Y) <= 1.0f) return true;
+                }
+                return false;
+            }
+
+            var owned = new List<int>();
+            for (int i = 0; i < positions.Count; i++)
+                if (owner[i] >= 0 && owner[i] < markerNetworks) owned.Add(i);
+            if (owned.Count == 0) return 0;
+
+            var bySealed = new Dictionary<int, List<int>>();
+            for (int i = 0; i < positions.Count; i++)
+            {
+                if (owner[i] < markerNetworks) continue;
+                if (!bySealed.TryGetValue(owner[i], out List<int> list)) bySealed[owner[i]] = list = new List<int>();
+                list.Add(i);
+            }
+
+            float range = _settings.StandingPocketSeeRange;
+            int absorbed = 0, absorbedNodes = 0;
+            foreach (var group in bySealed)
+            {
+                // A lone node in a doorway is a door node, and the sealed-admission rule decides its
+                // fate; this pass is for CHUNKS of room the flood failed to reach.
+                if (group.Value.Count < _settings.StandingPocketMinNodes) continue;
+                int standing = group.Value.Count(n => OnStanding(positions[n]));
+                if (standing * 2 < group.Value.Count) continue;   // a duct or a shaft: leave it sealed
+
+                // The nearest owned node any pocket node can see through the hull-free soup.
+                int best = -1; float bestD = float.MaxValue;
+                foreach (int node in group.Value)
+                    foreach (int other in owned)
+                    {
+                        float d = Vector3.Distance(positions[node], positions[other]);
+                        if (d > range || d >= bestD) continue;
+                        if (!SeesThroughOpening(openSoup, positions[node], positions[other])) continue;
+                        bestD = d; best = other;
+                    }
+                if (best < 0) continue;
+                foreach (int node in group.Value) owner[node] = owner[best];
+                absorbed++; absorbedNodes += group.Value.Count;
+            }
+            if (absorbed > 0)
+                log?.Invoke("Sound networks: folded " + absorbed + " standing pocket(s), " + absorbedNodes +
+                            " node(s), into the room that sees them through the doorway.");
+            return absorbed;
+        }
+
+        /// <summary>
         /// For every sealed network, how many surfaces separate it from the nearest node a marker
         /// owns. A pocket retail also seals reads as two or more; one is usually a node we simply
         /// failed to reach.
@@ -792,7 +1018,17 @@ namespace CathodeLib
         /// every door. What retail records is the barrier's collision INSTANCE index, the slot its
         /// collider occupies in the world host. It is not the collision proxy index: the proxy on
         /// these PATH_CLOSED rows is -1.
-        /// </remarks>
+        /// <para>**Retail's values do not match ours, and that is retail's staleness, not our bug**
+        /// (2 Sep 2026, `diag barrguid BSP_TORRENS <regression-test install>`, which still holds the
+        /// 2017 COLLISION.HKX). Against the shipped packfile's secondary host in its on-disk order,
+        /// the instance nearest each of retail's 13 crossings is 0.07-0.37 m away - the barrier -
+        /// and the difference between retail's guid and that instance's index is 0, 0, 0, 0, 7, 11,
+        /// 11, 11, 15, 17, 17, 20, 20, rising monotonically with the index. That is about twenty
+        /// instances inserted into the compound AFTER the sound network was baked: the guid is this
+        /// index in the collision the sound bake saw, and the shipped collision is newer. So the
+        /// semantics here are right, and the value we write is consistent with the COLLISION.HKX we
+        /// write next to it, which is what the game reads. Against our own rebuilt file it can never
+        /// equal retail's number, because our compound has a different instance count and order.</para>
         /// </remarks>
         private static List<(Vector3 position, uint instance)> CollectBarriers(Level level, List<InstancedEntity> barriers)
         {
@@ -872,16 +1108,28 @@ namespace CathodeLib
         /// crossing must pierce, which <see cref="BuildBarrierGeometry"/> records as refuted.
         /// </remarks>
         /// </remarks>
-        private static BVHAccel BuildOpeningGeometry(Level level, List<InstancedEntity> barriers, Action<string> log)
+        private static BVHAccel BuildOpeningGeometry(Level level, List<InstancedEntity> barriers, bool skipSoundHulls, Action<string> log)
         {
             HashSet<HavokPackfile.CompoundInstance> skip = BarrierInstances(level, barriers);
+            // Authored sound-occlusion hulls (collision type SOUND) are laid across doorways to
+            // attenuate what passes through them; they say how sound travels through an opening,
+            // not whether there is one. See SoundNetworkBakeSettings.OpeningSkipsSoundCollision.
+            int soundSkipped = 0;
+            if (skipSoundHulls && level?.CollisionMaps?.Entries != null)
+                foreach (CollisionMaps.COLLISION_MAPPING entry in level.CollisionMaps.Entries)
+                {
+                    if (entry?.CollisionInstance == null) continue;
+                    var type = (CollisionMaps.CollisionType)((uint)entry.Flags & (uint)CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK);
+                    if (type != CollisionMaps.CollisionType.SOUND && type != CollisionMaps.CollisionType.SOUND_BARRIER) continue;
+                    if (skip.Add(entry.CollisionInstance)) soundSkipped++;
+                }
             if (!RadiosityOccluders.TryCollect(level, null, out float[] verts, out int[] tris, null, true,
                                                null, false, null, skip) ||
                 tris == null || tris.Length < 3) return null;
             var bvh = new BVHAccel();
             bvh.Build(verts, tris);
             log?.Invoke("Sound boundaries: " + (tris.Length / 3) + " occluder triangle(s) with " + skip.Count +
-                        " barrier instance(s) removed - two networks adjoin only through an opening.");
+                        " barrier instance(s) removed (" + soundSkipped + " of them SOUND-typed hulls) - two networks adjoin only through an opening.");
             return bvh;
         }
 
@@ -1039,6 +1287,18 @@ namespace CathodeLib
         {
             if (!_settings.DiscardOrphanNodes || manualCount <= 0 || occluders == null) return 0;
 
+            // What counts as company is judged with doors transparent: retail's node links pass
+            // through a door with obstruction 0, and a lift's door node has nothing but the car
+            // nodes behind the lift door to keep it. See SoundNetworkBakeSettings.OrphanSightThroughDoors.
+            BVHAccel sight = occluders;
+            if (_settings.OrphanSightThroughDoors &&
+                RadiosityOccluders.TryCollect(level, null, out float[] dfVerts, out int[] dfTris, null, true, null, true, null, null) &&
+                dfTris != null && dfTris.Length >= 3)
+            {
+                sight = new BVHAccel();
+                sight.Build(dfVerts, dfTris);
+            }
+
             NavigationMesh nav = level?.StateResources != null && level.StateResources.Count > 0
                 ? level.StateResources[0].NavMesh : null;
             if (nav?.Vertices == null || nav.Polygons == null) return 0;
@@ -1071,8 +1331,15 @@ namespace CathodeLib
                 if (FloorUnder(grid, cell, positions[i])) continue;
 
                 bool sees = false;
+                float rangeSq = _settings.OrphanSightRange > 0.0f ? _settings.OrphanSightRange * _settings.OrphanSightRange : float.MaxValue;
                 foreach (int j in Nearest(positions, i, 32))
-                    if (Crossings(occluders, positions[i], positions[j]) == 0) { sees = true; break; }
+                {
+                    // A node in the void sees other void nodes forty metres off across nothing;
+                    // retail drops those, so what counts as company has to be near. See
+                    // SoundNetworkBakeSettings.OrphanSightRange.
+                    if (Vector3.DistanceSquared(positions[i], positions[j]) > rangeSq) break;
+                    if (Crossings(sight, positions[i], positions[j]) == 0) { sees = true; break; }
+                }
                 if (!sees) drop.Add(i);
             }
             if (drop.Count == 0) return 0;
@@ -1220,7 +1487,7 @@ namespace CathodeLib
         /// of a node already accepted - which includes the hand-placed ones already in the list.
         /// </summary>
         private static int ScatterOverNavmesh(Level level, List<Vector3> accepted, float minSpacing, BVHAccel occluders,
-                                              List<Vector3> markerPositions)
+                                              List<Vector3> markerPositions, float markerSight = 0.0f, Action<string> log = null)
         {
             NavigationMesh nav = level.StateResources != null && level.StateResources.Count > 0
                 ? level.StateResources[0].NavMesh : null;
@@ -1239,6 +1506,11 @@ namespace CathodeLib
                 // against retail's 0 of 259.
                 if (poly.area.GetPolyType() != NavigationMesh.dtPolyTypes.DT_POLYTYPE_GROUND) continue;
                 if (((uint)poly.area.GetMarkupFlags() & 2u) != 0) continue;
+                // Retail's fill lands on STANDING floor: 98% of SCI_HospitalLower's 562 fill nodes,
+                // 0% on crouch, 2% on deep crouch, none off the mesh. Ours put 9% on crouch or deep
+                // floor - under tables, in ducts - which retail leaves to the hand-placed nodes.
+                // See SoundNetworkBakeSettings.FillStandingOnly.
+                if (_settings.FillStandingOnly && poly.area.GetHeightLimitedAmount() != NavigationMesh.AreaHeight.Standing) continue;
                 if (_settings.CandidateMode == 3)
                 {
                     // Sample the polygon on a lattice of its own, so how many candidates a piece of
@@ -1301,6 +1573,27 @@ namespace CathodeLib
             var pending = new List<Vector3>(candidates.Count);
             foreach (Vector3 candidate in candidates)
                 pending.Add(candidate + new Vector3(0.0f, NodeHeightAboveNavmesh, 0.0f));
+
+            // Only where a marker can see, within the initialiser's network_node_max_visibility.
+            // The two levels with no initialiser land on retail's node count; every level with one
+            // is 20-35% over, at any authored spacing - so the initialiser's presence changes retail's
+            // fill, and this is its other parameter. See SoundNetworkBakeSettings.FillRequiresMarkerSight.
+            if (_settings.FillRequiresMarkerSight && markerSight > 0.0f && markerPositions.Count > 0)
+            {
+                float sightSq = markerSight * markerSight;
+                int before = pending.Count;
+                pending.RemoveAll(p =>
+                {
+                    foreach (Vector3 marker in markerPositions)
+                    {
+                        if (Vector3.DistanceSquared(marker, p) > sightSq) continue;
+                        if (Visible(occluders, marker, p)) return false;
+                    }
+                    return true;
+                });
+                log?.Invoke("Sound networks: " + (before - pending.Count) + " of " + before +
+                            " fill candidate(s) are out of sight of every marker within " + markerSight.ToString("0.#") + " m and are dropped.");
+            }
 
             int seedCount = accepted.Count;
             float minSq = minSpacing * minSpacing;
@@ -1562,12 +1855,16 @@ namespace CathodeLib
             // order let such a marker claim a node out from under one that could actually see it -
             // the sighted marker then found its seed taken, was never queued, and lost its whole
             // network. Sighted first, blind after, so a fallback only ever takes what is left.
+            // A marker's seed cost is its class bias: rooms flood from zero, passages and ducts
+            // start a few metres "behind", so a contested node goes to the room. See
+            // SoundNetworkBakeSettings.ClassSeedBias.
             for (int pass = 0; pass < 2; pass++)
                 for (int m = 0; m < markers.Count; m++)
                 {
                     if (seeds[m] < 0 || blind[m] != (pass == 1)) continue;
                     int seed = seeds[m];
-                    if (0.0f < best[seed]) { best[seed] = 0.0f; owner[seed] = m; queue.Add((0.0f, seed)); }
+                    float bias = m < networks.Count ? ClassBias(networks[m].RoomSizeValue) : 0.0f;
+                    if (bias < best[seed]) { best[seed] = bias; owner[seed] = m; queue.Add((bias, seed)); }
                 }
 
             // Under MarkerSeedMode 1 a marker seeds EVERY node it can see, each at its straight-line
@@ -1579,9 +1876,10 @@ namespace CathodeLib
                 for (int m = 0; m < markers.Count; m++)
                 {
                     if (blind[m]) continue;
+                    float bias1 = m < networks.Count ? ClassBias(networks[m].RoomSizeValue) : 0.0f;
                     for (int i = 0; i < positions.Count; i++)
                     {
-                        float cost = Vector3.Distance(markers[m], positions[i]);
+                        float cost = Vector3.Distance(markers[m], positions[i]) + bias1;
                         if (cost >= best[i]) continue;
                         if (!Visible(occluders, markers[m], positions[i])) continue;
                         queue.Remove((best[i], i));
@@ -1649,13 +1947,18 @@ namespace CathodeLib
                 var stack = new Stack<int>();
                 stack.Push(i);
                 island[i] = index;
+                float groupCap = _settings.SealedGroupMaxLink > 0.0f ? _settings.SealedGroupMaxLink : float.MaxValue;
                 while (stack.Count > 0)
                 {
                     int node = stack.Pop();
                     owner[node] = index;
-                    foreach (var (to, _) in adjacency[node])
+                    foreach (var (to, step) in adjacency[node])
                     {
                         if (island[to] >= 0 || best[to] < float.MaxValue) continue;
+                        // Retail keeps two lifts' door nodes 11.9 m apart in separate sealed
+                        // networks with nothing between them; a sealed group is local. See
+                        // SoundNetworkBakeSettings.SealedGroupMaxLink.
+                        if (step > groupCap) continue;
                         island[to] = index;
                         stack.Push(to);
                     }

@@ -469,7 +469,7 @@ namespace CathodeLib.NavMesh
         /// its own polygons instead of being averaged into the room it opens onto.
         /// </summary>
         /// <remarks>
-        /// This is what the engine does. Retail's deep-crouch regions are one or two polygons of
+        /// This is what retail's data shows. Its deep-crouch regions are one or two polygons of
         /// about half a square metre, far smaller than Recast merges to on its own, and the three
         /// settings it carries - <c>height_limited_area_mode_filter_passes</c>,
         /// <c>height_limited_area_spread</c> and its non-deep-crouch extra - are a cell-level
@@ -519,7 +519,7 @@ namespace CathodeLib.NavMesh
 
         /// <summary>
         /// Fold each span's height class into its area id, keeping whatever barrier slot the convex
-        /// volumes already put there, and grow each class outwards by the engine's own spread.
+        /// volumes already put there, and grow each class outwards by the configured spread.
         /// </summary>
         /// <remarks>
         /// The spread is not decoration. Marked cell by cell and left alone, our deep-crouch surface
@@ -527,7 +527,7 @@ namespace CathodeLib.NavMesh
         /// right (1% spurious) but we mark two thirds of what retail does, because a clearance
         /// measured at the cell is only under the table itself and retail's region runs out to where
         /// a character stops fitting. See <see cref="NavMeshBakeSettings.HeightLimitedAreaSpread"/>
-        /// for why we grow 2 cells where the engine's file says 4.
+        /// for why we grow 2 cells rather than 4.
         /// </remarks>
         static void MarkHeightClassAreas(RcCompactHeightfield chf, NavMeshBakeSettings settings)
         {
@@ -1194,7 +1194,7 @@ namespace CathodeLib.NavMesh
                     : ClassifyClearance(PolyClearance(chf, data, poly, settings), settings);
             }
 
-            // The engine's own `height_limited_area_spread` is 4 cells (0.25 m), so its classes are
+            // A `height_limited_area_spread` of 4 cells (0.25 m) means retail's classes are
             // grown after marking. We cannot dilate on the heightfield - the classes are applied
             // after the polygons are built - but a polygon that is partly low and touches a
             // deep-crouch neighbour is the same idea one step coarser. Off at zero.
@@ -1257,7 +1257,7 @@ namespace CathodeLib.NavMesh
         /// polygons have essentially none of retail's deep floor on them and they carry 680 m2 of
         /// that surplus.</para>
         /// <para>Sampling the interior on the cell grid and asking what share is low fixes the
-        /// direction of the error without touching the clearance measurement itself. The engine
+        /// direction of the error without touching the clearance measurement itself. Retail
         /// almost certainly marks the classes on the heightfield before the polygons are built -
         /// retail's deep regions are one or two polygons of about half a square metre, far smaller
         /// than Recast would merge to - so this is an approximation of that, not the thing itself.</para>

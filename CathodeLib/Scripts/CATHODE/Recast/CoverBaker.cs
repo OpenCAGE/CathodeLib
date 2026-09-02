@@ -46,6 +46,8 @@ namespace CathodeLib.NavMesh
 
             var navSettings = NavMeshBakeSettings.CreateDefault();
             navSettings.SkipSmallPropCollision = !settings.IncludeSmallPropCollision;
+            // You cannot hide behind a window, and you can see straight through one.
+            navSettings.SkipTransparentCollision = settings.SkipGlass;
 
             CollisionNavMeshSoup soup = CollisionNavMeshSoup.CollectFromLevel(
                 level,
@@ -589,7 +591,9 @@ namespace CathodeLib.NavMesh
 
             var used = new bool[segments.Count];
             var merged = new List<Cover.CoverSegment>();
-            float joinDist = Math.Max(settings.ConnectingDistanceBetweenSegmentEnds, settings.ColinearMergeMaxMovement);
+            float joinDist = settings.ColinearMergeJoinDistance > 0f
+                ? settings.ColinearMergeJoinDistance
+                : Math.Max(settings.ConnectingDistanceBetweenSegmentEnds, settings.ColinearMergeMaxMovement);
             float minDot = (float)Math.Cos(settings.ColinearMergeMaxAngleDifferenceDegrees * Math.PI / 180.0);
 
             for (int i = 0; i < segments.Count; i++)
@@ -637,6 +641,14 @@ namespace CathodeLib.NavMesh
         static bool TryJoin(ref Cover.CoverSegment a, Cover.CoverSegment b, float joinDist, CoverBakeSettings settings)
         {
             float maxY = settings.ColinearMergeMaxMovementY;
+            // A short segment may not reach across a gap as long as itself. See
+            // CoverBakeSettings.ColinearMergeMaxProportionalGap.
+            if (settings.ColinearMergeMaxProportionalGap > 0f)
+            {
+                float shorter = Math.Min(SegmentLengthXZ(a), SegmentLengthXZ(b));
+                float cap = shorter * settings.ColinearMergeMaxProportionalGap;
+                if (cap < joinDist) joinDist = cap;
+            }
             if (Vector3.DistanceSquared(a.Right, b.Left) <= joinDist * joinDist
                 && Math.Abs(a.Right.Y - b.Left.Y) <= maxY)
             {
@@ -1417,14 +1429,75 @@ namespace CathodeLib.NavMesh
             if (!settings.WriteLinkFlags)
                 return;
 
+            var byUid = new Dictionary<int, Cover.CoverSegment>();
+            foreach (Cover.CoverSegment s in segments)
+                byUid[s.UID] = s;
+
             foreach (Cover.CoverSegment s in segments)
             {
-                int flags = s.Height < settings.LowHighDividingLine ? 0x2000 : 0;
-                if (s.LeftCornerUID != 0) flags |= 0x0008;
-                if (s.RightCornerUID != 0) flags |= 0x0010;
-                if (s.LeftColinearUID != 0) flags |= 0x0020;
-                if (s.RightColinearUID != 0) flags |= 0x0040;
+                // Verified exact against the whole campaign with `diag coverbits all`: on the
+                // SEGMENT word these five bits match retail in BOTH directions - 2,829
+                // LEFT_CORNER_LINK bits against exactly the 2,829 segments carrying a left corner
+                // UID, and the same for the other three - and no other bit is ever set there.
+                int flags = s.Height < settings.LowHighDividingLine ? Cover.CoverSegment.IsLowCoverBit : 0;
+                if (s.LeftCornerUID != 0)
+                {
+                    flags |= Cover.CoverSegment.LeftCornerLinkBit;
+                    // A corner is one physical thing with one angle, so both segments naming it
+                    // have to measure it the same way round. The link runs from the segment whose
+                    // RIGHT end meets the other's LEFT end, so a LEFT link measures self->partner
+                    // and a RIGHT link measures partner->self.
+                    if (byUid.TryGetValue(s.LeftCornerUID, out Cover.CoverSegment lo))
+                        flags |= CornerClassBits(ExternalCornerAngle(s.Normal, lo.Normal),
+                                                 EndGap(s.Left, lo), settings,
+                                                 Cover.CoverSegment.LeftCornerExternalBit,
+                                                 Cover.CoverSegment.LeftCornerAutoBit);
+                }
+                if (s.RightCornerUID != 0)
+                {
+                    flags |= Cover.CoverSegment.RightCornerLinkBit;
+                    if (byUid.TryGetValue(s.RightCornerUID, out Cover.CoverSegment ro))
+                        flags |= CornerClassBits(ExternalCornerAngle(ro.Normal, s.Normal),
+                                                 EndGap(s.Right, ro), settings,
+                                                 Cover.CoverSegment.RightCornerExternalBit,
+                                                 Cover.CoverSegment.RightCornerAutoBit);
+                }
+                if (s.LeftColinearUID != 0)
+                {
+                    flags |= Cover.CoverSegment.LeftColinearLinkBit;
+                    if (byUid.TryGetValue(s.LeftColinearUID, out Cover.CoverSegment lc)
+                        && IsAutoTransition(ExternalCornerAngle(s.Normal, lc.Normal), EndGap(s.Left, lc), settings))
+                        flags |= Cover.CoverSegment.LeftColinearAutoBit;
+                }
+                if (s.RightColinearUID != 0)
+                {
+                    flags |= Cover.CoverSegment.RightColinearLinkBit;
+                    if (byUid.TryGetValue(s.RightColinearUID, out Cover.CoverSegment rc)
+                        && IsAutoTransition(ExternalCornerAngle(rc.Normal, s.Normal), EndGap(s.Right, rc), settings))
+                        flags |= Cover.CoverSegment.RightColinearAutoBit;
+                }
                 s.Flags = flags;
+
+                // The end-most slot carries its own end's link state, external and auto bits
+                // included - retail sets LEFT_CORNER_EXTERNAL on 21.7% of slots and
+                // LEFT_CORNER_AUTO on 8.6%, where we shipped zero. Same end-most rule as the
+                // terminating bits, so the pct tie-break applies here too.
+                if (s.OccupancySlots.Count == 0)
+                    continue;
+                Cover.CoverSegment.CoverSlot first = s.OccupancySlots[0];
+                Cover.CoverSegment.CoverSlot last = s.OccupancySlots[s.OccupancySlots.Count - 1];
+                const int leftEnd = Cover.CoverSegment.LeftCornerLinkBit
+                                  | Cover.CoverSegment.LeftColinearLinkBit
+                                  | Cover.CoverSegment.LeftCornerExternalBit
+                                  | Cover.CoverSegment.LeftCornerAutoBit;
+                const int rightEnd = Cover.CoverSegment.RightCornerLinkBit
+                                   | Cover.CoverSegment.RightColinearLinkBit
+                                   | Cover.CoverSegment.RightCornerExternalBit
+                                   | Cover.CoverSegment.RightCornerAutoBit;
+                if (first.PctAlongCoverSegment <= 0.5f)
+                    first.Flags |= flags & leftEnd;
+                if (last.PctAlongCoverSegment > 0.5f)
+                    last.Flags |= flags & rightEnd;
             }
         }
 
@@ -1435,9 +1508,13 @@ namespace CathodeLib.NavMesh
 
             float linkDist = settings.LinkDistanceForCornerOrAutoLink;
             float colinearDist = settings.LinkMaxDistanceForColinear;
-            float minCorner = settings.LinkMinExternalCornerAngle;
-            float maxCorner = settings.LinkMaxExternalCornerAngle;
+            float minCorner = settings.LinkMinCornerAngle;
+            float maxCorner = settings.LinkMaxCornerAngle;
             float maxH = settings.ColinearMergeMaxHeightDifference;
+            // One slot per segment per side per kind, filled with the NEAREST candidate rather than
+            // the first the double loop reaches - see Offer.
+            var bestCorner = new Dictionary<(int uid, bool left), (int partner, float distSq)>();
+            var bestColinear = new Dictionary<(int uid, bool left), (int partner, float distSq)>();
 
             for (int i = 0; i < segments.Count; i++)
             {
@@ -1448,10 +1525,183 @@ namespace CathodeLib.NavMesh
                     if (Math.Abs(a.Height - b.Height) > maxH)
                         continue;
 
-                    TryLinkEnds(a, b, linkDist, colinearDist, minCorner, maxCorner, settings);
-                    TryLinkEnds(b, a, linkDist, colinearDist, minCorner, maxCorner, settings);
+                    TryLinkEnds(a, b, linkDist, colinearDist, minCorner, maxCorner, bestCorner, bestColinear, settings);
+                    TryLinkEnds(b, a, linkDist, colinearDist, minCorner, maxCorner, bestCorner, bestColinear, settings);
                 }
             }
+
+            var byUidForLinks = new Dictionary<int, Cover.CoverSegment>();
+            foreach (Cover.CoverSegment s in segments)
+                byUidForLinks[s.UID] = s;
+
+            foreach (KeyValuePair<(int uid, bool left), (int partner, float distSq)> kv in bestCorner)
+            {
+                if (!byUidForLinks.TryGetValue(kv.Key.uid, out Cover.CoverSegment s)) continue;
+                if (kv.Key.left) s.LeftCornerUID = kv.Value.partner;
+                else s.RightCornerUID = kv.Value.partner;
+            }
+            foreach (KeyValuePair<(int uid, bool left), (int partner, float distSq)> kv in bestColinear)
+            {
+                if (!byUidForLinks.TryGetValue(kv.Key.uid, out Cover.CoverSegment s)) continue;
+                if (kv.Key.left) s.LeftColinearUID = kv.Value.partner;
+                else s.RightColinearUID = kv.Value.partner;
+            }
+
+            SnapCornerEndsToCrossings(segments, settings);
+        }
+
+        /// <summary>
+        /// Move each corner-linked endpoint onto the crossing of the two segments' lines, so the
+        /// two segments actually meet the way retail's do.
+        /// </summary>
+        /// <remarks>
+        /// Every target is computed before any endpoint moves. Snapping in place would shift a line
+        /// that a later pair in the same pass still has to cross against, so the result would depend
+        /// on segment order. The crossing lies on the segment's own infinite line, so this changes
+        /// its length but never its direction or normal.
+        /// </remarks>
+        /// <summary>
+        /// The signed corner angle the EXTERNAL and AUTO corner windows are measured over.
+        /// </summary>
+        /// <remarks>
+        /// The turn from one normal to the other about +Y, offset by 180. The offset is what makes
+        /// the configured corner angles land on the data - see
+        /// <see cref="CoverBakeSettings.LinkMinExternalCornerAngle"/>.
+        /// </remarks>
+        static float ExternalCornerAngle(Vector3 na, Vector3 nb)
+        {
+            Vector3 a = SafeXZ(na), b = SafeXZ(nb);
+            float cross = a.Z * b.X - a.X * b.Z;
+            float dot = a.X * b.X + a.Z * b.Z;
+            float deg = (float)(Math.Atan2(cross, dot) * 180.0 / Math.PI) + 180f;
+            if (deg < 0f) deg += 360f;
+            if (deg >= 360f) deg -= 360f;
+            return deg;
+        }
+
+        static int CornerClassBits(float angle, float gap, CoverBakeSettings settings, int externalBit, int autoBit)
+        {
+            int bits = 0;
+            if (angle >= settings.LinkMinExternalCornerAngle && angle <= settings.LinkMaxExternalCornerAngle)
+                bits |= externalBit;
+            if (IsAutoTransition(angle, gap, settings))
+                bits |= autoBit;
+            return bits;
+        }
+
+        /// <summary>
+        /// Can an NPC slide straight from one segment to its linked neighbour?
+        /// </summary>
+        /// <remarks>
+        /// <para>One rule serves both AUTO bits: the two must be CONTIGUOUS - their ends within
+        /// <see cref="CoverBakeSettings.LinkDistanceForCornerOrAutoLink"/> - and the turn between
+        /// them no more than <see cref="CoverBakeSettings.LinkMaxAutoTransitionAngle"/>. Each link
+        /// kind then satisfies one half for free, which is why the two bits look like different
+        /// rules: a corner link is only ever formed at 0.5 m so its gap always passes, and a
+        /// colinear partner faces the same way so its angle is always about 180.</para>
+        /// <para>The colinear half is measured exact over retail's 860 left colinear links
+        /// (`diag covercolin all`): 0 of the 178 AUTO ones have a gap over 0.5 m and only 1 of the
+        /// 682 non-AUTO ones is under it, with the worst set gap at 0.49 and the smallest clear gap
+        /// at 0.47. Plain colinear links run out to 4.0 m (p90 3.58), so the two constants really do
+        /// separate two different things. That single exception is most likely a blocked path -
+        /// close enough to walk to, but not actually reachable - which we do not test.</para>
+        /// </remarks>
+        static bool IsAutoTransition(float angle, float gap, CoverBakeSettings settings)
+        {
+            return angle <= settings.LinkMaxAutoTransitionAngle
+                && gap <= settings.LinkDistanceForCornerOrAutoLink;
+        }
+
+        /// <summary>Flat distance from an endpoint to the nearer end of a linked segment.</summary>
+        static float EndGap(Vector3 end, Cover.CoverSegment other)
+        {
+            float toLeft = FlatDistance(end.X, end.Z, other.Left.X, other.Left.Z);
+            float toRight = FlatDistance(end.X, end.Z, other.Right.X, other.Right.Z);
+            return Math.Min(toLeft, toRight);
+        }
+
+        static void SnapCornerEndsToCrossings(List<Cover.CoverSegment> segments, CoverBakeSettings settings)
+        {
+            float maxSnap = settings.MaxCornerEndSnapDistance;
+            if (maxSnap <= 0f)
+                return;
+
+            var byUid = new Dictionary<int, Cover.CoverSegment>();
+            foreach (Cover.CoverSegment s in segments)
+                byUid[s.UID] = s;
+
+            var moves = new List<(Cover.CoverSegment seg, bool left, Vector3 to)>();
+            foreach (Cover.CoverSegment s in segments)
+            {
+                for (int side = 0; side < 2; side++)
+                {
+                    bool left = side == 0;
+                    int uid = left ? s.LeftCornerUID : s.RightCornerUID;
+                    if (uid == 0 || !byUid.TryGetValue(uid, out Cover.CoverSegment o))
+                        continue;
+                    if (!CrossingXZ(s.Left, s.Right, o.Left, o.Right, out float cx, out float cz))
+                        continue;
+
+                    Vector3 end = left ? s.Left : s.Right;
+                    Vector3 far = left ? s.Right : s.Left;
+                    if (FlatDistance(end.X, end.Z, cx, cz) > maxSnap)
+                        continue;
+                    if (Math.Abs(s.Height - o.Height) > settings.CornerSquaringMaxHeightDifference)
+                        continue;
+                    // How far past its own end this drags the segment, as a fraction of its length.
+                    // t is measured from the FAR end, so t = 1 is the segment's own end and the
+                    // configured 1.7 allows a 70% extension.
+                    float ownLen = FlatDistance(far.X, far.Z, end.X, end.Z);
+                    if (ownLen > 1e-4f && settings.CornerSquaringMaxT > 0f
+                        && FlatDistance(far.X, far.Z, cx, cz) / ownLen > settings.CornerSquaringMaxT)
+                        continue;
+                    // Area of the triangle the square adds or removes: the two ends and the
+                    // crossing. A shallow crossing sweeps a large one even when both ends are
+                    // close to it, which is the case a distance cap alone lets through.
+                    if (settings.CornerSquaringMaxAreaToChopOff > 0f)
+                    {
+                        Vector3 oEnd = FlatDistance(o.Left.X, o.Left.Z, cx, cz)
+                                       <= FlatDistance(o.Right.X, o.Right.Z, cx, cz) ? o.Left : o.Right;
+                        float area = 0.5f * Math.Abs((end.X - cx) * (oEnd.Z - cz) - (oEnd.X - cx) * (end.Z - cz));
+                        if (area > settings.CornerSquaringMaxAreaToChopOff)
+                            continue;
+                    }
+                    // Never pull an end past its own far end, or so close to it that the segment
+                    // collapses below the length we would have accepted in the first place.
+                    if (FlatDistance(far.X, far.Z, cx, cz) < settings.MinimumLength)
+                        continue;
+
+                    moves.Add((s, left, new Vector3(cx, end.Y, cz)));
+                }
+            }
+
+            foreach ((Cover.CoverSegment seg, bool left, Vector3 to) in moves)
+            {
+                if (left) seg.Left = to;
+                else seg.Right = to;
+            }
+        }
+
+        /// <summary>Crossing of the infinite lines through ab and cd in XZ. False when parallel.</summary>
+        static bool CrossingXZ(Vector3 a, Vector3 b, Vector3 c, Vector3 d, out float x, out float z)
+        {
+            x = 0f;
+            z = 0f;
+            float r1 = b.X - a.X, r2 = b.Z - a.Z;
+            float s1 = d.X - c.X, s2 = d.Z - c.Z;
+            float denom = r1 * s2 - r2 * s1;
+            if (Math.Abs(denom) < 1e-6f)
+                return false;
+            float t = ((c.X - a.X) * s2 - (c.Z - a.Z) * s1) / denom;
+            x = a.X + t * r1;
+            z = a.Z + t * r2;
+            return true;
+        }
+
+        static float FlatDistance(float ax, float az, float bx, float bz)
+        {
+            float dx = ax - bx, dz = az - bz;
+            return (float)Math.Sqrt(dx * dx + dz * dz);
         }
 
         static void TryLinkEnds(
@@ -1461,12 +1711,14 @@ namespace CathodeLib.NavMesh
             float colinearDist,
             float minCornerDeg,
             float maxCornerDeg,
+            Dictionary<(int uid, bool left), (int partner, float distSq)> bestCorner,
+            Dictionary<(int uid, bool left), (int partner, float distSq)> bestColinear,
             CoverBakeSettings settings)
         {
-            LinkIfClose(a, true, b, true, cornerDist, colinearDist, minCornerDeg, maxCornerDeg, settings);
-            LinkIfClose(a, true, b, false, cornerDist, colinearDist, minCornerDeg, maxCornerDeg, settings);
-            LinkIfClose(a, false, b, true, cornerDist, colinearDist, minCornerDeg, maxCornerDeg, settings);
-            LinkIfClose(a, false, b, false, cornerDist, colinearDist, minCornerDeg, maxCornerDeg, settings);
+            LinkIfClose(a, true, b, true, cornerDist, colinearDist, minCornerDeg, maxCornerDeg, bestCorner, bestColinear, settings);
+            LinkIfClose(a, true, b, false, cornerDist, colinearDist, minCornerDeg, maxCornerDeg, bestCorner, bestColinear, settings);
+            LinkIfClose(a, false, b, true, cornerDist, colinearDist, minCornerDeg, maxCornerDeg, bestCorner, bestColinear, settings);
+            LinkIfClose(a, false, b, false, cornerDist, colinearDist, minCornerDeg, maxCornerDeg, bestCorner, bestColinear, settings);
         }
 
         static void LinkIfClose(
@@ -1478,6 +1730,8 @@ namespace CathodeLib.NavMesh
             float colinearDist,
             float minCornerDeg,
             float maxCornerDeg,
+            Dictionary<(int uid, bool left), (int partner, float distSq)> bestCorner,
+            Dictionary<(int uid, bool left), (int partner, float distSq)> bestColinear,
             CoverBakeSettings settings)
         {
             Vector3 ap = aLeft ? a.Left : a.Right;
@@ -1491,46 +1745,65 @@ namespace CathodeLib.NavMesh
             Vector3 nb = SafeXZ(b.Normal);
             float dot = Vector3.Dot(na, nb);
 
-            // Corners are measured as the signed turn from a's normal to b's normal about +Y,
-            // wrapped into 0..360. The unsigned 0..180 angle cannot express the configured
-            // LinkMaxExternalCornerAngle of 285 degrees, so an external corner never matched.
-            float turn = SignedTurnDeg(na, nb);
+            // UNSIGNED, so the test gives the same answer from either segment. Retail names every
+            // corner on both of them (100.0% of 4,088 links are reciprocal); a signed turn is
+            // antisymmetric and could only ever admit one direction, which is why we shipped 13.6%
+            // reciprocity and half the corner links retail has. Measured with `diag coverlinks`.
+            float cornerAngle = AngleBetweenNormalsDeg(na, nb);
 
             bool corner = distSq <= cornerDist * cornerDist
-                && turn >= minCornerDeg && turn <= maxCornerDeg;
+                && cornerAngle >= minCornerDeg && cornerAngle <= maxCornerDeg;
 
             // NOT Math.Abs: a colinear partner has to face the SAME way, not merely lie on the same
             // line. Retail's 1,724 colinear links have 0.0 degrees between the two normals on 100%
             // of them (p90 3.6); with the absolute value, 66% of ours pointed at a segment facing
             // the opposite way - the far side of a wall, or across a corridor - median 177.4
-            // degrees. That tells the engine an NPC can slide from one to the other along the same
+            // degrees. That tells the game an NPC can slide from one to the other along the same
             // cover when the two face apart. Measured with `diag coverlinks`.
             bool colinear = distSq <= colinearDist * colinearDist
                 && dot >= settings.LinkColinearDotProductThreshold;
 
+            // Facing the same way along the same heading is not the same as lying on the same
+            // LINE. Two walls either side of a doorway pass every test above.
+            if (colinear && settings.LinkColinearCrossLengthThreshold > 0f)
+            {
+                float cross = DistPointToSegmentLineXZ(bp, a.Left, a.Right);
+                if (cross > settings.LinkColinearCrossLengthThreshold)
+                    colinear = false;
+            }
+
+            // NEAREST wins, not first-seen. A segment has one slot per side per kind, and taking
+            // whichever candidate the double loop happened to reach first makes the answer depend on
+            // segment order and breaks reciprocity: b can be a's colinear partner while a is not b's.
+            // Retail's links are 99.5% reciprocal for colinear and 100.0% for corner; ours were
+            // 80.7% on colinear. Nearest is symmetric, so both ends agree.
             if (corner)
-            {
-                if (aLeft && a.LeftCornerUID == 0) a.LeftCornerUID = b.UID;
-                if (!aLeft && a.RightCornerUID == 0) a.RightCornerUID = b.UID;
-            }
+                Offer(bestCorner, a.UID, aLeft, b.UID, distSq);
             else if (colinear)
-            {
-                if (aLeft && a.LeftColinearUID == 0) a.LeftColinearUID = b.UID;
-                if (!aLeft && a.RightColinearUID == 0) a.RightColinearUID = b.UID;
-            }
+                Offer(bestColinear, a.UID, aLeft, b.UID, distSq);
         }
 
         /// <summary>
-        /// Signed turn from <paramref name="from"/> to <paramref name="to"/> about +Y, in degrees
-        /// wrapped to 0..360. Distinguishes a convex corner from a concave one, which the unsigned
-        /// angle cannot.
+        /// Perpendicular distance from a point to the INFINITE line through ab, in XZ. Unlike
+        /// <see cref="DistPointToSegmentXZ"/> this does not clamp to the segment: a colinear
+        /// partner legitimately lies beyond both ends, and only its sideways offset matters.
         /// </summary>
-        static float SignedTurnDeg(Vector3 from, Vector3 to)
+        static float DistPointToSegmentLineXZ(Vector3 p, Vector3 a, Vector3 b)
         {
-            float dot = from.X * to.X + from.Z * to.Z;
-            float cross = from.Z * to.X - from.X * to.Z;
-            float deg = (float)(Math.Atan2(cross, dot) * 180.0 / Math.PI);
-            return deg < 0 ? deg + 360f : deg;
+            float dx = b.X - a.X, dz = b.Z - a.Z;
+            float len = (float)Math.Sqrt(dx * dx + dz * dz);
+            if (len < 1e-6f)
+                return FlatDistance(p.X, p.Z, a.X, a.Z);
+            return Math.Abs((p.X - a.X) * dz - (p.Z - a.Z) * dx) / len;
+        }
+
+        /// <summary>Keep the closest candidate for one segment's one side.</summary>
+        static void Offer(Dictionary<(int uid, bool left), (int partner, float distSq)> best,
+                          int uid, bool left, int partner, float distSq)
+        {
+            var key = (uid, left);
+            if (!best.TryGetValue(key, out (int partner, float distSq) held) || distSq < held.distSq)
+                best[key] = (partner, distSq);
         }
 
         /// <summary>
@@ -1638,7 +1911,7 @@ namespace CathodeLib.NavMesh
                     var slot = new Cover.CoverSegment.CoverSlot
                     {
                         PctAlongCoverSegment = pct,
-                        Flags = low ? 24580 : 16385,
+                        Flags = low ? Cover.CoverSegment.IsLowCoverBit : 0,
                         // Fallback cones, overwritten below when a solver is available.
                         ClearAimAnglesHorizontal = low ? 0x00FF : unchecked((short)0x800F),
                         ClearAimAnglesVertical = low ? 0x00690000 : unchecked(0x59000000)
@@ -1659,7 +1932,9 @@ namespace CathodeLib.NavMesh
                             continue;
                         }
 
-                        if (!aimSolver.SolveSlot(slot, stand, normal, tangent,
+                        // The solver wants the position on the COVER LINE; it steps off the line
+                        // itself, differently for each aim model. `stand` is only the nav check.
+                        if (!aimSolver.SolveSlot(slot, slotPos, normal, tangent,
                                                  len * pct, len * (1f - pct), seg.Height))
                             continue;
 
@@ -1669,13 +1944,13 @@ namespace CathodeLib.NavMesh
                         // implication is exact: 0x1 set means a live lean-left arc on 100% of 3,480
                         // slots, 0x2 a live lean-right on 100% of 3,459, 0x4 a live over-the-top on
                         // 100% of 4,984 - and 0x2000 marks low cover on exactly its 5,815. Writing
-                        // 0x4001 for every high segment told the engine they all lean LEFT.
-                        const float halfPi = (float)(Math.PI / 2.0);
-                        bool leanL = slot.LeftEdgeRightmostHorizontal + halfPi > 0.01f;
-                        bool leanR = halfPi - slot.RightEdgeLeftmostHorizontal > 0.01f;
-                        bool overT = slot.OverTopRightmostHorizontal - slot.OverTopLeftmostHorizontal > 0.01f;
-                        slot.Flags = (low ? 0x6000 : 0x4000)
-                                   | (leanL ? 0x1 : 0) | (leanR ? 0x2 : 0) | (overT ? 0x4 : 0);
+                        // 0x4001 for every high segment told the game they all lean LEFT.
+                        int peek = PeekBits(slot, settings);
+                        // A slot with no peek bit can be stood in but not fought from. Retail has
+                        // none; see CoverBakeSettings.RequireUsableSlot.
+                        if (peek == 0 && settings.RequireUsableSlot && settings.ApplyPeekThresholds)
+                            continue;
+                        slot.Flags = (low ? Cover.CoverSegment.IsLowCoverBit : 0) | peek;
                     }
 
                     seg.OccupancySlots.Add(slot);
@@ -1692,13 +1967,98 @@ namespace CathodeLib.NavMesh
                         seg.OccupancySlots.Add(new Cover.CoverSegment.CoverSlot
                         {
                             PctAlongCoverSegment = 0.5f,
-                            Flags = low ? 24580 : 16385,
+                            Flags = low ? Cover.CoverSegment.IsLowCoverBit : 0,
                             ClearAimAnglesHorizontal = low ? 0x00FF : unchecked((short)0x800F),
                             ClearAimAnglesVertical = low ? 0x00690000 : unchecked(0x59000000)
                         });
                     }
                 }
+
+                // After the fallback, so a segment kept without a clear aim still gets its bits.
+                ApplyEndSlotBits(seg);
             }
+        }
+
+        /// <summary>
+        /// The three peek bits of a slot's Flags word, from the arcs the solver found.
+        /// </summary>
+        /// <remarks>
+        /// <para>The peek angles inform BITS, they do not gate the arc. Verified over
+        /// retail's 9,085 slots with `diag coverbits all`: every peek bit implies its arc clears the
+        /// threshold (100.0% on all three), no DEAD arc carries the bit (0 of 3,279 over-tops), and
+        /// yet a live arc without its bit is ordinary - 21.8% of live lean-lefts, 22.1% of
+        /// lean-rights, 14.2% of over-tops, at median widths of 60 to 108 degrees. So retail writes
+        /// the full arc either way and only withholds the bit.</para>
+        /// <para>This previously read bare liveness, which set the bit on every arc however narrow.
+        /// The over-the-top test is "30 either side" - the arc has to reach BOTH ways, not merely be
+        /// 60 degrees wide somewhere off to one side.</para>
+        /// </remarks>
+        static int PeekBits(Cover.CoverSegment.CoverSlot slot, CoverBakeSettings settings)
+        {
+            if (!settings.ApplyPeekThresholds)
+                return 0;
+
+            const float deg = (float)(Math.PI / 180.0);
+            const float halfPi = (float)(Math.PI / 2.0);
+            const float slack = 0.001f;
+            float inner = settings.PeekInnerAngleSideDegrees * deg;
+            float overHalf = settings.PeekArcOverDegrees * 0.5f * deg;
+            float vert = settings.PeekVerticalArcDegrees * deg;
+
+            int bits = 0;
+            if (slot.LeftEdgeRightmostHorizontal + halfPi > 0.01f
+                && slot.LeftEdgeRightmostHorizontal >= inner - slack
+                && slot.LeftEdgeTopVertical - slot.LeftEdgeBottomVertical >= vert - slack)
+                bits |= Cover.CoverSegment.LeftPeekBit;
+
+            if (halfPi - slot.RightEdgeLeftmostHorizontal > 0.01f
+                && slot.RightEdgeLeftmostHorizontal <= -inner + slack
+                && slot.RightEdgeTopVertical - slot.RightEdgeBottomVertical >= vert - slack)
+                bits |= Cover.CoverSegment.RightPeekBit;
+
+            if (slot.OverTopRightmostHorizontal - slot.OverTopLeftmostHorizontal > 0.01f
+                && slot.OverTopLeftmostHorizontal <= -overHalf + slack
+                && slot.OverTopRightmostHorizontal >= overHalf - slack
+                && slot.OverTopTopVertical - slot.OverTopBottomVertical >= vert - slack)
+                bits |= Cover.CoverSegment.OverPeekBit;
+
+            return bits;
+        }
+
+        /// <summary>
+        /// Mark the slot at each end of a segment with that end's terminating-edge and link bits.
+        /// </summary>
+        /// <remarks>
+        /// <para>Measured over retail's 9,085 slots with `diag coverbits all`. Only the END-MOST
+        /// slot ever carries one: IS_TERMINATING_LEFT_EDGE implies "leftmost slot" on 100.0% of
+        /// its 5,600, and IS_TERMINATING_RIGHT_EDGE implies "rightmost slot AND pct &gt; 0.5" on
+        /// 100.0% of its 938. The pct tie-break is what makes the two counts so lopsided - a
+        /// single-slot segment puts its slot at exactly 0.5, which can take the LEFT bit but never
+        /// the right.</para>
+        /// <para>Necessary but not sufficient: 76.1% of leftmost slots and 82.0% of qualifying
+        /// rightmost ones actually carry the bit, and no combination of the link fields, the peek
+        /// bits or arc liveness explains the rest - the closest, "no left link at all", overlaps
+        /// only 64.6%. The residual condition is undecoded, and is most likely geometric: whether
+        /// the cover really ENDS there rather than being continued by something we do not model.
+        /// Writing the necessary condition still beats what this replaced, which set the left bit
+        /// on 100% of slots against retail's 61.6% and never set the right one at all.</para>
+        /// <para>The four LINK bits follow the same end-most-slot rule, and there they are all but
+        /// exact: a slot's RIGHT_CORNER_LINK bit is "last slot, pct &gt; 0.5, and the segment has a
+        /// right corner link" on 100.0% of its 412 in BOTH directions, right colinear 100.0/99.4%,
+        /// and the two left bits 100.0/97.3% and 100.0/97.7%. We wrote these only on the segment
+        /// word and left the slot word at zero, against retail's 28.6% and 9.7%.</para>
+        /// </remarks>
+        static void ApplyEndSlotBits(Cover.CoverSegment seg)
+        {
+            if (seg.OccupancySlots.Count == 0)
+                return;
+            Cover.CoverSegment.CoverSlot first = seg.OccupancySlots[0];
+            Cover.CoverSegment.CoverSlot last = seg.OccupancySlots[seg.OccupancySlots.Count - 1];
+
+            if (first.PctAlongCoverSegment <= 0.5f)
+                first.Flags |= Cover.CoverSegment.IsTerminatingLeftEdgeBit;
+            if (last.PctAlongCoverSegment > 0.5f)
+                last.Flags |= Cover.CoverSegment.IsTerminatingRightEdgeBit;
         }
 
         static List<Cover.CoverSegment> FilterNearNavBoundary(

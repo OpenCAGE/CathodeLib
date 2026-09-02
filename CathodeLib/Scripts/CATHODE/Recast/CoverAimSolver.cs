@@ -157,7 +157,12 @@ namespace CathodeLib.NavMesh
         /// Fill in a slot's clear-aim nibbles. Returns false when the slot cannot see out from any
         /// of its three firing positions, in which case the caller should drop it.
         /// </summary>
-        /// <param name="slotPosition">World position of the slot on the cover line.</param>
+        /// <param name="slotPosition">
+        /// World position of the slot ON THE COVER LINE, not where the occupant stands. Each aim
+        /// model applies its own offsets from here: the legacy one steps out by
+        /// <see cref="CoverBakeSettings.SlotStandOffset"/>, the two-position one uses the
+        /// <c>clear_aim_angle_*</c> offsets, whose move-from position lands on that same 0.5 m.
+        /// </param>
         /// <param name="normal">Segment normal, pointing away from the cover.</param>
         /// <param name="tangent">Unit vector from the segment's left end to its right end.</param>
         /// <param name="distanceToLeftEnd">Metres from the slot to the left end of the segment.</param>
@@ -176,26 +181,123 @@ namespace CathodeLib.NavMesh
                 return true; // No geometry to trace against; leave whatever the caller set.
 
             float lean = _settings.HeightSamplingDistanceAlongNormal;
-            float chest = Math.Min(coverHeight, 1.2f) * 0.75f;
+            bool high = coverHeight >= _settings.LowHighDividingLine;
 
-            // Lean out past the end of the cover, but only as far as the cover actually extends.
-            Vector3 leftEye = slotPosition - tangent * Math.Min(distanceToLeftEnd, lean) + Vector3.UnitY * chest;
-            Vector3 rightEye = slotPosition + tangent * Math.Min(distanceToRightEnd, lean) + Vector3.UnitY * chest;
-            Vector3 topEye = slotPosition + Vector3.UnitY * (coverHeight + 0.15f);
+            float leftMin = 0f, leftMax = 0f, leftLow = 0f, leftHigh = 0f;
+            float rightMin = 0f, rightMax = 0f, rightLow = 0f, rightHigh = 0f;
+            float topMin = 0f, topMax = 0f, topLow = 0f, topHigh = 0f;
+            bool anyLeft, anyTop, anyRight;
 
-            bool anyLeft = Sweep(leftEye, normal, out float leftMin, out float leftMax, out float leftLow, out float leftHigh);
-            bool anyTop = Sweep(topEye, normal, out float topMin, out float topMax, out float topLow, out float topHigh);
-            bool anyRight = Sweep(rightEye, normal, out float rightMin, out float rightMax, out float rightLow, out float rightHigh);
+            if (_settings.UseTwoPositionAim)
+            {
+                // The two-position clear-aim geometry. Forward is measured TOWARDS the cover, so it
+                // subtracts our outward normal: the shoot position ends up 0.1 m on the far side of
+                // the cover plane and 0.5 m past the edge, and the move-from position 0.5 m out on
+                // the walkable side. See CoverBakeSettings.UseTwoPositionAim.
+                float sideH = high ? _settings.AimShootHeightStandingSide : _settings.AimShootHeightCrouchedSide;
+                float fromH = high ? _settings.AimMoveFromHeightStandingSide : _settings.AimMoveFromHeightCrouchedSide;
+                float lat = _settings.AimShootLateralOffsetSide;
+                float fwd = _settings.AimShootForwardOffsetSide;
+                float mlat = _settings.AimMoveFromLateralOffsetSide;
+                float mfwd = _settings.AimMoveFromForwardOffsetSide;
+
+                // Either 'lat' metres to my left, or 'lat' metres past the corner itself.
+                float latL = _settings.AimShootLateralFromSegmentEnd ? distanceToLeftEnd + lat : lat;
+                float latR = _settings.AimShootLateralFromSegmentEnd ? distanceToRightEnd + lat : lat;
+                Vector3 leftEye = slotPosition - tangent * latL - normal * fwd + Vector3.UnitY * sideH;
+                Vector3 rightEye = slotPosition + tangent * latR - normal * fwd + Vector3.UnitY * sideH;
+                Vector3 topEye = slotPosition - normal * _settings.AimShootForwardOffsetOver
+                                 + Vector3.UnitY * _settings.AimShootHeightOver;
+
+                // A negative lateral offset puts the move-from position BACK from the edge, towards
+                // the middle of the segment, which is why the same signed value serves both sides.
+                Vector3 leftFrom = slotPosition - tangent * mlat - normal * mfwd + Vector3.UnitY * fromH;
+                Vector3 rightFrom = slotPosition + tangent * mlat - normal * mfwd + Vector3.UnitY * fromH;
+                Vector3 topFrom = slotPosition - normal * _settings.AimMoveFromForwardOffsetOver
+                                  + Vector3.UnitY * _settings.AimMoveFromHeightOver;
+
+                bool two = _settings.RequireClearFromMoveFrom;
+                int leftMask = 0, rightMask = 0;
+                // When the clearance test owns liveness, the shoot eye is free to sit where the
+                // clear-aim model puts it, measured from the corner rather than from the slot.
+                if (_settings.UseLeanClearanceTest)
+                {
+                    leftEye = slotPosition - tangent * (distanceToLeftEnd + lat) - normal * fwd
+                              + Vector3.UnitY * sideH;
+                    rightEye = slotPosition + tangent * (distanceToRightEnd + lat) - normal * fwd
+                               + Vector3.UnitY * sideH;
+                }
+                bool leftOk = !_settings.UseLeanClearanceTest
+                    || LeanClearance(slotPosition - tangent * distanceToLeftEnd, -tangent, normal, sideH);
+                bool rightOk = !_settings.UseLeanClearanceTest
+                    || LeanClearance(slotPosition + tangent * distanceToRightEnd, tangent, normal, sideH);
+                anyLeft = leftOk && Reachable(leftFrom, leftEye)
+                    && SweepTwoPosition(leftEye, leftFrom, two, normal, out leftMin, out leftMax, out leftLow, out leftHigh, out leftMask);
+                anyTop = Reachable(topFrom, topEye)
+                    && SweepTwoPosition(topEye, topFrom, two, normal, out topMin, out topMax, out topLow, out topHigh);
+                anyRight = rightOk && Reachable(rightFrom, rightEye)
+                    && SweepTwoPosition(rightEye, rightFrom, two, normal, out rightMin, out rightMax, out rightLow, out rightHigh, out rightMask);
+                if (_settings.ContiguousLeanArc)
+                {
+                    // The lean-left arc is anchored at -90 and runs inward; the lean-right arc at
+                    // +90 and runs the other way. Either dies if its own outer edge is blocked.
+                    if (anyLeft)
+                    {
+                        int k = ContiguousRun(leftMask, 0, 1, 13);
+                        if (k < 0) { anyLeft = false; }
+                        else leftMax = YawAt(k);
+                    }
+                    if (anyRight)
+                    {
+                        int k = ContiguousRun(rightMask, 12, -1, 13);
+                        if (k < 0) { anyRight = false; }
+                        else rightMin = YawAt(k);
+                    }
+                }
+                if (!anyLeft) { leftMin = leftMax = leftLow = leftHigh = 0f; }
+                if (!anyTop) { topMin = topMax = topLow = topHigh = 0f; }
+                if (!anyRight) { rightMin = rightMax = rightLow = rightHigh = 0f; }
+            }
+            else
+            {
+                float chest = Math.Min(coverHeight, 1.2f) * 0.75f;
+                // The legacy eye sits where the occupant stands, on the walkable side of the cover
+                // line - tracing from the line itself puts it inside the wall.
+                Vector3 basePos = slotPosition + normal * _settings.SlotStandOffset;
+
+                // Lean out past the end of the cover, but only as far as the cover actually extends.
+                Vector3 leftEye = basePos - tangent * Math.Min(distanceToLeftEnd, lean) + Vector3.UnitY * chest;
+                Vector3 rightEye = basePos + tangent * Math.Min(distanceToRightEnd, lean) + Vector3.UnitY * chest;
+                Vector3 topEye = basePos + Vector3.UnitY * (coverHeight + 0.15f);
+
+                anyLeft = Sweep(leftEye, normal, out leftMin, out leftMax, out leftLow, out leftHigh);
+                anyTop = Sweep(topEye, normal, out topMin, out topMax, out topLow, out topHigh);
+                anyRight = Sweep(rightEye, normal, out rightMin, out rightMax, out rightLow, out rightHigh);
+            }
 
             // You can only lean a way the cover does not keep going. Clamping the lean eye to the
             // segment end (above) stops it walking through the wall, but it still leaves the eye
             // flat against a wall that carries on past it, and sweeping from there reports an arc
             // retail does not have: its lean arcs are DEAD on 38.0% / 37.3% of slots, ours on
             // 4.2% / 10.1%. A slot in the middle of a long segment cannot lean either way.
+            // A slot leans past the end it is nearer to and no further. Retail is absolute about
+            // this - see CoverBakeSettings.LeanOnlyTowardNearerEnd - and the two-position lean eye
+            // geometry does not produce it on its own, because a lean eye past the far end can
+            // still land in open air wherever the wall happens to stop.
+            if (_settings.LeanOnlyTowardNearerEnd)
+            {
+                const float tie = 0.01f;
+                if (distanceToLeftEnd > distanceToRightEnd + tie)
+                { anyLeft = false; leftMin = leftMax = leftLow = leftHigh = 0f; }
+                if (distanceToRightEnd > distanceToLeftEnd + tie)
+                { anyRight = false; rightMin = rightMax = rightLow = rightHigh = 0f; }
+            }
+
             if (_settings.LeanNeedsAnEnd)
             {
-                if (distanceToLeftEnd > lean) { anyLeft = false; leftMin = leftMax = leftLow = leftHigh = 0f; }
-                if (distanceToRightEnd > lean) { anyRight = false; rightMin = rightMax = rightLow = rightHigh = 0f; }
+                float reach = _settings.LeanMaxDistanceToEnd > 0f ? _settings.LeanMaxDistanceToEnd : lean;
+                if (distanceToLeftEnd > reach) { anyLeft = false; leftMin = leftMax = leftLow = leftHigh = 0f; }
+                if (distanceToRightEnd > reach) { anyRight = false; rightMin = rightMax = rightLow = rightHigh = 0f; }
             }
 
             // You never shoot over HIGH cover. Retail writes a zero-width over-the-top arc on 3,270
@@ -203,7 +305,9 @@ namespace CathodeLib.NavMesh
             // a 180 degree median on low cover, where it is zero on only 0.2%. That is a rule, not a
             // measurement, and without it 78% of our high slots tell the AI it can fire over a 1.6 m
             // wall. Measured with `diag coverslots`.
-            if (coverHeight >= _settings.LowHighDividingLine)
+            if (_settings.UseTwoPositionAim
+                    ? coverHeight >= _settings.AimShootHeightOver
+                    : coverHeight >= _settings.LowHighDividingLine)
             {
                 anyTop = false;
                 topMin = topMax = topLow = topHigh = 0f;
@@ -222,6 +326,20 @@ namespace CathodeLib.NavMesh
             // instead - which is what this did - encodes nibble 8 and leaves a 90 degree arc on a
             // firing position that does not exist.
             const float halfPi = (float)(Math.PI / 2.0);
+            // How far PAST straight ahead a lean can reach. Leaning out to the left, the cover you
+            // are leaning around blocks the right half of your sweep, and nothing in the obstacle
+            // probe models that - so ours ran to the sweep limit and wrote a full 180 degree arc.
+            // Retail's live lean arcs sit at +18 degrees on the left and -18 on the right at the
+            // median, on BOTH cover classes, with only 2-7% of left leans reaching +90 and none of
+            // the right leans reaching -90. Ours were pinned at the limit on 65-86%.
+            // Measured with `diag coverslots` (INNER edge of a LIVE lean arc).
+            float leanInner = _settings.LeanInnerLimitDegrees * (float)(Math.PI / 180.0);
+            if (leanInner > 0f)
+            {
+                if (leftMax > leanInner) leftMax = leanInner;
+                if (rightMin < -leanInner) rightMin = -leanInner;
+            }
+
             slot.LeftEdgeRightmostHorizontal = anyLeft ? leftMax : -halfPi;
             slot.OverTopLeftmostHorizontal = anyTop ? topMin : -halfPi;
             slot.OverTopRightmostHorizontal = anyTop ? topMax : -halfPi;
@@ -248,7 +366,8 @@ namespace CathodeLib.NavMesh
         private bool Sweep(Vector3 origin, Vector3 forward, out float minYaw, out float maxYaw, out float minPitch, out float maxPitch)
         {
             const int yawSamples = 13;   // every 15 degrees across the 180 degree window
-            const int pitchSamples = 5;
+            int pitchSamples = Math.Max(2, _settings.AimPitchSamples);
+            float pitchLimit = _settings.AimPitchLimitDegrees * (float)(Math.PI / 180.0);
             float range = _settings.AimClearRange > 0f ? _settings.AimClearRange : 8.0f;
 
             minYaw = 0; maxYaw = 0; minPitch = 0; maxPitch = 0;
@@ -272,10 +391,16 @@ namespace CathodeLib.NavMesh
                 float loPitch = 0, hiPitch = 0;
                 for (int p = 0; p < pitchSamples; p++)
                 {
-                    // Aim from slightly downwards to slightly upwards.
-                    float pitch = -0.4f + p * (0.8f / (pitchSamples - 1));
-                    Vector3 aim = Vector3.Normalize(dir + Vector3.UnitY * (float)Math.Tan(pitch));
-                    if (!Clear(origin, aim, range))
+                    // Elevation built from cos/sin rather than a tangent: tan blows up approaching
+                    // +-90 degrees, and the sweep now goes that far.
+                    float pitch = -pitchLimit + p * (2f * pitchLimit / (pitchSamples - 1));
+                    Vector3 aim = dir * (float)Math.Cos(pitch) + Vector3.UnitY * (float)Math.Sin(pitch);
+                    // Ground and ceiling both bound the sweep long before the aim range does, and
+                    // neither is something an NPC is prevented from shooting past - see AimDownRange.
+                    float rayRange = range;
+                    if (aim.Y < -0.001f && _settings.AimDownRange > 0f) rayRange = _settings.AimDownRange;
+                    else if (aim.Y > 0.001f && _settings.AimUpRange > 0f) rayRange = _settings.AimUpRange;
+                    if (!Clear(origin, aim, rayRange))
                         continue;
                     if (!yawClear) { loPitch = pitch; hiPitch = pitch; yawClear = true; }
                     else { if (pitch < loPitch) loPitch = pitch; if (pitch > hiPitch) hiPitch = pitch; }
@@ -295,6 +420,146 @@ namespace CathodeLib.NavMesh
             }
 
             return any;
+        }
+
+        /// <summary>
+        /// The two-position clear-aim sweep: a horizontal cone tested at eye level out to
+        /// <see cref="CoverBakeSettings.AimClearDistance"/>, and a vertical cone tested out to
+        /// <see cref="CoverBakeSettings.AimClearDistanceVerticalCone"/>, optionally requiring both
+        /// the shoot position and the move-from position to have the line.
+        /// </summary>
+        /// <remarks>
+        /// Two things differ from <see cref="Sweep"/>. A yaw is decided by the LEVEL ray alone - the
+        /// old sweep called a yaw clear if ANY elevation in it was clear, so a gap above a desk
+        /// opened a firing direction straight into the desk. And the two cones get their own
+        /// distances, which is what stopped the floor and the ceiling from bounding the horizontal
+        /// arc; <see cref="CoverBakeSettings.AimDownRange"/> existed only to paper over that.
+        /// </remarks>
+        private bool SweepTwoPosition(Vector3 origin, Vector3 from, bool useFrom, Vector3 forward,
+                                 out float minYaw, out float maxYaw, out float minPitch, out float maxPitch)
+        {
+            return SweepTwoPosition(origin, from, useFrom, forward, out minYaw, out maxYaw,
+                               out minPitch, out maxPitch, out int _);
+        }
+
+        /// <summary>
+        /// As above, and reports WHICH yaw samples came back clear as a bitmask, so the caller can
+        /// take a contiguous run rather than the outer bounds of a set with holes in it.
+        /// </summary>
+        private bool SweepTwoPosition(Vector3 origin, Vector3 from, bool useFrom, Vector3 forward,
+                                 out float minYaw, out float maxYaw, out float minPitch, out float maxPitch,
+                                 out int clearMask)
+        {
+            const int yawSamples = 13;   // every 15 degrees across the 180 degree window
+            clearMask = 0;
+            int pitchSamples = Math.Max(2, _settings.AimPitchSamples);
+            float pitchLimit = _settings.AimPitchLimitDegrees * (float)(Math.PI / 180.0);
+            float horiz = _settings.AimClearDistance > 0f ? _settings.AimClearDistance : 1.5f;
+            float vert = _settings.AimClearDistanceVerticalCone > 0f ? _settings.AimClearDistanceVerticalCone : horiz;
+
+            minYaw = 0; maxYaw = 0; minPitch = 0; maxPitch = 0;
+
+            Vector3 flatForward = new Vector3(forward.X, 0, forward.Z);
+            if (flatForward.LengthSquared() < 1e-6f)
+                return false;
+            flatForward = Vector3.Normalize(flatForward);
+            Vector3 right = Vector3.Normalize(new Vector3(flatForward.Z, 0, -flatForward.X));
+
+            bool any = false;
+            const float halfPi = (float)(Math.PI / 2.0);
+
+            for (int i = 0; i < yawSamples; i++)
+            {
+                float yaw = -halfPi + i * (2f * halfPi / (yawSamples - 1));
+                float cy = (float)Math.Cos(yaw), sy = (float)Math.Sin(yaw);
+                Vector3 dir = flatForward * cy + right * sy;
+
+                if (!ClearFrom(origin, from, useFrom, dir, horiz))
+                    continue;
+                clearMask |= 1 << i;
+
+                bool anyPitch = false;
+                float loPitch = 0, hiPitch = 0;
+                for (int p = 0; p < pitchSamples; p++)
+                {
+                    float pitch = -pitchLimit + p * (2f * pitchLimit / (pitchSamples - 1));
+                    Vector3 aim = dir * (float)Math.Cos(pitch) + Vector3.UnitY * (float)Math.Sin(pitch);
+                    if (!ClearFrom(origin, from, useFrom, aim, vert))
+                        continue;
+                    if (!anyPitch) { loPitch = pitch; hiPitch = pitch; anyPitch = true; }
+                    else { if (pitch < loPitch) loPitch = pitch; if (pitch > hiPitch) hiPitch = pitch; }
+                }
+
+                if (!any) { minYaw = yaw; maxYaw = yaw; minPitch = loPitch; maxPitch = hiPitch; any = true; }
+                else
+                {
+                    if (yaw < minYaw) minYaw = yaw;
+                    if (yaw > maxYaw) maxYaw = yaw;
+                    if (loPitch < minPitch) minPitch = loPitch;
+                    if (hiPitch > maxPitch) maxPitch = hiPitch;
+                }
+            }
+
+            return any;
+        }
+
+        /// <summary>
+        /// A direction is aimable when the shoot position has it, and - when the two-
+        /// position model is on - the position the NPC moves from has it too.
+        /// </summary>
+        /// <summary>
+        /// Can the NPC get from its move-from position to the shoot position? See
+        /// <see cref="CoverBakeSettings.RequireShootPositionReachable"/>.
+        /// </summary>
+        /// <summary>
+        /// Walk from <paramref name="start"/> in <paramref name="step"/> while the samples stay
+        /// clear, and return the index of the last one. -1 when the first is already blocked.
+        /// </summary>
+        private static int ContiguousRun(int mask, int start, int step, int count)
+        {
+            if ((mask & (1 << start)) == 0)
+                return -1;
+            int last = start;
+            for (int i = start + step; i >= 0 && i < count; i += step)
+            {
+                if ((mask & (1 << i)) == 0) break;
+                last = i;
+            }
+            return last;
+        }
+
+        /// <summary>Yaw of sample i in the 13 sample, -90..+90 sweep.</summary>
+        private static float YawAt(int i) => (float)(-Math.PI / 2.0 + i * (Math.PI / 12.0));
+
+        /// <summary>
+        /// Is there room past the end of the cover to step out into? See
+        /// <see cref="CoverBakeSettings.UseLeanClearanceTest"/>. Traced from just outside the
+        /// cover face so the ray starts in open air rather than in the collision surface.
+        /// </summary>
+        private bool LeanClearance(Vector3 end, Vector3 outward, Vector3 normal, float height)
+        {
+            if (_bvh == null || _settings.LeanClearanceDistance <= 0f)
+                return true;
+            Vector3 origin = end + normal * 0.1f + Vector3.UnitY * height;
+            return Clear(origin, outward, _settings.LeanClearanceDistance);
+        }
+
+        private bool Reachable(Vector3 from, Vector3 shoot)
+        {
+            if (!_settings.RequireShootPositionReachable || _bvh == null)
+                return true;
+            Vector3 d = shoot - from;
+            float len = d.Length();
+            if (len < 1e-4f)
+                return true;
+            return Clear(from, d / len, len);
+        }
+
+        private bool ClearFrom(Vector3 origin, Vector3 from, bool useFrom, Vector3 direction, float range)
+        {
+            if (!Clear(origin, direction, range))
+                return false;
+            return !useFrom || Clear(from, direction, range);
         }
 
         private bool Clear(Vector3 origin, Vector3 direction, float range)

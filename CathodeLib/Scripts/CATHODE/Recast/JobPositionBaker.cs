@@ -26,7 +26,7 @@ namespace CathodeLib.NavMesh
     /// 0.1875 m inside the rim, against the 0.208 median retail ships, and a spotting job 0.03 m
     /// off the geometry lands 0.2825 m outside it, against 0.2929 measured.
     ///
-    /// The engine runs those rules over cover volumes. We rebuild the runs from the navmesh rim,
+    /// Retail's positions follow cover volumes. We rebuild the runs from the navmesh rim,
     /// because the COVER file that ships is only the tactically usable subset and nowhere near
     /// enough on its own - BSP_TORRENS has 17 segments totalling 34 m, three of them long enough
     /// to qualify, against 46 assault positions in the shipped file. Applying the rules to that
@@ -305,7 +305,7 @@ namespace CathodeLib.NavMesh
             var spottingJobs = new List<SpottingPositions.JobInfo>();
             var placed = new List<Vector3>();
             float mergeSq = settings.SpottingMergeDistance * settings.SpottingMergeDistance;
-            foreach ((Vector3 on, Vector3 inward, Vector3 localInward) in SampleRuns(
+            foreach ((Vector3 on, Vector3 inward, Vector3 localInward, float runLength) in SampleRuns(
                          spottingRuns,
                          settings.SpottingCoverLengthToGenerateOnePoint,
                          settings.SpottingCoverLengthToGenerateAtBothEnds,
@@ -323,6 +323,7 @@ namespace CathodeLib.NavMesh
                 Vector3 job = on - inward * spottingOut;
 
                 if (settings.SpottingRequireObstacle && obstacles != null &&
+                    !(settings.SpottingObstacleExemptLength > 0f && runLength >= settings.SpottingObstacleExemptLength) &&
                     obstacles.TopInFront(job, -inward, settings.AssaultObstacleProbeDistance,
                                          settings.AssaultObstacleMaxHeight, settings.AssaultObstacleHeightStep)
                         < settings.SpottingMinObstacleHeight)
@@ -466,14 +467,14 @@ namespace CathodeLib.NavMesh
         }
 
         /// <summary>
-        /// Lay assault positions along each continuous run of cover, following the engine's own
+        /// Lay assault positions along each continuous run of cover, following the
         /// rules: nothing below <c>cover_length_to_generate_one_point</c>, a single mid-run point
         /// up to <c>cover_length_to_generate_at_both_ends</c>, then one
         /// <c>min_distance_from_edge_of_cover</c> in from each end with more spread evenly between
         /// so no gap exceeds <c>max_distance_between_positions_on_same_cover</c>.
         /// </summary>
         /// <remarks>
-        /// The engine runs this over cover volumes. We rebuild the runs from the navmesh rim
+        /// Retail's positions follow cover volumes. We rebuild the runs from the navmesh rim
         /// instead, because the COVER file that ships is only the tactically usable subset and is
         /// nowhere near enough on its own - BSP_TORRENS has 17 segments totalling 34 m, of which
         /// three are long enough to qualify, against 46 assault positions in the shipped file.
@@ -544,7 +545,7 @@ namespace CathodeLib.NavMesh
                 runs = walls;
             }
 
-            foreach ((Vector3 on, Vector3 inward, Vector3 localInward) in SampleRuns(
+            foreach ((Vector3 on, Vector3 inward, Vector3 localInward, float runLength) in SampleRuns(
                          runs,
                          settings.AssaultCoverLengthToGenerateOnePoint,
                          settings.AssaultCoverLengthToGenerateAtBothEnds,
@@ -623,7 +624,7 @@ namespace CathodeLib.NavMesh
         /// <paramref name="edgeInset"/> in from each end with more spread evenly between so no gap
         /// exceeds <paramref name="maxGap"/>. Yields the point on the run and the run's normal.
         /// </summary>
-        static IEnumerable<(Vector3 on, Vector3 inward, Vector3 localInward)> SampleRuns(
+        static IEnumerable<(Vector3 on, Vector3 inward, Vector3 localInward, float runLength)> SampleRuns(
             List<List<RimEdge>> runs,
             float minLength,
             float bothEndsLength,
@@ -652,7 +653,7 @@ namespace CathodeLib.NavMesh
 
                 if (length < bothEndsLength)
                 {
-                    yield return (AlongRun(run, length * 0.5f), inward, InwardAlongRun(run, length * 0.5f));
+                    yield return (AlongRun(run, length * 0.5f), inward, InwardAlongRun(run, length * 0.5f), length);
                     continue;
                 }
 
@@ -662,7 +663,7 @@ namespace CathodeLib.NavMesh
                 for (int i = 0; i <= steps; i++)
                 {
                     float at = first + (last - first) * i / steps;
-                    yield return (AlongRun(run, at), inward, InwardAlongRun(run, at));
+                    yield return (AlongRun(run, at), inward, InwardAlongRun(run, at), length);
                 }
             }
         }
