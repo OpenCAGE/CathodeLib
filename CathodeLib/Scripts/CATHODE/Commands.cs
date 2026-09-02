@@ -418,15 +418,131 @@ namespace CATHODE
         private void SyncDerivedResourceParameters()
         {
             if (Entries == null) return;
+            Dictionary<FunctionEntity, int> envMapIndices = ComputeEnvironmentMapIndices(out _);
             Parallel.ForEach(Entries, comp =>
             {
                 if (comp?.functions == null) return;
                 foreach (FunctionEntity function in comp.functions)
                 {
                     SyncPhysicsSystemIndexParameter(function);
-                    SyncEnvironmentMapIndexParameters(function, _textures, _globalTextures);
+                    SyncEnvironmentMapIndexParameters(function, _textures, _globalTextures, envMapIndices);
                 }
             });
+        }
+
+        /// <summary>
+        /// The engine's environment-map index space, shared by every EnvironmentMap entity's
+        /// <c>environmentmap_index</c> parameter and by the rows of WORLD/ENVIRONMENTMAP.BIN:
+        /// the level's EnvironmentMap entities, in order, with the cubemap each resolves to and
+        /// whether its Entities pin links anything.
+        /// </summary>
+        /// <remarks>
+        /// It is NOT the cubemap's ordinal among the texture table's CUBE entries, which is what this
+        /// used to write. Retail numbers the level's EnvironmentMap ENTITIES: sorted by their
+        /// texture's position in the level texture table, ties in composite order, each entity gets
+        /// the next index, and the file's trailing count is the number of entities. The two agree
+        /// only while no two entities share a cubemap - Tech_Hub's Server_Hub carries two entities
+        /// on one texture (retail indices 2 and 3), which pushed its three stairwell maps to 4-6
+        /// where the cube ordinal said 3-5: every stairwell mover rendered its neighbour's cubemap.
+        /// BSP_Torrens (15 entities, no sharing) and Tech_Hub (7, one shared) both reproduce exactly.
+        /// Nothing is stored: the ranking is recomputed from the script and the texture table every
+        /// time either file is written, so the two cannot drift apart.
+        /// </remarks>
+        public List<(FunctionEntity Entity, Textures.TEX4 Texture, bool Linked)> RankEnvironmentMaps()
+        {
+            List<(int texture, int composite, int function, FunctionEntity entity, Textures.TEX4 tex)> ranked = new List<(int, int, int, FunctionEntity, Textures.TEX4)>();
+            if (Entries != null)
+            {
+                for (int c = 0; c < Entries.Count; c++)
+                {
+                    Composite comp = Entries[c];
+                    if (comp?.functions == null) continue;
+                    for (int f = 0; f < comp.functions.Count; f++)
+                    {
+                        FunctionEntity function = comp.functions[f];
+                        if (function == null || function.function != FunctionType.EnvironmentMap)
+                            continue;
+                        ResolveEnvironmentMapTexture(function, _textures, _globalTextures, out Textures.TEX4 tex, out Textures db);
+                        if (tex == null || db == null)
+                            continue;
+                        int textureIndex = db.GetWriteIndex(tex);
+                        //A cubemap only the GLOBAL table holds sorts after every level-local one
+                        if (!ReferenceEquals(db, _textures))
+                            textureIndex += 1 << 24;
+                        ranked.Add((textureIndex, c, f, function, tex));
+                    }
+                }
+            }
+            ranked.Sort((a, b) =>
+            {
+                int cmp = a.texture.CompareTo(b.texture);
+                if (cmp == 0) cmp = a.composite.CompareTo(b.composite);
+                if (cmp == 0) cmp = a.function.CompareTo(b.function);
+                return cmp;
+            });
+            List<(FunctionEntity, Textures.TEX4, bool)> result = new List<(FunctionEntity, Textures.TEX4, bool)>(ranked.Count);
+            for (int i = 0; i < ranked.Count; i++)
+            {
+                bool linked = false;
+                if (ranked[i].entity.childLinks != null)
+                    foreach (EntityConnector link in ranked[i].entity.childLinks)
+                        if (link.thisParamID == ShortGuids.Entities) { linked = true; break; }
+                result.Add((ranked[i].entity, ranked[i].tex, linked));
+            }
+            return result;
+        }
+
+        /// <summary>Each EnvironmentMap entity's index in the space described on <see cref="RankEnvironmentMaps"/>.</summary>
+        public Dictionary<FunctionEntity, int> ComputeEnvironmentMapIndices(out int count)
+        {
+            List<(FunctionEntity Entity, Textures.TEX4 Texture, bool Linked)> ranking = RankEnvironmentMaps();
+            Dictionary<FunctionEntity, int> result = new Dictionary<FunctionEntity, int>(ranking.Count);
+            for (int i = 0; i < ranking.Count; i++)
+                result[ranking[i].Entity] = i;
+            count = ranking.Count;
+            return result;
+        }
+
+        /// <summary>
+        /// The same index space as two lookups for Movers, which knows each mover's cubemap but not
+        /// the script: index to cubemap for resolving loaded rows, cubemap to index for writing them.
+        /// A cubemap two entities share maps to the one whose Entities pin links something - the
+        /// one that lights movers - so retail's rows come back exactly (Tech_Hub's Server_Hub pair
+        /// is indices 2 and 3; its movers carry 3).
+        /// </summary>
+        public void BuildEnvironmentMapIndexing(out List<Textures.TEX4> indexToTexture, out Dictionary<Textures.TEX4, int> textureToIndex)
+        {
+            List<(FunctionEntity Entity, Textures.TEX4 Texture, bool Linked)> ranking = RankEnvironmentMaps();
+            indexToTexture = new List<Textures.TEX4>(ranking.Count);
+            textureToIndex = new Dictionary<Textures.TEX4, int>();
+            for (int i = 0; i < ranking.Count; i++)
+                indexToTexture.Add(ranking[i].Texture);
+            for (int pass = 0; pass < 2; pass++)
+                for (int i = 0; i < ranking.Count; i++)
+                {
+                    if ((pass == 0) != ranking[i].Linked)
+                        continue;
+                    if (!textureToIndex.ContainsKey(ranking[i].Texture))
+                        textureToIndex[ranking[i].Texture] = i;
+                }
+        }
+
+        private static void ResolveEnvironmentMapTexture(FunctionEntity function, Textures levelTextures, Textures globalTextures, out Textures.TEX4 tex, out Textures db)
+        {
+            tex = null;
+            db = null;
+            string path = (function.GetParameter(ShortGuids.Texture)?.content as cString)?.value;
+            if (string.IsNullOrEmpty(path))
+                return;
+            tex = levelTextures?.GetEnvironmentMapByPath(path);
+            if (tex != null)
+            {
+                db = levelTextures;
+                return;
+            }
+            tex = globalTextures?.GetEnvironmentMapByPath(path);
+            if (tex != null)
+                db = globalTextures;
         }
 
         /// <summary>
@@ -451,33 +567,20 @@ namespace CATHODE
         /// <summary>
         /// Sets EnvironmentMap Texture_Index / environmentmap_index from the Texture path string.
         /// </summary>
-        private static void SyncEnvironmentMapIndexParameters(FunctionEntity function, Textures levelTextures, Textures globalTextures = null)
+        private static void SyncEnvironmentMapIndexParameters(FunctionEntity function, Textures levelTextures, Textures globalTextures, Dictionary<FunctionEntity, int> envMapIndices)
         {
             if (function == null || function.function != FunctionType.EnvironmentMap)
                 return;
 
-            string path = (function.GetParameter(ShortGuids.Texture)?.content as cString)?.value;
-            Textures.TEX4 tex = null;
-            Textures db = null;
-            if (!string.IsNullOrEmpty(path))
-            {
-                tex = levelTextures?.GetEnvironmentMapByPath(path);
-                if (tex != null)
-                    db = levelTextures;
-                else
-                {
-                    tex = globalTextures?.GetEnvironmentMapByPath(path);
-                    if (tex != null)
-                        db = globalTextures;
-                }
-            }
+            ResolveEnvironmentMapTexture(function, levelTextures, globalTextures, out Textures.TEX4 tex, out Textures db);
 
             int textureIndex = -1;
             int envMapIndex = -1;
             if (tex != null && db != null)
             {
                 textureIndex = db.GetWriteIndex(tex);
-                envMapIndex = db.GetWriteIndexForEnvMap(tex);
+                if (envMapIndices == null || !envMapIndices.TryGetValue(function, out envMapIndex))
+                    envMapIndex = -1;
             }
 
             SetIntegerParameter(function, ShortGuids.Texture_Index, textureIndex);

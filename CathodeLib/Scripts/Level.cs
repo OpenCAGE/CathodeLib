@@ -335,6 +335,7 @@ namespace CathodeLib
             );
 
             Commands = new Commands(world + "COMMANDS" + (compressed ? ".BIN.GZ" : File.Exists(world + "COMMANDS.PAK") ? ".PAK" : ".BIN"), EnvironmentAnimations, CollisionMaps, RenderableElements, Physics, Textures, _global?.Textures); OnLoadTick?.Invoke();
+            RefreshEnvironmentMapIndexing();
 
             StateResources.Add(new State());
             using (BinaryReader reader = new BinaryReader(File.OpenRead(world + "EXCLUSIVE_MASTER_RESOURCE_INDICES")))
@@ -442,6 +443,20 @@ namespace CathodeLib
 #endif
 
         /// <summary>
+        /// Give Movers the script's EnvironmentMap ranking, which is what WORLD/ENVIRONMENTMAP.BIN
+        /// indexes and which only Commands can derive. Run once the script has loaded, to resolve
+        /// the loaded rows to cubemaps, and again just before the movers are written, so the rows
+        /// reflect the texture table as it is being saved (ImportFromGlobal can grow it).
+        /// </summary>
+        private void RefreshEnvironmentMapIndexing()
+        {
+            if (Commands == null || Movers == null)
+                return;
+            Commands.BuildEnvironmentMapIndexing(out List<Textures.TEX4> indexToTexture, out Dictionary<Textures.TEX4, int> textureToIndex);
+            Movers.SetEnvironmentMapIndexing(indexToTexture, textureToIndex);
+        }
+
+        /// <summary>
         /// Save all data for the level
         /// </summary>
         public void Save()
@@ -468,6 +483,7 @@ namespace CathodeLib
             );
 
             RenderableElements.Save(); OnSaveTick?.Invoke();
+            RefreshEnvironmentMapIndexing();
             Movers.Save(); OnSaveTick?.Invoke();
 
             Parallel.Invoke(

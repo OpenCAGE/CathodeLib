@@ -36,6 +36,14 @@ namespace CATHODE
         public List<MOVER_DESCRIPTOR> Entries = new List<MOVER_DESCRIPTOR>();
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
 
+        //WORLD/ENVIRONMENTMAP.BIN rows index the level's EnvironmentMap ENTITIES (see
+        //Commands.RankEnvironmentMaps), which this file cannot see. The rows are kept here, by mover
+        //position, only until Level hands over that ranking through SetEnvironmentMapIndexing; from
+        //then on a mover carries just its cubemap and the save recomputes its row from it.
+        private int[] _loadedEnvMapIndices = null;
+        private IReadOnlyList<Textures.TEX4> _envMapIndexToTexture = null;
+        private IReadOnlyDictionary<Textures.TEX4, int> _envMapTextureToIndex = null;
+
         protected override bool HandlesLoadingManually => true;
         private RenderableElements _reds;
         private Resources _resources;
@@ -84,16 +92,28 @@ namespace CATHODE
                 int entryCount = reader.ReadInt32();
                 reader.BaseStream.Position += 24;
 
-                Textures.TEX4[] environmentMaps = new Textures.TEX4[entryCount]; 
+                Textures.TEX4[] environmentMaps = new Textures.TEX4[entryCount];
+                int[] environmentMapIndices = new int[entryCount];
+                for (int i = 0; i < entryCount; i++)
+                    environmentMapIndices[i] = -1;
                 using (BinaryReader envMapReader = new BinaryReader(File.OpenRead(GetEnvMapPath())))
                 {
                     envMapReader.BaseStream.Position += 8;
                     int envMapEntryCount = envMapReader.ReadInt32();
                     for (int i = 0; i < envMapEntryCount; i++)
                     {
-                        environmentMaps[envMapReader.ReadInt32()] = _textures.GetAtWriteIndexForEnvMap(envMapReader.ReadInt32());
+                        int mover = envMapReader.ReadInt32();
+                        int index = envMapReader.ReadInt32();
+                        if (mover < 0 || mover >= entryCount)
+                            continue;
+                        environmentMapIndices[mover] = index;
+                        //Placeholder until SetEnvironmentMapIndexing resolves the row properly: the
+                        //cube ordinal only coincides with the entity index while no two entities
+                        //share a cubemap.
+                        environmentMaps[mover] = _textures.GetAtWriteIndexForEnvMap(index);
                     }
                 }
+                _loadedEnvMapIndices = environmentMapIndices;
 
                 for (int i = 0; i < entryCount; i++)
                 {
@@ -133,6 +153,28 @@ namespace CATHODE
             return true;
         }
 
+        /// <summary>
+        /// Hand over the script's EnvironmentMap ranking (see <see cref="Commands.BuildEnvironmentMapIndexing"/>).
+        /// The first call after a load resolves every loaded row to its cubemap; the save uses the
+        /// latest call to turn each mover's cubemap back into a row. Level calls this after the
+        /// script loads and again before saving, so a texture-table edit between the two cannot
+        /// leave the rows and the entities' environmentmap_index parameters disagreeing.
+        /// </summary>
+        public void SetEnvironmentMapIndexing(IReadOnlyList<Textures.TEX4> indexToTexture, IReadOnlyDictionary<Textures.TEX4, int> textureToIndex)
+        {
+            _envMapIndexToTexture = indexToTexture;
+            _envMapTextureToIndex = textureToIndex;
+
+            if (_loadedEnvMapIndices == null || indexToTexture == null)
+                return;
+            for (int i = 0; i < Entries.Count && i < _loadedEnvMapIndices.Length; i++)
+            {
+                int index = _loadedEnvMapIndices[i];
+                Entries[i].EnvironmentMap = index >= 0 && index < indexToTexture.Count ? indexToTexture[index] : null;
+            }
+            _loadedEnvMapIndices = null;
+        }
+
         override protected bool SaveInternal()
         {
             if (_compressed && Path.GetExtension(_filepath).ToLower() != ".gz")
@@ -140,23 +182,47 @@ namespace CATHODE
             else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
                 _filepath = _filepath.Substring(0, _filepath.Length - 3);
 
-            int totalEnvMaps = 0;
-            foreach (Textures.TEX4 tex in _textures.Entries)
+            //Rows are keyed by MVR index and carry the EnvironmentMap ENTITY index of the mover's
+            //cubemap, recomputed here from the ranking Level supplied (the cube-texture ordinal is
+            //only a fallback for a Movers nobody handed a ranking to). Retail writes a row for
+            //exactly the movers that carry a RuntimeIndex (its renderable environment instances),
+            //most of them -1, and none for lights, FX or fog; anything carrying a map gets a row too.
+            int totalEnvMaps;
+            if (_envMapIndexToTexture != null)
+                totalEnvMaps = _envMapIndexToTexture.Count;
+            else
             {
-                if (tex.StateFlags.HasFlag(Textures.TextureStateFlag.CUBE))
-                    totalEnvMaps++;
+                totalEnvMaps = 0;
+                foreach (Textures.TEX4 tex in _textures.Entries)
+                    if (tex.StateFlags.HasFlag(Textures.TextureStateFlag.CUBE))
+                        totalEnvMaps++;
             }
+
+            int EnvMapIndexOf(Textures.TEX4 tex)
+            {
+                if (tex == null)
+                    return -1;
+                if (_envMapTextureToIndex != null)
+                    return _envMapTextureToIndex.TryGetValue(tex, out int index) ? index : -1;
+                return _textures.GetWriteIndexForEnvMap(tex);
+            }
+
+            List<int> envMapRows = new List<int>(Entries.Count);
+            for (int i = 0; i < Entries.Count; i++)
+                if (Entries[i].RuntimeIndex != -1 || Entries[i].EnvironmentMap != null)
+                    envMapRows.Add(i);
 
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(GetEnvMapPath())))
             {
                 writer.BaseStream.SetLength(0);
                 Utilities.WriteString("envm", writer);
                 writer.Write(1);
-                writer.Write(Entries.Count);
-                for (int i = 0; i < Entries.Count; i++)
+                writer.Write(envMapRows.Count);
+                for (int r = 0; r < envMapRows.Count; r++)
                 {
+                    int i = envMapRows[r];
                     writer.Write(i);
-                    writer.Write(Entries[i].EnvironmentMap == null ? -1 : _textures.GetWriteIndexForEnvMap(Entries[i].EnvironmentMap));
+                    writer.Write(EnvMapIndexOf(Entries[i].EnvironmentMap));
                 }
                 writer.Write(totalEnvMaps);
             }

@@ -422,9 +422,15 @@ namespace CathodeLib
 
             long wanted = RadiosityClass(preferLike);
             HashSet<string> wantedFormats = models != null ? VertexFormatsFor(models, preferLike) : null;
+            // The slot retail lands in is the target's OWN name: a mapping onto "X->X" resolves to the
+            // "X->X->X" twin, whether the element came from a "MATERIAL #292->X->X" generic-slot twin
+            // (Tech_Hub's ENG_Plastic_Smooth_Grey walls) or from an unrelated material altogether
+            // (its TEC_Vinyl_Tan walls). Not the original's slot - that keeps the generic twin.
+            string wantedSlot = SlotOf(name);
 
             Materials.Material fallback = null;
             Materials.Material flagMatch = null;
+            Materials.Material formatMatch = null;
 
             foreach (Materials.Material material in MatchesByName(materials, name))
             {
@@ -436,16 +442,26 @@ namespace CathodeLib
                     continue;
                 flagMatch ??= material;
 
-                // Best case: flags line up and the candidate is known to work with the same
-                // vertex layout the original was authored against.
-                if (wantedFormats == null || wantedFormats.Count == 0)
+                // Flags line up and the candidate is known to work with the same vertex layout
+                // the original was authored against.
+                bool formatOk = wantedFormats == null || wantedFormats.Count == 0;
+                if (!formatOk)
+                {
+                    HashSet<string> candidateFormats = VertexFormatsFor(models, material);
+                    formatOk = candidateFormats.Count == 0 || candidateFormats.Overlaps(wantedFormats);
+                }
+                if (!formatOk)
+                    continue;
+
+                // Best case: it also sits in the target's own slot. Slot-carrying twins of one
+                // material exist per authoring slot; retail resolves onto the canonical one, not the
+                // first twin in the table.
+                if (wantedSlot == null || string.Equals(SlotOf(material.Name), wantedSlot, StringComparison.OrdinalIgnoreCase))
                     return material;
-                HashSet<string> candidateFormats = VertexFormatsFor(models, material);
-                if (candidateFormats.Count == 0 || candidateFormats.Overlaps(wantedFormats))
-                    return material;
+                formatMatch ??= material;
             }
 
-            return flagMatch ?? fallback;
+            return formatMatch ?? flagMatch ?? fallback;
         }
 
         private static IEnumerable<Materials.Material> MatchesByName(Materials materials, string name)
@@ -460,6 +476,27 @@ namespace CathodeLib
                 if (material == null || string.IsNullOrEmpty(material.Name) || material.Name == name)
                     continue;
                 if (NormalizeMaterialNameForLookup(material.Name) == normalized)
+                    yield return material;
+            }
+
+            // Third tier: entries that answer to the same name once a 3ds Max authoring slot is
+            // dropped from either side. A level's lightmapped kit and its dynamic props can share a
+            // material name across two entries that differ only in that slot and in radiosity
+            // class - Tech_Hub ships TEC_Vinyl_Tan_DTY->TEC_Vinyl_Tan_DTY (RADIOSITY_DYNAMIC, 8
+            // retail uses) beside TEC_Vinyl_Tan_DTY->TEC_Vinyl_Tan_DTY->TEC_Vinyl_Tan_DTY
+            // (RADIOSITY_STATIC, 490 uses). A mapping keyed on the two-part form matched only the
+            // first, so the class preference in FindMaterialByName never saw the static variant and
+            // every lightmapped wall fell back to the dynamic entry - which samples the volume
+            // field per frame and flickers. Yielded last so an exact or plain match still wins when
+            // the caller has no preference.
+            string strippedWanted = NormalizeMaterialNameForLookup(StripAuthoringSlot(name));
+            foreach (Materials.Material material in materials.Entries)
+            {
+                if (material == null || string.IsNullOrEmpty(material.Name) || material.Name == name)
+                    continue;
+                if (NormalizeMaterialNameForLookup(material.Name) == normalized)
+                    continue;
+                if (NormalizeMaterialNameForLookup(StripAuthoringSlot(material.Name)) == strippedWanted)
                     yield return material;
             }
         }
