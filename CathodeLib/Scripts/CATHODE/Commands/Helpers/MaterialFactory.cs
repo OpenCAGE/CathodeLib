@@ -670,20 +670,29 @@ namespace CathodeLib
         /// <summary>
         /// Compile a permutation the level does not ship, rather than giving up on it.
         ///
-        /// OFF by default, and that is not timidity. Minting a shader also mints a MATERIAL, and a
-        /// new material detaches the mover's renderable run from the material the Commands-side
-        /// resource still points at - which the engine refuses to draw. Measured on ENG_ALIEN_NEST:
-        /// 8 permutations compiled, 13 materials created, and the floor water and several
-        /// thrown-flare effects lost in game.
-        ///
-        /// Generating the shader is the easy half; rebinding the Commands resource to the new
-        /// material is the half that makes it safe, and it is not written yet.
+        /// This shipped off for a while on the belief that a minted material "detached" the mover's
+        /// renderable run from the material the Commands-side resource points at and the engine then
+        /// refused to draw it (ENG_ALIEN_NEST: water and thrown flares lost). Measured against retail's
+        /// own data that constraint does not exist - retail's movers carry a different material from
+        /// their Commands resource routinely (ChallengeMap4 fog boxes 1 of 24 match, Solace surface
+        /// effect boxes 8 of 125), because the resource holds the composite's template and the mover
+        /// its own per-instance material. The losses were the spurious "[000000]" copies that
+        /// SameContentApprox / PreferShippedOnConstantDrift / the name-reuse in ApplyFxMaterial have
+        /// since removed, and water never applied its derived mask in the first place.
         /// </summary>
-        public bool GenerateMissingShaders = false;
+        public bool GenerateMissingShaders = true;
 
         /// <summary>Permutations minted by the recompiler, and the masks that could not be.</summary>
         public int ShadersGenerated { get; private set; }
         public readonly Dictionary<string, string> ShaderGenerationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
+        /// <summary>Each permutation minted this pass, and where it came from (level pool clone / database / recompiled).</summary>
+        public readonly Dictionary<string, string> ShadersGeneratedFrom = new Dictionary<string, string>(StringComparer.Ordinal);
+        /// <summary>
+        /// Masks an entity's parameters asked for that the level does not ship, counted whether or not
+        /// <see cref="GenerateMissingShaders"/> is on - the size of what the parameters are not getting
+        /// when it is off, and it is silent otherwise.
+        /// </summary>
+        public readonly Dictionary<string, int> MissingPermutations = new Dictionary<string, int>(StringComparer.Ordinal);
 
         private Shaders.Shader FindShader(CATHODE.ShaderTypes.SHADER_LIST ubershader, long features, Shaders.Shader carryFrom = null)
         {
@@ -699,20 +708,27 @@ namespace CathodeLib
              * Everything failable in there returns null with a message rather than throwing, so a
              * missing master, an absent d3dcompiler_43, or a build the master does not claim all
              * land back here as "no shader", exactly as before. */
+            string key = ubershader + " 0x" + features.ToString("X16");
+            int seen; MissingPermutations.TryGetValue(key, out seen);
+            MissingPermutations[key] = seen + 1;
+
             if (!GenerateMissingShaders)
                 return null;
-
-            string key = ubershader + " 0x" + features.ToString("X16");
             if (ShaderGenerationErrors.ContainsKey(key))
                 return null;
 
-            CathodeLib.Ubershaders.PermutationSource source;
+            CathodeLib.Ubershaders.PermutationSource source = CathodeLib.Ubershaders.PermutationSource.None;
             string error;
             Shaders.Shader generated;
             try
             {
+                /* The game root lets the host's harvested database answer before the recompiler does,
+                 * which hands back retail's own bytecode for any mask some other level shipped. It is
+                 * derived from the level's path because instancing is given no root of its own; a
+                 * host that registered no catalogue provider (the headless harness) gets null back
+                 * from it and falls through to the recompiler exactly as before. */
                 generated = CathodeLib.Ubershaders.ShaderPermutationService.Resolve(
-                    _level.Shaders, ubershader, features, carryFrom, null, out source, out error);
+                    _level.Shaders, ubershader, features, carryFrom, GameRootOf(_level), out source, out error);
             }
             catch (Exception e)
             {
@@ -727,7 +743,17 @@ namespace CathodeLib
             }
 
             ShadersGenerated++;
+            ShadersGeneratedFrom[key] = source.ToString();
             return generated;
+        }
+
+        /// <summary>The install a level lives in: everything before its DATA\ENV segment, or null.</summary>
+        private static string GameRootOf(Level level)
+        {
+            string path = level?.Filepath;
+            if (string.IsNullOrEmpty(path)) return null;
+            int at = path.Replace('/', '\\').IndexOf("\\DATA\\ENV\\", StringComparison.OrdinalIgnoreCase);
+            return at < 0 ? null : path.Substring(0, at);
         }
 
         private static bool NeedsConstants(Materials.Material m)

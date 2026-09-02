@@ -2672,8 +2672,38 @@ namespace CathodeLib
         public IReadOnlyList<StateProperties> States => _states;
         public IReadOnlyList<string> StateNotes => _stateNotes;
 
+        /// <summary>Bakers that threw and were skipped; the level kept that system's data from disk.</summary>
         public IReadOnlyList<string> BakeWarnings => _bakeWarnings;
         private readonly List<string> _bakeWarnings = new List<string>();
+
+        /// <summary>
+        /// Everything else the pass could not do as asked - a missing required model, a gobo texture
+        /// not packed with the level, a shader permutation that would not compile. Each one is an
+        /// edit that did not reach the screen, so they go to the caller, not only the console.
+        /// </summary>
+        public IReadOnlyList<string> Warnings => _warnings;
+        private readonly List<string> _warnings = new List<string>();
+
+        private void Warn(string message)
+        {
+            lock (_warnings) _warnings.Add(message);
+            Console.WriteLine("WARNING: " + message);
+        }
+
+        /// <summary>Shader permutations this pass compiled because the level did not ship them: mask -> where it came from.</summary>
+        public IReadOnlyDictionary<string, string> ShadersGenerated =>
+            _materialFactory?.ShadersGeneratedFrom ?? (IReadOnlyDictionary<string, string>)new Dictionary<string, string>();
+
+        /// <summary>Masks that were asked for and could not be built: mask -> compiler error.</summary>
+        public IReadOnlyDictionary<string, string> ShaderGenerationErrors =>
+            _materialFactory?.ShaderGenerationErrors ?? (IReadOnlyDictionary<string, string>)new Dictionary<string, string>();
+
+        /// <summary>
+        /// Compile shader permutations an entity's parameters call for when the level does not ship
+        /// them, from the reconstructed masters. Kill switch for measuring against the old behaviour,
+        /// which left the instance on its template material and said nothing.
+        /// </summary>
+        public static bool GenerateMissingShaders = true;
 
         /// <summary>Emit a per-phase time and heap reading to the console while instancing. Profiling
         /// only - off by default, and the timing calls cost nothing when it is off.</summary>
@@ -3060,10 +3090,11 @@ namespace CathodeLib
             if (RequiredModels.EnsureOrdered(_level.Models, out missingRequired))
                 Console.WriteLine("Restored the required models to the head of the model pak.");
             foreach (RequiredModels.Model missingModel in missingRequired)
-                Console.WriteLine("WARNING: this level is missing required model " + missingModel + ".");
+                Warn("this level is missing required model " + missingModel + ".");
 
             //Materials an instance needs but the authored data doesn't hold - see MaterialFactory.
             _materialFactory = new MaterialFactory(_level);
+            _materialFactory.GenerateMissingShaders = GenerateMissingShaders;
 
             //Do the instancing!
             _sharedComposites.Clear();
@@ -3079,17 +3110,24 @@ namespace CathodeLib
                                       ? ", " + _materialFactory.TexturesNotFound + " gobo texture(s) unresolved"
                                       : ""));
                 foreach (KeyValuePair<string, string> unresolved in _materialFactory.UnresolvedTextures)
-                    Console.WriteLine("WARNING: gobo texture not packed with this level: " + unresolved.Key +
-                                      (unresolved.Value == "" ? "" : "  (first requested by " + unresolved.Value + ")"));
+                    Warn("gobo texture not packed with this level: " + unresolved.Key +
+                         (unresolved.Value == "" ? "" : "  (first requested by " + unresolved.Value + ")"));
             }
 
             //Permutations the level never shipped, compiled from the reconstructed masters. A mask that
             //could not be built is not fatal - the instance keeps its template material - but it does
             //mean an entity parameter did not reach the screen, so it is worth saying out loud.
             if (_materialFactory.ShadersGenerated != 0)
-                Console.WriteLine("Compiled " + _materialFactory.ShadersGenerated + " shader permutation(s) this level does not ship.");
+            {
+                Console.WriteLine("Compiled " + _materialFactory.ShadersGenerated + " shader permutation(s) this level does not ship:");
+                foreach (KeyValuePair<string, string> made in _materialFactory.ShadersGeneratedFrom)
+                    Console.WriteLine("  " + made.Key + "  <- " + made.Value);
+            }
             foreach (KeyValuePair<string, string> failed in _materialFactory.ShaderGenerationErrors)
-                Console.WriteLine("WARNING: no shader for " + failed.Key + " - " + failed.Value);
+                Warn("no shader for " + failed.Key + " - " + failed.Value + "; the instance keeps its template material");
+            if (!GenerateMissingShaders)
+                foreach (KeyValuePair<string, int> missing in _materialFactory.MissingPermutations)
+                    Warn("shader generation is off and this level does not ship " + missing.Key + " (wanted by " + missing.Value + " instance(s))");
 
             //Re-write Commands-only (not instanced) REDs back to REDs since we cleared it out earlier
             Phase("  commandsREDs", PopulateCommandsREDs);
@@ -3486,7 +3524,7 @@ namespace CathodeLib
                     tex = _level.Global.Textures.GetEnvironmentMapByPath(texturePath);
                 if (tex == null)
                 {
-                    Console.WriteLine("WARNING: EnvironmentMap texture not found: " + texturePath);
+                    Warn("EnvironmentMap texture not found: " + texturePath);
                     continue;
                 }
 
@@ -3831,7 +3869,7 @@ namespace CathodeLib
                 if (entity.SecondaryZone != ShortGuid.Invalid)
                 {
                     if (isDirect && entity.PrimaryZoneWasDirect)
-                        Console.WriteLine("WARNING: An entity tried to apply itself to more than two zones!");
+                        Console.WriteLine("WARNING: an entity tried to apply itself to more than two zones");
                     return;
                 }
 
@@ -4514,7 +4552,7 @@ namespace CathodeLib
             if (submesh == null)
             {
                 if (_missingRequiredModels.Add(model))
-                    Console.WriteLine("WARNING: this level has no " + model + " - movers that need it keep their authored mesh.");
+                    Warn("this level has no " + model + " - movers that need it keep their authored mesh");
                 return reds;
             }
             return _materialFactory.WithModel(reds, submesh);

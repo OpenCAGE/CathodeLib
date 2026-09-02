@@ -15,6 +15,7 @@ namespace CathodeLib.Ubershaders
         Database,    //this entry has a shader patch in cathodelib
         Recompiled,  //this entry requires a full patch from cathodelib
         Unimplemented, //this type doesn't exist in retail data
+        Relabelled,  //the requested mask compiles to the bytecode the material already has - same blob, new mask
     }
 
     /* Resolves a (family, feature mask) request to a concrete shader entry for a level, trying the
@@ -239,12 +240,24 @@ namespace CathodeLib.Ubershaders
                 return null;
             }
 
-            if (current != null
-                && AllChangesUnobserved(levelShaders, family, gameRoot, current.UbershaderFeatureFlags, mask)
-                && !UberShaderRecompiler.MastersDiffer(family, current.UbershaderFeatureFlags, mask))
+            /* The bits that differ do not change the compiled shader, so a recompile would hand back the
+             * bytecode the material already has. That is not a reason to refuse: the mask is data the
+             * engine reads off the entry in its own right - LOW_RES, BILLBOARD, EARLY_ALPHA on a fog
+             * plane are render-state flags, and retail ships them as masks with identical blobs. So
+             * relabel: the current entry's bytecode and metadata under the requested mask. Refusing
+             * here made instancing keep a fog volume's template material after its LOW_RES was ticked,
+             * which silently dropped the setting (BSP_LV426_Pt01, CA_FOGPLANE 0xA2F). */
+            if (current != null && !UberShaderRecompiler.MastersDiffer(family, current.UbershaderFeatureFlags, mask))
             {
-                error = "No shipped " + family + " shader uses that feature, so there was nothing to reconstruct it from - the master would hand back the shader you already have.";
-                return null;
+                Shaders.Shader relabelled = current.Copy();
+                ShareBlobs(relabelled, current);
+                relabelled.UbershaderFeatureFlags = mask;
+                relabelled.PermutationHash = SynthesizePermutationHash(family, mask);
+                relabelled.SamplerRemaps.Clear();
+                relabelled.SamplerRemaps.AddRange(ResizeCarry(carry, current.SamplerRemaps.Count));
+                levelShaders.Entries.Add(relabelled);
+                source = PermutationSource.Relabelled;
+                return relabelled;
             }
 
             byte[] vertexShader, pixelShader, hullShader, domainShader;
