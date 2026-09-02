@@ -199,25 +199,6 @@ namespace CATHODE.Scripting
         }
 
         /// <summary>
-        /// Drop hops that simply repeat the one before them.
-        /// </summary>
-        private ShortGuid[] CollapseRepeats(ShortGuid[] hierarchy)
-        {
-            int repeats = 0;
-            for (int i = 1; i < hierarchy.Length; i++)
-                if (hierarchy[i] == hierarchy[i - 1]) repeats++;
-            if (repeats == 0)
-                return hierarchy;
-
-            ShortGuid[] collapsed = new ShortGuid[hierarchy.Length - repeats];
-            collapsed[0] = hierarchy[0];
-            int at = 1;
-            for (int i = 1; i < hierarchy.Length; i++)
-                if (hierarchy[i] != hierarchy[i - 1]) collapsed[at++] = hierarchy[i];
-            return collapsed;
-        }
-
-        /// <summary>
         /// Resolve an alias
         /// </summary>
         public List<Tuple<Composite, Entity>> ResolveAlias(AliasEntity alias, Composite composite)
@@ -232,8 +213,6 @@ namespace CATHODE.Scripting
         {
             if (hierarchy == null || composite == null || hierarchy.Length <= 1)
                 return new List<Tuple<Composite, Entity>>();
-
-            hierarchy = CollapseRepeats(hierarchy);
 
             bool hasTerminator = hierarchy[hierarchy.Length - 1] == ShortGuid.Invalid;
             int maxIndex = hierarchy.Length - (hasTerminator ? 1 : 0);
@@ -281,8 +260,6 @@ namespace CATHODE.Scripting
             if (hierarchy == null || hierarchy.Length <= 2)
                 return new List<Tuple<Composite, Entity>>();
 
-            hierarchy = CollapseRepeats(hierarchy);
-
             Composite initialComp = _commands.GetComposite(hierarchy[0]); //NOTE: This isn't always the initial comp, so we check from the entry point first.
             Composite currentComp = _commands.EntryPoints[0];
 
@@ -293,6 +270,10 @@ namespace CATHODE.Scripting
             
             for (int i = 1; i < maxIndex; i++)
             {
+                //Sometimes, the same entity is added twice. Seems wrong?
+                if (hierarchy[i] == hierarchy[i - 1])
+                    continue;
+
                 Entity entity = currentComp.GetEntityByID(hierarchy[i]);
                 if (entity == null && i == 1)
                 {
@@ -335,8 +316,6 @@ namespace CATHODE.Scripting
         {
             if (hierarchy == null || hierarchy.Length == 0)
                 return new List<Tuple<Composite, Entity>>();
-
-            hierarchy = CollapseRepeats(hierarchy);
 
             Composite currentComp = _commands.EntryPoints[0];
 
