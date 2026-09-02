@@ -131,6 +131,9 @@ namespace CathodeLib.NavMesh
             if (settings.SkipPlayerOnlyCollision)
                 CollectPlayerOnlySkip(level, skip);
 
+            if (settings.SkipCameraCollision)
+                CollectTypeSkip(level, skip, CollisionMaps.CollisionType.CAMERA);
+
             if (settings.SkipGhostedCollision)
                 CollectGhostedSkip(level, skip);
 
@@ -324,6 +327,26 @@ namespace CathodeLib.NavMesh
         /// hull or off a ledge. A character never touches it, so it must not become floor they can
         /// walk on or a wall they path around.
         /// </summary>
+        /// <summary>Omit every instance whose mappings are all of one collision type.</summary>
+        static void CollectTypeSkip(Level level, HashSet<HavokPackfile.CompoundInstance> skip, CollisionMaps.CollisionType which)
+        {
+            if (level?.CollisionMaps?.Entries == null || skip == null)
+                return;
+            var typed = new HashSet<HavokPackfile.CompoundInstance>();
+            var other = new HashSet<HavokPackfile.CompoundInstance>();
+            foreach (CollisionMaps.COLLISION_MAPPING entry in level.CollisionMaps.Entries)
+            {
+                if (entry?.CollisionInstance == null)
+                    continue;
+                CollisionMaps.CollisionType type =
+                    (CollisionMaps.CollisionType)((uint)entry.Flags & (uint)CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK);
+                if (type == which) typed.Add(entry.CollisionInstance); else other.Add(entry.CollisionInstance);
+            }
+            foreach (HavokPackfile.CompoundInstance instance in typed)
+                if (!other.Contains(instance))
+                    skip.Add(instance);
+        }
+
         static void CollectPlayerOnlySkip(Level level, HashSet<HavokPackfile.CompoundInstance> skip)
         {
             if (level?.CollisionMaps?.Entries == null || skip == null)

@@ -258,7 +258,7 @@ namespace CathodeLib.NavMesh
 
             if (settings.FilterUnreachable && soup.ReachabilitySeeds != null && soup.ReachabilitySeeds.Count > 0)
             {
-                bool[] reachable = MarkReachablePolys(detour, tile, soup.ReachabilitySeeds, settings);
+                bool[] reachable = MarkReachablePolys(detour, tile, soup.ReachabilitySeeds, settings, soup.OffMeshLinks, soup.BackstageNodes);
                 int reachableCount = 0;
                 for (int i = 0; i < reachable.Length; i++)
                     if (reachable[i]) reachableCount++;
@@ -302,7 +302,8 @@ namespace CathodeLib.NavMesh
             int elevatedCulled = 0;
             if (keep != null)
             {
-                elevatedCulled = StripElevatedPolys(tile, settings, keep);
+                if (settings.CullElevatedPolyStrips)
+                    elevatedCulled = StripElevatedPolys(tile, settings, keep);
                 for (int i = 0; i < keep.Length; i++)
                     if (!keep[i]) culled++;
             }
@@ -1558,11 +1559,16 @@ namespace CathodeLib.NavMesh
             return option;
         }
 
+        /// <summary>What the last reachability flood did with the off-mesh links, for the diagnostics.</summary>
+        public static string LastSeedFloodStats = "";
+
         static bool[] MarkReachablePolys(
             DtNavMesh nav,
             DtMeshTile tile,
             List<Vector3> seeds,
-            NavMeshBakeSettings settings)
+            NavMeshBakeSettings settings,
+            List<CollisionNavMeshSoup.OffMeshLinkDraft> offMesh = null,
+            List<CollisionNavMeshSoup.BackstageNodeDraft> backstage = null)
         {
             int polyCount = tile.data.header.polyCount;
             var keep = new bool[polyCount];
@@ -1587,21 +1593,80 @@ namespace CathodeLib.NavMesh
                 queue.Enqueue(ip);
             }
 
-            while (queue.Count > 0)
+            void Flood()
             {
-                int i = queue.Dequeue();
-                DtPoly poly = tile.data.polys[i];
-                for (int link = poly.firstLink; link != DT_NULL_LINK; link = tile.links[link].next)
+                while (queue.Count > 0)
                 {
-                    long refs = tile.links[link].refs;
-                    if (refs == 0)
-                        continue;
-                    DtDetour.DecodePolyId(refs, out _, out _, out int ni);
-                    if (ni < 0 || ni >= polyCount || keep[ni])
-                        continue;
-                    keep[ni] = true;
-                    queue.Enqueue(ni);
+                    int i = queue.Dequeue();
+                    DtPoly poly = tile.data.polys[i];
+                    for (int link = poly.firstLink; link != DT_NULL_LINK; link = tile.links[link].next)
+                    {
+                        long refs = tile.links[link].refs;
+                        if (refs == 0)
+                            continue;
+                        DtDetour.DecodePolyId(refs, out _, out _, out int ni);
+                        if (ni < 0 || ni >= polyCount || keep[ni])
+                            continue;
+                        keep[ni] = true;
+                        queue.Enqueue(ni);
+                    }
                 }
+            }
+            Flood();
+
+            // Retail reaches an upper room by its ladder, vent or backstage sheet as surely as by
+            // a floor, and this flood runs before those connections are stitched into the tile.
+            // Stopping at the polygon graph culled whole rooms: on TECH_RND_HZDLAB 146 m2 of
+            // retail's standing floor that Recast had generated. Cross every off-mesh link and
+            // every backstage network the flood has reached one end of, then flood again.
+            if (settings.SeedFloodFollowsOffMeshLinks && (offMesh != null || backstage != null))
+            {
+                var linkExtents = new RcVec3f(settings.WalkableRadius * 4f, 1.0f, settings.WalkableRadius * 4f);
+                int PolyAt(Vector3 p)
+                {
+                    var c = new RcVec3f(p.X, p.Y, p.Z);
+                    query.FindNearestPoly(c, linkExtents, filter, out long r, out _, out _);
+                    if (r == 0) return -1;
+                    DtDetour.DecodePolyId(r, out _, out _, out int ip);
+                    return ip < 0 || ip >= polyCount ? -1 : ip;
+                }
+                var ends = new List<(int a, int b)>();
+                if (offMesh != null)
+                    foreach (CollisionNavMeshSoup.OffMeshLinkDraft d in offMesh)
+                    {
+                        int a = PolyAt(d.Start), bb = PolyAt(d.End);
+                        if (a >= 0 && bb >= 0 && a != bb) ends.Add((a, bb));
+                    }
+                if (backstage != null)
+                {
+                    var byNet = new Dictionary<int, List<int>>();
+                    foreach (CollisionNavMeshSoup.BackstageNodeDraft nd in backstage)
+                    {
+                        int p = PolyAt(nd.Bottom);
+                        if (p < 0) continue;
+                        if (!byNet.TryGetValue(nd.NetworkId, out List<int> l)) byNet[nd.NetworkId] = l = new List<int>();
+                        if (!l.Contains(p)) l.Add(p);
+                    }
+                    foreach (List<int> l in byNet.Values)
+                        for (int k = 1; k < l.Count; k++) ends.Add((l[0], l[k]));
+                }
+                int crossed = 0;
+                bool grew = true;
+                while (grew)
+                {
+                    grew = false;
+                    foreach ((int a, int bb) in ends)
+                    {
+                        if (keep[a] == keep[bb]) continue;
+                        int other = keep[a] ? bb : a;
+                        keep[other] = true;
+                        queue.Enqueue(other);
+                        grew = true;
+                        crossed++;
+                    }
+                    if (grew) Flood();
+                }
+                LastSeedFloodStats = "off-mesh drafts " + (offMesh?.Count ?? 0) + ", backstage nodes " + (backstage?.Count ?? 0) + ", link ends on polys " + ends.Count + ", crossings " + crossed;
             }
 
             // If no seed hit the mesh, keep everything rather than wiping the tile.

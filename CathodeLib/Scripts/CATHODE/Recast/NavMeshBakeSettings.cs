@@ -145,6 +145,14 @@ namespace CathodeLib.NavMesh
         public float HeightLimitedRegionArea = -1f;
 
         public bool FilterUnreachable = true;
+
+        /// <summary>
+        /// Let the reachability flood cross off-mesh links (ladders, vents, drops) and backstage
+        /// networks, not just polygon adjacency. Off by default in the flood's original form, which
+        /// ran before those connections were stitched in and so culled any room retail reaches
+        /// only by one of them.
+        /// </summary>
+        public bool SeedFloodFollowsOffMeshLinks = true;
         public float ReachabilitySeedHeightToleranceAbove = 0.1875f;
         public float ReachabilitySeedHeightToleranceBelow = 0.3125f;
 
@@ -175,7 +183,18 @@ namespace CathodeLib.NavMesh
         /// <summary>
         /// Skip COLLISION.MAP rows flagged GHOSTED / PRE_GHOSTED when building the Recast soup.
         /// </summary>
-        public bool SkipGhostedCollision = true;
+        /// <remarks>
+        /// <b>true -> false (2 Sep 2026).</b> ChallengeMap9 ships 50 m2 of standing floor on the upper
+        /// deck that we never generated: `diag navvariant hosts:` bisected the soup and the floor came back
+        /// only with this skip off, and `diag navinst` shows the Floor_W_Filler module there flagged
+        /// GHOSTED|PRE_GHOSTED in retail's own shipped COLLISION.MAP exactly as in ours (19 ghosted rows of
+        /// 197 around the point, identical) - and retail's navmesh walks on it. A pre-ghosted collider is
+        /// floor to the shipped bake. Measured against the shipped navmesh on ten levels: CM9 recall
+        /// 93.5 -> 97.2, SCI_HospitalLower precision 97.9 -> 98.4, ENG_TowPlatform 95.6 -> 96.4,
+        /// Tech_MuthrCore recall 99.5 -> 99.8, SCI_Hub +0.1; HzdLab, Tech_Hub, CM11, Torrens, Solace
+        /// unchanged. No level lost recall or precision, so no door that starts open became a wall.
+        /// </remarks>
+        public bool SkipGhostedCollision = false;
 
         /// <summary>
         /// Skip the collision instances of PATH_CLOSED NavMeshBarriers, which are carved as area ids
@@ -197,7 +216,23 @@ namespace CathodeLib.NavMesh
         /// Skip PLAYER_ONLY collision when building the Recast soup - the invisible surfaces that
         /// exist to keep Ripley somewhere, which no AI ever touches.
         /// </summary>
-        public bool SkipPlayerOnlyCollision = false;
+        /// <remarks>
+        /// <b>false -> true (2 Sep 2026).</b> ENG_TowPlatform's tow deck (234 m2, `Platform_Section_1`) was
+        /// an island the seed filter removed: a PLAYER_ONLY CollisionBarrier box on the docking junction
+        /// stood solid in the soup from the floor to 1.67 m and cut the deck off (`diag navvariant gaps` /
+        /// `hosts:`; retail's COLLISION.MAP types it PLAYER_ONLY too, and retail's navmesh runs across it).
+        /// Measured against the shipped navmesh: TowPlatform recall 86.9 -> 97.5 with precision 96.5 -> 96.8
+        /// (F1 91.4 -> 97.1), HzdLab +0.1; ChallengeMap9, ChallengeMap11 and Tech_Hub unchanged; the rest
+        /// of the eleven-level sweep in `logs/navvariant_playeronly_B.txt`. CAMERA-typed rows
+        /// (<see cref="SkipCameraCollision"/>) made no difference anywhere and stay in.
+        /// </remarks>
+        public bool SkipPlayerOnlyCollision = true;
+
+        /// <summary>
+        /// Skip CAMERA-typed collision when building the Recast soup - CollisionBarrier volumes
+        /// placed to keep the camera out of geometry, which are not floor and not walls to an NPC.
+        /// </summary>
+        public bool SkipCameraCollision = false;
 
         /// <summary>
         /// Skip small bake-host <c>hkpBoxShape</c> colliders (crate-scale props) from the Recast
@@ -254,6 +289,18 @@ namespace CathodeLib.NavMesh
         /// sits ~8 m over the main floor, so it is never mistaken for a prop.
         /// </remarks>
         public float ElevatedPolyStoreySeparation = 1.9f;
+
+        /// <summary>
+        /// Run the elevated-strip cull at all. OFF: measured against the shipped navmesh on nine
+        /// levels (2 Sep 2026, `diag navvariant`), the cull never bought precision and cost recall
+        /// wherever a real floor sits 0.75-1.9 m above another surface - TECH_RND_HZDLAB's
+        /// hazardous-lab rooms a metre above their duct floor went from 89.0% recall to 99.0% with
+        /// precision unchanged (F1 93.0 -> 98.2), ChallengeMap11 97.4 -> 99.4, SCI_HospitalLower
+        /// 98.1 -> 98.8, ChallengeMap9 96.0 -> 96.5, HAB_Airport 98.4 -> 98.6, SCI_Hub +0.1;
+        /// Tech_Hub, BSP_Torrens and Solace did not move. The small-prop skip already keeps crate
+        /// lids out of the soup, which is what this was for. Thresholds kept for re-enabling.
+        /// </summary>
+        public bool CullElevatedPolyStrips = false;
 
         /// <summary>
         /// Clearance (metres) two barriers need between them before they may share a Recast area
