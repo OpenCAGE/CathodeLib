@@ -23,11 +23,17 @@ namespace CathodeLib.Alphalight
     /// <c>alpha_light_offset_*</c> / <c>alpha_light_scale_*</c> parameters. So nothing here needs to
     /// know where the lights are.</para>
     ///
-    /// <para>How the atlas is laid out, verified against retail BSP_TORRENS:</para>
+    /// <para>How the atlas is laid out, verified against retail on BSP_TORRENS, TECH_HUB, SCI_HUB,
+    /// TECH_RND_HZDLAB and HAB_SHOPPINGCENTRE:</para>
     /// <list type="bullet">
     /// <item>Each participating ModelReference owns a <b>box</b> of <c>(W+1) x (H+1)</c> texels.
     /// <c>W x H</c> of those are probes; the extra row and column are a dilation border on the
     /// <i>left and top</i>. Boxes never overlap and every live texel is inside one.</item>
+    /// <item>Boxes are placed by the classic binary-tree allocator (insert into the first free leaf
+    /// that fits; split the remainder along its longer side), inserting in <b>REDS.BIN order</b> -
+    /// the index of the entity's renderable run - and growing the atlas by powers of two from 64
+    /// until everything fits. That reproduces retail's placement box for box on every level checked,
+    /// so a level whose renderables have not moved gets its retail layout back.</item>
     /// <item>The parameters point at the first <i>probe</i>, not at the box:
     /// <c>offset = (probeX / resolution, probeY / resolution)</c> and
     /// <c>scale = (W / resolution, H / resolution)</c>. Since a shader maps surface UV 0..1 onto
@@ -39,27 +45,35 @@ namespace CathodeLib.Alphalight
     ///
     /// <para>How a probe grid is built: the mesh is rasterised in its <b>alphalight unwrap</b> -
     /// TexCoord3 on most vertex formats, TexCoord2 on the few that stop there - sampling grid
-    /// <i>nodes</i> at <c>(i / (W-1), j / (H-1))</c> rather than texel centres, and storing the
-    /// interpolated position. Nodes the charts do not cover take the closest point on the mesh in UV
-    /// space, which is what reproduces retail's clamped grid edges.
-    /// <c>alpha_light_average_normal</c> is the mean of the probes' interpolated normals, left
-    /// unnormalised, so its length falls away as the surface curves.</para>
+    /// <i>nodes</i> at <c>(i / (W-1), j / (H-1))</c> rather than texel centres. A node takes the
+    /// closest point on the nearest triangle, measured in <i>texel</i> space, provided that is within
+    /// <see cref="AlphalightBakeSettings.CoverageTexels"/> of it; where charts overlap the first
+    /// triangle in index order wins. Nodes further from the surface than that are filled afterwards
+    /// by an in-place dilation that copies the first filled neighbour of left, up, right, down, pass
+    /// after pass - which is why a whole empty row comes out as a constant copied from the column
+    /// above, and a run past the end of a chart repeats its last probe. Both are retail's behaviour.
+    /// <c>alpha_light_average_normal</c> is the mean of the probes' normals, copies included, left
+    /// unnormalised so its length falls away as the surface curves.</para>
     ///
-    /// <para>Two things retail knows that the shipped data does not carry:</para>
+    /// <para>What still separates the output from retail's:</para>
     /// <list type="bullet">
     /// <item><b>Grid size.</b> Deterministic, but not reproduced. Over 2004 retail samples, no two
     /// entities whose whole renderable set matches byte for byte were ever given different grids, so
     /// it is a pure function of data we hold - we simply do not have the function. It is not a
-    /// world-space texel density, nor a span of any shipped UV channel. The shape is right though:
-    /// the reported formula is <c>W = span + 1</c> with those UVs in lightmap texel space, so the
-    /// missing piece is the density the radiosity probe pass rasterises at. Until that is reproduced,
+    /// world-space texel density, nor a span of any shipped UV channel. Until it is reproduced,
     /// <see cref="AlphalightBakeSettings.PreserveExistingResolution"/> reuses what COMMANDS already
     /// records, and only new content falls back to
     /// <see cref="AlphalightBakeSettings.TargetTexelSize"/>.</item>
-    /// <item><b>Per-model normal push.</b> About a fifth of retail's models store probes displaced
-    /// along the surface normal by an authored distance (0.004 - 0.05 on BSP_TORRENS). There is no
-    /// source for it in the level, so probes are left on the surface; those models still land within
-    /// 5 cm.</item>
+    /// <item><b>Source geometry.</b> On a minority of models retail's probes do not lie on the
+    /// shipped mesh: every probe of a flat pane is displaced along its normal by one authored-looking
+    /// distance (0.4 to 11 cm on TECH_HUB, differing between panes of the same door), cut corners are
+    /// filled in as though the pane were a full rectangle, and gaps between coplanar panes are
+    /// interpolated straight across. All of that is consistent with retail having rasterised a
+    /// different, simpler version of those meshes than the one that shipped. There is no source for
+    /// it in the level, so those models land within a few centimetres rather than exactly.</item>
+    /// <item><b>A channel.</b> <c>sqrt(mesh area / probe cells) / sqrt(20 pi)</c> is bit-exact on the
+    /// majority and within 2% on 78 of 112 TECH_HUB models; the rest (partial unwraps, shells) are
+    /// off by 5-20%, so retail's area is not quite the shipped mesh's either.</item>
     /// </list>
     /// </remarks>
     public static class AlphalightBaker
@@ -76,11 +90,10 @@ namespace CathodeLib.Alphalight
         private static readonly Vector4 Unclaimed = new Vector4(0.0f, 0.0f, 0.0f, -1024.0f);
 
         /// <summary>
-        /// A probe's stored A is its cell's world edge length over this. Fitted to retail: the
-        /// ratio holds to 1.0087 - 1.0111 across every model whose mesh area matches its
-        /// parameterised area.
+        /// A probe's stored A is its cell's world edge length over this: sqrt(20 pi). Fitted to
+        /// retail, where it holds to a tenth of a percent on every flat, fully unwrapped pane.
         /// </summary>
-        private const double ProbeScaleDivisor = 7.9271;
+        private const double ProbeScaleDivisor = 7.9267;
 
         #region ENTRY POINT
 
@@ -153,6 +166,8 @@ namespace CathodeLib.Alphalight
             public Vector3[] Positions;      // Width * Height, row major
             public Vector3 AverageNormal;
             public float ProbeScale;         // what goes in the A channel
+            public int RedsIndex = -1;       // where the entity's renderable run sits in REDS.BIN
+            public int Sequence;             // order collected, breaks ties
 
             public int BoxWidth => Width + 1;
             public int BoxHeight => Height + 1;
@@ -193,13 +208,18 @@ namespace CathodeLib.Alphalight
                     if (mesh == null || mesh.Vertices.Count == 0 || mesh.Indices.Count < 3)
                         continue;
 
-                    List<Triangle> triangles = BuildTriangles(mesh, out double worldArea, out double uvArea);
-                    Sample sample = new Sample { Entity = function };
+                    List<Triangle> triangles = BuildTriangles(mesh, out double worldArea);
+                    Sample sample = new Sample
+                    {
+                        Entity = function,
+                        Sequence = samples.Count,
+                        RedsIndex = level.RenderableElements?.GetWriteIndex(reds) ?? -1,
+                    };
 
                     if (triangles.Count != 0)
                     {
                         ResolveGridSize(sample, function, triangles, settings, sourceResolution);
-                        Rasterise(sample, triangles, worldArea, uvArea);
+                        Rasterise(sample, triangles, worldArea, settings);
                     }
                     else
                     {
@@ -272,13 +292,12 @@ namespace CathodeLib.Alphalight
         }
 
         /// <summary>
-        /// Build the rasterisable triangle list, and report the whole mesh's world and UV area
-        /// before any face filtering - those totals are what size the probe cell.
+        /// Build the rasterisable triangle list, and report the area of the face the probes will sit
+        /// on - that total is what sizes the probe cell.
         /// </summary>
-        private static List<Triangle> BuildTriangles(cMesh mesh, out double worldArea, out double uvArea)
+        private static List<Triangle> BuildTriangles(cMesh mesh, out double worldArea)
         {
             worldArea = 0;
-            uvArea = 0;
 
             List<Triangle> triangles = new List<Triangle>();
             if (!TryPickUnwrap(mesh, out List<Vector2> uvs, out float uvScale))
@@ -313,8 +332,6 @@ namespace CathodeLib.Alphalight
                     continue;
 
                 triangles.Add(t);
-                worldArea += t.WorldArea;
-                uvArea += t.UvArea;
             }
 
             // A double-sided mesh puts both halves on one unwrap, mirrored, so the two are told
@@ -323,6 +340,10 @@ namespace CathodeLib.Alphalight
             // would flip both the position (by the shell's thickness) and the averaged normal.
             if (triangles.Any(t => t.FrontFacing) && triangles.Any(t => !t.FrontFacing))
                 triangles.RemoveAll(t => !t.FrontFacing);
+
+            // The area that sizes the probe cell is the surface the probes sit on.
+            foreach (Triangle t in triangles)
+                worldArea += t.WorldArea;
 
             return triangles;
         }
@@ -407,6 +428,11 @@ namespace CathodeLib.Alphalight
             sample.Height = ClampAxis(weight > 0 ? dv / weight / texel : 0, settings);
         }
 
+        /// <summary>
+        /// An axis recorded on the entity is trusted as long as its box could have fitted the atlas
+        /// it was baked against - retail ships grids well past <see cref="AlphalightBakeSettings.MaxGridSize"/>
+        /// (54 on TECH_HUB's executive lounge window), and that cap is only for sizes we derive.
+        /// </summary>
         private static int ExistingAxis(FunctionEntity function, ShortGuid parameter, AlphalightBakeSettings settings, int sourceResolution)
         {
             if (sourceResolution <= 0 || !(function.GetParameter(parameter)?.content is cFloat scale))
@@ -415,7 +441,7 @@ namespace CathodeLib.Alphalight
             // The parameter holds the axis over the edge of the atlas it was baked against, and the
             // product lands on an integer, so the grid size comes straight back out of it.
             int axis = (int)Math.Round(scale.value * sourceResolution);
-            return axis >= settings.MinGridSize && axis <= settings.MaxGridSize ? axis : 0;
+            return axis >= settings.MinGridSize && axis + 1 <= sourceResolution ? axis : 0;
         }
 
         /// <summary>
@@ -431,16 +457,24 @@ namespace CathodeLib.Alphalight
         }
 
         /// <summary>
-        /// Fill the probe grid. Node (i,j) is the surface at UV <c>(i/(W-1), j/(H-1))</c>; nodes
-        /// the unwrap leaves empty take the nearest point on it, which is what reproduces retail's
-        /// clamped grid edges.
+        /// Fill the probe grid. Node (i,j) is the surface at UV <c>(i/(W-1), j/(H-1))</c>: the
+        /// closest point on the nearest triangle in texel space, if one is within
+        /// <see cref="AlphalightBakeSettings.CoverageTexels"/>. Nodes with nothing that close are
+        /// dilated in afterwards from their neighbours - see the class remarks for why that, and
+        /// not the nearest point, is what retail does.
         /// </summary>
-        private static void Rasterise(Sample sample, List<Triangle> triangles, double worldArea, double uvArea)
+        private static void Rasterise(Sample sample, List<Triangle> triangles, double worldArea, AlphalightBakeSettings settings)
         {
             int w = sample.Width, h = sample.Height;
             sample.Positions = new Vector3[w * h];
+            Vector3[] normals = new Vector3[w * h];
+            bool[] empty = new bool[w * h];
 
-            Vector3 normalSum = Vector3.Zero;
+            // Distances are measured in texels so the band is the same width along both axes
+            // whatever the grid's aspect; that is what reproduces which nodes retail fills directly.
+            Vector2 texels = new Vector2(Math.Max(1, w - 1), Math.Max(1, h - 1));
+            float band = Math.Max(0.0f, settings.CoverageTexels);
+            int filled = 0;
 
             for (int j = 0; j < h; j++)
             {
@@ -450,26 +484,86 @@ namespace CathodeLib.Alphalight
                         w > 1 ? (float)i / (w - 1) : 0.5f,
                         h > 1 ? (float)j / (h - 1) : 0.5f);
 
-                    if (!TrySampleInside(triangles, uv, out Vector3 position, out Vector3 normal))
-                        SampleNearest(triangles, uv, out position, out normal);
-
-                    sample.Positions[j * w + i] = position;
-                    normalSum += normal;
+                    float distance = SampleNearest(triangles, uv * texels, texels, out Vector3 position, out Vector3 normal);
+                    int k = j * w + i;
+                    if (distance < band)
+                    {
+                        sample.Positions[k] = position;
+                        normals[k] = normal;
+                        filled++;
+                    }
+                    else
+                    {
+                        empty[k] = true;
+                    }
                 }
+            }
+
+            if (filled == 0)
+            {
+                // Nothing within reach of any node - a degenerate unwrap. Take the nearest point
+                // regardless so the surface still gets something rather than nothing.
+                for (int k = 0; k < w * h; k++)
+                {
+                    Vector2 uv = new Vector2(w > 1 ? (float)(k % w) / (w - 1) : 0.5f, h > 1 ? (float)(k / w) / (h - 1) : 0.5f);
+                    SampleNearest(triangles, uv * texels, texels, out sample.Positions[k], out normals[k]);
+                    empty[k] = false;
+                }
+            }
+            else
+            {
+                Dilate(sample.Positions, normals, empty, w, h);
             }
 
             // alpha_light_average_normal is the mean of the probes' normals, left unnormalised, so
             // its length falls away as the surface curves.
+            Vector3 normalSum = Vector3.Zero;
+            foreach (Vector3 n in normals)
+                normalSum += n;
             sample.AverageNormal = normalSum * (1.0f / (w * h));
 
-            // A holds the world edge length of one probe cell over a constant. The area the grid
-            // spans is the mesh's, divided by how many times over the unwrap covers the unit
-            // square - which is what stops a double-sided mesh, whose two halves share one unwrap,
-            // from counting its surface twice. A chart-packed unwrap covers less than the square,
-            // never more, so the divisor floors at one.
+            // A holds the world edge length of one probe cell over a constant: the mesh's area
+            // spread over the grid's cells.
             double cells = Math.Max(1, (w - 1) * (h - 1));
-            double cellArea = worldArea / Math.Max(1.0, uvArea) / cells;
-            sample.ProbeScale = (float)(Math.Sqrt(cellArea) / ProbeScaleDivisor);
+            sample.ProbeScale = (float)(Math.Sqrt(worldArea / cells) / ProbeScaleDivisor);
+        }
+
+        /// <summary>
+        /// Retail's fill for nodes off the surface: pass after pass, every empty node copies the
+        /// first filled one of its left, up, right and down neighbours, in place, so a value
+        /// propagates along the row within a pass and across rows between them.
+        /// </summary>
+        private static void Dilate(Vector3[] positions, Vector3[] normals, bool[] empty, int w, int h)
+        {
+            bool remaining = true;
+            for (int pass = 0; remaining && pass < w + h + 1; pass++)
+            {
+                remaining = false;
+                for (int j = 0; j < h; j++)
+                {
+                    for (int i = 0; i < w; i++)
+                    {
+                        int k = j * w + i;
+                        if (!empty[k])
+                            continue;
+
+                        int source = -1;
+                        if (i > 0 && !empty[k - 1]) source = k - 1;
+                        else if (j > 0 && !empty[k - w]) source = k - w;
+                        else if (i + 1 < w && !empty[k + 1]) source = k + 1;
+                        else if (j + 1 < h && !empty[k + w]) source = k + w;
+
+                        if (source < 0)
+                        {
+                            remaining = true;
+                            continue;
+                        }
+                        positions[k] = positions[source];
+                        normals[k] = normals[source];
+                        empty[k] = false;
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -540,24 +634,12 @@ namespace CathodeLib.Alphalight
             else v.Z = value;
         }
 
-        private static bool TrySampleInside(List<Triangle> triangles, Vector2 uv, out Vector3 position, out Vector3 normal)
-        {
-            for (int i = 0; i < triangles.Count; i++)
-            {
-                Triangle t = triangles[i];
-                if (!Barycentric(t.Q0, t.Q1, t.Q2, uv, out float a, out float b, out float c))
-                    continue;
-
-                position = t.P0 * a + t.P1 * b + t.P2 * c;
-                normal = t.N0 * a + t.N1 * b + t.N2 * c;
-                return true;
-            }
-            position = Vector3.Zero;
-            normal = Vector3.Zero;
-            return false;
-        }
-
-        private static void SampleNearest(List<Triangle> triangles, Vector2 uv, out Vector3 position, out Vector3 normal)
+        /// <summary>
+        /// Closest point on the mesh to a node, in texel space. Returns the distance, in texels.
+        /// Ties go to the earlier triangle, which is what decides between overlapping charts the
+        /// same way retail does.
+        /// </summary>
+        private static float SampleNearest(List<Triangle> triangles, Vector2 node, Vector2 texels, out Vector3 position, out Vector3 normal)
         {
             float best = float.MaxValue;
             position = Vector3.Zero;
@@ -565,13 +647,14 @@ namespace CathodeLib.Alphalight
 
             foreach (Triangle t in triangles)
             {
-                ClosestOnTriangle(uv, t.Q0, t.Q1, t.Q2, out float a, out float b, out float c, out float distance);
+                ClosestOnTriangle(node, t.Q0 * texels, t.Q1 * texels, t.Q2 * texels, out float a, out float b, out float c, out float distance);
                 if (distance >= best)
                     continue;
                 best = distance;
                 position = t.P0 * a + t.P1 * b + t.P2 * c;
                 normal = t.N0 * a + t.N1 * b + t.N2 * c;
             }
+            return best;
         }
 
         private static void ClosestOnTriangle(Vector2 p, Vector2 q0, Vector2 q1, Vector2 q2, out float a, out float b, out float c, out float distance)
@@ -621,16 +704,19 @@ namespace CathodeLib.Alphalight
         #region PACKING
 
         /// <summary>
-        /// Place every box, growing the atlas by powers of two until they fit. Returns the edge
-        /// length used, or 0 if even <see cref="AlphalightBakeSettings.MaxResolution"/> is too
-        /// small. Boxes go in tallest-first, which is what keeps the skyline flat.
+        /// Place every box the way retail's allocator did: in REDS.BIN order, into a binary tree
+        /// that hands each box the first free leaf it fits and splits what is left of that leaf
+        /// along its longer side; the atlas doubles from
+        /// <see cref="AlphalightBakeSettings.MinResolution"/> until everything is placed. Returns
+        /// the edge length used, or 0 if even <see cref="AlphalightBakeSettings.MaxResolution"/> is
+        /// too small. Entities whose renderables are not in REDS yet go last, in the order they
+        /// were collected.
         /// </summary>
         private static int Pack(List<Sample> samples, AlphalightBakeSettings settings)
         {
             List<Sample> ordered = samples
-                .OrderByDescending(s => s.BoxHeight)
-                .ThenByDescending(s => s.BoxWidth)
-                .ThenBy(s => s.Entity.shortGUID.AsUInt32)
+                .OrderBy(s => s.RedsIndex < 0 ? int.MaxValue : s.RedsIndex)
+                .ThenBy(s => s.Sequence)
                 .ToList();
 
             for (int resolution = Math.Max(1, settings.MinResolution); resolution <= settings.MaxResolution; resolution *= 2)
@@ -642,39 +728,53 @@ namespace CathodeLib.Alphalight
 
         private static bool TryPack(List<Sample> ordered, int resolution)
         {
-            // Skyline: one column height per texel, best-fit placement (lowest resulting top edge,
-            // then leftmost).
-            int[] skyline = new int[resolution];
-
+            PackNode root = new PackNode { Width = resolution, Height = resolution };
             foreach (Sample sample in ordered)
             {
-                int boxWidth = sample.BoxWidth, boxHeight = sample.BoxHeight;
-                if (boxWidth > resolution || boxHeight > resolution)
+                PackNode node = root.Insert(sample.BoxWidth, sample.BoxHeight);
+                if (node == null)
                     return false;
-
-                int bestX = -1, bestY = int.MaxValue;
-                for (int x = 0; x + boxWidth <= resolution; x++)
-                {
-                    int y = 0;
-                    for (int i = x; i < x + boxWidth; i++)
-                        if (skyline[i] > y) y = skyline[i];
-
-                    if (y + boxHeight > resolution || y >= bestY)
-                        continue;
-                    bestY = y;
-                    bestX = x;
-                }
-                if (bestX < 0)
-                    return false;
-
-                for (int i = bestX; i < bestX + boxWidth; i++)
-                    skyline[i] = bestY + boxHeight;
 
                 // Parameters address the first probe, one texel in from the box's own corner.
-                sample.ProbeX = bestX + 1;
-                sample.ProbeY = bestY + 1;
+                sample.ProbeX = node.X + 1;
+                sample.ProbeY = node.Y + 1;
             }
             return true;
+        }
+
+        /// <summary>One leaf of the allocator's tree: a free rectangle, or one that has been split.</summary>
+        private sealed class PackNode
+        {
+            public int X, Y, Width, Height;
+            private PackNode _first, _second;
+            private bool _used;
+
+            public PackNode Insert(int width, int height)
+            {
+                if (_first != null)
+                    return _first.Insert(width, height) ?? _second.Insert(width, height);
+                if (_used || width > Width || height > Height)
+                    return null;
+                if (width == Width && height == Height)
+                {
+                    _used = true;
+                    return this;
+                }
+
+                // Split off the box along whichever side leaves the bigger remainder, so a wide
+                // leftover becomes a column to the right and a tall one a band below.
+                if (Width - width > Height - height)
+                {
+                    _first = new PackNode { X = X, Y = Y, Width = width, Height = Height };
+                    _second = new PackNode { X = X + width, Y = Y, Width = Width - width, Height = Height };
+                }
+                else
+                {
+                    _first = new PackNode { X = X, Y = Y, Width = Width, Height = height };
+                    _second = new PackNode { X = X, Y = Y + height, Width = Width, Height = Height - height };
+                }
+                return _first.Insert(width, height);
+            }
         }
 
         #endregion

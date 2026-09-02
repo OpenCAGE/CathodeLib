@@ -25,8 +25,19 @@ namespace CathodeLib.Alphalight
         /// <summary>Smallest probe grid, per axis. Retail never ships fewer than two.</summary>
         public int MinGridSize = 2;
 
-        /// <summary>Largest probe grid, per axis. Retail's largest on BSP_TORRENS is 28.</summary>
+        /// <summary>
+        /// Largest probe grid, per axis, when a size has to be derived. Sizes already recorded on an
+        /// entity are trusted regardless - retail ships up to 54 on TECH_HUB - so this only bounds
+        /// new content.
+        /// </summary>
         public int MaxGridSize = 48;
+
+        /// <summary>
+        /// How far from the surface, in texels of its own grid, a probe node may be and still take
+        /// the closest point on the mesh. Nodes further out are filled from their neighbours
+        /// instead. Retail holds a node that is exactly one texel out, so the test is strict.
+        /// </summary>
+        public float CoverageTexels = 1.0f;
 
         /// <summary>
         /// Smallest atlas edge to try. The bake takes the first power of two the boxes fit in, so
