@@ -6,7 +6,12 @@ namespace CathodeLib.NavMesh
         public float CellSize = 0.0625f;
         public float CellHeight = 0.0625f;
         public float WalkableClimb = 0.3125f;
-        public float LowestNavigableHeight = 0.5f;
+        /* Seven cells, not eight. Retail keeps DeepCrouch polys under trolleys, sofas, workbenches and
+         * server units that 0.5 m (8 cells) threw away; 0.4375 recovers them with almost no new area
+         * elsewhere. Measured against the shipped navmesh, small frontstage holes: TECH_HUB 88 -> 72,
+         * SCI_HUB 30 -> 13, ChallengeMap4 36 -> 29, ENG_Alien_Nest 32 -> 18, Solace 16 -> 12; anything
+         * below 7 cells recovers nothing more and starts over-generating. */
+        public float LowestNavigableHeight = 0.4375f;
         public float DeepCrouchHeight = 0.875f;
         public float CrouchHeight = 1.625f;
         public float WalkableRadius = 0.3125f;
@@ -234,7 +239,11 @@ namespace CathodeLib.NavMesh
         /// Defaults to WalkableClimb + CellHeight, so anything a character could simply step
         /// onto stays part of the floor.
         /// </summary>
-        public float ElevatedPolyStripAboveFloor = 0.375f;
+        // 0.375 culled real floor: retail keeps the strips this dropped on TECH_HUB (a stairwell landing,
+        // the floor beside ramps and spacers). Measured against the shipped navmesh, 0.75 recovers them
+        // with no new area anywhere - small frontstage holes TECH_HUB 72 -> 63, SCI_HUB 13 -> 10,
+        // ChallengeMap4 29 -> 27, unchanged on ENG_Alien_Nest and Solace; the knee is at 0.625.
+                public float ElevatedPolyStripAboveFloor = 0.75f;
 
         /// <summary>
         /// Vertical gap (metres) above which a poly with surface beneath it is treated as a

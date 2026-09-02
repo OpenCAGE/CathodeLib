@@ -2495,6 +2495,9 @@ namespace CathodeLib
         public Composite Composite;
         public List<InstancedEntity> Entities = new List<InstancedEntity>();
 
+        /// <summary>The instanced entity in the parent composite that opened this instance - null for the root and required assets.</summary>
+        public InstancedEntity Opener;
+
         #region Equality Checks
         public override bool Equals(object obj)
         {
@@ -4862,6 +4865,7 @@ namespace CathodeLib
                 newInstance.Composite = child;
 
                 instancedEnt.ChildCompositeInstance = newInstance;
+                newInstance.Opener = instancedEnt;
                 childComposites.Add((function, child, childAliases, newPath, instancedEnt, childUnderShared, childSharedPath));
             }
             Parallel.ForEach(childComposites, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, childInfo =>
@@ -5490,11 +5494,31 @@ namespace CathodeLib
                                 if (compositeName.StartsWith("Required_Assets\\", StringComparison.OrdinalIgnoreCase))
                                     forceGhosted = true;
 
-                                bool emit = true;
+                                /* What the delete_*_collision flags do to the row, measured against TECH_HUB's shipped
+                                 * COLLISION.MAP row by row:
+                                 *  - both deleted AND the placement sets disable_collision: retail still writes a row -
+                                 *    a ghosted SHELL with no storage type, no Havok instance and no proxy. It is the
+                                 *    handle the runtime needs for collision that starts off and is switched on later:
+                                 *    the lockdown shutter (a physics door) is placed exactly so, and without its shell rows
+                                 *    'hide' had nothing to ghost and the door's body stayed solid after the script lowered
+                                 *    it. Both deleted WITHOUT disable_collision (every door's LockStatus_Lights buttons,
+                                 *    282 rows on TECH_HUB) gets no row at all, as before.
+                                 *  - both deleted under a template / Required_Assets: the ghosted-with-instance row as before.
+                                 *  - standard deleted alone: the standard (WORLD) collider is gone outright - no row, and
+                                 *    the ballistic rows stay. Emitting it anyway put a solid box through every door brace
+                                 *    and cut the navmesh at the doorway. */
+                                bool emit = true, shell = false;
                                 if (deleteStandard && deleteBallistic)
                                 {
                                     if (!forceGhosted)
-                                        emit = false;
+                                    {
+                                        InstancedEntity opener = entity.ThisCompositeInstance?.Opener;
+                                        bool disableCollision = entity.Bools.Get(ShortGuids.disable_collision) || (opener != null && opener.Bools.Get(ShortGuids.disable_collision));
+                                        if (disableCollision)
+                                            shell = true;
+                                        else
+                                            emit = false;
+                                    }
                                     else
                                     {
                                         //Ghosted shell only — do not set BALLISTIC_ONLY|STANDARD_ONLY.
@@ -5503,14 +5527,27 @@ namespace CathodeLib
                                     }
                                 }
 
+                                CollisionMaps.CollisionFlags flags;
+                                if (shell)
+                                {
+                                    flags = CollisionMaps.CollisionFlags.FIXED | CollisionMaps.CollisionFlags.PREBUILT |
+                                            CollisionMaps.CollisionFlags.GHOSTED | CollisionMaps.CollisionFlags.PRE_GHOSTED |
+                                            CollisionMaps.CollisionFlags.FROZEN | CollisionMaps.CollisionFlags.PRE_FROZEN;
+                                }
+                                else
+                                {
+                                    flags = BuildInstanceCollisionFlags(entity, deleteBallistic, forceGhosted, template.Material);
+                                    if (deleteStandard && (flags & CollisionMaps.CollisionFlags.WORLD) != 0)
+                                        emit = false;
+                                }
+
                                 if (emit)
                                 {
-                                    CollisionMaps.CollisionFlags flags = BuildInstanceCollisionFlags(entity, deleteBallistic, forceGhosted, template.Material);
                                     CollisionMaps.COLLISION_MAPPING newMap = new CollisionMaps.COLLISION_MAPPING()
                                     {
                                         Flags = flags,
-                                        CollisionProxy = template.CollisionProxy,
-                                        CollisionInstance = AllocateHavokCompoundInstance(entity, template.CollisionProxy, flags),
+                                        CollisionProxy = shell ? null : template.CollisionProxy,
+                                        CollisionInstance = shell ? null : AllocateHavokCompoundInstance(entity, template.CollisionProxy, flags),
                                         ResourceGUID = template.ResourceGUID != ShortGuid.Invalid ? template.ResourceGUID : GetResourceID(entity),
                                         Entity = entity.Handle,
                                         Material = template.Material, // note - this is a physics material, not the renderable one. it's only stored in the template collision mapping!
