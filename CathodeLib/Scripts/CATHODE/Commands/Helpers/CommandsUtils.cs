@@ -180,11 +180,49 @@ namespace CATHODE.Scripting
         }
 
         /// <summary>
+        /// Resolve a stored path - an alias target, a CAGEAnimation binding, a TriggerSequence
+        /// entry - by every reading the format allows.
+        /// </summary>
+        public List<Tuple<Composite, Entity>> ResolveEntityPath(EntityPath path, Composite composite)
+        {
+            return ResolveEntityPath(path?.path, composite);
+        }
+        public List<Tuple<Composite, Entity>> ResolveEntityPath(ShortGuid[] hierarchy, Composite composite)
+        {
+            List<Tuple<Composite, Entity>> path = ResolveAlias(hierarchy, composite);
+            if (CouldResolve(path))
+                return path;
+            path = ResolveHierarchy(hierarchy);
+            if (CouldResolve(path))
+                return path;
+            return ResolveProxy(hierarchy);
+        }
+
+        /// <summary>
+        /// Drop hops that simply repeat the one before them.
+        /// </summary>
+        private ShortGuid[] CollapseRepeats(ShortGuid[] hierarchy)
+        {
+            int repeats = 0;
+            for (int i = 1; i < hierarchy.Length; i++)
+                if (hierarchy[i] == hierarchy[i - 1]) repeats++;
+            if (repeats == 0)
+                return hierarchy;
+
+            ShortGuid[] collapsed = new ShortGuid[hierarchy.Length - repeats];
+            collapsed[0] = hierarchy[0];
+            int at = 1;
+            for (int i = 1; i < hierarchy.Length; i++)
+                if (hierarchy[i] != hierarchy[i - 1]) collapsed[at++] = hierarchy[i];
+            return collapsed;
+        }
+
+        /// <summary>
         /// Resolve an alias
         /// </summary>
         public List<Tuple<Composite, Entity>> ResolveAlias(AliasEntity alias, Composite composite)
         {
-            return ResolveAlias(alias?.alias?.path, composite);
+            return ResolveEntityPath(alias?.alias?.path, composite);
         }
         public List<Tuple<Composite, Entity>> ResolveAlias(EntityPath path, Composite composite)
         {
@@ -195,9 +233,11 @@ namespace CATHODE.Scripting
             if (hierarchy == null || composite == null || hierarchy.Length <= 1)
                 return new List<Tuple<Composite, Entity>>();
 
+            hierarchy = CollapseRepeats(hierarchy);
+
             bool hasTerminator = hierarchy[hierarchy.Length - 1] == ShortGuid.Invalid;
             int maxIndex = hierarchy.Length - (hasTerminator ? 1 : 0);
-            
+
             // Pre-allocate list with estimated capacity
             var path = new List<Tuple<Composite, Entity>>(maxIndex);
 
@@ -241,6 +281,8 @@ namespace CATHODE.Scripting
             if (hierarchy == null || hierarchy.Length <= 2)
                 return new List<Tuple<Composite, Entity>>();
 
+            hierarchy = CollapseRepeats(hierarchy);
+
             Composite initialComp = _commands.GetComposite(hierarchy[0]); //NOTE: This isn't always the initial comp, so we check from the entry point first.
             Composite currentComp = _commands.EntryPoints[0];
 
@@ -251,10 +293,6 @@ namespace CATHODE.Scripting
             
             for (int i = 1; i < maxIndex; i++)
             {
-                //Sometimes, the same entity is added twice. Seems wrong?
-                if (hierarchy[i] == hierarchy[i - 1])
-                    continue;
-
                 Entity entity = currentComp.GetEntityByID(hierarchy[i]);
                 if (entity == null && i == 1)
                 {
@@ -297,6 +335,8 @@ namespace CATHODE.Scripting
         {
             if (hierarchy == null || hierarchy.Length == 0)
                 return new List<Tuple<Composite, Entity>>();
+
+            hierarchy = CollapseRepeats(hierarchy);
 
             Composite currentComp = _commands.EntryPoints[0];
 
@@ -438,21 +478,20 @@ namespace CATHODE.Scripting
                 composite.functions_dictionary.Remove(guid);
             }
 
-            // Aliases must point to children of the Composite that still exist
-            // Also remove aliases that don't have any links in or out, or any parameters
+            // Aliases must point to an entity that still exists.
+            //
+            // Only that. This used to also drop any alias carrying no links and no parameters, which
+            // read as tidying but deleted 7,135 working aliases across the campaign - retail uses
+            // exactly that shape to surface a nested entity in its parent, like Tech_Hub's
+            // "Ceiling_8_6m_9 -> Ceiling_Rectangle_1 -> LightReference_1". They hold no override
+            // today, but they are the handle you reach that entity by, and sixteen of them were the
+            // target of a path that still resolved. An alias that resolves is not a dead link.
             var aliasesToRemove = new List<ShortGuid>();
             foreach (var kvp in composite.aliases_dictionary)
             {
-                var alias = kvp.Value;
-                // Remove if alias cannot be resolved
-                if (!CouldResolve(ResolveAlias(alias, composite)))
-                {
-                    aliasesToRemove.Add(kvp.Key);
-                }
-                // Remove if alias has no child links, no parameters, and no parent links
-                else if (alias.childLinks.Count == 0 && 
-                         alias.parameters.Count == 0 && 
-                         alias.GetParentLinks(composite).Count == 0)
+                // An alias is normally local, but retail writes a handful root-relative, and deleting
+                // something a valid reading still reaches is not a tidy-up, it is data loss.
+                if (!CouldResolve(ResolveEntityPath(kvp.Value?.alias?.path, composite)))
                 {
                     aliasesToRemove.Add(kvp.Key);
                 }
@@ -490,7 +529,7 @@ namespace CATHODE.Scripting
                         var sequenceToRemove = new List<TriggerSequence.SequenceEntry>();
                         foreach (var entry in trig.sequence)
                         {
-                            if (!CouldResolve(ResolveAlias(entry.connectedEntity.path, composite)))
+                            if (!CouldResolve(ResolveEntityPath(entry.connectedEntity.path, composite)))
                             {
                                 sequenceToRemove.Add(entry);
                             }
@@ -511,7 +550,7 @@ namespace CATHODE.Scripting
                             //TODO: Worth also removing connections that have no event/float tracks?
                             //List<CAGEAnimation.FloatTrack> floatTracks = anim.animations.FindAll(o => o.shortGUID == connection.target_track);
                             //List<CAGEAnimation.EventTrack> eventTracks = anim.events.FindAll(o => o.shortGUID == connection.target_track);
-                            if (!CouldResolve(ResolveAlias(connection.connectedEntity.path, composite)))
+                            if (!CouldResolve(ResolveEntityPath(connection.connectedEntity.path, composite)))
                             {
                                 connectionsToRemove.Add(connection);
                             }

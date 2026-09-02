@@ -514,9 +514,7 @@ namespace CathodeLib.NavMesh
                     continue;
 
                 EntityPath fullPath = AppendPath(hostPath, entry.connectedEntity);
-                var resolved = utils.ResolveAliasOrProxy(entry.connectedEntity, hostComposite);
-                if (!utils.CouldResolve(resolved))
-                    resolved = utils.ResolveAlias(entry.connectedEntity, hostComposite);
+                var resolved = utils.ResolveEntityPath(entry.connectedEntity, hostComposite);
                 if (!utils.CouldResolve(resolved))
                 {
                     sets.UnresolvedPins++;
