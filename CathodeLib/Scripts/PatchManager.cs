@@ -434,10 +434,23 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// The longest "Production/NAME" string <see cref="PatchLaunchMode"/> will write. The name lands in
+        /// the benchmark's command-line switch table: the retail level name, then "engine_settings" at +28,
+        /// then "benchmark" at +44. Names of 28 characters and up overwrite the "engine_settings" switch, which
+        /// the game does not miss (a 29-character DLC name boots straight into its level - checked 3 Sep 2026),
+        /// so the limit the launcher has always applied stays; "benchmark" must never be reached.
+        /// </summary>
+        public const int MaxLaunchMapNameLength = 32;
+
+        /// <summary>
         /// Patch the game binary to allow us to launch directly to a map
         /// </summary>
         public static bool PatchLaunchMode(Platform platform, string pathToAI, string MapName = "Production/Frontend")
         {
+            //A longer name would overwrite the "engine_settings" string that follows it in the executable
+            if (MapName == null || MapName.Length > MaxLaunchMapNameLength)
+                return false;
+
             //This is the level the benchmark function loads into - we can overwrite it to change
             byte[] mapStringByteArray = { 0x50, 0x72, 0x6F, 0x64, 0x75, 0x63, 0x74, 0x69, 0x6F, 0x6E, 0x2F, 0x54, 0x45, 0x43, 0x48, 0x5F, 0x52, 0x4E, 0x44, 0x5F, 0x48, 0x5A, 0x44, 0x4C, 0x41, 0x42, 0x00, 0x00, 0x65, 0x6E, 0x67, 0x69, 0x6E, 0x65, 0x5F, 0x73, 0x65, 0x74, 0x74, 0x69, 0x6E, 0x67, 0x73 };
 
@@ -470,11 +483,12 @@ namespace CathodeLib
                     return false;
             }
 
-            //Frontend acts as a reset
+            //Frontend acts as a reset: the benchmark bytes go back to retail and the game boots normally,
+            //into its own menu. Level pickers name it PRODUCTION/FRONTEND, so that spelling counts too.
             bool shouldPatch = true;
-            if (MapName.ToUpper() == "FRONTEND")
+            if (MapName.Replace('\\', '/').Trim('/').ToUpper() == "PRODUCTION/FRONTEND")
             {
-                MapName = "Tech_RnD_HzdLab";
+                MapName = "Production/Tech_RnD_HzdLab";
                 shouldPatch = false;
             }
 

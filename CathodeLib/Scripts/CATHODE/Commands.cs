@@ -375,6 +375,38 @@ namespace CATHODE
             _entryPoints[0] = compositeID;
             _entryPointObjects = null;
         }
+
+        /// <summary>
+        /// Set all three entry points at once: the level root, the GLOBAL composite and the PAUSEMENU
+        /// composite. A Commands built from nothing has no entry points until this (or
+        /// <see cref="SetRootComposite(Composite)"/>) is called. The save-time fix-ups look GLOBAL and
+        /// PAUSEMENU up by their upper-case names only, which the shipped composites (Global, PauseMenu)
+        /// do not carry, so seed them explicitly rather than letting the save create blank placeholders.
+        /// </summary>
+        public void SetEntryPoints(Composite root, Composite global, Composite pauseMenu)
+        {
+            _entryPoints = new ShortGuid[3]
+            {
+                root == null ? ShortGuid.Invalid : root.shortGUID,
+                global == null ? ShortGuid.Invalid : global.shortGUID,
+                pauseMenu == null ? ShortGuid.Invalid : pauseMenu.shortGUID,
+            };
+            _entryPointObjects = null;
+        }
+
+        /// <summary>
+        /// List the composites (ID and name only) in a COMMANDS.PAK without parsing it. Milliseconds
+        /// rather than seconds, and no level data needs loading, so a picker can browse every level.
+        /// Returns null for anything that is not a PAK (the BIN carries no cheap table).
+        /// </summary>
+        public static List<CompositeIndexEntry> ReadCompositeIndex(string filepath)
+        {
+            if (string.IsNullOrEmpty(filepath) || !File.Exists(filepath))
+                return null;
+            if (Path.GetExtension(filepath).ToUpper() != ".PAK")
+                return null;
+            return CommandsIndex.Read(File.ReadAllBytes(filepath));
+        }
         #endregion
 
         #region HELPERS

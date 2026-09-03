@@ -2841,7 +2841,15 @@ namespace CathodeLib
 
             if (radiositySettings != null)
             {
-                Phase("bake: radiosity", () => RadiosityBaker.BakeLevel(level, this, radiositySettings, Console.WriteLine));
+                //A level with no static geometry yet (a fresh one, before anything is placed) has nothing
+                //to light: the baker clears the radiosity files and says so in its result, and the save
+                //must then leave them cleared rather than write the empty in-memory objects. A bake
+                //failure still propagates, so a level with a retail bake underneath is never saved over
+                //with half of one.
+                RadiosityBaker.BakeResult radiosity = null;
+                Phase("bake: radiosity", () => radiosity = RadiosityBaker.BakeLevel(level, this, radiositySettings, Console.WriteLine));
+                RadiosityCleared = radiosity != null && radiosity.NothingToBake;
+                RadiosityBaked = !RadiosityCleared;
 
                 if (_level.Patched)
                     Utilities.ClearRadiosityPatchOnDisk(_level);
@@ -2851,6 +2859,19 @@ namespace CathodeLib
                 Utilities.ClearRadiosityOnDisk(_level);
             }
         }
+
+        /// <summary>
+        /// True when the radiosity bake ran this pass. False when radiosity was not requested, or
+        /// when <see cref="RadiosityCleared"/> says there was nothing to light.
+        /// </summary>
+        public bool RadiosityBaked { get; private set; }
+
+        /// <summary>
+        /// True when radiosity was requested but the level held no static geometry to light, so the
+        /// baker cleared the radiosity files instead. <see cref="Level.SaveInstanced"/> must not write
+        /// the in-memory radiosity objects over that.
+        /// </summary>
+        public bool RadiosityCleared { get; private set; }
 
         /// <summary>
         /// Do not blank the level's radiosity files when instancing without radiosity settings.

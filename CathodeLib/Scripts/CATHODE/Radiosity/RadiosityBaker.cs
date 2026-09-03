@@ -791,6 +791,13 @@ namespace CathodeLib.Radiosity
 
         public sealed class BakeResult
         {
+            /// <summary>
+            /// The level held no static geometry to light, so the bake did nothing and the radiosity
+            /// files on disk were cleared. The in-memory radiosity objects describe nothing and must
+            /// not be saved over that.
+            /// </summary>
+            public bool NothingToBake;
+
             public int Slices;
             public int Instances;
             public int SurfaceProbes;
@@ -861,9 +868,23 @@ namespace CathodeLib.Radiosity
                 log?.Invoke("Radiosity patch: " + regenerateReason + " - regenerating the whole level instead");
             }
 
+            // Instancing has just rebuilt the resource table, and the collector drops any mover whose
+            // resource has no write index yet. Until the next save that is every resource appended
+            // this pass - on a level built from nothing, all of them - so refresh before collecting.
+            level.Resources.RefreshWriteList();
+
             RadiosityGeometry geometry = RadiosityGeometry.CollectFromLevel(level, settings, log);
             if (geometry.TriangleCount == 0)
-                throw new InvalidOperationException("No renderable geometry to bake.");
+            {
+                // Nothing to light yet - a level built before anything is placed in it. Leave it in the
+                // unlit state a build without radiosity produces (the harness flag that keeps read-only
+                // instancing off the disk is honoured), and tell the caller not to write the empty
+                // in-memory radiosity over that.
+                log?.Invoke("Radiosity: no renderable geometry to bake - radiosity files cleared");
+                if (!Instancing.SkipRadiosityClear)
+                    Utilities.ClearRadiosityOnDisk(level);
+                return new BakeResult() { NothingToBake = true, Message = "No renderable geometry to bake." };
+            }
             geometry.Build(log);
 
             // Occlude against the collision shell rather than the render meshes where we can: it

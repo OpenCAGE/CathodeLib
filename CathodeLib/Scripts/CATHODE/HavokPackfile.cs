@@ -1497,6 +1497,12 @@ namespace CATHODE
         HashSet<StaticCompoundShape> _rebuildTouched;
 
         /// <summary>
+        /// What each touched compound held before it was cleared, so a rebuild that ends up with nothing
+        /// to put in it can give it back rather than leave a rigid body over an empty compound.
+        /// </summary>
+        Dictionary<StaticCompoundShape, (List<CompoundInstance> Instances, Vector4 DomainMin, Vector4 DomainMax)> _rebuildOriginal;
+
+        /// <summary>
         /// Snapshot per-proxy prototype instances (shape/filter). Does <b>not</b> clear compounds yet —
         /// rigid bodies in this packfile require every referenced compound to keep getInstances().size() &gt; 0.
         /// Compounds are cleared on first <see cref="EnqueueInstance"/> and only those are rewritten on commit;
@@ -1538,6 +1544,10 @@ namespace CATHODE
                 _rebuildTouched = new HashSet<StaticCompoundShape>();
             if (!_rebuildTouched.Add(compound))
                 return;
+
+            if (_rebuildOriginal == null)
+                _rebuildOriginal = new Dictionary<StaticCompoundShape, (List<CompoundInstance>, Vector4, Vector4)>();
+            _rebuildOriginal[compound] = (new List<CompoundInstance>(compound.Instances), compound.DomainMin, compound.DomainMax);
 
             ScrubShapeFixupsForInstances(compound);
             compound.ClearInstances();
@@ -1606,9 +1616,24 @@ namespace CATHODE
             {
                 if (compound.Instances.Count == 0)
                 {
-                    throw new InvalidOperationException(
-                        "Rebuilt compound proxy " + compound.ProxyIndex
-                        + " has zero instances — rigid bodies require at least one.");
+                    // Nothing was placed in this compound - a level with no collidable content yet, most
+                    // likely. The rigid body over it still needs at least one instance, so it keeps what
+                    // it had (the base level's instances, for a level built from nothing) until the
+                    // first build that has something to put here.
+                    if (_rebuildOriginal != null && _rebuildOriginal.TryGetValue(compound, out var original) && original.Instances.Count > 0)
+                    {
+                        foreach (CompoundInstance instance in original.Instances)
+                            compound.AddInstance(instance);
+                        compound.DomainMin = original.DomainMin;
+                        compound.DomainMax = original.DomainMax;
+                        Console.WriteLine("  Compound proxy " + compound.ProxyIndex + " received no instances this build - keeping its previous " + original.Instances.Count);
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException(
+                            "Rebuilt compound proxy " + compound.ProxyIndex
+                            + " has zero instances — rigid bodies require at least one.");
+                    }
                 }
                 if (!TryGetCompoundArrayFields(compound.DataOffset, out _, out _))
                 {
@@ -1619,6 +1644,7 @@ namespace CATHODE
                 RewriteCompoundArrays(compound);
             }
             _rebuildTouched = null;
+            _rebuildOriginal = null;
         }
 
         static CompoundInstance CloneInstanceProperties(

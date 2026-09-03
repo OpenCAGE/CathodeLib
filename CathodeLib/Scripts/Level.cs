@@ -146,6 +146,21 @@ namespace CathodeLib
         private bool _patched = false;
 
         /// <summary>
+        /// The script file <see cref="Load"/> will read for this level, resolved without loading anything:
+        /// the PAK where one ships, else the BIN (gzipped on builds that compress their level data).
+        /// </summary>
+        public string CommandsFilepath
+        {
+            get
+            {
+                string world = _filepath + (_patched ? "_PATCH" : "") + "/WORLD/";
+                if (File.Exists(_filepath + "/RENDERABLE/LEVEL_TEXTURES.ALL.PAK.FZIP"))
+                    return world + "COMMANDS.BIN.GZ";
+                return File.Exists(world + "COMMANDS.PAK") ? world + "COMMANDS.PAK" : world + "COMMANDS.BIN";
+            }
+        }
+
+        /// <summary>
         /// Triggered every time one of the files within the level loads.
         /// Keep a count of this and divide it by NumberOfTicks to get a loading percentage.
         /// </summary>
@@ -370,22 +385,31 @@ namespace CathodeLib
             Strings = new Dictionary<string, Dictionary<string, TextDB>>();
             if (File.Exists(pathDATA + "/LEVEL_TEXT_DATABASES.XML"))
             {
-                string levelName = Directory.GetParent(_filepath).Name;
+                //The config names a level by its own folder ("BSP_Torrens"), not the folder that holds it -
+                //taking the parent asked for a level called "PRODUCTION" and matched nothing. The name and
+                //the database names are both compared case-insensitively: the config's casing
+                //("globals", "Tutorials") is not the files' ("GLOBALS.TXT"), and an exact compare against
+                //the upper-cased filename let through only the databases the config happens to spell in
+                //capitals - BSP_Torrens loaded 1 of its 24 databases (T0001) before this.
+                string levelName = Path.GetFileName(_filepath);
                 XmlDocument doc = new XmlDocument();
                 doc.LoadXml(File.ReadAllText(pathDATA + "/LEVEL_TEXT_DATABASES.XML"));
                 XmlNodeList textDBsGlobal = doc.SelectNodes("//level_text_databases/level");
-                List<string> globalDBs = new List<string>();
+                HashSet<string> globalDBs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 for (int i = 0; i < textDBsGlobal.Count; i++)
-                    if (textDBsGlobal[i].Attributes["name"].Value.ToUpper() == levelName.ToUpper() || textDBsGlobal[i].Attributes["name"].Value == "globals")
+                    if (string.Equals(textDBsGlobal[i].Attributes["name"]?.Value, levelName, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(textDBsGlobal[i].Attributes["name"]?.Value, "globals", StringComparison.OrdinalIgnoreCase))
                         for (int x = 0; x < textDBsGlobal[i].ChildNodes.Count; x++)
-                            globalDBs.Add(textDBsGlobal[i].ChildNodes[x].Attributes["name"].Value);
+                            if (textDBsGlobal[i].ChildNodes[x].Attributes?["name"]?.Value != null)
+                                globalDBs.Add(textDBsGlobal[i].ChildNodes[x].Attributes["name"].Value);
                 List<string> textList = Directory.GetFiles(pathDATA + "/TEXT/", "*.TXT", SearchOption.AllDirectories).ToList<string>();
-                List<string> levelDBs = new List<string>();
+                HashSet<string> levelDBs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 if (File.Exists(_filepath + "/TEXT/TEXT_DB_LIST.TXT"))
                 {
                     string[] textDBsLevel = File.ReadAllLines(_filepath + "/TEXT/TEXT_DB_LIST.TXT");
                     for (int i = 0; i < textDBsLevel.Length; i++)
-                        levelDBs.Add(textDBsLevel[i]);
+                        if (!string.IsNullOrWhiteSpace(textDBsLevel[i]))
+                            levelDBs.Add(textDBsLevel[i].Trim());
                     textList.AddRange(Directory.GetFiles(_filepath + "/TEXT/", "*.TXT", SearchOption.AllDirectories));
                 }
                 textList.Reverse();
@@ -425,7 +449,9 @@ namespace CathodeLib
             Save();
 
             //If the user didn't enable radiosity, we should clear it out, else it'll point to the wrong movers.
-            if (radiositySettings == null)
+            //The same when the bake found nothing to light: the files were blanked, and the objects in memory
+            //describe nothing.
+            if (radiositySettings == null || instancing.RadiosityCleared)
             {
                 Utilities.ClearRadiosityOnDisk(this);
             }
@@ -617,6 +643,179 @@ namespace CathodeLib
                 return world + name + ".HKX64";
             return null;
         }
+
+#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
+        /// <summary>
+        /// Create a new, empty level on disk at <paramref name="path"/> (a folder under DATA/ENV, e.g.
+        /// DATA/ENV/PRODUCTION/MYLEVEL) and return it loaded.
+        ///
+        /// Most of a level's files can be written from nothing by their parsers, and are. A few hold
+        /// authored data that is the same on every shipped level and that nothing can regenerate - the
+        /// sound bank, event and dialogue tables, the behaviour tree database, the material mapping
+        /// table, the galaxy, the morph target name table - and the Havok collision and physics files are
+        /// scaffolds every level's rigid bodies are built on. Those are copied from <paramref name="baseLevel"/>,
+        /// which must already be loaded. FRONTEND is the natural base: its Havok files are the smallest
+        /// the game ships (one instance per world host, which the format needs), and every table it
+        /// carries is the campaign variant.
+        ///
+        /// The new level's script holds a copy of the base's GLOBAL and PAUSEMENU composites (the engine
+        /// instances both, and they are identical on every shipped level), its REQUIRED_ASSETS composites
+        /// (which the engine also instances on every level), everything those instance, and an empty root
+        /// composite named after the level. Its model pak holds the required FX/light models instancing
+        /// needs plus whatever the required assets render; textures are the global set every level
+        /// absorbs on load. The state files are valid empties, so the level loads in the game before
+        /// anything is built into it.
+        /// </summary>
+        public static Level MakeNewLevelFrom(string path, Level baseLevel)
+        {
+            if (baseLevel == null || baseLevel.Commands == null || !baseLevel.Commands.Loaded)
+                throw new ArgumentException("The base level must be loaded.", nameof(baseLevel));
+
+            string root = path.Replace("\\", "/").TrimEnd('/');
+            if (Directory.Exists(root) && Directory.EnumerateFileSystemEntries(root).Any())
+                throw new IOException("A level already exists at " + root);
+            if (root.ToUpper().Split(new string[] { "DATA/ENV/" }, StringSplitOptions.None).Length < 2)
+                throw new ArgumentException("A level has to live under DATA/ENV.", nameof(path));
+
+            string name = Path.GetFileName(root);
+            string renderable = root + "/RENDERABLE/";
+            string galaxy = renderable + "GALAXY/";
+            string world = root + "/WORLD/";
+            Directory.CreateDirectory(galaxy);
+            Directory.CreateDirectory(world + "STATE_0/");
+
+            //Authored tables and Havok scaffolds we cannot produce ourselves
+            CopyBaseFile(baseLevel.BehaviorTreeDB, world);
+            CopyBaseFile(baseLevel.SoundBankData, world);
+            CopyBaseFile(baseLevel.SoundDialogueLookups, world);
+            CopyBaseFile(baseLevel.SoundEventData, world);
+            CopyBaseFile(baseLevel.MaterialMappings, world);
+            CopyBaseFile(baseLevel.MorphTargetDB, world);
+            CopyBaseFile(baseLevel.CollisionHKX, world);
+            CopyBaseFile(baseLevel.CollisionHKX64, world);
+            CopyBaseFile(baseLevel.PhysicsHKX, world);
+            CopyBaseFile(baseLevel.PhysicsHKX64, world);
+            CopyBaseFile(baseLevel.GalaxyItems, galaxy);
+            CopyBaseFile(baseLevel.GalaxyDefinition, galaxy);
+
+            //Two stubs the PC build ships identically on every level and nothing parses (32 and 8 bytes):
+            //the texture streamer opens the DX11 header file on load and crashes without it, so they
+            //travel with the base files even though the ALL pak is the only real texture container.
+            string baseRenderable = Path.GetDirectoryName(baseLevel.Textures.Filepath);
+            CopyBaseFile(Path.Combine(baseRenderable, "LEVEL_TEXTURES.DX11.PAK"), renderable);
+            CopyBaseFile(Path.Combine(baseRenderable, "LEVEL_TEXTURE_HEADERS.DX11.BIN"), renderable);
+
+            //Load reads these two unconditionally: no exclusive master states, and an empty script so
+            //the loader picks the PAK filename (retail ships the PAK; the BIN is written alongside it).
+            using (BinaryWriter writer = new BinaryWriter(File.Create(world + "EXCLUSIVE_MASTER_RESOURCE_INDICES")))
+            {
+                writer.Write(1);
+                writer.Write(0);
+            }
+            File.WriteAllBytes(world + "COMMANDS.PAK", new byte[0]);
+
+            Level level = new Level(root, baseLevel.Global, false);
+            Utilities.ClearRadiosityOnDisk(level); //the "no radiosity" state a build without radiosity leaves behind
+            level.Load();
+
+            //The morph target file was copied for its name table; the targets themselves belong to the base's models
+            level.MorphTargetDB.Entries.Clear();
+
+            //Script: GLOBAL and PAUSEMENU from the base, the REQUIRED_ASSETS composites the engine instances on
+            //every level without a script referencing them (weapons, gadgets, the jobs the AI needs) - each
+            //with everything it instances, via the porter - then an empty root for the level itself
+            Composite baseGlobal = baseLevel.Commands.EntryPoints?[1];
+            Composite basePauseMenu = baseLevel.Commands.EntryPoints?[2];
+            CompositePorter porter = new CompositePorter(baseLevel, level) { OverwriteComposites = true, Recurse = true };
+            if (baseGlobal != null) porter.Port(baseGlobal);
+            if (basePauseMenu != null) porter.Port(basePauseMenu);
+            foreach (Composite composite in baseLevel.Commands.Entries)
+            {
+                if (composite != null && IsRequiredAssetComposite(composite))
+                    porter.Port(composite);
+            }
+            Composite levelRoot = level.Commands.AddComposite(name);
+            level.Commands.SetEntryPoints(
+                levelRoot,
+                baseGlobal == null ? null : level.Commands.GetComposite(baseGlobal.shortGUID),
+                basePauseMenu == null ? null : level.Commands.GetComposite(basePauseMenu.shortGUID));
+
+            //The REQUIRED_MODEL_* block at the head of every model pak: instancing swaps lights, particles,
+            //fog and decals onto these, so a level without them cannot build any FX
+            foreach (Models.CS2 model in baseLevel.Models.Entries)
+            {
+                if (RequiredModels.IsRequiredEntry(baseLevel.Models, model))
+                    level.Models.ImportEntry(model);
+            }
+
+            //Valid empties for the files whose parsers cannot write from a never-loaded state
+            State state = level.StateResources[0];
+            state.NavMesh.SetTileData(EmptyNavMeshHeader(), null, null, null, null, null, null, null, null);
+            SetEmptyGrid(state.SpottingPositions);
+            SetEmptyGrid(state.CrawlSpaceSpottingPositions);
+            SetEmptyGrid(state.AssaultPositions);
+            state.Cover.Traversal = new Cover.TraversalGrid() { XCells = 1, ZCells = 1, UnitSize = 1.0f, Cells = new List<List<short>>() { new List<short>() } };
+            level.AlphaLight.Resolution = new System.Numerics.Vector2(64, 64);
+            level.AlphaLight.ImageData = new byte[64 * 64 * 8];
+
+            level.Save();
+            return level;
+        }
+
+        //The same rule instancing uses to pick the composites the engine loads on every level
+        private static bool IsRequiredAssetComposite(Composite composite)
+        {
+            return composite.name != null && composite.name.ToUpper().Replace("/", "\\").StartsWith("REQUIRED_ASSETS\\");
+        }
+
+        private static void CopyBaseFile(CathodeFile file, string destinationFolder)
+        {
+            if (file != null)
+                CopyBaseFile(file.Filepath, destinationFolder);
+        }
+        private static void CopyBaseFile(string sourcePath, string destinationFolder)
+        {
+            if (string.IsNullOrEmpty(sourcePath) || !File.Exists(sourcePath))
+                return;
+            File.Copy(sourcePath, destinationFolder + Path.GetFileName(sourcePath), true);
+        }
+
+        /// <summary>
+        /// A Detour tile header for a mesh with no polygons, in the shape the navmesh baker writes.
+        /// </summary>
+        private static NavigationMesh.dtMeshHeader EmptyNavMeshHeader()
+        {
+            return new NavigationMesh.dtMeshHeader
+            {
+                FourCC = new fourcc { V = new[] { 'V', 'A', 'N', 'D' } },
+                version = 7,
+                walkableHeight = 0.5f,
+                walkableRadius = 0.3125f,
+                walkableClimb = 0.3125f,
+                bMin = new[] { -1.0f, -1.0f, -1.0f },
+                bMax = new[] { 1.0f, 1.0f, 1.0f },
+                bvQuantFactor = 16.0f,
+            };
+        }
+
+        //Retail's empty job grids are one cell of one unit holding nothing, not a zero-sized grid
+        private static void SetEmptyGrid(SpottingPositions positions)
+        {
+            positions.XCells = 1;
+            positions.ZCells = 1;
+            positions.UnitSize = 1.0f;
+            positions.Cells.Clear();
+            positions.Cells.Add(new List<SpottingPositions.JobInfo>());
+        }
+        private static void SetEmptyGrid(AssaultPositions positions)
+        {
+            positions.XCells = 1;
+            positions.ZCells = 1;
+            positions.UnitSize = 1.0f;
+            positions.Cells.Clear();
+            positions.Cells.Add(new List<AssaultPositions.JobInfo>());
+        }
+#endif
 
         /// <summary>
         /// Get all levels available within the ENV folder. Pass the path to the folder that contains AI.exe.
