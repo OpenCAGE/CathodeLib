@@ -288,7 +288,13 @@ namespace CathodeLib
             return (byte)Math.Max(0, Math.Min(255, Math.Round(value * 127.0f) + 128));
         }
 
-        private static Vector4 ReadVertexData(BinaryReader reader, Models.VertexFormat.Type type)
+        /// <summary>
+        /// Decode one vertex attribute. Public so callers that need to rewrite a single attribute in
+        /// place - resizing a mesh touches positions and must leave every other attribute, including
+        /// the position W whose meaning is unknown, byte for byte as it was - can use the same codec
+        /// the rest of this class reads and writes with.
+        /// </summary>
+        public static Vector4 ReadVertexData(BinaryReader reader, Models.VertexFormat.Type type)
         {
             switch (type)
             {
@@ -400,7 +406,8 @@ namespace CathodeLib
             }
         }
 
-        private static void WriteVertexData(BinaryWriter writer, Vector4 v, Models.VertexFormat.Type type)
+        /// <summary>Encode one vertex attribute - the exact inverse of <see cref="ReadVertexData"/>.</summary>
+        public static void WriteVertexData(BinaryWriter writer, Vector4 v, Models.VertexFormat.Type type)
         {
             switch (type)
             {

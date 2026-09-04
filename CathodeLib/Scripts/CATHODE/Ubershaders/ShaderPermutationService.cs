@@ -433,7 +433,15 @@ namespace CathodeLib.Ubershaders
         /// It starts with no textures and zeroed shader constants - samplers, features and parameters
         /// are all filled in afterwards through the editor.
         /// </summary>
-        public static Materials.Material CreateMaterial(Materials materials, Shaders levelShaders, SHADER_LIST family, string name, string gameRoot, out string error)
+        /// <param name="permutation">
+        /// The feature combination to build on, when the caller already knows which one it wants (the
+        /// material generator works one out from an imported model's texture slots). Left null, the
+        /// family's most-used combination in this level is used. Going through here rather than
+        /// rebinding afterwards matters: the entry is cloned before the caller can touch it, and a
+        /// rebind that landed on a shared pool entry would put this material's textures on every other
+        /// material using it.
+        /// </param>
+        public static Materials.Material CreateMaterial(Materials materials, Shaders levelShaders, SHADER_LIST family, string name, string gameRoot, out string error, long? permutation = null)
         {
             error = null;
             if (materials == null || levelShaders == null)
@@ -443,7 +451,11 @@ namespace CathodeLib.Ubershaders
             }
 
             long mask;
-            if (!PickStartingMask(materials, levelShaders, family, gameRoot, out mask))
+            if (permutation != null)
+            {
+                mask = permutation.Value;
+            }
+            else if (!PickStartingMask(materials, levelShaders, family, gameRoot, out mask))
             {
                 error = "No shipped " + family + " shader could be found to start from.";
                 return null;
@@ -500,7 +512,18 @@ namespace CathodeLib.Ubershaders
                 int end = remaps[id] + UberShaderRecompiler.ParamWidth(family, id);
                 if (end > length) length = end;
             }
-            return new List<float>(new float[length]);
+            return new List<float>(new float[RegisterAligned(length)]);
+        }
+
+        /// <summary>
+        /// Round a constant count up to a whole float4 register. The widest parameter in use decides
+        /// where the block ends, so a material whose last parameter is a scalar comes out short of a
+        /// register - and retail never ships one that way: of 55,336 materials across six pristine
+        /// levels, 55,335 have both their vertex and pixel constant counts as multiples of four.
+        /// </summary>
+        private static int RegisterAligned(int length)
+        {
+            return (length + 3) / 4 * 4;
         }
 
         /// <summary>
@@ -527,6 +550,7 @@ namespace CathodeLib.Ubershaders
                 int end = newRemaps[id] + UberShaderRecompiler.ParamWidth(family, id);
                 if (end > newLength) newLength = end;
             }
+            newLength = RegisterAligned(newLength);
 
             List<float> result = new List<float>(new float[newLength]);
             for (int id = 0; id < newRemaps.Count; id++)
