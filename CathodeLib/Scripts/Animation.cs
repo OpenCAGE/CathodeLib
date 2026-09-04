@@ -2,6 +2,7 @@ using CATHODE;
 using CATHODE.Animations;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -1633,10 +1634,23 @@ namespace CathodeLib
             public string ReferenceSkeleton = "";
             public string ReferenceSkeletonPath = "";
             public string HiResSkeleton = "";
+            public string HiResSkeletonPath = "";
             public string Ragdoll = "";
+
+            /// <summary>Set while a clip plays to shift the final pose, e.g. "npc_female_shift".</summary>
+            public string FinalPoseModifierAnimLabel = "";
 
             /// <summary>Skeletons whose animation can be retargeted onto this one.</summary>
             public List<string> MapsFrom = new List<string>();
+
+            /// <summary>The same list again for the hi-res reference rig.</summary>
+            public List<string> MapsFromHiRes = new List<string>();
+
+            /// <summary>Primary, general additive, breathing, gun or tail, look at, hand, face.</summary>
+            public float[] LayerLOD = { 100, 30, 10, 20, 100, 20, 10 };
+            public bool[] LayerUsage = { true, true, true, true, true, true, false };
+
+            public bool UseMaleIKPoints;
 
             /// <summary>
             /// Whether this rig drives set dressing rather than a character. The reference skeletons
@@ -1674,7 +1688,40 @@ namespace CathodeLib
                 const string rootFolder = @"ReferenceSkeletons\";
                 int at = def.ReferenceSkeletonPath.IndexOf(rootFolder, StringComparison.OrdinalIgnoreCase);
                 def.IsEnvironment = at >= 0 && def.ReferenceSkeletonPath.IndexOf('\\', at + rootFolder.Length) >= 0;
+
+                def.HiResSkeletonPath = root.SelectSingleNode("HiResReferenceSkeletonPath")?.InnerText ?? "";
+                def.FinalPoseModifierAnimLabel = root.SelectSingleNode("FinalPoseModifierAnimLabel")?.InnerText ?? "";
+                def.UseMaleIKPoints = IsTrue(root.SelectSingleNode("use_male_ik_points")?.InnerText);
+
+                XmlNodeList hiRes = root.SelectNodes("maps_to_hi_res_required/maps_to_hi_res_required");
+                if (hiRes != null)
+                    foreach (XmlNode map in hiRes)
+                    {
+                        string skeleton = map.Attributes?["skeleton"]?.Value;
+                        if (!string.IsNullOrEmpty(skeleton)) def.MapsFromHiRes.Add(skeleton);
+                    }
+
+                XmlNode usage = root.SelectSingleNode("layerUsage"), lod = root.SelectSingleNode("layerLOD");
+                for (int i = 0; i < LayerNames.Length; i++)
+                {
+                    string flag = usage?.SelectSingleNode("use" + LayerNames[i] + "Layer")?.InnerText;
+                    if (flag != null) def.LayerUsage[i] = IsTrue(flag);
+
+                    string distance = lod?.SelectSingleNode("lodDistance" + LayerNames[i] + "Layer")?.InnerText;
+                    if (distance != null && float.TryParse(distance, NumberStyles.Float, CultureInfo.InvariantCulture, out float value))
+                        def.LayerLOD[i] = value;
+                }
                 return def;
+            }
+
+            /* The seven animation layers, in the order both the BML's element names and the compiled
+             * record's two runs of seven use. */
+            private static readonly string[] LayerNames =
+                { "Primary", "GeneralAdditive", "Breathing", "GunOrTail", "LookAt", "Hand", "Face" };
+
+            private static bool IsTrue(string value)
+            {
+                return string.Equals(value, "True", StringComparison.OrdinalIgnoreCase) || value == "1";
             }
         }
         #endregion

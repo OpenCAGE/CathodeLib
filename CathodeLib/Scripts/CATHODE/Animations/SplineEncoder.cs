@@ -272,21 +272,10 @@ namespace CATHODE
             int header = pointer == 8 ? 16 : 8;
             int array = pointer + 8;
 
-            byte[] stream = BuildStream(out List<uint> blockOffsets, out List<uint> floatBlockOffsets);
-            int blocks = blockOffsets.Count;
-
             Layout layout = new Layout();
             int container = layout.Object(header + (array * 5));
             int bindingList = layout.Object(pointer);                //the container's one binding
-            int binding = layout.Object(header + (pointer * 2) + (array * 3) + 8);
-            int skeletonName = layout.Object(SkeletonName.Length + 1);
-            int trackToBone = layout.Object(Math.Max(1, TrackCount * 2));
-            int animation = layout.Object(header + 16 + pointer + array + 32 + (array * 5) + 8);
-            int annotation = layout.Object(pointer + array);
-            int annotationName = layout.Object(1);
-            int blockTable = layout.Object(blocks * 4);
-            int floatTable = layout.Object(blocks * 4);
-            int data = layout.Object(stream.Length);
+            Objects objects = Reserve(layout, pointer, header, array);
 
             byte[] payload = new byte[layout.Length];
             List<HavokPackfile.LocalFixup> local = new List<HavokPackfile.LocalFixup>();
@@ -298,20 +287,78 @@ namespace CATHODE
             Array(payload, container + header + (array * 2), bindingList, 1, local, pointer);
             EmptyArray(payload, container + header + (array * 3), pointer);
             EmptyArray(payload, container + header + (array * 4), pointer);
-            global.Add(new HavokPackfile.GlobalFixup { Src = (uint)bindingList, DstSectionIndex = 2, Dst = (uint)binding });
+            global.Add(new HavokPackfile.GlobalFixup { Src = (uint)bindingList, DstSectionIndex = 2, Dst = (uint)objects.Binding });
+
+            Emit(payload, objects, local, global, pointer, header, array);
+
+            target.DataPayload = payload;
+            target.LocalFixups = local;
+            target.GlobalFixups = global;
+            /* A virtual fixup is what names an object's class, so each one has to keep the class name
+             * offset the template used and move to where we put that object. */
+            target.VirtualFixups = new List<HavokPackfile.VirtualFixup>
+            {
+                NameFixup(target, "hkaAnimationContainer", container),
+                NameFixup(target, "hkaAnimationBinding", objects.Binding),
+                NameFixup(target, "hkaSplineCompressedAnimation", objects.Animation),
+            };
+            target.Objects = new List<HavokPackfile.PackfileObject>
+            {
+                new HavokPackfile.PackfileObject { DataOffset = (uint)container, ClassName = "hkaAnimationContainer" },
+                new HavokPackfile.PackfileObject { DataOffset = (uint)objects.Binding, ClassName = "hkaAnimationBinding" },
+                new HavokPackfile.PackfileObject { DataOffset = (uint)objects.Animation, ClassName = "hkaSplineCompressedAnimation" },
+            };
+        }
+
+        /* Where the animation.s objects sit once reserved. Laid out and written in two passes because
+           the payload cannot be allocated until every object has claimed its space. */
+        private sealed class Objects
+        {
+            public int Binding, SkeletonName, TrackToBone, Animation, Annotation, AnnotationName, BlockTable, FloatTable, Data;
+            public byte[] Stream;
+            public List<uint> BlockOffsets = new List<uint>();
+            public List<uint> FloatBlockOffsets = new List<uint>();
+            public int Blocks { get { return BlockOffsets.Count; } }
+        }
+
+        /// <summary>Claim space for the animation in a layout that may already hold other objects.</summary>
+        private Objects Reserve(Layout layout, int pointer, int header, int array)
+        {
+            Objects objects = new Objects();
+            objects.Stream = BuildStream(out List<uint> blockOffsets, out List<uint> floatBlockOffsets);
+            objects.BlockOffsets = blockOffsets;
+            objects.FloatBlockOffsets = floatBlockOffsets;
+
+            objects.Binding = layout.Object(header + (pointer * 2) + (array * 3) + 8);
+            objects.SkeletonName = layout.Object(SkeletonName.Length + 1);
+            objects.TrackToBone = layout.Object(Math.Max(1, TrackCount * 2));
+            objects.Animation = layout.Object(header + 16 + pointer + array + 32 + (array * 5) + 8);
+            objects.Annotation = layout.Object(pointer + array);
+            objects.AnnotationName = layout.Object(1);
+            objects.BlockTable = layout.Object(objects.Blocks * 4);
+            objects.FloatTable = layout.Object(objects.Blocks * 4);
+            objects.Data = layout.Object(objects.Stream.Length);
+            return objects;
+        }
+
+        /// <summary>Write the reserved animation objects, and the fixups that tie them together.</summary>
+        private void Emit(byte[] payload, Objects objects, List<HavokPackfile.LocalFixup> local,
+                           List<HavokPackfile.GlobalFixup> global, int pointer, int header, int array)
+        {
+            int binding = objects.Binding, animation = objects.Animation, blocks = objects.Blocks;
 
             //hkaAnimationBinding: skeleton name, the animation, then three arrays and the blend hint
-            local.Add(new HavokPackfile.LocalFixup { Src = (uint)(binding + header), Dst = (uint)skeletonName });
+            local.Add(new HavokPackfile.LocalFixup { Src = (uint)(binding + header), Dst = (uint)objects.SkeletonName });
             global.Add(new HavokPackfile.GlobalFixup { Src = (uint)(binding + header + pointer), DstSectionIndex = 2, Dst = (uint)animation });
             int bindingArrays = binding + header + (pointer * 2);
-            Array(payload, bindingArrays, trackToBone, TrackCount, local, pointer);
+            Array(payload, bindingArrays, objects.TrackToBone, TrackCount, local, pointer);
             EmptyArray(payload, bindingArrays + array, pointer);
             EmptyArray(payload, bindingArrays + (array * 2), pointer);
             payload[bindingArrays + (array * 3)] = (byte)(Additive ? 1 : 0);   //the blend hint
 
-            Encoding.ASCII.GetBytes(SkeletonName).CopyTo(payload, skeletonName);
+            Encoding.ASCII.GetBytes(SkeletonName).CopyTo(payload, objects.SkeletonName);
             for (int i = 0; i < TrackCount; i++)
-                BitConverter.GetBytes(TrackToBone[i]).CopyTo(payload, trackToBone + (i * 2));
+                BitConverter.GetBytes(TrackToBone[i]).CopyTo(payload, objects.TrackToBone + (i * 2));
 
             //hkaSplineCompressedAnimation - the hkaAnimation base first
             float duration = FrameCount > 1 ? (FrameCount - 1) * FrameDuration : FrameDuration;
@@ -321,7 +368,7 @@ namespace CATHODE
             Int(payload, animationBase + 8, TrackCount);
             Int(payload, animationBase + 12, 0);              //no float tracks
             Int(payload, animationBase + 16, 0);              //no extracted motion
-            Array(payload, animationBase + 16 + pointer, annotation, 1, local, pointer);
+            Array(payload, animationBase + 16 + pointer, objects.Annotation, 1, local, pointer);
 
             int spline = animationBase + 16 + pointer + array;
             Int(payload, spline + 0, FrameCount);
@@ -335,44 +382,26 @@ namespace CATHODE
             //on a 64 bit packfile the five arrays are pushed out to an eight byte boundary
             int arrays = spline + 28;
             if (pointer == 8) arrays = (arrays + 7) & ~7;
-            Array(payload, arrays, blockTable, blocks, local, pointer);
-            Array(payload, arrays + array, floatTable, blocks, local, pointer);
+            Array(payload, arrays, objects.BlockTable, blocks, local, pointer);
+            Array(payload, arrays + array, objects.FloatTable, blocks, local, pointer);
             EmptyArray(payload, arrays + (array * 2), pointer);   //transform offsets
             EmptyArray(payload, arrays + (array * 3), pointer);   //float offsets
-            Array(payload, arrays + (array * 4), data, stream.Length, local, pointer);
+            Array(payload, arrays + (array * 4), objects.Data, objects.Stream.Length, local, pointer);
             Int(payload, arrays + (array * 5), 0);                //little endian
 
             //one empty annotation track, which is what every shipped clip carries
-            local.Add(new HavokPackfile.LocalFixup { Src = (uint)annotation, Dst = (uint)annotationName });
-            EmptyArray(payload, annotation + pointer, pointer);
+            local.Add(new HavokPackfile.LocalFixup { Src = (uint)objects.Annotation, Dst = (uint)objects.AnnotationName });
+            EmptyArray(payload, objects.Annotation + pointer, pointer);
 
             for (int i = 0; i < blocks; i++)
             {
-                Int(payload, blockTable + (i * 4), (int)blockOffsets[i]);
-                Int(payload, floatTable + (i * 4), (int)floatBlockOffsets[i]);
+                Int(payload, objects.BlockTable + (i * 4), (int)objects.BlockOffsets[i]);
+                Int(payload, objects.FloatTable + (i * 4), (int)objects.FloatBlockOffsets[i]);
             }
-            stream.CopyTo(payload, data);
-
-            target.DataPayload = payload;
-            target.LocalFixups = local;
-            target.GlobalFixups = global;
-            /* A virtual fixup is what names an object's class, so each one has to keep the class name
-             * offset the template used and move to where we put that object. */
-            target.VirtualFixups = new List<HavokPackfile.VirtualFixup>
-            {
-                NameFixup(target, "hkaAnimationContainer", container),
-                NameFixup(target, "hkaAnimationBinding", binding),
-                NameFixup(target, "hkaSplineCompressedAnimation", animation),
-            };
-            target.Objects = new List<HavokPackfile.PackfileObject>
-            {
-                new HavokPackfile.PackfileObject { DataOffset = (uint)container, ClassName = "hkaAnimationContainer" },
-                new HavokPackfile.PackfileObject { DataOffset = (uint)binding, ClassName = "hkaAnimationBinding" },
-                new HavokPackfile.PackfileObject { DataOffset = (uint)animation, ClassName = "hkaSplineCompressedAnimation" },
-            };
+            objects.Stream.CopyTo(payload, objects.Data);
         }
 
-        static HavokPackfile.VirtualFixup NameFixup(HavokPackfile template, string className, int at)
+        private static HavokPackfile.VirtualFixup NameFixup(HavokPackfile template, string className, int at)
         {
             HavokPackfile.PackfileObject original = template.Objects.FirstOrDefault(x => x.ClassName == className);
             if (original == null) throw new Exception("template has no " + className);
@@ -383,7 +412,7 @@ namespace CATHODE
         }
 
         /* Objects sit on sixteen byte boundaries, which is what the reader's block accounting expects */
-        class Layout
+        private class Layout
         {
             public int Length;
             public int Object(int size)
@@ -394,17 +423,17 @@ namespace CATHODE
             }
         }
 
-        static void Int(byte[] payload, int at, int value) { BitConverter.GetBytes(value).CopyTo(payload, at); }
-        static void Float(byte[] payload, int at, float value) { BitConverter.GetBytes(value).CopyTo(payload, at); }
+        private static void Int(byte[] payload, int at, int value) { BitConverter.GetBytes(value).CopyTo(payload, at); }
+        private static void Float(byte[] payload, int at, float value) { BitConverter.GetBytes(value).CopyTo(payload, at); }
 
         /* An hkArray is a pointer, then its size and capacity - the top bit of the capacity is the
          * flag saying the memory isn't the array's to free. */
-        static void EmptyArray(byte[] payload, int at, int pointer)
+        private static void EmptyArray(byte[] payload, int at, int pointer)
         {
             Int(payload, at + pointer + 4, unchecked((int)0x80000000));
         }
 
-        static void Array(byte[] payload, int at, int data, int count, List<HavokPackfile.LocalFixup> local, int pointer)
+        private static void Array(byte[] payload, int at, int data, int count, List<HavokPackfile.LocalFixup> local, int pointer)
         {
             local.Add(new HavokPackfile.LocalFixup { Src = (uint)at, Dst = (uint)data });
             Int(payload, at + pointer, count);

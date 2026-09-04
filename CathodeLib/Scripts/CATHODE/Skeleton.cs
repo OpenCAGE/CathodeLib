@@ -206,7 +206,7 @@ namespace CATHODE
             return ik;
         }
 
-        private void WriteIK(BinaryWriter writer, IKData ik)
+        private static void WriteIK(BinaryWriter writer, IKData ik)
         {
             writer.Write(ik.HipIndex);
             WriteVector3(writer, ik.HipForwardLocal);
