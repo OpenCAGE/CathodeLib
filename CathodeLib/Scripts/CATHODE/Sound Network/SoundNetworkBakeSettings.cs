@@ -500,6 +500,21 @@ namespace CathodeLib.Sound
         public bool SealedSeesThroughHullsAtDoor = true;
 
         /// <summary>
+        /// Two MARKER networks whose closest crossing pierces a door barrier box, with the two nodes
+        /// within <see cref="DoorCrossingMaxDistance"/>, adjoin at that door whatever the opening
+        /// sight test says - the closed leaf is what it cannot see through. Retail's boundary node
+        /// pairs spike at 1.5-1.6 m (the door_audio prefab straddling a door), and the campaign's
+        /// largest path deficits were each one or two such pairs refused: HAB_AIRPORT's 'Baggage'
+        /// / 'I link floors' (1.6 m, paths 1954 against 3570), TECH_COMMS's reception corridor pairs
+        /// (1.5 m, 497 against 2145), SCI_HOSPITALUPPER, SCI_ANDROIDLAB. Sealed networks keep their
+        /// own narrower rule (<see cref="SealedSeesThroughHullsAtDoor"/>).
+        /// </summary>
+        public bool DoorCrossingIsBoundary = true;
+
+        /// <summary>Furthest apart the two nodes of a door crossing may be for <see cref="DoorCrossingIsBoundary"/>.</summary>
+        public float DoorCrossingMaxDistance = 2.0f;
+
+        /// <summary>
         /// <see cref="SealedSeesThroughHullsAtDoor"/> applies to sealed networks of at least this many
         /// nodes. A lone authored node behind a FAKE door (BSP_TORRENS, a door package whose far side
         /// is the abyss) is absent from retail; with the rule unguarded it gained its link and was

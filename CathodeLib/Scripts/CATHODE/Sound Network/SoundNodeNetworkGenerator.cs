@@ -349,7 +349,8 @@ namespace CathodeLib
             BVHAccel openingStrict = _settings.BarrierBoundaryTest == 3 && _settings.OpeningSkipsSoundCollision &&
                                      _settings.SealedOpeningKeepsSoundHulls && _settings.SealedNetworkLinking != 0
                 ? BuildOpeningGeometry(level, barriers, false, log) : null;
-            BVHAccel barrierGeometry = _settings.BarrierBoundaryTest == 2 || (_settings.SealedSeesThroughHullsAtDoor && openingStrict != null)
+            BVHAccel barrierGeometry = _settings.BarrierBoundaryTest == 2 || (_settings.SealedSeesThroughHullsAtDoor && openingStrict != null) ||
+                                       (_settings.BarrierBoundaryTest == 3 && _settings.DoorCrossingIsBoundary)
                 ? BuildBarrierGeometry(level, barriers, out barrierTriangleInstance, log) : null;
             LinkNetworks(networks, markerNetworks, nodes, links, owner, CollectBarriers(level, barriers),
                          barrierGeometry, barrierTriangleInstance, openingGeometry, openingStrict, manualCount, manualGroup, log);
@@ -479,7 +480,7 @@ namespace CathodeLib
             // XZ extent of every candidate crossing's midpoint per pair - how WIDE the join is.
             var spread = new Dictionary<(int, int), (float x0, float x1, float z0, float z1)>();
             bool weighBarrier = _settings.BarrierBoundaryTest > 0;
-            int doorPairAdmitted = 0;
+            int doorPairAdmitted = 0; int doorCrossAdmitted = 0;
             {
                 var grid = new Dictionary<(int, int, int), List<int>>();
                 float cell = Math.Max(_settings.AdjoinDistance, 0.5f);
@@ -563,6 +564,14 @@ namespace CathodeLib
                                         // have a barrier by it, or it is a pocket that merely sees out.
                                         if (_settings.SealedRequiresBarrier && (a >= markerNetworks || b >= markerNetworks) && bar == 0u)
                                             ok = false;
+                                        // Two rooms whose crossing goes THROUGH a door: a doorway, leaf or
+                                        // no leaf. See SoundNetworkBakeSettings.DoorCrossingIsBoundary.
+                                        if (!ok && _settings.DoorCrossingIsBoundary && a < markerNetworks && b < markerNetworks &&
+                                            dist <= _settings.DoorCrossingMaxDistance && barrierGeometry != null)
+                                        {
+                                            uint pierced = BarrierCrossed(barrierGeometry, barrierTriangleInstance, nodes[i].Position, nodes[j].Position);
+                                            if (pierced != 0u) { ok = true; if (bar == 0u) bar = pierced; doorCrossAdmitted++; }
+                                        }
                                     }
                                     else if (weighBarrier)
                                     {
@@ -602,6 +611,8 @@ namespace CathodeLib
             // one another declare a boundary they have no door for.
             if (doorPairAdmitted > 0)
                 log?.Invoke("Sound networks: admitted " + doorPairAdmitted + " door-package node pair(s) as boundary crossings the opening test refused.");
+            if (doorCrossAdmitted > 0)
+                log?.Invoke("Sound networks: admitted " + doorCrossAdmitted + " crossing(s) between marker networks that pierce a door barrier within " + _settings.DoorCrossingMaxDistance.ToString("0.#") + " m.");
             if (weighBarrier)
             {
                 var noDoor = new List<(int, int)>();

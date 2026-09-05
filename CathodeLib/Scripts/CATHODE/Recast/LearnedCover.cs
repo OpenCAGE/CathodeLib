@@ -114,7 +114,7 @@ namespace CathodeLib.NavMesh
 
         public static CoverGbdtModel Load(string path)
         {
-            using (var r = new StreamReader(path)) return Load(r);
+            using (FileStream fs = File.OpenRead(path)) return Load(fs);
         }
 
         /// <summary>
