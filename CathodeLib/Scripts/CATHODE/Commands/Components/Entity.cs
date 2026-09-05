@@ -45,6 +45,58 @@ namespace CATHODE.Scripting.Internal
         public EntityVariant variant;
 
         public List<EntityConnector> childLinks = new List<EntityConnector>();
+
+        /// <summary>
+        /// Make this entity, a Copy() of source, own its resources properly. Copy() clones everything it can
+        /// reach, which for a resource reference means the renderable elements, physics system, animated model
+        /// and collision mapping behind it: the copy then points at phantoms no level table can index, so its
+        /// references save as index 0 / count 0 and come back empty. It also keeps the source's resource ids,
+        /// and references are keyed by those on disk: the pair's compare equal and are written once, then
+        /// handed to whichever entity claims the id first on load, leaving the copy with none (nothing in the
+        /// viewport, and nothing for the next save to build a mover from). Point the copy's references back at
+        /// the level's objects - shared with the source, as two entities loaded from disk share them - and give
+        /// them ids of their own. Call once the copy has its own shortGUID.
+        /// </summary>
+        public void RebindResourcesAsCopyOf(Entity source)
+        {
+            foreach (Parameter parameter in parameters)
+            {
+                if (!(parameter?.content is cResource resource))
+                    continue;
+
+                cResource sourceResource = source?.GetParameter(parameter.name)?.content as cResource;
+                foreach (ResourceReference reference in resource.value)
+                    ShareLevelObjects(reference, sourceResource?.GetResource(reference.resource_type));
+
+                resource.shortGUID = ShortGuidUtils.GenerateRandom();
+                foreach (ResourceReference reference in resource.value)
+                    reference.resource_id = resource.shortGUID;
+            }
+
+            if (this is FunctionEntity function)
+            {
+                FunctionEntity sourceFunction = source as FunctionEntity;
+                foreach (ResourceReference reference in function.resources)
+                {
+                    ShareLevelObjects(reference, sourceFunction?.GetResource(reference.resource_type));
+                    //Physics systems are keyed by their type, not their owner; everything else by the entity
+                    if (reference.resource_type != ResourceType.DYNAMIC_PHYSICS_SYSTEM)
+                        reference.resource_id = function.shortGUID;
+                }
+            }
+        }
+
+        private static void ShareLevelObjects(ResourceReference reference, ResourceReference original)
+        {
+            if (reference == null || original == null || ReferenceEquals(reference, original))
+                return;
+            reference.RenderableInstance = original.RenderableInstance == null
+                ? null
+                : new List<CATHODE.RenderableElements.Element>(original.RenderableInstance);
+            reference.PhysicsSystem = original.PhysicsSystem;
+            reference.AnimatedModel = original.AnimatedModel;
+            reference.CollisionMapping = original.CollisionMapping;
+        }
         public List<Parameter> parameters = new List<Parameter>();
 
         ~Entity()
