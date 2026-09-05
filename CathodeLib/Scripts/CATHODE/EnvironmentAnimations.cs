@@ -300,6 +300,7 @@ namespace CATHODE
             return max + 1;
         }
 
+#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
         /// <summary>
         /// Build an entry for a skeleton, give it a unique ID and add it to this file. The per-bone
         /// tables are copied from an existing entry on the same skeleton where one exists (this file
@@ -516,6 +517,7 @@ namespace CATHODE
             }
             return string.Join("_", tokens);
         }
+#endif
 
         private List<T> PopulateArray<T>(BinaryReader reader, T[] array)
         {
