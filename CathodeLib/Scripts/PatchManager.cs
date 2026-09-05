@@ -197,6 +197,41 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// Patch the game binary so the DebugText and DebugTextStacking script entities are created at runtime.
+        /// </summary>
+        public static bool PatchDebugTextEntities(Platform platform, string pathToAI, bool enable)
+        {
+            List<PatchBytes> debugTextPatches = new List<PatchBytes>();
+            switch (platform)
+            {
+                case Platform.STEAM:
+                    debugTextPatches.Add(new PatchBytes(15031656, new byte[] { 0x80, 0x91, 0x99, 0x00 }, new byte[] { 0x10, 0x30, 0x8c, 0x00 })); 
+                    debugTextPatches.Add(new PatchBytes(15030400, new byte[] { 0x80, 0x91, 0x99, 0x00 }, new byte[] { 0x10, 0x30, 0x8c, 0x00 })); 
+                    break;
+                default:
+                    return false;
+            }
+            try
+            {
+                using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(pathToAI + "/AI.exe")))
+                {
+                    for (int i = 0; i < debugTextPatches.Count; i++)
+                    {
+                        writer.BaseStream.Position = debugTextPatches[i].offset;
+                        if (enable) writer.Write(debugTextPatches[i].patched);
+                        else writer.Write(debugTextPatches[i].original);
+                    }
+                }
+                return true;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("PatchManager::PatchDebugTextEntities - " + e.ToString());
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Patch the render_constant_ambient option in game binary
         /// </summary>
         public static bool PatchRenderConstantAmbientFlag(Platform platform, string pathToAI, bool constantAmbient)
