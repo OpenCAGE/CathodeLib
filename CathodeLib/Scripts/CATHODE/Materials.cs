@@ -418,6 +418,23 @@ namespace CATHODE
         }
 
         /// <summary>
+        /// Rebuild the write index from Entries without saving, in the order Save would write them, so
+        /// indexes agree with a file written from this state. Entries added since the file was loaded
+        /// or last saved have no index until one of the two happens.
+        /// </summary>
+        public void RebuildWriteList()
+        {
+            lock (_writeIndexLock)
+            {
+                _writeList.Clear();
+                _writeList.AddRange(Entries);
+                _writeIndexByRef = null;
+                _writeIndex = null;
+                _writeIndexCount = 0;
+            }
+        }
+
+        /// <summary>
         /// Returns the material name, while looking up any particle texture GUIDs - this should be used for any UI displays of material names
         /// </summary>
         public string GetMaterialName(Material material)

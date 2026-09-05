@@ -389,6 +389,17 @@ namespace CATHODE
         }
 
         /// <summary>
+        /// Rebuild the write index from Entries without saving, in the order Save would write them, so
+        /// indexes agree with a file written from this state. Entries added or removed since the file
+        /// was loaded or last saved have no index until one of the two happens.
+        /// </summary>
+        public void RebuildWriteList()
+        {
+            _writeList.Clear();
+            _writeList.AddRange(Entries);
+        }
+
+        /// <summary>
         /// Get a environment map by its current index (useful for cross-ref'ing with compiled binaries)
         /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>

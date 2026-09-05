@@ -708,6 +708,8 @@ namespace CATHODE.Scripting
                     defaultValue = CreateDefaultParameterData(function, guid, variant);
                 else if (!ReferenceEquals(baseEntity, targetEntity) && defaultValue is cResource)
                     defaultValue = (ParameterData)defaultValue.Clone();
+                if (defaultValue == null)
+                    continue; //nothing to store for it (a link-only pin): a parameter with no content is worse than none
                 targetEntity.AddParameter(guid, defaultValue, variant, overwrite);
             }
         }
@@ -1494,8 +1496,13 @@ namespace CATHODE.Scripting
                                         reader.BaseStream.Position += 4;
                                     break;
                                 default:
+                                    /* Objects, zones, reference frames and animation infos are pointers: the
+                                       engine resolves them through links, and no retail script stores a value
+                                       on one (0 of 153 such pins across HAB_AIRPORT). A float used to stand in
+                                       for them here, which the editor then showed as a number on a pin like
+                                       WEAPON_GiveToCharacter.Weapon and wrote into the pak. */
                                     if (isCorrectParam)
-                                        return new cFloat(); //Any other types have no default values.
+                                        return IsPointerType(dataType) ? null : new cFloat(); //Any other types have no default values.
                                     break;
                             }
                             break;
@@ -1503,6 +1510,24 @@ namespace CATHODE.Scripting
                 }
             }
             return null;
+        }
+
+        /// <summary>
+        /// Data types that only ever arrive down a link, so have no value to default.
+        /// </summary>
+        public static bool IsPointerType(DataType dataType)
+        {
+            switch (dataType)
+            {
+                case DataType.OBJECT:
+                case DataType.ZONE:
+                case DataType.ZONE_LINK:
+                case DataType.REFERENCE_FRAME:
+                case DataType.ANIMATION_INFO:
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         /// <summary>

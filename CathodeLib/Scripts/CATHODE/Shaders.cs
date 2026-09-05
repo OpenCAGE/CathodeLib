@@ -478,6 +478,17 @@ namespace CATHODE
         }
 
         /// <summary>
+        /// Rebuild the write index from Entries without saving, in the order Save would write them, so
+        /// indexes agree with a file written from this state. Entries added or removed since the file
+        /// was loaded or last saved have no index until one of the two happens.
+        /// </summary>
+        public void RebuildWriteList()
+        {
+            _writeList.Clear();
+            _writeList.AddRange(Entries);
+        }
+
+        /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// Dedupes by <see cref="Shader.Technique"/>. When <paramref name="overwriteExisting"/> is true, replaces any existing entry with the same technique name.
         /// </summary>

@@ -776,6 +776,26 @@ namespace CATHODE
         }
 
         /// <summary>
+        /// Rebuild the write index from Entries without saving, in the order Save would write them, so
+        /// indexes agree with a file written from this state. Entries added or removed since the file
+        /// was loaded or last saved have no index until one of the two happens.
+        /// </summary>
+        public void RebuildWriteList()
+        {
+            lock (_writeIndexLock)
+            {
+                _writeList.Clear();
+                _writeIndex = null;
+                _writeIndexCount = 0;
+                for (int i = 0; i < Entries.Count; i++)
+                    for (int z = 0; z < Entries[i].Components.Count; z++)
+                        for (int x = 0; x < Entries[i].Components[z].LODs.Count; x++)
+                            for (int y = 0; y < Entries[i].Components[z].LODs[x].Submeshes.Count; y++)
+                                _writeList.Add(Entries[i].Components[z].LODs[x].Submeshes[y]);
+            }
+        }
+
+        /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// Dedupes by <see cref="CS2.Name"/>. When <paramref name="overwriteExisting"/> is true, replaces any existing entry with the same name.
         /// </summary>

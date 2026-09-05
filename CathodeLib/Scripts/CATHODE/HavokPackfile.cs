@@ -249,6 +249,15 @@ namespace CATHODE
             /// <summary>Number of leaf shapes contributed (meshes, boxes, convex hulls).</summary>
             public int ShapeCount;
             public int TriangleCount => Indices.Count / 3;
+            /// <summary>
+            /// The caps this mesh is being built under. The preview builders cap shapes and triangles
+            /// for the viewer; <see cref="BuildBakeMesh"/> passes int.MaxValue and the leaf appenders
+            /// read these rather than the preview constants - a leaf that tested the constants directly
+            /// dropped every box past the 2048th shape of a world host from the bake soups (the door
+            /// barriers of CM9's 2,709-shape host, twice now).
+            /// </summary>
+            public int ShapeCapLimit = int.MaxValue;
+            public int TriangleCapLimit = int.MaxValue;
 
             /// <summary>
             /// Which top-level instance each triangle came from, in ascending triangle order, as
@@ -319,7 +328,7 @@ namespace CATHODE
             bool convexHullOpenShells = true,
             bool trackInstances = false)
         {
-            var mesh = new PreviewMesh();
+            var mesh = new PreviewMesh { ShapeCapLimit = shapeCap, TriangleCapLimit = triCap };
             if (trackInstances)
                 mesh.InstanceRanges = new List<KeyValuePair<int, CompoundInstance>>();
             if (compound == null)
@@ -624,7 +633,7 @@ namespace CATHODE
 
             int trisBefore = mesh.TriangleCount;
 
-            for (int s = 0; s < sectionCount && mesh.TriangleCount < PreviewTriangleCap; s++)
+            for (int s = 0; s < sectionCount && mesh.TriangleCount < mesh.TriangleCapLimit; s++)
             {
                 uint secOff = sectionsOff + (uint)(s * SectionStride);
                 if (!TryReadBvSection(secOff,
@@ -709,7 +718,7 @@ namespace CATHODE
                 bool flipWinding = (scale.X * scale.Y * scale.Z) < 0f;
 
                 int sectionTris = 0;
-                for (int p = 0; p < numPrim && mesh.TriangleCount < PreviewTriangleCap; p++)
+                for (int p = 0; p < numPrim && mesh.TriangleCount < mesh.TriangleCapLimit; p++)
                 {
                     int o = (int)primitivesOff + (firstPrim + p) * 4;
                     if (o + 4 > DataPayload.Length)
@@ -932,7 +941,7 @@ namespace CATHODE
             for (int i = 0; i < pts.Count; i++)
                 mesh.Positions.Add(translation + Vector3.Transform(pts[i] * scale, rotation));
 
-            for (int i = 0; i + 2 < hullTris.Count && mesh.TriangleCount < PreviewTriangleCap; i += 3)
+            for (int i = 0; i + 2 < hullTris.Count && mesh.TriangleCount < mesh.TriangleCapLimit; i += 3)
             {
                 mesh.Indices.Add(baseIndex + hullTris[i]);
                 mesh.Indices.Add(baseIndex + hullTris[i + 1]);
@@ -1144,7 +1153,7 @@ namespace CATHODE
                 // Build faces from plane equations when present.
                 if (TryGetHkArray(planesField, out uint planesOff, out int planeCount) && planeCount > 0)
                 {
-                    for (int p = 0; p < planeCount && mesh.TriangleCount < PreviewTriangleCap; p++)
+                    for (int p = 0; p < planeCount && mesh.TriangleCount < mesh.TriangleCapLimit; p++)
                     {
                         int o = (int)planesOff + p * 16;
                         if (o + 16 > DataPayload.Length)
@@ -1219,7 +1228,7 @@ namespace CATHODE
 
             int cursor = 0;
             int trisBefore = mesh.TriangleCount;
-            for (int f = 0; f < faceCount && mesh.TriangleCount < PreviewTriangleCap; f++)
+            for (int f = 0; f < faceCount && mesh.TriangleCount < mesh.TriangleCapLimit; f++)
             {
                 int fo = (int)facesOff + f;
                 if (fo >= DataPayload.Length)
@@ -1267,14 +1276,14 @@ namespace CATHODE
                 globalBySrc[GlobalFixups[i].Src] = GlobalFixups[i].Dst;
 
             int before = mesh.ShapeCount;
-            for (int i = 0; i < childCount && mesh.ShapeCount < PreviewShapeCap; i++)
+            for (int i = 0; i < childCount && mesh.ShapeCount < mesh.ShapeCapLimit; i++)
             {
                 uint slot = childOff + (uint)(i * stride);
                 if (!globalBySrc.TryGetValue(slot, out uint childShape))
                     continue;
                 classAtOffset.TryGetValue(childShape, out string childClass);
                 AppendShapePreview(mesh, childShape, childClass ?? "", translation, rotation, scale,
-                    PreviewShapeCap, PreviewTriangleCap, convexHullOpenShells);
+                    mesh.ShapeCapLimit, mesh.TriangleCapLimit, convexHullOpenShells);
             }
             return mesh.ShapeCount > before;
         }
@@ -1412,7 +1421,7 @@ namespace CATHODE
             Quaternion rotation,
             Vector3 scale)
         {
-            if (mesh.ShapeCount >= PreviewShapeCap || mesh.TriangleCount >= PreviewTriangleCap)
+            if (mesh.ShapeCount >= mesh.ShapeCapLimit || mesh.TriangleCount >= mesh.TriangleCapLimit)
                 return;
 
             int baseIndex = mesh.Positions.Count;
