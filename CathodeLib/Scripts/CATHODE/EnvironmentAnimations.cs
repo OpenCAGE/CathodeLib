@@ -300,6 +300,223 @@ namespace CATHODE
             return max + 1;
         }
 
+        /// <summary>
+        /// Build an entry for a skeleton, give it a unique ID and add it to this file. The per-bone
+        /// tables are copied from an existing entry on the same skeleton where one exists (this file
+        /// first, then <paramref name="alsoSearch"/>), and derived from the skeleton and its ragdoll
+        /// otherwise.
+        /// </summary>
+        /// <param name="animations">The game's animation data, for the ragdoll and skeleton definitions.</param>
+        /// <param name="alsoSearch">Other files to look for an entry on the skeleton in, in order of preference; read lazily. May be null.</param>
+        /// <param name="meshMappings">The RENDERABLE_INSTANCE resource ids of the composite's model references, in order.</param>
+        /// <param name="how">Where the per-bone tables came from, for a report.</param>
+        public EnvironmentAnimation AddForSkeleton(string skeletonName, Skeleton skeleton, Animation animations, IEnumerable<EnvironmentAnimations> alsoSearch, IEnumerable<ShortGuid> meshMappings, out string how)
+        {
+            IEnumerable<EnvironmentAnimations> search = alsoSearch == null ? new[] { this } : new[] { this }.Concat(alsoSearch);
+            EnvironmentAnimation entry = BuildForSkeleton(skeletonName, skeleton, animations, search, meshMappings, out how);
+            entry.ID = AllocateUniqueId();
+            Entries.Add(entry);
+            return entry;
+        }
+
+        /// <summary>
+        /// A complete entry for a skeleton, without an ID and not yet in any file.
+        /// </summary>
+        /// <param name="existing">Files to look for an entry on the same skeleton in, in order of preference; read lazily. May be null.</param>
+        public static EnvironmentAnimation BuildForSkeleton(string skeletonName, Skeleton skeleton, Animation animations, IEnumerable<EnvironmentAnimations> existing, IEnumerable<ShortGuid> meshMappings, out string how)
+        {
+            EnvironmentAnimation entry = new EnvironmentAnimation
+            {
+                Matrix = Matrix4x4.Identity,
+                SkeletonName = skeletonName,
+                AnimationSet = 0,
+                MeshMappings = new List<ShortGuid>(meshMappings),
+                HelperMatrices = new List<WeightedHelperData>(),
+            };
+
+            EnvironmentAnimation template = FindTemplate(skeletonName, skeleton.Bones.Count, existing);
+            if (template != null)
+            {
+                entry.BoneMappings = new List<ShortGuid>(template.BoneMappings);
+                entry.InverseBindPoses = new List<Matrix4x4>(template.InverseBindPoses);
+                entry.HavokToCathodeMappings = new List<Matrix4x4>(template.HavokToCathodeMappings);
+                how = "copied from an existing animated model on this skeleton";
+                return entry;
+            }
+
+            entry.BoneMappings = DeriveBoneMappings(skeletonName, skeleton, animations, out how);
+            List<Matrix4x4> bind = skeleton.GetBindPose();
+            List<Matrix4x4> model = skeleton.GetModelSpacePose();
+            entry.InverseBindPoses = new List<Matrix4x4>(bind.Count);
+            entry.HavokToCathodeMappings = new List<Matrix4x4>(bind.Count);
+            for (int i = 0; i < bind.Count; i++)
+            {
+                Matrix4x4 inverseBind;
+                Matrix4x4 inverseModel;
+                if (!Matrix4x4.Invert(bind[i], out inverseBind)) inverseBind = Matrix4x4.Identity;
+                if (!Matrix4x4.Invert(model[i], out inverseModel)) inverseModel = Matrix4x4.Identity;
+                entry.InverseBindPoses.Add(inverseBind);
+                entry.HavokToCathodeMappings.Add(bind[i] * inverseModel);
+            }
+            return entry;
+        }
+
+        /// <summary>
+        /// The first existing entry on a skeleton whose per-bone tables are complete, or null.
+        /// </summary>
+        public static EnvironmentAnimation FindTemplate(string skeletonName, int boneCount, IEnumerable<EnvironmentAnimations> existing)
+        {
+            if (existing == null) return null;
+            foreach (EnvironmentAnimations file in existing)
+            {
+                if (file == null) continue;
+                EnvironmentAnimation match = file.Entries.FirstOrDefault(e =>
+                    e != null && string.Equals(e.SkeletonName, skeletonName, StringComparison.OrdinalIgnoreCase)
+                    && e.BoneMappings != null && e.BoneMappings.Count == boneCount
+                    && e.InverseBindPoses != null && e.InverseBindPoses.Count == boneCount
+                    && e.HavokToCathodeMappings != null && e.HavokToCathodeMappings.Count == boneCount);
+                if (match != null) return match;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Derive the per-bone ids from the skeleton's ragdoll, which keeps the bone names in their
+        /// original case. Bones the ragdoll does not know (the ones a derived skeleton adds to its base
+        /// rig) fall back to hashing the name the skeleton file has.
+        /// </summary>
+        public static List<ShortGuid> DeriveBoneMappings(string skeletonName, Skeleton skeleton, Animation animations, out string how)
+        {
+            string ragdollPrefix;
+            Dictionary<string, string> parts = RagdollBoneParts(skeletonName, animations, out ragdollPrefix);
+
+            //The ragdoll's own rig is spelt exactly; anything built on it takes the same parts under its own name
+            string prefix = ragdollPrefix != null && string.Equals(ragdollPrefix, skeletonName, StringComparison.OrdinalIgnoreCase)
+                ? ragdollPrefix
+                : OriginalCaseSkeletonName(skeletonName);
+
+            int derived = 0;
+            List<ShortGuid> ids = new List<ShortGuid>(skeleton.Bones.Count);
+            foreach (Skeleton.Bone bone in skeleton.Bones)
+            {
+                string name = bone.Name ?? "";
+                int at = name.IndexOf(':');
+                string part = at >= 0 ? name.Substring(at + 1) : name;
+                string original;
+                if (parts != null && parts.TryGetValue(part, out original))
+                {
+                    ids.Add(ShortGuidUtils.Generate(prefix + ":" + original));
+                    derived++;
+                }
+                else
+                {
+                    ids.Add(ShortGuidUtils.Generate(name));
+                }
+            }
+
+            if (derived == skeleton.Bones.Count)
+                how = "derived from the skeleton and its ragdoll's bone names";
+            else if (derived == 0)
+                how = "derived from the skeleton; bone ids hashed from its names as no ragdoll or existing animated model was found, so the game may not bind these bones";
+            else
+                how = "derived from the skeleton; " + derived + " of " + skeleton.Bones.Count + " bone ids from the ragdoll's names, the rest hashed from the skeleton's names";
+            return ids;
+        }
+
+        /// <summary>
+        /// The bone names a skeleton's ragdoll carries, keyed by the part after the rig prefix
+        /// (case-insensitive), with the prefix the ragdoll spells them under. Null when no ragdoll can
+        /// be read.
+        /// </summary>
+        public static Dictionary<string, string> RagdollBoneParts(string skeletonName, Animation animations, out string prefix)
+        {
+            prefix = null;
+            if (animations == null) return null;
+
+            string ragdollName;
+            Animation.SkeletonDef def;
+            if (animations.SkeletonDefs.TryGetValue(skeletonName, out def) && !string.IsNullOrEmpty(def.Ragdoll))
+                ragdollName = def.Ragdoll;
+            else if (skeletonName.StartsWith("FEMALE", StringComparison.OrdinalIgnoreCase))
+                ragdollName = "FEMALE_RAGDOLL";
+            else
+                ragdollName = "MALE_RAGDOLL";
+
+            string hashed = Utilities.AnimationHashedString(ragdollName).ToString();
+            Animation.RagdollAsset asset = animations.Ragdolls.FirstOrDefault(r =>
+                string.Equals(r.Name, hashed, StringComparison.OrdinalIgnoreCase) || string.Equals(r.Name, ragdollName, StringComparison.OrdinalIgnoreCase));
+            Ragdoll ragdoll = asset?.Ragdoll ?? asset?.Ragdoll64;
+            if (ragdoll?.Havok == null) return null;
+
+            Dictionary<string, string> parts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string name in HavokBoneNames(ragdoll.Havok))
+            {
+                int at = name.IndexOf(':');
+                if (at <= 0) continue;
+                if (prefix == null) prefix = name.Substring(0, at);
+                string part = name.Substring(at + 1);
+                if (!parts.ContainsKey(part)) parts[part] = part;
+            }
+            return parts.Count == 0 ? null : parts;
+        }
+
+        /// <summary>
+        /// Every bone name of every hkaSkeleton in a packfile. Ragdoll files keep them; skeleton
+        /// files ship with them stripped.
+        /// </summary>
+        public static List<string> HavokBoneNames(HavokPackfile packfile)
+        {
+            List<string> names = new List<string>();
+            if (packfile == null || !packfile.Loaded || packfile.IsTagfile) return names;
+
+            //hkaSkeleton for hk_2012.2.0, the layout Skeleton reads: header, m_name, then the parent / bone / pose arrays
+            uint pointerSize = packfile.Header.PointerSize;
+            uint header = pointerSize == 8 ? 16u : 8u;
+            uint array = pointerSize + 8;
+            uint boneStride = pointerSize == 8 ? 16u : 8u;
+            foreach (HavokPackfile.PackfileObject obj in packfile.Objects)
+            {
+                if (obj.ClassName != "hkaSkeleton") continue;
+                uint parentsOffset = obj.DataOffset + header + pointerSize;
+                uint bonesOffset = parentsOffset + array;
+                uint bones;
+                int boneCount;
+                if (!packfile.TryGetHkArray(bonesOffset, out bones, out boneCount)) continue;
+                for (int i = 0; i < boneCount; i++)
+                {
+                    uint at;
+                    string name = packfile.TryResolveLocal(bones + (uint)(i * boneStride), out at) ? packfile.ReadStringAt(at) : "";
+                    if (!string.IsNullOrEmpty(name)) names.Add(name);
+                }
+            }
+            return names;
+        }
+
+        /// <summary>
+        /// The spelling a skeleton's bones were authored under: each underscore-separated token in
+        /// title case ("Paul_Allison", "Alex_T"), with a GP or FP suffix kept upper ("Taylor_GP",
+        /// "FemaleFP"). Reproduced every base-rig bone id of the 33 derived skeletons in SCI_Hub.
+        /// </summary>
+        public static string OriginalCaseSkeletonName(string skeletonName)
+        {
+            string[] tokens = (skeletonName ?? "").Split('_');
+            for (int i = 0; i < tokens.Length; i++)
+            {
+                string token = tokens[i].ToLowerInvariant();
+                if (token.Length == 0) continue;
+                if (token == "gp" || token == "fp")
+                {
+                    tokens[i] = token.ToUpperInvariant();
+                    continue;
+                }
+                string title = char.ToUpperInvariant(token[0]) + token.Substring(1);
+                if (token.Length > 2 && (token.EndsWith("fp") || token.EndsWith("gp")))
+                    title = title.Substring(0, title.Length - 2) + token.Substring(token.Length - 2).ToUpperInvariant();
+                tokens[i] = title;
+            }
+            return string.Join("_", tokens);
+        }
+
         private List<T> PopulateArray<T>(BinaryReader reader, T[] array)
         {
             List<T> arr = new List<T>();
