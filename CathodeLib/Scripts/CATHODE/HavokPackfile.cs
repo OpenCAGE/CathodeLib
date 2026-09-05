@@ -3508,6 +3508,10 @@ namespace CATHODE
             /// <summary>Where a spline animation's own members begin - the end of hkaAnimation.</summary>
             public int SplineStart;
 
+            /// <summary>The two arrays an interleaved animation adds to hkaAnimation: its transforms, then its floats.</summary>
+            public int InterleavedTransforms;
+            public int InterleavedFloats;
+
             public int ArrayStride;
         }
 
@@ -3533,6 +3537,8 @@ namespace CATHODE
                 AnimationTransformTracks = header + 8,
                 AnimationFloatTracks = header + 12,
                 SplineStart = header + 16 + Header.PointerSize + array,
+                InterleavedTransforms = header + 16 + Header.PointerSize + array,
+                InterleavedFloats = header + 16 + Header.PointerSize + array * 2,
 
                 ArrayStride = array,
             };
@@ -3557,6 +3563,13 @@ namespace CATHODE
              * members start has to come from the size of the class it derives from. */
             Take(Tagfile.SizeOf("hkaAnimation"), ref _animation.SplineStart);
 
+            /* The interleaved class is described normally, so its two arrays sit wherever the file
+             * says - and failing that, straight after hkaAnimation like the spline members. */
+            _animation.InterleavedTransforms = _animation.SplineStart;
+            _animation.InterleavedFloats = _animation.SplineStart + _animation.ArrayStride;
+            Take(Tagfile.OffsetOf("hkaInterleavedUncompressedAnimation", "transforms"), ref _animation.InterleavedTransforms);
+            Take(Tagfile.OffsetOf("hkaInterleavedUncompressedAnimation", "floats"), ref _animation.InterleavedFloats);
+
             return _animation;
         }
 
@@ -3566,8 +3579,10 @@ namespace CATHODE
         }
 
         /// <summary>
-        /// Read every <c>hkaSplineCompressedAnimation</c> in the packfile, paired with the binding
-        /// that says which skeleton and which bones it drives.
+        /// Read every animation in the packfile, paired with the binding that says which skeleton
+        /// and which bones it drives. Nearly all of retail is <c>hkaSplineCompressedAnimation</c>;
+        /// a handful of clips - the corpse bake poses, a few cutscene shots, the pistol pickup -
+        /// were left as <c>hkaInterleavedUncompressedAnimation</c>, and read the same way out.
         /// </summary>
         public List<AnimationClip> GetAnimations()
         {
@@ -3577,7 +3592,7 @@ namespace CATHODE
             //Bindings point at their animation, so index the animations by where they live
             Dictionary<uint, PackfileObject> animations = new Dictionary<uint, PackfileObject>();
             for (int i = 0; i < Objects.Count; i++)
-                if (Objects[i].ClassName == "hkaSplineCompressedAnimation")
+                if (Objects[i].ClassName == "hkaSplineCompressedAnimation" || Objects[i].ClassName == InterleavedClass)
                     animations[Objects[i].DataOffset] = Objects[i];
 
             Dictionary<uint, uint> globalBySrc = new Dictionary<uint, uint>();
@@ -3592,7 +3607,7 @@ namespace CATHODE
                 if (clip == null) continue;
 
                 if (clip.AnimationOffset != 0 && animations.TryGetValue(clip.AnimationOffset, out PackfileObject animation))
-                    ReadSplineAnimation(animation.DataOffset, clip);
+                    ReadAnimation(animation, clip);
                 clips.Add(clip);
             }
 
@@ -3601,7 +3616,7 @@ namespace CATHODE
             {
                 if (clips.Any(x => x.AnimationOffset == entry.Key)) continue;
                 AnimationClip clip = new AnimationClip { AnimationOffset = entry.Key };
-                ReadSplineAnimation(entry.Key, clip);
+                ReadAnimation(entry.Value, clip);
                 clips.Add(clip);
             }
             return clips;
@@ -3632,6 +3647,65 @@ namespace CATHODE
             if (hint < DataPayload.Length) clip.Additive = DataPayload[hint] != 0;
 
             return clip;
+        }
+
+        private const string InterleavedClass = "hkaInterleavedUncompressedAnimation";
+
+        private void ReadAnimation(PackfileObject animation, AnimationClip clip)
+        {
+            if (animation.ClassName == InterleavedClass) ReadInterleavedAnimation(animation.DataOffset, clip);
+            else ReadSplineAnimation(animation.DataOffset, clip);
+        }
+
+        /// <summary>
+        /// Read an <c>hkaInterleavedUncompressedAnimation</c>: no curves, just every track's
+        /// transform at every frame, laid out a frame at a time. The frame count isn't stored - it
+        /// is the transform count over the track count - and the frames are spread evenly over the
+        /// duration, which is how Havok times them.
+        /// </summary>
+        private void ReadInterleavedAnimation(uint at, AnimationClip clip)
+        {
+            AnimationLayout layout = Animation();
+            if (at + (uint)layout.AnimationFloatTracks + 4 > DataPayload.Length) return;
+
+            clip.Interleaved = true;
+            clip.Duration = BitConverter.ToSingle(DataPayload, (int)at + layout.AnimationDuration);
+            clip.TransformTrackCount = BitConverter.ToInt32(DataPayload, (int)at + layout.AnimationTransformTracks);
+            clip.FloatTrackCount = BitConverter.ToInt32(DataPayload, (int)at + layout.AnimationFloatTracks);
+            if (clip.TransformTrackCount <= 0) return;
+
+            if (!TryGetHkArray(at + (uint)layout.InterleavedTransforms, out uint transforms, out int transformCount)) return;
+            if (transformCount <= 0 || (long)transforms + (long)transformCount * TransformSize > DataPayload.Length) return;
+            clip.TransformsOffset = transforms;
+            clip.TransformCount = transformCount;
+
+            if (TryGetHkArray(at + (uint)layout.InterleavedFloats, out uint floats, out int floatCount)
+                && (long)floats + (long)floatCount * 4 <= DataPayload.Length)
+            {
+                clip.FloatsOffset = floats;
+                clip.FloatCount = floatCount;
+            }
+
+            clip.FrameCount = transformCount / clip.TransformTrackCount;
+            clip.FrameDuration = clip.FrameCount > 1 ? clip.Duration / (clip.FrameCount - 1) : clip.Duration;
+        }
+
+        /// <summary>An hkQsTransform: translation, rotation and scale, each padded to sixteen bytes.</summary>
+        private const int TransformSize = 48;
+
+        /* Every channel of an uncompressed transform is stored, so nothing here has to ask whether
+         * the clip drove it. */
+        private SampledTransform ReadTransform(uint at)
+        {
+            return new SampledTransform
+            {
+                Translation = ReadVector3((int)at),
+                Rotation = ReadQuaternion((int)at + 16),
+                Scale = ReadVector3((int)at + 32),
+                HasTranslation = true,
+                HasRotation = true,
+                HasScale = true,
+            };
         }
 
         private void ReadSplineAnimation(uint at, AnimationClip clip)
@@ -3857,8 +3931,18 @@ namespace CATHODE
         public List<SampledTransform> Sample(AnimationClip clip, int frame)
         {
             List<SampledTransform> pose = new List<SampledTransform>();
-            if (clip == null || clip.MaxFramesPerBlock <= 0 || frame < 0 || frame >= clip.FrameCount) return pose;
+            if (clip == null || frame < 0 || frame >= clip.FrameCount) return pose;
 
+            if (clip.Interleaved)
+            {
+                //a frame is every track's transform in turn, and the frames follow each other
+                uint start = clip.TransformsOffset + (uint)(frame * clip.TransformTrackCount * TransformSize);
+                for (int t = 0; t < clip.TransformTrackCount && start + (uint)((t + 1) * TransformSize) <= DataPayload.Length; t++)
+                    pose.Add(ReadTransform(start + (uint)(t * TransformSize)));
+                return pose;
+            }
+
+            if (clip.MaxFramesPerBlock <= 0) return pose;
             int block = frame / clip.MaxFramesPerBlock;
             float at = frame % clip.MaxFramesPerBlock;
             if (block >= clip.Blocks.Count) return pose;
@@ -4304,6 +4388,19 @@ namespace CATHODE
 
             /// <summary>Where the animation sits in __data__, so callers can match it back up.</summary>
             public uint AnimationOffset;
+
+            /// <summary>
+            /// Whether the clip is stored uncompressed - every track's transform at every frame -
+            /// rather than as spline curves. The block members below are all zero for one of these,
+            /// and <see cref="TransformsOffset"/> is where its frames start.
+            /// </summary>
+            public bool Interleaved;
+
+            /// <summary>An interleaved clip's transforms and floats in __data__, a frame at a time.</summary>
+            public uint TransformsOffset;
+            public int TransformCount;
+            public uint FloatsOffset;
+            public int FloatCount;
 
             /// <summary>Bytes of mask at the head of every block - four per transform track.</summary>
             public int MaskAndQuantizationSize;
