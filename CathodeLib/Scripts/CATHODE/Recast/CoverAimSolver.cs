@@ -161,7 +161,7 @@ namespace CathodeLib.NavMesh
         /// World position of the slot ON THE COVER LINE, not where the occupant stands. Each aim
         /// model applies its own offsets from here: the legacy one steps out by
         /// <see cref="CoverBakeSettings.SlotStandOffset"/>, the two-position one uses the
-        /// <c>clear_aim_angle_*</c> offsets, whose move-from position lands on that same 0.5 m.
+        /// clear-aim offsets, whose move-from position lands on that same 0.5 m.
         /// </param>
         /// <param name="normal">Segment normal, pointing away from the cover.</param>
         /// <param name="tangent">Unit vector from the segment's left end to its right end.</param>

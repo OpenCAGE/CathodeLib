@@ -247,11 +247,11 @@ namespace CathodeLib.NavMesh
             // The learned spotting selector reads the same station description the cover baker
             // and the training tables use, off the same navmesh soup - so build that soup here
             // when a model is configured, and nowhere else.
-            CoverGbdtModel spotModel = LearnedCover.TryLoadPath(settings.LearnedSpotModelPath, "OPENCAGE_SPOT_MODEL", "Spotting", log,
+            CoverGbdtModel spotModel = LearnedCover.TryLoadPath(settings.LearnedSpotModelPath, "Spotting", log,
                                                                 settings.UseEmbeddedLearnedSelectors ? LearnedCover.EmbeddedSpot : null);
-            CoverGbdtModel assaultModel = LearnedCover.TryLoadPath(settings.LearnedAssaultModelPath, "OPENCAGE_ASSAULT_MODEL", "Assault", log,
+            CoverGbdtModel assaultModel = LearnedCover.TryLoadPath(settings.LearnedAssaultModelPath, "Assault", log,
                                                                    settings.UseEmbeddedLearnedSelectors ? LearnedCover.EmbeddedAssault : null);
-            CoverGbdtModel crawlModel = LearnedCover.TryLoadPath(settings.LearnedCrawlModelPath, "OPENCAGE_CRAWL_MODEL", "Crawl", log);
+            CoverGbdtModel crawlModel = LearnedCover.TryLoadPath(settings.LearnedCrawlModelPath, "Crawl", log);
             RimCoverGenerator.DepthProbe learnedProbe = null;
             CoverBakeSettings learnedCoverSettings = null;
             if (spotModel != null || assaultModel != null || crawlModel != null)
@@ -517,10 +517,9 @@ namespace CathodeLib.NavMesh
 
         /// <summary>
         /// Lay assault positions along each continuous run of cover, following the
-        /// rules: nothing below <c>cover_length_to_generate_one_point</c>, a single mid-run point
-        /// up to <c>cover_length_to_generate_at_both_ends</c>, then one
-        /// <c>min_distance_from_edge_of_cover</c> in from each end with more spread evenly between
-        /// so no gap exceeds <c>max_distance_between_positions_on_same_cover</c>.
+        /// rules: nothing below the one-point length, a single mid-run point up to the both-ends
+        /// length, then one edge distance in from each end with more spread evenly between so no
+        /// gap exceeds the maximum spacing (the Assault* settings).
         /// </summary>
         /// <remarks>
         /// Retail's positions follow cover volumes. We rebuild the runs from the navmesh rim
@@ -685,8 +684,8 @@ namespace CathodeLib.NavMesh
             JobPositionBakeSettings settings, GlassProbe glass, float spottingOut, ref int glassRejected)
         {
             const float station = 0.25f;
-            float threshold = settings.LearnedSpotThreshold > 0f ? settings.LearnedSpotThreshold : LearnedCover.EnvFloat("OPENCAGE_SPOT_THRESHOLD", model.Threshold);
-            float sep = Math.Max(0.1f, LearnedCover.EnvFloat("OPENCAGE_SPOT_SEPARATION", settings.LearnedSpotSeparation));
+            float threshold = settings.LearnedSpotThreshold > 0f ? settings.LearnedSpotThreshold : model.Threshold;
+            float sep = Math.Max(0.1f, settings.LearnedSpotSeparation);
             var candidates = new List<(float prob, Vector3 on, Vector3 inward)>();
             foreach (List<RimEdge> run in runs)
             {
@@ -752,8 +751,8 @@ namespace CathodeLib.NavMesh
             JobPositionBakeSettings settings, GlassProbe glass, ref int glassRejected)
         {
             const float station = 0.25f;
-            float threshold = settings.LearnedAssaultThreshold > 0f ? settings.LearnedAssaultThreshold : LearnedCover.EnvFloat("OPENCAGE_ASSAULT_THRESHOLD", model.Threshold);
-            float sep = Math.Max(0.1f, LearnedCover.EnvFloat("OPENCAGE_ASSAULT_SEPARATION", settings.LearnedAssaultSeparation));
+            float threshold = settings.LearnedAssaultThreshold > 0f ? settings.LearnedAssaultThreshold : model.Threshold;
+            float sep = Math.Max(0.1f, settings.LearnedAssaultSeparation);
             float inset = settings.AssaultDistanceFromGeometry - settings.AssaultRimToCollision;
             var candidates = new List<(float prob, Vector3 on, Vector3 inward)>();
             foreach (List<RimEdge> run in runs)
@@ -817,8 +816,8 @@ namespace CathodeLib.NavMesh
             CoverBakeSettings coverSettings, JobPositionBakeSettings settings)
         {
             const float station = 0.25f;
-            float threshold = settings.LearnedCrawlThreshold > 0f ? settings.LearnedCrawlThreshold : LearnedCover.EnvFloat("OPENCAGE_CRAWL_THRESHOLD", model.Threshold);
-            float sep = Math.Max(0.1f, LearnedCover.EnvFloat("OPENCAGE_CRAWL_SEPARATION", settings.LearnedCrawlSeparation));
+            float threshold = settings.LearnedCrawlThreshold > 0f ? settings.LearnedCrawlThreshold : model.Threshold;
+            float sep = Math.Max(0.1f, settings.LearnedCrawlSeparation);
             List<RimEdge> outer = CollectRim(nav, NavigationMesh.AreaHeight.DeepCrouch, matchHeight: true);
             List<List<RimEdge>> runs = ChainRuns(outer, settings.RunMaxTurnDegrees);
             var candidates = new List<(float prob, Vector3 on, Vector3 inward)>();

@@ -70,8 +70,8 @@ namespace CathodeLib.NavMesh
         /// still eroded by the full walkable radius (5 cells at 0.3125 m); the difference is applied
         /// as extra erosion of non-deep spans after the classes are marked. Retail meshes a 0.3 m
         /// wide deep-crouch strip between a packaging box and a wall on ChallengeMap9 that our
-        /// 5-cell erosion removes, and a third of that level hangs off it (`diag navislands`); the
-        /// engine's height_limited_area_spread of 4 cells against a 5-cell radius is the hint.
+        /// 5-cell erosion removes, and a third of that level hangs off it (`diag navislands`); retail's
+        /// deep-crouch classes spread about 4 cells against a 5-cell radius, which is the hint.
         /// </summary>
         public int DeepCrouchErodeCells = 0;
 
@@ -108,8 +108,8 @@ namespace CathodeLib.NavMesh
         public float HeightLimitedCrouchShare = 0.15f;
 
         /// <summary>
-        /// Grow deep-crouch onto a neighbouring polygon that is partly low, in the spirit of a
-        /// <c>height_limited_area_spread</c> of 4 cells. Zero disables it.
+        /// Grow deep-crouch onto a neighbouring polygon that is partly low, in the spirit of the
+        /// 4-cell spread retail's classes show. Zero disables it.
         /// </summary>
         /// <remarks>
         /// <para>After the share fix we cover 76-78% of retail's deep-crouch floor and no clearance
@@ -133,7 +133,7 @@ namespace CathodeLib.NavMesh
         /// <remarks>
         /// This is what retail's data suggests - its deep-crouch regions are one or two
         /// polygons of about half a square metre, far smaller than Recast merges to on its own, and
-        /// the three <c>height_limited_area_*</c> settings only make sense on the heightfield. The
+        /// a class spread of that shape only makes sense on the heightfield. The
         /// cost is the 6-bit area id: it now carries <c>1 + class + 3 * slot</c>, so barriers get 20
         /// slots instead of 62 ids and any beyond that stop cutting the contour (they still get
         /// stamped geometrically). Sampling a polygon's interior becomes unnecessary when this is on

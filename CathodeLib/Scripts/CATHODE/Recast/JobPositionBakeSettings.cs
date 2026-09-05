@@ -122,7 +122,7 @@ namespace CathodeLib.NavMesh
 
         /// <summary>
         /// Path of a learned SPOTTING selector (a boosted-tree model from <c>diag coverml trainall
-        /// spot</c>). When set and readable - or when OPENCAGE_SPOT_MODEL names one - spotting jobs
+        /// spot</c>). When set and readable, spotting jobs
         /// are laid at the peaks of the model's probability along every standing rim run, read
         /// off <see cref="LearnedCoverFeatures"/> every 0.25 m, greedily highest first with
         /// <see cref="LearnedSpotSeparation"/> between jobs, instead of the length rule. Held out
@@ -134,7 +134,7 @@ namespace CathodeLib.NavMesh
         public float LearnedSpotThreshold = 0f;
 
         /// <summary>
-        /// With no model path and no OPENCAGE_SPOT_MODEL / OPENCAGE_ASSAULT_MODEL, use the spotting and
+        /// With no model path, use the spotting and
         /// assault selectors CathodeLib ships embedded (<see cref="LearnedCover.EmbeddedSpot"/>,
         /// <see cref="LearnedCover.EmbeddedAssault"/>). Set false - or a path of "none" - for the
         /// length rules. Campaign-wide (5 Sep 2026) jobs 71.1 -> 75.9, up on every level. Crawl has
@@ -146,8 +146,8 @@ namespace CathodeLib.NavMesh
         public float LearnedSpotSeparation = 0.75f;
 
         /// <summary>
-        /// Path of a learned ASSAULT selector (<c>diag coverml trainall assault</c>), or
-        /// OPENCAGE_ASSAULT_MODEL. Assault positions then go to the peaks of the model's
+        /// Path of a learned ASSAULT selector (<c>diag coverml trainall assault</c>).
+        /// Assault positions then go to the peaks of the model's
         /// probability along every standing run, highest first with
         /// <see cref="LearnedAssaultSeparation"/> between them, instead of the length rule and
         /// its obstacle and wall-length gates. Held out level by level on retail navmeshes: 75.2
@@ -162,8 +162,8 @@ namespace CathodeLib.NavMesh
         public float LearnedAssaultSeparation = 1.0f;
 
         /// <summary>
-        /// Path of a learned CRAWL-SPACE selector (<c>diag coverml trainall covered ... crawlml_</c>),
-        /// or OPENCAGE_CRAWL_MODEL. Crawl jobs then go to the peaks of the model's probability along
+        /// Path of a learned CRAWL-SPACE selector (<c>diag coverml trainall covered ... crawlml_</c>).
+        /// Crawl jobs then go to the peaks of the model's probability along
         /// the OUTER rim of deep-crouch floor (where 85% of retail's sit), highest first with
         /// <see cref="LearnedCrawlSeparation"/> between them; the task position runs out through the
         /// nearest mouth as the rule's does.

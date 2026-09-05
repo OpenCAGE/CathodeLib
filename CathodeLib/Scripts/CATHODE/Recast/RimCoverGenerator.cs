@@ -425,7 +425,7 @@ namespace CathodeLib.NavMesh
             float runLength = 0f;
             foreach (RimEdge re in run) runLength += re.Length;
             float runPos = 0f;
-            float learnedThreshold = learned == null ? 0f : (settings.LearnedSelectorThreshold > 0f ? settings.LearnedSelectorThreshold : LearnedCover.EnvFloat("OPENCAGE_COVER_THRESHOLD", learned.Threshold));
+            float learnedThreshold = learned == null ? 0f : (settings.LearnedSelectorThreshold > 0f ? settings.LearnedSelectorThreshold : learned.Threshold);
 
             // Sample the whole run first. Testing sample by sample and cutting on every failure turns
             // one wall into a row of dashes - the probes flicker where a doorframe, a pipe or a
@@ -634,7 +634,7 @@ namespace CathodeLib.NavMesh
 
             SmoothHeights(heights, ok, (int)Math.Round(settings.HeightSmoothingDistance / step));
 
-            // The engine's ground_height_split stage: cut where the floor under the run deviates.
+            // Ground split: cut where the floor under the run deviates.
             List<bool> splitHere = SplitOnGround(points, step, settings);
 
             int start = -1;
@@ -655,7 +655,7 @@ namespace CathodeLib.NavMesh
         }
 
         /// <summary>
-        /// The engine's flush_with_collision: how far the cover face sits from the rim at this point -
+        /// Flush with collision: how far the cover face sits from the rim at this point -
         /// the collision surface less <see cref="CoverBakeSettings.FlushDistanceFromEdge"/>, clamped to
         /// <see cref="CoverBakeSettings.FlushMaxAdjustment"/> either side of the fixed offset. Falls
         /// back to the fixed offset when the stage is off or nothing is in front.
@@ -706,10 +706,10 @@ List<Vector3> inwards, int from, int to)
         }
 
         /// <summary>
-        /// The engine's `ground_height_split`: clear the accept flag at any sample where the ground
+        /// Ground split: clear the accept flag at any sample where the ground
         /// deviates from its neighbours by more than
         /// <see cref="CoverBakeSettings.GroundHeightSplitDeviation"/>, which ends the span there and
-        /// starts a new one after it. See that setting for the engine's four constants.
+        /// starts a new one after it.
         /// </summary>
         private static List<bool> SplitOnGround(List<Vector3> points, float step, CoverBakeSettings settings)
         {
@@ -1204,7 +1204,7 @@ List<Vector3> inwards, int from, int to)
 
             /// <summary>
             /// Distance from a rim point to the collision surface in front of it, or -1 if nothing is
-            /// within the limit. This is what the engine's flush_with_collision stage measures and
+            /// within the limit. This is what a flush-with-collision placement measures and
             /// what our fixed RimOffset stands in for.
             /// </summary>
             public float SurfaceDistance(Vector3 rimPoint, Vector3 outward, float atY, float limit)

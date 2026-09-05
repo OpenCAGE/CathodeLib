@@ -32,9 +32,9 @@ namespace CathodeLib.NavMesh
         public List<ExclusionBox> ExclusionBoxes;
 
         public float DistanceFromGeometry = 0.15f;
-        public float MinimumHeight = LearnedCover.EnvFloat("OPENCAGE_MIN_HEIGHT", 0.75f);
+        public float MinimumHeight = 0.75f;
         public float MaximumInclineDegrees = 65f;
-        public float MinimumLength = LearnedCover.EnvFloat("OPENCAGE_MIN_LENGTH", 0.8f);
+        public float MinimumLength = 0.8f;
         public float LowHeight = 0.9f;
         public float StandingHeight = 1.6f;
         public float LowHighDividingLine = 1.5f;
@@ -97,7 +97,7 @@ namespace CathodeLib.NavMesh
         /// wall behind a railing, the shelf behind a crate) and counts as a miss. 0 = old behaviour,
         /// which read the tallest thing within reach and classed a rail in front of a wall as high.
         /// </summary>
-        public float RayTopSameSurface = LearnedCover.EnvFloat("OPENCAGE_TOP_SAME_SURFACE", 0f);
+        public float RayTopSameSurface = 0f;
         public float SamplingSizeXZ = 0.05f;
 
         public float RequiredClearanceDistance = 0.76f;
@@ -313,14 +313,14 @@ namespace CathodeLib.NavMesh
         /// <see cref="RimOffset"/> from the navmesh rim. 0 = keep the fixed offset.
         /// </summary>
         /// <remarks>
-        /// The engine's `flush_with_collision` stage, which we never implemented:
-        /// `distance_from_edge` 0.02, `max_adjustment` 0.5, `min_cover_length_to_allow` 0.05. It
+        /// Retail's cover faces sit a fixed small distance off the collision surface rather than off
+        /// the navmesh rim, which we never reproduced. It
         /// matters for more than placement - every probe we cast starts from the rim point plus the
         /// fixed offset, so wherever the surface is elsewhere the view and wall-end gates measure from
         /// the wrong origin. `diag flushcheck`: the surface is a median 0.058-0.061 m from where the
         /// fixed offset puts it, over 0.1 m out on 14-22% of candidate rim and over 0.25 m on 2.5-6%.
         /// </remarks>
-        public float FlushDistanceFromEdge = LearnedCover.EnvFloat("OPENCAGE_FLUSH", 0f);
+        public float FlushDistanceFromEdge = 0f;
 
         /// <summary>Most the flush may move a face. See <see cref="FlushDistanceFromEdge"/>.</summary>
         public float FlushMaxAdjustment = 0.5f;
@@ -335,16 +335,16 @@ namespace CathodeLib.NavMesh
         /// replaced by the model's probability read off <see cref="LearnedCoverFeatures"/> - the raw
         /// ray description of the station - thresholded at <see cref="LearnedSelectorThreshold"/>
         /// (or the threshold stored in the model when that is 0). Null falls back to the
-        /// OPENCAGE_COVER_MODEL environment variable, then to the hand gates. Held out level by
+        /// embedded selector (<see cref="UseEmbeddedLearnedSelector"/>), then to the hand gates. Held out level by
         /// level on retail navmeshes the model reaches 60 station F1 where the gates sit near 52.
         /// </summary>
         public string LearnedSelectorPath = null;
 
         /// <summary>Probability at or above which a rim sample is cover under the learned selector; 0 uses the model file's own threshold.</summary>
-        public float LearnedSelectorThreshold = LearnedCover.EnvFloat("OPENCAGE_COVER_THRESHOLD", 0f);
+        public float LearnedSelectorThreshold = 0f;
 
         /// <summary>
-        /// With no <see cref="LearnedSelectorPath"/> and no OPENCAGE_COVER_MODEL, use the selector
+        /// With no <see cref="LearnedSelectorPath"/>, use the selector
         /// CathodeLib ships embedded (<see cref="LearnedCover.EmbeddedCover"/>). Set false - or set
         /// the path to "none" - for the hand-written gates. Campaign-wide (5 Sep 2026, learned1 vs
         /// campaign1): cover 59.2 -> 65.3, up on 27 of 32 levels, down on Solace / HzdLab / Torrens /
@@ -376,7 +376,7 @@ namespace CathodeLib.NavMesh
         /// comes out net negative across five levels. 3.0 is the value that gains everywhere it
         /// gains and loses nothing; the top six combinations span only 0.16 F1, so this is a broad
         /// optimum rather than a fitted point.</para>
-        public float MinOpenFloorArea = LearnedCover.EnvFloat("OPENCAGE_OPEN_AREA", 0f);
+        public float MinOpenFloorArea = 0f;
 
         /// <summary>See <see cref="MinOpenFloorArea"/>.</summary>
         public float OpenAreaRadius = 2.5f;
@@ -396,7 +396,7 @@ namespace CathodeLib.NavMesh
         /// / 0.85+ - monotone, and the widest worst-to-best ratio of any contextual signal measured.
         /// The catch is size: the four low bands are only 11.8% of rim between them.
         /// </remarks>
-        public float MinReachableShare = LearnedCover.EnvFloat("OPENCAGE_REACHABLE", 0f);
+        public float MinReachableShare = 0f;
 
         /// <summary>Radius the reachable share is measured over. See <see cref="MinReachableShare"/>.</summary>
         public float ReachableRadius = 6f;
@@ -405,7 +405,7 @@ namespace CathodeLib.NavMesh
         /// Apply <see cref="MinReachableShare"/> to whole merged SEGMENTS rather than to samples.
         /// Per sample it fragments the run, which costs more length than the cull saves.
         /// </summary>
-        public bool ReachableGateOnSegments = LearnedCover.EnvFloat("OPENCAGE_REACHABLE_SEG", 1f) != 0f;
+        public bool ReachableGateOnSegments = true;
 
         /// <summary>How far outside the rim to look for the obstacle the cover is against.</summary>
         public float ObstacleProbeDistance = 0.45f;
@@ -504,17 +504,17 @@ namespace CathodeLib.NavMesh
         /// because leaning past the end is the only way to shoot, while a low segment keeps its slots
         /// the whole way along - you shoot over it.
         /// </summary>
-        public bool WallEndAppliesToLowCover = LearnedCover.EnvFloat("OPENCAGE_WALLEND_LOW", 0f) != 0f;
+        public bool WallEndAppliesToLowCover = false;
 
         /// <summary>Separate <see cref="MaxWallEndDistance"/> for tall cover. 0 uses the shared value.</summary>
-        public float MaxWallEndDistanceHigh = LearnedCover.EnvFloat("OPENCAGE_WALLEND_HIGH", 1.0f);
+        public float MaxWallEndDistanceHigh = 1.0f;
 
         /// <summary>
         /// Apply the tall-cover wall-end trim only on room-shell rim, leaving cover whole on anything
         /// an NPC can walk around. 0 = trim everywhere. Uses the same loop class as
         /// <see cref="ShellViewScale"/>, so <see cref="ShellLoopPerimeter"/> decides what a shell is.
         /// </summary>
-        public bool WallEndShellOnly = LearnedCover.EnvFloat("OPENCAGE_WALLEND_SHELL", 0f) != 0f;
+        public bool WallEndShellOnly = false;
 
         /// <summary>
         /// Share of the RUN's length that counts as "near the end" for tall cover, on top of the flat
@@ -528,7 +528,7 @@ namespace CathodeLib.NavMesh
         /// A metre from the end of a 13 m corridor wall is not the same place as a metre from the end
         /// of a 2 m crate, so the window scales with the wall.
         /// </remarks>
-        public float WallEndFraction = LearnedCover.EnvFloat("OPENCAGE_WALLEND_FRAC", 0.35f);
+        public float WallEndFraction = 0.35f;
 
         /// <summary>
         /// How to choose between the two arms of a right-angled corner, where retail almost always
@@ -549,13 +549,13 @@ namespace CathodeLib.NavMesh
         /// the corner contacts in a level and nothing measured tells them apart, so a blanket cull
         /// costs more than it saves. The pattern describes where surplus lands; it is not a rule.
         /// </remarks>
-        public int CornerArmRule = (int)LearnedCover.EnvFloat("OPENCAGE_CORNER_ARM", 0f);
+        public int CornerArmRule = 0;
 
         /// <summary>How close two span ends must be to count as the same corner.</summary>
-        public float CornerArmJoinDistance = LearnedCover.EnvFloat("OPENCAGE_CORNER_JOIN", 0.9f);
+        public float CornerArmJoinDistance = 0.9f;
 
         /// <summary>An arm shorter than this is dropped at a corner without a contest.</summary>
-        public float CornerArmMinLength = LearnedCover.EnvFloat("OPENCAGE_CORNER_MINLEN", 0f);
+        public float CornerArmMinLength = 0f;
 
         /// <summary>
         /// Line of sight OVER low cover: a low sample is kept only if a head on the cover line 1.5 m
@@ -574,22 +574,14 @@ namespace CathodeLib.NavMesh
         /// <remarks>
         /// The front-face scan reads a table whose top sits at 0.80 m as 0.78 (the rounded edge) and
         /// rejects it; retail covers those tables at 66-100% (CM11: EngTable, OctaTechTable,
-        /// Captain_Table). The engine's own constant is a sampling distance of 0.75 m along the
-        /// normal, which is exactly "look down onto the thing from 0.44 m behind its face". A desk
+        /// Captain_Table). Sampling 0.75 m along the normal is exactly "look down onto the thing
+        /// from 0.44 m behind its face". A desk
         /// with a footwell, a chair, an open shelf have nothing solid there and retail leaves them.
         /// </remarks>
-        public float[] DepthTopDistances = ParseDepths(Environment.GetEnvironmentVariable("OPENCAGE_DEPTH_TOPS")) is float[] d && d.Length > 0 ? d : new[] { 0.5f, 0.75f };
+        public float[] DepthTopDistances = new[] { 0.5f, 0.75f };
 
-        static float[] ParseDepths(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return new float[0];
-            var l = new System.Collections.Generic.List<float>();
-            foreach (string part in s.Split(','))
-                if (float.TryParse(part, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float v)) l.Add(v);
-            return l.ToArray();
-        }
 
-        public float MinOverTopView = LearnedCover.EnvFloat("OPENCAGE_OVERTOP_VIEW", 2.5f);
+        public float MinOverTopView = 2.5f;
 
         /// <summary>
         /// Line of sight FROM high cover: a tall sample is kept only if its run has an end from which
@@ -600,7 +592,7 @@ namespace CathodeLib.NavMesh
         /// Retail's tall rim whose runs have no end with a 6 m view is covered 1-3% of the time; an
         /// 8 m gate keeps 94% of retail's high cover on CM11. Necessary, not sufficient.
         /// </remarks>
-        public float MinLeanEndView = LearnedCover.EnvFloat("OPENCAGE_LEANEND_VIEW", 2f);
+        public float MinLeanEndView = 2f;
 
         /// <summary>
         /// Visible WALKABLE floor from the better lean head of a tall run: the count of points on a
@@ -614,7 +606,7 @@ namespace CathodeLib.NavMesh
         /// Tech_Hub), 15-25 at 20-27%, 40+ at 37-55%. An NPC leans to shoot at floor an enemy can
         /// stand on, not at a wall or a drop.
         /// </remarks>
-        public float MinLeanEndWalkable = LearnedCover.EnvFloat("OPENCAGE_LEANEND_WALKABLE", 0f);
+        public float MinLeanEndWalkable = 0f;
 
         /// <summary>
         /// Shortest closed navmesh loop that can carry cover, in metres round. 0 = off.
@@ -624,7 +616,7 @@ namespace CathodeLib.NavMesh
         /// belongs to a loop under 4 m round - the pillars, poles and pipe stacks that are too small
         /// to hide behind. It is 0.5% of the rim, so this buys precision and costs no recall at all.
         /// </remarks>
-        public float MinLoopPerimeter = LearnedCover.EnvFloat("OPENCAGE_MIN_LOOP", 0f);
+        public float MinLoopPerimeter = 0f;
 
         /// <summary>
         /// A loop longer than this round counts as a room shell rather than an obstacle, and its
@@ -637,10 +629,10 @@ namespace CathodeLib.NavMesh
         /// classes carry about the same absolute length of retail cover, so this is a weighting, not
         /// a gate: 1 leaves the shell alone.
         /// </remarks>
-        public float ShellViewScale = LearnedCover.EnvFloat("OPENCAGE_SHELL_VIEW", 2f);
+        public float ShellViewScale = 2f;
 
         /// <summary>Loop perimeter at or above which rim counts as a room shell. See <see cref="ShellViewScale"/>.</summary>
-        public float ShellLoopPerimeter = LearnedCover.EnvFloat("OPENCAGE_SHELL_LOOP", 40f);
+        public float ShellLoopPerimeter = 40f;
 
         /// <summary>
         /// Front-to-back clearance between two cover segments that face the same way and overlap
@@ -651,7 +643,7 @@ namespace CathodeLib.NavMesh
         /// distance applied to cover standing behind cover: you cannot shoot from the wall when a
         /// crate blocks the aim, so the wall is not cover while the crate is there.
         /// </remarks>
-        public float SameFacingClearance = LearnedCover.EnvFloat("OPENCAGE_SAME_FACING", 0f);
+        public float SameFacingClearance = 0f;
 
         /// <summary>How far outward the depth test looks before giving up.</summary>
         public float ObstacleDepthSearchDistance = 6.0f;
@@ -913,8 +905,7 @@ namespace CathodeLib.NavMesh
         /// distance used for the vertical cone.
         /// </summary>
         /// <remarks>
-        /// <c>clear_aim_angle_distance_to_consider_clear</c> = 1.5 and
-        /// <c>..._for_vertical_cone</c> = 2.5. These replace <see cref="AimClearRange"/>,
+        /// 1.5 m horizontally and 2.5 m for the vertical cone. These replace <see cref="AimClearRange"/>,
         /// <see cref="AimDownRange"/> and <see cref="AimUpRange"/>, all three of which were fitted
         /// against a broken eye position - and the fitted 2.2 m down range was groping directly at
         /// this 2.5.
@@ -942,10 +933,8 @@ namespace CathodeLib.NavMesh
         /// Narrowest arc a firing position may have and still be written as live.
         /// </summary>
         /// <remarks>
-        /// <para>These are the peek angles -
-        /// <c>angle_for_peek_flag_left</c> = -30 ("60 degree arc for peeking"),
-        /// <c>arc_for_peek_flag_over</c> = 60 ("30 either side") and
-        /// <c>vertical_arc_for_peek_flag</c> = 11 - and the natural reading was that they set a
+        /// <para>These are the peek arcs - 30 degrees to the side for a lean, 60 over the top (30
+        /// either side) and 11 vertically - and the natural reading was that they set a
         /// bit in the slot's Flags. They do not. Cross-tabbed over retail's 9,085 slots with
         /// `diag coverslots all`, no bit behaves like a peek flag, but every LIVE firing position
         /// already clears all three: bit 0x1 implies a lean-left arc reaching -30 on 100.0% of
@@ -1074,7 +1063,7 @@ namespace CathodeLib.NavMesh
         public float RimSampleStep = 0.25f;
 
         /// <summary>How far consecutive rim edges may turn and still be one run.</summary>
-        public float RimRunMaxTurnDegrees = LearnedCover.EnvFloat("OPENCAGE_RUN_TURN", 20.0f);
+        public float RimRunMaxTurnDegrees = 20.0f;
 
         /// <summary>
         /// Rejected rim shorter than this inside an otherwise continuous span is bridged rather than
@@ -1089,7 +1078,7 @@ namespace CathodeLib.NavMesh
         /// SEGMENT COUNT barely moves while coverage climbs - HAB_Airport 586 -&gt; 599 for +2.7 F1,
         /// Tech_Hub 568 -&gt; 589. Compare the wrong fix, lowering MinimumLength to 0.75, which
         /// scores similarly by inflating the count to 756 and 787; retail ships nothing under 0.9
-        /// (cover_minimum_length is a cull and its median segment is 1.17-1.77 m), so that is the
+        /// (the 0.9 m minimum is a cull and its median segment is 1.17-1.77 m), so that is the
         /// metric being gamed rather than the data getting closer.</para>
         /// <para>Found by re-running the feature search on tables regenerated against the corrected
         /// obstacle top: a six-term conjunction reached per-edge F1 52.6% where the generator sat at
@@ -1109,21 +1098,20 @@ namespace CathodeLib.NavMesh
         /// 4 Sep 2026: CM11 62.8 -> 66.7, CM9 61.2 -> 62.6, Tech_Hub 66.1 -> 66.9, Solace and Torrens
         /// flat. It saturates there - 2 and 3 m are the same answer.
         /// </remarks>
-        public float HeightSmoothingDistance = LearnedCover.EnvFloat("OPENCAGE_HEIGHT_SMOOTH", 1.5f);
+        public float HeightSmoothingDistance = 1.5f;
 
         /// <summary>
         /// Ground deviation, in metres, that cuts a cover run in two. 0 = never cut on the ground.
         /// </summary>
         /// <remarks>
-        /// The engine's own `ground_height_split` stage, which we had never implemented: it walks a
-        /// candidate run and splits it where the floor beneath deviates, so a run crossing a step or a
-        /// ramp becomes two segments rather than one long one. Its four constants are
-        /// `deviation_to_cause_split` 0.1, `distance_either_side_to_check` 0.5,
-        /// `early_out_height_difference` 0.05 and `max_samples` 20. We chain by heading alone and cut
+        /// A ground split, which we had never implemented: walk a candidate run and split it where
+        /// the floor beneath deviates, so a run crossing a step or a ramp becomes two segments rather
+        /// than one long one (deviation 0.1 m, checked 0.5 m either side, early-out 0.05 m, at most
+        /// 20 samples). We chain by heading alone and cut
         /// only on the accept flag and the height class, so without this we hand out one segment
         /// where retail ships two.
         /// </remarks>
-        public float GroundHeightSplitDeviation = LearnedCover.EnvFloat("OPENCAGE_GROUND_SPLIT", 0f);
+        public float GroundHeightSplitDeviation = 0f;
 
         /// <summary>How far either side of a sample the ground is compared. See <see cref="GroundHeightSplitDeviation"/>.</summary>
         public float GroundHeightSplitCheckDistance = 0.5f;
@@ -1180,7 +1168,7 @@ namespace CathodeLib.NavMesh
         /// them whole; retail ships segments past 8 m, so the 4 m cut costs a little on the levels
         /// with long walls (Tech_Hub +0.7, CM9 +0.3 with it removed) and nothing anywhere else.
         /// </summary>
-        public float MaximumSegmentLength = LearnedCover.EnvFloat("OPENCAGE_MAX_SEG", 0f);
+        public float MaximumSegmentLength = 0f;
 
         public float ClassifyCoverHeight(float obstacleHeightAboveFloor)
         {

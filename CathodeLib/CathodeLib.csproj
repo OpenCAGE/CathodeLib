@@ -84,9 +84,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Resources\learned_cover.txt" LogicalName="CathodeLib.Learned.cover" />
-    <EmbeddedResource Include="Resources\learned_spot.txt" LogicalName="CathodeLib.Learned.spot" />
-    <EmbeddedResource Include="Resources\learned_assault.txt" LogicalName="CathodeLib.Learned.assault" />
+    <EmbeddedResource Include="Resources\learned_cover.bin" LogicalName="CathodeLib.Learned.cover" />
+    <EmbeddedResource Include="Resources\learned_spot.bin" LogicalName="CathodeLib.Learned.spot" />
+    <EmbeddedResource Include="Resources\learned_assault.bin" LogicalName="CathodeLib.Learned.assault" />
   </ItemGroup>
 
   <ItemGroup>

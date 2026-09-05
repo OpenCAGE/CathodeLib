@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Numerics;
 using System.Reflection;
 using NanoRT;
@@ -115,6 +116,100 @@ namespace CathodeLib.NavMesh
             using (var r = new StreamReader(path)) return Load(r);
         }
 
+        /// <summary>
+        /// Load from any stream: gzip-wrapped or raw binary (magic "CGBM") or the trainer's text.
+        /// The binary form is what CathodeLib embeds - a third the size of the text.
+        /// </summary>
+        public static CoverGbdtModel Load(Stream s)
+        {
+            var head = new byte[4];
+            int got = 0;
+            while (got < 4) { int r = s.Read(head, got, 4 - got); if (r <= 0) break; got += r; }
+            var rest = new MemoryStream();
+            rest.Write(head, 0, got);
+            s.CopyTo(rest);
+            rest.Position = 0;
+            if (got >= 2 && head[0] == 0x1f && head[1] == 0x8b)
+                using (var gz = new GZipStream(rest, CompressionMode.Decompress)) return LoadBinary(gz);
+            if (got >= 4 && head[0] == (byte)'C' && head[1] == (byte)'G' && head[2] == (byte)'B' && head[3] == (byte)'M')
+                return LoadBinary(rest);
+            using (var reader = new StreamReader(rest)) return Load(reader);
+        }
+
+        const uint BinaryMagic = 0x4D424743; // "CGBM" little-endian
+        const byte BinaryVersion = 1;
+        const byte LeafFeature = 0xFF;
+
+        /// <summary>
+        /// Binary layout, little-endian: "CGBM", version byte, bias / shrink / threshold floats,
+        /// ushort feature count then per feature a ushort edge count and its floats, ushort tree
+        /// count then per tree a ushort node count and its nodes - a feature byte (0xFF = leaf,
+        /// followed by the float value) or the split (bin byte, ushort left, ushort right).
+        /// </summary>
+        public static CoverGbdtModel LoadBinary(Stream s)
+        {
+            var m = new CoverGbdtModel();
+            using (var r = new BinaryReader(s))
+            {
+                if (r.ReadUInt32() != BinaryMagic) throw new InvalidDataException("not a CGBM model");
+                byte version = r.ReadByte();
+                if (version != BinaryVersion) throw new InvalidDataException("CGBM version " + version + " unsupported");
+                m._bias = r.ReadSingle(); m._shrink = r.ReadSingle(); m.Threshold = r.ReadSingle();
+                int features = r.ReadUInt16();
+                m._edges = new float[features][];
+                for (int f = 0; f < features; f++)
+                {
+                    int n = r.ReadUInt16();
+                    var e = new float[n];
+                    for (int i = 0; i < n; i++) e[i] = r.ReadSingle();
+                    m._edges[f] = e;
+                }
+                int trees = r.ReadUInt16();
+                for (int t = 0; t < trees; t++)
+                {
+                    int n = r.ReadUInt16();
+                    var nodes = new Node[n];
+                    for (int i = 0; i < n; i++)
+                    {
+                        byte feature = r.ReadByte();
+                        if (feature == LeafFeature) nodes[i] = new Node { Feature = -1, Bin = 0, Left = -1, Right = -1, Value = r.ReadSingle() };
+                        else nodes[i] = new Node { Feature = feature, Bin = r.ReadByte(), Left = r.ReadUInt16(), Right = r.ReadUInt16(), Value = 0f };
+                    }
+                    m._trees.Add(nodes);
+                }
+            }
+            return m;
+        }
+
+        /// <summary>Write the binary form (see <see cref="LoadBinary"/>), gzip-wrapped when asked.</summary>
+        public void SaveBinary(Stream s, bool gzip = true)
+        {
+            Stream target = gzip ? new GZipStream(s, CompressionLevel.Optimal, leaveOpen: true) : s;
+            using (var w = new BinaryWriter(target, System.Text.Encoding.UTF8, leaveOpen: !gzip))
+            {
+                w.Write(BinaryMagic); w.Write(BinaryVersion);
+                w.Write(_bias); w.Write(_shrink); w.Write(Threshold);
+                w.Write((ushort)_edges.Length);
+                foreach (float[] e in _edges) { w.Write((ushort)e.Length); foreach (float v in e) w.Write(v); }
+                w.Write((ushort)_trees.Count);
+                foreach (Node[] tree in _trees)
+                {
+                    w.Write((ushort)tree.Length);
+                    foreach (Node nd in tree)
+                    {
+                        if (nd.Feature < 0) { w.Write(LeafFeature); w.Write(nd.Value); }
+                        else
+                        {
+                            if (nd.Feature >= LeafFeature || nd.Bin > 255 || nd.Left > ushort.MaxValue || nd.Right > ushort.MaxValue)
+                                throw new InvalidDataException("model does not fit the CGBM field widths");
+                            w.Write((byte)nd.Feature); w.Write((byte)nd.Bin); w.Write((ushort)nd.Left); w.Write((ushort)nd.Right);
+                        }
+                    }
+                }
+            }
+            if (gzip) target.Dispose();
+        }
+
         /// <summary>Parse a model from any text source - a file, or an embedded resource stream.</summary>
         public static CoverGbdtModel Load(TextReader r)
         {
@@ -187,16 +282,9 @@ namespace CathodeLib.NavMesh
         }
     }
 
-    /// <summary>Loads the learned selector named by the settings or the OPENCAGE_COVER_MODEL environment variable, once per path.</summary>
+    /// <summary>Loads the learned selector named by the settings, or the one CathodeLib embeds, once per path.</summary>
     public static class LearnedCover
     {
-        /// <summary>A float from the environment, for sweeping a learned-selector knob through the harness without rebuilding; the fallback when unset or unparsable.</summary>
-        public static float EnvFloat(string name, float fallback)
-        {
-            string v = Environment.GetEnvironmentVariable(name);
-            return !string.IsNullOrEmpty(v) && float.TryParse(v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float f) ? f : fallback;
-        }
-
         static readonly Dictionary<string, CoverGbdtModel> _cache = new Dictionary<string, CoverGbdtModel>();
 
         /// <summary>Logical names of the selectors CathodeLib ships inside itself (see the csproj).</summary>
@@ -205,7 +293,7 @@ namespace CathodeLib.NavMesh
         public const string EmbeddedAssault = "CathodeLib.Learned.assault";
 
         public static CoverGbdtModel TryLoad(CoverBakeSettings settings, Action<string> log = null)
-            => TryLoadPath(settings.LearnedSelectorPath, "OPENCAGE_COVER_MODEL", "Cover", log,
+            => TryLoadPath(settings.LearnedSelectorPath, "Cover", log,
                            settings.UseEmbeddedLearnedSelector ? EmbeddedCover : null);
 
         /// <summary>
@@ -224,7 +312,7 @@ namespace CathodeLib.NavMesh
                     using (Stream s = typeof(CoverGbdtModel).Assembly.GetManifestResourceStream(name))
                     {
                         if (s == null) log?.Invoke(what + ": no embedded learned selector '" + name + "' - using the rule set.");
-                        else using (var r = new StreamReader(s)) model = CoverGbdtModel.Load(r);
+                        else model = CoverGbdtModel.Load(s);
                     }
                     if (model != null && model.FeatureCount != LearnedCoverFeatures.Count)
                     {
@@ -244,12 +332,11 @@ namespace CathodeLib.NavMesh
             }
         }
 
-        /// <summary>Load the model at <paramref name="path"/>, or at the path in <paramref name="envVar"/> when that is empty, or the embedded selector when neither names a file; cached per path; null when nothing names a readable, well-formed model.</summary>
-        public static CoverGbdtModel TryLoadPath(string path, string envVar, string what, Action<string> log = null, string embedded = null)
+        /// <summary>Load the model at <paramref name="path"/>, or the embedded selector when that names no file; cached per path; null when nothing names a readable, well-formed model.</summary>
+        public static CoverGbdtModel TryLoadPath(string path, string what, Action<string> log = null, string embedded = null)
         {
-            // "none" is the explicit off switch: no file, no environment lookup, no embedded fallback.
+            // "none" is the explicit off switch: no file, no embedded fallback.
             if (string.Equals(path, "none", StringComparison.OrdinalIgnoreCase)) return null;
-            if (string.IsNullOrEmpty(path)) path = Environment.GetEnvironmentVariable(envVar);
             if (string.IsNullOrEmpty(path) || !File.Exists(path))
                 return embedded != null ? TryLoadEmbedded(embedded, what, log) : null;
             lock (_cache)
@@ -258,7 +345,7 @@ namespace CathodeLib.NavMesh
                 CoverGbdtModel model = null;
                 try
                 {
-                    model = CoverGbdtModel.Load(path);
+                    using (FileStream fs = File.OpenRead(path)) model = CoverGbdtModel.Load(fs);
                     if (model.FeatureCount != LearnedCoverFeatures.Count)
                     {
                         log?.Invoke(what + ": learned selector at " + path + " has " + model.FeatureCount + " features, expected " + LearnedCoverFeatures.Count + " - ignored.");

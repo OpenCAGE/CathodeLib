@@ -471,10 +471,9 @@ namespace CathodeLib.NavMesh
         /// </summary>
         /// <remarks>
         /// This is what retail's data shows. Its deep-crouch regions are one or two polygons of
-        /// about half a square metre, far smaller than Recast merges to on its own, and the three
-        /// settings it carries - <c>height_limited_area_mode_filter_passes</c>,
-        /// <c>height_limited_area_spread</c> and its non-deep-crouch extra - are a cell-level
-        /// mark / filter / dilate pipeline that only makes sense before polygonisation.
+        /// about half a square metre, far smaller than Recast merges to on its own, and the shape of
+        /// its classes says they come from a cell-level mark / filter / dilate pipeline that only
+        /// makes sense before polygonisation.
         /// Everything here is <see cref="RcBuilder.Build"/> verbatim apart from the marking step.
         /// </remarks>
         static RcBuilderResult BuildWithHeightClasses(
@@ -1029,7 +1028,7 @@ namespace CathodeLib.NavMesh
 
         /// <summary>
         /// Classify walkable CHF spans by clearance, dilate on the cell grid
-        /// (height_limited_area_spread), then stamp the resulting class onto polys.
+        /// (a few cells), then stamp the resulting class onto polys.
         /// Dilation is masked to cells covered by kept nav polys so elevated junk
         /// spans cannot flood the floor with DeepCrouch.
         /// </summary>
@@ -1256,8 +1255,8 @@ namespace CathodeLib.NavMesh
                     : ClassifyClearance(PolyClearance(chf, data, poly, settings), settings);
             }
 
-            // A `height_limited_area_spread` of 4 cells (0.25 m) means retail's classes are
-            // grown after marking. We cannot dilate on the heightfield - the classes are applied
+            // Retail's classes are grown by about 4 cells (0.25 m) after marking. We cannot
+            // dilate on the heightfield - the classes are applied
             // after the polygons are built - but a polygon that is partly low and touches a
             // deep-crouch neighbour is the same idea one step coarser. Off at zero.
             if (settings.HeightLimitedDeepNeighbourShare > 0f)

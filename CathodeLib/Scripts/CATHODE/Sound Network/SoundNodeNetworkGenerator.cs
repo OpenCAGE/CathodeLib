@@ -175,7 +175,7 @@ namespace CathodeLib
             // SoundNetworkBakeSettings.DoorPairIsBoundary.
             var manualGroup = new List<object>(manualNodes.Count);
             for (int i = 0; i < manualNodes.Count; i++) manualGroup.Add(null);
-            if (_settings.DoorPairIsBoundary)
+            if (_settings.DoorPairIsBoundary || (_settings.SealedSeesThroughHullsAtDoor && _settings.SealedAtDoorRequiresDoorPair))
             {
                 var byInstance = new Dictionary<InstancedComposite, List<int>>();
                 for (int i = 0; i < manualNodes.Count; i++)
@@ -349,7 +349,7 @@ namespace CathodeLib
             BVHAccel openingStrict = _settings.BarrierBoundaryTest == 3 && _settings.OpeningSkipsSoundCollision &&
                                      _settings.SealedOpeningKeepsSoundHulls && _settings.SealedNetworkLinking != 0
                 ? BuildOpeningGeometry(level, barriers, false, log) : null;
-            BVHAccel barrierGeometry = _settings.BarrierBoundaryTest == 2
+            BVHAccel barrierGeometry = _settings.BarrierBoundaryTest == 2 || (_settings.SealedSeesThroughHullsAtDoor && openingStrict != null)
                 ? BuildBarrierGeometry(level, barriers, out barrierTriangleInstance, log) : null;
             LinkNetworks(networks, markerNetworks, nodes, links, owner, CollectBarriers(level, barriers),
                          barrierGeometry, barrierTriangleInstance, openingGeometry, openingStrict, manualCount, manualGroup, log);
@@ -541,8 +541,15 @@ namespace CathodeLib
                                         // lone door node standing IN the doorway, and gating it on
                                         // seeing through that opening admits none of them.
                                         bool sealedPair = a >= markerNetworks || b >= markerNetworks;
+                                        // A sealed door node whose crossing pierces the door itself is
+                                        // judged without the hull over the doorway. See
+                                        // SoundNetworkBakeSettings.SealedSeesThroughHullsAtDoor.
+                                        bool atDoor = sealedPair && _settings.SealedSeesThroughHullsAtDoor && barrierGeometry != null &&
+                                                      (a >= markerNetworks ? networks[a].Nodes.Count : networks[b].Nodes.Count) >= _settings.SealedAtDoorMinNodes &&
+                                                      (!_settings.SealedAtDoorRequiresDoorPair || (i < manualCount && j < manualCount && manualGroup[i] != null && ReferenceEquals(manualGroup[i], manualGroup[j]))) &&
+                                                      BarrierCrossed(barrierGeometry, barrierTriangleInstance, nodes[i].Position, nodes[j].Position) != 0u;
                                         ok = (_settings.OpeningExemptsSealed && sealedPair) ||
-                                             SeesThroughOpening(sealedPair && openingStrict != null ? openingStrict : openingGeometry,
+                                             SeesThroughOpening(sealedPair && openingStrict != null && !atDoor ? openingStrict : openingGeometry,
                                                                 nodes[i].Position, nodes[j].Position);
                                         // The guid still names the nearest barrier - the OPENING is
                                         // what qualifies the pair, so a doorway whose barrier sits
@@ -1180,14 +1187,23 @@ namespace CathodeLib
             // Authored sound-occlusion hulls (collision type SOUND) are laid across doorways to
             // attenuate what passes through them; they say how sound travels through an opening,
             // not whether there is one. See SoundNetworkBakeSettings.OpeningSkipsSoundCollision.
-            int soundSkipped = 0;
-            if (skipSoundHulls && level?.CollisionMaps?.Entries != null)
+            int soundSkipped = 0, glassSkipped = 0;
+            if ((skipSoundHulls || _settings.OpeningSkipsGlass) && level?.CollisionMaps?.Entries != null)
                 foreach (CollisionMaps.COLLISION_MAPPING entry in level.CollisionMaps.Entries)
                 {
                     if (entry?.CollisionInstance == null) continue;
                     var type = (CollisionMaps.CollisionType)((uint)entry.Flags & (uint)CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK);
-                    if (type != CollisionMaps.CollisionType.SOUND && type != CollisionMaps.CollisionType.SOUND_BARRIER) continue;
-                    if (skip.Add(entry.CollisionInstance)) soundSkipped++;
+                    if (skipSoundHulls && (type == CollisionMaps.CollisionType.SOUND || type == CollisionMaps.CollisionType.SOUND_BARRIER))
+                    {
+                        if (skip.Add(entry.CollisionInstance)) soundSkipped++;
+                        continue;
+                    }
+                    // A window between two rooms is an opening as far as a boundary is concerned.
+                    // See SoundNetworkBakeSettings.OpeningSkipsGlass.
+                    if (_settings.OpeningSkipsGlass && (type == CollisionMaps.CollisionType.TRANSPARENT || type == CollisionMaps.CollisionType.DYNAMIC_TRANSPARENT))
+                    {
+                        if (skip.Add(entry.CollisionInstance)) glassSkipped++;
+                    }
                 }
             if (!RadiosityOccluders.TryCollect(level, null, out float[] verts, out int[] tris, null, true,
                                                null, false, null, skip) ||
@@ -1195,7 +1211,7 @@ namespace CathodeLib
             var bvh = new BVHAccel();
             bvh.Build(verts, tris);
             log?.Invoke("Sound boundaries: " + (tris.Length / 3) + " occluder triangle(s) with " + skip.Count +
-                        " barrier instance(s) removed (" + soundSkipped + " of them SOUND-typed hulls) - two networks adjoin only through an opening.");
+                        " barrier instance(s) removed (" + soundSkipped + " of them SOUND-typed hulls, " + glassSkipped + " glass) - two networks adjoin only through an opening.");
             return bvh;
         }
 
@@ -1479,6 +1495,13 @@ namespace CathodeLib
                 float v = ((c.Z - a.Z) * (p.X - c.X) + (a.X - c.X) * (p.Z - c.Z)) / d;
                 float w = 1.0f - u - v;
                 if (u < -0.02f || v < -0.02f || w < -0.02f) continue;
+                if (_settings.OrphanFloorMustBeBelow)
+                {
+                    // Beneath means beneath: the floor sits at or below the node, and not too far.
+                    float floorY = u * a.Y + v * b.Y + w * c.Y;
+                    float gap = p.Y - floorY;
+                    if (gap < -0.15f || gap > 3.0f) continue;
+                }
                 return true;
             }
             return false;

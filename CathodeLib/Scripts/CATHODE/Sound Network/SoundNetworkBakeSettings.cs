@@ -472,6 +472,51 @@ namespace CathodeLib.Sound
         public bool DoorPairIsBoundary = false;
 
         /// <summary>
+        /// The orphan test's "floor beneath" means BENEATH: the navmesh triangle under the node's XZ
+        /// must sit within 0.15 m below to 3 m below it. Without the height check a node buried under
+        /// a floor counted as floored - CHALLENGEMAP16's seven Vent_Floor_Filler nodes sit 0.66 m
+        /// under the vent floor, retail's file has none of them, and ours became sealed pockets that
+        /// bridged the vents.
+        /// </summary>
+        public bool OrphanFloorMustBeBelow = true;
+
+        /// <summary>
+        /// Glass (TRANSPARENT / DYNAMIC_TRANSPARENT collision) is removed from the opening test's
+        /// soup: two rooms that face each other through a window adjoin acoustically, and retail
+        /// declares the boundary - CHALLENGEMAP5's 'meeting room of doom' is two networks split by
+        /// windows (85 and 94 nodes, paths 211 against 351 without the link), TECH_COMMS's Main Comms
+        /// Right / Transmission pair sees only window glass. Glass stays solid for the flood.
+        /// </summary>
+        public bool OpeningSkipsGlass = true;
+
+        /// <summary>
+        /// A sealed network's crossing that PIERCES a door barrier box is tested against the hull-free
+        /// opening soup rather than the strict one (<see cref="SealedOpeningKeepsSoundHulls"/>): the
+        /// authored SOUND hull laid over the doorway is what blocked CHALLENGEMAP1's 'First Corridor'
+        /// and CHALLENGEMAP16's 'Top Lobby Fans' door leaves that retail links. Letting every sealed
+        /// crossing through the hulls was wrong on CM9 (links 52 -> 66 against 56); piercing the door
+        /// is the narrower question.
+        /// </summary>
+        public bool SealedSeesThroughHullsAtDoor = true;
+
+        /// <summary>
+        /// <see cref="SealedSeesThroughHullsAtDoor"/> applies to sealed networks of at least this many
+        /// nodes. A lone authored node behind a FAKE door (BSP_TORRENS, a door package whose far side
+        /// is the abyss) is absent from retail; with the rule unguarded it gained its link and was
+        /// kept (18/26/78 exact -> 19/28/91). The door leaves retail links are two or three nodes.
+        /// </summary>
+        public int SealedAtDoorMinNodes = 2;
+
+        /// <summary>
+        /// <see cref="SealedSeesThroughHullsAtDoor"/> additionally requires the sealed node and its
+        /// partner to be the two authored nodes of one door package (see
+        /// <see cref="DoorPairIsBoundary"/> for the grouping): the leaf sees across ITS door and no
+        /// other. With the pierce test alone CM9 gained four false boundaries (links 54 -> 62 against
+        /// 56, paths 303 -> 435 against 304).
+        /// </summary>
+        public bool SealedAtDoorRequiresDoorPair = true;
+
+        /// <summary>
         /// Keep a group of nodes the marker flood never reached, as a nameless network with no
         /// reverb. False discards them outright.
         /// </summary>
