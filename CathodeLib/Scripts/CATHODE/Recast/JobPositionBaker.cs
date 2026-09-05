@@ -1,6 +1,7 @@
 #if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using CATHODE;
 using CathodeLib.Radiosity;
@@ -229,7 +230,7 @@ namespace CathodeLib.NavMesh
         /// Fill in the three job-position files on every state that has a navmesh. Nothing is
         /// written to disk - <see cref="Level.Save"/> persists them with the rest of the level.
         /// </summary>
-        public static void BakeLevel(Level level, JobPositionBakeSettings settings, Action<string> log = null)
+        public static void BakeLevel(Level level, JobPositionBakeSettings settings, Action<string> log = null, Instancing placement = null)
         {
             // No settings means the caller did not ask for job positions; leave the files alone.
             if (settings == null)
@@ -242,6 +243,27 @@ namespace CathodeLib.NavMesh
             GlassProbe glass = null;
             ObstacleProbe obstacles = null;
             bool obstaclesTried = false;
+
+            // The learned spotting selector reads the same station description the cover baker
+            // and the training tables use, off the same navmesh soup - so build that soup here
+            // when a model is configured, and nowhere else.
+            CoverGbdtModel spotModel = LearnedCover.TryLoadPath(settings.LearnedSpotModelPath, "OPENCAGE_SPOT_MODEL", "Spotting", log,
+                                                                settings.UseEmbeddedLearnedSelectors ? LearnedCover.EmbeddedSpot : null);
+            CoverGbdtModel assaultModel = LearnedCover.TryLoadPath(settings.LearnedAssaultModelPath, "OPENCAGE_ASSAULT_MODEL", "Assault", log,
+                                                                   settings.UseEmbeddedLearnedSelectors ? LearnedCover.EmbeddedAssault : null);
+            CoverGbdtModel crawlModel = LearnedCover.TryLoadPath(settings.LearnedCrawlModelPath, "OPENCAGE_CRAWL_MODEL", "Crawl", log);
+            RimCoverGenerator.DepthProbe learnedProbe = null;
+            CoverBakeSettings learnedCoverSettings = null;
+            if (spotModel != null || assaultModel != null || crawlModel != null)
+            {
+                learnedCoverSettings = new CoverBakeSettings();
+                var navSettings = NavMeshBakeSettings.CreateDefault();
+                navSettings.SkipSmallPropCollision = !learnedCoverSettings.IncludeSmallPropCollision;
+                navSettings.SkipTransparentCollision = learnedCoverSettings.SkipGlass;
+                CollisionNavMeshSoup soup = CollisionNavMeshSoup.CollectFromLevel(level, null, placement == null ? new CollisionNavMeshSoup() : null, navSettings, placement);
+                learnedProbe = new RimCoverGenerator.DepthProbe(soup);
+                log?.Invoke("JobPositions: learned " + (spotModel != null ? "spotting " : "") + (assaultModel != null ? "assault " : "") + (crawlModel != null ? "crawl " : "") + "selector on, soup " + soup.TriangleCount + " triangles");
+            }
 
             for (int i = 0; i < level.StateResources.Count; i++)
             {
@@ -258,7 +280,7 @@ namespace CathodeLib.NavMesh
                     obstacles = ObstacleProbe.FromLevel(level, log);
                     obstaclesTried = true;
                 }
-                BakeResult result = Bake(state.NavMesh, settings, glass, state.Cover, obstacles);
+                BakeResult result = Bake(state.NavMesh, settings, glass, state.Cover, obstacles, spotModel, learnedProbe, learnedCoverSettings, assaultModel, crawlModel);
                 state.SpottingPositions = result.Spotting;
                 state.CrawlSpaceSpottingPositions = result.CrawlSpace;
                 state.AssaultPositions = result.Assault;
@@ -266,7 +288,7 @@ namespace CathodeLib.NavMesh
             }
         }
 
-        public static BakeResult Bake(NavigationMesh nav, JobPositionBakeSettings settings = null, GlassProbe glass = null, Cover cover = null, ObstacleProbe obstacles = null)
+        public static BakeResult Bake(NavigationMesh nav, JobPositionBakeSettings settings = null, GlassProbe glass = null, Cover cover = null, ObstacleProbe obstacles = null, CoverGbdtModel spotModel = null, RimCoverGenerator.DepthProbe learnedProbe = null, CoverBakeSettings learnedCoverSettings = null, CoverGbdtModel assaultModel = null, CoverGbdtModel crawlModel = null)
         {
             if (nav == null)
                 throw new ArgumentNullException(nameof(nav));
@@ -305,12 +327,36 @@ namespace CathodeLib.NavMesh
             var spottingJobs = new List<SpottingPositions.JobInfo>();
             var placed = new List<Vector3>();
             float mergeSq = settings.SpottingMergeDistance * settings.SpottingMergeDistance;
-            foreach ((Vector3 on, Vector3 inward, Vector3 localInward, float runLength) in SampleRuns(
+            bool learnedSpotting = spotModel != null && learnedProbe != null && learnedProbe.Bvh != null;
+
+            // A run of low obstacle you can shoot over and a run of tall wall you cannot are two
+            // different populations in retail's data - see SpottingCoverLengthToGenerateOnePointLow.
+            Func<List<RimEdge>, float> spottingMinLengthFor = null;
+            if (settings.SpottingCoverLengthToGenerateOnePointLow > 0f && obstacles != null)
+                spottingMinLengthFor = run =>
+                {
+                    var tops = new List<float>(run.Count);
+                    for (int i = 0; i < run.Count; i++)
+                    {
+                        Vector3 mid = (run[i].A + run[i].B) * 0.5f;
+                        tops.Add(obstacles.TopInFront(mid, -run[i].Inward, settings.AssaultObstacleProbeDistance,
+                                                      settings.AssaultObstacleMaxHeight, settings.AssaultObstacleHeightStep));
+                    }
+                    tops.Sort();
+                    float median = tops.Count == 0 ? 0f : tops[tops.Count / 2];
+                    return median >= settings.SpottingLowHighDividingLine
+                        ? settings.SpottingCoverLengthToGenerateOnePoint
+                        : settings.SpottingCoverLengthToGenerateOnePointLow;
+                };
+            if (learnedSpotting)
+                spottingJobs = LearnedSpottingJobs(spottingRuns, spotModel, learnedProbe, learnedCoverSettings ?? new CoverBakeSettings(), settings, glass, spottingOut, ref glassRejected);
+            foreach ((Vector3 on, Vector3 inward, Vector3 localInward, float runLength) in learnedSpotting ? Enumerable.Empty<(Vector3, Vector3, Vector3, float)>() : SampleRuns(
                          spottingRuns,
                          settings.SpottingCoverLengthToGenerateOnePoint,
                          settings.SpottingCoverLengthToGenerateAtBothEnds,
                          settings.SpottingMinDistanceFromEdgeOfCover,
-                         settings.SpottingMaxDistanceBetweenPositionsOnSameCover))
+                         settings.SpottingMaxDistanceBetweenPositionsOnSameCover,
+                         spottingMinLengthFor))
             {
                 if (IsGlass(glass, settings, on, inward,
                             settings.SpottingGlassTestStartDistance, settings.SpottingGlassTestEndDistance,
@@ -350,10 +396,13 @@ namespace CathodeLib.NavMesh
 
             int obstacleRejected = 0;
             int wallRejected = 0;
-            List<AssaultPositions.JobInfo> assaultJobs = BuildAssaultAlongCover(
-                assaultRuns, settings, glass, obstacles, ref glassRejected, ref obstacleRejected, ref wallRejected);
+            List<AssaultPositions.JobInfo> assaultJobs = assaultModel != null && learnedProbe != null && learnedProbe.Bvh != null
+                ? LearnedAssaultJobs(settings.AssaultRequireStandingFloor ? StandingRuns() : AllRuns(), assaultModel, learnedProbe, learnedCoverSettings ?? new CoverBakeSettings(), settings, glass, ref glassRejected)
+                : BuildAssaultAlongCover(assaultRuns, settings, glass, obstacles, ref glassRejected, ref obstacleRejected, ref wallRejected);
 
-            List<SpottingPositions.JobInfo> crawlJobs = BuildCrawlSpace(nav, crawlRim, settings);
+            List<SpottingPositions.JobInfo> crawlJobs = crawlModel != null && learnedProbe != null && learnedProbe.Bvh != null
+                ? LearnedCrawlJobs(nav, crawlRim, crawlModel, learnedProbe, learnedCoverSettings ?? new CoverBakeSettings(), settings)
+                : BuildCrawlSpace(nav, crawlRim, settings);
 
             var result = new BakeResult
             {
@@ -624,12 +673,207 @@ namespace CathodeLib.NavMesh
         /// <paramref name="edgeInset"/> in from each end with more spread evenly between so no gap
         /// exceeds <paramref name="maxGap"/>. Yields the point on the run and the run's normal.
         /// </summary>
+        /// <summary>
+        /// Spotting jobs from a learned station probability: every standing run is described every
+        /// 0.25 m with <see cref="LearnedCoverFeatures"/>, and jobs go to the highest-probability
+        /// stations first, each at least <see cref="JobPositionBakeSettings.LearnedSpotSeparation"/>
+        /// from the last, while the probability clears the threshold. The job sits the usual
+        /// distance outside the rim and the task the usual metre inward of it.
+        /// </summary>
+        static List<SpottingPositions.JobInfo> LearnedSpottingJobs(
+            List<List<RimEdge>> runs, CoverGbdtModel model, RimCoverGenerator.DepthProbe probe, CoverBakeSettings coverSettings,
+            JobPositionBakeSettings settings, GlassProbe glass, float spottingOut, ref int glassRejected)
+        {
+            const float station = 0.25f;
+            float threshold = settings.LearnedSpotThreshold > 0f ? settings.LearnedSpotThreshold : LearnedCover.EnvFloat("OPENCAGE_SPOT_THRESHOLD", model.Threshold);
+            float sep = Math.Max(0.1f, LearnedCover.EnvFloat("OPENCAGE_SPOT_SEPARATION", settings.LearnedSpotSeparation));
+            var candidates = new List<(float prob, Vector3 on, Vector3 inward)>();
+            foreach (List<RimEdge> run in runs)
+            {
+                float runLength = 0f;
+                Vector3 runInward = Vector3.Zero;
+                foreach (RimEdge e in run) { runLength += e.Length; runInward += e.Inward * e.Length; }
+                if (runInward.LengthSquared() < 1e-8f) continue;
+                runInward = Vector3.Normalize(runInward);
+                float pos = 0f;
+                foreach (RimEdge e in run)
+                {
+                    int steps = Math.Max(1, (int)Math.Round(e.Length / station));
+                    for (int i = 0; i < steps; i++)
+                    {
+                        float t = (i + 0.5f) / steps;
+                        Vector3 on = Vector3.Lerp(e.A, e.B, t);
+                        float[] x = LearnedCoverFeatures.Describe(on, e.Inward, e.Length, runLength, pos + t * e.Length, probe.Bvh, probe, coverSettings);
+                        float prob = model.Predict(x);
+                        if (prob >= threshold) candidates.Add((prob, on, runInward));
+                    }
+                    pos += e.Length;
+                }
+            }
+            candidates.Sort((a, b) => b.prob.CompareTo(a.prob));
+            var jobs = new List<SpottingPositions.JobInfo>();
+            var taken = new List<Vector3>();
+            float sepSq = sep * sep;
+            foreach ((float prob, Vector3 on, Vector3 inward) in candidates)
+            {
+                if (IsGlass(glass, settings, on, inward,
+                            settings.SpottingGlassTestStartDistance, settings.SpottingGlassTestEndDistance,
+                            settings.SpottingGlassTestRayHeightOffset, settings.SpottingGlassTestRayRadius))
+                {
+                    glassRejected++;
+                    continue;
+                }
+                Vector3 job = on - inward * spottingOut;
+                bool clash = false;
+                for (int i = 0; i < taken.Count; i++)
+                {
+                    float dx = taken[i].X - job.X, dz = taken[i].Z - job.Z;
+                    if (dx * dx + dz * dz < sepSq && Math.Abs(taken[i].Y - job.Y) < 1.5f) { clash = true; break; }
+                }
+                if (clash) continue;
+                taken.Add(job);
+                jobs.Add(new SpottingPositions.JobInfo
+                {
+                    JobPosition = job,
+                    TaskPosition = job + inward * settings.SpottingPathPositionDistanceOffset
+                });
+            }
+            return jobs;
+        }
+
+        /// <summary>
+        /// Assault positions from a learned station probability, the same way as
+        /// <see cref="LearnedSpottingJobs"/>: highest-probability stations first, at least
+        /// <see cref="JobPositionBakeSettings.LearnedAssaultSeparation"/> apart, standing the usual
+        /// distance inside the rim and facing the wall.
+        /// </summary>
+        static List<AssaultPositions.JobInfo> LearnedAssaultJobs(
+            List<List<RimEdge>> runs, CoverGbdtModel model, RimCoverGenerator.DepthProbe probe, CoverBakeSettings coverSettings,
+            JobPositionBakeSettings settings, GlassProbe glass, ref int glassRejected)
+        {
+            const float station = 0.25f;
+            float threshold = settings.LearnedAssaultThreshold > 0f ? settings.LearnedAssaultThreshold : LearnedCover.EnvFloat("OPENCAGE_ASSAULT_THRESHOLD", model.Threshold);
+            float sep = Math.Max(0.1f, LearnedCover.EnvFloat("OPENCAGE_ASSAULT_SEPARATION", settings.LearnedAssaultSeparation));
+            float inset = settings.AssaultDistanceFromGeometry - settings.AssaultRimToCollision;
+            var candidates = new List<(float prob, Vector3 on, Vector3 inward)>();
+            foreach (List<RimEdge> run in runs)
+            {
+                float runLength = 0f;
+                Vector3 runInward = Vector3.Zero;
+                foreach (RimEdge e in run) { runLength += e.Length; runInward += e.Inward * e.Length; }
+                if (runInward.LengthSquared() < 1e-8f) continue;
+                runInward = Vector3.Normalize(runInward);
+                float pos = 0f;
+                foreach (RimEdge e in run)
+                {
+                    int steps = Math.Max(1, (int)Math.Round(e.Length / station));
+                    for (int i = 0; i < steps; i++)
+                    {
+                        float t = (i + 0.5f) / steps;
+                        Vector3 on = Vector3.Lerp(e.A, e.B, t);
+                        float[] x = LearnedCoverFeatures.Describe(on, e.Inward, e.Length, runLength, pos + t * e.Length, probe.Bvh, probe, coverSettings);
+                        float prob = model.Predict(x);
+                        if (prob >= threshold) candidates.Add((prob, on, runInward));
+                    }
+                    pos += e.Length;
+                }
+            }
+            candidates.Sort((a, b) => b.prob.CompareTo(a.prob));
+            var jobs = new List<AssaultPositions.JobInfo>();
+            float sepSq = sep * sep;
+            foreach ((float prob, Vector3 on, Vector3 inward) in candidates)
+            {
+                if (IsGlass(glass, settings, on, inward,
+                            settings.AssaultGlassTestStartDistance, settings.AssaultGlassTestEndDistance,
+                            settings.AssaultGlassTestRayHeightOffset, settings.AssaultGlassTestRayRadius))
+                {
+                    glassRejected++;
+                    continue;
+                }
+                Vector3 stand = on + inward * inset;
+                bool clash = false;
+                foreach (AssaultPositions.JobInfo j in jobs)
+                {
+                    float dx = j.Position.X - stand.X, dz = j.Position.Z - stand.Z;
+                    if (dx * dx + dz * dz < sepSq && Math.Abs(j.Position.Y - stand.Y) < 1.5f) { clash = true; break; }
+                }
+                if (clash) continue;
+                jobs.Add(new AssaultPositions.JobInfo
+                {
+                    Position = stand,
+                    Yaw = MathF.Atan2(-inward.X, -inward.Z)
+                });
+            }
+            return jobs;
+        }
+
+        /// <summary>
+        /// Crawl-space jobs from a learned station probability along the OUTER rim of deep-crouch
+        /// floor (edges with nothing beyond), highest first with a minimum separation. The job sits
+        /// on the rim; the task runs out through the nearest mouth, as the rule's does.
+        /// </summary>
+        static List<SpottingPositions.JobInfo> LearnedCrawlJobs(
+            NavigationMesh nav, List<RimEdge> mouths, CoverGbdtModel model, RimCoverGenerator.DepthProbe probe,
+            CoverBakeSettings coverSettings, JobPositionBakeSettings settings)
+        {
+            const float station = 0.25f;
+            float threshold = settings.LearnedCrawlThreshold > 0f ? settings.LearnedCrawlThreshold : LearnedCover.EnvFloat("OPENCAGE_CRAWL_THRESHOLD", model.Threshold);
+            float sep = Math.Max(0.1f, LearnedCover.EnvFloat("OPENCAGE_CRAWL_SEPARATION", settings.LearnedCrawlSeparation));
+            List<RimEdge> outer = CollectRim(nav, NavigationMesh.AreaHeight.DeepCrouch, matchHeight: true);
+            List<List<RimEdge>> runs = ChainRuns(outer, settings.RunMaxTurnDegrees);
+            var candidates = new List<(float prob, Vector3 on, Vector3 inward)>();
+            foreach (List<RimEdge> run in runs)
+            {
+                float runLength = 0f;
+                foreach (RimEdge e in run) runLength += e.Length;
+                float pos = 0f;
+                foreach (RimEdge e in run)
+                {
+                    int steps = Math.Max(1, (int)Math.Round(e.Length / station));
+                    for (int i = 0; i < steps; i++)
+                    {
+                        float t = (i + 0.5f) / steps;
+                        Vector3 on = Vector3.Lerp(e.A, e.B, t);
+                        float[] x = LearnedCoverFeatures.Describe(on, e.Inward, e.Length, runLength, pos + t * e.Length, probe.Bvh, probe, coverSettings);
+                        float prob = model.Predict(x);
+                        if (prob >= threshold) candidates.Add((prob, on, e.Inward));
+                    }
+                    pos += e.Length;
+                }
+            }
+            candidates.Sort((a, b) => b.prob.CompareTo(a.prob));
+            var jobs = new List<SpottingPositions.JobInfo>();
+            float sepSq = sep * sep;
+            foreach ((float prob, Vector3 on, Vector3 inward) in candidates)
+            {
+                bool clash = false;
+                foreach (SpottingPositions.JobInfo j in jobs)
+                {
+                    float dx = j.JobPosition.X - on.X, dz = j.JobPosition.Z - on.Z;
+                    if (dx * dx + dz * dz < sepSq && Math.Abs(j.JobPosition.Y - on.Y) < 1.0f) { clash = true; break; }
+                }
+                if (clash) continue;
+                // Task: out through the nearest mouth of the same region, the rule's own construction.
+                Vector3 task = on + inward * settings.CrawlPathPositionDistanceOffset;
+                float best = float.MaxValue;
+                foreach (RimEdge m in mouths)
+                {
+                    Vector3 c = (m.A + m.B) * 0.5f;
+                    float d = Vector3.DistanceSquared(c, on);
+                    if (d < best && Math.Abs(c.Y - on.Y) < 1.0f) { best = d; task = c - m.Inward * settings.CrawlPathPositionDistanceOffset; }
+                }
+                jobs.Add(new SpottingPositions.JobInfo { JobPosition = on, TaskPosition = task });
+            }
+            return jobs;
+        }
+
         static IEnumerable<(Vector3 on, Vector3 inward, Vector3 localInward, float runLength)> SampleRuns(
             List<List<RimEdge>> runs,
             float minLength,
             float bothEndsLength,
             float edgeInset,
-            float maxGap)
+            float maxGap,
+            Func<List<RimEdge>, float> minLengthFor = null)
         {
             float gap = Math.Max(0.5f, maxGap);
             float inset = Math.Max(0f, edgeInset);
@@ -639,7 +883,7 @@ namespace CathodeLib.NavMesh
                 float length = 0f;
                 for (int i = 0; i < run.Count; i++)
                     length += run[i].Length;
-                if (length < minLength)
+                if (length < (minLengthFor == null ? minLength : minLengthFor(run)))
                     continue;
 
                 // One normal for the whole run, weighted by edge length so a stray short segment

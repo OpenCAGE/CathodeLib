@@ -1,6 +1,8 @@
 #if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Numerics;
 using System.Xml;
 using CATHODE;
 
@@ -8,10 +10,31 @@ namespace CathodeLib.NavMesh
 {
     public sealed class CoverBakeSettings
     {
+        /// <summary>A designer-placed CoverExclusionArea: an oriented box that carries no cover.</summary>
+        public struct ExclusionBox
+        {
+            public Vector3 Centre;
+            /// <summary>Rotation that takes a world offset into the box's own axes.</summary>
+            public Quaternion Inverse;
+            public Vector3 HalfExtents;
+
+            public bool Contains(Vector3 world)
+            {
+                Vector3 local = Vector3.Transform(world - Centre, Inverse);
+                return Math.Abs(local.X) <= HalfExtents.X && Math.Abs(local.Y) <= HalfExtents.Y && Math.Abs(local.Z) <= HalfExtents.Z;
+            }
+        }
+
+        /// <summary>
+        /// Boxes the level's CoverExclusionArea entities mark out; samples inside one are dropped.
+        /// Filled by <see cref="CoverBaker.BakeLevel"/> from the instancing pass. Null or empty = none.
+        /// </summary>
+        public List<ExclusionBox> ExclusionBoxes;
+
         public float DistanceFromGeometry = 0.15f;
-        public float MinimumHeight = 0.8f;
+        public float MinimumHeight = LearnedCover.EnvFloat("OPENCAGE_MIN_HEIGHT", 0.75f);
         public float MaximumInclineDegrees = 65f;
-        public float MinimumLength = 0.9f;
+        public float MinimumLength = LearnedCover.EnvFloat("OPENCAGE_MIN_LENGTH", 0.8f);
         public float LowHeight = 0.9f;
         public float StandingHeight = 1.6f;
         public float LowHighDividingLine = 1.5f;
@@ -67,6 +90,14 @@ namespace CathodeLib.NavMesh
         /// measurement. Four steps close 0.15 m to under 0.01.
         /// </remarks>
         public int RayTopRefineSteps = 4;
+
+        /// <summary>
+        /// The obstacle-top scan follows ONE surface: once the lowest ray has hit at some distance, a
+        /// higher ray that hits more than this much further away has found a different object (the
+        /// wall behind a railing, the shelf behind a crate) and counts as a miss. 0 = old behaviour,
+        /// which read the tallest thing within reach and classed a rail in front of a wall as high.
+        /// </summary>
+        public float RayTopSameSurface = LearnedCover.EnvFloat("OPENCAGE_TOP_SAME_SURFACE", 0f);
         public float SamplingSizeXZ = 0.05f;
 
         public float RequiredClearanceDistance = 0.76f;
@@ -278,6 +309,53 @@ namespace CathodeLib.NavMesh
         public float RimOffset = 0.2925f;
 
         /// <summary>
+        /// Sit the cover face this far off the COLLISION surface instead of a fixed
+        /// <see cref="RimOffset"/> from the navmesh rim. 0 = keep the fixed offset.
+        /// </summary>
+        /// <remarks>
+        /// The engine's `flush_with_collision` stage, which we never implemented:
+        /// `distance_from_edge` 0.02, `max_adjustment` 0.5, `min_cover_length_to_allow` 0.05. It
+        /// matters for more than placement - every probe we cast starts from the rim point plus the
+        /// fixed offset, so wherever the surface is elsewhere the view and wall-end gates measure from
+        /// the wrong origin. `diag flushcheck`: the surface is a median 0.058-0.061 m from where the
+        /// fixed offset puts it, over 0.1 m out on 14-22% of candidate rim and over 0.25 m on 2.5-6%.
+        /// </remarks>
+        public float FlushDistanceFromEdge = LearnedCover.EnvFloat("OPENCAGE_FLUSH", 0f);
+
+        /// <summary>Most the flush may move a face. See <see cref="FlushDistanceFromEdge"/>.</summary>
+        public float FlushMaxAdjustment = 0.5f;
+
+        /// <summary>Also start the view probes from the flushed face. See <see cref="FlushDistanceFromEdge"/>.</summary>
+        public bool FlushProbeOrigins = true;
+
+        /// <summary>
+        /// Path of a learned cover selector (a boosted-tree model written by <c>diag coverml
+        /// trainall</c>). When set and the file exists, the per-sample gates in
+        /// <see cref="RimCoverGenerator"/> (minimum height, wall end, open floor, firing arc) are
+        /// replaced by the model's probability read off <see cref="LearnedCoverFeatures"/> - the raw
+        /// ray description of the station - thresholded at <see cref="LearnedSelectorThreshold"/>
+        /// (or the threshold stored in the model when that is 0). Null falls back to the
+        /// OPENCAGE_COVER_MODEL environment variable, then to the hand gates. Held out level by
+        /// level on retail navmeshes the model reaches 60 station F1 where the gates sit near 52.
+        /// </summary>
+        public string LearnedSelectorPath = null;
+
+        /// <summary>Probability at or above which a rim sample is cover under the learned selector; 0 uses the model file's own threshold.</summary>
+        public float LearnedSelectorThreshold = LearnedCover.EnvFloat("OPENCAGE_COVER_THRESHOLD", 0f);
+
+        /// <summary>
+        /// With no <see cref="LearnedSelectorPath"/> and no OPENCAGE_COVER_MODEL, use the selector
+        /// CathodeLib ships embedded (<see cref="LearnedCover.EmbeddedCover"/>). Set false - or set
+        /// the path to "none" - for the hand-written gates. Campaign-wide (5 Sep 2026, learned1 vs
+        /// campaign1): cover 59.2 -> 65.3, up on 27 of 32 levels, down on Solace / HzdLab / Torrens /
+        /// CM5 / CM12. <see cref="LearnedSelectorThreshold"/> stays at 0 = the model's own 0.33: a
+        /// fixed 0.25 recovers Solace (+7) and CM12 (+10) but costs the twenty levels the model never
+        /// saw 0.54 of cover on average (LV426_Pt01 -4.7, Alien_Nest -7.1), and unseen levels are
+        /// what users bake.
+        /// </summary>
+        public bool UseEmbeddedLearnedSelector = true;
+
+        /// <summary>
         /// Only build cover where the approach side is standing-height floor. Retail places none at
         /// all against crouch or deep-crouch navmesh.
         /// </summary>
@@ -298,13 +376,36 @@ namespace CathodeLib.NavMesh
         /// comes out net negative across five levels. 3.0 is the value that gains everywhere it
         /// gains and loses nothing; the top six combinations span only 0.16 F1, so this is a broad
         /// optimum rather than a fitted point.</para>
-        public float MinOpenFloorArea = 3.0f;
+        public float MinOpenFloorArea = LearnedCover.EnvFloat("OPENCAGE_OPEN_AREA", 0f);
 
         /// <summary>See <see cref="MinOpenFloorArea"/>.</summary>
         public float OpenAreaRadius = 2.5f;
 
         /// <summary>How far in from the rim the open-floor sample is taken.</summary>
         public float OpenAreaProbeInset = 0.4f;
+
+        /// <summary>
+        /// Least share of the floor within <see cref="ReachableRadius"/> that must be REACHABLE by
+        /// walking from the stand point, rather than merely present. 0 = off.
+        /// </summary>
+        /// <remarks>
+        /// Cover in an alcove you can only reach through a neck is no use, and the open-floor area
+        /// gate cannot see that - the area is there, it just cannot be got to. On retail's own
+        /// obstacle-carrying rim (`diag covercontext`, 13 levels) the covered share runs 6.7% / 13.6% /
+        /// 15.0% / 15.9% / 24.5% across reachable shares of 0-0.35 / 0.35-0.55 / 0.55-0.72 / 0.72-0.85
+        /// / 0.85+ - monotone, and the widest worst-to-best ratio of any contextual signal measured.
+        /// The catch is size: the four low bands are only 11.8% of rim between them.
+        /// </remarks>
+        public float MinReachableShare = LearnedCover.EnvFloat("OPENCAGE_REACHABLE", 0f);
+
+        /// <summary>Radius the reachable share is measured over. See <see cref="MinReachableShare"/>.</summary>
+        public float ReachableRadius = 6f;
+
+        /// <summary>
+        /// Apply <see cref="MinReachableShare"/> to whole merged SEGMENTS rather than to samples.
+        /// Per sample it fragments the run, which costs more length than the cull saves.
+        /// </summary>
+        public bool ReachableGateOnSegments = LearnedCover.EnvFloat("OPENCAGE_REACHABLE_SEG", 1f) != 0f;
 
         /// <summary>How far outside the rim to look for the obstacle the cover is against.</summary>
         public float ObstacleProbeDistance = 0.45f;
@@ -397,6 +498,161 @@ namespace CathodeLib.NavMesh
         /// room, meaning cover in cramped places, which is the other failure mode.</para>
         public float MaxWallEndDistance = 1.5f;
 
+        /// <summary>
+        /// Apply <see cref="MaxWallEndDistance"/> to low cover as well as tall. Retail's own slot
+        /// layout says it should not: a high segment keeps only the slots within 1.25 m of an end,
+        /// because leaning past the end is the only way to shoot, while a low segment keeps its slots
+        /// the whole way along - you shoot over it.
+        /// </summary>
+        public bool WallEndAppliesToLowCover = LearnedCover.EnvFloat("OPENCAGE_WALLEND_LOW", 0f) != 0f;
+
+        /// <summary>Separate <see cref="MaxWallEndDistance"/> for tall cover. 0 uses the shared value.</summary>
+        public float MaxWallEndDistanceHigh = LearnedCover.EnvFloat("OPENCAGE_WALLEND_HIGH", 1.0f);
+
+        /// <summary>
+        /// Apply the tall-cover wall-end trim only on room-shell rim, leaving cover whole on anything
+        /// an NPC can walk around. 0 = trim everywhere. Uses the same loop class as
+        /// <see cref="ShellViewScale"/>, so <see cref="ShellLoopPerimeter"/> decides what a shell is.
+        /// </summary>
+        public bool WallEndShellOnly = LearnedCover.EnvFloat("OPENCAGE_WALLEND_SHELL", 0f) != 0f;
+
+        /// <summary>
+        /// Share of the RUN's length that counts as "near the end" for tall cover, on top of the flat
+        /// <see cref="MaxWallEndDistanceHigh"/>. 0 = flat distance only.
+        /// </summary>
+        /// <remarks>
+        /// `diag wallend` measures retail's covered share of tall rim against the distance along the
+        /// wall to where the obstacle stops. It falls away steeply where obstacles are short
+        /// (Tech_Hub 26 / 33 / 22 / 15 / 10 / 7 / 1% across 0-0.75, 0.75-1.25, 1.25-2, 2-3, 3-4.5,
+        /// 4.5-6, 6 m+) and is FLAT where they are long (Solace 22 / 25 / 22 / 19 / 19 / 18 / 11).
+        /// A metre from the end of a 13 m corridor wall is not the same place as a metre from the end
+        /// of a 2 m crate, so the window scales with the wall.
+        /// </remarks>
+        public float WallEndFraction = LearnedCover.EnvFloat("OPENCAGE_WALLEND_FRAC", 0.35f);
+
+        /// <summary>
+        /// How to choose between the two arms of a right-angled corner, where retail almost always
+        /// keeps one and not both. 0 = keep both (old behaviour); 1 = keep the arm that SEES further
+        /// over its own top; 2 = keep the arm with LESS open floor in front of it; 3 = keep the LOWER
+        /// arm; 4 = keep the LONGER arm.
+        /// </summary>
+        /// <remarks>
+        /// MEASURED AND REJECTED - keep this at 0. `diag corners` chains the rim into runs and finds
+        /// every pair meeting at 45-135 degrees. Retail covers both arms of only 6-13% of those pairs,
+        /// one arm of 31-41%, neither of 48-60%, and we cover both on 28% against retail's 13%, so the
+        /// over-covering is real. But the same census shows our existing gates ALREADY pick retail's
+        /// arm 78-92% of the time whenever they keep exactly one, and every cull tried here - span
+        /// level and segment level, scored by over-top view, height, or length, at join distances 0.3
+        /// to 1.5 and with a minimum arm length - drops true and false positives in equal measure:
+        /// precision stays flat (Tech_Hub 61.9 -> 61.2-61.8) while recall falls (77.9 -> 63-73), for
+        /// -1.2 to -4.1 F1 on every level. The corners where we wrongly keep both are a minority of
+        /// the corner contacts in a level and nothing measured tells them apart, so a blanket cull
+        /// costs more than it saves. The pattern describes where surplus lands; it is not a rule.
+        /// </remarks>
+        public int CornerArmRule = (int)LearnedCover.EnvFloat("OPENCAGE_CORNER_ARM", 0f);
+
+        /// <summary>How close two span ends must be to count as the same corner.</summary>
+        public float CornerArmJoinDistance = LearnedCover.EnvFloat("OPENCAGE_CORNER_JOIN", 0.9f);
+
+        /// <summary>An arm shorter than this is dropped at a corner without a contest.</summary>
+        public float CornerArmMinLength = LearnedCover.EnvFloat("OPENCAGE_CORNER_MINLEN", 0f);
+
+        /// <summary>
+        /// Line of sight OVER low cover: a low sample is kept only if a head on the cover line 1.5 m
+        /// up can see at least this far in some direction within 60 degrees of outward. 0 = off.
+        /// </summary>
+        /// <remarks>
+        /// Measured on retail's own rim (CM11, Tech_Hub, 3 Sep 2026): low-top rim whose over-the-top
+        /// view is under 4 m is covered 0-4% of the time against 38-70% beyond it, and a 4 m gate
+        /// keeps 99.6% of retail's low cover. Matt's "line of sight over cover".
+        /// </remarks>
+        /// <summary>
+        /// Depths along the outward normal (metres from the rim) at which the obstacle's height is
+        /// also sampled from above; the candidate height is the largest of the front-face top and
+        /// these. Empty = front face only.
+        /// </summary>
+        /// <remarks>
+        /// The front-face scan reads a table whose top sits at 0.80 m as 0.78 (the rounded edge) and
+        /// rejects it; retail covers those tables at 66-100% (CM11: EngTable, OctaTechTable,
+        /// Captain_Table). The engine's own constant is a sampling distance of 0.75 m along the
+        /// normal, which is exactly "look down onto the thing from 0.44 m behind its face". A desk
+        /// with a footwell, a chair, an open shelf have nothing solid there and retail leaves them.
+        /// </remarks>
+        public float[] DepthTopDistances = ParseDepths(Environment.GetEnvironmentVariable("OPENCAGE_DEPTH_TOPS")) is float[] d && d.Length > 0 ? d : new[] { 0.5f, 0.75f };
+
+        static float[] ParseDepths(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return new float[0];
+            var l = new System.Collections.Generic.List<float>();
+            foreach (string part in s.Split(','))
+                if (float.TryParse(part, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float v)) l.Add(v);
+            return l.ToArray();
+        }
+
+        public float MinOverTopView = LearnedCover.EnvFloat("OPENCAGE_OVERTOP_VIEW", 2.5f);
+
+        /// <summary>
+        /// Line of sight FROM high cover: a tall sample is kept only if its run has an end from which
+        /// a leaning head (0.5 m past the end, 0.1 m into the obstacle side, 1.4 m up) sees at least
+        /// this far within 60 degrees of the direction past the end. 0 = off.
+        /// </summary>
+        /// <remarks>
+        /// Retail's tall rim whose runs have no end with a 6 m view is covered 1-3% of the time; an
+        /// 8 m gate keeps 94% of retail's high cover on CM11. Necessary, not sufficient.
+        /// </remarks>
+        public float MinLeanEndView = LearnedCover.EnvFloat("OPENCAGE_LEANEND_VIEW", 2f);
+
+        /// <summary>
+        /// Visible WALKABLE floor from the better lean head of a tall run: the count of points on a
+        /// polar grid (1 to 12 m by 1 m, 60 degrees either side of the direction past the end, 15
+        /// degree steps, 45 points in all) that lie on navmesh at the run's height and are seen from
+        /// the head at 1.0 m above the floor. A tall sample needs its run to reach this count. 0 = off.
+        /// </summary>
+        /// <remarks>
+        /// The stronger form of <see cref="MinLeanEndView"/>: on retail's own rim, tall runs whose
+        /// best lean head sees fewer than 15 such points are covered 1-5% of the time (CM11,
+        /// Tech_Hub), 15-25 at 20-27%, 40+ at 37-55%. An NPC leans to shoot at floor an enemy can
+        /// stand on, not at a wall or a drop.
+        /// </remarks>
+        public float MinLeanEndWalkable = LearnedCover.EnvFloat("OPENCAGE_LEANEND_WALKABLE", 0f);
+
+        /// <summary>
+        /// Shortest closed navmesh loop that can carry cover, in metres round. 0 = off.
+        /// </summary>
+        /// <remarks>
+        /// Campaign-wide, on every level with cover, retail covers exactly none of the rim that
+        /// belongs to a loop under 4 m round - the pillars, poles and pipe stacks that are too small
+        /// to hide behind. It is 0.5% of the rim, so this buys precision and costs no recall at all.
+        /// </remarks>
+        public float MinLoopPerimeter = LearnedCover.EnvFloat("OPENCAGE_MIN_LOOP", 0f);
+
+        /// <summary>
+        /// A loop longer than this round counts as a room shell rather than an obstacle, and its
+        /// samples must clear <see cref="ShellViewScale"/> times the usual view gates.
+        /// </summary>
+        /// <remarks>
+        /// Retail covers 34.6% of the rim that belongs to obstacle loops (the floor is OUTSIDE the
+        /// loop: a crate, a desk, a bank of lockers) against 17.9% of the rim on room shells, and the
+        /// covered share peaks at 48.6% for loops 8-14 m round - a two to six metre prop. The two
+        /// classes carry about the same absolute length of retail cover, so this is a weighting, not
+        /// a gate: 1 leaves the shell alone.
+        /// </remarks>
+        public float ShellViewScale = LearnedCover.EnvFloat("OPENCAGE_SHELL_VIEW", 2f);
+
+        /// <summary>Loop perimeter at or above which rim counts as a room shell. See <see cref="ShellViewScale"/>.</summary>
+        public float ShellLoopPerimeter = LearnedCover.EnvFloat("OPENCAGE_SHELL_LOOP", 40f);
+
+        /// <summary>
+        /// Front-to-back clearance between two cover segments that face the same way and overlap
+        /// along the wall: closer than this and only the one nearer the room survives. 0 = off.
+        /// </summary>
+        /// <remarks>
+        /// Retail ships no such pair closer than 1.42 m on any level, which is the 1.5 m clear-aim
+        /// distance applied to cover standing behind cover: you cannot shoot from the wall when a
+        /// crate blocks the aim, so the wall is not cover while the crate is there.
+        /// </remarks>
+        public float SameFacingClearance = LearnedCover.EnvFloat("OPENCAGE_SAME_FACING", 0f);
+
         /// <summary>How far outward the depth test looks before giving up.</summary>
         public float ObstacleDepthSearchDistance = 6.0f;
 
@@ -418,6 +674,11 @@ namespace CathodeLib.NavMesh
         /// where retail left the rim bare and recall over the rest of a wall retail took whole.
         /// Only runs shorter than a metre behave differently, and those are rim slivers: retail
         /// covers 5.8% of them against 27% of everything longer.
+        /// <para>RE-MEASURED 4 Sep 2026 against the improved gates, which is what the note below
+        /// asked for, and it still loses: over Tech_Hub / CM11 / HospitalLower / Solace / CM9 / Torrens
+        /// the mean F1 is 58.8 at <see cref="RunAcceptFraction"/> 0.5 and 58.7 at 0.6, against 60.0
+        /// for the per-sample gates; 0.3 and 0.7 are worse still. Recall rises and precision falls by
+        /// more. Do not retest without a new feature to aggregate.</para>
         /// <para>OFF by default because it does not pay on the score. Aggregating the gates over a
         /// run only removes noise if the gates are right, and they are not: an exhaustive threshold
         /// search over sixteen geometric features reaches F1 52.4% per run against the current
@@ -636,6 +897,15 @@ namespace CathodeLib.NavMesh
         /// <para>A head inside a wall cannot be reached from a position out in the room, so one
         /// segment test between the two points removes the whole class.</para>
         /// </remarks>
+        /// <summary>
+        /// Centre the clear-aim sweeps on the OUTWARD normal - over the top of the cover and past
+        /// its ends, where whatever the occupant is hiding from is - rather than on the inward
+        /// normal, into the room behind them. Measurement option; see the retail census in the
+        /// diag: retail ships no two same-facing overlapping segments closer than 1.4 m, which is
+        /// what a 1.5 m clear distance swept OUTWARD produces and an inward sweep cannot.
+        /// </summary>
+        public bool AimSweepOutward = false;
+
         public bool RequireShootPositionReachable = true;
 
         /// <summary>
@@ -804,7 +1074,7 @@ namespace CathodeLib.NavMesh
         public float RimSampleStep = 0.25f;
 
         /// <summary>How far consecutive rim edges may turn and still be one run.</summary>
-        public float RimRunMaxTurnDegrees = 20.0f;
+        public float RimRunMaxTurnDegrees = LearnedCover.EnvFloat("OPENCAGE_RUN_TURN", 20.0f);
 
         /// <summary>
         /// Rejected rim shorter than this inside an otherwise continuous span is bridged rather than
@@ -828,7 +1098,41 @@ namespace CathodeLib.NavMesh
         public float SpanGapTolerance = 2.5f;
 
         /// <summary>Radius of the majority filter applied to the low/high classification.</summary>
-        public float HeightSmoothingDistance = 0.5f;
+        /// <summary>
+        /// Half-width, in metres along the rim, of the majority filter that decides a sample's
+        /// low/high class from its neighbours.
+        /// </summary>
+        /// <remarks>
+        /// Retail gives a whole segment ONE height, so any window that leaves a height flicker in
+        /// place splits one wall into low and high fragments and both then fall under
+        /// <see cref="MinimumLength"/>. Widening 0.5 -> 1.5 m is the single largest gain measured on
+        /// 4 Sep 2026: CM11 62.8 -> 66.7, CM9 61.2 -> 62.6, Tech_Hub 66.1 -> 66.9, Solace and Torrens
+        /// flat. It saturates there - 2 and 3 m are the same answer.
+        /// </remarks>
+        public float HeightSmoothingDistance = LearnedCover.EnvFloat("OPENCAGE_HEIGHT_SMOOTH", 1.5f);
+
+        /// <summary>
+        /// Ground deviation, in metres, that cuts a cover run in two. 0 = never cut on the ground.
+        /// </summary>
+        /// <remarks>
+        /// The engine's own `ground_height_split` stage, which we had never implemented: it walks a
+        /// candidate run and splits it where the floor beneath deviates, so a run crossing a step or a
+        /// ramp becomes two segments rather than one long one. Its four constants are
+        /// `deviation_to_cause_split` 0.1, `distance_either_side_to_check` 0.5,
+        /// `early_out_height_difference` 0.05 and `max_samples` 20. We chain by heading alone and cut
+        /// only on the accept flag and the height class, so without this we hand out one segment
+        /// where retail ships two.
+        /// </remarks>
+        public float GroundHeightSplitDeviation = LearnedCover.EnvFloat("OPENCAGE_GROUND_SPLIT", 0f);
+
+        /// <summary>How far either side of a sample the ground is compared. See <see cref="GroundHeightSplitDeviation"/>.</summary>
+        public float GroundHeightSplitCheckDistance = 0.5f;
+
+        /// <summary>A run whose ends differ by less than this is never split. See <see cref="GroundHeightSplitDeviation"/>.</summary>
+        public float GroundHeightSplitEarlyOut = 0.05f;
+
+        /// <summary>Most ground samples taken per run. See <see cref="GroundHeightSplitDeviation"/>.</summary>
+        public int GroundHeightSplitMaxSamples = 20;
 
         /// <summary>
         /// How far onto the walkable side of the cover face the occupant stands. Sight lines are
@@ -871,7 +1175,12 @@ namespace CathodeLib.NavMesh
         /// Longest segment emitted; longer spans are cut into equal pieces. Retail's segments have a
         /// median length of 1.2-1.8 m and a 90th percentile of 2.2-6.5 m across the campaign.
         /// </summary>
-        public float MaximumSegmentLength = 4.0f;
+        /// <summary>
+        /// Spans are cut into pieces no longer than this before merging. 0 or a large value leaves
+        /// them whole; retail ships segments past 8 m, so the 4 m cut costs a little on the levels
+        /// with long walls (Tech_Hub +0.7, CM9 +0.3 with it removed) and nothing anywhere else.
+        /// </summary>
+        public float MaximumSegmentLength = LearnedCover.EnvFloat("OPENCAGE_MAX_SEG", 0f);
 
         public float ClassifyCoverHeight(float obstacleHeightAboveFloor)
         {

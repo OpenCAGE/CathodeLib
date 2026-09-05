@@ -217,6 +217,7 @@ namespace CathodeLib.NavMesh
                                   + Vector3.UnitY * _settings.AimMoveFromHeightOver;
 
                 bool two = _settings.RequireClearFromMoveFrom;
+                Vector3 sweepDir = _settings.AimSweepOutward ? -normal : normal;
                 int leftMask = 0, rightMask = 0;
                 // When the clearance test owns liveness, the shoot eye is free to sit where the
                 // clear-aim model puts it, measured from the corner rather than from the slot.
@@ -232,11 +233,11 @@ namespace CathodeLib.NavMesh
                 bool rightOk = !_settings.UseLeanClearanceTest
                     || LeanClearance(slotPosition + tangent * distanceToRightEnd, tangent, normal, sideH);
                 anyLeft = leftOk && Reachable(leftFrom, leftEye)
-                    && SweepTwoPosition(leftEye, leftFrom, two, normal, out leftMin, out leftMax, out leftLow, out leftHigh, out leftMask);
+                    && SweepTwoPosition(leftEye, leftFrom, two, sweepDir, out leftMin, out leftMax, out leftLow, out leftHigh, out leftMask);
                 anyTop = Reachable(topFrom, topEye)
-                    && SweepTwoPosition(topEye, topFrom, two, normal, out topMin, out topMax, out topLow, out topHigh);
+                    && SweepTwoPosition(topEye, topFrom, two, sweepDir, out topMin, out topMax, out topLow, out topHigh);
                 anyRight = rightOk && Reachable(rightFrom, rightEye)
-                    && SweepTwoPosition(rightEye, rightFrom, two, normal, out rightMin, out rightMax, out rightLow, out rightHigh, out rightMask);
+                    && SweepTwoPosition(rightEye, rightFrom, two, sweepDir, out rightMin, out rightMax, out rightLow, out rightHigh, out rightMask);
                 if (_settings.ContiguousLeanArc)
                 {
                     // The lean-left arc is anchored at -90 and runs inward; the lean-right arc at

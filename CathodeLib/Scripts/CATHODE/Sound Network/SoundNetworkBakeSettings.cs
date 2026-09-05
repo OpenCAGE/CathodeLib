@@ -293,6 +293,28 @@ namespace CathodeLib.Sound
         public int MarkerSeedMode = 0;
 
         /// <summary>
+        /// Which line a sight test between two nodes uses. 0: the raised line (+0.5 m) first and
+        /// the node-height line as a fallback, clear if either is (as shipped 2 Sep 2026). 1: the
+        /// node-height line only. 2: the raised line only. 3: both must be clear.
+        /// Retail node pairs on ChallengeMap9 whose raised line is clear but whose node-height line
+        /// is blocked are the pairs retail links as OBSTRUCTED or not at all, and every link our
+        /// marker flood used to walk down the stairwell into the lower floor retail leaves sealed
+        /// was one of them (`diag linkcross`, `diag netbridge`).
+        /// </summary>
+        public int SightTestMode = 0;
+
+        /// <summary>
+        /// What a marker floods THROUGH to claim nodes. 0: the node-to-node sight graph (as
+        /// shipped). 1: the navmesh - polygon to polygon across shared edges and off-mesh links,
+        /// never into a barrier area (a doorway), and a node belongs to the marker whose walk
+        /// reaches the polygon under it most cheaply; a node on no reached polygon stays unowned.
+        /// Retail's StartingAreaStairway on ChallengeMap9 is exactly the 41 polygons its marker
+        /// reaches this way (one floor plus the vent mouth), while the sight flood runs down the
+        /// stair into a mezzanine retail leaves as a 54-node sealed network (`diag navflood`).
+        /// </summary>
+        public int FloodMedium = 0;
+
+        /// <summary>
         /// Leave the PATH_CLOSED collider of a door out of the sound occluder soup, so a doorway
         /// does not seal a node off from the room it stands in. The radiosity bake already treats
         /// doors as open for the same reason.
@@ -423,6 +445,31 @@ namespace CathodeLib.Sound
         /// behind the lift door. Retail's own links cross a door with obstruction 0.
         /// </summary>
         public bool OrphanSightThroughDoors = true;
+
+        /// <summary>
+        /// Judge the orphan test's sight with the authored SOUND / SOUND_BARRIER hulls removed from
+        /// the soup as well as the doors. Retail's node links pass through both with obstruction 0
+        /// (the CM9 link census agrees 98.9% at node height once PATH_CLOSED, SOUND and
+        /// SOUND_BARRIER are ignored), and on BSP_LV426_Pt01 the two door-package nodes retail keeps
+        /// - one of them the whole of the named network 'Narrow Pass Start', carrying 24 and 121
+        /// links - stand INSIDE a SoundBarrier volume, so with the hulls solid they saw nothing at
+        /// all and were dropped, costing the level two of its seven networks (sound 86.4 -> 77.1).
+        /// </summary>
+        public bool OrphanSightThroughSoundHulls = true;
+
+        /// <summary>
+        /// Two authored nodes of the same door package - a composite whose name contains "door",
+        /// holding exactly two SoundNetworkNodes 1-2.5 m apart, one either side of its doorway -
+        /// that end up in different networks are a boundary by construction, whether or not the
+        /// opening sight test can see between them: the door leaf is exactly what blocks that line.
+        /// TECH_COMMS lost 5 component-joining boundaries to the sight test (paths 486 against
+        /// retail's 2,145) on pairs 1.3-1.6 m apart blocked by the leaf, a window typed STANDARD or
+        /// a vent grille. Between marker networks only (a sealed door-leaf network attaches to its
+        /// nearest room alone). Measured a NO-OP on Torrens, CM9, CM12, CM11, Solace and TECH_COMMS
+        /// itself - the lost boundaries there are stair, window and vent-grille pairs - so it ships
+        /// off until the opening test can use it.
+        /// </summary>
+        public bool DoorPairIsBoundary = false;
 
         /// <summary>
         /// Keep a group of nodes the marker flood never reached, as a nameless network with no

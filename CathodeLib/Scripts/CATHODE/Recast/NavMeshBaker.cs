@@ -492,11 +492,33 @@ namespace CathodeLib.NavMesh
                 RcFilters.FilterWalkableLowHeightSpans(ctx, cfg.WalkableHeight, solid);
 
             RcCompactHeightfield chf = RcCompacts.BuildCompactHeightfield(ctx, cfg.WalkableHeight, cfg.WalkableClimb, solid);
-            RcAreas.ErodeWalkableArea(ctx, cfg.WalkableRadius, chf);
+            // Deep-crouch floor erodes by fewer cells than the rest (see
+            // NavMeshBakeSettings.DeepCrouchErodeCells). The full-radius erosion is taken first on
+            // a copy, so standing and crouch floor come out byte-identical to a plain bake; only
+            // spans that end up deep-crouch keep the lighter erosion.
+            int deepErode = settings.DeepCrouchErodeCells;
+            bool splitErode = deepErode > 0 && deepErode < cfg.WalkableRadius;
+            int[] fullErosion = null;
+            if (splitErode)
+            {
+                int[] before = (int[])chf.areas.Clone();
+                RcAreas.ErodeWalkableArea(ctx, cfg.WalkableRadius, chf);
+                fullErosion = (int[])chf.areas.Clone();
+                Array.Copy(before, chf.areas, before.Length);
+            }
+            RcAreas.ErodeWalkableArea(ctx, splitErode ? deepErode : cfg.WalkableRadius, chf);
             foreach (RcConvexVolume vol in geom.ConvexVolumes())
                 RcAreas.MarkConvexPolyArea(ctx, vol.verts, vol.hmin, vol.hmax, vol.areaMod, chf);
 
             MarkHeightClassAreas(chf, settings);
+            if (splitErode)
+                for (int s = 0; s < chf.areas.Length; s++)
+                {
+                    int area = chf.areas[s];
+                    if (area == RcRecast.RC_NULL_AREA || fullErosion[s] != RcRecast.RC_NULL_AREA) continue;
+                    if ((area - 1) % HeightClassCount == 2) continue;   // deep crouch keeps the lighter erosion
+                    chf.areas[s] = RcRecast.RC_NULL_AREA;
+                }
 
             // A crawl space that used to be part of a big standing region is now its own, and a
             // region below the minimum is DELETED rather than merged when no neighbour shares its
@@ -577,6 +599,45 @@ namespace CathodeLib.NavMesh
         /// <paramref name="cells"/> steps along the heightfield's own connectivity, so the class
         /// follows walkable neighbours rather than a flat XZ disc.
         /// </summary>
+        /// <summary>
+        /// Erode every span that is NOT deep-crouch by <paramref name="cells"/> more cells: a span
+        /// with a missing or null neighbour on any side goes null, repeated. Deep-crouch spans keep
+        /// the smaller erosion they already had, so a crawl gap survives that a standing character
+        /// could not use anyway.
+        /// </summary>
+        static void ErodeNonDeepSpans(RcCompactHeightfield chf, int cells)
+        {
+            if (cells <= 0) return;
+            var index = BuildSpanIndex(chf);
+            var kill = new List<int>();
+            for (int step = 0; step < cells; step++)
+            {
+                kill.Clear();
+                for (int s = 0; s < chf.spans.Length; s++)
+                {
+                    int area = chf.areas[s];
+                    if (area == RcRecast.RC_NULL_AREA) continue;
+                    if ((area - 1) % HeightClassCount == 2) continue;   // deep crouch keeps its erosion
+                    (int x, int z) = index[s];
+                    RcCompactSpan span = chf.spans[s];
+                    bool edge = false;
+                    for (int dir = 0; dir < 4 && !edge; dir++)
+                    {
+                        int con = RcRecast.GetCon(span, dir);
+                        if (con == RcRecast.RC_NOT_CONNECTED) { edge = true; break; }
+                        int nx = x + RcRecast.GetDirOffsetX(dir);
+                        int nz = z + RcRecast.GetDirOffsetY(dir);
+                        if (nx < 0 || nz < 0 || nx >= chf.width || nz >= chf.height) { edge = true; break; }
+                        int nb = chf.cells[nx + nz * chf.width].index + con;
+                        if (nb < 0 || nb >= chf.areas.Length || chf.areas[nb] == RcRecast.RC_NULL_AREA) edge = true;
+                    }
+                    if (edge) kill.Add(s);
+                }
+                foreach (int s in kill) chf.areas[s] = RcRecast.RC_NULL_AREA;
+                if (kill.Count == 0) break;
+            }
+        }
+
         static void SpreadClass(RcCompactHeightfield chf, byte[] cls, bool[] live, byte atLeast, int cells)
         {
             if (cells <= 0)

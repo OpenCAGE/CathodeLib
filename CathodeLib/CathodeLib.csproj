@@ -84,6 +84,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Resources\learned_cover.txt" LogicalName="CathodeLib.Learned.cover" />
+    <EmbeddedResource Include="Resources\learned_spot.txt" LogicalName="CathodeLib.Learned.spot" />
+    <EmbeddedResource Include="Resources\learned_assault.txt" LogicalName="CathodeLib.Learned.assault" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Update="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>

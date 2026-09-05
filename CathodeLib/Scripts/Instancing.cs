@@ -2755,6 +2755,13 @@ namespace CathodeLib
         public readonly HashSet<(uint, uint)> RadiosityAuthoredOff = new HashSet<(uint, uint)>();
 
         /// <summary>
+        /// World-space boxes from the level's CoverExclusionArea entities: cover generation must skip
+        /// anything inside one. Written while instancing, read by <see cref="CathodeLib.NavMesh.CoverBaker"/>.
+        /// </summary>
+        public readonly List<CathodeLib.NavMesh.CoverBakeSettings.ExclusionBox> CoverExclusionBoxes = new List<CathodeLib.NavMesh.CoverBakeSettings.ExclusionBox>();
+        private readonly object _coverExclusionLock = new object();
+
+        /// <summary>
         /// Skip the navmesh / cover / job position / sound network bakes even though their settings are
         /// supplied. For fast lighting-only iteration from test harnesses; the previously saved data for
         /// those systems is left as-is on disk. Not the normal way to turn a bake off - each of the four
@@ -2831,7 +2838,7 @@ namespace CathodeLib
                 if (coverSettings != null)
                     RunOptionalBake("cover", () => CoverBaker.BakeLevel(level, this, coverSettings));
                 if (jobPositionSettings != null)
-                    RunOptionalBake("job positions", () => JobPositionBaker.BakeLevel(level, jobPositionSettings, Console.WriteLine));
+                    RunOptionalBake("job positions", () => JobPositionBaker.BakeLevel(level, jobPositionSettings, Console.WriteLine, this));
                 if (soundSettings != null)
                     RunOptionalBake("sound networks", () => SoundNodeNetworkGenerator.Generate(level, AllEntities, soundSettings, Console.WriteLine));
             }
@@ -4310,6 +4317,8 @@ namespace CathodeLib
                     Console.WriteLine("Instancing: carried collision-row zones for " + colZonesCarried + " rows");
                 if (colFlagsCarried > 0)
                     Console.WriteLine("Instancing: carried collision-row flags for " + colFlagsCarried + " rows");
+                if (_collisionTypeCarried > 0)
+                    Console.WriteLine("Instancing: carried collision storage class from the template row for " + _collisionTypeCarried + " rows");
             }
 
             // Resource-table order restore (see SnapshotModelParams): retail pairs return to
@@ -4668,6 +4677,7 @@ namespace CathodeLib
 
         //TEMP TEST CODE - remove this eventually - need to figure out how frozen actually works. this just goes for the most popular option.
         private bool _applyDefaultFrozen = true;
+        private static int _collisionTypeCarried;
         public bool ApplyDefaultFrozen => _applyDefaultFrozen;
         public static bool ShouldApplyFrozen(IList<CollisionMaps.COLLISION_MAPPING> retailRows)
         {
@@ -5094,7 +5104,27 @@ namespace CathodeLib
 
                     break;
                 case FunctionType.CoverExclusionArea:
-
+                    if (!isDeleted && !isTemplate && !isRequiredAssets)
+                    {
+                        Matrix4x4 exclusionMatrix = entity.CalculateWorldTransformMatrix();
+                        if (Matrix4x4.Decompose(exclusionMatrix, out Vector3 exclusionScale, out Quaternion exclusionRotation, out Vector3 exclusionPosition))
+                        {
+                            Vector3 exclusionHalf = entity.Vectors.Has(ShortGuids.half_dimensions)
+                                ? entity.Vectors.Get(ShortGuids.half_dimensions) : new Vector3(0.5f, 1f, 0.5f);
+                            exclusionHalf = new Vector3(Math.Abs(exclusionHalf.X * exclusionScale.X),
+                                                        Math.Abs(exclusionHalf.Y * exclusionScale.Y),
+                                                        Math.Abs(exclusionHalf.Z * exclusionScale.Z));
+                            // The box stands ON its transform, as NavMeshBarrier's does.
+                            Vector3 exclusionCentre = exclusionPosition + Vector3.Transform(new Vector3(0f, exclusionHalf.Y, 0f), exclusionRotation);
+                            lock (_coverExclusionLock)
+                                CoverExclusionBoxes.Add(new CathodeLib.NavMesh.CoverBakeSettings.ExclusionBox
+                                {
+                                    Centre = exclusionCentre,
+                                    Inverse = Quaternion.Inverse(exclusionRotation),
+                                    HalfExtents = exclusionHalf,
+                                });
+                        }
+                    }
                     break;
                 case FunctionType.CoverLine:
                     if (!isDeleted && !isTemplate && !isRequiredAssets)
@@ -5558,6 +5588,34 @@ namespace CathodeLib
                                 else
                                 {
                                     flags = BuildInstanceCollisionFlags(entity, deleteBallistic, forceGhosted, template.Material);
+                                    /* The template row is retail's own row for this mesh and it carries the STORAGE
+                                     * class (WORLD 0x40 / BALLISTIC 0x80) even though its type nibble is zero, so it
+                                     * is authoritative where the material-name bodge above is not. CHALLENGEMAP3's
+                                     * reception floor (Floor_Reception_B / Collision01_COL) has the physics material
+                                     * 'MATERIAL #13', which the bodge read as BALLISTICS on the primary host, while
+                                     * its template says WORLD and retail's row says STANDARD|WORLD - so the nav soup
+                                     * never saw the floor and the level lost 7% of its navmesh. Same for eight
+                                     * 'MATERIAL #7884' beds on CHALLENGEMAP7 and the 'PolyFillerCollision' NavAssist
+                                     * floors on BSP_LV426_Pt01. The material name still refines a WORLD row into
+                                     * TRANSPARENT (WindowCollision) or SOUND (AudioCollision). */
+                                    CollisionMaps.CollisionFlags templateStorage = template.Flags & CollisionMaps.CollisionFlags.STORAGE_TYPE_MASK;
+                                    if (templateStorage != 0 && templateStorage != (flags & CollisionMaps.CollisionFlags.STORAGE_TYPE_MASK))
+                                    {
+                                        CollisionMaps.CollisionType bodgeType = (CollisionMaps.CollisionType)((uint)flags & (uint)CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK);
+                                        flags &= ~(CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK | CollisionMaps.CollisionFlags.STORAGE_TYPE_MASK);
+                                        flags |= templateStorage;
+                                        if ((templateStorage & CollisionMaps.CollisionFlags.WORLD) != 0)
+                                            flags |= (CollisionMaps.CollisionFlags)(bodgeType == CollisionMaps.CollisionType.TRANSPARENT || bodgeType == CollisionMaps.CollisionType.SOUND
+                                                ? bodgeType
+                                                : template.Material?.Name != null && template.Material.Name.IndexOf("PLAYERONLY", StringComparison.OrdinalIgnoreCase) >= 0
+                                                    ? CollisionMaps.CollisionType.PLAYER_ONLY   // retail: 'PLAYERONLYCOL', 'PLAYERONLY_COLLISION'
+                                                    : CollisionMaps.CollisionType.STANDARD);
+                                        else if ((templateStorage & CollisionMaps.CollisionFlags.BALLISTIC) != 0)
+                                            flags |= (CollisionMaps.CollisionFlags)CollisionMaps.CollisionType.BALLISTICS;
+                                        else
+                                            flags |= (CollisionMaps.CollisionFlags)bodgeType;
+                                        System.Threading.Interlocked.Increment(ref _collisionTypeCarried);
+                                    }
                                     if (deleteStandard && (flags & CollisionMaps.CollisionFlags.WORLD) != 0)
                                         emit = false;
                                 }

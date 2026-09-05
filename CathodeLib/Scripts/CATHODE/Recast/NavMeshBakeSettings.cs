@@ -65,6 +65,17 @@ namespace CathodeLib.NavMesh
         public int HeightLimitedAreaSpread = 2;
 
         /// <summary>
+        /// Cells of erosion applied to DEEP-CROUCH floor when the height classes are marked before
+        /// the polygons; 0 keeps the walkable radius for every class. Standing and crouch floor is
+        /// still eroded by the full walkable radius (5 cells at 0.3125 m); the difference is applied
+        /// as extra erosion of non-deep spans after the classes are marked. Retail meshes a 0.3 m
+        /// wide deep-crouch strip between a packaging box and a wall on ChallengeMap9 that our
+        /// 5-cell erosion removes, and a third of that level hangs off it (`diag navislands`); the
+        /// engine's height_limited_area_spread of 4 cells against a 5-cell radius is the hint.
+        /// </summary>
+        public int DeepCrouchErodeCells = 0;
+
+        /// <summary>
         /// Crouch grows by <see cref="HeightLimitedAreaSpread"/> plus this; deep crouch grows by the
         /// spread alone, and wins any overlap.
         /// </summary>

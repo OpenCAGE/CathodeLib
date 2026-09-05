@@ -32,6 +32,32 @@ namespace CathodeLib.NavMesh
         /// <summary>A cover run shorter than this produces no spotting position at all.</summary>
         public float SpottingCoverLengthToGenerateOnePoint = 0.8f;
 
+        /// <summary>
+        /// Separate minimum run length for runs whose obstacle can be seen OVER - below the cover
+        /// dividing line. 0 uses <see cref="SpottingCoverLengthToGenerateOnePoint"/> for both.
+        /// </summary>
+        /// <remarks>
+        /// Retail's spotting is two populations (`diag spotsplit`, 7,409 positions on 13 levels): a
+        /// third sits on rim that carries cover, on low obstacles with a median top of 1.10 m and a
+        /// 7.5 m view over them, and two thirds sits against TALL walls, median top 2.43 m with a
+        /// 0.20 m view over. Retail gives the tall class about 1.3x the jobs of the low class at the
+        /// same run length below 2 m (`diag spotramp`: 0.46 against 0.36 at 0.8-1.1 m, 0.77 against
+        /// 0.61 at 1.1-1.5, converging above 4 m), so one threshold has to be the average of two.
+        /// Bake-free the best pair is low 1.0 / tall 0.8 at 72.2 F1 against 71.8 for the single
+        /// threshold. MEASURED IN THE BAKER AND REJECTED - keep this at 0. Spotting F1, low 1.0 /
+        /// tall 0.8 against shipped: Tech_Hub 70.1 against 70.5, CM11 69.8 against 69.9,
+        /// HospitalLower 73.5 against 74.5, Solace 73.3 against 73.7; low 1.2 and 1.4 lose harder and
+        /// tall 0.7 loses too. The baker already applies <see cref="SpottingMinObstacleHeight"/> per
+        /// POSITION with a collision-read probe, which removes most of what a low-run length
+        /// threshold would, so the bake-free gain measures a gap the baker does not have - the same
+        /// fate as <see cref="SpottingObstacleExemptLength"/>. The two-population split is real; this
+        /// way of spending it is not.
+        /// </remarks>
+        public float SpottingCoverLengthToGenerateOnePointLow = 0f;
+
+        /// <summary>Obstacle height at or above which a run counts as a tall wall. See <see cref="SpottingCoverLengthToGenerateOnePointLow"/>.</summary>
+        public float SpottingLowHighDividingLine = 1.5f;
+
         /// <summary>At or above this length a run gets a position at both ends rather than one.</summary>
         public float SpottingCoverLengthToGenerateAtBothEnds = 4.0f;
 
@@ -93,6 +119,62 @@ namespace CathodeLib.NavMesh
         /// Tech_Hub 69.2 -> 73.1, SCI_Hub 71.2 -> 72.2.
         /// </remarks>
         public bool SpottingRequireStandingFloor = true;
+
+        /// <summary>
+        /// Path of a learned SPOTTING selector (a boosted-tree model from <c>diag coverml trainall
+        /// spot</c>). When set and readable - or when OPENCAGE_SPOT_MODEL names one - spotting jobs
+        /// are laid at the peaks of the model's probability along every standing rim run, read
+        /// off <see cref="LearnedCoverFeatures"/> every 0.25 m, greedily highest first with
+        /// <see cref="LearnedSpotSeparation"/> between jobs, instead of the length rule. Held out
+        /// level by level on retail navmeshes this scores 78.6 position F1 against the rule's 72.7.
+        /// </summary>
+        public string LearnedSpotModelPath = null;
+
+        /// <summary>Probability at or above which a station may carry a job; 0 uses the model file's threshold.</summary>
+        public float LearnedSpotThreshold = 0f;
+
+        /// <summary>
+        /// With no model path and no OPENCAGE_SPOT_MODEL / OPENCAGE_ASSAULT_MODEL, use the spotting and
+        /// assault selectors CathodeLib ships embedded (<see cref="LearnedCover.EmbeddedSpot"/>,
+        /// <see cref="LearnedCover.EmbeddedAssault"/>). Set false - or a path of "none" - for the
+        /// length rules. Campaign-wide (5 Sep 2026) jobs 71.1 -> 75.9, up on every level. Crawl has
+        /// no embedded model: the learned one over-produced, the mouth rule stays.
+        /// </summary>
+        public bool UseEmbeddedLearnedSelectors = true;
+
+        /// <summary>Minimum distance between two learned spotting jobs, metres. Retail puts two within 0.75 m 5.6% of the time.</summary>
+        public float LearnedSpotSeparation = 0.75f;
+
+        /// <summary>
+        /// Path of a learned ASSAULT selector (<c>diag coverml trainall assault</c>), or
+        /// OPENCAGE_ASSAULT_MODEL. Assault positions then go to the peaks of the model's
+        /// probability along every standing run, highest first with
+        /// <see cref="LearnedAssaultSeparation"/> between them, instead of the length rule and
+        /// its obstacle and wall-length gates. Held out level by level on retail navmeshes: 75.2
+        /// position F1 against the rule's 61-69.
+        /// </summary>
+        public string LearnedAssaultModelPath = null;
+
+        /// <summary>Probability at or above which a station may carry an assault position; 0 uses the model file's threshold.</summary>
+        public float LearnedAssaultThreshold = 0f;
+
+        /// <summary>Minimum distance between two learned assault positions, metres. Retail's along-run gap is p5 1.08.</summary>
+        public float LearnedAssaultSeparation = 1.0f;
+
+        /// <summary>
+        /// Path of a learned CRAWL-SPACE selector (<c>diag coverml trainall covered ... crawlml_</c>),
+        /// or OPENCAGE_CRAWL_MODEL. Crawl jobs then go to the peaks of the model's probability along
+        /// the OUTER rim of deep-crouch floor (where 85% of retail's sit), highest first with
+        /// <see cref="LearnedCrawlSeparation"/> between them; the task position runs out through the
+        /// nearest mouth as the rule's does.
+        /// </summary>
+        public string LearnedCrawlModelPath = null;
+
+        /// <summary>Probability at or above which a deep-rim station may carry a crawl job; 0 uses the model file's threshold.</summary>
+        public float LearnedCrawlThreshold = 0f;
+
+        /// <summary>Minimum distance between two learned crawl jobs, metres.</summary>
+        public float LearnedCrawlSeparation = 0.5f;
 
         /// <summary>
         /// Build the assault runs from the baked COVER rather than from raw navmesh rim.

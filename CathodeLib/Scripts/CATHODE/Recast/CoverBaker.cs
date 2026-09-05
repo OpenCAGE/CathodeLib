@@ -49,6 +49,9 @@ namespace CathodeLib.NavMesh
             // You cannot hide behind a window, and you can see straight through one.
             navSettings.SkipTransparentCollision = settings.SkipGlass;
 
+            if (placement != null && placement.CoverExclusionBoxes.Count > 0)
+                settings.ExclusionBoxes = placement.CoverExclusionBoxes;
+
             CollisionNavMeshSoup soup = CollisionNavMeshSoup.CollectFromLevel(
                 level,
                 null,
@@ -274,7 +277,10 @@ namespace CathodeLib.NavMesh
             // the length cull, then drop what is still too short to stand behind.
             segments = MergeColinearSegments(segments, settings);
             segments = DeduplicateSegments(segments, 0.35f);
+            segments = RemoveSegmentsBehindSegments(segments, settings);
             segments.RemoveAll(s => SegmentLengthXZ(s) < settings.MinimumLength);
+            segments = KeepOneArmPerCorner(segments, soup, settings);
+            segments = RemoveUnreachableSegments(segments, navMesh, settings);
             message += $" merged {raw}->{segments.Count}";
 
             for (int i = 0; i < segments.Count; i++)
@@ -832,6 +838,153 @@ namespace CathodeLib.NavMesh
             float qx = a.X + abx * t - p.X;
             float qz = a.Z + abz * t - p.Z;
             return (float)Math.Sqrt(qx * qx + qz * qz);
+        }
+
+        /// <summary>
+        /// Drop whole segments whose floor in front is mostly unreachable - an alcove behind a neck.
+        /// See <see cref="CoverBakeSettings.MinReachableShare"/>; applied here rather than per sample
+        /// because a mid-run rejection ends the span and the pieces fall under the length cull.
+        /// </summary>
+        static List<Cover.CoverSegment> RemoveUnreachableSegments(List<Cover.CoverSegment> segments, NavigationMesh navMesh, CoverBakeSettings settings)
+        {
+            if (settings.MinReachableShare <= 0f || !settings.ReachableGateOnSegments || navMesh == null)
+                return segments;
+
+            var floor = new RimCoverGenerator.NavFloorGrid(navMesh);
+            var keep = new List<Cover.CoverSegment>(segments.Count);
+            foreach (Cover.CoverSegment s in segments)
+            {
+                Vector3 mid = (s.Left + s.Right) * 0.5f;
+                Vector3 inward = SafeXZ(s.Normal);
+                float share = floor.ReachableShare(mid + inward * settings.SlotStandOffset, mid.Y, settings.ReachableRadius);
+                if (share >= settings.MinReachableShare)
+                    keep.Add(s);
+            }
+            return keep;
+        }
+
+        /// <summary>
+        /// Where two cover segments meet at a right angle, keep one and drop the other. See
+        /// <see cref="CoverBakeSettings.CornerArmRule"/>.
+        /// </summary>
+        /// <remarks>
+        /// Each corner is settled once and neither arm can go on to knock out a third segment: a
+        /// curved wall's own pieces meet at an angle, and letting the cull chain through them removes
+        /// most of a level.
+        /// </remarks>
+        static List<Cover.CoverSegment> KeepOneArmPerCorner(List<Cover.CoverSegment> segments, CollisionNavMeshSoup soup, CoverBakeSettings settings)
+        {
+            if (settings.CornerArmRule == 0 || segments.Count < 2)
+                return segments;
+
+            RimCoverGenerator.DepthProbe probe = settings.CornerArmRule == 1 ? new RimCoverGenerator.DepthProbe(soup) : null;
+            int n = segments.Count;
+            var score = new float[n];
+            var length = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                length[i] = SegmentLengthXZ(segments[i]);
+                Vector3 mid = (segments[i].Left + segments[i].Right) * 0.5f;
+                Vector3 outward = SafeXZ(segments[i].Normal);       // segment normals point away from the cover
+                switch (settings.CornerArmRule)
+                {
+                    case 1:
+                        score[i] = probe.FanMax(new Vector3(mid.X, mid.Y + 1.5f, mid.Z), outward, 60f, 10f, 30f);
+                        break;
+                    case 3:
+                        score[i] = -segments[i].Height;
+                        break;
+                    default:
+                        score[i] = length[i];
+                        break;
+                }
+            }
+
+            float join = settings.CornerArmJoinDistance;
+            var settled = new bool[n];
+            var drop = new bool[n];
+            for (int i = 0; i < n; i++)
+            {
+                if (settled[i]) continue;
+                for (int j = i + 1; j < n; j++)
+                {
+                    if (settled[j]) continue;
+                    if (length[i] < settings.CornerArmMinLength || length[j] < settings.CornerArmMinLength) continue;
+                    float dot = Vector3.Dot(SafeXZ(segments[i].Normal), SafeXZ(segments[j].Normal));
+                    if (dot > 0.7f || dot < -0.7f) continue;
+                    if (!CornerTouch(segments[i], segments[j], join)) continue;
+
+                    int lose = score[i] >= score[j] ? j : i;
+                    drop[lose] = true;
+                    settled[i] = true;
+                    settled[j] = true;
+                    break;
+                }
+            }
+
+            var keep = new List<Cover.CoverSegment>(n);
+            for (int i = 0; i < n; i++) if (!drop[i]) keep.Add(segments[i]);
+            return keep;
+        }
+
+        static float Flat2(Vector3 a, Vector3 b)
+        {
+            float dx = a.X - b.X, dz = a.Z - b.Z;
+            return (float)Math.Sqrt(dx * dx + dz * dz);
+        }
+
+        static bool CornerTouch(Cover.CoverSegment a, Cover.CoverSegment b, float tol)
+        {
+            if (Math.Abs(a.Left.Y - b.Left.Y) > 1.5f) return false;
+            return Flat2(a.Left, b.Left) < tol || Flat2(a.Left, b.Right) < tol
+                || Flat2(a.Right, b.Left) < tol || Flat2(a.Right, b.Right) < tol;
+        }
+
+        /// <summary>
+        /// Drop cover that stands behind other cover facing the same way. See
+        /// <see cref="CoverBakeSettings.SameFacingClearance"/>.
+        /// </summary>
+        static List<Cover.CoverSegment> RemoveSegmentsBehindSegments(List<Cover.CoverSegment> segments, CoverBakeSettings settings)
+        {
+            float clearance = settings.SameFacingClearance;
+            if (clearance <= 0f)
+                return segments;
+
+            var drop = new bool[segments.Count];
+            for (int i = 0; i < segments.Count; i++)
+            {
+                if (drop[i]) continue;
+                Vector3 ni = SafeXZ(segments[i].Normal);
+                Vector3 mi = (segments[i].Left + segments[i].Right) * 0.5f;
+                for (int j = i + 1; j < segments.Count; j++)
+                {
+                    if (drop[j]) continue;
+                    Vector3 nj = SafeXZ(segments[j].Normal);
+                    if (Vector3.Dot(ni, nj) < 0.94f) continue;             // not the same way
+                    Vector3 mj = (segments[j].Left + segments[j].Right) * 0.5f;
+                    if (Math.Abs(mi.Y - mj.Y) > 1.5f) continue;            // different storey
+
+                    // Front to back along the shared normal, and side to side along the wall.
+                    float front = Vector3.Dot(new Vector3(mj.X - mi.X, 0f, mj.Z - mi.Z), ni);
+                    if (Math.Abs(front) >= clearance) continue;
+                    Vector3 along = new Vector3(-ni.Z, 0f, ni.X);
+                    float ai0 = Vector3.Dot(new Vector3(segments[i].Left.X, 0f, segments[i].Left.Z), along);
+                    float ai1 = Vector3.Dot(new Vector3(segments[i].Right.X, 0f, segments[i].Right.Z), along);
+                    float aj0 = Vector3.Dot(new Vector3(segments[j].Left.X, 0f, segments[j].Left.Z), along);
+                    float aj1 = Vector3.Dot(new Vector3(segments[j].Right.X, 0f, segments[j].Right.Z), along);
+                    if (Math.Min(ai0, ai1) >= Math.Max(aj0, aj1) || Math.Min(aj0, aj1) >= Math.Max(ai0, ai1))
+                        continue;                                           // no overlap along the wall
+
+                    // The one further along the shared normal is the one nearer the room; it wins.
+                    if (front > 0f) { drop[i] = true; break; }
+                    drop[j] = true;
+                }
+            }
+
+            var keep = new List<Cover.CoverSegment>(segments.Count);
+            for (int i = 0; i < segments.Count; i++)
+                if (!drop[i]) keep.Add(segments[i]);
+            return keep;
         }
 
         static List<Cover.CoverSegment> DeduplicateSegments(List<Cover.CoverSegment> segments, float midTol)
