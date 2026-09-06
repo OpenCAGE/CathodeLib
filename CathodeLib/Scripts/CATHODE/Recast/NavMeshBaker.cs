@@ -2125,6 +2125,16 @@ namespace CathodeLib.NavMesh
                         rad = draft.Radius,
                         poly_index_within_tile = (ushort)polyIndex,
                         extra_cost = draft.ExtraCost,
+                        /* Detour rebuilds a tile's off-mesh links when the tile is added, and these two
+                           fields are what that pass reads. `side` is matched against the opposite side
+                           before the far endpoint is connected at all, and DT_OFFMESH_CON_BIDIR decides
+                           whether the far poly gets a link back into the connection. All 37 shipped nav
+                           meshes write side 0xff on every connection, and flags 1 on all 678 Backstage
+                           connections and on none of the 4,786 others - so a backstage vent the alien
+                           climbs is the one kind of connection meant to be travelled in both directions.
+                           Leaving them at 0 is what left it up there with no way down. */
+                        side = 0xff,
+                        flags = draft.LinkType == NavigationMesh.OffMeshLinkType.Backstage ? (byte)1 : (byte)0,
                         entity = new NavigationMesh.dtOffMeshEntityHandle
                         {
                             entity_id = draft.Entity.entity_id,
