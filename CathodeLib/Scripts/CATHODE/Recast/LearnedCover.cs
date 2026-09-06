@@ -15,7 +15,11 @@ namespace CathodeLib.NavMesh
     /// distances outward at seven heights and five bearings, inward at two heights and five
     /// bearings, along the obstacle face both ways at two heights, the obstacle top and thickness
     /// at thirteen offsets along the rim (a 3 m window at 0.25 m), the floor drop beyond the
-    /// obstacle at three distances, and the run length, distance to the run end and edge length.
+    /// obstacle at three distances, and the run length, distance to the run end and edge length;
+    /// then (appended, so older models keep their indices) the obstacle top and thickness further
+    /// along the run at 2.5-6.5 m either way, floor probes 1-5 m into the walkable side with two
+    /// summaries, the position fraction along the run, side-step rays 0.6 m along the run looking
+    /// outward at two heights, an over-the-top ray from 0.6 m inside, and the ceiling height.
     /// The training tables (<c>diag coverml build</c>) and the baker call this same method, so a
     /// model trained on retail's navmesh reads identical numbers off ours.
     /// </summary>
@@ -27,7 +31,12 @@ namespace CathodeLib.NavMesh
         public static readonly float[] AlongHeights = { 0.5f, 1.2f };
         public static readonly float[] AlongOffsets = { -1.5f, -1.25f, -1.0f, -0.75f, -0.5f, -0.25f, 0f, 0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f };
         public static readonly float[] DropDistances = { 0.75f, 1.5f, 3.0f };
+        public static readonly float[] FarAlongOffsets = { -6.5f, -5.0f, -3.5f, -2.5f, 2.5f, 3.5f, 5.0f, 6.5f };
+        public static readonly float[] FrontDistances = { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f };
+        public static readonly float[] PeekOffsets = { -0.6f, 0.6f };
+        public static readonly float[] PeekHeights = { 0.5f, 1.4f };
         public const float RayMax = 6f;
+        const float FloorTolerance = 0.3f;
 
         public static List<string> Names()
         {
@@ -39,10 +48,18 @@ namespace CathodeLib.NavMesh
             foreach (float o in AlongOffsets) n.Add(string.Format(CultureInfo.InvariantCulture, "thick_{0:+0.00;-0.00}", o));
             foreach (float d in DropDistances) n.Add(string.Format(CultureInfo.InvariantCulture, "dropBeyond_{0:0.00}", d));
             n.Add("runLen"); n.Add("distEnd"); n.Add("edgeLen");
+            foreach (float o in FarAlongOffsets) n.Add(string.Format(CultureInfo.InvariantCulture, "fartop_{0:+0.0;-0.0}", o));
+            foreach (float o in FarAlongOffsets) n.Add(string.Format(CultureInfo.InvariantCulture, "farthick_{0:+0.0;-0.0}", o));
+            foreach (float d in FrontDistances) n.Add(string.Format(CultureInfo.InvariantCulture, "front_{0:0.0}", d));
+            n.Add("frontFloorCount"); n.Add("frontFloorEnds");
+            n.Add("posFrac");
+            foreach (float o in PeekOffsets) foreach (float h in PeekHeights) n.Add(string.Format(CultureInfo.InvariantCulture, "peek_{0:+0.0;-0.0}_h{1:0.0}", o, h));
+            n.Add("overTop"); n.Add("ceiling");
             return n;
         }
 
-        public static int Count => OutHeights.Length * Bearings.Length + InHeights.Length * Bearings.Length + AlongHeights.Length * 2 + AlongOffsets.Length * 2 + DropDistances.Length + 3;
+        public static int Count => OutHeights.Length * Bearings.Length + InHeights.Length * Bearings.Length + AlongHeights.Length * 2 + AlongOffsets.Length * 2 + DropDistances.Length + 3
+                                   + FarAlongOffsets.Length * 2 + FrontDistances.Length + 2 + 1 + PeekOffsets.Length * PeekHeights.Length + 2;
 
         /// <summary>
         /// Describe the rim station at <paramref name="p"/> (a point ON the rim, floor height), with
@@ -69,6 +86,23 @@ namespace CathodeLib.NavMesh
             f[k++] = runLen;
             f[k++] = Math.Min(posAlong, runLen - posAlong);
             f[k++] = edgeLen;
+            // Appended context (see the class summary).
+            foreach (float o in FarAlongOffsets) f[k++] = probe.TopAlong(p + alongDir * o, outward, p.Y, cs);
+            foreach (float o in FarAlongOffsets) f[k++] = Math.Min(6f, probe.Thickness(p + alongDir * o, outward, p.Y, cs));
+            int floorCount = 0; float floorEnds = 6f;
+            foreach (float d in FrontDistances)
+            {
+                float drop = Drop(bvh, p + inward * d, p.Y);
+                f[k++] = drop;
+                if (Math.Abs(drop) < FloorTolerance) floorCount++;
+                else if (floorEnds >= 6f) floorEnds = d;
+            }
+            f[k++] = floorCount;
+            f[k++] = floorEnds;
+            f[k++] = runLen > 1e-3f ? Math.Min(posAlong, runLen - posAlong) / runLen : 0f;
+            foreach (float o in PeekOffsets) foreach (float h in PeekHeights) f[k++] = Cast(bvh, p + alongDir * o, h, outward);
+            f[k++] = Cast(bvh, p + inward * 0.6f, 1.7f, outward);
+            f[k++] = Cast(bvh, p, 0.1f, new Vector3(0f, 1f, 0f));
             return f;
         }
 
@@ -315,9 +349,10 @@ namespace CathodeLib.NavMesh
                         if (s == null) log?.Invoke(what + ": no embedded learned selector '" + name + "' - using the rule set.");
                         else model = CoverGbdtModel.Load(s);
                     }
-                    if (model != null && model.FeatureCount != LearnedCoverFeatures.Count)
+                    if (model != null && model.FeatureCount > LearnedCoverFeatures.Count)
                     {
-                        log?.Invoke(what + ": embedded learned selector has " + model.FeatureCount + " features, expected " + LearnedCoverFeatures.Count + " - ignored.");
+                        // A model may read a PREFIX of the descriptor (features are only ever appended), never past its end.
+                        log?.Invoke(what + ": embedded learned selector has " + model.FeatureCount + " features, the descriptor only " + LearnedCoverFeatures.Count + " - ignored.");
                         model = null;
                     }
                     else if (model != null)
@@ -347,9 +382,9 @@ namespace CathodeLib.NavMesh
                 try
                 {
                     using (FileStream fs = File.OpenRead(path)) model = CoverGbdtModel.Load(fs);
-                    if (model.FeatureCount != LearnedCoverFeatures.Count)
+                    if (model.FeatureCount > LearnedCoverFeatures.Count)
                     {
-                        log?.Invoke(what + ": learned selector at " + path + " has " + model.FeatureCount + " features, expected " + LearnedCoverFeatures.Count + " - ignored.");
+                        log?.Invoke(what + ": learned selector at " + path + " has " + model.FeatureCount + " features, the descriptor only " + LearnedCoverFeatures.Count + " - ignored.");
                         model = null;
                     }
                     else log?.Invoke(what + ": learned selector " + path + " (threshold " + model.Threshold.ToString("0.00") + ")");

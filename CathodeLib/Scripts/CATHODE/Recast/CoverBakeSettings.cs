@@ -340,8 +340,8 @@ namespace CathodeLib.NavMesh
         /// </summary>
         public string LearnedSelectorPath = null;
 
-        /// <summary>Probability at or above which a rim sample is cover under the learned selector; 0 uses the model file's own threshold.</summary>
-        public float LearnedSelectorThreshold = 0f;
+        /// <summary>Probability at or above which a rim sample is cover under the learned selector; 0 uses the model file's own threshold. The end-to-end sweep (cover length F1 against retail, held out over the campaign) prefers 0.40 to the models' station-optimal 0.42, so it is fixed here.</summary>
+        public float LearnedSelectorThreshold = 0.40f;
 
         /// <summary>
         /// With no <see cref="LearnedSelectorPath"/>, use the selector

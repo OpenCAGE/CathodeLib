@@ -130,8 +130,8 @@ namespace CathodeLib.NavMesh
         /// </summary>
         public string LearnedSpotModelPath = null;
 
-        /// <summary>Probability at or above which a station may carry a job; 0 uses the model file's threshold.</summary>
-        public float LearnedSpotThreshold = 0f;
+        /// <summary>Probability at or above which a station may carry a job; 0 uses the model file's threshold. The end-to-end sweep (position F1 against retail, held out over the campaign) prefers 0.45 to the models' station-optimal 0.38-0.42, trading a little recall for precision.</summary>
+        public float LearnedSpotThreshold = 0.45f;
 
         /// <summary>
         /// With no model path, use the spotting and
@@ -155,8 +155,8 @@ namespace CathodeLib.NavMesh
         /// </summary>
         public string LearnedAssaultModelPath = null;
 
-        /// <summary>Probability at or above which a station may carry an assault position; 0 uses the model file's threshold.</summary>
-        public float LearnedAssaultThreshold = 0f;
+        /// <summary>Probability at or above which a station may carry an assault position; 0 uses the model file's threshold. The end-to-end sweep (held out over the campaign) sits flat between 0.40 and 0.45 with 0.45 a shade ahead, so it is fixed here.</summary>
+        public float LearnedAssaultThreshold = 0.45f;
 
         /// <summary>Minimum distance between two learned assault positions, metres. Retail's along-run gap is p5 1.08.</summary>
         public float LearnedAssaultSeparation = 1.0f;
