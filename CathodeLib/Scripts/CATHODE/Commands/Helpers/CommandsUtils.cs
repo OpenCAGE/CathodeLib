@@ -704,6 +704,8 @@ namespace CATHODE.Scripting
                 ParameterData defaultValue = baseEntity.GetParameter(guid)?.content;
                 if (defaultValue is cResource existingResource && (existingResource.value == null || existingResource.value.Count == 0))
                     defaultValue = null;
+                if (type == DataType.RESOURCE && guid != ShortGuids.resource && defaultValue is cResource)
+                    defaultValue = null;
                 if (defaultValue == null)
                     defaultValue = CreateDefaultParameterData(function, guid, variant);
                 else if (!ReferenceEquals(baseEntity, targetEntity) && defaultValue is cResource)
@@ -1491,7 +1493,7 @@ namespace CATHODE.Scripting
                                     break;
                                 case DataType.RESOURCE:
                                     if (isCorrectParam)
-                                        return new cResource((ResourceType)reader.ReadInt32());
+                                        return parameter == ShortGuids.resource ? new cResource((ResourceType)reader.ReadInt32()) : null;
                                     else
                                         reader.BaseStream.Position += 4;
                                     break;
