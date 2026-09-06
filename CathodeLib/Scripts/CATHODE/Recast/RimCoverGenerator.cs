@@ -73,15 +73,44 @@ namespace CathodeLib.NavMesh
                      || settings.MaxWallEndDistance > 0f
                      || settings.MinFrontClearance > 0f
                      || settings.MinFiringArcDegrees > 0f
-                ? new DepthProbe(soup) : null;
+                ? soup.RayProbe : null;
 
             List<RimEdge> rim = CollectStandingRim(nav, new NavLoops(nav), settings);
             List<List<RimEdge>> runs = ChainRuns(rim, settings.RimRunMaxTurnDegrees);
 
             int rejectedNoObstacle = 0, rejectedCramped = 0, rejectedShort = 0;
             var spans = new List<Span>();
-            foreach (List<RimEdge> run in runs)
-                CollectSpans(run, obstacles, floor, depth, settings, spans, ref rejectedNoObstacle, ref rejectedCramped, learned);
+            // Every run is described independently and the description is hundreds of raycasts, so
+            // the runs are walked in parallel and their spans concatenated in run order afterwards -
+            // the span list, and so every byte of COVER, is what the sequential loop produced.
+            // The oracle hook is a research instrument with no thread-safety contract, so a run
+            // that sets it stays sequential.
+            if (runs.Count > 1 && OracleAccept == null)
+            {
+                var perRun = new List<Span>[runs.Count];
+                var perRunNoObstacle = new int[runs.Count];
+                var perRunCramped = new int[runs.Count];
+                System.Threading.Tasks.Parallel.For(0, runs.Count, r =>
+                {
+                    var runSpans = new List<Span>();
+                    int noObstacle = 0, cramped = 0;
+                    CollectSpans(runs[r], obstacles, floor, depth, settings, runSpans, ref noObstacle, ref cramped, learned);
+                    perRun[r] = runSpans;
+                    perRunNoObstacle[r] = noObstacle;
+                    perRunCramped[r] = cramped;
+                });
+                for (int r = 0; r < runs.Count; r++)
+                {
+                    spans.AddRange(perRun[r]);
+                    rejectedNoObstacle += perRunNoObstacle[r];
+                    rejectedCramped += perRunCramped[r];
+                }
+            }
+            else
+            {
+                foreach (List<RimEdge> run in runs)
+                    CollectSpans(run, obstacles, floor, depth, settings, spans, ref rejectedNoObstacle, ref rejectedCramped, learned);
+            }
 
             foreach (Span span in spans)
             {
@@ -1024,12 +1053,20 @@ List<Vector3> inwards, int from, int to)
                 {
                     var origin = new Vector3(rimPoint.X, floorY + h, rimPoint.Z);
                     var ray = new Ray(origin, flat, 0f, reach);
-                    bool hit = _bvh.Traverse(ref ray, out Hit hh);
-                    if (hit && settings.RayTopSameSurface > 0f)
+                    // Without RayTopSameSurface the scan only asks whether anything is in reach at
+                    // this height, and an any-hit query answers that without proving which surface
+                    // is nearest. This runs 21 times per rim station inside the learned descriptor.
+                    bool hit;
+                    if (settings.RayTopSameSurface > 0f)
                     {
-                        if (firstT < 0f) firstT = hh.T;
-                        else if (hh.T > firstT + settings.RayTopSameSurface) hit = false; // a different, set-back object
+                        hit = _bvh.Traverse(ref ray, out Hit hh);
+                        if (hit)
+                        {
+                            if (firstT < 0f) firstT = hh.T;
+                            else if (hh.T > firstT + settings.RayTopSameSurface) hit = false; // a different, set-back object
+                        }
                     }
+                    else hit = _bvh.Occluded(ref ray);
                     if (hit) { top = h; firstMiss = -1f; }
                     else if (h > 0.3f) { firstMiss = h; break; }
                 }
@@ -1046,8 +1083,13 @@ List<Vector3> inwards, int from, int to)
                     {
                         float mid = 0.5f * (lo + hi);
                         var probe = new Ray(new Vector3(rimPoint.X, floorY + mid, rimPoint.Z), flat, 0f, reach);
-                        bool phit = _bvh.Traverse(ref probe, out Hit ph);
-                        if (phit && settings.RayTopSameSurface > 0f && firstT >= 0f && ph.T > firstT + settings.RayTopSameSurface) phit = false;
+                        bool phit;
+                        if (settings.RayTopSameSurface > 0f)
+                        {
+                            phit = _bvh.Traverse(ref probe, out Hit ph);
+                            if (phit && firstT >= 0f && ph.T > firstT + settings.RayTopSameSurface) phit = false;
+                        }
+                        else phit = _bvh.Occluded(ref probe);
                         if (phit) lo = mid; else hi = mid;
                     }
                     top = lo;
@@ -1085,7 +1127,7 @@ List<Vector3> inwards, int from, int to)
                         Vector3 q = rimPoint + along * (dir * d);
                         var origin = new Vector3(q.X, floorY + 1.2f, q.Z);
                         var ray = new Ray(origin, outward, 0.02f, 1.0f);
-                        if (_bvh.Traverse(ref ray, out Hit _)) continue;
+                        if (_bvh.Occluded(ref ray)) continue;
                         if (d < best) best = d;
                         break;
                     }
@@ -1117,7 +1159,7 @@ List<Vector3> inwards, int from, int to)
                     float c = (float)Math.Cos(r), s = (float)Math.Sin(r);
                     var dir = new Vector3(inward.X * c - inward.Z * s, 0f, inward.X * s + inward.Z * c);
                     var ray = new Ray(origin, dir, 0.02f, range);
-                    if (_bvh.Traverse(ref ray, out Hit _)) run = 0;
+                    if (_bvh.Occluded(ref ray)) run = 0;
                     else { run++; if (run > best) best = run; }
                 }
                 return best * (180f / (steps - 1));
@@ -1144,7 +1186,7 @@ List<Vector3> inwards, int from, int to)
                         Vector3 v = target - head; float len = v.Length();
                         if (len < 0.1f) continue;
                         var ray = new Ray(head, v / len, 0.02f, len - 0.05f);
-                        if (_bvh.Traverse(ref ray, out Hit _)) continue;
+                        if (_bvh.Occluded(ref ray)) continue;
                         count++;
                     }
                 }

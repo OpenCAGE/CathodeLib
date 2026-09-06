@@ -1258,7 +1258,7 @@ namespace CathodeLib
             // Both ends start on a node that sits just off the floor, so the run is lifted to chest
             // height the way the link builder does rather than skimming the ground.
             var ray = new Ray(a, direction, 0.02f, length - 0.02f);
-            return !openingGeometry.Traverse(ref ray, out Hit _);
+            return !openingGeometry.Occluded(ref ray);
         }
 
         /// <summary>
@@ -1770,6 +1770,12 @@ namespace CathodeLib
             var testedAgainst = new List<int>(pending.Count);
             for (int i = 0; i < pending.Count; i++)
                 testedAgainst.Add(0);
+
+            /* Scratch for the sight test's nearest-first ordering, sized for the largest the
+             * accepted set can ever get (every seed plus every candidate). */
+            int sightCapacity = accepted.Count + pending.Count + 1;
+            var sightKey = new float[sightCapacity];
+            var sightIndex = new int[sightCapacity];
             bool progress = true;
             while (progress)
             {
@@ -1802,9 +1808,52 @@ namespace CathodeLib
                         continue;
                     }
 
+                    /* The sight test is another ANY over the same range, so the order it walks is
+                     * free - and the node that can see a candidate is nearly always the nearest
+                     * one to it, while a ray to the far side of the level is both blocked and
+                     * expensive. Asking nearest-first ends the scan on the first ray for every
+                     * candidate that gets accepted. Below a couple of dozen nodes the sort costs
+                     * more than the rays it saves. */
                     bool visible = false;
-                    for (int j = from; j < count && !visible; j++)
-                        if (Visible(occluders, position, accepted[j])) visible = true;
+                    if (count - from > 24)
+                    {
+                        int n = 0;
+                        for (int j = from; j < count; j++)
+                        {
+                            sightKey[n] = Vector3.DistanceSquared(position, accepted[j]);
+                            sightIndex[n] = j;
+                            n++;
+                        }
+                        Array.Sort(sightKey, sightIndex, 0, n);
+                        int head = Math.Min(n, 16);
+                        for (int k = 0; k < head && !visible; k++)
+                            if (Visible(occluders, position, accepted[sightIndex[k]])) visible = true;
+                        if (!visible && n - head > 64)
+                        {
+                            // Nothing nearby can see it, so the rest of the set is going to be
+                            // walked in full - and being an OR, it can be walked on every core and
+                            // stopped at the first yes.
+                            int seen = 0;
+                            System.Threading.Tasks.Parallel.For(head, n, (k, state) =>
+                            {
+                                if (System.Threading.Volatile.Read(ref seen) != 0) { state.Stop(); return; }
+                                if (!Visible(occluders, position, accepted[sightIndex[k]])) return;
+                                System.Threading.Interlocked.Exchange(ref seen, 1);
+                                state.Stop();
+                            });
+                            visible = seen != 0;
+                        }
+                        else
+                        {
+                            for (int k = head; k < n && !visible; k++)
+                                if (Visible(occluders, position, accepted[sightIndex[k]])) visible = true;
+                        }
+                    }
+                    else
+                    {
+                        for (int j = from; j < count && !visible; j++)
+                            if (Visible(occluders, position, accepted[j])) visible = true;
+                    }
 
                     if (!visible) continue;   // may become reachable once the fill gets closer
 
@@ -2045,7 +2094,7 @@ namespace CathodeLib
 
             const float slack = 0.02f;
             var ray = new Ray(from + direction * slack, direction, 0.0f, distance - slack - slack);
-            return occluders.Traverse(ref ray, out Hit _);
+            return occluders.Occluded(ref ray);
         }
 
         private struct Link
@@ -2327,10 +2376,16 @@ namespace CathodeLib
                 case 3: return Math.Max(CrossingsAt(occluders, from, to), CrossingsAt(occluders, from + VisibilityTestHeight, to + VisibilityTestHeight));
             }
             int raised = CrossingsAt(occluders, from + VisibilityTestHeight, to + VisibilityTestHeight);
-            return raised == 0 ? 0 : Math.Min(raised, CrossingsAt(occluders, from, to));
+            // The smaller of the two is the answer, so the ground walk can stop as soon as it has
+            // crossed as many surfaces as the raised line did - anything beyond cannot win the Min.
+            return raised == 0 ? 0 : Math.Min(raised, CrossingsAt(occluders, from, to, raised));
         }
 
-        private static int CrossingsAt(BVHAccel occluders, Vector3 from, Vector3 to)
+        /// <param name="cap">
+        /// Stop once this many surfaces have been crossed. The caller supplies one when a larger
+        /// count could not change what it does with the answer; the default is the standing cap.
+        /// </param>
+        private static int CrossingsAt(BVHAccel occluders, Vector3 from, Vector3 to, int cap = MaxObstruction + ClearSurfaceTolerance + 1)
         {
             Vector3 delta = to - from;
             float distance = delta.Length();
@@ -2344,7 +2399,7 @@ namespace CathodeLib
             // Walk the ray, stepping just past each surface. Capped a little above the largest
             // ObstructedDistance retail writes, so a pathological run of surfaces cannot stall the
             // bake and anything past the cap is dropped as too blocked to be worth a link.
-            while (travelled < distance - slack && crossed <= MaxObstruction + ClearSurfaceTolerance)
+            while (travelled < distance - slack && crossed < cap)
             {
                 var ray = new Ray(from + direction * travelled, direction, 0.0f, distance - slack - travelled);
                 if (!occluders.Traverse(ref ray, out Hit hit)) break;

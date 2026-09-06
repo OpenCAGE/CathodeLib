@@ -2755,6 +2755,23 @@ namespace CathodeLib
         public readonly HashSet<(uint, uint)> RadiosityAuthoredOff = new HashSet<(uint, uint)>();
 
         /// <summary>
+        /// The collision soup a bake collected this pass, and the key describing the settings that
+        /// shaped it. The cover and job-position bakes ask for the same triangles, and collecting
+        /// them (and building the ray BVH over them) is seconds a level, so the second bake of a
+        /// pass reuses the first one's rather than repeating both.
+        /// </summary>
+        internal CathodeLib.NavMesh.CollisionNavMeshSoup BakeSoup;
+        internal string BakeSoupKey;
+
+        /// <summary>
+        /// The first soup collected this pass, kept for its authoring volumes - seeds, walkable
+        /// platforms, exclusions, off-mesh links, backstage nodes. Those do not depend on the bake
+        /// settings, only on the level and this placement, and collecting them walks every
+        /// instanced entity, so every later soup of the pass shares this one's.
+        /// </summary>
+        internal CathodeLib.NavMesh.CollisionNavMeshSoup BakeAuthoring;
+
+        /// <summary>
         /// World-space boxes from the level's CoverExclusionArea entities: cover generation must skip
         /// anything inside one. Written while instancing, read by <see cref="CathodeLib.NavMesh.CoverBaker"/>.
         /// </summary>
@@ -4288,7 +4305,7 @@ namespace CathodeLib
             // Collision-row zone + state-flag carry (see SnapshotModelParams).
             if (_retailCollisionZones != null && _retailCollisionZones.Count > 0 && _level.CollisionMaps?.Entries != null)
             {
-                int colZonesCarried = 0, colFlagsCarried = 0;
+                int colZonesCarried = 0, colFlagsCarried = 0, colLayersMoved = 0;
                 foreach (CollisionMaps.COLLISION_MAPPING row in _level.CollisionMaps.Entries)
                 {
                     if (row?.Entity == null)
@@ -4309,14 +4326,26 @@ namespace CathodeLib
                         (pristine.flags & (CollisionMaps.CollisionFlags)0xFF000000);
                     if (row.Flags != carriedFlags)
                     {
+                        bool wasGhosted = (row.Flags & CollisionMaps.CollisionFlags.GHOSTED) != 0;
                         row.Flags = carriedFlags;
                         colFlagsCarried++;
+
+                        /* The Havok instance picked its collision layer from the flags this row carried
+                           before now, so a state byte that turns GHOSTED on or off has to take the layer
+                           with it. Left behind, the row reads "ghosted" while the shape stays in a solid
+                           layer: collision standing where nothing is drawn and nothing can be seen, which
+                           is what walking into an invisible wall feels like. Only the layer moves - the
+                           host compound is chosen from the WORLD bit, which this carry never touches. */
+                        if (((carriedFlags & CollisionMaps.CollisionFlags.GHOSTED) != 0) != wasGhosted)
+                            colLayersMoved += ApplyCollisionLayer(row, carriedFlags);
                     }
                 }
                 if (colZonesCarried > 0)
                     Console.WriteLine("Instancing: carried collision-row zones for " + colZonesCarried + " rows");
                 if (colFlagsCarried > 0)
                     Console.WriteLine("Instancing: carried collision-row flags for " + colFlagsCarried + " rows");
+                if (colLayersMoved > 0)
+                    Console.WriteLine("Instancing: moved " + colLayersMoved + " Havok instances to the collision layer their carried flags ask for");
                 if (_collisionTypeCarried > 0)
                     Console.WriteLine("Instancing: carried collision storage class from the template row for " + _collisionTypeCarried + " rows");
             }
@@ -4369,6 +4398,32 @@ namespace CathodeLib
                     _retailResourceIndex.Count + " at retail index, " + padded + " purged rows re-emitted, " +
                     leftovers.Count + " new appended)");
             }
+        }
+
+        /// <summary>
+        /// Put a row's Havok instance into the collision layer its flags now ask for, in both the 32-
+        /// and 64-bit packfiles - their instances run in step, slot for slot.
+        /// </summary>
+        private int ApplyCollisionLayer(CollisionMaps.COLLISION_MAPPING row, CollisionMaps.CollisionFlags flags)
+        {
+            HavokPackfile.CompoundInstance instance = row?.CollisionInstance;
+            if (instance == null)
+                return 0;
+
+            uint layer = (flags & CollisionMaps.CollisionFlags.GHOSTED) != 0
+                ? 0x12u
+                : (uint)flags & (uint)CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK;
+            if (instance.FilterInfo == layer)
+                return 0;
+
+            instance.FilterInfo = layer;
+
+            HavokPackfile.StaticCompoundShape hostMirror = _collisionMirror?.HostFor(flags);
+            int slot = instance.Index;
+            if (hostMirror != null && slot >= 0 && slot < hostMirror.Instances.Count)
+                hostMirror.Instances[slot].FilterInfo = layer;
+
+            return 1;
         }
 
         private void AddMover(InstancedEntity entity, Movers.MOVER_DESCRIPTOR mvr, bool isTemplate = false)

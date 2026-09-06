@@ -52,12 +52,15 @@ namespace CathodeLib.NavMesh
             if (placement != null && placement.CoverExclusionBoxes.Count > 0)
                 settings.ExclusionBoxes = placement.CoverExclusionBoxes;
 
-            CollisionNavMeshSoup soup = CollisionNavMeshSoup.CollectFromLevel(
+            string soupKey = SoupKey(navSettings);
+            CollisionNavMeshSoup soup = placement != null && placement.BakeSoupKey == soupKey ? placement.BakeSoup : null;
+            soup ??= CollisionNavMeshSoup.CollectFromLevel(
                 level,
                 null,
                 placement == null ? new CollisionNavMeshSoup() : null,
                 navSettings,
                 placement);
+            if (placement != null) { placement.BakeSoup = soup; placement.BakeSoupKey = soupKey; }
             BakeResult result = BakeFromSoup(soup, settings, level.StateResources.Count > 0 ? level.StateResources[0].NavMesh : null);
             result.Message = $"Cover bake: tris={result.InputTriangles} samples={result.SampleCount} segs={result.SegmentCount} slots={result.SlotCount}.";
 
@@ -75,6 +78,14 @@ namespace CathodeLib.NavMesh
             }
             return result;
         }
+
+        /// <summary>
+        /// What a collected soup depends on, so the cover and job-position bakes can tell whether
+        /// they are asking for the same triangles. Only these two settings shape it; everything
+        /// else either comes from the level or is applied after collection.
+        /// </summary>
+        internal static string SoupKey(NavMeshBakeSettings navSettings) =>
+            (navSettings.SkipSmallPropCollision ? "P" : "-") + (navSettings.SkipTransparentCollision ? "G" : "-");
 
         public static BakeResult BakeFromSoup(CollisionNavMeshSoup soup, CoverBakeSettings settings, NavigationMesh navMesh = null)
         {

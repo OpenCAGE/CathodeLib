@@ -30,6 +30,17 @@ namespace CathodeLib.NavMesh
         /// <summary>Soup tris dropped as absurd edge-length outliers.</summary>
         public int AbsurdTrisCulled;
 
+        RimCoverGenerator.DepthProbe _rayProbe;
+
+        /// <summary>
+        /// The ray probe over these triangles, built on first ask and then shared. Cover and job
+        /// positions both describe rim stations off this BVH; building it twice cost a second a
+        /// level and gained nothing, the soup being immutable once collected.
+        /// </summary>
+        /// <remarks>Not thread-safe to ask for first from several threads - take it before any
+        /// parallel region, which is what both bakers do.</remarks>
+        public RimCoverGenerator.DepthProbe RayProbe => _rayProbe ??= new RimCoverGenerator.DepthProbe(this);
+
         /// <summary>Oriented box used for NavMeshBarrier PATH_CLOSED volumes.</summary>
         public sealed class BarrierVolume
         {
@@ -103,6 +114,9 @@ namespace CathodeLib.NavMesh
                 throw new ArgumentNullException(nameof(level));
 
             settings ??= NavMeshBakeSettings.CreateDefault();
+            // The authoring volumes cost a walk of every instanced entity and do not depend on the
+            // settings, so the first soup of an instancing pass collects them and the rest share.
+            sharedAuthoring ??= placement?.BakeAuthoring;
             var soup = new CollisionNavMeshSoup();
             HavokPackfile hkx = level.Collision;
             if (hkx == null)
@@ -186,6 +200,8 @@ namespace CathodeLib.NavMesh
             if (settings.CullAbsurdSoupTris)
                 CullAbsurdSoupTriangles(soup, settings.MaxAbsurdSoupEdge);
 
+            if (placement != null && placement.BakeAuthoring == null)
+                placement.BakeAuthoring = soup;
             return soup;
         }
 
