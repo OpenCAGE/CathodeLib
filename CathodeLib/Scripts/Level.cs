@@ -690,6 +690,16 @@ namespace CathodeLib
             if (root.ToUpper().Split(new string[] { "DATA/ENV/" }, StringSplitOptions.None).Length < 2)
                 throw new ArgumentException("A level has to live under DATA/ENV.", nameof(path));
 
+            /* Checked before anything is written: a base without the whole REQUIRED_MODEL_* block makes a
+             * level that can never build a light, a particle or a fog volume, and finding that out after
+             * the folder exists is worse than not starting. */
+            List<RequiredModels.Model> absent = new List<RequiredModels.Model>();
+            foreach (RequiredModels.Model model in Enum.GetValues(typeof(RequiredModels.Model)))
+                if (RequiredModels.Resolve(baseLevel.Models, model) == null)
+                    absent.Add(model);
+            if (absent.Count != 0)
+                throw new ArgumentException("The base level is missing required models: " + string.Join(", ", absent), nameof(baseLevel));
+
             string name = Path.GetFileName(root);
             string renderable = root + "/RENDERABLE/";
             string galaxy = renderable + "GALAXY/";
@@ -734,6 +744,17 @@ namespace CathodeLib
             //The morph target file was copied for its name table; the targets themselves belong to the base's models
             level.MorphTargetDB.Entries.Clear();
 
+            /* The REQUIRED_MODEL_* block at the head of every model pak: instancing swaps lights, particles,
+             * fog and decals onto these, so a level without them cannot build any FX. Imported before the
+             * porter runs, because the porter pulls several of them in itself as dependencies of the
+             * required-asset composites - and once one is in the pak by name, importing it again is a no-op,
+             * so doing this afterwards left them wherever the porter happened to put them. */
+            foreach (Models.CS2 model in baseLevel.Models.Entries)
+            {
+                if (RequiredModels.IsRequiredEntry(baseLevel.Models, model))
+                    level.Models.ImportEntry(model);
+            }
+
             //Script: GLOBAL and PAUSEMENU from the base, the REQUIRED_ASSETS composites the engine instances on
             //every level without a script referencing them (weapons, gadgets, the jobs the AI needs) - each
             //with everything it instances, via the porter - then an empty root for the level itself
@@ -753,13 +774,10 @@ namespace CathodeLib
                 baseGlobal == null ? null : level.Commands.GetComposite(baseGlobal.shortGUID),
                 basePauseMenu == null ? null : level.Commands.GetComposite(basePauseMenu.shortGUID));
 
-            //The REQUIRED_MODEL_* block at the head of every model pak: instancing swaps lights, particles,
-            //fog and decals onto these, so a level without them cannot build any FX
-            foreach (Models.CS2 model in baseLevel.Models.Entries)
-            {
-                if (RequiredModels.IsRequiredEntry(baseLevel.Models, model))
-                    level.Models.ImportEntry(model);
-            }
+            /* The engine reads the required block positionally, and this level is saved rather than
+             * instanced, so the ordering instancing normally restores has to be right before the save. */
+            List<RequiredModels.Model> stillMissing;
+            RequiredModels.EnsureOrdered(level.Models, out stillMissing);
 
             //Valid empties for the files whose parsers cannot write from a never-loaded state
             State state = level.StateResources[0];
