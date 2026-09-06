@@ -1559,6 +1559,7 @@ namespace CATHODE
             _rebuildOriginal[compound] = (new List<CompoundInstance>(compound.Instances), compound.DomainMin, compound.DomainMax);
 
             ScrubShapeFixupsForInstances(compound);
+            ReclaimBoxShapes(compound);
             compound.ClearInstances();
             // Fresh domain — ExpandDomain grows from the enqueued instances.
             compound.DomainMin = new Vector4(float.MaxValue, float.MaxValue, float.MaxValue, 0);
@@ -1654,6 +1655,7 @@ namespace CATHODE
             }
             _rebuildTouched = null;
             _rebuildOriginal = null;
+            _freeBoxShapes = null;
         }
 
         static CompoundInstance CloneInstanceProperties(
@@ -1871,7 +1873,74 @@ namespace CATHODE
             return start + entryPrefix.Length;
         }
 
+        /// <summary>Box shapes whose only instance has just been cleared, ready to be written over.</summary>
+        List<uint> _freeBoxShapes;
+
+        /// <summary>
+        /// Take back the box shapes the instances of a compound being rebuilt were the only users of.
+        /// </summary>
+        /// <remarks>
+        /// Every box collider is emitted as a fresh <c>hkpBoxShape</c> object appended to the payload,
+        /// and clearing the compound leaves the previous one behind with nothing pointing at it. Over
+        /// repeated saves that is 231 dead objects a pass on TECH_COMMS, each with its own virtual
+        /// fixup and classname entry. They are the same shapes about to be emitted again, so hand them
+        /// back to <see cref="AppendBoxShape"/> instead of growing the file.
+        /// </remarks>
+        void ReclaimBoxShapes(StaticCompoundShape compound)
+        {
+            if (compound?.Instances == null || compound.Instances.Count == 0)
+                return;
+
+            var candidates = new HashSet<uint>();
+            for (int i = 0; i < compound.Instances.Count; i++)
+            {
+                CompoundInstance inst = compound.Instances[i];
+                if (string.Equals(inst.ShapeClassName, "hkpBoxShape", StringComparison.Ordinal))
+                    candidates.Add(inst.ShapeDataOffset);
+            }
+            if (candidates.Count == 0)
+                return;
+
+            //Anything still pointed at is in use by an instance we are not rebuilding.
+            for (int g = 0; g < GlobalFixups.Count && candidates.Count != 0; g++)
+                candidates.Remove(GlobalFixups[g].Dst);
+            if (candidates.Count == 0)
+                return;
+
+            if (_freeBoxShapes == null)
+                _freeBoxShapes = new List<uint>();
+            foreach (uint offset in candidates)
+                if (!_freeBoxShapes.Contains(offset))
+                    _freeBoxShapes.Add(offset);
+        }
+
         public uint AppendBoxShape(Vector3 halfExtents)
+        {
+            //A box freed by a rebuild is the same object we are about to make again: patch its extents.
+            if (_freeBoxShapes != null && _freeBoxShapes.Count != 0)
+            {
+                uint reused = _freeBoxShapes[_freeBoxShapes.Count - 1];
+                _freeBoxShapes.RemoveAt(_freeBoxShapes.Count - 1);
+                WriteBoxHalfExtents(reused, halfExtents);
+                return reused;
+            }
+            return AppendNewBoxShape(halfExtents);
+        }
+
+        /// <summary>Patch <c>halfExtents</c> on a box shape already in the payload.</summary>
+        void WriteBoxHalfExtents(uint dataOffset, Vector3 halfExtents)
+        {
+            float hx = Math.Abs(halfExtents.X);
+            float hy = Math.Abs(halfExtents.Y);
+            float hz = Math.Abs(halfExtents.Z);
+            if (hx < 1e-4f) hx = 1e-4f;
+            if (hy < 1e-4f) hy = 1e-4f;
+            if (hz < 1e-4f) hz = 1e-4f;
+            float hw = Math.Min(hx, Math.Min(hy, hz));
+            WriteVector4(DataPayload, (int)dataOffset + BoxShapeHalfExtentsOffset, new Vector4(hx, hy, hz, hw));
+        }
+
+        uint AppendNewBoxShape(Vector3 halfExtents)
         {
             PackfileObject template = null;
             for (int i = 0; i < Objects.Count; i++)
@@ -5090,17 +5159,36 @@ namespace CATHODE
             int nodesBytes = nodes.Count * 6;
             int nodesAligned = nodesBytes == 0 ? 0 : ((nodesBytes + 15) & ~15);
 
-            // Append new blobs at end of data payload (old arrays orphaned).
-            int newInstancesOff = AlignPayload(DataPayload.Length, 16);
-            int newNodesOff = AlignPayload(newInstancesOff + Math.Max(instancesBytes, 0), 16);
-            int newPayloadLen = newNodesOff + nodesAligned;
-            // Always grow at least to the instances write cursor so size-0 still has a stable Dst.
-            if (newPayloadLen < newInstancesOff)
-                newPayloadLen = newInstancesOff;
+            /* Write back over the arrays this compound already had, when the new ones fit.
+             *
+             * Appending unconditionally leaves the previous instance and node arrays behind as payload
+             * nothing points at any more. Nothing ever reclaims them, so saving a level twice with no
+             * changes at all grows COLLISION.HKX by about 1.5MB and 231 objects a time, for ever - the
+             * same source data producing a bigger file on every pass. Reusing the space keeps an
+             * unchanged save the same size, and a level that genuinely gains collision still appends. */
+            int newInstancesOff, newNodesOff;
+            if (Tagfile == null
+                && TryGetArrayRegion(instancesField, instanceStride, out uint oldInstancesOff, out int oldInstancesBytes)
+                && TryGetArrayRegion(treeField, 6, out uint oldNodesOff, out int oldNodesBytes)
+                && instancesBytes <= oldInstancesBytes
+                && nodesBytes <= oldNodesBytes)
+            {
+                newInstancesOff = (int)oldInstancesOff;
+                newNodesOff = (int)oldNodesOff;
+            }
+            else
+            {
+                newInstancesOff = AlignPayload(DataPayload.Length, 16);
+                newNodesOff = AlignPayload(newInstancesOff + Math.Max(instancesBytes, 0), 16);
+                int newPayloadLen = newNodesOff + nodesAligned;
+                // Always grow at least to the instances write cursor so size-0 still has a stable Dst.
+                if (newPayloadLen < newInstancesOff)
+                    newPayloadLen = newInstancesOff;
 
-            byte[] grown = new byte[newPayloadLen];
-            Buffer.BlockCopy(DataPayload, 0, grown, 0, DataPayload.Length);
-            DataPayload = grown;
+                byte[] grown = new byte[newPayloadLen];
+                Buffer.BlockCopy(DataPayload, 0, grown, 0, DataPayload.Length);
+                DataPayload = grown;
+            }
 
             HavokTagfile.CompoundLayout layout = Tagfile == null ? null : Tagfile.Compound();
             int shapeField = layout == null ? 48 : layout.Shape;
@@ -5161,6 +5249,41 @@ namespace CATHODE
             // Domain AABB in embedded tree header (leave as-is if empty — still valid bounds).
             WriteVector4(DataPayload, (int)domainOffset, compound.DomainMin);
             WriteVector4(DataPayload, (int)domainOffset + 16, compound.DomainMax);
+        }
+
+        /// <summary>
+        /// Where an hkArray field's data currently lives and how many bytes it has room for.
+        /// </summary>
+        /// <remarks>
+        /// The count is read from the array's own size word rather than its capacity word: retail
+        /// writes capacity as <c>count | 0x80000000</c>, so the two agree, and trusting the size is
+        /// the safer of the pair if a file ever disagrees.
+        /// </remarks>
+        bool TryGetArrayRegion(uint arrayField, int stride, out uint dataOffset, out int byteCount)
+        {
+            dataOffset = 0;
+            byteCount = 0;
+            if ((int)arrayField + Header.PointerSize + 4 > DataPayload.Length)
+                return false;
+
+            bool found = false;
+            for (int i = 0; i < LocalFixups.Count; i++)
+            {
+                if (LocalFixups[i].Src != arrayField)
+                    continue;
+                dataOffset = LocalFixups[i].Dst;
+                found = true;
+                break;
+            }
+            if (!found)
+                return false;
+
+            int count = BitConverter.ToInt32(DataPayload, (int)arrayField + Header.PointerSize);
+            if (count <= 0)
+                return false;
+
+            byteCount = count * stride;
+            return dataOffset + (uint)byteCount <= (uint)DataPayload.Length;
         }
 
         void SetLocalFixupDst(uint src, uint dst)
@@ -5384,11 +5507,29 @@ namespace CATHODE
                 return ca.CompareTo(cb);
             });
 
-            int mid = leaves.Count / 2;
-            if (mid < 1) mid = 1;
-            if (mid >= leaves.Count) mid = leaves.Count - 1;
-            var left = leaves.GetRange(0, mid);
-            var right = leaves.GetRange(mid, leaves.Count - mid);
+            /* Split where the box divides, not where the count divides.
+             *
+             * Handing each side half the objects builds a perfectly balanced tree - every retail leaf
+             * would sit at depth 13 or 14. Retail's own trees are nothing like that: leaves run from
+             * depth 4 to 25, deep where the level is dense and shallow where it is empty, which is
+             * what splitting space rather than counting objects produces. The difference is not
+             * cosmetic. A count split will happily put two objects at opposite ends of a room in one
+             * node, so that node's box barely shrinks from its parent's - and with four bits an axis,
+             * a box that does not shrink spends its precision describing empty space. Splitting at the
+             * midpoint keeps every box tight around what is actually in it. Where everything lands on
+             * one side (a row of identical panels, all centred on the same plane) there is no spatial
+             * split to make, so fall back to halving the count and let the next level try again. */
+            float mid = (Centre(leafAabbs[leaves[0]], axis) + Centre(leafAabbs[leaves[leaves.Count - 1]], axis)) * 0.5f;
+            int split = 0;
+            while (split < leaves.Count && Centre(leafAabbs[leaves[split]], axis) < mid)
+                split++;
+            if (split < 1 || split >= leaves.Count)
+                split = leaves.Count / 2;
+            if (split < 1) split = 1;
+            if (split >= leaves.Count) split = leaves.Count - 1;
+
+            var left = leaves.GetRange(0, split);
+            var right = leaves.GetRange(split, leaves.Count - split);
 
             int leftLeaves = BuildStorage6Recursive(nodes, left, leafAabbs, nodeMin, nodeMax);
             int rightLeaves = BuildStorage6Recursive(nodes, right, leafAabbs, nodeMin, nodeMax);
