@@ -369,16 +369,7 @@ namespace CathodeLib
                     });
                 }
             }
-            for (int i = 0; i < StateResources.Count; i++)
-            {
-                string statePath = world + "STATE_" + i + "/";
-
-                StateResources[i].Cover = new Cover(statePath + "COVER");
-                StateResources[i].NavMesh = new NavigationMesh(statePath + "NAV_MESH");
-                StateResources[i].SpottingPositions = new SpottingPositions(statePath + "SPOTTING_POSITIONS");
-                StateResources[i].CrawlSpaceSpottingPositions = new SpottingPositions(statePath + "CRAWL_SPACE_SPOTTING_POSITIONS");
-                StateResources[i].AssaultPositions = new AssaultPositions(statePath + "ASSAULT_POSITIONS");
-            }
+            ReloadStateResources();
             OnLoadTick?.Invoke();
 
             string pathDATA = _filepath.Replace('\\', '/').Split(new string[] { "/DATA/ENV" }, StringSplitOptions.None)[0] + "/DATA";
@@ -480,6 +471,28 @@ namespace CathodeLib
                 return;
             Commands.BuildEnvironmentMapIndexing(out List<Textures.TEX4> indexToTexture, out Dictionary<Textures.TEX4, int> textureToIndex);
             Movers.SetEnvironmentMapIndexing(indexToTexture, textureToIndex);
+        }
+
+        /// <summary>
+        /// Re-read every state's generated navigation data - cover, navmesh, spotting and assault
+        /// positions - from disk. A save rewrites those files (an instanced one regenerates them), so
+        /// anything still holding a Level that was loaded before it is looking at the old ones until
+        /// this is called. The states themselves are not re-read: their number and what defines them
+        /// comes from the commands, which a caller in that position has its own copy of.
+        /// </summary>
+        public void ReloadStateResources()
+        {
+            string world = _filepath + (_patched ? "_PATCH" : "") + "/WORLD/";
+            for (int i = 0; i < StateResources.Count; i++)
+            {
+                string statePath = world + "STATE_" + i + "/";
+
+                StateResources[i].Cover = new Cover(statePath + "COVER");
+                StateResources[i].NavMesh = new NavigationMesh(statePath + "NAV_MESH");
+                StateResources[i].SpottingPositions = new SpottingPositions(statePath + "SPOTTING_POSITIONS");
+                StateResources[i].CrawlSpaceSpottingPositions = new SpottingPositions(statePath + "CRAWL_SPACE_SPOTTING_POSITIONS");
+                StateResources[i].AssaultPositions = new AssaultPositions(statePath + "ASSAULT_POSITIONS");
+            }
         }
 
         /// <summary>
