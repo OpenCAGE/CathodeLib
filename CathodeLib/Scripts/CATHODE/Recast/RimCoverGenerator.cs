@@ -67,6 +67,8 @@ namespace CathodeLib.NavMesh
             var obstacles = settings.UseRayObstacleTop ? null : new ObstacleField(soup, settings);
             var floor = new NavFloorGrid(nav);
             CoverGbdtModel learned = LearnedCover.TryLoad(settings);
+            CoverGbdtModel stage2 = learned == null ? null
+                : LearnedCover.TryLoadPath(settings.LearnedCoverStage2Path, "Cover stage 2", null);
             var depth = learned != null || settings.UseRayObstacleTop
                      || settings.MinObstacleDepth > 0f
                      || settings.MinObstacleDepthHighCover > 0f
@@ -94,7 +96,7 @@ namespace CathodeLib.NavMesh
                 {
                     var runSpans = new List<Span>();
                     int noObstacle = 0, cramped = 0;
-                    CollectSpans(runs[r], obstacles, floor, depth, settings, runSpans, ref noObstacle, ref cramped, learned);
+                    CollectSpans(runs[r], obstacles, floor, depth, settings, runSpans, ref noObstacle, ref cramped, learned, stage2);
                     perRun[r] = runSpans;
                     perRunNoObstacle[r] = noObstacle;
                     perRunCramped[r] = cramped;
@@ -109,7 +111,7 @@ namespace CathodeLib.NavMesh
             else
             {
                 foreach (List<RimEdge> run in runs)
-                    CollectSpans(run, obstacles, floor, depth, settings, spans, ref rejectedNoObstacle, ref rejectedCramped, learned);
+                    CollectSpans(run, obstacles, floor, depth, settings, spans, ref rejectedNoObstacle, ref rejectedCramped, learned, stage2);
             }
 
             foreach (Span span in spans)
@@ -448,7 +450,8 @@ namespace CathodeLib.NavMesh
             List<Span> spans,
             ref int rejectedNoObstacle,
             ref int rejectedCramped,
-            CoverGbdtModel learned = null)
+            CoverGbdtModel learned = null,
+            CoverGbdtModel stage2 = null)
         {
             float step = Math.Max(0.05f, settings.RimSampleStep);
             float runLength = 0f;
@@ -465,6 +468,10 @@ namespace CathodeLib.NavMesh
             var offsets = new List<float>();
             var ok = new List<bool>();
             var heights = new List<float>();
+            // Per-station learned probability, kept so the run can be decided as a whole.
+            var probs = learned != null ? new List<float>() : null;
+            // Where each station sits along the run, for the second stage.
+            var probPos = stage2 != null ? new List<float>() : null;
 
             // The view from a leaning head at either end of the run, for MinLeanEndView.
             float leanEndView = float.MaxValue;
@@ -491,10 +498,15 @@ namespace CathodeLib.NavMesh
             for (int e = 0; e < run.Count; e++)
             {
                 RimEdge edge = run[e];
-                int steps = Math.Max(1, (int)Math.Ceiling(edge.Length / step));
+                // See CoverBakeSettings.LearnedStationAlignment: the training tables cut a run into
+                // round(len/step) stations sampled at the middle of each slice, not ceil() at the
+                // leading edge, so the model is otherwise asked about points it never saw.
+                bool aligned = settings.LearnedStationAlignment;
+                int steps = Math.Max(1, aligned ? (int)Math.Round(edge.Length / step) : (int)Math.Ceiling(edge.Length / step));
                 for (int i = 0; i < steps; i++)
                 {
-                    Vector3 p = Vector3.Lerp(edge.A, edge.B, (float)i / steps);
+                    float at = aligned ? (i + 0.5f) / steps : (float)i / steps;
+                    Vector3 p = Vector3.Lerp(edge.A, edge.B, at);
                     points.Add(p);
                     inwards.Add(edge.Inward);
                     offsets.Add(FlushedOffset(p, -edge.Inward, depth, settings));
@@ -532,9 +544,12 @@ namespace CathodeLib.NavMesh
                         // The learned selector reads the same station description the training
                         // tables carry and replaces every hand gate below with one probability.
                         float[] x = LearnedCoverFeatures.Describe(p, edge.Inward, edge.Length, runLength,
-                            runPos + edge.Length * ((float)i / steps), depth.Bvh, depth, settings);
-                        accept = learned.Predict(x) >= learnedThreshold;
+                            runPos + edge.Length * at, depth.Bvh, depth, settings);
+                        float probability = learned.Predict(x);
+                        accept = probability >= learnedThreshold;
                         if (!accept) rejectedNoObstacle++;
+                        probs.Add(probability);
+                        probPos?.Add(runPos + edge.Length * at);
                         ok.Add(accept);
                         heights.Add(settings.ClassifyCoverHeight(Math.Min(top, settings.MaximumObstacleHeight)));
                         continue;
@@ -642,6 +657,7 @@ namespace CathodeLib.NavMesh
                     points.Add(edge.B);
                     inwards.Add(edge.Inward);
                     offsets.Add(FlushedOffset(edge.B, -edge.Inward, depth, settings));
+                    probs?.Add(probs.Count > 0 ? probs[probs.Count - 1] : 0f);
                     ok.Add(ok.Count > 0 && ok[ok.Count - 1]);
                     heights.Add(heights.Count > 0 ? heights[heights.Count - 1] : settings.LowHeight);
                 }
@@ -653,12 +669,77 @@ namespace CathodeLib.NavMesh
             // Retail takes a wall whole or leaves it alone - see CoverBakeSettings.DecidePerRun - so
             // the gates decide the run, not the sample. The samples are evenly spaced along it, so
             // counting them is counting length.
+            // The second stage reads the whole run's probability profile and re-decides every
+            // station from it - see CoverBakeSettings.LearnedCoverStage2Path. The trailing entry of
+            // probs is the run's end point, copied from the last station, and is not one of the
+            // stations the model was fitted on, so it is left out and re-copied afterwards.
+            if (stage2 != null && probs != null && probPos != null && probPos.Count > 0 && probs.Count == ok.Count)
+            {
+                int stations = probPos.Count;
+                float threshold = settings.LearnedStage2Threshold > 0f ? settings.LearnedStage2Threshold : stage2.Threshold;
+                var runProbs = new float[stations];
+                for (int i = 0; i < stations; i++) runProbs[i] = probs[i];
+                var scratch = new float[stations];
+                for (int i = 0; i < stations; i++)
+                    ok[i] = stage2.Predict(LearnedCoverStage2.Describe(runProbs, i, runLength, probPos[i], scratch)) >= threshold;
+                for (int i = stations; i < ok.Count; i++) ok[i] = ok[stations - 1];
+            }
+            // The learned probabilities decide the run as a whole - see LearnedRunAggregate.
+            if (settings.LearnedRunAggregate != 0 && probs != null && probs.Count == ok.Count && ok.Count > 0)
+            {
+                float sum = 0f, max = 0f;
+                int over = 0;
+                for (int i = 0; i < probs.Count; i++)
+                {
+                    sum += probs[i];
+                    if (probs[i] > max) max = probs[i];
+                    if (probs[i] >= learnedThreshold) over++;
+                }
+                float mean = sum / probs.Count;
+                switch (settings.LearnedRunAggregate)
+                {
+                    case 1: { bool a = mean >= settings.LearnedRunThreshold; for (int i = 0; i < ok.Count; i++) ok[i] = a; break; }
+                    case 2: { bool a = max >= settings.LearnedRunThreshold; for (int i = 0; i < ok.Count; i++) ok[i] = a; break; }
+                    case 3: { bool a = (float)over / probs.Count >= settings.LearnedRunThreshold; for (int i = 0; i < ok.Count; i++) ok[i] = a; break; }
+                    case 4:
+                        if (mean >= settings.LearnedRunThreshold)
+                            for (int i = 0; i < ok.Count; i++) ok[i] = ok[i] || probs[i] >= settings.LearnedRunFloor;
+                        break;
+                }
+            }
             if (settings.DecidePerRun && ok.Count > 0)
             {
                 int passed = 0;
                 for (int i = 0; i < ok.Count; i++) if (ok[i]) passed++;
                 bool accept = passed >= settings.RunAcceptFraction * ok.Count;
                 for (int i = 0; i < ok.Count; i++) ok[i] = accept;
+            }
+
+            // Move the ends of every accepted stretch - see CoverBakeSettings.SpanEndExtension.
+            if (Math.Abs(settings.SpanEndExtension) > 1e-4f && ok.Count > 0)
+            {
+                int grow = (int)Math.Round(settings.SpanEndExtension / step);
+                if (grow != 0)
+                {
+                    var moved = new List<bool>(ok);
+                    for (int i = 0; i < ok.Count; i++)
+                    {
+                        if (!ok[i]) continue;
+                        bool startsHere = i == 0 || !ok[i - 1];
+                        bool endsHere = i == ok.Count - 1 || !ok[i + 1];
+                        if (grow > 0)
+                        {
+                            if (startsHere) for (int j = Math.Max(0, i - grow); j < i; j++) moved[j] = true;
+                            if (endsHere) for (int j = i + 1; j <= Math.Min(ok.Count - 1, i + grow); j++) moved[j] = true;
+                        }
+                        else
+                        {
+                            if (startsHere) for (int j = i; j < Math.Min(ok.Count, i - grow); j++) moved[j] = false;
+                            if (endsHere) for (int j = Math.Max(0, i + grow + 1); j <= i; j++) moved[j] = false;
+                        }
+                    }
+                    for (int i = 0; i < ok.Count; i++) ok[i] = moved[i];
+                }
             }
 
             SmoothHeights(heights, ok, (int)Math.Round(settings.HeightSmoothingDistance / step));

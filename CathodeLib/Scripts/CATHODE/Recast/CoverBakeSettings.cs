@@ -34,7 +34,17 @@ namespace CathodeLib.NavMesh
         public float DistanceFromGeometry = 0.15f;
         public float MinimumHeight = 0.75f;
         public float MaximumInclineDegrees = 65f;
-        public float MinimumLength = 0.8f;
+        /// <remarks>
+        /// 0.8 -> 0.65 (7 Sep 2026). The learned selector now gets short segments right often
+        /// enough that the old floor was the single biggest thing holding cover back: over twelve
+        /// held-out levels, dropping it is worth +2.0 length F1 (68.6 -> 70.5) AND takes our segment
+        /// count from 0.90x retail's to 1.00x (2362 against 2365). The score keeps rising all the
+        /// way down to 0.2 - 72.1 - but only by OVER-FRAGMENTING: at 0.2 we emit 1.78x retail's
+        /// segments, and length F1 rewards that because more short pieces raise length recall faster
+        /// than they cost precision. 0.65 is where the segment count lands on retail's, which is the
+        /// independent check. Retail's own segments run 1.2-1.8 m median.
+        /// </remarks>
+        public float MinimumLength = 0.65f;
         public float LowHeight = 0.9f;
         public float StandingHeight = 1.6f;
         public float LowHighDividingLine = 1.5f;
@@ -305,6 +315,17 @@ namespace CathodeLib.NavMesh
         /// Not a guess: retail's segments sit 0.292 m outside the rim on every level measured, with
         /// the 10th and 90th percentiles at 0.29 and 0.31. The mesh is eroded by the walkable radius
         /// (0.3125), which puts the face 0.02 m off the collision surface.
+        /// </remarks>
+        /// <remarks>
+        /// TRIED AND REVERTED (7 Sep 2026): 0.40 measured better HELD OUT and worse IN SAMPLE.
+        /// Over twelve levels scored with the fold model that excludes each, 0.40 is a clean single
+        /// peak worth +0.8 length F1 (70.29 at 0.325, 71.33 at 0.375, 71.36 at 0.40, 71.12 at 0.425,
+        /// 70.43 at 0.45), and what moves is precision (72.8 -&gt; 74.7) with recall flat - the
+        /// signature of segments sitting off the line rather than covering more of it. But on the
+        /// full campaign with the all-levels model it COSTS 0.4 (cover 82.9 -&gt; 82.5, runs c11 vs
+        /// c12, identical in every other respect). A better-fitted model lands the segments more
+        /// accurately and stops needing the correction. 0.2925 is retail's own measured inset, so
+        /// it stands; do not move it again without both numbers.
         /// </remarks>
         public float RimOffset = 0.2925f;
 
@@ -680,6 +701,74 @@ namespace CathodeLib.NavMesh
         /// and it is the right shape to build on the day the gates improve.</para>
         /// </remarks>
         public bool DecidePerRun = false;
+
+        /// <summary>
+        /// How the learned selector's per-station probabilities decide a whole run.
+        /// 0 leaves every station to its own threshold; 1 takes the run's MEAN probability against
+        /// <see cref="LearnedRunThreshold"/>; 2 takes its MAXIMUM; 3 takes the share of stations
+        /// over <see cref="LearnedSelectorThreshold"/> against <see cref="LearnedRunThreshold"/>;
+        /// 4 is a hybrid - a station keeps its own verdict, but a run whose mean clears the
+        /// threshold also admits any station at or above <see cref="LearnedRunFloor"/>.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="DecidePerRun"/> was parked with "do not retest without a new feature to
+        /// aggregate", because aggregating hand gates over a run only removes noise when the gates
+        /// carry information and an exhaustive search said they did not. A learned probability is
+        /// that feature, and retail's own behaviour - it takes a wall whole or leaves it alone - is
+        /// the shape this is trying to reproduce.
+        /// </remarks>
+        /// <summary>
+        /// Sample a run's stations the way the TRAINING TABLES do - round(length/step) of them, each
+        /// at the middle of its slice - rather than ceil(length/step) taken at the leading edge.
+        /// </summary>
+        /// <remarks>
+        /// The tables `diag coverml build` writes, and the spotting and assault passes that read the
+        /// same descriptor, both use round() and (i+0.5)/steps. Only the cover sampler used ceil()
+        /// and i/steps, so the cover model has always been asked about points up to half a station
+        /// (0.125 m) away from the ones it was fitted on, on runs cut into a different number of
+        /// pieces. Nothing else in the pipeline depends on which convention is used - the stations
+        /// are still a quarter-metre apart and still span the run.
+        /// </remarks>
+        /// <summary>
+        /// A SECOND-stage cover selector, read from this path. It decides a station from the shape
+        /// of the whole run's first-stage probabilities - its own, its neighbours' and the run's
+        /// summaries - rather than from its own probability alone. Empty or "none" leaves each
+        /// station to <see cref="LearnedSelectorThreshold"/>.
+        /// </summary>
+        /// <remarks>
+        /// Retail takes a wall whole or leaves it alone, which a per-station model cannot see.
+        /// Hand-aggregating the profile (run mean, run maximum, share over the threshold) is not
+        /// robust - see <see cref="LearnedRunAggregate"/> - but letting a model read it is worth
+        /// +2.1 mean held-out station F1 over twelve levels, better on eleven of them.
+        /// See <see cref="LearnedCoverStage2"/> for what it reads.
+        /// </remarks>
+        public string LearnedCoverStage2Path = null;
+
+        /// <summary>Threshold for <see cref="LearnedCoverStage2Path"/>; 0 uses the model's own.</summary>
+        public float LearnedStage2Threshold = 0f;
+
+        public bool LearnedStationAlignment = false;
+
+        /// <summary>
+        /// Extend every accepted stretch of stations by this many metres at each end before the
+        /// spans are cut. Negative pulls the ends in instead. Zero leaves them where the selector
+        /// put them.
+        /// </summary>
+        /// <remarks>
+        /// The cover score is length F1 against retail, so it is decided by where an accepted
+        /// stretch STARTS and STOPS rather than by how many individual stations are right - making
+        /// the per-station selector better three separate ways moved it not at all, while the
+        /// length floor moved it two points. This is the knob that acts on the ends directly.
+        /// </remarks>
+        public float SpanEndExtension = 0f;
+
+        public int LearnedRunAggregate = 0;
+
+        /// <summary>Threshold the run statistic named by <see cref="LearnedRunAggregate"/> is held to.</summary>
+        public float LearnedRunThreshold = 0.40f;
+
+        /// <summary>Floor a station must still reach to be admitted by mode 4's run mean.</summary>
+        public float LearnedRunFloor = 0.20f;
 
         /// <summary>
         /// Share of a run's samples that must pass the gates for the whole run to become cover.
@@ -1084,7 +1173,14 @@ namespace CathodeLib.NavMesh
         /// obstacle top: a six-term conjunction reached per-edge F1 52.6% where the generator sat at
         /// 45.1%, which is what said the headroom was in the gates rather than the candidates.</para>
         /// </remarks>
-        public float SpanGapTolerance = 2.5f;
+        /// <remarks>
+        /// 2.5 -> 5.0 (7 Sep 2026), measured with MinimumLength 0.65 over twelve held-out levels:
+        /// 70.38 at 3.5, 70.54 at 5.0, 70.61 at 7.0, and the segment COUNT does not move at all
+        /// across the three - the tolerance only decides which stations end up inside a span, not
+        /// how many spans there are. 7.0 measured a hair better and was not taken: bridging seven
+        /// metres of rejected rim is a lot of faith in the model for 0.07 of a point.
+        /// </remarks>
+        public float SpanGapTolerance = 5.0f;
 
         /// <summary>Radius of the majority filter applied to the low/high classification.</summary>
         /// <summary>

@@ -332,14 +332,23 @@ namespace CathodeLib
             // one: on BSP_TORRENS every link in its five nameless networks stays inside the network.
             // Our looser link rule would put 53 links through the vent walls, so they are dropped.
             int leaks = 0;
+            int crossCut = 0;
             foreach (Link link in links)
             {
                 if (nodes[link.A] == null || nodes[link.B] == null) continue;
                 if (owner[link.A] != owner[link.B] &&
                     (owner[link.A] >= markerNetworks || owner[link.B] >= markerNetworks))
                 { leaks++; continue; }
+                // A link that leaves its room is a doorway crossing in retail's files and is short.
+                // See SoundNetworkBakeSettings.CrossNetworkLinkDistance.
+                if (owner[link.A] != owner[link.B] && _settings.CrossNetworkLinkDistance > 0f &&
+                    link.Distance > _settings.CrossNetworkLinkDistance)
+                { crossCut++; continue; }
                 nodes[link.A].NodeLinks.Add(new SoundNodeNetwork.NodeLinkData(nodes[link.B], link.Path, link.Obstruction));
             }
+            if (crossCut > 0)
+                log?.Invoke("Sound networks: dropped " + crossCut + " link(s) reaching further than " +
+                            _settings.CrossNetworkLinkDistance.ToString("0.#") + " m out of their own network - retail's are a doorway apart.");
 
             uint[] barrierTriangleInstance = null;
             BVHAccel openingGeometry = _settings.BarrierBoundaryTest == 3
@@ -354,6 +363,32 @@ namespace CathodeLib
                 ? BuildBarrierGeometry(level, barriers, out barrierTriangleInstance, log) : null;
             LinkNetworks(networks, markerNetworks, nodes, links, owner, CollectBarriers(level, barriers),
                          barrierGeometry, barrierTriangleInstance, openingGeometry, openingStrict, manualCount, manualGroup, log);
+
+            // A node link only leaves its network where the two networks adjoin - see
+            // SoundNetworkBakeSettings.CrossNetworkLinksNeedBoundary. The boundaries are only known
+            // once LinkNetworks has run, so the pruning happens here rather than at the write above.
+            if (_settings.CrossNetworkLinksNeedBoundary)
+            {
+                var networkOf = new Dictionary<SoundNodeNetwork.NetworkNode, SoundNodeNetwork.NetworkInfo>();
+                foreach (SoundNodeNetwork.NetworkInfo network in networks)
+                    foreach (SoundNodeNetwork.NetworkNode node in network.Nodes) networkOf[node] = network;
+                var adjoining = new HashSet<(SoundNodeNetwork.NetworkInfo, SoundNodeNetwork.NetworkInfo)>();
+                foreach (SoundNodeNetwork.NetworkInfo network in networks)
+                    foreach (SoundNodeNetwork.NetworkLinkData boundary in network.LinkedNetworks)
+                        if (boundary.LinkedNetwork != null)
+                        {
+                            adjoining.Add((network, boundary.LinkedNetwork));
+                            adjoining.Add((boundary.LinkedNetwork, network));
+                        }
+                int strayLinks = 0;
+                foreach (SoundNodeNetwork.NetworkInfo network in networks)
+                    foreach (SoundNodeNetwork.NetworkNode node in network.Nodes)
+                        strayLinks += node.NodeLinks.RemoveAll(l =>
+                            l.LinkedNode != null && networkOf.TryGetValue(l.LinkedNode, out SoundNodeNetwork.NetworkInfo other)
+                            && !ReferenceEquals(other, network) && !adjoining.Contains((network, other)));
+                if (strayLinks > 0)
+                    log?.Invoke("Sound networks: dropped " + strayLinks + " link(s) between networks that do not adjoin - retail links out of a room only where it has a boundary.");
+            }
             var starved = new List<string>();
             for (int i = 0; i < networks.Count; i++)
             {
@@ -477,6 +512,9 @@ namespace CathodeLib
             // around a third of retail's boundaries and, through the smaller connected components
             // that followed, most of its NetworkPaths.
             var shortest = new Dictionary<(int, int), (int a, int b, float dist, uint barrier, bool ok)>();
+            // Candidates the gates below refuse, kept so ReconnectNetworkGraph can put one back
+            // when its absence would leave a named network unreachable.
+            var refused = new Dictionary<(int, int), (int a, int b, float dist, uint barrier, bool ok)>();
             // XZ extent of every candidate crossing's midpoint per pair - how WIDE the join is.
             var spread = new Dictionary<(int, int), (float x0, float x1, float z0, float z1)>();
             bool weighBarrier = _settings.BarrierBoundaryTest > 0;
@@ -629,7 +667,7 @@ namespace CathodeLib
                                             (pair.Value.barrier == 0u ? " no barrier" : " barrier " + pair.Value.barrier));
                         }
                     }
-                foreach ((int, int) key in noDoor) shortest.Remove(key);
+                foreach ((int, int) key in noDoor) { refused[key] = shortest[key]; shortest.Remove(key); }
                 if (noDoor.Count > 0)
                     log?.Invoke("Sound networks: dropped " + noDoor.Count + " of " +
                                 (noDoor.Count + shortest.Count) + " candidate boundary(s) that " +
@@ -649,7 +687,7 @@ namespace CathodeLib
                     float w = (float)Math.Sqrt((s.x1 - s.x0) * (s.x1 - s.x0) + (s.z1 - s.z0) * (s.z1 - s.z0));
                     if (w > _settings.OpeningMaxWidth) wide.Add(pair.Key);
                 }
-                foreach ((int, int) key in wide) shortest.Remove(key);
+                foreach ((int, int) key in wide) { refused[key] = shortest[key]; shortest.Remove(key); }
                 if (wide.Count > 0)
                     log?.Invoke("Sound networks: dropped " + wide.Count + " boundary(s) whose join is wider than " +
                                 _settings.OpeningMaxWidth.ToString("0.#") + " m - a doorway is narrow.");
@@ -683,6 +721,44 @@ namespace CathodeLib
                     log?.Invoke("Sound networks: dropped " + drop.Count +
                                 " surplus boundary(s) from sealed networks - each holds at most " +
                                 _settings.SealedMaxBoundaries + ".");
+            }
+
+            // Put back the refused boundaries that a named network's only route depends on - see
+            // SoundNetworkBakeSettings.ReconnectNetworkGraph.
+            if (_settings.ReconnectNetworkGraph && markerNetworks > 1 && refused.Count > 0)
+            {
+                var parent = new int[markerNetworks];
+                for (int i = 0; i < markerNetworks; i++) parent[i] = i;
+                int Find(int x) { while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+                bool Union(int x, int y) { int a = Find(x), b = Find(y); if (a == b) return false; parent[a] = b; return true; }
+                foreach (var pair in shortest)
+                    if (pair.Key.Item1 < markerNetworks && pair.Key.Item2 < markerNetworks)
+                        Union(pair.Key.Item1, pair.Key.Item2);
+
+                // Which named networks hold no boundary at all - a room no sound can reach.
+                var hasBoundary = new bool[markerNetworks];
+                foreach (var pair in shortest)
+                {
+                    if (pair.Key.Item1 < markerNetworks) hasBoundary[pair.Key.Item1] = true;
+                    if (pair.Key.Item2 < markerNetworks) hasBoundary[pair.Key.Item2] = true;
+                }
+
+                var candidates = new List<KeyValuePair<(int, int), (int a, int b, float dist, uint barrier, bool ok)>>();
+                foreach (var pair in refused)
+                    if (pair.Key.Item1 < markerNetworks && pair.Key.Item2 < markerNetworks && !shortest.ContainsKey(pair.Key) &&
+                        (!_settings.ReconnectIsolatedOnly || !hasBoundary[pair.Key.Item1] || !hasBoundary[pair.Key.Item2]))
+                        candidates.Add(pair);
+                candidates.Sort((x, y) => x.Value.dist.CompareTo(y.Value.dist));
+
+                int reconnected = 0;
+                foreach (var pair in candidates)
+                    if (Union(pair.Key.Item1, pair.Key.Item2))
+                    {
+                        shortest[pair.Key] = pair.Value;
+                        reconnected++;
+                    }
+                if (reconnected > 0)
+                    log?.Invoke("Sound networks: put back " + reconnected + " refused boundary(s) that were a named network's only route - a level's rooms are one connected space.");
             }
 
             var adjacency = new List<int>[networks.Count];

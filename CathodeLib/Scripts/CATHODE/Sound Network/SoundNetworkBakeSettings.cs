@@ -500,6 +500,83 @@ namespace CathodeLib.Sound
         public bool SealedSeesThroughHullsAtDoor = true;
 
         /// <summary>
+        /// <summary>
+        /// Furthest a node link may reach when its two nodes ended up in DIFFERENT networks. A link
+        /// that leaves its room is a doorway crossing in retail's files and is short; ours ran the
+        /// length of the level, because links are built before anything knows which room a node is
+        /// in. Zero keeps every link.
+        /// </summary>
+        /// <remarks>
+        /// Measured over all 32 levels: retail keeps 86.9% of its 1,766,451 links inside a single
+        /// network, and the ones that leave are short (p50 15 m, p90 34, p99 64). Unlimited, ours
+        /// were 42.7% inside, 1.62x retail's count, and reached a node degree of 1173 against
+        /// retail's campaign-wide worst of 474 - which is what the engine's fixed link array
+        /// overflows on. At 20 m the count lands at 0.96x retail, 72.5% inside, and the worst
+        /// degree at 405. Cuts at 10-12 m match retail's inside share instead but throw away a
+        /// fifth of the links; 40 m matches its median length but leaves degree at 737.
+        /// The cut is applied at write time, AFTER network assignment and boundary detection, so
+        /// nothing else in the bake - nodes, networks, boundaries, paths - can see it.
+        /// </remarks>
+        public float CrossNetworkLinkDistance = 0.0f;
+
+        /// <summary>
+        /// A node link may only leave its own network between two networks that declare a boundary
+        /// with each other. Retail's do: sound network rule 69 read its cross-network links as
+        /// existing only between networks that share one, and the shape of the file agrees.
+        /// </summary>
+        /// <remarks>
+        /// Measured over all 32 levels against retail's 1,766,451 links. Unlimited we wrote 1.62x
+        /// as many, only 42.7% of them inside a single network against retail's 86.9%, with a node
+        /// degree of 1173 against retail's campaign-wide worst of 474 - which is the fixed array
+        /// the engine's load_network_data overflows. This rule leaves 0.93x retail's count, 74.6%
+        /// inside, worst degree 413, and a length distribution that lands on retail's: p90 30 m
+        /// against 37, p99 65 against 66. A plain distance cut cannot do that - at 20 m it matches
+        /// the count (0.96x) but cuts p99 to 48, because it throws away the long cross-room links
+        /// retail genuinely keeps through a real doorway.
+        /// Applied after LinkNetworks has decided the boundaries, so nodes, networks, boundaries
+        /// and paths are all settled before it and none of them can see it.
+        /// </remarks>
+        public bool CrossNetworkLinksNeedBoundary = true;
+
+        /// <summary>
+        /// Put back a candidate boundary the gates refused when, without it, a named network can be
+        /// reached from nowhere else. Nearest crossing first, and only ever enough of them to make
+        /// the named graph connected.
+        /// </summary>
+        /// <remarks>
+        /// A level's rooms are one connected space and retail's files say so: TECH_COMMS ships 96
+        /// boundaries over 70 named networks and a route between 2145 of the 2415 possible pairs.
+        /// Ours keeps 70 boundaries there, which is a spanning tree's worth but arranged in pieces,
+        /// and the path count collapses to 737 - paths are quadratic in connectivity, so the last
+        /// few boundaries are worth far more than their number suggests. The gates that drop them
+        /// (no line through an opening, join too wide, sealed network over its quota) are each
+        /// defensible on their own; this only overrides them where the alternative is a room no
+        /// sound can reach.
+        /// </remarks>
+        /// <para>OFF by default: campaign-wide it is a WASH. It lifts the levels whose graph really
+        /// had fallen apart - TECH_COMMS sound 82.7 -> 87.4 with paths 737 -> 1495 of retail's 2145,
+        /// SCI_HospitalUpper 90.1 -> 93.3 with paths 1253 -> 1891 of 1954 - and costs the levels
+        /// where our connectivity was already AHEAD of retail's: CHALLENGEMAP11 -1.7 (we wrote 1000
+        /// paths against retail's 797 before it), Solace -1.2, HospitalLower -0.7. Five levels up,
+        /// five down, campaign sound +0.2 and overall unchanged. Restricting it to networks holding
+        /// no boundary at all (ReconnectIsolatedOnly) throws the gains away and keeps the losses,
+        /// which is worse. The diagnosis is solid - paths are quadratic in connectivity, so the last
+        /// few boundaries are worth far more than their count - but the over-linking on the other
+        /// levels has to be fixed before this pays.</para>
+        public bool ReconnectNetworkGraph = false;
+
+        /// <summary>
+        /// Restrict <see cref="ReconnectNetworkGraph"/> to networks that hold NO boundary at all,
+        /// rather than merging any two components.
+        /// </summary>
+        /// <remarks>
+        /// Merging two components that each already have boundaries makes things worse where our
+        /// connectivity is already ahead of retail's: on CHALLENGEMAP11 one such reinstatement cost
+        /// 1.7 sound, because we were already writing 1000 paths against retail's 797. A network
+        /// with no boundary at all is a room no sound can reach, which retail never ships.
+        /// </remarks>
+        public bool ReconnectIsolatedOnly = false;
+
         /// Two MARKER networks whose closest crossing pierces a door barrier box, with the two nodes
         /// within <see cref="DoorCrossingMaxDistance"/>, adjoin at that door whatever the opening
         /// sight test says - the closed leaf is what it cannot see through. Retail's boundary node

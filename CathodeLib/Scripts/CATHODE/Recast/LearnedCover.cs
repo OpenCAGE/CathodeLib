@@ -317,6 +317,94 @@ namespace CathodeLib.NavMesh
         }
     }
 
+    /// <summary>
+    /// What a SECOND-stage cover selector reads: the first stage's probability at this station, the
+    /// profile of probabilities either side of it along the run, and summaries of the whole run.
+    /// </summary>
+    /// <remarks>
+    /// A first-stage model describes one station and cannot see the wall it stands on, but retail
+    /// takes a wall whole or leaves it alone. Aggregating the probabilities by hand - run mean, run
+    /// maximum, share of stations over the threshold - is worth about a point of held-out F1 over
+    /// deciding each station alone, measured over twelve levels; this lets a model read the whole
+    /// profile instead of one hand-picked statistic. The baker has every one of these to hand: it
+    /// already computes the first-stage probability at every station of a run before it decides any
+    /// of them.
+    /// </remarks>
+    public static class LearnedCoverStage2
+    {
+        /// <summary>Station offsets along the run whose probability is read, clamped at the ends.</summary>
+        public static readonly int[] Neighbours = { -8, -6, -4, -3, -2, -1, 1, 2, 3, 4, 6, 8 };
+
+        /// <summary>Probability a station must reach to count toward the run's "share over" feature.</summary>
+        public const float ShareThreshold = 0.40f;
+
+        public static int Count => 1 + Neighbours.Length + 11;
+
+        public static List<string> Names()
+        {
+            var n = new List<string> { "p" };
+            foreach (int o in Neighbours) n.Add(string.Format(CultureInfo.InvariantCulture, "p{0:+0;-0}", o));
+            n.Add("runMean"); n.Add("runMax"); n.Add("runMin"); n.Add("runP75"); n.Add("runShare");
+            n.Add("win4Mean"); n.Add("win4Max");
+            n.Add("runStations"); n.Add("runLen"); n.Add("posFrac"); n.Add("distEnd");
+            return n;
+        }
+
+        /// <summary>
+        /// Describe station <paramref name="i"/> of a run whose first-stage probabilities are
+        /// <paramref name="probs"/>, at <paramref name="posAlong"/> metres along a run of
+        /// <paramref name="runLen"/> metres.
+        /// </summary>
+        public static float[] Describe(IReadOnlyList<float> probs, int i, float runLen, float posAlong, float[] sortedScratch = null)
+        {
+            var f = new float[Count];
+            int n = probs.Count;
+            int k = 0;
+            f[k++] = probs[i];
+            foreach (int o in Neighbours)
+            {
+                int j = i + o;
+                f[k++] = probs[j < 0 ? 0 : j >= n ? n - 1 : j];
+            }
+
+            float sum = 0f, max = 0f, min = 1f;
+            int over = 0;
+            for (int j = 0; j < n; j++)
+            {
+                float p = probs[j];
+                sum += p;
+                if (p > max) max = p;
+                if (p < min) min = p;
+                if (p >= ShareThreshold) over++;
+            }
+            float[] sorted = sortedScratch != null && sortedScratch.Length >= n ? sortedScratch : new float[n];
+            for (int j = 0; j < n; j++) sorted[j] = probs[j];
+            Array.Sort(sorted, 0, n);
+            f[k++] = sum / n;
+            f[k++] = max;
+            f[k++] = min;
+            f[k++] = sorted[(int)(0.75 * (n - 1))];
+            f[k++] = (float)over / n;
+
+            float wsum = 0f, wmax = 0f; int wn = 0;
+            for (int j = i - 4; j <= i + 4; j++)
+            {
+                if (j < 0 || j >= n) continue;
+                wsum += probs[j];
+                if (probs[j] > wmax) wmax = probs[j];
+                wn++;
+            }
+            f[k++] = wn == 0 ? 0f : wsum / wn;
+            f[k++] = wmax;
+
+            f[k++] = n;
+            f[k++] = runLen;
+            f[k++] = runLen > 1e-3f ? Math.Min(posAlong, runLen - posAlong) / runLen : 0f;
+            f[k++] = Math.Min(posAlong, runLen - posAlong);
+            return f;
+        }
+    }
+
     /// <summary>Loads the learned selector named by the settings, or the one CathodeLib embeds, once per path.</summary>
     public static class LearnedCover
     {
