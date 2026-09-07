@@ -451,7 +451,25 @@ namespace CathodeLib.NavMesh
         public float CrawlMinRegionDepth = 0.5f;
 
         /// <summary>Two crawl-space jobs are never placed closer together than this.</summary>
-        public float CrawlMinSeparation = 0.25f;
+        /// <remarks>
+        /// <b>0.25 -&gt; 0.50 (7 Sep 2026), campaign run `c22` against `c20`.</b> Crawl F1 73.84
+        /// -&gt; 76.67 and the count x1.592 -&gt; x1.184 - the surplus falls by 69%, and it was the
+        /// worst structural over-production of any of the four systems. Jobs 82.94 -&gt; 83.04,
+        /// overall 89.2 -&gt; 89.3. Byte scope verified: the only files that differ from `c20` across
+        /// all 32 levels are CRAWL_SPACE_SPOTTING_POSITIONS.
+        /// <para>The failure it fixes was pure PRECISION - crawl recall ran 91-96% while precision
+        /// sat at 55-63%, so we were finding nearly every retail job and inventing 60% more. 0.65
+        /// lands the count nearer still (x1.008) and is NOT taken: it loses 1.5 F1 and is 7 up / 7
+        /// down over fifteen levels, so its exact average hides per-level swings. The companion
+        /// gate <see cref="CrawlMinDistanceInsideDeepCrouchForSpotPosition"/> is negative on its own
+        /// (-5.4 at 0.50, -15.1 at 0.75) and adds nothing on top of the separation.</para>
+        /// <para><b>Why a knob the 30 Aug sweep measured at -0.2 is now worth +2.4:</b> that sweep
+        /// ran before the deep-crouch surface fix, which moved three of its four baseline levels a
+        /// long way (SCI_HospitalLower crawl 55.0 -&gt; 70.0, CM11 83.0 -&gt; 87.6, CM9 81.9 -&gt;
+        /// 85.1), and it ran through `diag jobiter` while that tool was still baking without the
+        /// embedded selectors. Its "do not re-run these sweeps" note had outlived its baseline.</para>
+        /// </remarks>
+        public float CrawlMinSeparation = 0.50f;
 
         // The glass wall test. A ray is swept through the cover at chest height, from
         // StartDistance on the walkable side to EndDistance on the far side (negative, so it
