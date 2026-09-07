@@ -64,6 +64,9 @@ namespace CATHODE.Scripting.Internal
                 if (!(parameter?.content is cResource resource))
                     continue;
 
+                if (resource.value == null)
+                    continue;
+
                 cResource sourceResource = source?.GetParameter(parameter.name)?.content as cResource;
                 foreach (ResourceReference reference in resource.value)
                     ShareLevelObjects(reference, sourceResource?.GetResource(reference.resource_type));
