@@ -5554,29 +5554,56 @@ namespace CATHODE
         /// <summary>
         /// Codec3Axis packs one axis of a child AABB into a single byte, as two 4-bit insets
         /// measured from each end of the parent AABB. Both insets are squared on decode:
-        /// <c>childMin = parentMin + (hi/15)^2 * extent</c> and
-        /// <c>childMax = parentMax - (lo/15)^2 * extent</c>, giving fine resolution where a child
+        /// <c>childMin = parentMin + hi*hi/226 * extent</c> and
+        /// <c>childMax = parentMax - lo*lo/226 * extent</c>, giving fine resolution where a child
         /// hugs the parent bounds and coarse resolution in the middle. A collapsed axis stores
         /// 255, which decodes back to the (zero-width) parent range.
         /// </summary>
+        /// <remarks>
+        /// The divisor is 226, not the 225 that "(n/15)^2" would suggest, and the difference is not
+        /// cosmetic. Every child is encoded against the box the runtime decodes for its parent, so a
+        /// divisor that is 0.44% off makes each level's box a few centimetres off, and over a chain of
+        /// twenty nodes that compounds into a metre: leaves whose geometry pokes out of their own box,
+        /// which in game is a floor the mid-phase never offers the narrow phase. With 226, retail's own
+        /// trees decode to contain every one of their 20,187 leaves with 1-2 mm of slack; with 225,
+        /// 0.1% of them. The constant comes from SoulsFormats' decode of the same hkcdStaticTree codec
+        /// in Dark Souls 3 collision, which was the first independent reading of these bytes we had.
+        /// </remarks>
         static byte EncodeCodec3Axis(float parentMin, float parentMax, float childMin, float childMax)
         {
             float extent = parentMax - parentMin;
             if (Math.Abs(extent) < 1e-6f)
                 return 255;
-            int hi = Codec3AxisNibble((childMin - parentMin) / extent);
-            int lo = Codec3AxisNibble((parentMax - childMax) / extent);
+            int hi = Codec3AxisNibble(parentMin, extent, childMin, +1f);
+            int lo = Codec3AxisNibble(parentMax, extent, childMax, -1f);
             return (byte)((hi << 4) | lo);
         }
 
-        /// <summary>Largest nibble whose squared inset still stays outside the child bound.</summary>
-        static int Codec3AxisNibble(float inset)
+        /// <summary>Squared-inset scale shared by encode and decode: nibble n means an inset of n*n/226 of the parent extent.</summary>
+        const float Codec3AxisScale = 1f / 226f;
+
+        /// <summary>
+        /// Largest nibble whose decoded edge still stays outside the child bound.
+        /// </summary>
+        /// <remarks>
+        /// The check is done by decoding the candidate exactly as <see cref="DecodeCodec3AxisComponent"/>
+        /// will - same float arithmetic, same order - rather than by comparing fractions, so that a
+        /// nibble accepted here can never round the other way when read back. <paramref name="dir"/>
+        /// is +1 for the min edge (inset grows from the parent's min) and -1 for the max edge.
+        /// </remarks>
+        static int Codec3AxisNibble(float parentEdge, float extent, float childEdge, float dir)
         {
+            float inset = (childEdge - parentEdge) * dir / extent;
             if (!(inset > 0f)) return 0;
-            if (inset >= 1f) return 15;
-            int n = (int)(15.0 * Math.Sqrt(inset));
+            int n = (int)Math.Sqrt(inset * 226.0);
             if (n > 15) n = 15;
-            while (n > 0 && (n / 15.0) * (n / 15.0) > inset) n--;
+            while (n > 0)
+            {
+                float decoded = parentEdge + dir * ((n * n) * Codec3AxisScale * extent);
+                bool contained = dir > 0f ? decoded <= childEdge : decoded >= childEdge;
+                if (contained) break;
+                n--;
+            }
             return n;
         }
 
@@ -5594,10 +5621,10 @@ namespace CATHODE
         static void DecodeCodec3AxisComponent(float parentMin, float parentMax, byte q, out float min, out float max)
         {
             float extent = parentMax - parentMin;
-            float hi = (q >> 4) / 15f;
-            float lo = (q & 0xF) / 15f;
-            min = parentMin + hi * hi * extent;
-            max = parentMax - lo * lo * extent;
+            int hi = q >> 4;
+            int lo = q & 0xF;
+            min = parentMin + (hi * hi) * Codec3AxisScale * extent;
+            max = parentMax - (lo * lo) * Codec3AxisScale * extent;
         }
 
         [Obsolete("Use BuildStorage6Tree — all-zero xyz mid-phase is unsafe for non-root nodes.")]
