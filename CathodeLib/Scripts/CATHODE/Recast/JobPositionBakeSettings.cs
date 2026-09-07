@@ -143,7 +143,19 @@ namespace CathodeLib.NavMesh
         public bool UseEmbeddedLearnedSelectors = true;
 
         /// <summary>Minimum distance between two learned spotting jobs, metres. Retail puts two within 0.75 m 5.6% of the time.</summary>
-        public float LearnedSpotSeparation = 0.75f;
+        /// <remarks>
+        /// <b>0.75 -&gt; 0.80 (7 Sep 2026), campaign run `c20` against `c17`.</b> Spotting F1 82.85
+        /// -&gt; 83.01 and the count surplus x1.060 -&gt; x1.036, so it improves parity on both the
+        /// score and the shape - our excess spotting falls by 40%. Jobs 82.87 -&gt; 82.94.
+        /// It only re-opened because two things changed under it: the selectors were retrained on
+        /// 31 levels on 6 Sep, and `diag jobiter` was calling <c>JobPositionBaker.Bake</c> WITHOUT
+        /// the embedded models, so every fast job sweep since the learned passes shipped had been
+        /// scoring the length-rule path instead (Tech_Hub spotting read ~70 there against the
+        /// harness's 83.3). Re-tune the learned constants after any retrain, with that tool.
+        /// A 14-level sweep over-promised here - it read +0.20 where the campaign gives +0.16, and
+        /// on <see cref="LearnedAssaultSeparation"/> it read +0.61 where the campaign gives +0.21.
+        /// </remarks>
+        public float LearnedSpotSeparation = 0.80f;
 
         /// <summary>
         /// Path of a learned ASSAULT selector (<c>diag coverml trainall assault</c>).
@@ -159,7 +171,14 @@ namespace CathodeLib.NavMesh
         public float LearnedAssaultThreshold = 0.45f;
 
         /// <summary>Minimum distance between two learned assault positions, metres. Retail's along-run gap is p5 1.08.</summary>
-        public float LearnedAssaultSeparation = 1.0f;
+        /// <remarks>
+        /// <b>0.85 measured and NOT taken (7 Sep 2026, campaign run `c21`).</b> It is worth +0.21
+        /// assault F1 (84.07 -&gt; 84.28) and buys it by moving the assault COUNT off retail's:
+        /// x1.014 -&gt; x1.036, from all but exact to 3.6% over. Matt's standing preference is
+        /// structural parity over the harness number where the two disagree - the same trade he
+        /// declined on the cover floor the same day - so it stays at 1.00.
+        /// </remarks>
+        public float LearnedAssaultSeparation = 1.00f;
 
         /// <summary>
         /// Path of a learned CRAWL-SPACE selector (<c>diag coverml trainall covered ... crawlml_</c>).

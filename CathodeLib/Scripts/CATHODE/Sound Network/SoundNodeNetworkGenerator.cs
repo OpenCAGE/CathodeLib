@@ -518,7 +518,7 @@ namespace CathodeLib
             // XZ extent of every candidate crossing's midpoint per pair - how WIDE the join is.
             var spread = new Dictionary<(int, int), (float x0, float x1, float z0, float z1)>();
             bool weighBarrier = _settings.BarrierBoundaryTest > 0;
-            int doorPairAdmitted = 0; int doorCrossAdmitted = 0;
+            int doorPairAdmitted = 0; int doorCrossAdmitted = 0; int nearCrossAdmitted = 0;
             {
                 var grid = new Dictionary<(int, int, int), List<int>>();
                 float cell = Math.Max(_settings.AdjoinDistance, 0.5f);
@@ -610,6 +610,17 @@ namespace CathodeLib
                                             uint pierced = BarrierCrossed(barrierGeometry, barrierTriangleInstance, nodes[i].Position, nodes[j].Position);
                                             if (pierced != 0u) { ok = true; if (bar == 0u) bar = pierced; doorCrossAdmitted++; }
                                         }
+                                        // Two rooms whose nearest nodes all but touch: a door leaf
+                                        // stands between them, and no sight test sees through it.
+                                        // See SoundNetworkBakeSettings.NearCrossingDistance.
+                                        if (!ok && _settings.NearCrossingDistance > 0f && a < markerNetworks && b < markerNetworks &&
+                                            dist <= _settings.NearCrossingDistance &&
+                                            dist >= _settings.NearCrossingMinDistance &&
+                                            (!_settings.NearCrossingNeedsBarrier || bar != 0u))
+                                        {
+                                            ok = true;
+                                            nearCrossAdmitted++;
+                                        }
                                     }
                                     else if (weighBarrier)
                                     {
@@ -649,6 +660,8 @@ namespace CathodeLib
             // one another declare a boundary they have no door for.
             if (doorPairAdmitted > 0)
                 log?.Invoke("Sound networks: admitted " + doorPairAdmitted + " door-package node pair(s) as boundary crossings the opening test refused.");
+            if (nearCrossAdmitted > 0)
+                log?.Invoke("Sound networks: admitted " + nearCrossAdmitted + " crossing(s) between marker networks whose nodes are within " + _settings.NearCrossingDistance.ToString("0.##") + " m.");
             if (doorCrossAdmitted > 0)
                 log?.Invoke("Sound networks: admitted " + doorCrossAdmitted + " crossing(s) between marker networks that pierce a door barrier within " + _settings.DoorCrossingMaxDistance.ToString("0.#") + " m.");
             if (weighBarrier)
@@ -725,7 +738,7 @@ namespace CathodeLib
 
             // Put back the refused boundaries that a named network's only route depends on - see
             // SoundNetworkBakeSettings.ReconnectNetworkGraph.
-            if (_settings.ReconnectNetworkGraph && markerNetworks > 1 && refused.Count > 0)
+            if (_settings.ReconnectNetworkGraph && markerNetworks > 1 && (refused.Count > 0 || _settings.ReconnectSearchDistance > 0f))
             {
                 var parent = new int[markerNetworks];
                 for (int i = 0; i < markerNetworks; i++) parent[i] = i;
@@ -743,9 +756,24 @@ namespace CathodeLib
                     if (pair.Key.Item2 < markerNetworks) hasBoundary[pair.Key.Item2] = true;
                 }
 
+                // How many networks each piece of the graph holds, as it stands before anything is
+                // put back. See SoundNetworkBakeSettings.ReconnectMinComponent.
+                var pieceOf = new int[markerNetworks];
+                var pieceSize = new Dictionary<int, int>();
+                for (int i = 0; i < markerNetworks; i++)
+                {
+                    pieceOf[i] = Find(i);
+                    if (networks[i].Nodes.Count == 0) continue;
+                    pieceSize[pieceOf[i]] = pieceSize.TryGetValue(pieceOf[i], out int had) ? had + 1 : 1;
+                }
+                int minComponent = Math.Max(1, _settings.ReconnectMinComponent);
+                int PieceSize(int n) { return pieceSize.TryGetValue(pieceOf[n], out int k) ? k : 0; }
+                bool BigEnough(int x, int y) { return minComponent <= 1 || (PieceSize(x) >= minComponent && PieceSize(y) >= minComponent); }
+
                 var candidates = new List<KeyValuePair<(int, int), (int a, int b, float dist, uint barrier, bool ok)>>();
                 foreach (var pair in refused)
                     if (pair.Key.Item1 < markerNetworks && pair.Key.Item2 < markerNetworks && !shortest.ContainsKey(pair.Key) &&
+                        BigEnough(pair.Key.Item1, pair.Key.Item2) &&
                         (!_settings.ReconnectIsolatedOnly || !hasBoundary[pair.Key.Item1] || !hasBoundary[pair.Key.Item2]))
                         candidates.Add(pair);
                 candidates.Sort((x, y) => x.Value.dist.CompareTo(y.Value.dist));
@@ -759,6 +787,45 @@ namespace CathodeLib
                     }
                 if (reconnected > 0)
                     log?.Invoke("Sound networks: put back " + reconnected + " refused boundary(s) that were a named network's only route - a level's rooms are one connected space.");
+
+                // Where the two parts are further apart than AdjoinDistance there is no refused
+                // candidate to put back at all, so look for a crossing of our own. See
+                // SoundNetworkBakeSettings.ReconnectSearchDistance.
+                if (_settings.ReconnectSearchDistance > 0f)
+                {
+                    var reach = new Dictionary<(int, int), (int i, int j, float dist)>();
+                    float limit = _settings.ReconnectSearchDistance;
+                    for (int i = 0; i < nodes.Length; i++)
+                    {
+                        if (nodes[i] == null || owner[i] < 0 || owner[i] >= markerNetworks) continue;
+                        for (int j = i + 1; j < nodes.Length; j++)
+                        {
+                            if (nodes[j] == null || owner[j] < 0 || owner[j] >= markerNetworks) continue;
+                            int a = owner[i], b = owner[j];
+                            if (a == b || Find(a) == Find(b)) continue;
+                            if (!BigEnough(a, b)) continue;
+                            float dist = Vector3.Distance(nodes[i].Position, nodes[j].Position);
+                            if (dist > limit) continue;
+                            var key = a < b ? (a, b) : (b, a);
+                            int lo = a < b ? i : j, hi = a < b ? j : i;
+                            if (reach.TryGetValue(key, out var held) && held.dist <= dist) continue;
+                            reach[key] = (lo, hi, dist);
+                        }
+                    }
+                    var reached = new List<KeyValuePair<(int, int), (int i, int j, float dist)>>(reach);
+                    reached.Sort((x, y) => x.Value.dist.CompareTo(y.Value.dist));
+                    int joined = 0;
+                    foreach (var pair in reached)
+                    {
+                        if (shortest.ContainsKey(pair.Key) || !Union(pair.Key.Item1, pair.Key.Item2)) continue;
+                        uint bar = NearestBarrier(barriers, (nodes[pair.Value.i].Position + nodes[pair.Value.j].Position) * 0.5f);
+                        shortest[pair.Key] = (pair.Value.i, pair.Value.j, pair.Value.dist, bar, true);
+                        joined++;
+                    }
+                    if (joined > 0)
+                        log?.Invoke("Sound networks: joined " + joined + " unreachable network(s) at their nearest crossing within " +
+                                    limit.ToString("0.#") + " m - no refused candidate existed that far apart.");
+                }
             }
 
             var adjacency = new List<int>[networks.Count];
