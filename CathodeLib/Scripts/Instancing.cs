@@ -109,6 +109,16 @@ namespace CathodeLib
                 return Values.ContainsKey(guid);
             }
 
+            /// <summary>
+            /// Whether this instance has a value for the parameter from ANY source - its own, or a link
+            /// driving it. <see cref="Has"/> only sees the former, so it answers "did the template set
+            /// this", not "does this instance have one".
+            /// </summary>
+            public bool HasAny(ShortGuid guid)
+            {
+                return Values.ContainsKey(guid) || (Links.TryGetValue(guid, out var links) && links.Count != 0);
+            }
+
             public T Get(ShortGuid guid)
             {
                 //Check links first, these override the values.

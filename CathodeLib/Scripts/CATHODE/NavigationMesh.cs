@@ -190,6 +190,18 @@ namespace CATHODE
         };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        /// <summary>
+        /// The bit-packed area word: poly type, barrier id, enabled, character admittance, off-mesh
+        /// link type, height class and markup, in 24 bits.
+        /// </summary>
+        /// <remarks>
+        /// Every setter masks its value to its own field. They did not, and a value too wide for its
+        /// field silently ran into the next one: TECH_COMMS shipped four ground polygons reading
+        /// link type Teleport and four reading link type 8 because a barrier's classes were being
+        /// written into the 5-bit admittance field as the 10-bit CHARACTER_CLASS_COMBINATION they were
+        /// authored in. Nothing complained, and the corruption was only visible by diffing the shipped
+        /// file's histograms against retail's.
+        /// </remarks>
         public struct dt_area_t
         {
             private uint _value;
@@ -228,7 +240,7 @@ namespace CATHODE
             }
             public void SetPolyType(dtPolyTypes type_)
             {
-                _value = (_value & ~(TYPE_MASK << (int)TYPE_SHIFT)) | ((uint)type_ << (int)TYPE_SHIFT);
+                _value = (_value & ~(TYPE_MASK << (int)TYPE_SHIFT)) | (((uint)type_ & TYPE_MASK) << (int)TYPE_SHIFT);
             }
 
             public ushort GetId()
@@ -237,7 +249,7 @@ namespace CATHODE
             }
             public void SetId(ushort id_)
             {
-                _value = (_value & ~(ID_MASK << (int)ID_SHIFT)) | ((uint)id_ << (int)ID_SHIFT);
+                _value = (_value & ~(ID_MASK << (int)ID_SHIFT)) | (((uint)id_ & ID_MASK) << (int)ID_SHIFT);
             }
 
             public bool GetIsEnabled()
@@ -258,7 +270,7 @@ namespace CATHODE
             }
             public void SetAdmittanceFlags(NAVIGATION_CHARACTER_CLASS_COMBINATION admittance_flags_)
             {
-                _value = (_value & ~(ADMITTANCE_FLAGS_MASK << (int)ADMITTANCE_FLAGS_SHIFT)) | ((uint)admittance_flags_ << (int)ADMITTANCE_FLAGS_SHIFT);
+                _value = (_value & ~(ADMITTANCE_FLAGS_MASK << (int)ADMITTANCE_FLAGS_SHIFT)) | (((uint)admittance_flags_ & ADMITTANCE_FLAGS_MASK) << (int)ADMITTANCE_FLAGS_SHIFT);
             }
 
             public OffMeshLinkType GetLinkType()
@@ -267,7 +279,7 @@ namespace CATHODE
             }
             public void SetLinkType(OffMeshLinkType link_type_)
             {
-                _value = (_value & ~(LINK_TYPE_MASK << (int)LINK_TYPE_SHIFT)) | ((uint)link_type_ << (int)LINK_TYPE_SHIFT);
+                _value = (_value & ~(LINK_TYPE_MASK << (int)LINK_TYPE_SHIFT)) | (((uint)link_type_ & LINK_TYPE_MASK) << (int)LINK_TYPE_SHIFT);
             }
 
             public AreaHeight GetHeightLimitedAmount()
@@ -276,7 +288,7 @@ namespace CATHODE
             }
             public void SetHeightLimitedAmount(AreaHeight height_limited_amount_)
             {
-                _value = (_value & ~(HEIGHT_LIMITED_AMOUNT_MASK << (int)HEIGHT_LIMITED_AMOUNT_SHIFT)) | ((uint)height_limited_amount_ << (int)HEIGHT_LIMITED_AMOUNT_SHIFT);
+                _value = (_value & ~(HEIGHT_LIMITED_AMOUNT_MASK << (int)HEIGHT_LIMITED_AMOUNT_SHIFT)) | (((uint)height_limited_amount_ & HEIGHT_LIMITED_AMOUNT_MASK) << (int)HEIGHT_LIMITED_AMOUNT_SHIFT);
             }
 
             public NavMeshAreaType GetMarkupFlags()
@@ -285,7 +297,7 @@ namespace CATHODE
             }
             public void SetMarkupFlags(NavMeshAreaType markup_flags_)
             {
-                _value = (_value & ~(MARKUP_FLAGS_MASK << (int)MARKUP_FLAGS_SHIFT)) | ((uint)markup_flags_ << (int)MARKUP_FLAGS_SHIFT);
+                _value = (_value & ~(MARKUP_FLAGS_MASK << (int)MARKUP_FLAGS_SHIFT)) | (((uint)markup_flags_ & MARKUP_FLAGS_MASK) << (int)MARKUP_FLAGS_SHIFT);
             }
 
             public static implicit operator uint(dt_area_t area)

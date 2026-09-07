@@ -1011,10 +1011,15 @@ namespace CathodeLib.NavMesh
                 if (hitBarrier < 0)
                     continue;
 
+                /* The id is all that goes on the polygon. Who may cross the slice is held on the
+                   PATH_BARRIER_RESOURCES row of the same id, which is what the runtime rewrites as
+                   the door opens and shuts - and retail proves the polygon takes no part in it, by
+                   shipping admit=ALL on all 313 of TECH_COMMS's barrier polys whatever their door
+                   allows. Stamping the barrier's initial classes here instead would freeze a shut
+                   door's slice at NONE for the life of the level. */
                 CollisionNavMeshSoup.BarrierVolume hit = barriers[hitBarrier];
                 NavigationMesh.dt_area_t area = NavigationMesh.CreateDefaultGroundArea();
                 area.SetId((ushort)hit.AreaId);
-                area.SetAdmittanceFlags(hit.InitialClasses);
                 areas[i] = area;
                 stampedCount++;
                 covered[hitBarrier] = true;
@@ -1193,19 +1198,44 @@ namespace CathodeLib.NavMesh
         }
 
         /// <summary>
-        /// Grow the link array to leave runtime headroom, returning the pool size to advertise.
-        /// Padding entries are inert (polygonRef 0, next = DT_NULL_LINK).
+        /// Grow the link array to the size Detour would have allocated, leaving the spare entries as a
+        /// free list. Returns the pool size to advertise.
         /// </summary>
-        static int PadLinkPool(List<NavigationMesh.dtLink> links)
+        /// <remarks>
+        /// The pool is sized from the polygon EDGES, not from the links actually built - one per ground
+        /// poly edge, two per tile-boundary portal, four per off-mesh connection. Measured against the
+        /// shipped files that is exact on 17 of 19 tiles (the other two, TECH_COMMS and Solace, come out
+        /// 2 and 4 links larger than this, which are entries nothing in the file accounts for). The old
+        /// guess of used + 50% + 64 landed in the right ballpark but matched nothing.
+        ///
+        /// The spare entries are a FREE LIST: each points at the next and the last is DT_NULL_LINK, which
+        /// is how Detour expects to find an unused pool and how every shipped tile is written. Leaving
+        /// them all as DT_NULL_LINK - which is what this did - is a broken free list; a runtime that
+        /// trusts it rather than rebuilding gets one spare link and no more.
+        /// </remarks>
+        static int PadLinkPool(List<NavigationMesh.dtLink> links, NavigationMesh.dtPoly[] polys, int groundPolyCount, int offMeshConCount)
         {
+            int edges = 0, portals = 0;
+            for (int i = 0; i < groundPolyCount && i < polys.Length; i++)
+            {
+                NavigationMesh.dtPoly poly = polys[i];
+                edges += poly.vertCount;
+                for (int e = 0; e < poly.vertCount && e < poly.neis.Length; e++)
+                    if ((poly.neis[e] & DtDetour.DT_EXT_LINK) != 0)
+                        portals++;
+            }
+
             int used = links.Count;
-            int target = used + used / 2 + 64;
+            int target = edges + portals * 2 + offMeshConCount * 4;
+            if (target < used)
+                target = used;
+
             for (int i = used; i < target; i++)
             {
                 links.Add(new NavigationMesh.dtLink
                 {
                     polygonRef = 0,
-                    next = DT_NULL_LINK,
+                    next = i + 1 < target ? i + 1 : DT_NULL_LINK,
                     edge = 0,
                     side = 0,
                     bmin = 0,
@@ -1597,7 +1627,7 @@ namespace CathodeLib.NavMesh
                 polyFlags = pmesh.flags,
                 polyCount = pmesh.npolys,
                 nvp = pmesh.nvp,
-                walkableHeight = settings.LowestNavigableHeight,
+                walkableHeight = settings.HeaderWalkableHeight,
                 walkableRadius = settings.WalkableRadius,
                 walkableClimb = settings.WalkableClimb,
                 bmin = pmesh.bmin,
@@ -2197,17 +2227,14 @@ namespace CathodeLib.NavMesh
                 userId = 0,
                 polyCount = dstPolyCount,
                 vertCount = dstVerts.Count,
-                //The pool has to have room for the links the runtime adds on load (doors opening,
-                //off-mesh connections being re-linked). Retail ships roughly 1.7x the used count;
-                //over-allocating only costs memory, under-allocating silently drops links.
-                maxLinkCount = PadLinkPool(links),
+                maxLinkCount = PadLinkPool(links, dstPolys, groundPolyCount, offMeshConnections.Length),
                 detailMeshCount = dstDetail.Count,
                 detailVertCount = dstDetailVerts.Count,
                 detailTriCount = dstDetailTris.Count / 4,
                 bvNodeCount = bvNodes.Length,
                 offMeshConCount = offMeshConnections.Length,
                 offMeshBase = groundPolyCount,
-                walkableHeight = settings.LowestNavigableHeight,
+                walkableHeight = settings.HeaderWalkableHeight,
                 walkableRadius = settings.WalkableRadius,
                 walkableClimb = settings.WalkableClimb,
                 bMin = new[] { srcHeader.bmin.X, srcHeader.bmin.Y, srcHeader.bmin.Z },

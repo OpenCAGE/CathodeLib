@@ -12,6 +12,18 @@ namespace CathodeLib.NavMesh
          * SCI_HUB 30 -> 13, ChallengeMap4 36 -> 29, ENG_Alien_Nest 32 -> 18, Solace 16 -> 12; anything
          * below 7 cells recovers nothing more and starts over-generating. */
         public float LowestNavigableHeight = 0.4375f;
+        /// <summary>
+        /// The <c>walkableHeight</c> written into the tile header, which is NOT the height the mesh was
+        /// built at.
+        /// </summary>
+        /// <remarks>
+        /// Every shipped NAV_MESH carries 0.5 - all 11 tiles surveyed across 8 levels, every state -
+        /// while the geometry plainly was not built at a flat 0.5 (see LowestNavigableHeight, which is
+        /// 7 cells because 8 throws away the DeepCrouch polys retail keeps). The header field is what
+        /// the runtime queries with; the build height is a property of the bake. Writing the build
+        /// height here shipped 0.4375 in every tile we produced.
+        /// </remarks>
+        public float HeaderWalkableHeight = 0.5f;
         public float DeepCrouchHeight = 0.875f;
         public float CrouchHeight = 1.625f;
         public float WalkableRadius = 0.3125f;

@@ -132,12 +132,14 @@ namespace CathodeLib.NavMesh
                 soup.Barriers = sharedAuthoring.Barriers ?? soup.Barriers;
                 // Rebuild PATH_CLOSED skip only (barrier volume list already filled).
                 Dictionary<uint, FunctionEntity> barrierEntities = IndexBarrierEntities(level);
-                CollectBarrierVolumes(level, hkx, host, barrierEntities, new List<BarrierVolume>(), skip);
+                //The volumes are already collected; this call only rebuilds the skip set, so it has no
+                //use for the per-instance parameters and should not pay to index them
+                CollectBarrierVolumes(level, hkx, host, barrierEntities, new List<BarrierVolume>(), skip, null);
             }
             else
             {
                 Dictionary<uint, FunctionEntity> barrierEntities = IndexBarrierEntities(level);
-                CollectBarrierVolumes(level, hkx, host, barrierEntities, soup.Barriers, skip);
+                CollectBarrierVolumes(level, hkx, host, barrierEntities, soup.Barriers, skip, placement);
             }
 
             CollectSoundBarrierSkip(level, skip, settings);
@@ -485,7 +487,8 @@ namespace CathodeLib.NavMesh
             HavokPackfile.StaticCompoundShape bakeHost,
             Dictionary<uint, FunctionEntity> barrierEntities,
             List<BarrierVolume> barriers,
-            HashSet<HavokPackfile.CompoundInstance> skip)
+            HashSet<HavokPackfile.CompoundInstance> skip,
+            Instancing placement = null)
         {
             if (level.CollisionMaps?.Entries == null)
                 return;
@@ -493,6 +496,12 @@ namespace CathodeLib.NavMesh
             ShortGuid openOnResetGuid = ShortGuids.open_on_reset;
             ShortGuid whenOpenGuid = ShortGuids.allowed_character_classes_when_open;
             ShortGuid whenClosedGuid = ShortGuids.allowed_character_classes_when_closed;
+
+            /* One door composite is instanced many times and retail does not treat the instances alike -
+               TECH_COMMS ships Door_Package's 49 barriers as 39 shut and 10 open. The template entity
+               cannot say which is which, so where the instancing pass is to hand its per-instance
+               parameters (overrides and links included) are what get read. */
+            Dictionary<ulong, InstancedEntity> barrierInstances = IndexBarrierInstances(placement);
 
             int nextAreaId = 1;
             foreach (CollisionMaps.COLLISION_MAPPING entry in level.CollisionMaps.Entries)
@@ -527,8 +536,18 @@ namespace CathodeLib.NavMesh
                 if (barrierEnt == null && entry.ResourceGUID != ShortGuid.Invalid)
                     barrierEntities.TryGetValue(entry.ResourceGUID.AsUInt32, out barrierEnt);
 
-                NAVIGATION_CHARACTER_CLASS_COMBINATION initial =
-                    ResolveInitialClasses(barrierEnt, openOnResetGuid, whenOpenGuid, whenClosedGuid);
+                InstancedEntity barrierInstance = null;
+                if (barrierInstances.Count != 0 && entry.Entity != null)
+                {
+                    ShortGuid barrierId = entry.ResourceGUID != ShortGuid.Invalid
+                        ? entry.ResourceGUID
+                        : entry.Entity.entity_id;
+                    barrierInstances.TryGetValue(
+                        InstanceKey(entry.Entity.composite_instance_id, barrierId), out barrierInstance);
+                }
+
+                NAVIGATION_CHARACTER_CLASS_COMBINATION initial = ResolveInitialClasses(
+                    barrierEnt, barrierInstance, openOnResetGuid, whenOpenGuid, whenClosedGuid);
 
                 Resources.Resource resource = ResolveOrAddResource(level, entry);
 
@@ -567,15 +586,36 @@ namespace CathodeLib.NavMesh
             return level.Resources.AddUniqueResource(resourceId, compositeInstanceId);
         }
 
+        /// <summary>
+        /// What a door blocker lets through when the level starts.
+        /// </summary>
+        /// <remarks>
+        /// Three things this has to get right, all read off the shipped data by BackstageNavTest
+        /// `barrierrule` over the 16 levels whose PATH_BARRIER_RESOURCES is still retail's (~990 rows,
+        /// every authoring signature unanimous):
+        ///
+        /// A barrier with no <c>open_on_reset</c> parameter starts CLOSED. Defaulting it open put 61 of
+        /// TECH_COMMS's 160 barriers on ALL where retail has NONE - most of the level's doors standing
+        /// open to the alien, which is the bug this was found from. Retail's split is exact: 197 rows
+        /// carrying open_on_reset=True ship ALL, 590 without it ship NONE.
+        ///
+        /// The classes are authored in the game's ten-class CHARACTER_CLASS_COMBINATION and stored in
+        /// navigation's five-class one, so they go through <see cref="NavigationCharacterClasses"/>
+        /// rather than being cast across.
+        ///
+        /// And the values are read per INSTANCE where the instancing pass is available, because one door
+        /// composite's instances do not all agree - see the note at the call site.
+        /// </remarks>
         static NAVIGATION_CHARACTER_CLASS_COMBINATION ResolveInitialClasses(
             FunctionEntity barrierEnt,
+            InstancedEntity barrierInstance,
             ShortGuid openOnResetGuid,
             ShortGuid whenOpenGuid,
             ShortGuid whenClosedGuid)
         {
-            bool openOnReset = true;
-            NAVIGATION_CHARACTER_CLASS_COMBINATION whenOpen = NAVIGATION_CHARACTER_CLASS_COMBINATION.ALL;
-            NAVIGATION_CHARACTER_CLASS_COMBINATION whenClosed = NAVIGATION_CHARACTER_CLASS_COMBINATION.NONE;
+            bool openOnReset = false;
+            int whenOpen = NavigationCharacterClasses.AllCharacterClasses;
+            int whenClosed = 0;
 
             if (barrierEnt != null)
             {
@@ -585,14 +625,68 @@ namespace CathodeLib.NavMesh
 
                 Parameter openClasses = barrierEnt.GetParameter(whenOpenGuid);
                 if (openClasses?.content is cEnum openEnum && openEnum.enumIndex >= 0)
-                    whenOpen = (NAVIGATION_CHARACTER_CLASS_COMBINATION)openEnum.enumIndex;
+                    whenOpen = openEnum.enumIndex;
 
                 Parameter closedClasses = barrierEnt.GetParameter(whenClosedGuid);
                 if (closedClasses?.content is cEnum closedEnum && closedEnum.enumIndex >= 0)
-                    whenClosed = (NAVIGATION_CHARACTER_CLASS_COMBINATION)closedEnum.enumIndex;
+                    whenClosed = closedEnum.enumIndex;
             }
 
-            return openOnReset ? whenOpen : whenClosed;
+            //Whatever this instance says wins over the template it was stamped from
+            if (barrierInstance != null)
+            {
+                if (barrierInstance.Bools.HasAny(openOnResetGuid))
+                    openOnReset = barrierInstance.Bools.Get(openOnResetGuid);
+
+                if (barrierInstance.EnumIndexes.HasAny(whenOpenGuid))
+                {
+                    int value = barrierInstance.EnumIndexes.Get(whenOpenGuid);
+                    if (value >= 0) whenOpen = value;
+                }
+
+                if (barrierInstance.EnumIndexes.HasAny(whenClosedGuid))
+                {
+                    int value = barrierInstance.EnumIndexes.Get(whenClosedGuid);
+                    if (value >= 0) whenClosed = value;
+                }
+            }
+
+            return NavigationCharacterClasses.FromCharacterClasses(openOnReset ? whenOpen : whenClosed);
+        }
+
+        /// <summary>
+        /// NavMeshBarrier entities by the (composite instance, entity) pair a COLLISION.MAP row names.
+        /// </summary>
+        /// <remarks>
+        /// Only the barriers - a level carries over a million instanced entities and this needs the
+        /// couple of hundred that are doors.
+        /// </remarks>
+        static Dictionary<ulong, InstancedEntity> IndexBarrierInstances(Instancing placement)
+        {
+            var map = new Dictionary<ulong, InstancedEntity>();
+            if (placement == null)
+                return map;
+
+            foreach (InstancedEntity entity in placement.GeneratedEntities)
+            {
+                if (entity?.Entity == null || entity.ThisCompositeInstance == null)
+                    continue;
+                if (entity.Entity.variant != EntityVariant.FUNCTION)
+                    continue;
+
+                FunctionEntity function = (FunctionEntity)entity.Entity;
+                if (!function.function.IsFunctionType || function.function.AsFunctionType != FunctionType.NavMeshBarrier)
+                    continue;
+
+                map[InstanceKey(entity.ThisCompositeInstance.InstanceID, function.shortGUID)] = entity;
+            }
+
+            return map;
+        }
+
+        static ulong InstanceKey(ShortGuid compositeInstance, ShortGuid entity)
+        {
+            return ((ulong)compositeInstance.AsUInt32 << 32) | entity.AsUInt32;
         }
 
         static Dictionary<uint, FunctionEntity> IndexBarrierEntities(Level level)

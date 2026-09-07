@@ -396,29 +396,17 @@ namespace CathodeLib.NavMesh
                 && (entity.EnumIndexes.Links == null || !entity.EnumIndexes.Links.ContainsKey(ShortGuids.character_classes)))
                 return NAVIGATION_CHARACTER_CLASS_COMBINATION.ALL;
 
-            // The parameter is an INDEX into the enum as declared, not the enum's value. That
-            // distinction matters here because the enum is a bitfield - HUMANOID_NPC is
-            // HUMAN | ANDROID, not the eighth integer - so casting the index straight to the type
-            // lands on an undefined combination and fell through to ALL. BSP_TORRENS ended up with
-            // all 24 off-mesh connections set to ALL where retail has 20 of them HUMANOID_NPC.
-            int idx = entity.EnumIndexes.Get(ShortGuids.character_classes);
-            NAVIGATION_CHARACTER_CLASS_COMBINATION[] declared = DeclaredCharacterClasses;
-            if (idx >= 0 && idx < declared.Length)
-                return declared[idx];
-            return NAVIGATION_CHARACTER_CLASS_COMBINATION.ALL;
-        }
+            /* The parameter carries the VALUE of a CHARACTER_CLASS_COMBINATION, not a position in it -
+               the shipped data holds 35, 166, 256, 600 and 733 in these, none of which is an index into
+               a 21-entry list, and a barrier authored 35 (PLAYER_AND_ALIEN) ships as navigation 19,
+               which only works if 35 is read as a value. This used to index the declaration order and
+               fall through to ALL for anything past the end, which is why 104 of TECH_COMMS's 227
+               connections came out ALL where retail has HUMANOID_NPC or PLAYER.
 
-        /// <summary>The combination enum in declaration order, which is what the index addresses.</summary>
-        static readonly NAVIGATION_CHARACTER_CLASS_COMBINATION[] DeclaredCharacterClasses = BuildDeclaredCharacterClasses();
-
-        static NAVIGATION_CHARACTER_CLASS_COMBINATION[] BuildDeclaredCharacterClasses()
-        {
-            System.Reflection.FieldInfo[] fields = typeof(NAVIGATION_CHARACTER_CLASS_COMBINATION)
-                .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-            var values = new NAVIGATION_CHARACTER_CLASS_COMBINATION[fields.Length];
-            for (int i = 0; i < fields.Length; i++)
-                values[i] = (NAVIGATION_CHARACTER_CLASS_COMBINATION)fields[i].GetRawConstantValue();
-            return values;
+               It is also a different enum from the one stored: ten game classes in, five navigation
+               classes out. See NavigationCharacterClasses. */
+            int authored = entity.EnumIndexes.Get(ShortGuids.character_classes);
+            return NavigationCharacterClasses.FromCharacterClasses(authored);
         }
 
     }
