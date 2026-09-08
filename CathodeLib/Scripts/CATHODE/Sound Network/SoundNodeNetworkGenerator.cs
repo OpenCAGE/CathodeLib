@@ -150,7 +150,7 @@ namespace CathodeLib
                 if (!(entity?.Entity is FunctionEntity function) || !function.function.IsFunctionType) continue;
                 switch (function.function.AsFunctionType)
                 {
-                    case FunctionType.SoundLevelInitialiser: initialiser ??= entity; break;
+                    case FunctionType.SoundLevelInitialiser: if (initialiser == null || _settings.UseLastInitialiser) initialiser = entity; break;
                     case FunctionType.SoundEnvironmentMarker:
                         // A marker with disable_network_creation still exists to be entered and
                         // exited, but contributes no network of its own.
@@ -220,14 +220,17 @@ namespace CathodeLib
             // one and retail scatters over all of them; treating an absent initialiser as "off" left
             // those levels with only their authored nodes.
             bool autoGenerate = initialiser == null || initialiser.Bools.Get(ShortGuidUtils.Generate("auto_generate_networks"));
-            float minSpacing = initialiser == null ? 1.4f : initialiser.Floats.Get(ShortGuidUtils.Generate("network_node_min_spacing"));
+            float minSpacing = initialiser == null ? _settings.NoInitialiserSpacing : initialiser.Floats.Get(ShortGuidUtils.Generate("network_node_min_spacing"));
             // The initialiser's other parameter. No initialiser, no cap - which is the split between
             // the DLC maps that land on retail's node count and the campaign levels that overshoot.
             float markerSight = initialiser == null ? 0.0f : initialiser.Floats.Get(ShortGuidUtils.Generate("network_node_max_visibility"));
-            if (minSpacing <= 0.0f) minSpacing = 1.4f;
+            if (minSpacing <= 0.0f) minSpacing = _settings.NoInitialiserSpacing;
+            // The initialiser's third parameter, never implemented. Logged so its effective value -
+            // including the type default on the levels that do not author it - can be read per level.
+            float ceilingHeight = initialiser == null ? 0.0f : initialiser.Floats.Get(ShortGuidUtils.Generate("network_node_ceiling_height"));
             log?.Invoke("Sound networks: initialiser " + (initialiser == null ? "absent" : "present") +
                         ", auto_generate_networks=" + autoGenerate + ", min spacing=" + minSpacing.ToString("0.##") +
-                        ", markers=" + markers.Count + ", hand-placed nodes=" + manualNodes.Count);
+                        ", ceiling=" + ceilingHeight.ToString("0.##") + ", markers=" + markers.Count + ", hand-placed nodes=" + manualNodes.Count);
 
             // Sound is blocked by world collision and by SoundBarrier volumes, both of which are
             // already in the collision soup the radiosity occluder pass collects.
@@ -280,7 +283,7 @@ namespace CathodeLib
             int autoCount = 0;
             if (autoGenerate)
             {
-                autoCount = ScatterOverNavmesh(level, positions, minSpacing, occluders, markerPositions, markerSight, log);
+                autoCount = ScatterOverNavmesh(level, positions, minSpacing, occluders, markerPositions, markerSight, ceilingHeight, log);
             }
 
             List<Link> links = BuildLinks(positions, occluders, MaxLinkDistance, log);
@@ -1760,7 +1763,7 @@ namespace CathodeLib
         /// of a node already accepted - which includes the hand-placed ones already in the list.
         /// </summary>
         private static int ScatterOverNavmesh(Level level, List<Vector3> accepted, float minSpacing, BVHAccel occluders,
-                                              List<Vector3> markerPositions, float markerSight = 0.0f, Action<string> log = null)
+                                              List<Vector3> markerPositions, float markerSight = 0.0f, float ceilingHeight = 0.0f, Action<string> log = null)
         {
             NavigationMesh nav = level.StateResources != null && level.StateResources.Count > 0
                 ? level.StateResources[0].NavMesh : null;
@@ -1868,6 +1871,19 @@ namespace CathodeLib
                             " fill candidate(s) are out of sight of every marker within " + markerSight.ToString("0.#") + " m and are dropped.");
             }
 
+            // Retail's fill stops short of ours by 20-50% on every level that has an initialiser and
+            // matches it on every level that does not, so the initialiser suppresses fill somehow.
+            // A candidate under open sky - a hangar, a courtyard, the top of a stairwell - has no
+            // ceiling within the authored height, and dropping those is the remaining candidate.
+            if (_settings.FillRequiresCeiling && ceilingHeight > 0.0f && occluders != null)
+            {
+                float ceiling = ceilingHeight / Math.Max(0.01f, _settings.CeilingHeightScale);
+                int beforeCeiling = pending.Count;
+                pending.RemoveAll(p => Visible(occluders, p, p + new Vector3(0.0f, ceiling, 0.0f)));
+                log?.Invoke("Sound networks: " + (beforeCeiling - pending.Count) + " of " + beforeCeiling +
+                            " fill candidate(s) have no ceiling within " + ceiling.ToString("0.##") + " m and are dropped.");
+            }
+
             int seedCount = accepted.Count;
             float minSq = minSpacing * minSpacing;
 
@@ -1903,6 +1919,13 @@ namespace CathodeLib
 
             int added = 0;
             float autoMinSq = (minSpacing * _settings.AutoSpacingScale) * (minSpacing * _settings.AutoSpacingScale);
+
+            /* Which of two candidates a spacing floor lets through is decided by the ORDER they are
+             * offered in, not by geometry, so the order sets the PHASE of the packing - and phase is
+             * exactly what node recall measures. The loop below walks `pending` backwards, so the
+             * default is the candidate list reversed; reversing it here walks it forwards instead.
+             * Nothing else about the fill changes. */
+            if (_settings.FillForwardOrder) pending.Reverse();
 
             /* How many accepted nodes each pending candidate has already been measured against.
              * Both tests below are a plain OR over the accepted set - too close to ANY of them, or

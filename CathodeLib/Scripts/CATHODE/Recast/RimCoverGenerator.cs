@@ -505,7 +505,7 @@ namespace CathodeLib.NavMesh
                 int steps = Math.Max(1, aligned ? (int)Math.Round(edge.Length / step) : (int)Math.Ceiling(edge.Length / step));
                 for (int i = 0; i < steps; i++)
                 {
-                    float at = aligned ? (i + 0.5f) / steps : (float)i / steps;
+                    float at = aligned ? (i + Math.Min(0.99f, Math.Max(0.01f, settings.RimSamplePhase))) / steps : (float)i / steps;
                     Vector3 p = Vector3.Lerp(edge.A, edge.B, at);
                     points.Add(p);
                     inwards.Add(edge.Inward);

@@ -1151,6 +1151,19 @@ namespace CathodeLib.NavMesh
         /// <summary>Step along the rim at which cover is tested.</summary>
         public float RimSampleStep = 0.25f;
 
+        /// <summary>
+        /// Where in each rim sample interval the cover pass samples, as a fraction. 0.5 is the
+        /// midpoint. The sample COUNT and step do not change; only the phase does.
+        /// </summary>
+        /// <remarks>
+        /// Not a tuning knob - it exists to bound the ceiling, the same way
+        /// JobPositionBakeSettings.LearnedStationPhase does for spotting. Where the sampling starts
+        /// is an arbitrary choice, so a run at a different phase is an equally valid output of the
+        /// same rule; scoring two of our own against each other says how much of the cover residual
+        /// is reachable at all.
+        /// </remarks>
+        public float RimSamplePhase = 0.5f;
+
         /// <summary>How far consecutive rim edges may turn and still be one run.</summary>
         public float RimRunMaxTurnDegrees = 20.0f;
 

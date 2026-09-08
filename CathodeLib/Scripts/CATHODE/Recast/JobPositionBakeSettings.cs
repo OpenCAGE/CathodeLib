@@ -158,6 +158,20 @@ namespace CathodeLib.NavMesh
         public float LearnedSpotSeparation = 0.80f;
 
         /// <summary>
+        /// Where in each station interval a learned job pass samples, as a fraction. 0.5 is the
+        /// midpoint. The station COUNT and spacing do not change; only the phase does.
+        /// </summary>
+        /// <remarks>
+        /// Not a tuning knob - it exists to bound the ceiling. Spotting is a greedy separation-limited
+        /// packing like the sound fill, and where the 0.25 m sampling starts is an arbitrary choice,
+        /// so a run at a different phase is an equally valid realisation of the same rule. Scoring
+        /// two of our own realisations against each other says how much of the spotting residual is
+        /// reachable at all; see the sound case in SoundNetworkBakeSettings.FillForwardOrder, where
+        /// the answer was none of it.
+        /// </remarks>
+        public float LearnedStationPhase = 0.5f;
+
+        /// <summary>
         /// Path of a learned ASSAULT selector (<c>diag coverml trainall assault</c>).
         /// Assault positions then go to the peaks of the model's
         /// probability along every standing run, highest first with

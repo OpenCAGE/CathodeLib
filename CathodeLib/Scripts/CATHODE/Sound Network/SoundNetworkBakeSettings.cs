@@ -45,6 +45,88 @@ namespace CathodeLib.Sound
         public float AuthoredDedupDistance = 0.5f;
 
         /// <summary>
+        /// When a level ships more than one SoundLevelInitialiser, take the LAST one rather than the
+        /// first. Four campaign levels ship two, and on all four retail's fill follows the last.
+        /// </summary>
+        /// <remarks>
+        /// The floor of a min-spacing packing is visible in the shipped file - the smallest distance
+        /// between two of retail's fill nodes - and on 24 of the 31 levels with fill it equals
+        /// network_node_min_spacing to within 2 cm, which is what identifies the parameter. Every
+        /// level that breaks the law ships two initialisers, and the last one predicts the floor
+        /// exactly: ENG_ReactorCore 1.25 (first authors none, so we took the 2.0 default),
+        /// SCI_AndroidLab 1.2 (first says 1.5), TECH_MuthrCore 1.5 (first authors none).
+        /// HAB_CorporatePent is the case that fixes the direction: its last initialiser authors no
+        /// spacing either, so the value is the 2.0 default - and 2.00 is the floor retail shipped,
+        /// against the 1.5 its FIRST initialiser asks for. The other 27 levels ship one, where first
+        /// and last are the same entity and nothing moves.
+        /// <para>MEASURED 8 Sep 2026 over the campaign (run n02): sound 92.2 -> 92.4, overall
+        /// unchanged at 89.3. Per level ENG_ReactorCore +3.64, TECH_MuthrCore +1.48,
+        /// HAB_CorporatePent +0.95, SCI_AndroidLab -0.36, and exactly 0.00 on five single-initialiser
+        /// controls. AndroidLab loses for the same reason NoInitialiserSpacing does - the correct,
+        /// tighter floor lets our over-eager fill in, and the count ratio falls further than recall
+        /// rises.</para>
+        /// <para>NOT SHIPPED, on the engine limit rather than the score. At the correct 1.25 m floor
+        /// ENG_ReactorCore's worst node carries 579 links against retail's 466 there and 474 across
+        /// the whole campaign - x1.22 on the exact dimension that
+        /// SOUND_ENVIRONMENT::load_network_data overflowed when we shipped 1,173. The excess is
+        /// proportional to the node excess (nodes x1.24, degree x1.24), so it is the fill density
+        /// defect again, not this setting. All four affected levels DO reach gameplay in
+        /// AYZ_PCProfile with it on, but the original fault never reproduced in that build either,
+        /// so a clean load is not evidence of safety. Turn it on once the fill matches retail's
+        /// density; it is one word, and the decode behind it is solid.</para>
+        /// </remarks>
+        public bool UseLastInitialiser = false;
+
+        /// <summary>
+        /// network_node_min_spacing to assume when a level ships no SoundLevelInitialiser at all.
+        /// </summary>
+        /// <remarks>
+        /// The five DLC maps with no initialiser - ChallengeMap 3, 7, 9, 11 and 12 - all show a
+        /// fill-to-fill floor of 1.20 m to the centimetre across 2,554 fill nodes (rule 81), against
+        /// the 1.4 assumed here. So 1.2 is what retail used, and it is not in doubt.
+        /// <para>MEASURED 8 Sep 2026 and NOT shipped, because setting it to the right value makes
+        /// the score WORSE: ChallengeMap9 +0.61, CM7 +0.15, CM11 -0.57, CM3 -0.45, CM12 -0.34, net
+        /// -0.60. Node recall rises on all five, by 6 to 10 points, and the count ratio falls
+        /// further than recall gains.</para>
+        /// <para>The reason is worth keeping. Our fill SATURATES the spacing floor and retail's does
+        /// not, so at a 1.4 m floor we under-pack by about the same factor that our greedy fill
+        /// over-packs by, and the two errors cancel into a node count that looks right. Correcting
+        /// the floor removes one error and exposes the other. **The parity score on these five
+        /// levels was right for the wrong reasons**, and the harness cannot tell a correct input
+        /// with a wrong algorithm from a wrong input with a wrong algorithm - it rewards the
+        /// compensating error. Ship this only together with a fill that stops where retail stops;
+        /// see the CandidateMode remarks for why thinning candidates is not that fix.</para>
+        /// </remarks>
+        public float NoInitialiserSpacing = 1.4f;
+
+        /// <summary>
+        /// Keep a fill candidate only where there is a ceiling above it, within the level's
+        /// <c>network_node_ceiling_height</c>. Off by default while measured.
+        /// </summary>
+        /// <remarks>
+        /// ENG_ReactorCore's second initialiser authors 300; every other level reports the type
+        /// default of 50, and a level with no initialiser reports 0.
+        /// <para>REFUTED 8 Sep 2026. At 50 m the test drops 85 of HAB_Airport's 53,346 fill
+        /// candidates (0.16%), 0 of SCI_HospitalLower's 34,202 and 0 of TECH_Comms' 38,026. It
+        /// cannot account for a 20-50% surplus, and it was the last initialiser parameter we had
+        /// not implemented.</para>
+        /// <para>The premise behind it was wrong as well, which is the more useful half. The fill
+        /// surplus looked like it split on the initialiser - the five levels without one sit at
+        /// 0.94-1.09x retail's fill and every level with one at 1.2-1.5x - but those five are
+        /// exactly the levels where we used a 1.4 m floor against retail's 1.20 (rule 81). We
+        /// UNDER-pack there and land on retail's count by accident. At matched spacing our fill is
+        /// denser than retail's everywhere. Retail accepts fill pairs at exactly the floor, so its
+        /// acceptance test is ours, but it leaves gaps our greedy fill closes: its packing is not
+        /// maximal. That points at the CANDIDATE SET, not at any suppressing parameter.</para>
+        /// </remarks>
+        public bool FillRequiresCeiling = false;
+
+        /// <summary>
+        /// Divisor taking <c>network_node_ceiling_height</c> to metres. 300 -> 3.0 m at the default.
+        /// </summary>
+        public float CeilingHeightScale = 100.0f;
+
+        /// <summary>
         /// Offer fill candidates from STANDING navmesh polygons only. Off by default while measured.
         /// </summary>
         /// <remarks>
@@ -68,6 +150,13 @@ namespace CathodeLib.Sound
         /// Its other parameter is `network_node_max_visibility` (15 on SCI_HospitalLower). If retail
         /// only fills where a marker can see within that range, levels without an initialiser get no
         /// cap, which is the split observed.
+        /// <para>REFUTED 8 Sep 2026 on four levels, and it is not a close call: HAB_Airport -13.05,
+        /// SCI_AndroidLab -5.64, TECH_Comms -3.76, SOLACE -1.36. Airport's node recall falls 85.7 -> 63.2 and its path
+        /// ratio 96 -> 30, because the cull takes nodes retail keeps and the networks they held
+        /// together come apart. The node-count overshoot it was meant to explain is real, but the
+        /// marker-sight cap is not its cause - the surplus and the nodes this removes are different
+        /// nodes. Combined with UseLastInitialiser it is still -4.14 on AndroidLab, so it is not an
+        /// interaction either. Leave it off; the overshoot needs a different explanation.</para>
         /// </remarks>
         public bool FillRequiresMarkerSight = false;
 
@@ -86,8 +175,46 @@ namespace CathodeLib.Sound
         /// fit rather than a rule; a uniform lattice (3) loses to geometry-derived candidates at
         /// matched node counts, which is itself the finding - retail's node positions follow the
         /// navmesh, they are not a grid.
+        /// <para>RE-MEASURED 8 Sep 2026, after the spacing decode (UseLastInitialiser) made the
+        /// floors comparable, and the 2 Sep verdict stands for a better reason than it was given.
+        /// A sparser candidate set does fix the node COUNT and costs node RECALL, every time:
+        /// SCI_HospitalLower mode 1 takes the count ratio 85.8 -> 95.2 and recall 92.9 -> 84.6
+        /// (-0.31); BSP_LV426_PT02 mode 2 lands 834 nodes against retail's 831, a 99.6 ratio, and
+        /// recall falls 77.4 -> 68.5 (+0.03); TECH_RND_HzdLab mode 1 goes 92.9 -> 98.0 and 94.8 ->
+        /// 91.6 (+0.05). Nothing nets more than a third of a point either way.</para>
+        /// <para>The reason is that our node POSITIONS are wrong, not our node count. `diag nodemiss`
+        /// puts 99.7% of retail's nodes within 1.5 m of one of ours but only 84% within the 1.0 m
+        /// the score uses - the two sets are the same cloud in a different realisation, displaced by
+        /// about one spacing. Thinning the candidate set therefore drops good nodes at the same rate
+        /// as surplus ones. **No rule that only changes HOW MANY candidates are offered can win both
+        /// terms**; that needs retail's traversal order, which is not recoverable from the shipped
+        /// file. The same trade sank FillRequiresMarkerSight and FillRequiresCeiling.</para>
         /// </remarks>
         public int CandidateMode = 4;
+
+        /// <summary>
+        /// Visit fill candidates in list order rather than reversed. The acceptance test is unchanged;
+        /// only which of two candidates competing for the same floor wins moves.
+        /// </summary>
+        /// <remarks>
+        /// Order sets the PHASE of a min-spacing packing, and phase is what node recall measures -
+        /// 99.7% of retail's nodes have one of ours within 1.5 m but only 84% within the 1.0 m the
+        /// score uses. Density is already right, so this is the one dimension of the fill that can
+        /// move recall without moving the count.
+        /// <para>REFUTED 8 Sep 2026, and it settles the question it was asked for. Forward order
+        /// costs SCI_HospitalLower 0.25, ChallengeMap11 0.39, TECH_RnD_HzdLab 0.42 and HAB_Airport
+        /// 0.46, and - the point - node recall barely moves at all: 92.9 -> 92.7, 84.1 -> 85.8,
+        /// 94.8 -> 95.1, 85.7 -> 85.5. Reversing the phase does not move us toward retail.</para>
+        /// <para>`diag nullmodel n01 ord1` then measured the CEILING directly. Two packings that are
+        /// both ours - same code, same level, only this flag different - agree with each other
+        /// 87.7% at the 1.0 m the score uses, while ours agrees with retail 87.5%. **Two valid
+        /// realisations of the same packing process agree only 0.2 points better than ours agrees
+        /// with retail, so node recall is at its structural ceiling.** The 1.80 points the recall
+        /// term loses are the packing problem itself, not a placement defect - and 2.30 points of
+        /// the measured recall gap is the harness's greedy matcher besides (see Geometry.cs).
+        /// Nothing short of retail's exact algorithm moves this term.</para>
+        /// </remarks>
+        public bool FillForwardOrder = false;
 
         /// <summary>Lattice step for CandidateMode 3, as a multiple of the authored spacing.</summary>
         public float CandidateLatticeStep = 0.5f;

@@ -368,7 +368,8 @@ namespace CathodeLib.NavMesh
                 assaultScan = new List<(float prob, Vector3 on, Vector3 inward)>();
                 ScanLearnedStations(spottingRuns, learnedProbe, learnedCoverSettings ?? new CoverBakeSettings(),
                                     spotModel, LearnedThreshold(settings.LearnedSpotThreshold, spotModel), spotScan,
-                                    assaultModel, LearnedThreshold(settings.LearnedAssaultThreshold, assaultModel), assaultScan);
+                                    assaultModel, LearnedThreshold(settings.LearnedAssaultThreshold, assaultModel), assaultScan,
+                                    settings.LearnedStationPhase);
             }
             if (learnedSpotting)
                 spottingJobs = LearnedSpottingJobs(spottingRuns, spotModel, learnedProbe, learnedCoverSettings ?? new CoverBakeSettings(), settings, glass, spottingOut, ref glassRejected, spotScan);
@@ -719,7 +720,7 @@ namespace CathodeLib.NavMesh
         static void ScanLearnedStations(
             List<List<RimEdge>> runs, RimCoverGenerator.DepthProbe probe, CoverBakeSettings coverSettings,
             CoverGbdtModel modelA, float thresholdA, List<(float prob, Vector3 on, Vector3 inward)> outA,
-            CoverGbdtModel modelB, float thresholdB, List<(float prob, Vector3 on, Vector3 inward)> outB)
+            CoverGbdtModel modelB, float thresholdB, List<(float prob, Vector3 on, Vector3 inward)> outB, float phase)
         {
             var perRunA = new List<(float prob, Vector3 on, Vector3 inward)>[runs.Count];
             var perRunB = outB == null ? null : new List<(float prob, Vector3 on, Vector3 inward)>[runs.Count];
@@ -736,9 +737,10 @@ namespace CathodeLib.NavMesh
                 foreach (RimEdge e in run)
                 {
                     int steps = Math.Max(1, (int)Math.Round(e.Length / LearnedStation));
+                    float stationPhase = Math.Min(0.99f, Math.Max(0.01f, phase));
                     for (int i = 0; i < steps; i++)
                     {
-                        float t = (i + 0.5f) / steps;
+                        float t = (i + stationPhase) / steps;
                         Vector3 on = Vector3.Lerp(e.A, e.B, t);
                         float[] x = LearnedCoverFeatures.Describe(on, e.Inward, e.Length, runLength, pos + t * e.Length, probe.Bvh, probe, coverSettings);
                         float pa = modelA.Predict(x);
@@ -761,10 +763,10 @@ namespace CathodeLib.NavMesh
 
         static List<(float prob, Vector3 on, Vector3 inward)> ScanLearnedStations(
             List<List<RimEdge>> runs, RimCoverGenerator.DepthProbe probe, CoverBakeSettings coverSettings,
-            CoverGbdtModel model, float threshold)
+            CoverGbdtModel model, float threshold, float phase)
         {
             var list = new List<(float prob, Vector3 on, Vector3 inward)>();
-            ScanLearnedStations(runs, probe, coverSettings, model, threshold, list, null, 0f, null);
+            ScanLearnedStations(runs, probe, coverSettings, model, threshold, list, null, 0f, null, phase);
             return list;
         }
 
@@ -780,7 +782,7 @@ namespace CathodeLib.NavMesh
             float threshold = LearnedThreshold(settings.LearnedSpotThreshold, model);
             float sep = Math.Max(0.1f, settings.LearnedSpotSeparation);
             List<(float prob, Vector3 on, Vector3 inward)> candidates =
-                scanned ?? ScanLearnedStations(runs, probe, coverSettings, model, threshold);
+                scanned ?? ScanLearnedStations(runs, probe, coverSettings, model, threshold, settings.LearnedStationPhase);
             candidates.Sort((a, b) => b.prob.CompareTo(a.prob));
             var jobs = new List<SpottingPositions.JobInfo>();
             var taken = new List<Vector3>();
@@ -827,7 +829,7 @@ namespace CathodeLib.NavMesh
             float sep = Math.Max(0.1f, settings.LearnedAssaultSeparation);
             float inset = settings.AssaultDistanceFromGeometry - settings.AssaultRimToCollision;
             List<(float prob, Vector3 on, Vector3 inward)> candidates =
-                scanned ?? ScanLearnedStations(runs, probe, coverSettings, model, threshold);
+                scanned ?? ScanLearnedStations(runs, probe, coverSettings, model, threshold, settings.LearnedStationPhase);
             candidates.Sort((a, b) => b.prob.CompareTo(a.prob));
             var jobs = new List<AssaultPositions.JobInfo>();
             float sepSq = sep * sep;
@@ -867,6 +869,7 @@ namespace CathodeLib.NavMesh
             CoverBakeSettings coverSettings, JobPositionBakeSettings settings)
         {
             const float station = 0.25f;
+            float stationPhase = Math.Min(0.99f, Math.Max(0.01f, settings.LearnedStationPhase));
             float threshold = settings.LearnedCrawlThreshold > 0f ? settings.LearnedCrawlThreshold : model.Threshold;
             float sep = Math.Max(0.1f, settings.LearnedCrawlSeparation);
             List<RimEdge> outer = CollectRim(nav, NavigationMesh.AreaHeight.DeepCrouch, matchHeight: true);
@@ -882,7 +885,7 @@ namespace CathodeLib.NavMesh
                     int steps = Math.Max(1, (int)Math.Round(e.Length / station));
                     for (int i = 0; i < steps; i++)
                     {
-                        float t = (i + 0.5f) / steps;
+                        float t = (i + stationPhase) / steps;
                         Vector3 on = Vector3.Lerp(e.A, e.B, t);
                         float[] x = LearnedCoverFeatures.Describe(on, e.Inward, e.Length, runLength, pos + t * e.Length, probe.Bvh, probe, coverSettings);
                         float prob = model.Predict(x);
