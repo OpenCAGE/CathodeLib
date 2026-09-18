@@ -1,4 +1,4 @@
-﻿using CATHODE.Scripting.Internal;
+using CATHODE.Scripting.Internal;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
@@ -119,11 +119,11 @@ namespace CATHODE.Scripting.Internal
             {
                 case DataType.RESOURCE:
                     cResource r = (cResource)this.MemberwiseClone();
-                    r.value = ((cResource)this).value.Select(item => (ResourceReference)item.Clone()).ToList();
+                    r.value = ((cResource)this).value?.Select(item => (ResourceReference)item.Clone()).ToList();
                     return r;
                 case DataType.SPLINE:
                     cSpline s = (cSpline)this.MemberwiseClone();
-                    s.splinePoints = ((cSpline)this).splinePoints.Select(item => (cTransform)item.Clone()).ToList();
+                    s.splinePoints = ((cSpline)this).splinePoints?.Select(item => (cTransform)item.Clone()).ToList();
                     return s;
                 case DataType.VECTOR:
                     cVector3 v3 = (cVector3)this.MemberwiseClone();
