@@ -1,4 +1,5 @@
 using CATHODE.Scripting;
+using CATHODE.Scripting.Internal;
 using CathodeLib;
 using System;
 using System.Collections.Generic;
@@ -7,12 +8,16 @@ using System.IO;
 namespace CATHODE
 {
     /// <summary>
-    /// A composite as the index reader sees it: just its ID and name.
+    /// A composite as the index reader sees it: its ID and name, and the composites it instances.
     /// </summary>
     public struct CompositeIndexEntry
     {
         public ShortGuid ID;
         public string Name;
+        /// <summary>The composites this one instances directly (distinct), so a picker can follow nesting without a parse.</summary>
+        public List<ShortGuid> Instances;
+        /// <summary>The level's root composite (its first entry point).</summary>
+        public bool IsRoot;
 
         public override string ToString()
         {
@@ -21,10 +26,11 @@ namespace CATHODE
     }
 
     /// <summary>
-    /// Reads only the composite table of a COMMANDS.PAK: every composite's ID and name, nothing else.
-    /// A full parse of a shipped level takes seconds and gigabytes of graph; this walks the header,
-    /// the composite offset table and one string per composite, so a browser can list what a level
-    /// holds without loading it.
+    /// Reads only the composite table of a COMMANDS.PAK: every composite's ID and name, and which
+    /// composites it instances. A full parse of a shipped level takes seconds and gigabytes of graph;
+    /// this walks the header, the composite offset table, one string per composite and the function
+    /// entity list (8 bytes an entry), so a browser can list what a level holds - and what porting a
+    /// composite would bring along - without loading it.
     /// </summary>
     internal static class CommandsIndex
     {
@@ -46,13 +52,23 @@ namespace CATHODE
                 for (int i = 0; i < compositeCount; i++)
                 {
                     //Each composite block: 4 zero bytes, then the script start offset (top byte is a flag),
-                    //the first offset pair, and the ID - the same first steps as the full reader
+                    //the offset pairs for every data block with the ID after the first - the same steps as
+                    //the full reader
                     reader.BaseStream.Position = (compositeOffsets[i] * 4) + 4;
-                    byte[] startOffsetRaw = reader.ReadBytes(4);
-                    startOffsetRaw[3] = 0x00;
-                    int scriptStartOffset = BitConverter.ToInt32(startOffsetRaw, 0);
-                    reader.BaseStream.Position += 8;
-                    ShortGuid id = new ShortGuid(reader);
+                    OffsetPair[] offsetPairs = new OffsetPair[(int)CompositeFileData.NUMBER_OF_SCRIPT_BLOCKS];
+                    int scriptStartOffset = 0;
+                    ShortGuid id = ShortGuid.Invalid;
+                    for (int x = 0; x < (int)CompositeFileData.NUMBER_OF_SCRIPT_BLOCKS; x++)
+                    {
+                        if (x == 0)
+                        {
+                            byte[] startOffsetRaw = reader.ReadBytes(4);
+                            startOffsetRaw[3] = 0x00;
+                            scriptStartOffset = BitConverter.ToInt32(startOffsetRaw, 0);
+                        }
+                        offsetPairs[x] = Utilities.Consume<OffsetPair>(reader);
+                        if (x == 0) id = new ShortGuid(reader);
+                    }
 
                     reader.BaseStream.Position = (scriptStartOffset * 4) + 4;
                     string name = Utilities.ReadString(reader);
@@ -70,7 +86,21 @@ namespace CATHODE
                         name = nameSplit[nameSplit.Length - 1];
                     }
 
-                    entries.Add(new CompositeIndexEntry() { ID = id, Name = name });
+                    //Function entities are (entity ID, function ID) pairs; a function ID that is not one of
+                    //the engine's own functions names a composite this one instances
+                    List<ShortGuid> instances = new List<ShortGuid>();
+                    OffsetPair functions = offsetPairs[(int)CompositeFileData.FUNCTION_ENTITIES];
+                    reader.BaseStream.Position = functions.GlobalOffset * 4;
+                    for (int y = 0; y < functions.EntryCount; y++)
+                    {
+                        reader.BaseStream.Position = (functions.GlobalOffset * 4) + (y * 8) + 4;
+                        ShortGuid functionID = new ShortGuid(reader);
+                        if (functionID.IsFunctionType || instances.Contains(functionID))
+                            continue;
+                        instances.Add(functionID);
+                    }
+
+                    entries.Add(new CompositeIndexEntry() { ID = id, Name = name, Instances = instances, IsRoot = id == rootId });
                 }
                 return entries;
             }
