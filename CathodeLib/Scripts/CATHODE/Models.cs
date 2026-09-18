@@ -828,15 +828,21 @@ namespace CATHODE
                 {
                     return existingByName;
                 }
+                /* Only what actually differs is copied across: a submesh that is the same again keeps its
+                   objects (its data array above all), so an overwrite that changes nothing is invisible to
+                   anything that watches the table by object identity - the viewport's resource sync would
+                   otherwise be sent every model in the level. */
                 for (int c = 0; c < newModel.Components.Count; c++)
                 {
                     for (int l = 0; l < newModel.Components[c].LODs.Count; l++)
                     {
                         CS2.Component.LOD from = newModel.Components[c].LODs[l];
                         CS2.Component.LOD into = existingByName.Components[c].LODs[l];
-                        into.Name = from.Name;
+                        if (into.Name != from.Name)
+                            into.Name = from.Name;
                         for (int s = 0; s < from.Submeshes.Count; s++)
-                            CopySubmeshInto(from.Submeshes[s], into.Submeshes[s]);
+                            if (!SameContent(from.Submeshes[s], into.Submeshes[s]))
+                                CopySubmeshInto(from.Submeshes[s], into.Submeshes[s]);
                     }
                 }
                 return existingByName;
@@ -860,6 +866,36 @@ namespace CATHODE
 
         /* Everything but CollisionProxyIndex: that is an index into THIS level's COLLISION.HKX, and the
          * source's value addresses the source's file, so the destination's own binding is kept. */
+        /* Everything CopySubmeshInto copies, compared - unlike Submesh's own equality, which also tells
+           two objects apart. CollisionProxyIndex is left out on both sides: see CopySubmeshInto. */
+        private static bool SameContent(CS2.Component.LOD.Submesh a, CS2.Component.LOD.Submesh b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            if (a == null || b == null) return false;
+            if (a.MinBounds.X != b.MinBounds.X || a.MinBounds.Y != b.MinBounds.Y || a.MinBounds.Z != b.MinBounds.Z) return false;
+            if (a.MaxBounds.X != b.MaxBounds.X || a.MaxBounds.Y != b.MaxBounds.Y || a.MaxBounds.Z != b.MaxBounds.Z) return false;
+            if (a.MinLODRange != b.MinLODRange || a.MaxLODRange != b.MaxLODRange) return false;
+            if (a.RenderFlags != b.RenderFlags) return false;
+            if (a.Material != b.Material) return false;
+            if (a.WeightedCollision != b.WeightedCollision) return false;
+            if (a.MorphAnimSet != b.MorphAnimSet) return false;
+            if (a.VertexFormatFull != b.VertexFormatFull) return false;
+            if (a.VertexFormatPartial != b.VertexFormatPartial) return false;
+            if (a.VertexScale != b.VertexScale || a.VertexCount != b.VertexCount || a.IndexCount != b.IndexCount) return false;
+            if ((a.Bones == null) != (b.Bones == null)) return false;
+            if (a.Bones != null)
+            {
+                if (a.Bones.Count != b.Bones.Count) return false;
+                for (int i = 0; i < a.Bones.Count; i++)
+                    if (a.Bones[i] != b.Bones[i]) return false;
+            }
+            if (ReferenceEquals(a.Data, b.Data)) return true;
+            if (a.Data == null || b.Data == null || a.Data.Length != b.Data.Length) return false;
+            for (int i = 0; i < a.Data.Length; i++)
+                if (a.Data[i] != b.Data[i]) return false;
+            return true;
+        }
+
         private static void CopySubmeshInto(CS2.Component.LOD.Submesh from, CS2.Component.LOD.Submesh into)
         {
             into.MinBounds = from.MinBounds;

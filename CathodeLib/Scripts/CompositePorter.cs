@@ -43,6 +43,15 @@ namespace CathodeLib
         public bool Recurse = true;
 
         /// <summary>
+        /// Composites that recursion stops at: reached as something's instance, they are neither copied
+        /// nor walked into, on the understanding that the destination already has its own. Passing one
+        /// to <see cref="Port"/> directly still ports it. Meant for GLOBAL and PAUSEMENU, which every
+        /// level holds and which one composite's closure can reach through the required-asset scripts -
+        /// a port that exists to carry a few composites elsewhere has no business replacing those.
+        /// </summary>
+        public HashSet<ShortGuid> DoNotDescendInto = new HashSet<ShortGuid>();
+
+        /// <summary>
         /// Raised for each composite actually copied into the destination, with the source composite
         /// and its copy. OpenCAGE uses it to carry flowgraph layouts across, which live outside CathodeLib.
         /// </summary>
@@ -70,6 +79,7 @@ namespace CathodeLib
         public int CollisionMappingsPorted { get; private set; }
         public int PhysicsSystemsPorted { get; private set; }
         public int AnimatedModelsPorted { get; private set; }
+        public int EnvironmentMapsPorted { get; private set; }
         public int ResourcesSkipped { get; private set; }
 
         //Source Havok data offset to destination object, so shared proxies/systems are imported once
@@ -146,6 +156,8 @@ namespace CathodeLib
                     Parameter resources = ent.GetParameter("resource");
                     if (resources?.content is cResource resourceParam && resourceParam.value != null)
                         CopyResources(resourceParam.value);
+
+                    PortEnvironmentMapTexture(ent);
                 }
 
                 //Bring over generic metadata
@@ -163,11 +175,39 @@ namespace CathodeLib
             foreach (FunctionEntity ent in composite.functions)
             {
                 if (ent.function.IsFunctionType) continue;
+                if (DoNotDescendInto.Contains(ent.function)) continue;
 
                 Composite nestedComp = Source.Commands.GetComposite(ent.function);
                 if (nestedComp != null)
                     PortRecursive(nestedComp);
             }
+        }
+
+        /* An EnvironmentMap names its cubemap by a Texture path parameter rather than by a resource,
+           so CopyResources never sees it: Commands.Save resolves the path level-pak first, then global,
+           and bakes the answer into Texture_Index. A cubemap that only the source level pak holds
+           would resolve to nothing in the destination, so it comes across by name the way a material's
+           textures do. Stock cubemaps are already in every level (absorbed from global on load) and
+           dedupe by name. */
+        private void PortEnvironmentMapTexture(FunctionEntity entity)
+        {
+            if (entity == null || !entity.function.IsFunctionType || entity.function.AsFunctionType != FunctionType.EnvironmentMap)
+                return;
+            if (Destination.Textures == null)
+                return;
+
+            string path = (entity.GetParameter(ShortGuids.Texture)?.content as cString)?.value;
+            if (string.IsNullOrEmpty(path))
+                return;
+
+            Textures.TEX4 texture = Source.Textures?.GetEnvironmentMapByPath(path)
+                ?? Source.Global?.Textures?.GetEnvironmentMapByPath(path);
+            if (texture == null)
+                return;
+
+            Destination.Textures.ImportEntry(texture, OverwriteAssets);
+            EnvironmentMapsPorted++;
+            OnProgress?.Invoke();
         }
 
         private void CopyResources(List<ResourceReference> resourceRefs)

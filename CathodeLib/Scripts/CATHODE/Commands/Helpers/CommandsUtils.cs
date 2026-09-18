@@ -261,7 +261,9 @@ namespace CATHODE.Scripting
                 return new List<Tuple<Composite, Entity>>();
 
             Composite initialComp = _commands.GetComposite(hierarchy[0]); //NOTE: This isn't always the initial comp, so we check from the entry point first.
-            Composite currentComp = _commands.EntryPoints[0];
+            Composite currentComp = _commands.EntryPoints?[0] ?? initialComp;
+            if (currentComp == null)
+                return new List<Tuple<Composite, Entity>>(); //A Commands with no root yet (a scratch level mid-port) resolves nothing
 
             bool hasTerminator = hierarchy[hierarchy.Length - 1] == ShortGuid.Invalid;
             int maxIndex = hierarchy.Length - (hasTerminator ? 1 : 0);
@@ -317,7 +319,9 @@ namespace CATHODE.Scripting
             if (hierarchy == null || hierarchy.Length == 0)
                 return new List<Tuple<Composite, Entity>>();
 
-            Composite currentComp = _commands.EntryPoints[0];
+            Composite currentComp = _commands.EntryPoints?[0];
+            if (currentComp == null)
+                return new List<Tuple<Composite, Entity>>(); //A Commands with no root yet resolves nothing
 
             bool hasTerminator = hierarchy[hierarchy.Length - 1] == ShortGuid.Invalid;
             int maxIndex = hierarchy.Length - (hasTerminator ? 1 : 0);
@@ -353,6 +357,50 @@ namespace CATHODE.Scripting
         public bool CouldResolve(List<Tuple<Composite, Entity>> path)
         {
             return path != null && path.Count != 0;
+        }
+
+        /// <summary>
+        /// A dead proxy is one whose path no longer reaches an entity: its target was deleted, or the composite
+        /// was ported to a level that never had it (a mission script's door proxies only resolve in the level
+        /// the script was written for). No retail level ships one, so a dead proxy is always something a user
+        /// did, and it is kept rather than purged - along with every link through it - so it can be re-pointed
+        /// instead of the script silently losing its wiring. The proxy still knows its target's function type
+        /// (ProxyEntity.function), which is what its parameters and pins are derived from until it resolves again.
+        /// </summary>
+        public bool IsDeadProxy(ProxyEntity proxy)
+        {
+            return proxy != null && !CouldResolve(ResolveProxy(proxy));
+        }
+
+        /// <summary>
+        /// The dead proxies in a composite, in proxy order - see IsDeadProxy.
+        /// </summary>
+        public List<ProxyEntity> GetDeadProxies(Composite composite)
+        {
+            List<ProxyEntity> dead = new List<ProxyEntity>();
+            if (composite == null)
+                return dead;
+            foreach (ProxyEntity proxy in composite.proxies)
+                if (IsDeadProxy(proxy))
+                    dead.Add(proxy);
+            return dead;
+        }
+
+        /// <summary>
+        /// The dead proxies across every composite, keyed by composite - see IsDeadProxy.
+        /// </summary>
+        public Dictionary<Composite, List<ProxyEntity>> GetDeadProxies(IEnumerable<Composite> composites)
+        {
+            Dictionary<Composite, List<ProxyEntity>> dead = new Dictionary<Composite, List<ProxyEntity>>();
+            if (composites == null)
+                return dead;
+            foreach (Composite composite in composites)
+            {
+                List<ProxyEntity> proxies = GetDeadProxies(composite);
+                if (proxies.Count != 0)
+                    dead.Add(composite, proxies);
+            }
+            return dead;
         }
 
         /// <summary>
@@ -421,7 +469,8 @@ namespace CATHODE.Scripting
         }
 
         /// <summary>
-        /// CA's CAGE doesn't properly tidy up hierarchies pointing to deleted entities - so we can do that to save confusion
+        /// CA's CAGE doesn't properly tidy up hierarchies pointing to deleted entities - so we can do that to save confusion.
+        /// Proxies are the exception: see IsDeadProxy.
         /// </summary>
         public bool PurgeDeadLinks(Composite composite, bool force = false)
         {
@@ -432,7 +481,6 @@ namespace CATHODE.Scripting
             }
 
             int originalUnknownCount = 0;
-            int originalProxyCount = 0;
             int originalAliasCount = 0;
             int newTriggerCount = 0;
             int originalTriggerCount = 0;
@@ -481,20 +529,7 @@ namespace CATHODE.Scripting
                 composite.aliases_dictionary.Remove(guid);
             }
 
-            // Proxies must be able to be resolved in some form
-            var proxiesToRemove = new List<ShortGuid>();
-            foreach (var kvp in composite.proxies_dictionary)
-            {
-                if (!CouldResolve(ResolveProxy(kvp.Value)))
-                {
-                    proxiesToRemove.Add(kvp.Key);
-                }
-            }
-            originalProxyCount = composite.proxies_dictionary.Count;
-            foreach (var guid in proxiesToRemove)
-            {
-                composite.proxies_dictionary.Remove(guid);
-            }
+            // Proxies that no longer resolve are deliberately kept, links and all - see IsDeadProxy.
 
             // Process special function types (TriggerSequence and CAGEAnimation)
             foreach (var kvp in composite.functions_dictionary)
@@ -567,7 +602,6 @@ namespace CATHODE.Scripting
 
             int totalRemoved = originalUnknownCount +
                 (originalFuncCount - composite.functions_dictionary.Count) +
-                (originalProxyCount - composite.proxies_dictionary.Count) +
                 (originalAliasCount - composite.aliases_dictionary.Count) +
                 (originalTriggerCount - newTriggerCount) +
                 (originalAnimCount - newAnimCount) +
@@ -583,7 +617,6 @@ namespace CATHODE.Scripting
                 "Purged all dead hierarchies and entities in " + composite.name + "!" +
                 "\n - " + originalUnknownCount + " unknown entities" +
                 "\n - " + (originalFuncCount - composite.functions_dictionary.Count) + " functions (of " + originalFuncCount + ")" +
-                "\n - " + (originalProxyCount - composite.proxies_dictionary.Count) + " proxies (of " + originalProxyCount + ")" +
                 "\n - " + (originalAliasCount - composite.aliases_dictionary.Count) + " aliases (of " + originalAliasCount + ")" +
                 "\n - " + (originalTriggerCount - newTriggerCount) + " triggers (of " + originalTriggerCount + ")" +
                 "\n - " + (originalAnimCount - newAnimCount) + " anim connections (of " + originalAnimCount + ")" +
@@ -638,7 +671,7 @@ namespace CATHODE.Scripting
                     {
                         (Composite proxiedComposite, Entity proxiedEntity) = _commands.Utils.GetResolvedTarget(_commands.Utils.ResolveProxy((ProxyEntity)entity));
                         if (includeInherited)
-                            ApplyDefaults(proxiedEntity, entity, overwrite, variants, FunctionType.ProxyInterface);
+                            ApplyDefaults(proxiedEntity ?? entity, entity, overwrite, variants, FunctionType.ProxyInterface);
                         if (proxiedEntity != null && proxiedComposite != null)
                         {
                             switch (proxiedEntity.variant)
@@ -652,6 +685,13 @@ namespace CATHODE.Scripting
                                 default:
                                     throw new Exception("Unexpected!"); //we can't proxy to proxies or aliases
                             }
+                        }
+                        else
+                        {
+                            //A dead proxy (see IsDeadProxy) still knows what it pointed at
+                            ProxyEntity proxy = (ProxyEntity)entity;
+                            if (proxy.function.IsFunctionType || _commands.GetComposite(proxy.function) != null)
+                                ApplyDefaultFunction(new FunctionEntity(ShortGuid.Invalid) { function = proxy.function }, entity, composite, variants, overwrite, includeInherited);
                         }
                     }
                     break;
@@ -972,6 +1012,13 @@ namespace CATHODE.Scripting
                     (Composite proxiedComposite, Entity proxiedEntity) = GetResolvedTarget(ResolveProxy((ProxyEntity)entity));
                     if (proxiedEntity != null)
                         parameters.AddRange(GetAllParameters(proxiedEntity, composite)); //note while reading through again, shouldn't these be Proxied/Aliased composites?
+                    else
+                    {
+                        //A dead proxy (see IsDeadProxy) still knows its target's type, so its pins stay drawable
+                        ProxyEntity proxy = (ProxyEntity)entity;
+                        if (proxy.function.IsFunctionType || _commands.GetComposite(proxy.function) != null)
+                            parameters.AddRange(GetAllParameters(new FunctionEntity(ShortGuid.Invalid) { function = proxy.function }, composite, includeInherited));
+                    }
                     break;
                 case EntityVariant.ALIAS:
                     (Composite aliasedComposite, Entity aliasedEntity) = GetResolvedTarget(ResolveAlias((AliasEntity)entity, composite));
@@ -1152,6 +1199,9 @@ namespace CATHODE.Scripting
                         Entity proxiedEntity = GetResolvedTarget(ResolveProxy(proxyEntity)).Item2;
                         if (proxiedEntity != null)
                             return GetParameterMetadata(proxiedEntity, parameter, composite);
+                        //A dead proxy (see IsDeadProxy) still knows its target's type - the same answer GetAllParameters gives
+                        if (proxyEntity.function.IsFunctionType || _commands.GetComposite(proxyEntity.function) != null)
+                            return GetParameterMetadata(new FunctionEntity(ShortGuid.Invalid) { function = proxyEntity.function }, parameter, composite);
                         break;
                     }
                 case EntityVariant.ALIAS:
@@ -1368,6 +1418,12 @@ namespace CATHODE.Scripting
                         (Composite proxiedComposite, Entity proxiedEntity) = GetResolvedTarget(ResolveProxy((ProxyEntity)entity));
                         if (proxiedEntity != null)
                             return CreateDefaultParameterData(proxiedEntity, proxiedComposite, parameter);
+                        //A dead proxy (see IsDeadProxy) still knows its target's type. This must answer for every
+                        //parameter GetAllParameters lists for it: instancing takes the default of each one the
+                        //proxy does not carry, and dereferences the result.
+                        ProxyEntity deadProxy = (ProxyEntity)entity;
+                        if (deadProxy.function.IsFunctionType || _commands.GetComposite(deadProxy.function) != null)
+                            return CreateDefaultParameterData(new FunctionEntity(ShortGuid.Invalid) { function = deadProxy.function }, composite, parameter);
                         break;
                     }
                 case EntityVariant.ALIAS:
@@ -1797,6 +1853,18 @@ namespace CATHODE.Scripting
         {
             if (_pinInfo.composite_pin_infos.TryGetValue(compositeID, out List<CompositePinInfoTable.PinInfo> customInfos))
             {
+                //PinInfo has no value equality, so the set below only ever dedupes the same object. An
+                //incoming entry for a variable we already describe is that variable's NEWER info (a port
+                //overwriting a composite, say) - GetPinInfo takes the first match, so the old one has to
+                //go or a pin whose type changed at the source keeps its old type here.
+                if (infos != null && infos.Count != 0)
+                {
+                    HashSet<ShortGuid> incoming = new HashSet<ShortGuid>();
+                    foreach (CompositePinInfoTable.PinInfo info in infos)
+                        if (info != null) incoming.Add(info.VariableGUID);
+                    customInfos.RemoveAll(o => o != null && incoming.Contains(o.VariableGUID));
+                }
+
                 HashSet<CompositePinInfoTable.PinInfo> newInfos = new HashSet<CompositePinInfoTable.PinInfo>();
                 foreach (CompositePinInfoTable.PinInfo info in customInfos) newInfos.Add(info);
                 foreach (CompositePinInfoTable.PinInfo info in infos) newInfos.Add(info);

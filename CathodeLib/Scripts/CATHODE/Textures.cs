@@ -35,21 +35,53 @@ namespace CATHODE
 
         private TEX4 FindByNormalisedName(string normalisedName)
         {
-            if (_byNormalisedName == null || _byNormalisedNameCount > Entries.Count)
+            /* Entries is a public list that the editors add to and remove from directly, so the index
+               can only trust itself so far: any change in count rebuilds it, an answer is checked
+               against the list before it is given (a remove and an add leave the count where it was),
+               and a miss with the count unchanged is checked against the list too, since the miss may
+               be an entry added behind the index's back. */
+            if (_byNormalisedName == null || _byNormalisedNameCount != Entries.Count)
+                RebuildNameIndex();
+
+            TEX4 found;
+            if (_byNormalisedName.TryGetValue(normalisedName, out found))
             {
-                _byNormalisedName = new Dictionary<string, TEX4>(StringComparer.Ordinal);
-                _byNormalisedNameCount = 0;
+                if (IsInEntries(found))
+                    return found;
+                RebuildNameIndex();
+                return _byNormalisedName.TryGetValue(normalisedName, out found) ? found : null;
             }
-            for (; _byNormalisedNameCount < Entries.Count; _byNormalisedNameCount++)
+
+            foreach (TEX4 entry in Entries)
             {
-                TEX4 entry = Entries[_byNormalisedNameCount];
+                if (entry != null && NormaliseTextureName(entry.Name) == normalisedName)
+                {
+                    RebuildNameIndex();
+                    return entry;
+                }
+            }
+            return null;
+        }
+
+        private void RebuildNameIndex()
+        {
+            _byNormalisedName = new Dictionary<string, TEX4>(StringComparer.Ordinal);
+            foreach (TEX4 entry in Entries)
+            {
                 if (entry == null) continue;
                 string key = NormaliseTextureName(entry.Name);
                 if (!_byNormalisedName.ContainsKey(key))
                     _byNormalisedName[key] = entry;
             }
-            TEX4 found;
-            return _byNormalisedName.TryGetValue(normalisedName, out found) ? found : null;
+            _byNormalisedNameCount = Entries.Count;
+        }
+
+        private bool IsInEntries(TEX4 texture)
+        {
+            for (int i = 0; i < Entries.Count; i++)
+                if (ReferenceEquals(Entries[i], texture))
+                    return true;
+            return false;
         }
 
         public Textures(string path) : base(path) { }
@@ -432,20 +464,39 @@ namespace CATHODE
             if (existingByName != null && !overwriteExisting)
                 return existingByName;
 
-            TEX4 newTexture = texture.Copy();
             if (existingByName != null)
             {
-                existingByName.Format = newTexture.Format;
-                existingByName.StateFlags = newTexture.StateFlags;
-                existingByName.UsageFlags = newTexture.UsageFlags;
-                existingByName.TexturePersistent = newTexture.TexturePersistent;
-                existingByName.TextureStreamed = newTexture.TextureStreamed;
-                _byNormalisedName = null; //an entry was replaced in place, so the count says nothing
+                /* The same texture again: keep what is here, objects and all. Everything that watches the
+                   table for changes (the viewport's resource sync above all) goes by object identity, and
+                   a level with all of its textures replaced by identical copies would be sent to the
+                   viewer whole - hundreds of megabytes - for nothing. Compared before anything is copied. */
+                if (existingByName.Format == texture.Format
+                    && existingByName.StateFlags == texture.StateFlags
+                    && existingByName.UsageFlags == texture.UsageFlags
+                    && SamePart(existingByName.TexturePersistent, texture.TexturePersistent)
+                    && SamePart(existingByName.TextureStreamed, texture.TextureStreamed))
+                    return existingByName;
+
+                //Replaced in place: the same object under the same name, so the name index stands
+                TEX4 replacement = texture.Copy();
+                existingByName.Format = replacement.Format;
+                existingByName.StateFlags = replacement.StateFlags;
+                existingByName.UsageFlags = replacement.UsageFlags;
+                existingByName.TexturePersistent = replacement.TexturePersistent;
+                existingByName.TextureStreamed = replacement.TextureStreamed;
                 return existingByName;
             }
 
+            TEX4 newTexture = texture.Copy();
             Entries.Add(newTexture);
             return newTexture;
+        }
+
+        private static bool SamePart(TEX4.Texture a, TEX4.Texture b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            if (a == null || b == null) return false;
+            return a.Equals(b);
         }
 
         static string NormaliseTextureName(string name)

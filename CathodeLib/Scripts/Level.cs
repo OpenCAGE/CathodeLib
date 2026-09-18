@@ -134,6 +134,16 @@ namespace CathodeLib
         public Dictionary<string, Dictionary<string, TextDB>> Strings;
 
         public Global Global => _global;
+
+        /// <summary>
+        /// Whether <see cref="Load"/> and <see cref="Save"/> copy the global textures this level's
+        /// materials reference into its own texture pak (see <see cref="ImportFromGlobal"/>). On by
+        /// default, and that is what makes a level self-contained. A level that exists only as a
+        /// container for a few composites - the scratch level a composite archive is built in - turns
+        /// it off, because absorbing the global set puts ~80MB of textures nothing in it references
+        /// into a pak that is meant to carry only what was ported.
+        /// </summary>
+        public bool AbsorbGlobalTextures { get; set; } = true;
         private Global _global;
 
         public string Filepath => _filepath;
@@ -586,9 +596,51 @@ namespace CathodeLib
         /// <summary>
         /// Imports resources to the level from Global, making it easier to share around
         /// </summary>
+        /// <summary>
+        /// Copy into this level's pak only the global textures its materials actually reference, and
+        /// point those references at the copies. The same end as <see cref="ImportFromGlobal"/> - no
+        /// material left pointing into global - without bringing the whole global set along, which is
+        /// what a level built to carry a few composites elsewhere wants: it has
+        /// <see cref="AbsorbGlobalTextures"/> off so Load and Save leave global alone, and calls this
+        /// once before it is saved. Returns how many references were remapped.
+        /// </summary>
+        public int AbsorbReferencedGlobalTextures()
+        {
+            if (Textures == null || Materials?.Entries == null)
+                return 0;
+
+            Dictionary<Textures.TEX4, Textures.TEX4> imported = new Dictionary<Textures.TEX4, Textures.TEX4>();
+            int remapped = 0;
+            foreach (Materials.Material material in Materials.Entries)
+            {
+                foreach (TexturePtr reference in material.TextureReferences)
+                {
+                    if (reference == null || reference.Location != TexturePtr.Source.GLOBAL || reference.Texture == null)
+                        continue;
+
+                    if (!imported.TryGetValue(reference.Texture, out Textures.TEX4 levelCopy))
+                    {
+                        //Imported as a level texture (the flags travel with the copy), then the global's own put back
+                        Textures.TEX4 globalTexture = reference.Texture;
+                        globalTexture.UsageFlags &= ~Textures.TextureUsageFlag.IS_GLOBAL_PACK;
+                        globalTexture.UsageFlags |= Textures.TextureUsageFlag.IS_LEVEL_PACK;
+                        levelCopy = Textures.ImportEntry(globalTexture);
+                        globalTexture.UsageFlags |= Textures.TextureUsageFlag.IS_GLOBAL_PACK;
+                        globalTexture.UsageFlags &= ~Textures.TextureUsageFlag.IS_LEVEL_PACK;
+                        imported[globalTexture] = levelCopy;
+                    }
+
+                    reference.Texture = levelCopy;
+                    reference.Location = TexturePtr.Source.LEVEL;
+                    remapped++;
+                }
+            }
+            return remapped;
+        }
+
         private int ImportFromGlobal()
         {
-            if (_global?.Textures == null || Textures == null)
+            if (!AbsorbGlobalTextures || _global?.Textures == null || Textures == null)
                 return 0;
 
             Dictionary<Textures.TEX4, Textures.TEX4> imported = new Dictionary<Textures.TEX4, Textures.TEX4>();
@@ -679,16 +731,132 @@ namespace CathodeLib
         /// absorbs on load. The state files are valid empties, so the level loads in the game before
         /// anything is built into it.
         /// </summary>
-        public static Level MakeNewLevelFrom(string path, Level baseLevel)
+        /// <summary>
+        /// A level with nothing in it, at <paramref name="path"/>, loaded and ready to have content
+        /// ported in - but not saved, and not made runnable. Only the files a level cannot produce for
+        /// itself are copied from <paramref name="baseLevel"/> (authored tables, Havok scaffolds, the
+        /// DX11 stubs); everything else is left for the parsers to write from an empty state, and the
+        /// files the parsers cannot write from a never-loaded state are given valid empties. Nothing is
+        /// seeded into the script and no required models are imported: that is what
+        /// <see cref="MakeNewLevelFrom"/> adds on top to make a level the game can run, and a level
+        /// that only exists to carry composites to another install has no use for any of it.
+        /// </summary>
+        /// <param name="absorbGlobalTextures">Sets <see cref="AbsorbGlobalTextures"/> before the first load.</param>
+        public static Level MakeBlankLevel(string path, Level baseLevel, bool absorbGlobalTextures = true)
         {
             if (baseLevel == null || baseLevel.Commands == null || !baseLevel.Commands.Loaded)
                 throw new ArgumentException("The base level must be loaded.", nameof(baseLevel));
 
+            //Which files come from the base is decided by what it has loaded, so a base that lacks one
+            //(no 64-bit Havok, say) simply contributes nothing for it
+            List<KeyValuePair<string, string>> copies = new List<KeyValuePair<string, string>>();
+            void FromBase(CathodeFile file, string destination) { if (file != null) copies.Add(new KeyValuePair<string, string>(file.Filepath, destination)); }
+            FromBase(baseLevel.BehaviorTreeDB, "WORLD");
+            FromBase(baseLevel.SoundBankData, "WORLD");
+            FromBase(baseLevel.SoundDialogueLookups, "WORLD");
+            FromBase(baseLevel.SoundEventData, "WORLD");
+            FromBase(baseLevel.MaterialMappings, "WORLD");
+            FromBase(baseLevel.MorphTargetDB, "WORLD");
+            FromBase(baseLevel.CollisionHKX, "WORLD");
+            FromBase(baseLevel.CollisionHKX64, "WORLD");
+            FromBase(baseLevel.PhysicsHKX, "WORLD");
+            FromBase(baseLevel.PhysicsHKX64, "WORLD");
+            FromBase(baseLevel.GalaxyItems, "RENDERABLE/GALAXY");
+            FromBase(baseLevel.GalaxyDefinition, "RENDERABLE/GALAXY");
+            string baseRenderable = Path.GetDirectoryName(baseLevel.Textures.Filepath);
+            copies.Add(new KeyValuePair<string, string>(Path.Combine(baseRenderable, "LEVEL_TEXTURES.DX11.PAK"), "RENDERABLE"));
+            copies.Add(new KeyValuePair<string, string>(Path.Combine(baseRenderable, "LEVEL_TEXTURE_HEADERS.DX11.BIN"), "RENDERABLE"));
+
+            return MakeBlankLevel(path, copies, baseLevel.Global, absorbGlobalTextures);
+        }
+
+        /// <summary>
+        /// A blank level that only ever has to load and save - never run - scaffolded from a level's
+        /// folder on disk without loading that level. It takes the least the parsers need: the Havok
+        /// packfiles (a valid file to import compounds and physics systems into, which nothing here can
+        /// write from nothing), MATERIAL_MAPPINGS (collision maps resolve against it), MORPH_TARGET_DB
+        /// (models want its name table), GALAXY.DEFINITION_BIN (its parser cannot write from a
+        /// never-loaded state), and the two DX11 stubs. The sound, behaviour-tree and galaxy-items
+        /// tables a runnable level copies as well are left out: they are dead weight in a level that
+        /// exists to carry composites somewhere else, and their parsers write an empty one on save.
+        /// The folder is a retail-style one (RENDERABLE and WORLD beneath it); the level's global is
+        /// passed separately, since a folder has no idea which install it belongs to.
+        /// </summary>
+        public static Level MakeBlankLevel(string path, string baseLevelFolder, Global global, bool absorbGlobalTextures = true)
+        {
+            if (string.IsNullOrEmpty(baseLevelFolder) || !Directory.Exists(baseLevelFolder))
+                throw new ArgumentException("The base level folder does not exist: " + baseLevelFolder, nameof(baseLevelFolder));
+            if (global == null)
+                throw new ArgumentNullException(nameof(global));
+
+            string baseWorld = Path.Combine(baseLevelFolder, "WORLD");
+            string baseRenderable = Path.Combine(baseLevelFolder, "RENDERABLE");
+            List<KeyValuePair<string, string>> copies = new List<KeyValuePair<string, string>>();
+            foreach (string file in new[] { "MATERIAL_MAPPINGS.PAK", "MORPH_TARGET_DB.BIN", "COLLISION.HKX", "COLLISION.HKX64", "PHYSICS.HKX", "PHYSICS.HKX64" })
+                copies.Add(new KeyValuePair<string, string>(Path.Combine(baseWorld, file), "WORLD"));
+            copies.Add(new KeyValuePair<string, string>(Path.Combine(baseRenderable, "GALAXY", "GALAXY.DEFINITION_BIN"), "RENDERABLE/GALAXY"));
+            foreach (string file in new[] { "LEVEL_TEXTURES.DX11.PAK", "LEVEL_TEXTURE_HEADERS.DX11.BIN" })
+                copies.Add(new KeyValuePair<string, string>(Path.Combine(baseRenderable, file), "RENDERABLE"));
+
+            return MakeBlankLevel(path, copies, global, absorbGlobalTextures);
+        }
+
+        /* copies: source file -> folder beneath the new level root (missing sources are skipped, the way
+           CopyBaseFile always has) */
+        private static Level MakeBlankLevel(string path, List<KeyValuePair<string, string>> copies, Global global, bool absorbGlobalTextures)
+        {
             string root = path.Replace("\\", "/").TrimEnd('/');
             if (Directory.Exists(root) && Directory.EnumerateFileSystemEntries(root).Any())
                 throw new IOException("A level already exists at " + root);
             if (root.ToUpper().Split(new string[] { "DATA/ENV/" }, StringSplitOptions.None).Length < 2)
                 throw new ArgumentException("A level has to live under DATA/ENV.", nameof(path));
+
+            string renderable = root + "/RENDERABLE/";
+            string world = root + "/WORLD/";
+            Directory.CreateDirectory(renderable + "GALAXY/");
+            Directory.CreateDirectory(world + "STATE_0/");
+
+            //Authored tables and Havok scaffolds we cannot produce ourselves, and the two DX11 stubs the
+            //PC build ships identically on every level and nothing parses (32 and 8 bytes): the texture
+            //streamer opens the header file on load and crashes without it, so they travel with the
+            //base files even though the ALL pak is the only real texture container.
+            foreach (KeyValuePair<string, string> copy in copies)
+                CopyBaseFile(copy.Key, root + "/" + copy.Value.Trim('/') + "/");
+
+            //Load reads these two unconditionally: no exclusive master states, and an empty script so
+            //the loader picks the PAK filename (retail ships the PAK; the BIN is written alongside it).
+            using (BinaryWriter writer = new BinaryWriter(File.Create(world + "EXCLUSIVE_MASTER_RESOURCE_INDICES")))
+            {
+                writer.Write(1);
+                writer.Write(0);
+            }
+            File.WriteAllBytes(world + "COMMANDS.PAK", new byte[0]);
+
+            Level level = new Level(root, global, false);
+            level.AbsorbGlobalTextures = absorbGlobalTextures;
+            Utilities.ClearRadiosityOnDisk(level); //the "no radiosity" state a build without radiosity leaves behind
+            level.Load();
+
+            //The morph target file was copied for its name table; the targets themselves belong to the base's models
+            level.MorphTargetDB.Entries.Clear();
+
+            //Valid empties for the files whose parsers cannot write from a never-loaded state
+            State state = level.StateResources[0];
+            state.NavMesh.SetTileData(EmptyNavMeshHeader(), null, null, null, null, null, null, null, null);
+            SetEmptyGrid(state.SpottingPositions);
+            SetEmptyGrid(state.CrawlSpaceSpottingPositions);
+            SetEmptyGrid(state.AssaultPositions);
+            state.Cover.Traversal = new Cover.TraversalGrid() { XCells = 1, ZCells = 1, UnitSize = 1.0f, Cells = new List<List<short>>() { new List<short>() } };
+            level.AlphaLight.Resolution = new System.Numerics.Vector2(64, 64);
+            level.AlphaLight.ImageData = new byte[64 * 64 * 8];
+
+            return level;
+        }
+
+        public static Level MakeNewLevelFrom(string path, Level baseLevel)
+        {
+            if (baseLevel == null || baseLevel.Commands == null || !baseLevel.Commands.Loaded)
+                throw new ArgumentException("The base level must be loaded.", nameof(baseLevel));
 
             /* Checked before anything is written: a base without the whole REQUIRED_MODEL_* block makes a
              * level that can never build a light, a particle or a fog volume, and finding that out after
@@ -700,49 +868,9 @@ namespace CathodeLib
             if (absent.Count != 0)
                 throw new ArgumentException("The base level is missing required models: " + string.Join(", ", absent), nameof(baseLevel));
 
-            string name = Path.GetFileName(root);
-            string renderable = root + "/RENDERABLE/";
-            string galaxy = renderable + "GALAXY/";
-            string world = root + "/WORLD/";
-            Directory.CreateDirectory(galaxy);
-            Directory.CreateDirectory(world + "STATE_0/");
-
-            //Authored tables and Havok scaffolds we cannot produce ourselves
-            CopyBaseFile(baseLevel.BehaviorTreeDB, world);
-            CopyBaseFile(baseLevel.SoundBankData, world);
-            CopyBaseFile(baseLevel.SoundDialogueLookups, world);
-            CopyBaseFile(baseLevel.SoundEventData, world);
-            CopyBaseFile(baseLevel.MaterialMappings, world);
-            CopyBaseFile(baseLevel.MorphTargetDB, world);
-            CopyBaseFile(baseLevel.CollisionHKX, world);
-            CopyBaseFile(baseLevel.CollisionHKX64, world);
-            CopyBaseFile(baseLevel.PhysicsHKX, world);
-            CopyBaseFile(baseLevel.PhysicsHKX64, world);
-            CopyBaseFile(baseLevel.GalaxyItems, galaxy);
-            CopyBaseFile(baseLevel.GalaxyDefinition, galaxy);
-
-            //Two stubs the PC build ships identically on every level and nothing parses (32 and 8 bytes):
-            //the texture streamer opens the DX11 header file on load and crashes without it, so they
-            //travel with the base files even though the ALL pak is the only real texture container.
-            string baseRenderable = Path.GetDirectoryName(baseLevel.Textures.Filepath);
-            CopyBaseFile(Path.Combine(baseRenderable, "LEVEL_TEXTURES.DX11.PAK"), renderable);
-            CopyBaseFile(Path.Combine(baseRenderable, "LEVEL_TEXTURE_HEADERS.DX11.BIN"), renderable);
-
-            //Load reads these two unconditionally: no exclusive master states, and an empty script so
-            //the loader picks the PAK filename (retail ships the PAK; the BIN is written alongside it).
-            using (BinaryWriter writer = new BinaryWriter(File.Create(world + "EXCLUSIVE_MASTER_RESOURCE_INDICES")))
-            {
-                writer.Write(1);
-                writer.Write(0);
-            }
-            File.WriteAllBytes(world + "COMMANDS.PAK", new byte[0]);
-
-            Level level = new Level(root, baseLevel.Global, false);
-            Utilities.ClearRadiosityOnDisk(level); //the "no radiosity" state a build without radiosity leaves behind
-            level.Load();
-
-            //The morph target file was copied for its name table; the targets themselves belong to the base's models
-            level.MorphTargetDB.Entries.Clear();
+            //The empty, loadable shell; the rest of this makes it a level the game can run
+            Level level = MakeBlankLevel(path, baseLevel);
+            string name = Path.GetFileName(path.Replace("\\", "/").TrimEnd('/'));
 
             /* The REQUIRED_MODEL_* block at the head of every model pak: instancing swaps lights, particles,
              * fog and decals onto these, so a level without them cannot build any FX. Imported before the
@@ -778,16 +906,6 @@ namespace CathodeLib
              * instanced, so the ordering instancing normally restores has to be right before the save. */
             List<RequiredModels.Model> stillMissing;
             RequiredModels.EnsureOrdered(level.Models, out stillMissing);
-
-            //Valid empties for the files whose parsers cannot write from a never-loaded state
-            State state = level.StateResources[0];
-            state.NavMesh.SetTileData(EmptyNavMeshHeader(), null, null, null, null, null, null, null, null);
-            SetEmptyGrid(state.SpottingPositions);
-            SetEmptyGrid(state.CrawlSpaceSpottingPositions);
-            SetEmptyGrid(state.AssaultPositions);
-            state.Cover.Traversal = new Cover.TraversalGrid() { XCells = 1, ZCells = 1, UnitSize = 1.0f, Cells = new List<List<short>>() { new List<short>() } };
-            level.AlphaLight.Resolution = new System.Numerics.Vector2(64, 64);
-            level.AlphaLight.ImageData = new byte[64 * 64 * 8];
 
             level.Save();
             return level;
