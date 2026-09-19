@@ -684,10 +684,15 @@ namespace CathodeLib
             /* With a retargeter the clip is sampled on the rig it was authored for and moved across
              * afterwards. Anchoring happens last either way, because the bone it keys off belongs to
              * the rig being played on. */
+            /* Nothing to sample is the rest pose of the rig being posed, whatever the clip would
+             * have been authored on: sampling the authored rig here and returning before the move
+             * across handed back a pose sized for the wrong rig. */
+            if (clip?.Animation == null) return SampleBonesRaw(clip, skeleton, frame, untracked);
+
             Skeleton authored = retarget == null ? skeleton : retarget.From;
 
             List<HavokPackfile.SampledTransform> pose = SampleBonesRaw(clip, authored, frame, untracked);
-            if (pose == null || clip?.Animation == null) return pose;
+            if (pose == null) return null;
             if (retarget != null) pose = retarget.Apply(pose);
 
             //retargeting moves the clip onto another rig, which is a real change to the data;
@@ -1022,7 +1027,8 @@ namespace CathodeLib
         public static List<Matrix4x4> SampleModelPose(ClipReference clip, Skeleton skeleton, int frame, RootMotion root = RootMotion.Ignore, Retargeter retarget = null)
         {
             List<Matrix4x4> local = SampleLocalPose(clip, skeleton, frame, root, retarget);
-            if (local == null) return null;
+            //A pose that is not this rig's, bone for bone, cannot be walked up this rig's parents
+            if (local == null || local.Count != skeleton.Bones.Count) return null;
 
             List<Matrix4x4> pose = new List<Matrix4x4>(local.Count);
             for (int i = 0; i < local.Count; i++)
@@ -1042,7 +1048,7 @@ namespace CathodeLib
         public static List<Matrix4x4> SampleRigPose(ClipReference clip, Skeleton skeleton, int frame, RootMotion root = RootMotion.Ignore, Retargeter retarget = null)
         {
             List<Matrix4x4> local = SampleLocalPose(clip, skeleton, frame, root, retarget);
-            if (local == null) return null;
+            if (local == null || local.Count != skeleton.Bones.Count) return null;
 
             List<Matrix4x4> pose = new List<Matrix4x4>(local.Count);
             for (int i = 0; i < local.Count; i++)
