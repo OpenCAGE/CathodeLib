@@ -4828,6 +4828,9 @@ namespace CathodeLib
                 material?.Name == "COLLISION_ONLY")
             {
                 flags |= CollisionMaps.CollisionFlags.WORLD;
+                if (material?.Name != "AudioCollision->AudioCollision")
+                    flags |= CollisionMaps.CollisionFlags.BALLISTIC;
+
                 if (material?.Name == "WindowCollision->WindowCollision")
                     flags |= (CollisionMaps.CollisionFlags)CollisionMaps.CollisionType.TRANSPARENT;
                 else if (material?.Name == "AudioCollision->AudioCollision")
