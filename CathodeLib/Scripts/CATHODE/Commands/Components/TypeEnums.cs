@@ -1203,6 +1203,7 @@ namespace CATHODE.Scripting.Internal
         MATERIAL_NAMES,                         // Neat material names translated from LongGuid
         FILE_HASHES,                            // Hashes of the game's shipped files, for telling vanilla data from modified data
         UBERSHADER_PATCHES,                     // Ubershader patches to use for fog, etc during instancing
+        ENTITY_CATEGORIES,                      // Entity categories for filtering in the editor  
 
         //Add new entries here
 

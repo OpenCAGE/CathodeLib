@@ -232,6 +232,9 @@ namespace CathodeLib
                             case CustomTableType.UBERSHADER_PATCHES:
                                 ((UbershaderPatchTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomTableType.ENTITY_CATEGORIES:
+                                ((EntityCategoryTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
 #if DEBUG
                         if (tableType == table)
@@ -336,6 +339,9 @@ namespace CathodeLib
                         break;
                     case CustomTableType.UBERSHADER_PATCHES:
                         data = new UbershaderPatchTable(reader);
+                        break;
+                    case CustomTableType.ENTITY_CATEGORIES:
+                        data = new EntityCategoryTable(reader);
                         break;
                 }
             }
@@ -1742,6 +1748,77 @@ namespace CathodeLib
                     writer.Write(stage.Key ?? string.Empty);
                     writer.Write(stage.Value ?? string.Empty);
                 }
+            }
+        }
+    }
+    public class EntityCategoryTable : CustomTable.Table
+    {
+        public EntityCategoryTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.ENTITY_CATEGORIES;
+        }
+
+        public Dictionary<FunctionType, string> ScriptEntityCategories = new Dictionary<FunctionType, string>();
+        public Dictionary<string, string> AnimationEntityCategories = new Dictionary<string, string>();
+
+        public Dictionary<string, Color> CategoryColours = new Dictionary<string, Color>();
+        public Color BaseColour = Color.White;
+
+        private int _version = 1;
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+                return;
+
+            int version = reader.ReadInt32();
+            if (version != _version)
+                return;
+
+            BaseColour = Color.FromArgb(reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
+
+            int categoryColourCount = reader.ReadInt32();
+            for (int i = 0; i < categoryColourCount; i++)
+                CategoryColours.Add(reader.ReadString(), Color.FromArgb(reader.ReadByte(), reader.ReadByte(), reader.ReadByte()));
+            
+            int scriptEntityCategoryCount = reader.ReadInt32();
+            for (int i = 0; i < scriptEntityCategoryCount; i++)
+                ScriptEntityCategories.Add((FunctionType)reader.ReadUInt32(), reader.ReadString());
+
+            int animEntityCategoryCount = reader.ReadInt32();
+            for (int i = 0; i < animEntityCategoryCount; i++)
+                AnimationEntityCategories.Add(reader.ReadString(), reader.ReadString());
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(0);
+
+            writer.Write(BaseColour.R);
+            writer.Write(BaseColour.G);
+            writer.Write(BaseColour.B);
+
+            writer.Write(CategoryColours.Count);
+            foreach (KeyValuePair<string, Color> categoryColour in CategoryColours)
+            {
+                writer.Write(categoryColour.Key);
+                writer.Write(categoryColour.Value.R);
+                writer.Write(categoryColour.Value.G);
+                writer.Write(categoryColour.Value.B);
+            }
+
+            writer.Write(ScriptEntityCategories.Count);
+            foreach (KeyValuePair<FunctionType, string> scriptCategory in ScriptEntityCategories)
+            {
+                writer.Write((uint)scriptCategory.Key);
+                writer.Write(scriptCategory.Value);
+            }
+
+            writer.Write(AnimationEntityCategories.Count);
+            foreach (KeyValuePair<string, string> animCategory in AnimationEntityCategories)
+            {
+                writer.Write(animCategory.Key);
+                writer.Write(animCategory.Value);
             }
         }
     }
