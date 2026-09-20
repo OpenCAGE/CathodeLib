@@ -3150,6 +3150,26 @@ namespace CathodeLib
             foreach (RequiredModels.Model missingModel in missingRequired)
                 Warn("this level is missing required model " + missingModel + ".");
 
+            /* The engine's material block (see RequiredMaterials) is positional too. A level made from
+               scratch before it was seeded has none of it and renders black; FRONTEND of the same install
+               always carries it, so it is taken from there rather than left to be found in-game. */
+            List<string> missingMaterials = RequiredMaterials.Missing(_level.Materials);
+            if (missingMaterials.Count != 0)
+            {
+                Materials donor = null;
+                try { donor = RequiredMaterials.LoadTable(RequiredMaterials.DonorFolderFor(_level), _level.Global); }
+                catch (Exception e) { Console.WriteLine("Could not read the required materials from FRONTEND: " + e.Message); }
+                if (donor != null)
+                {
+                    RequiredMaterials.Import(_level.Materials, donor);
+                    Console.WriteLine("Imported " + (missingMaterials.Count - RequiredMaterials.Missing(_level.Materials).Count) + " required material(s) from FRONTEND.");
+                }
+            }
+            if (RequiredMaterials.EnsureOrdered(_level.Materials, _level.Shaders, out missingMaterials))
+                Console.WriteLine("Restored the required materials to the head of the material table.");
+            foreach (string missingMaterial in missingMaterials)
+                Warn("this level is missing required material " + missingMaterial + " - the game renders nothing without the block.");
+
             //Materials an instance needs but the authored data doesn't hold - see MaterialFactory.
             _materialFactory = new MaterialFactory(_level);
             _materialFactory.GenerateMissingShaders = GenerateMissingShaders;

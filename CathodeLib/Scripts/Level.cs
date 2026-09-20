@@ -867,10 +867,21 @@ namespace CathodeLib
                     absent.Add(model);
             if (absent.Count != 0)
                 throw new ArgumentException("The base level is missing required models: " + string.Join(", ", absent), nameof(baseLevel));
+            List<string> absentMaterials = RequiredMaterials.Missing(baseLevel.Materials);
+            if (absentMaterials.Count != 0)
+                throw new ArgumentException("The base level is missing required materials: " + string.Join(", ", absentMaterials), nameof(baseLevel));
 
             //The empty, loadable shell; the rest of this makes it a level the game can run
             Level level = MakeBlankLevel(path, baseLevel);
             string name = Path.GetFileName(path.Replace("\\", "/").TrimEnd('/'));
+
+            /* The engine's own materials at the head of every level's table - the post-processing
+             * composite above all, then bloom, distortion, lens flare, the fog and surface-effect volumes,
+             * water, refraction, caustics, the deferred light, the particle cube, FALLBACK at 0. No model
+             * references most of them, so no port ever brought them, and a level without
+             * POST_PROCESSING_MATERIAL drew its HUD over a black frame. First, onto the empty table, so
+             * they take 0-14 and their shaders 0-14 of the pak, exactly as retail ships them. */
+            RequiredMaterials.Import(level.Materials, baseLevel.Materials);
 
             /* The REQUIRED_MODEL_* block at the head of every model pak: instancing swaps lights, particles,
              * fog and decals onto these, so a level without them cannot build any FX. Imported before the
@@ -906,6 +917,8 @@ namespace CathodeLib
              * instanced, so the ordering instancing normally restores has to be right before the save. */
             List<RequiredModels.Model> stillMissing;
             RequiredModels.EnsureOrdered(level.Models, out stillMissing);
+            List<string> stillMissingMaterials;
+            RequiredMaterials.EnsureOrdered(level.Materials, level.Shaders, out stillMissingMaterials);
 
             level.Save();
             return level;
