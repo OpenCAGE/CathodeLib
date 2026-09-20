@@ -1792,7 +1792,7 @@ namespace CathodeLib
 
         public override void Write(BinaryWriter writer)
         {
-            writer.Write(0);
+            writer.Write(_version);
 
             writer.Write(BaseColour.R);
             writer.Write(BaseColour.G);
