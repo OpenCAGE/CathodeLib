@@ -2597,6 +2597,31 @@ namespace CathodeLib
         //Creates (or finds) the materials an instance needs that the authored data has no entry for.
         private MaterialFactory _materialFactory = null;
 
+        /* FRONTEND of the same install, loaded only when this level lacks something every level has to
+           carry (the required-asset movers) - a level made from scratch before those were seeded. */
+        private Level _requiredDonor = null;
+        private bool _requiredDonorTried = false;
+        private Level RequiredDonor()
+        {
+            if (_requiredDonorTried)
+                return _requiredDonor;
+            _requiredDonorTried = true;
+            string folder = RequiredMaterials.DonorFolderFor(_level);
+            if (folder == null || !System.IO.Directory.Exists(folder) || _level.Filepath == folder.ToUpper())
+                return null;
+            try
+            {
+                Level donor = new Level(folder, _level.Global, false) { AbsorbGlobalTextures = _level.AbsorbGlobalTextures };
+                donor.Load();
+                _requiredDonor = donor;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("Could not load FRONTEND for the required assets: " + e.Message);
+            }
+            return _requiredDonor;
+        }
+
         private readonly ConcurrentDictionary<(Entity, Composite), InstancedEntity.EntityTemplate> _parameterCache = new ConcurrentDictionary<(Entity, Composite), InstancedEntity.EntityTemplate>();
         private readonly ConcurrentDictionary<(Composite, ShortGuid), Entity> _entityLookupCache = new ConcurrentDictionary<(Composite, ShortGuid), Entity>();
 
@@ -3115,10 +3140,26 @@ namespace CathodeLib
             //it is bake output - so without carrying it every rebuilt wall samples a wrong atlas region.
             //A full radiosity bake rewrites these afterwards, so carrying is harmless there.
             //the table clears above.
-            List<Movers.MOVER_DESCRIPTOR> requiredAssets = new List<Movers.MOVER_DESCRIPTOR>();
-            if (_level.Movers.Entries.Count >= 12)
-                for (int i = 0; i < 12; i++)
-                    requiredAssets.Add(_level.Movers.Entries[i]);
+            /* Only movers that really are the required-asset block (no entity, no resource, required
+               models only - see RequiredMovers) are kept. This used to keep whatever the first twelve
+               were: on a level made from scratch, which never had the block, that was the first twelve
+               things placed - kept on every save whatever the script said, so a deleted floor stayed in
+               the game and the lights and FX among them were drawn twice (kept, and rebuilt). A level
+               without the block is given FRONTEND's, the level every new one is made from. */
+            List<Movers.MOVER_DESCRIPTOR> requiredAssets = RequiredMovers.Head(_level.Movers.Entries, _level.Models);
+            if (requiredAssets.Count != RequiredMovers.Count)
+            {
+                int dropped = Math.Min(RequiredMovers.Count, _level.Movers.Entries.Count) - requiredAssets.Count;
+                Level donor = RequiredDonor();
+                List<Movers.MOVER_DESCRIPTOR> imported = donor == null ? new List<Movers.MOVER_DESCRIPTOR>() : RequiredMovers.ImportFrom(_level, donor);
+                if (imported.Count == RequiredMovers.Count)
+                {
+                    requiredAssets = imported;
+                    Console.WriteLine("Imported the " + RequiredMovers.Count + " required-asset movers from FRONTEND (the head held " + (RequiredMovers.Count - dropped) + ").");
+                }
+                else
+                    Warn("this level has no required-asset movers at the head of MODELS.MVR and they could not be taken from FRONTEND.");
+            }
             _level.Movers.Entries = requiredAssets;
 
             //Each entity with a collision mapping associated with it provides a 'template' version which has no instancing info.
@@ -3156,9 +3197,12 @@ namespace CathodeLib
             List<string> missingMaterials = RequiredMaterials.Missing(_level.Materials);
             if (missingMaterials.Count != 0)
             {
-                Materials donor = null;
-                try { donor = RequiredMaterials.LoadTable(RequiredMaterials.DonorFolderFor(_level), _level.Global); }
-                catch (Exception e) { Console.WriteLine("Could not read the required materials from FRONTEND: " + e.Message); }
+                Materials donor = _requiredDonor?.Materials;
+                if (donor == null)
+                {
+                    try { donor = RequiredMaterials.LoadTable(RequiredMaterials.DonorFolderFor(_level), _level.Global); }
+                    catch (Exception e) { Console.WriteLine("Could not read the required materials from FRONTEND: " + e.Message); }
+                }
                 if (donor != null)
                 {
                     RequiredMaterials.Import(_level.Materials, donor);
@@ -3169,6 +3213,9 @@ namespace CathodeLib
                 Console.WriteLine("Restored the required materials to the head of the material table.");
             foreach (string missingMaterial in missingMaterials)
                 Warn("this level is missing required material " + missingMaterial + " - the game renders nothing without the block.");
+
+            //A port before CompositePorter renumbered them left imported models naming the source's compounds
+            RepairSubmeshCollisionProxies();
 
             //Materials an instance needs but the authored data doesn't hold - see MaterialFactory.
             _materialFactory = new MaterialFactory(_level);
@@ -3212,6 +3259,9 @@ namespace CathodeLib
 
             //Rebuild Havok data
             Phase("  havok rows", ApplyHavokUserRows);
+            //A level ported before the user-data clamp stopped rebuilding compounds carries the broken trees it
+            //made; queued before the commit so the hosts are built from the repaired domains
+            Phase("  havok repair", () => { RepairShrunkCompounds(_collision?.Packfile); RepairShrunkCompounds(_collisionMirror?.Packfile); });
             Phase("  havok commit", () => { _collision?.Packfile.CommitInstanceRebuild(); _collisionMirror?.Packfile.CommitInstanceRebuild(); });
 
             //Placing geometry on a host widens the key space its children can produce.
@@ -3331,32 +3381,127 @@ namespace CathodeLib
             if (packfile == null || rowCount <= 0)
                 return;
 
+            /* In place. UserData lives in the instance record, which HavokPackfile.WriteBackCompoundInstances
+               writes for every compound on save; nothing else about the compound depends on it. This used to
+               rebuild the compound to change it, and the rebuild re-derives the compound's domain and BVH -
+               for a per-mesh proxy (mesh children the tree builder could not size) that came out as a 1 m
+               cube at the origin, so ballistics and thrown objects only registered where a ray happened to
+               cross it (issue 706: a ported desk top, the source level's indices out of range here). */
             int clamped = 0;
             for (int c = 0; c < packfile.StaticCompoundShapes.Count; c++)
             {
                 HavokPackfile.StaticCompoundShape compound = packfile.StaticCompoundShapes[c];
-                bool stray = false;
-                for (int i = 0; i < compound.Instances.Count && !stray; i++)
-                    stray = compound.Instances[i].UserData >= (ulong)rowCount;
-                if (!stray)
-                    continue;
-
-                //Rewriting an instance means rewriting the compound that holds it.
-                List<HavokPackfile.CompoundInstance> saved = new List<HavokPackfile.CompoundInstance>(compound.Instances);
-                packfile.PrepareCompoundForRebuild(compound);
-                for (int i = 0; i < saved.Count; i++)
+                for (int i = 0; i < compound.Instances.Count; i++)
                 {
-                    if (saved[i].UserData >= (ulong)rowCount)
-                    {
-                        saved[i].UserData = 0;
-                        clamped++;
-                    }
-                    compound.AddInstance(saved[i]);
+                    if (compound.Instances[i].UserData < (ulong)rowCount)
+                        continue;
+                    compound.Instances[i].UserData = 0;
+                    clamped++;
                 }
             }
 
             if (clamped != 0)
                 Console.WriteLine("  Repointed {0} compound instance(s) carrying a collision row index outside this level's table", clamped);
+        }
+
+        /// <summary>
+        /// Rebuild the BVH of any compound whose domain does not contain what its instances really occupy -
+        /// the mark ClampInstanceUserData used to leave on ported per-mesh proxies (a 1 m cube at the
+        /// origin standing in for the mesh). The builder now sizes mesh children from their own bounds, so
+        /// the rebuild comes out right; compounds that are already right are left byte for byte alone.
+        /// </summary>
+        static void RepairShrunkCompounds(HavokPackfile packfile)
+        {
+            if (packfile == null)
+                return;
+
+            //A compound already waiting to be rebuilt (the world hosts) is rebuilt anyway, and re-adding its
+            //instances here would double them
+            var repair = new HashSet<HavokPackfile.StaticCompoundShape>();
+            foreach (HavokPackfile.StaticCompoundShape compound in packfile.StaticCompoundShapes)
+                if (compound.Instances.Count != 0 && !packfile.IsPendingRebuild(compound) && packfile.DomainMissesChildren(compound))
+                    repair.Add(compound);
+            if (repair.Count == 0)
+                return;
+            int shrunk = repair.Count;
+
+            /* Whatever instances a repaired compound sized its leaf for it from the broken domain, whether or
+               not its own overall domain happens to be big enough - so those are rebuilt too, all the way up */
+            bool grew;
+            do
+            {
+                grew = false;
+                var offsets = new HashSet<uint>(repair.Select(o => o.DataOffset));
+                foreach (HavokPackfile.StaticCompoundShape compound in packfile.StaticCompoundShapes)
+                {
+                    if (repair.Contains(compound) || compound.Instances.Count == 0 || packfile.IsPendingRebuild(compound))
+                        continue;
+                    if (compound.Instances.Any(o => offsets.Contains(o.ShapeDataOffset)) && repair.Add(compound))
+                        grew = true;
+                }
+            } while (grew);
+
+            //Queued for the commit that follows, which builds children before the compounds holding them
+            foreach (HavokPackfile.StaticCompoundShape compound in repair)
+            {
+                List<HavokPackfile.CompoundInstance> saved = new List<HavokPackfile.CompoundInstance>(compound.Instances);
+                packfile.PrepareCompoundForRebuild(compound);
+                foreach (HavokPackfile.CompoundInstance instance in saved)
+                    compound.AddInstance(instance);
+            }
+            Console.WriteLine("  Rebuilding the collision tree of {0} compound(s) whose bounds did not hold their shapes ({1} holding them)", shrunk, repair.Count - shrunk);
+        }
+
+        /// <summary>
+        /// Retail keeps every model submesh's CollisionProxyIndex equal to the proxy its ModelReference's
+        /// collision mapping uses (all 1,353 on TECH_RND_HZDLAB, all 904 on BSP_Torrens). A submesh that
+        /// disagrees - carried across by a port from the source level's numbering, often naming a compound
+        /// this level does not even have - takes its mapping's proxy, when every ModelReference drawing it
+        /// agrees on which that is.
+        /// </summary>
+        void RepairSubmeshCollisionProxies()
+        {
+            if (_level.Commands == null || _level.CollisionHKX == null)
+                return;
+
+            //By reference: Submesh compares by value, and two models can hold identical ones
+            var wanted = new Dictionary<object, (Models.CS2.Component.LOD.Submesh Submesh, HashSet<int> Proxies)>(new ReferenceEqualityComparer());
+            foreach (Composite composite in _level.Commands.Entries)
+            {
+                if (composite?.functions == null) continue;
+                foreach (FunctionEntity function in composite.functions)
+                {
+                    if (!function.function.IsFunctionType || function.function.AsFunctionType != FunctionType.ModelReference) continue;
+                    if (!(function.GetParameter("resource")?.content is cResource resource) || resource.value == null) continue;
+                    List<RenderableElements.Element> renderables = null;
+                    CollisionMaps.COLLISION_MAPPING mapping = null;
+                    foreach (ResourceReference reference in resource.value)
+                    {
+                        if (reference.resource_type == ResourceType.RENDERABLE_INSTANCE) renderables = reference.RenderableInstance;
+                        else if (reference.resource_type == ResourceType.COLLISION_MAPPING) mapping = reference.CollisionMapping;
+                    }
+                    if (renderables == null || mapping == null || mapping.CollisionProxyIndex < 0) continue;
+                    foreach (RenderableElements.Element element in renderables)
+                    {
+                        if (element?.Model == null || element.Model.CollisionProxyIndex < 0) continue;
+                        if (!wanted.TryGetValue(element.Model, out var entry))
+                            wanted[element.Model] = entry = (element.Model, new HashSet<int>());
+                        entry.Proxies.Add(mapping.CollisionProxyIndex);
+                    }
+                }
+            }
+
+            int repaired = 0;
+            foreach (var entry in wanted.Values)
+            {
+                if (entry.Proxies.Count != 1) continue;
+                int index = entry.Proxies.First();
+                if (entry.Submesh.CollisionProxyIndex == index) continue;
+                entry.Submesh.CollisionProxyIndex = index;
+                repaired++;
+            }
+            if (repaired != 0)
+                Console.WriteLine("Pointed " + repaired + " model submesh(es) at the collision proxy their own mapping uses.");
         }
 
         static int CountUnstamped(HavokPackfile.StaticCompoundShape host, HashSet<HavokPackfile.CompoundInstance> stamped)

@@ -1389,6 +1389,78 @@ namespace CATHODE
             return false;
         }
 
+        /// <summary>
+        /// A child shape's bounds in its own space, for every kind the tree builder meets inside a
+        /// compound: boxes and convex shapes from their stored extents, a compressed mesh from its own
+        /// tree's domain, anything else from its decoded triangles.
+        /// </summary>
+        bool TryGetShapeLocalAabb(uint shapeDataOffset, string shapeClass, out Vector3 min, out Vector3 max)
+        {
+            if (TryGetPreviewLocalAabb(shapeDataOffset, shapeClass, out min, out max))
+                return true;
+
+            if (string.Equals(shapeClass, "hkpBvCompressedMeshShape", StringComparison.Ordinal)
+                && TryGetBvMeshArrays(shapeDataOffset, out uint treeBase, out _, out _, out _, out _, out _, out _, out _, out _, out _, out _)
+                && TryReadTreeDomain(treeBase, out min, out max)
+                && min.X <= max.X && min.Y <= max.Y && min.Z <= max.Z)
+                return true;
+
+            PreviewMesh mesh = new PreviewMesh();
+            AppendShapePreview(mesh, shapeDataOffset, shapeClass, Vector3.Zero, Quaternion.Identity, Vector3.One,
+                int.MaxValue, int.MaxValue, convexHullOpenShells: false);
+            if (mesh.Positions.Count == 0)
+            {
+                min = max = default;
+                return false;
+            }
+            min = new Vector3(float.MaxValue);
+            max = new Vector3(float.MinValue);
+            foreach (Vector3 p in mesh.Positions)
+            {
+                min = Vector3.Min(min, p);
+                max = Vector3.Max(max, p);
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// True when this compound's stored domain fails to contain one of its instances as that instance
+        /// really is - its child's bounds, placed. A tree built inside such a domain clips the shape, and
+        /// every query skips what falls outside. Children that cannot be sized are not judged.
+        /// </summary>
+        public bool DomainMissesChildren(StaticCompoundShape compound, float tolerance = 0.01f)
+        {
+            if (compound == null || compound.Instances.Count == 0 || !HasValidDomain(compound))
+                return false;
+
+            var shapeByOffset = new Dictionary<uint, StaticCompoundShape>();
+            foreach (StaticCompoundShape s in StaticCompoundShapes)
+                if (s != null && !shapeByOffset.ContainsKey(s.DataOffset))
+                    shapeByOffset[s.DataOffset] = s;
+
+            Vector3 dMin = new Vector3(compound.DomainMin.X, compound.DomainMin.Y, compound.DomainMin.Z) - new Vector3(tolerance);
+            Vector3 dMax = new Vector3(compound.DomainMax.X, compound.DomainMax.Y, compound.DomainMax.Z) + new Vector3(tolerance);
+            foreach (CompoundInstance inst in compound.Instances)
+            {
+                Vector3 lmin, lmax;
+                if (shapeByOffset.TryGetValue(inst.ShapeDataOffset, out StaticCompoundShape child) && HasValidDomain(child))
+                {
+                    lmin = new Vector3(child.DomainMin.X, child.DomainMin.Y, child.DomainMin.Z);
+                    lmax = new Vector3(child.DomainMax.X, child.DomainMax.Y, child.DomainMax.Z);
+                }
+                else if (!TryGetShapeLocalAabb(inst.ShapeDataOffset, inst.ShapeClassName, out lmin, out lmax))
+                    continue;
+
+                GetTransformedAabb(lmin, lmax,
+                    new Vector3(inst.Translation.X, inst.Translation.Y, inst.Translation.Z), inst.Rotation,
+                    new Vector3(inst.Scale.X, inst.Scale.Y, inst.Scale.Z),
+                    out Vector3 wmin, out Vector3 wmax);
+                if (wmin.X < dMin.X || wmin.Y < dMin.Y || wmin.Z < dMin.Z || wmax.X > dMax.X || wmax.Y > dMax.Y || wmax.Z > dMax.Z)
+                    return true;
+            }
+            return false;
+        }
+
         static bool HasValidDomain(StaticCompoundShape compound)
         {
             return compound.DomainMin.X <= compound.DomainMax.X
@@ -1617,12 +1689,48 @@ namespace CATHODE
         /// Rewrite instance/tree arrays for compounds touched during this rebuild only.
         /// Untouched compounds keep retail instances so rigid-body COL_EVERYTHING asserts stay happy.
         /// </summary>
+        /// <summary>Whether this compound is waiting for <see cref="CommitInstanceRebuild"/>.</summary>
+        public bool IsPendingRebuild(StaticCompoundShape compound)
+        {
+            return compound != null && _rebuildTouched != null && _rebuildTouched.Contains(compound);
+        }
+
+        /* A compound's leaves are sized from its children's domains as they stand when it is rebuilt, and a
+           child being rebuilt in the same commit only gets its domain then - so children go first. Otherwise
+           a host read a proxy's domain before the proxy had one (or had its old one), and its leaf for that
+           proxy clipped the shape (issue 706). */
+        List<StaticCompoundShape> ChildrenFirst(HashSet<StaticCompoundShape> touched)
+        {
+            var byOffset = new Dictionary<uint, StaticCompoundShape>();
+            foreach (StaticCompoundShape compound in touched)
+                if (!byOffset.ContainsKey(compound.DataOffset))
+                    byOffset[compound.DataOffset] = compound;
+
+            var ordered = new List<StaticCompoundShape>(touched.Count);
+            var placed = new HashSet<StaticCompoundShape>();
+            var visiting = new HashSet<StaticCompoundShape>();
+            void Place(StaticCompoundShape compound)
+            {
+                if (placed.Contains(compound) || !visiting.Add(compound))
+                    return;
+                foreach (CompoundInstance instance in compound.Instances)
+                    if (byOffset.TryGetValue(instance.ShapeDataOffset, out StaticCompoundShape child) && !ReferenceEquals(child, compound))
+                        Place(child);
+                visiting.Remove(compound);
+                if (placed.Add(compound))
+                    ordered.Add(compound);
+            }
+            foreach (StaticCompoundShape compound in touched)
+                Place(compound);
+            return ordered;
+        }
+
         public void CommitInstanceRebuild()
         {
             if (_rebuildTouched == null)
                 return;
 
-            foreach (StaticCompoundShape compound in _rebuildTouched)
+            foreach (StaticCompoundShape compound in ChildrenFirst(_rebuildTouched))
             {
                 if (compound.Instances.Count == 0)
                 {
@@ -5362,11 +5470,19 @@ namespace CATHODE
                         t, inst.Rotation, s,
                         out leafAabbs[i].Min, out leafAabbs[i].Max);
                 }
-                else if (string.Equals(inst.ShapeClassName, "hkpBoxShape", StringComparison.Ordinal)
-                    && TryGetBoxHalfExtents(inst.ShapeDataOffset, out Vector3 he))
+                else if (TryGetShapeLocalAabb(inst.ShapeDataOffset, inst.ShapeClassName, out Vector3 lmin, out Vector3 lmax))
                 {
-                    GetTransformedAabb(-he, he, t, inst.Rotation, s,
+                    GetTransformedAabb(lmin, lmax, t, inst.Rotation, s,
                         out leafAabbs[i].Min, out leafAabbs[i].Max);
+                }
+                else if (_rebuildOriginal != null && _rebuildOriginal.TryGetValue(compound, out var before)
+                    && before.DomainMin.X <= before.DomainMax.X && !float.IsInfinity(before.DomainMin.X))
+                {
+                    /* A child we cannot size: the whole of what the compound covered before is a safe box
+                       for it. A guessed box around the instance origin is not - anything of the shape
+                       outside it is skipped by every query, and was (issue 706). */
+                    leafAabbs[i].Min = new Vector3(before.DomainMin.X, before.DomainMin.Y, before.DomainMin.Z);
+                    leafAabbs[i].Max = new Vector3(before.DomainMax.X, before.DomainMax.Y, before.DomainMax.Z);
                 }
                 else
                 {

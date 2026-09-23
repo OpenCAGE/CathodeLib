@@ -88,6 +88,15 @@ namespace CathodeLib
         private readonly Dictionary<uint, uint> _physicsRemap32 = new Dictionary<uint, uint>();
         private readonly Dictionary<uint, uint> _physicsRemap64 = new Dictionary<uint, uint>();
 
+        /* Submesh.CollisionProxyIndex is persisted in the model file and names a compound by its place in
+           COLLISION.HKX. Retail keeps it equal to the proxy the model's own collision mapping uses, on every
+           model of every level; a port renumbers the compounds it imports, so the models it imports have
+           to follow or they name another model's collision, or nothing (issue 706). Only models this porter
+           brought in are touched - one the destination already had keeps the number that is right there. */
+        private readonly Dictionary<int, int> _proxyIndexRemap = new Dictionary<int, int>();
+        private readonly List<(int SourceIndex, Models.CS2.Component.LOD.Submesh Submesh)> _importedSubmeshes = new List<(int, Models.CS2.Component.LOD.Submesh)>();
+        private readonly HashSet<object> _modelsBefore;
+
         public CompositePorter(Level source, Level destination)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
@@ -99,6 +108,7 @@ namespace CathodeLib
 
             Source = source;
             Destination = destination;
+            _modelsBefore = new HashSet<object>(destination.Models?.Entries ?? new List<Models.CS2>(), new ReferenceEqualityComparer());
         }
 
         /// <summary>
@@ -108,6 +118,7 @@ namespace CathodeLib
         {
             if (composite == null) throw new ArgumentNullException(nameof(composite));
             PortRecursive(composite);
+            ApplyProxyIndexRemap();
         }
 
         /// <summary>
@@ -119,6 +130,44 @@ namespace CathodeLib
             {
                 if (composite != null)
                     PortRecursive(composite);
+            }
+            ApplyProxyIndexRemap();
+        }
+
+        private void ApplyProxyIndexRemap()
+        {
+            if (_importedSubmeshes.Count == 0)
+                return;
+
+            //By reference, once: FindModel is a linear scan that compares submeshes by value
+            var ownerOf = new Dictionary<object, Models.CS2>(new ReferenceEqualityComparer());
+            foreach (Models.CS2 cs2 in Destination.Models?.Entries ?? new List<Models.CS2>())
+                foreach (Models.CS2.Component component in cs2.Components)
+                    foreach (Models.CS2.Component.LOD lod in component.LODs)
+                        foreach (Models.CS2.Component.LOD.Submesh sub in lod.Submeshes)
+                            if (sub != null && !ownerOf.ContainsKey(sub))
+                                ownerOf[sub] = cs2;
+
+            foreach ((int sourceIndex, Models.CS2.Component.LOD.Submesh submesh) in _importedSubmeshes)
+            {
+                if (submesh == null || sourceIndex < 0 || !_proxyIndexRemap.TryGetValue(sourceIndex, out int destIndex))
+                    continue;
+                if (!ownerOf.TryGetValue(submesh, out Models.CS2 owner) || _modelsBefore.Contains(owner))
+                    continue;
+                submesh.CollisionProxyIndex = destIndex;
+            }
+            _importedSubmeshes.Clear();
+        }
+
+        private void CollectImportedSubmeshes(List<RenderableElements.Element> source, List<RenderableElements.Element> imported)
+        {
+            if (source == null || imported == null)
+                return;
+            for (int i = 0; i < source.Count && i < imported.Count; i++)
+            {
+                if (source[i]?.Model != null && imported[i]?.Model != null)
+                    _importedSubmeshes.Add((source[i].Model.CollisionProxyIndex, imported[i].Model));
+                CollectImportedSubmeshes(source[i]?.LODs, imported[i]?.LODs);
             }
         }
 
@@ -221,7 +270,9 @@ namespace CathodeLib
                         AnimatedModelsPorted++;
                         break;
                     case ResourceType.RENDERABLE_INSTANCE:
-                        resourceRefs[i].RenderableInstance = Destination.RenderableElements.ImportEntry(resourceRefs[i].RenderableInstance, Source.Models, OverwriteAssets);
+                        List<RenderableElements.Element> sourceElements = resourceRefs[i].RenderableInstance;
+                        resourceRefs[i].RenderableInstance = Destination.RenderableElements.ImportEntry(sourceElements, Source.Models, OverwriteAssets);
+                        CollectImportedSubmeshes(sourceElements, resourceRefs[i].RenderableInstance);
                         RenderablesPorted++;
                         break;
                     case ResourceType.COLLISION_MAPPING:
@@ -252,6 +303,8 @@ namespace CathodeLib
             HavokPackfile.StaticCompoundShape remappedProxy = null;
             if (srcMap?.CollisionProxy != null)
                 remappedProxy = ImportCollisionProxyPair(srcMap.CollisionProxy);
+            if (srcMap?.CollisionProxy != null && remappedProxy != null)
+                _proxyIndexRemap[srcMap.CollisionProxy.ProxyIndex] = remappedProxy.ProxyIndex;
             resource.CollisionMapping = Destination.CollisionMaps.ImportEntry(srcMap, remappedProxy, OverwriteAssets);
         }
 

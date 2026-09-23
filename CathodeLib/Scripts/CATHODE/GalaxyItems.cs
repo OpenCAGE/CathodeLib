@@ -68,6 +68,13 @@ namespace CATHODE
         #endregion
 
         #region HELPERS
+        /// <summary>
+        /// Regenerate the stars from a definition the way the game's own generator does
+        /// (GALAXY_INFO::generate_galaxy_items): each star picks a template by frequency, points along a
+        /// random point of the unit cube normalised, takes a size whose reciprocal is uniform between the
+        /// template's bounds - so small stars are the common ones, as in every shipped galaxy - and an
+        /// intensity uniform between its bounds. Only the random sequence differs from the game's.
+        /// </summary>
         public bool Generate(GalaxyDefinition definition)
         {
             Entries.Clear();
@@ -94,24 +101,50 @@ namespace CATHODE
                     roll -= f;
                 }
 
-                float sizeRange = template.MaxSize - template.MinSize;
-                float size = template.MinSize + (sizeRange <= 0f ? 0f : (float)rng.NextDouble() * sizeRange);
+                //The game normalises whatever point it drew, so the corners of the cube are a little denser
+                float px, py, pz, length;
+                do
+                {
+                    px = (float)(rng.NextDouble() * 2.0 - 1.0);
+                    py = (float)(rng.NextDouble() * 2.0 - 1.0);
+                    pz = (float)(rng.NextDouble() * 2.0 - 1.0);
+                    length = (float)Math.Sqrt(px * px + py * py + pz * pz);
+                }
+                while (length < 1e-6f);
+
+                float size = RandomSize(rng, template.MinSize, template.MaxSize);
                 float intensityRange = template.MaxIntensity - template.MinIntensity;
                 float intensity = template.MinIntensity + (intensityRange <= 0f ? 0f : (float)rng.NextDouble() * intensityRange);
-
-                float px = (float)(rng.NextDouble() * 2.0 - 1.0);
-                float py = (float)(rng.NextDouble() * 2.0 - 1.0);
-                float pz = (float)(rng.NextDouble() * 2.0 - 1.0);
 
                 Entries.Add(new Star
                 {
                     Size = size,
                     Intensity = intensity,
                     Colour = template.Colour,
-                    Position = new Vector3(px, py, pz)
+                    Position = new Vector3(px / length, py / length, pz / length)
                 });
             }
             return true;
+        }
+
+        /* 1 / uniform(1 / max, 1 / min), as the game draws it: the mean of the shipped DefaultGalaxy's
+           0.0005-0.005 range comes out at 0.00128, where a uniform size would give 0.00275 - stars twice
+           the size and four times as bright. A bound of zero has no reciprocal (the game would make every
+           such star zero-sized, and invisible), so a template with one gets a uniform size instead. */
+        private static float RandomSize(System.Random rng, float min, float max)
+        {
+            if (max < min)
+            {
+                float swap = min;
+                min = max;
+                max = swap;
+            }
+            if (min <= 0f)
+                return Math.Max(0f, min + (float)rng.NextDouble() * (max - min));
+
+            float lo = 1f / max;
+            float hi = 1f / min;
+            return 1f / (lo + (float)rng.NextDouble() * (hi - lo));
         }
         #endregion
 

@@ -894,6 +894,14 @@ namespace CathodeLib
                     level.Models.ImportEntry(model);
             }
 
+            /* And the twelve movers drawing them, at the head of the MVR where instancing keeps them.
+               Without these instancing used to keep the first twelve movers of whatever was placed
+               instead - see RequiredMovers. */
+            List<Movers.MOVER_DESCRIPTOR> requiredMovers = RequiredMovers.ImportFrom(level, baseLevel);
+            if (requiredMovers.Count != RequiredMovers.Count)
+                throw new ArgumentException("The base level has no required-asset movers at the head of its MVR.", nameof(baseLevel));
+            level.Movers.Entries.InsertRange(0, requiredMovers);
+
             //Script: GLOBAL and PAUSEMENU from the base, the REQUIRED_ASSETS composites the engine instances on
             //every level without a script referencing them (weapons, gadgets, the jobs the AI needs) - each
             //with everything it instances, via the porter - then an empty root for the level itself
