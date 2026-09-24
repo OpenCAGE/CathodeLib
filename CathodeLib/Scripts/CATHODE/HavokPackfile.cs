@@ -18,7 +18,7 @@ namespace CATHODE
     /// Supports full packfile round-trip, typed compound instance read/write, and appending
     /// or removing instances on an existing static compound (rebuilds a loose Storage6 BVH).
     /// </summary>
-    public class HavokPackfile : CathodeFile
+    public partial class HavokPackfile : CathodeFile
     {
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
 
