@@ -235,6 +235,9 @@ namespace CathodeLib
                             case CustomTableType.ENTITY_CATEGORIES:
                                 ((EntityCategoryTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomTableType.COMPOSITE_PREVIEWS:
+                                ((CompositePreviewTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
 #if DEBUG
                         if (tableType == table)
@@ -342,6 +345,9 @@ namespace CathodeLib
                         break;
                     case CustomTableType.ENTITY_CATEGORIES:
                         data = new EntityCategoryTable(reader);
+                        break;
+                    case CustomTableType.COMPOSITE_PREVIEWS:
+                        data = new CompositePreviewTable(reader);
                         break;
                 }
             }
@@ -1819,6 +1825,130 @@ namespace CathodeLib
             {
                 writer.Write(animCategory.Key);
                 writer.Write(animCategory.Value);
+            }
+        }
+    }
+    /// <summary>
+    /// Square rendered previews of composites, keyed by composite ShortGuid: what the level viewer draws of
+    /// one, framed in the middle of a black square. One PNG per composite, gzipped on its own so a single
+    /// preview can be pulled out without touching the rest. OpenCAGE ships one for every vanilla composite
+    /// in its flowgraphs.dat; a level's own COMMANDS.PAK carries the ones taken again when its composites
+    /// were saved, and those take precedence - the way flowgraph layouts do.
+    /// </summary>
+    public class CompositePreviewTable : CustomTable.Table
+    {
+        public CompositePreviewTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.COMPOSITE_PREVIEWS;
+        }
+
+        public class Preview
+        {
+            public int captured_at; //unix seconds: when the preview was taken
+            public byte[] png_gzip; //a PNG, gzipped
+        }
+
+        public Dictionary<ShortGuid, Preview> previews = new Dictionary<ShortGuid, Preview>();
+
+        private const int _version = 1;
+
+        public override void Read(BinaryReader reader)
+        {
+            previews.Clear();
+
+            if (reader == null)
+                return;
+
+            int version = reader.ReadInt32();
+            if (version != _version)
+                return;
+
+            int count = reader.ReadInt32();
+            for (int i = 0; i < count; i++)
+            {
+                ShortGuid composite = Utilities.Consume<ShortGuid>(reader);
+                Preview preview = new Preview();
+                preview.captured_at = reader.ReadInt32();
+                int length = reader.ReadInt32();
+                preview.png_gzip = reader.ReadBytes(length);
+                previews[composite] = preview;
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(_version);
+            writer.Write(previews.Count);
+            foreach (KeyValuePair<ShortGuid, Preview> preview in previews)
+            {
+                Utilities.Write<ShortGuid>(writer, preview.Key);
+                writer.Write(preview.Value.captured_at);
+                byte[] data = preview.Value.png_gzip ?? new byte[0];
+                writer.Write(data.Length);
+                writer.Write(data);
+            }
+        }
+
+        public int Count => previews.Count;
+
+        public bool HasPreview(ShortGuid composite) => previews.ContainsKey(composite);
+
+        /// <summary>When a composite's preview was taken (unix seconds), or -1 when there is none.</summary>
+        public int GetCapturedAt(ShortGuid composite)
+        {
+            return previews.TryGetValue(composite, out Preview preview) ? preview.captured_at : -1;
+        }
+
+        /// <summary>Store a preview from a PNG's bytes, gzipping it. Replaces any the composite had.</summary>
+        public void SetPreview(ShortGuid composite, byte[] png, int capturedAt)
+        {
+            if (png == null)
+                return;
+            previews[composite] = new Preview() { captured_at = capturedAt, png_gzip = Compress(png) };
+        }
+
+        /// <summary>Store a preview that is already gzipped (copying one table's entry into another).</summary>
+        public void SetPreview(ShortGuid composite, Preview preview)
+        {
+            if (preview == null || preview.png_gzip == null)
+                return;
+            previews[composite] = new Preview() { captured_at = preview.captured_at, png_gzip = preview.png_gzip };
+        }
+
+        public bool RemovePreview(ShortGuid composite) => previews.Remove(composite);
+
+        /// <summary>The PNG bytes of a composite's preview, or null when it has none.</summary>
+        public byte[] GetPreviewPng(ShortGuid composite)
+        {
+            if (!previews.TryGetValue(composite, out Preview preview) || preview.png_gzip == null)
+                return null;
+            try
+            {
+                return Decompress(preview.png_gzip);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        public static byte[] Compress(byte[] data)
+        {
+            using (MemoryStream output = new MemoryStream())
+            {
+                using (GZipStream gzip = new GZipStream(output, CompressionLevel.Optimal, true))
+                    gzip.Write(data, 0, data.Length);
+                return output.ToArray();
+            }
+        }
+
+        public static byte[] Decompress(byte[] data)
+        {
+            using (MemoryStream output = new MemoryStream())
+            using (GZipStream gzip = new GZipStream(new MemoryStream(data), CompressionMode.Decompress))
+            {
+                gzip.CopyTo(output);
+                return output.ToArray();
             }
         }
     }
