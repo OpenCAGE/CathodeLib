@@ -1846,6 +1846,18 @@ namespace CATHODE.Scripting
         }
 
         /// <summary>
+        /// Replace every custom pin info row for a composite with the given set - an empty set removes them.
+        /// For putting a composite's pins back exactly as they were, which AddCustomPinInfos (a merge) cannot.
+        /// </summary>
+        public void ReplaceCustomPinInfos(ShortGuid compositeID, List<CompositePinInfoTable.PinInfo> infos)
+        {
+            if (infos == null || infos.Count == 0)
+                _pinInfo.composite_pin_infos.Remove(compositeID);
+            else
+                _pinInfo.composite_pin_infos[compositeID] = infos;
+        }
+
+        /// <summary>
         /// Bulk add custom entity pin info for a composite
         /// </summary>
         public void AddCustomPinInfos(Composite composite, List<CompositePinInfoTable.PinInfo> infos) => AddCustomPinInfos(composite.shortGUID, infos);
