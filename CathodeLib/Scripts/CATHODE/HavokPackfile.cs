@@ -5,6 +5,7 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 using CathodeLib;
+using CathodeLib.Havok;
 
 namespace CATHODE
 {
@@ -18,7 +19,7 @@ namespace CATHODE
     /// Supports full packfile round-trip, typed compound instance read/write, and appending
     /// or removing instances on an existing static compound (rebuilds a loose Storage6 BVH).
     /// </summary>
-    public partial class HavokPackfile : CathodeFile
+    public class HavokPackfile : CathodeFile
     {
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
 
@@ -38,15 +39,17 @@ namespace CATHODE
         /// </summary>
         internal sealed class ShapeLayout
         {
-            public int ConvexRotatedVertices = 64;
-            public int ConvexNumVertices = 80;
-            public int ConvexPlaneEquations = 88;
-            public int ConvexConnectivity = 104;
+            //hkpConvexVerticesShape: radius @32, aabbHalfExtents @48, aabbCenter @64, then the vertex arrays
+            //(ReleaseSweep physfields over every PHYSICS.HKX64; the old 64/80/88/104 read the AABB centre as an array)
+            public int ConvexRotatedVertices = 80;
+            public int ConvexNumVertices = 96;
+            public int ConvexPlaneEquations = 104;
+            public int ConvexConnectivity = 120;
             public int ConvexAabbHalfExtents = 48;
             public int ConvexAabbCentre = 64;
             public int ConnectivityVertexIndices = 16;
             public int ConnectivityFacesPerVertex = 32;
-            public int ListChildInfo = 40;
+            public int ListChildInfo = 48;   //as the proxy list's own ListChildArrayField, 0x30
             public int ListChildStride = 32;
             public int WorldObjectCollidable = 32;
         }
@@ -200,7 +203,7 @@ namespace CATHODE
             public uint DataOffset;
             public string Name;
             public string ShapeClassName;
-            /// <summary>hkpMotion::MotionType (Dynamic=1, Keyframed=4, Fixed=5, …).</summary>
+            /// <summary>hkpMotion::MotionType: retail props are 3 (box inertia) or 2 (sphere inertia), animated doors and lids 4 (keyframed).</summary>
             public byte MotionType;
             public string MotionTypeName;
             /// <summary>1/mass from <c>m_inertiaAndMassInv.w</c>; 0 means infinite mass.</summary>
@@ -210,8 +213,12 @@ namespace CATHODE
             public Vector3 InertiaInvLocal;
             public float ObjectRadius;
             public float LinearDamping;
+            public float AngularDamping;
+            /// <summary>The motion's hkUFloat8 code, not a speed: retail stores 0x7F (Havok's default) on all but one body.</summary>
             public float MaxLinearVelocity;
             public float GravityFactor;
+            public float Friction;
+            public float Restitution;
             public uint CollisionFilterInfo;
         }
 
@@ -382,13 +389,30 @@ namespace CATHODE
             // hkpWorldObject.collidable: +32 (64-bit) / +16 (32-bit); shape pointer at start of collidable.
             uint collidableShapeField = Header.PointerSize == 8 ? (uint)Layout.WorldObjectCollidable : 16u;
 
+            //Each body where its motion state holds it (translation @R+48, rotation0 @R+96, R = 240 / 368), so a
+            //system of several bodies - a pair of doors, a trolley and its wheels - previews assembled
+            uint motionState = Header.PointerSize == 8 ? 368u : 240u;
             for (int b = 0; b < bodyOffsets.Count && mesh.ShapeCount < PreviewShapeCap; b++)
             {
                 uint shapeField = bodyOffsets[b] + collidableShapeField;
                 if (!globalBySrc.TryGetValue(shapeField, out uint shapeOff))
                     continue;
                 classAtOffset.TryGetValue(shapeOff, out string shapeClass);
-                AppendShapePreview(mesh, shapeOff, shapeClass ?? "", Vector3.Zero, Quaternion.Identity, Vector3.One);
+                Vector3 translation = Vector3.Zero;
+                Quaternion rotation = Quaternion.Identity;
+                uint state = bodyOffsets[b] + motionState;
+                if (Tagfile == null && state + 112 <= (uint)DataPayload.Length)
+                {
+                    Vector4 t = ReadVector4(DataPayload, (int)state + 48);
+                    Vector4 q = ReadVector4(DataPayload, (int)state + 96);
+                    Quaternion read = new Quaternion(q.X, q.Y, q.Z, q.W);
+                    if (!float.IsNaN(t.X) && !float.IsNaN(read.W) && read.LengthSquared() > 0.5f)
+                    {
+                        translation = new Vector3(t.X, t.Y, t.Z);
+                        rotation = Quaternion.Normalize(read);
+                    }
+                }
+                AppendShapePreview(mesh, shapeOff, shapeClass ?? "", translation, rotation, Vector3.One);
             }
             return mesh;
         }
@@ -407,16 +431,22 @@ namespace CATHODE
             if (system == null || !TryGetRigidBodyOffsets(system, out List<uint> bodyOffsets))
                 return bodies;
 
+            /* hkpRigidBody, 2012 packfile, read off every retail PHYSICS.HKX/HKX64 (ReleaseSweep physfields). The
+             * motion is inline: its motion state starts at R = 240 / 368, the motion's type byte 8 / 16 before it.
+             * The byte at 0x88 / 0xC8 that used to be read as the motion type is hkpMaterial's response type, which
+             * is 1 on every retail body - so every body used to list as "Dynamic". */
             bool is64 = Header.PointerSize == 8;
             uint shapeFieldOff = is64 ? 32u : 16u;
             uint filterFieldOff = is64 ? 0x4Cu : 0x2Cu;
             uint nameFieldOff = is64 ? 0xB0u : 0x78u;
-            uint motionTypeOff = is64 ? 0xC8u : 0x88u;
-            uint maxLinVelOff = is64 ? 0xCCu : 0x8Cu;
-            uint radiusOff = is64 ? 0x210u : 0x190u;
-            uint linDampOff = is64 ? 0x214u : 0x194u;
-            uint inertiaOff = is64 ? 0x220u : 0x1A0u;
-            uint gravityOff = is64 ? 0x280u : 0x1FCu;
+            uint frictionOff = is64 ? 0xCCu : 0x8Cu;
+            uint motionState = is64 ? 368u : 240u;
+            uint motionTypeOff = motionState - (is64 ? 16u : 8u);   //after the inline motion's hkReferencedObject
+            uint radiusOff = motionState + 160;
+            uint linDampOff = motionState + 164;           //hkHalf, then angular damping
+            uint maxLinVelOff = motionState + 170;         //hkUFloat8
+            uint inertiaOff = motionState + 176;
+            uint gravityOff = motionState + 264 + (uint)Header.PointerSize + 2;   //after savedMotion and savedQualityTypeIndex
 
             var classAtOffset = new Dictionary<uint, string>();
             for (int i = 0; i < Objects.Count; i++)
@@ -453,16 +483,19 @@ namespace CATHODE
                         BitConverter.ToSingle(DataPayload, (int)(off + inertiaOff + 4)),
                         BitConverter.ToSingle(DataPayload, (int)(off + inertiaOff + 8))),
                     ObjectRadius = BitConverter.ToSingle(DataPayload, (int)(off + radiusOff)),
-                    LinearDamping = BitConverter.ToSingle(DataPayload, (int)(off + linDampOff)),
-                    MaxLinearVelocity = BitConverter.ToSingle(DataPayload, (int)(off + maxLinVelOff)),
-                    GravityFactor = BitConverter.ToSingle(DataPayload, (int)(off + gravityOff)),
+                    LinearDamping = HalfFloat2012(off + linDampOff),
+                    AngularDamping = HalfFloat2012(off + linDampOff + 2),
+                    MaxLinearVelocity = DataPayload[off + maxLinVelOff],
+                    GravityFactor = HalfFloat2012(off + gravityOff),
+                    Friction = BitConverter.ToSingle(DataPayload, (int)(off + frictionOff)),
+                    Restitution = BitConverter.ToSingle(DataPayload, (int)(off + frictionOff + 4)),
                     CollisionFilterInfo = BitConverter.ToUInt32(DataPayload, (int)(off + filterFieldOff)),
                 });
             }
             return bodies;
         }
 
-        bool TryGetRigidBodyOffsets(PhysicsSystem system, out List<uint> bodyOffsets)
+        internal bool TryGetRigidBodyOffsets(PhysicsSystem system, out List<uint> bodyOffsets)
         {
             bodyOffsets = null;
             if (system == null)
@@ -472,14 +505,17 @@ namespace CATHODE
             return TryReadPointerArray(rigidBodiesField, out bodyOffsets);
         }
 
+        /// <summary>A 2012 hkHalf: the top sixteen bits of a float (0x3F80 is 1).</summary>
+        float HalfFloat2012(uint at) => BitConverter.ToSingle(BitConverter.GetBytes((uint)BitConverter.ToUInt16(DataPayload, (int)at) << 16), 0);
+
         static string DescribeMotionType(byte motionType)
         {
             switch (motionType)
             {
                 case 0: return "Invalid";
                 case 1: return "Dynamic";
-                case 2: return "SphereInertia";
-                case 3: return "BoxInertia";
+                case 2: return "Dynamic (sphere)";
+                case 3: return "Dynamic (box)";
                 case 4: return "Keyframed";
                 case 5: return "Fixed";
                 case 6: return "ThinBoxInertia";
@@ -595,6 +631,36 @@ namespace CATHODE
             {
                 if (TryAppendListShape(mesh, shapeDataOffset, translation, rotation, scale, convexHullOpenShells))
                     return;
+            }
+            else if (string.Equals(shapeClass, "hkpConvexTranslateShape", StringComparison.Ordinal)
+                || string.Equals(shapeClass, "hkpConvexTransformShape", StringComparison.Ordinal))
+            {
+                if (TryAppendConvexWrapper(mesh, shapeDataOffset, shapeClass, translation, rotation, scale, shapeCap, triCap, convexHullOpenShells))
+                    return;
+            }
+            else if (string.Equals(shapeClass, "hkpCylinderShape", StringComparison.Ordinal)
+                || string.Equals(shapeClass, "hkpCapsuleShape", StringComparison.Ordinal))
+            {
+                if (TryAppendRoundShape(mesh, shapeDataOffset, shapeClass, translation, rotation, scale))
+                    return;
+            }
+            else if (string.Equals(shapeClass, "hkpMoppBvTreeShape", StringComparison.Ordinal))
+            {
+                //A MOPP is an acceleration tree over its child (@52 / @88, a list shape on the retail doors): draw the child
+                uint childField = shapeDataOffset + (Header.PointerSize == 8 ? 88u : 52u);
+                for (int i = 0; i < GlobalFixups.Count; i++)
+                {
+                    if (GlobalFixups[i].Src != childField) continue;
+                    uint child = GlobalFixups[i].Dst;
+                    string childClass = null;
+                    for (int o = 0; o < Objects.Count && childClass == null; o++)
+                        if (Objects[o].DataOffset == child) childClass = Objects[o].ClassName;
+                    int before = mesh.ShapeCount;
+                    AppendShapePreview(mesh, child, childClass ?? "", translation, rotation, scale, shapeCap, triCap, convexHullOpenShells);
+                    if (mesh.ShapeCount > before)
+                        return;
+                    break;
+                }
             }
 
             // Preview-only AABB placeholder for undecoded shapes (bake must not invent solids).
@@ -884,7 +950,7 @@ namespace CATHODE
         /// (Z starts at bit 43). Bit 42 is unused padding — shifting Z from 42
         /// places weld verts in the gaps between section AABBs and creates spikes.
         /// </summary>
-        static Vector3 DecompressSharedVertex21(ulong packed, Vector3 domainMin, Vector3 domainMax)
+        internal static Vector3 DecompressSharedVertex21(ulong packed, Vector3 domainMin, Vector3 domainMax)
         {
             const ulong mask = (1UL << 21) - 1UL;
             ulong qx = packed & mask;
@@ -1096,161 +1162,173 @@ namespace CATHODE
             Quaternion rotation,
             Vector3 scale)
         {
-            // 64-bit: rotatedVertices @+64, numVertices @+80, planeEquations @+88, connectivity @+104
-            // 32-bit: rotatedVertices @+48, numVertices @+60, planeEquations @+64, connectivity @+76
-            // (hkArray is 12 vs 16 bytes; confirmed against aabbHalfExtents @32/48 pattern used elsewhere)
+            /* rotatedVertices is an hkArray of hkFourTransposedPoints: four vertices to a 48-byte group, stored as
+             * their four x, four y, then four z, the last group padded with the last vertex. The shape is the hull
+             * of those vertices grown by the convex radius; the preview draws the hull. 64-bit packfile:
+             * rotatedVertices @80, numVertices @96 (a tagfile says where from its own types); 32-bit @64 and @76.
+             * (The old reader took the AABB centre for the array and read float4s, so no retail convex shape ever
+             * decoded and every one previewed as its box.) */
             int ptrSize = Header.PointerSize;
-            uint rotatedField = shapeOffset + (ptrSize == 8 ? (uint)Layout.ConvexRotatedVertices : 48u);
-            int numVertOff = (int)shapeOffset + (ptrSize == 8 ? Layout.ConvexNumVertices : 60);
-            uint planesField = shapeOffset + (ptrSize == 8 ? (uint)Layout.ConvexPlaneEquations : 64u);
-            uint connectivityField = shapeOffset + (ptrSize == 8 ? (uint)Layout.ConvexConnectivity : 76u);
-
+            uint rotatedField = shapeOffset + (ptrSize == 8 ? (uint)Layout.ConvexRotatedVertices : 64u);
+            int numVertOff = (int)shapeOffset + (ptrSize == 8 ? Layout.ConvexNumVertices : 76);
             if (numVertOff + 4 > DataPayload.Length)
                 return false;
             int numVertices = BitConverter.ToInt32(DataPayload, numVertOff);
             if (numVertices <= 0 || numVertices > 4096)
                 return false;
-
-            if (!TryGetHkArray(rotatedField, out uint rotatedOff, out int rotatedCount) || rotatedCount < numVertices)
+            if (!TryGetHkArray(rotatedField, out uint rotatedOff, out int groups) || groups * 4 < numVertices
+                || rotatedOff + (ulong)groups * 48 > (ulong)DataPayload.Length)
                 return false;
-
-            // Each "rotated vertex" is stored as hkVector4 in many packs (Matrix3 array is 3 columns,
-            // but AI files often serialize as contiguous float4 positions). Detect stride.
-            int avail = (int)Math.Min((uint)DataPayload.Length - rotatedOff, (uint)(rotatedCount * 48));
-            int stride = 16;
-            if (rotatedCount >= numVertices * 3 && avail >= numVertices * 48)
-                stride = 48; // true Matrix3 (3×float4 columns); use translation column / first row xz
 
             var verts = new List<Vector3>(numVertices);
             for (int i = 0; i < numVertices; i++)
             {
-                int o = (int)rotatedOff + i * stride;
-                if (o + 12 > DataPayload.Length)
-                    return false;
-                // Matrix3 form: take column 0's translation-like first three floats of each slot when stride 16.
+                int at = (int)rotatedOff + (i >> 2) * 48 + (i & 3) * 4;
                 verts.Add(new Vector3(
-                    BitConverter.ToSingle(DataPayload, o),
-                    BitConverter.ToSingle(DataPayload, o + 4),
-                    BitConverter.ToSingle(DataPayload, o + 8)));
+                    BitConverter.ToSingle(DataPayload, at),
+                    BitConverter.ToSingle(DataPayload, at + 16),
+                    BitConverter.ToSingle(DataPayload, at + 32)));
             }
 
-            int baseIndex = mesh.Positions.Count;
-            for (int i = 0; i < verts.Count; i++)
-                mesh.Positions.Add(translation + Vector3.Transform(verts[i] * scale, rotation));
-
-            int trisBefore = mesh.TriangleCount;
-
-            // Prefer authored connectivity (face → vertex indices).
-            if (TryAppendConvexConnectivity(mesh, connectivityField, baseIndex, numVertices))
+            //The faces are the hull's, from the same builder the physics import uses
+            Vector3 min = verts[0], max = verts[0];
+            foreach (Vector3 v in verts) { min = Vector3.Min(min, v); max = Vector3.Max(max, v); }
+            Vector3 extent = max - min;
+            List<Vector3> corners = null;
+            List<int> triangles = null;
+            if (verts.Count >= 4)
             {
-                mesh.ShapeCount++;
-                return true;
-            }
-
-            // Fall back: fan triangles from plane equations / convex hull of verts (simple fan about centroid).
-            if (verts.Count >= 3)
-            {
-                // Build faces from plane equations when present.
-                if (TryGetHkArray(planesField, out uint planesOff, out int planeCount) && planeCount > 0)
+                try
                 {
-                    for (int p = 0; p < planeCount && mesh.TriangleCount < mesh.TriangleCapLimit; p++)
-                    {
-                        int o = (int)planesOff + p * 16;
-                        if (o + 16 > DataPayload.Length)
-                            break;
-                        Vector4 plane = ReadVector4(DataPayload, o);
-                        var face = new List<int>(8);
-                        for (int v = 0; v < verts.Count; v++)
-                        {
-                            float d = verts[v].X * plane.X + verts[v].Y * plane.Y + verts[v].Z * plane.Z + plane.W;
-                            if (Math.Abs(d) < 0.01f)
-                                face.Add(v);
-                        }
-                        for (int i = 1; i + 1 < face.Count; i++)
-                        {
-                            mesh.Indices.Add(baseIndex + face[0]);
-                            mesh.Indices.Add(baseIndex + face[i]);
-                            mesh.Indices.Add(baseIndex + face[i + 1]);
-                        }
-                    }
+                    Hull hull = Hull.Build(verts.Select(v => new D3(v.X, v.Y, v.Z)).ToList(), Math.Max(extent.X, Math.Max(extent.Y, extent.Z)));
+                    List<D3> hullVertices = hull.Vertices();
+                    triangles = hull.Triangles(hullVertices);
+                    corners = hullVertices.Select(p => p.ToVector3()).ToList();
+                }
+                catch (ArgumentException)
+                {
+                    //flat or a line: drawn as its box below
                 }
             }
-
-            if (mesh.TriangleCount == trisBefore && verts.Count >= 4)
+            if (triangles == null || triangles.Count == 0)
             {
-                // Last resort: AABB of the hull (still better than nothing for tiny hulls).
-                mesh.Positions.RemoveRange(baseIndex, mesh.Positions.Count - baseIndex);
-                Vector3 min = verts[0], max = verts[0];
-                for (int i = 1; i < verts.Count; i++)
-                {
-                    min = Vector3.Min(min, verts[i]);
-                    max = Vector3.Max(max, verts[i]);
-                }
                 AppendBox(mesh, min, max, translation, rotation, scale);
                 return true;
             }
+            if (mesh.ShapeCount >= mesh.ShapeCapLimit || mesh.TriangleCount >= mesh.TriangleCapLimit)
+                return true;
 
-            if (mesh.TriangleCount == trisBefore)
-            {
-                mesh.Positions.RemoveRange(baseIndex, mesh.Positions.Count - baseIndex);
-                return false;
-            }
-
+            int baseIndex = mesh.Positions.Count;
+            foreach (Vector3 c in corners)
+                mesh.Positions.Add(translation + Vector3.Transform(c * scale, rotation));
+            foreach (int t in triangles)
+                mesh.Indices.Add(baseIndex + t);
             mesh.ShapeCount++;
             return true;
         }
 
-        bool TryAppendConvexConnectivity(PreviewMesh mesh, uint connectivityField, int baseIndex, int numVertices)
+        /// <summary>
+        /// hkpConvexTranslateShape (child @24/@48, translation @32/@64) and hkpConvexTransformShape (child @24/@48,
+        /// then an hkQsTransform: translation, rotation quaternion, scale @32/@48/@64 on 32-bit, @64/@80/@96 on 64-bit):
+        /// the child drawn where the wrapper puts it. Retail wraps 1,962 boxes and cylinders this way.
+        /// </summary>
+        bool TryAppendConvexWrapper(PreviewMesh mesh, uint shapeOffset, string shapeClass, Vector3 translation, Quaternion rotation, Vector3 scale,
+            int shapeCap, int triCap, bool convexHullOpenShells)
         {
-            // connectivity is a pointer (global fixup) to hkpConvexVerticesConnectivity.
-            uint connOff = 0;
+            bool is64 = Header.PointerSize == 8;
+            uint childField = shapeOffset + (is64 ? 48u : 24u);
+            uint transformAt = shapeOffset + (is64 ? 64u : 32u);
+            if (transformAt + 48 > (uint)DataPayload.Length)
+                return false;
+            uint child = 0;
             bool found = false;
-            for (int i = 0; i < GlobalFixups.Count; i++)
-            {
-                if (GlobalFixups[i].Src == connectivityField)
-                {
-                    connOff = GlobalFixups[i].Dst;
-                    found = true;
-                    break;
-                }
-            }
+            for (int i = 0; i < GlobalFixups.Count && !found; i++)
+                if (GlobalFixups[i].Src == childField) { child = GlobalFixups[i].Dst; found = true; }
             if (!found)
                 return false;
+            string childClass = null;
+            for (int i = 0; i < Objects.Count && childClass == null; i++)
+                if (Objects[i].DataOffset == child) childClass = Objects[i].ClassName;
 
-            int ptrSize = Header.PointerSize;
-            // hkReferencedObject (8/16) then vertexIndices array, numVerticesPerFace array.
-            uint indicesField = connOff + (ptrSize == 8 ? (uint)Layout.ConnectivityVertexIndices : 8u);
-            uint facesField = connOff + (ptrSize == 8 ? (uint)Layout.ConnectivityFacesPerVertex : 20u);
-            if (!TryGetHkArray(indicesField, out uint indicesOff, out int indexCount) || indexCount <= 0)
-                return false;
-            if (!TryGetHkArray(facesField, out uint facesOff, out int faceCount) || faceCount <= 0)
-                return false;
-
-            int cursor = 0;
-            int trisBefore = mesh.TriangleCount;
-            for (int f = 0; f < faceCount && mesh.TriangleCount < mesh.TriangleCapLimit; f++)
+            Vector4 t = ReadVector4(DataPayload, (int)transformAt);
+            Vector3 localTranslation = new Vector3(t.X, t.Y, t.Z);
+            Quaternion localRotation = Quaternion.Identity;
+            Vector3 localScale = Vector3.One;
+            if (string.Equals(shapeClass, "hkpConvexTransformShape", StringComparison.Ordinal))
             {
-                int fo = (int)facesOff + f;
-                if (fo >= DataPayload.Length)
-                    break;
-                int n = DataPayload[fo];
-                if (n < 3 || cursor + n > indexCount)
-                    break;
-                // Fan triangulation of the face.
-                int i0 = BitConverter.ToUInt16(DataPayload, (int)indicesOff + cursor * 2);
-                for (int i = 1; i + 1 < n; i++)
-                {
-                    int ia = BitConverter.ToUInt16(DataPayload, (int)indicesOff + (cursor + i) * 2);
-                    int ib = BitConverter.ToUInt16(DataPayload, (int)indicesOff + (cursor + i + 1) * 2);
-                    if (i0 >= numVertices || ia >= numVertices || ib >= numVertices)
-                        continue;
-                    mesh.Indices.Add(baseIndex + i0);
-                    mesh.Indices.Add(baseIndex + ia);
-                    mesh.Indices.Add(baseIndex + ib);
-                }
-                cursor += n;
+                Vector4 q = ReadVector4(DataPayload, (int)transformAt + 16);
+                Vector4 s = ReadVector4(DataPayload, (int)transformAt + 32);
+                localRotation = Quaternion.Normalize(new Quaternion(q.X, q.Y, q.Z, q.W));
+                localScale = new Vector3(s.X, s.Y, s.Z);
             }
-            return mesh.TriangleCount > trisBefore;
+            int before = mesh.ShapeCount;
+            AppendShapePreview(mesh, child, childClass ?? "",
+                translation + Vector3.Transform(localTranslation * scale, rotation),
+                rotation * localRotation,
+                scale * localScale,
+                shapeCap, triCap, convexHullOpenShells);
+            return mesh.ShapeCount > before;
+        }
+
+        /// <summary>
+        /// hkpCylinderShape (convex radius @16/@32, cylinder radius @20/@40, ends @32 and @48 / @48 and @64) and
+        /// hkpCapsuleShape (radius @16/@32, ends @32 and @48 / @48 and @64), as sixteen-sided meshes.
+        /// </summary>
+        bool TryAppendRoundShape(PreviewMesh mesh, uint shapeOffset, string shapeClass, Vector3 translation, Quaternion rotation, Vector3 scale)
+        {
+            if (mesh.ShapeCount >= mesh.ShapeCapLimit || mesh.TriangleCount >= mesh.TriangleCapLimit)
+                return true;
+            bool is64 = Header.PointerSize == 8;
+            bool capsule = string.Equals(shapeClass, "hkpCapsuleShape", StringComparison.Ordinal);
+            uint endsAt = shapeOffset + (is64 ? 48u : 32u);
+            if (endsAt + 32 > (uint)DataPayload.Length)
+                return false;
+            float radius = BitConverter.ToSingle(DataPayload, (int)shapeOffset + (is64 ? 32 : 16));
+            if (!capsule)
+                radius += BitConverter.ToSingle(DataPayload, (int)shapeOffset + (is64 ? 40 : 20));
+            Vector4 a4 = ReadVector4(DataPayload, (int)endsAt), b4 = ReadVector4(DataPayload, (int)endsAt + 16);
+            Vector3 a = new Vector3(a4.X, a4.Y, a4.Z), b = new Vector3(b4.X, b4.Y, b4.Z);
+            if (!(radius > 0f) || float.IsNaN(a.X) || float.IsNaN(b.X))
+                return false;
+
+            Vector3 axis = b - a;
+            float length = axis.Length();
+            Vector3 dir = length > 1e-6f ? axis / length : Vector3.UnitY;
+            Vector3 p1 = Vector3.Normalize(Math.Abs(dir.X) < 0.9f ? Vector3.Cross(dir, Vector3.UnitX) : Vector3.Cross(dir, Vector3.UnitY));
+            Vector3 p2 = Vector3.Cross(dir, p1);
+
+            //Rings along the axis: (centre, ring radius). A cylinder is two caps and a side; a capsule two hemispheres.
+            var rings = new List<(Vector3 centre, float r)>();
+            if (capsule)
+            {
+                for (int k = 0; k <= 4; k++) { double phi = -Math.PI / 2 + k * Math.PI / 8; rings.Add((a + dir * (float)(radius * Math.Sin(phi)), (float)(radius * Math.Cos(phi)))); }
+                for (int k = 0; k <= 4; k++) { double phi = k * Math.PI / 8; rings.Add((b + dir * (float)(radius * Math.Sin(phi)), (float)(radius * Math.Cos(phi)))); }
+            }
+            else
+            {
+                rings.Add((a, 0f)); rings.Add((a, radius)); rings.Add((b, radius)); rings.Add((b, 0f));
+            }
+            const int segments = 16;
+            int baseIndex = mesh.Positions.Count;
+            foreach ((Vector3 centre, float r) in rings)
+                for (int j = 0; j < segments; j++)
+                {
+                    double theta = j * 2.0 * Math.PI / segments;
+                    Vector3 p = centre + (p1 * (float)Math.Cos(theta) + p2 * (float)Math.Sin(theta)) * r;
+                    mesh.Positions.Add(translation + Vector3.Transform(p * scale, rotation));
+                }
+            //(p1, p2, dir) is right-handed, so ring j -> j+1 -> next ring faces outward
+            for (int i = 0; i + 1 < rings.Count; i++)
+                for (int j = 0; j < segments; j++)
+                {
+                    int j1 = (j + 1) % segments;
+                    int v00 = baseIndex + i * segments + j, v01 = baseIndex + i * segments + j1;
+                    int v10 = baseIndex + (i + 1) * segments + j, v11 = baseIndex + (i + 1) * segments + j1;
+                    mesh.Indices.Add(v00); mesh.Indices.Add(v01); mesh.Indices.Add(v11);
+                    mesh.Indices.Add(v00); mesh.Indices.Add(v11); mesh.Indices.Add(v10);
+                }
+            mesh.ShapeCount++;
+            return true;
         }
 
         bool TryAppendListShape(
@@ -1261,8 +1339,8 @@ namespace CATHODE
             Vector3 scale,
             bool convexHullOpenShells = true)
         {
-            // childInfo hkArray at +40 (64-bit) / +28 (32-bit approx).
-            uint childField = shapeOffset + (Header.PointerSize == 8 ? (uint)Layout.ListChildInfo : 28u);
+            // childInfo hkArray at +48 (64-bit) / +24 (32-bit), as ListChildArrayField.
+            uint childField = shapeOffset + (Header.PointerSize == 8 ? (uint)Layout.ListChildInfo : 24u);
             if (!TryGetHkArray(childField, out uint childOff, out int childCount) || childCount <= 0)
                 return false;
 
@@ -1368,9 +1446,7 @@ namespace CATHODE
             }
 
             // hkpConvexVerticesShape AABB: 64-bit half@48 centre@64; 32-bit half@32 centre@48.
-            if (string.Equals(shapeClass, "hkpConvexVerticesShape", StringComparison.Ordinal)
-                || string.Equals(shapeClass, "hkpConvexTranslateShape", StringComparison.Ordinal)
-                || string.Equals(shapeClass, "hkpConvexTransformShape", StringComparison.Ordinal))
+            if (string.Equals(shapeClass, "hkpConvexVerticesShape", StringComparison.Ordinal))
             {
                 int heOff = (int)shapeDataOffset + (Header.PointerSize == 8 ? Layout.ConvexAabbHalfExtents : 32);
                 int cOff = (int)shapeDataOffset + (Header.PointerSize == 8 ? Layout.ConvexAabbCentre : 48);
@@ -2657,8 +2733,8 @@ namespace CATHODE
             if (objectOffsets.Count == 0)
                 throw new InvalidOperationException("Source Havok object graph is empty.");
 
-            // Object byte ranges (exclusive end = next object offset or payload end).
-            List<uint> sortedSrcObjects = source.Objects.Select(o => o.DataOffset).Distinct().OrderBy(o => o).ToList();
+            // Object byte ranges (exclusive end = next object offset, the start of storage another object owns, or payload end).
+            List<uint> sortedSrcObjects = ObjectRangeBoundaries(source);
             var objectRanges = new List<(uint Start, uint End, PackfileObject Obj)>();
             for (int i = 0; i < source.Objects.Count; i++)
             {
@@ -2790,6 +2866,32 @@ namespace CATHODE
             return newRoot;
         }
 
+        /// <summary>
+        /// Where object byte ranges end: every object's start, and the start of every block of storage (an array or
+        /// string) that belongs to one object but sits after another. An append puts such storage at the end of the
+        /// payload - hkpPhysicsData's systems array after a new physics system's shape, the proxy list's child array
+        /// after a new compound - and without this boundary the last object's range runs over it, so a graph walk
+        /// from that object follows the array's pointers to every system (or compound) in the file.
+        /// </summary>
+        static List<uint> ObjectRangeBoundaries(HavokPackfile source)
+        {
+            List<uint> starts = source.Objects.Select(o => o.DataOffset).Distinct().OrderBy(o => o).ToList();
+            int OwnerOf(uint at)
+            {
+                int i = starts.BinarySearch(at);
+                return i >= 0 ? i : ~i - 1;
+            }
+            var bounds = new HashSet<uint>(starts);
+            for (int l = 0; l < source.LocalFixups.Count; l++)
+            {
+                LocalFixup lf = source.LocalFixups[l];
+                int owner = OwnerOf(lf.Src), holder = OwnerOf(lf.Dst);
+                if (owner >= 0 && holder >= 0 && owner != holder && lf.Dst > starts[holder])
+                    bounds.Add(lf.Dst);
+            }
+            return bounds.OrderBy(o => o).ToList();
+        }
+
         void CollectReachable(
             HavokPackfile source,
             uint root,
@@ -2803,7 +2905,7 @@ namespace CATHODE
             for (int i = 0; i < source.Objects.Count; i++)
                 objectsByOffset[source.Objects[i].DataOffset] = source.Objects[i];
 
-            List<uint> sorted = objectsByOffset.Keys.OrderBy(o => o).ToList();
+            List<uint> sorted = ObjectRangeBoundaries(source);
             uint ObjectEnd(uint off)
             {
                 uint end = (uint)source.DataPayload.Length;
@@ -2814,6 +2916,9 @@ namespace CATHODE
                 }
                 return end;
             }
+            //An array's bytes stop where the next object or another object's storage starts: a guessed length
+            //or a probe window must not run on into, say, the proxy list's pointers to every compound
+            uint Clamp(uint arrayStart, uint arrayEnd) => Math.Min(arrayEnd, ObjectEnd(arrayStart));
 
             var queue = new Queue<uint>();
             if (objectsByOffset.ContainsKey(root))
@@ -2852,7 +2957,7 @@ namespace CATHODE
 
                     int bytes = InferArrayByteLength(source, lf.Src, lf.Dst);
                     if (bytes > 0)
-                        extraRanges.Add((lf.Dst, lf.Dst + (uint)bytes));
+                        extraRanges.Add((lf.Dst, Clamp(lf.Dst, lf.Dst + (uint)bytes)));
 
                     /* Which slots of this array can point at further objects. A zero length array
                      * points at nothing, so probing past it just sweeps up whatever the allocator put
@@ -2869,6 +2974,7 @@ namespace CATHODE
                         arrEnd = lf.Dst;
                     else
                         arrEnd = lf.Dst + (uint)Math.Min(256, RoomBeforeNextObject(source, lf.Dst));
+                    arrEnd = Clamp(lf.Dst, arrEnd);
                     for (int g = 0; g < source.GlobalFixups.Count; g++)
                     {
                         GlobalFixup gf = source.GlobalFixups[g];
@@ -2927,7 +3033,7 @@ namespace CATHODE
                                 strEnd++; // include NUL
                             bytes = Math.Max(1, strEnd - (int)lf.Dst);
                         }
-                        uint newEnd = lf.Dst + (uint)bytes;
+                        uint newEnd = Clamp(lf.Dst, lf.Dst + (uint)bytes);
                         if (seenExtras.Add((lf.Dst, newEnd)))
                         {
                             extraRanges.Add((lf.Dst, newEnd));
@@ -2971,7 +3077,7 @@ namespace CATHODE
                         int bytes = InferArrayByteLength(source, lf.Src, lf.Dst);
                         if (bytes > 0)
                         {
-                            extraRanges.Add((lf.Dst, lf.Dst + (uint)bytes));
+                            extraRanges.Add((lf.Dst, Clamp(lf.Dst, lf.Dst + (uint)bytes)));
                             expanded = true;
                         }
                     }
@@ -3282,7 +3388,7 @@ namespace CATHODE
             }
         }
 
-        void AppendPhysicsSystemToPhysicsData(uint systemDataOffset)
+        internal void AppendPhysicsSystemToPhysicsData(uint systemDataOffset)
         {
             PackfileObject physicsData = null;
             for (int i = 0; i < Objects.Count; i++)
@@ -3664,7 +3770,7 @@ namespace CATHODE
         #region ANIMATION
         /* Field offsets for the animation classes. hkReferencedObject is 8 bytes on 32 bit and 16 on
          * 64 bit, pointers follow suit, and hkArray is a pointer plus size and capacity. */
-        private uint ObjectHeaderSize => Header.PointerSize == 8 ? 16u : 8u;
+        internal uint ObjectHeaderSize => Header.PointerSize == 8 ? 16u : 8u;
         private uint ArraySize => (uint)Header.PointerSize + 8u;
 
         /// <summary>
@@ -5009,7 +5115,7 @@ namespace CATHODE
         /// <summary>
         /// Resolve an hkArray&lt;T*&gt; field: local fixup to storage, global fixups for each element.
         /// </summary>
-        bool TryReadPointerArray(uint arrayFieldOffset, out List<uint> elementOffsets)
+        internal bool TryReadPointerArray(uint arrayFieldOffset, out List<uint> elementOffsets)
         {
             elementOffsets = null;
             int ptrSize = Header.PointerSize;
@@ -5071,7 +5177,7 @@ namespace CATHODE
             return true;
         }
 
-        string ReadStringPtr(uint stringPtrFieldOffset)
+        internal string ReadStringPtr(uint stringPtrFieldOffset)
         {
             for (int f = 0; f < LocalFixups.Count; f++)
             {
@@ -5246,7 +5352,7 @@ namespace CATHODE
             return true;
         }
 
-        void RewriteCompoundArrays(StaticCompoundShape compound)
+        internal void RewriteCompoundArrays(StaticCompoundShape compound)
         {
             int ptrSize = Header.PointerSize;
             int instanceStride = ptrSize == 8 ? 80 : 64;
@@ -5685,7 +5791,7 @@ namespace CATHODE
         /// 0.1% of them. The constant comes from SoulsFormats' decode of the same hkcdStaticTree codec
         /// in Dark Souls 3 collision, which was the first independent reading of these bytes we had.
         /// </remarks>
-        static byte EncodeCodec3Axis(float parentMin, float parentMax, float childMin, float childMax)
+        internal static byte EncodeCodec3Axis(float parentMin, float parentMax, float childMin, float childMax)
         {
             float extent = parentMax - parentMin;
             if (Math.Abs(extent) < 1e-6f)
@@ -5723,7 +5829,7 @@ namespace CATHODE
             return n;
         }
 
-        static void DecodeCodec3Axis(
+        internal static void DecodeCodec3Axis(
             Vector3 parentMin, Vector3 parentMax, byte qx, byte qy, byte qz,
             out Vector3 childMin, out Vector3 childMax)
         {
@@ -5792,7 +5898,7 @@ namespace CATHODE
             };
         }
 
-        static int AlignPayload(int offset, int align)
+        internal static int AlignPayload(int offset, int align)
         {
             int mask = align - 1;
             return (offset + mask) & ~mask;
@@ -5972,7 +6078,7 @@ namespace CATHODE
                 BitConverter.ToSingle(data, offset + 12));
         }
 
-        static void WriteVector4(byte[] data, int offset, Vector4 v)
+        internal static void WriteVector4(byte[] data, int offset, Vector4 v)
         {
             WriteSingle(data, offset, v.X);
             WriteSingle(data, offset + 4, v.Y);
@@ -5980,13 +6086,13 @@ namespace CATHODE
             WriteSingle(data, offset + 12, v.W);
         }
 
-        static void WriteSingle(byte[] data, int offset, float v)
+        internal static void WriteSingle(byte[] data, int offset, float v)
         {
             byte[] bytes = BitConverter.GetBytes(v);
             Buffer.BlockCopy(bytes, 0, data, offset, 4);
         }
 
-        static void WriteUInt32(byte[] data, int offset, uint v)
+        internal static void WriteUInt32(byte[] data, int offset, uint v)
         {
             byte[] bytes = BitConverter.GetBytes(v);
             Buffer.BlockCopy(bytes, 0, data, offset, 4);

@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using CATHODE;
+using static CATHODE.HavokPackfile;
 
-namespace CATHODE
+namespace CathodeLib.Havok
 {
     /* Writing a NEW collision proxy - an hkpStaticCompoundShape over a freshly encoded hkpBvCompressedMeshShape -
        into a 2012 packfile (COLLISION.HKX / COLLISION.HKX64), from a plain triangle list.
@@ -16,7 +18,11 @@ namespace CATHODE
        whole mesh. Every field below was read off those files and the reading was checked with a walk of all
        82,636 retail mesh trees (each walk reaching every leaf once, each section's leaf naming the tree node
        that holds it). See the harness modes bvdump / meshtree in ReleaseSweep. */
-    public partial class HavokPackfile
+    /// <summary>
+    /// Appending new collision proxies to a <see cref="HavokPackfile"/> (extension methods), and the checkpoint
+    /// every append - this one and <see cref="PhysicsSystemWriter.AddConvexPhysicsSystem"/> - is undone with.
+    /// </summary>
+    public static class CollisionProxyWriter
     {
         /// <summary>Retail never puts more primitives than this in a section (the Codec3Axis4 leaf payload is 7 bits).</summary>
         const int MeshSectionMaxPrimitives = 127;
@@ -30,92 +36,75 @@ namespace CATHODE
         const float MeshSectionMaxExtent = 8f;
         const int MeshMaxTriangles = 2000000;
 
-        /// <summary>
-        /// Everything an append changes, so a failed append (or a mismatch between the two packfiles) can be
-        /// put back exactly. The payload is copied whole: it is a few megabytes and the alternative - undoing an
-        /// append field by field - would have to know every in-place patch the registry padding makes.
-        /// </summary>
-        public sealed class AppendCheckpoint
-        {
-            internal byte[] Payload;
-            internal byte[] Classnames;
-            internal List<LocalFixup> Local;
-            internal List<GlobalFixup> Global;
-            internal List<VirtualFixup> Virtual;
-            internal List<PackfileObject> Objects;
-            internal List<StaticCompoundShape> Compounds;
-            internal List<PhysicsSystem> Physics;
-        }
-
-        public AppendCheckpoint CreateCheckpoint()
+        public static AppendCheckpoint CreateCheckpoint(this HavokPackfile packfile)
         {
             return new AppendCheckpoint
             {
-                Payload = (byte[])DataPayload.Clone(),
-                Classnames = (byte[])ClassnamesData.Clone(),
-                Local = new List<LocalFixup>(LocalFixups),
-                Global = new List<GlobalFixup>(GlobalFixups),
-                Virtual = new List<VirtualFixup>(VirtualFixups),
-                Objects = new List<PackfileObject>(Objects),
-                Compounds = new List<StaticCompoundShape>(StaticCompoundShapes),
-                Physics = new List<PhysicsSystem>(PhysicsSystems),
+                Payload = (byte[])packfile.DataPayload.Clone(),
+                Classnames = (byte[])packfile.ClassnamesData.Clone(),
+                Local = new List<LocalFixup>(packfile.LocalFixups),
+                Global = new List<GlobalFixup>(packfile.GlobalFixups),
+                Virtual = new List<VirtualFixup>(packfile.VirtualFixups),
+                Objects = new List<PackfileObject>(packfile.Objects),
+                Compounds = new List<StaticCompoundShape>(packfile.StaticCompoundShapes),
+                Physics = new List<PhysicsSystem>(packfile.PhysicsSystems),
             };
         }
 
-        public void RestoreCheckpoint(AppendCheckpoint checkpoint)
+        public static void RestoreCheckpoint(this HavokPackfile packfile, AppendCheckpoint checkpoint)
         {
             if (checkpoint == null)
                 throw new ArgumentNullException(nameof(checkpoint));
-            DataPayload = checkpoint.Payload;
-            ClassnamesData = checkpoint.Classnames;
-            LocalFixups = checkpoint.Local;
-            GlobalFixups = checkpoint.Global;
-            VirtualFixups = checkpoint.Virtual;
-            Objects = checkpoint.Objects;
+            packfile.DataPayload = checkpoint.Payload;
+            packfile.ClassnamesData = checkpoint.Classnames;
+            packfile.LocalFixups = checkpoint.Local;
+            packfile.GlobalFixups = checkpoint.Global;
+            packfile.VirtualFixups = checkpoint.Virtual;
+            packfile.Objects = checkpoint.Objects;
             //The views are put back rather than re-parsed: an append only adds compounds, and re-parsing would hand
             //out new objects for every compound, leaving the references others hold (a COLLISION.MAP row's
             //CollisionProxy, a picker's selection) pointing at copies no longer in the list
-            StaticCompoundShapes = new List<StaticCompoundShape>(checkpoint.Compounds);
-            PhysicsSystems = new List<PhysicsSystem>(checkpoint.Physics);
+            packfile.StaticCompoundShapes = new List<StaticCompoundShape>(checkpoint.Compounds);
+            packfile.PhysicsSystems = new List<PhysicsSystem>(checkpoint.Physics);
         }
 
         /// <summary>
         /// Append a new collision proxy built from a triangle mesh: a one-instance hkpStaticCompoundShape over a
         /// new hkpBvCompressedMeshShape, registered in the proxy list so it has an ordinal a COLLISION.MAP row can
         /// name. The mesh is in the proxy's own space, in metres, with the winding the game's own meshes decode to
-        /// (the space <see cref="BuildPreviewMesh(StaticCompoundShape)"/> gives back for a template compound).
+        /// (the space <see cref="HavokPackfile.BuildPreviewMesh(StaticCompoundShape)"/> gives back for a template compound).
         /// </summary>
         /// <param name="positions">Vertex positions.</param>
         /// <param name="triangles">Three indices per triangle into <paramref name="positions"/>.</param>
         /// <param name="userData">What retail stores here is the write index of the row's physics material.</param>
         /// <param name="filterInfo">The collision type of the template instance; retail uses 9 (BALLISTICS) for prop materials and 3 (STANDARD) for world collision.</param>
-        /// <returns>The new compound, last in <see cref="StaticCompoundShapes"/>, with its <c>ProxyIndex</c> assigned.</returns>
+        /// <returns>The new compound, last in <see cref="HavokPackfile.StaticCompoundShapes"/>, with its <c>ProxyIndex</c> assigned.</returns>
         /// <remarks>
         /// Both packfiles of a level (32 and 64-bit) need the proxy at the same ordinal; call this on each with the
         /// same mesh and compare the results, restoring a <see cref="CreateCheckpoint"/> on either side if they
         /// disagree. Not available on the mobile/Switch tagfiles.
         /// </remarks>
-        public StaticCompoundShape AddMeshCollisionProxy(IList<Vector3> positions, IList<int> triangles, uint userData = 0, uint filterInfo = 9)
+        public static StaticCompoundShape AddMeshCollisionProxy(this HavokPackfile packfile, IList<Vector3> positions, IList<int> triangles, uint userData = 0, uint filterInfo = 9)
         {
-            if (Tagfile != null)
+            if (packfile.Tagfile != null)
                 throw new NotSupportedException("New collision meshes can only be written to the PC packfiles, not a mobile/Switch tagfile.");
             if (positions == null || triangles == null)
                 throw new ArgumentNullException(positions == null ? nameof(positions) : nameof(triangles));
 
             BuiltMesh built = MeshProxyBuilder.Build(positions, triangles);
-            uint meshOffset = AppendMeshShapeObject(built, userData);
-            uint compoundOffset = AppendCompoundShell(userData, Math.Max(1, BitsOf(built.MaxKeyValue)));
+            uint meshOffset = AppendMeshShapeObject(packfile, built, userData);
+            uint compoundOffset = AppendCompoundShell(packfile, userData, Math.Max(1, BitsOf(built.MaxKeyValue)));
 
             //The new compound is last in the payload and in the object list, so its ordinal is the number of compounds
             //before it - the same rank a reload assigns. Only its own view is made: re-parsing them all would replace
             //every compound object, and the rows and pickers holding the old ones would be left with stale copies.
-            PackfileObject compoundObject = Objects[Objects.Count - 1];
+            PackfileObject compoundObject = packfile.Objects[packfile.Objects.Count - 1];
             int ordinal = 0;
-            for (int i = 0; i < Objects.Count - 1; i++)
-                if (Objects[i].Class == ObjectClass.StaticCompoundShape) ordinal++;
+            for (int i = 0; i < packfile.Objects.Count - 1; i++)
+                if (packfile.Objects[i].Class == ObjectClass.StaticCompoundShape) ordinal++;
             compoundObject.ProxyIndex = ordinal;
             StaticCompoundShape compound = new StaticCompoundShape { ProxyIndex = ordinal, DataOffset = compoundOffset };
-            StaticCompoundShapes.Add(compound);
+            packfile.StaticCompoundShapes.Add(compound);
 
             compound.DomainMin = new Vector4(float.MaxValue, float.MaxValue, float.MaxValue, 0f);
             compound.DomainMax = new Vector4(float.MinValue, float.MinValue, float.MinValue, 0f);
@@ -130,12 +119,12 @@ namespace CATHODE
                 ShapeDataOffset = meshOffset,
                 ShapeClassName = "hkpBvCompressedMeshShape",
             });
-            RewriteCompoundArrays(compound);
-            EnsureProxyListCoversCompounds();
-            RefreshCompoundShapeKeyBits();
+            packfile.RewriteCompoundArrays(compound);
+            packfile.EnsureProxyListCoversCompounds();
+            packfile.RefreshCompoundShapeKeyBits();
 
             //The reader is the first oracle: what went in must come back out, triangle for triangle
-            PreviewMesh check = BuildBakeMesh(compound);
+            PreviewMesh check = packfile.BuildBakeMesh(compound);
             if (check.TriangleCount != built.PrimitiveCount)
                 throw new InvalidOperationException("The new collision mesh reads back with " + check.TriangleCount + " triangles where " + built.PrimitiveCount + " were written.");
             return compound;
@@ -155,22 +144,22 @@ namespace CATHODE
         /// bvTreeType 3, convexRadius 0, weldingType NONE, empty palettes), then the embedded tree written from
         /// <paramref name="built"/> with its arrays appended after the object.
         /// </summary>
-        uint AppendMeshShapeObject(BuiltMesh built, uint userData)
+        static uint AppendMeshShapeObject(HavokPackfile packfile, BuiltMesh built, uint userData)
         {
             PackfileObject template = null;
-            for (int i = 0; i < Objects.Count; i++)
-                if (Objects[i].Class == ObjectClass.BvCompressedMeshShape) { template = Objects[i]; break; }
+            for (int i = 0; i < packfile.Objects.Count; i++)
+                if (packfile.Objects[i].Class == ObjectClass.BvCompressedMeshShape) { template = packfile.Objects[i]; break; }
             if (template == null)
                 throw new InvalidOperationException("This packfile holds no hkpBvCompressedMeshShape to model the new one on.");
 
-            int ptr = Header.PointerSize;
+            int ptr = packfile.Header.PointerSize;
             int arraySize = ptr + 8;
             int headerLen = ptr == 8 ? 0x70 : 0x50;
             int treeLen = ptr == 8 ? 160 : 144;
             int objectSize = headerLen + treeLen;
 
             int sectionCount = built.Sections.Count;
-            int dst = AlignPayload(DataPayload.Length, 16);
+            int dst = AlignPayload(packfile.DataPayload.Length, 16);
             int topNodesOff = AlignPayload(dst + objectSize, 16);
             int sectionsOff = AlignPayload(topNodesOff + built.TopNodes.Count * 5, 16);
             int[] sectionNodesOff = new int[sectionCount];
@@ -188,9 +177,9 @@ namespace CATHODE
             int end = AlignPayload(runsOff + sectionCount * 8, 16);
 
             byte[] grown = new byte[end];
-            Buffer.BlockCopy(DataPayload, 0, grown, 0, DataPayload.Length);
-            DataPayload = grown;
-            byte[] d = DataPayload;
+            Buffer.BlockCopy(packfile.DataPayload, 0, grown, 0, packfile.DataPayload.Length);
+            packfile.DataPayload = grown;
+            byte[] d = packfile.DataPayload;
 
             //Header: the retail shape's bytes up to its tree, palettes made empty in case the template's were not
             Buffer.BlockCopy(d, (int)template.DataOffset, d, dst, headerLen);
@@ -223,15 +212,15 @@ namespace CATHODE
             WriteArrayHeader(d, arrays + 4 * arraySize, ptr, built.Shared.Count);
             WriteArrayHeader(d, arrays + 5 * arraySize, ptr, sectionCount);
 
-            LocalFixups.Add(new LocalFixup { Src = (uint)tree, Dst = (uint)topNodesOff });
-            LocalFixups.Add(new LocalFixup { Src = (uint)arrays, Dst = (uint)sectionsOff });
-            LocalFixups.Add(new LocalFixup { Src = (uint)(arrays + arraySize), Dst = (uint)primitivesOff });
+            packfile.LocalFixups.Add(new LocalFixup { Src = (uint)tree, Dst = (uint)topNodesOff });
+            packfile.LocalFixups.Add(new LocalFixup { Src = (uint)arrays, Dst = (uint)sectionsOff });
+            packfile.LocalFixups.Add(new LocalFixup { Src = (uint)(arrays + arraySize), Dst = (uint)primitivesOff });
             if (built.SharedIndex.Count > 0)
-                LocalFixups.Add(new LocalFixup { Src = (uint)(arrays + 2 * arraySize), Dst = (uint)sharedIdxOff });
-            LocalFixups.Add(new LocalFixup { Src = (uint)(arrays + 3 * arraySize), Dst = (uint)packedOff });
+                packfile.LocalFixups.Add(new LocalFixup { Src = (uint)(arrays + 2 * arraySize), Dst = (uint)sharedIdxOff });
+            packfile.LocalFixups.Add(new LocalFixup { Src = (uint)(arrays + 3 * arraySize), Dst = (uint)packedOff });
             if (built.Shared.Count > 0)
-                LocalFixups.Add(new LocalFixup { Src = (uint)(arrays + 4 * arraySize), Dst = (uint)sharedOff });
-            LocalFixups.Add(new LocalFixup { Src = (uint)(arrays + 5 * arraySize), Dst = (uint)runsOff });
+                packfile.LocalFixups.Add(new LocalFixup { Src = (uint)(arrays + 4 * arraySize), Dst = (uint)sharedOff });
+            packfile.LocalFixups.Add(new LocalFixup { Src = (uint)(arrays + 5 * arraySize), Dst = (uint)runsOff });
 
             //Nodes over sections: 5 bytes each
             for (int n = 0; n < built.TopNodes.Count; n++)
@@ -243,7 +232,7 @@ namespace CATHODE
                 BuiltSection sec = built.Sections[s];
                 int rec = sectionsOff + s * 96;
                 WriteArrayHeader(d, rec, ptr, sec.Nodes.Count);
-                LocalFixups.Add(new LocalFixup { Src = (uint)rec, Dst = (uint)sectionNodesOff[s] });
+                packfile.LocalFixups.Add(new LocalFixup { Src = (uint)rec, Dst = (uint)sectionNodesOff[s] });
                 WriteVector4(d, rec + 16, new Vector4(sec.DomainMin, 0f));
                 WriteVector4(d, rec + 32, new Vector4(sec.DomainMax, 0f));
                 WriteSingle(d, rec + 48, sec.CodecBase.X);
@@ -288,8 +277,8 @@ namespace CATHODE
             }
 
             int nameOffset = template.ClassNameOffset;
-            VirtualFixups.Add(new VirtualFixup { Src = (uint)dst, SectionIndex = 0, NameOffset = nameOffset });
-            Objects.Add(new PackfileObject
+            packfile.VirtualFixups.Add(new VirtualFixup { Src = (uint)dst, SectionIndex = 0, NameOffset = nameOffset });
+            packfile.Objects.Add(new PackfileObject
             {
                 DataOffset = (uint)dst,
                 ClassNameOffset = nameOffset,
@@ -300,7 +289,7 @@ namespace CATHODE
             return (uint)dst;
         }
 
-        static void WriteArrayHeader(byte[] d, int field, int ptr, int count)
+        internal static void WriteArrayHeader(byte[] d, int field, int ptr, int count)
         {
             Array.Clear(d, field, ptr);
             WriteUInt32(d, field + ptr, (uint)count);
@@ -312,22 +301,22 @@ namespace CATHODE
         /// <summary>
         /// hkpStaticCompoundShape with no instances yet: a retail one-mesh template's bytes with the arrays and
         /// domain cleared, the key width set and the two array fields given local fixups, so that
-        /// <see cref="RewriteCompoundArrays"/> can find and fill them once the instance is added.
+        /// <see cref="HavokPackfile.RewriteCompoundArrays"/> can find and fill them once the instance is added.
         /// </summary>
-        uint AppendCompoundShell(uint userData, int numBitsForChildShapeKey)
+        static uint AppendCompoundShell(HavokPackfile packfile, uint userData, int numBitsForChildShapeKey)
         {
             StaticCompoundShape template = null;
             PackfileObject templateObject = null;
-            StaticCompoundShape primary = WorldHostPrimary, secondary = WorldHostSecondary;
-            for (int i = 0; i < StaticCompoundShapes.Count && template == null; i++)
+            StaticCompoundShape primary = packfile.WorldHostPrimary, secondary = packfile.WorldHostSecondary;
+            for (int i = 0; i < packfile.StaticCompoundShapes.Count && template == null; i++)
             {
-                StaticCompoundShape c = StaticCompoundShapes[i];
+                StaticCompoundShape c = packfile.StaticCompoundShapes[i];
                 if (c == primary || c == secondary || c.Instances.Count != 1)
                     continue;
                 if (!string.Equals(c.Instances[0].ShapeClassName, "hkpBvCompressedMeshShape", StringComparison.Ordinal))
                     continue;
-                for (int o = 0; o < Objects.Count; o++)
-                    if (Objects[o].DataOffset == c.DataOffset && Objects[o].Class == ObjectClass.StaticCompoundShape) { templateObject = Objects[o]; break; }
+                for (int o = 0; o < packfile.Objects.Count; o++)
+                    if (packfile.Objects[o].DataOffset == c.DataOffset && packfile.Objects[o].Class == ObjectClass.StaticCompoundShape) { templateObject = packfile.Objects[o]; break; }
                 if (templateObject != null)
                     template = c;
             }
@@ -336,9 +325,9 @@ namespace CATHODE
 
             //The two array fields are the object's two lowest local fixups (instances, then tree nodes)
             uint first = uint.MaxValue, second = uint.MaxValue;
-            for (int i = 0; i < LocalFixups.Count; i++)
+            for (int i = 0; i < packfile.LocalFixups.Count; i++)
             {
-                uint src = LocalFixups[i].Src;
+                uint src = packfile.LocalFixups[i].Src;
                 if (src < template.DataOffset || src >= template.DataOffset + 0x100) continue;
                 if (src < first) { second = first; first = src; }
                 else if (src < second) second = src;
@@ -346,18 +335,18 @@ namespace CATHODE
             if (second == uint.MaxValue)
                 throw new InvalidOperationException("The template compound does not carry its two array fields.");
 
-            int ptr = Header.PointerSize;
+            int ptr = packfile.Header.PointerSize;
             int arraySize = ptr + 8;
             int instancesRel = (int)(first - template.DataOffset);
             int nodesRel = (int)(second - template.DataOffset);
             int domainRel = AlignPayload(nodesRel + arraySize, 16);
             int objectSize = domainRel + 32;
 
-            int dst = AlignPayload(DataPayload.Length, 16);
+            int dst = AlignPayload(packfile.DataPayload.Length, 16);
             byte[] grown = new byte[dst + objectSize];
-            Buffer.BlockCopy(DataPayload, 0, grown, 0, DataPayload.Length);
-            DataPayload = grown;
-            byte[] d = DataPayload;
+            Buffer.BlockCopy(packfile.DataPayload, 0, grown, 0, packfile.DataPayload.Length);
+            packfile.DataPayload = grown;
+            byte[] d = packfile.DataPayload;
             Buffer.BlockCopy(d, (int)template.DataOffset, d, dst, objectSize);
 
             WriteArrayHeader(d, dst + instancesRel, ptr, 0);
@@ -369,11 +358,11 @@ namespace CATHODE
             d[dst + (ptr == 8 ? 0x30 : 0x18)] = (byte)numBitsForChildShapeKey;
 
             //Provisional targets: the rewrite appends the real arrays and repoints these
-            LocalFixups.Add(new LocalFixup { Src = (uint)(dst + instancesRel), Dst = (uint)(dst + objectSize) });
-            LocalFixups.Add(new LocalFixup { Src = (uint)(dst + nodesRel), Dst = (uint)(dst + objectSize) });
+            packfile.LocalFixups.Add(new LocalFixup { Src = (uint)(dst + instancesRel), Dst = (uint)(dst + objectSize) });
+            packfile.LocalFixups.Add(new LocalFixup { Src = (uint)(dst + nodesRel), Dst = (uint)(dst + objectSize) });
 
-            VirtualFixups.Add(new VirtualFixup { Src = (uint)dst, SectionIndex = 0, NameOffset = templateObject.ClassNameOffset });
-            Objects.Add(new PackfileObject
+            packfile.VirtualFixups.Add(new VirtualFixup { Src = (uint)dst, SectionIndex = 0, NameOffset = templateObject.ClassNameOffset });
+            packfile.Objects.Add(new PackfileObject
             {
                 DataOffset = (uint)dst,
                 ClassNameOffset = templateObject.ClassNameOffset,
@@ -727,5 +716,22 @@ namespace CATHODE
                 right = sorted.GetRange(mid, sorted.Count - mid);
             }
         }
+    }
+
+    /// <summary>
+    /// Everything an append changes, so a failed append (or a mismatch between the two packfiles) can be
+    /// put back exactly. The payload is copied whole: it is a few megabytes and the alternative - undoing an
+    /// append field by field - would have to know every in-place patch the registry padding makes.
+    /// </summary>
+    public sealed class AppendCheckpoint
+    {
+        internal byte[] Payload;
+        internal byte[] Classnames;
+        internal List<LocalFixup> Local;
+        internal List<GlobalFixup> Global;
+        internal List<VirtualFixup> Virtual;
+        internal List<PackfileObject> Objects;
+        internal List<StaticCompoundShape> Compounds;
+        internal List<PhysicsSystem> Physics;
     }
 }
