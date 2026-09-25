@@ -470,12 +470,14 @@ namespace CathodeLib
 
         /// <summary>
         /// The longest "Production/NAME" string <see cref="PatchLaunchMode"/> will write. The name lands in
-        /// the benchmark's command-line switch table: the retail level name, then "engine_settings" at +28,
-        /// then "benchmark" at +44. Names of 28 characters and up overwrite the "engine_settings" switch, which
-        /// the game does not miss (a 29-character DLC name boots straight into its level - checked 3 Sep 2026),
-        /// so the limit the launcher has always applied stays; "benchmark" must never be reached.
+        /// the benchmark's command-line switch table: the retail level name, then "engine_settings\0" at +28,
+        /// then "benchmark\0" at +44. Names of 28 characters and up overwrite the "engine_settings" switch, which
+        /// the game does not miss (a 29-character DLC name boots straight into its level - checked 3 Sep 2026).
+        /// The patch writes bytes +0 to +42, so a 42-character name puts its terminator at +42 and leaves the
+        /// switch's own terminator at +43 and "benchmark" untouched - long enough for every retail level,
+        /// Production/DLC/BSPNOSTROMO_TWOTEAMS (35) the longest. "benchmark" must never be reached.
         /// </summary>
-        public const int MaxLaunchMapNameLength = 32;
+        public const int MaxLaunchMapNameLength = 42;
 
         /// <summary>
         /// Patch the game binary to allow us to launch directly to a map
