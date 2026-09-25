@@ -1604,7 +1604,7 @@ namespace CathodeLib
                         }
                     case FunctionType.FloatModulateRandom:
                         {
-                            float result = 0.0f;
+                            float result = Bools.Get(ShortGuids.start_on_reset) ? 1.0f : 0.0f;
                             return GetValueAs<T>(result);
                         }
                     case FunctionType.FloatMultiply:
@@ -3755,7 +3755,7 @@ namespace CathodeLib
                 maps.Add((entity, tex, priority));
             }
 
-            maps.Sort((a, b) => b.Priority.CompareTo(a.Priority));
+            maps = maps.OrderByDescending(m => m.Priority).ToList();
 
             foreach (var map in maps)
                 ApplyEnvironmentMapLinks(map.Entity, map.Texture, variablePinsOnly: false);
@@ -5922,8 +5922,12 @@ namespace CathodeLib
                             else if (entity.ParentCompositeInstanceEntity != null && entity.ParentCompositeInstanceEntity.Bools.Get(ShortGuids.include_in_planar_reflections))
                                 mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
                             mvr.Entity = entity.Handle;
-                            if (MaterialUsesMoverEnvironmentMap(reds))
-                                mvr.EnvironmentMap = entity.EnvironmentMap;
+                            //Every mover keeps the map that claimed it: retail's row for a renderable
+                            //environment instance carries the claiming map's index whether or not its
+                            //material samples a cubemap (453 such rows over six levels were written -1
+                            //while this was gated on the material, issue 696). Whether a mover gets a
+                            //row at all is Movers' call.
+                            mvr.EnvironmentMap = entity.EnvironmentMap;
                             mvr.EmissiveTint = entity.Vectors.Get(ShortGuids.emissive_tint);
                             if (entity.Bools.Get(ShortGuids.replace_intensity))
                                 mvr.EmissiveFlags |= Movers.EmissiveFlag.ReplaceIntensity;
@@ -6557,18 +6561,6 @@ namespace CathodeLib
             File.Copy(sourcePath, destPath, true);
         }
 
-        //Materials with EnvironmentMapIndex 255 do not sample a cubemap from the mover.
-        private static bool MaterialUsesMoverEnvironmentMap(List<RenderableElements.Element> reds)
-        {
-            if (reds == null)
-                return false;
-            foreach (RenderableElements.Element red in reds)
-            {
-                if (red?.Material != null && red.Material.EnvironmentMapIndex != 255)
-                    return true;
-            }
-            return false;
-        }
 
         //Utility for working out the emissive intensity multiplier for mover - not quite right yet, but a good match
         private static float ResolveModelReferenceEmissiveIntensity(InstancedEntity entity, bool isTemplate)

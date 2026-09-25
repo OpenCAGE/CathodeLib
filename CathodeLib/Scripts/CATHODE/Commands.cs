@@ -471,6 +471,11 @@ namespace CATHODE
         /// on one texture (retail indices 2 and 3), which pushed its three stairwell maps to 4-6
         /// where the cube ordinal said 3-5: every stairwell mover rendered its neighbour's cubemap.
         /// BSP_Torrens (15 entities, no sharing) and Tech_Hub (7, one shared) both reproduce exactly.
+        /// An entity with no cubemap still takes an index (its Texture is null here): retail numbers
+        /// it straight after the EnvironmentMap before it in its composite's function order. Leaving
+        /// it out moved every later entity down one - HAB_Airport's EnvironmentMap_42 put 1,700 movers
+        /// on their neighbour's cubemap, SCI_HospitalUpper's three put 50 of its 59 entities out of
+        /// place (issue 696). With them, every retail level's stored environmentmap_index reproduces.
         /// Nothing is stored: the ranking is recomputed from the script and the texture table every
         /// time either file is written, so the two cannot drift apart.
         /// </remarks>
@@ -483,19 +488,37 @@ namespace CATHODE
                 {
                     Composite comp = Entries[c];
                     if (comp?.functions == null) continue;
+                    List<(int texture, int function, FunctionEntity entity, Textures.TEX4 tex)> maps = new List<(int, int, FunctionEntity, Textures.TEX4)>();
                     for (int f = 0; f < comp.functions.Count; f++)
                     {
                         FunctionEntity function = comp.functions[f];
                         if (function == null || function.function != FunctionType.EnvironmentMap)
                             continue;
                         ResolveEnvironmentMapTexture(function, _textures, _globalTextures, out Textures.TEX4 tex, out Textures db);
-                        if (tex == null || db == null)
-                            continue;
-                        int textureIndex = db.GetWriteIndex(tex);
-                        //A cubemap only the GLOBAL table holds sorts after every level-local one
-                        if (!ReferenceEquals(db, _textures))
-                            textureIndex += 1 << 24;
-                        ranked.Add((textureIndex, c, f, function, tex));
+                        int textureIndex = -1;
+                        if (tex != null && db != null)
+                        {
+                            textureIndex = db.GetWriteIndex(tex);
+                            //A cubemap only the GLOBAL table holds sorts after every level-local one
+                            if (!ReferenceEquals(db, _textures))
+                                textureIndex += 1 << 24;
+                        }
+                        else
+                            tex = null;
+                        maps.Add((textureIndex, f, function, tex));
+                    }
+                    //An entity without a cubemap sorts with the one before it in function order (the
+                    //function index then puts it straight after), or before the next if it is first
+                    for (int m = 0; m < maps.Count; m++)
+                    {
+                        int key = maps[m].texture;
+                        for (int back = m - 1; key < 0 && back >= 0; back--)
+                            key = maps[back].texture;
+                        for (int ahead = m + 1; key < 0 && ahead < maps.Count; ahead++)
+                            key = maps[ahead].texture;
+                        if (key < 0)
+                            key = int.MaxValue;
+                        ranked.Add((key, c, maps[m].function, maps[m].entity, maps[m].tex));
                     }
                 }
             }
@@ -546,7 +569,7 @@ namespace CATHODE
             for (int pass = 0; pass < 2; pass++)
                 for (int i = 0; i < ranking.Count; i++)
                 {
-                    if ((pass == 0) != ranking[i].Linked)
+                    if ((pass == 0) != ranking[i].Linked || ranking[i].Texture == null)
                         continue;
                     if (!textureToIndex.ContainsKey(ranking[i].Texture))
                         textureToIndex[ranking[i].Texture] = i;
@@ -600,16 +623,14 @@ namespace CATHODE
 
             ResolveEnvironmentMapTexture(function, levelTextures, globalTextures, out Textures.TEX4 tex, out Textures db);
 
-            int textureIndex = -1;
-            int envMapIndex = -1;
-            if (tex != null && db != null)
-            {
-                textureIndex = db.GetWriteIndex(tex);
-                if (envMapIndices == null || !envMapIndices.TryGetValue(function, out envMapIndex))
-                    envMapIndex = -1;
-            }
+            int textureIndex = tex != null && db != null ? db.GetWriteIndex(tex) : -1;
+            //Every entity has an index, with or without a cubemap (see RankEnvironmentMaps); retail
+            //leaves Texture_Index off the ones without
+            if (envMapIndices == null || !envMapIndices.TryGetValue(function, out int envMapIndex))
+                envMapIndex = -1;
 
-            SetIntegerParameter(function, ShortGuids.Texture_Index, textureIndex);
+            if (textureIndex >= 0 || function.GetParameter(ShortGuids.Texture_Index) != null)
+                SetIntegerParameter(function, ShortGuids.Texture_Index, textureIndex);
             SetIntegerParameter(function, ShortGuids.environmentmap_index, envMapIndex);
         }
 

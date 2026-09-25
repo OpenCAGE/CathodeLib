@@ -153,6 +153,17 @@ namespace CATHODE
             return true;
         }
 
+        /// <summary>Whether any of the mover's materials samples the mover's cubemap (EnvironmentMapIndex 255 = none).</summary>
+        private static bool SamplesEnvironmentMap(MOVER_DESCRIPTOR mover)
+        {
+            if (mover?.RenderableElements == null)
+                return false;
+            foreach (RenderableElements.Element red in mover.RenderableElements)
+                if (red?.Material != null && red.Material.EnvironmentMapIndex != 255)
+                    return true;
+            return false;
+        }
+
         /// <summary>
         /// Hand over the script's EnvironmentMap ranking (see <see cref="Commands.BuildEnvironmentMapIndexing"/>).
         /// The first call after a load resolves every loaded row to its cubemap; the save uses the
@@ -207,9 +218,12 @@ namespace CATHODE
                 return _textures.GetWriteIndexForEnvMap(tex);
             }
 
+            //A mover with no RuntimeIndex gets a row only if its material samples the cubemap: the
+            //claimed map rides on every mover (see Instancing), and retail writes no row for the
+            //~18,500 HAB_Airport movers that are claimed but have neither
             List<int> envMapRows = new List<int>(Entries.Count);
             for (int i = 0; i < Entries.Count; i++)
-                if (Entries[i].RuntimeIndex != -1 || Entries[i].EnvironmentMap != null)
+                if (Entries[i].RuntimeIndex != -1 || (Entries[i].EnvironmentMap != null && SamplesEnvironmentMap(Entries[i])))
                     envMapRows.Add(i);
 
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(GetEnvMapPath())))
