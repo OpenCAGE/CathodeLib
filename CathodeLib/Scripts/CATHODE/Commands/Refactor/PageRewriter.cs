@@ -30,6 +30,19 @@ namespace CATHODE.Scripting.Refactor
         /// times as it occurs, and nothing else - the test an editor makes before it shows a composite's pages.
         /// </summary>
         public static bool PagesMatchLinks(Composite composite, IEnumerable<FlowgraphMeta> pages) => PageRewriter.PagesMatchLinks(composite, pages);
+
+        /// <summary>
+        /// Pages that draw exactly a composite's links, starting from the pages it has: what they already draw
+        /// stays where it is, connections with no link behind them go, and every link not drawn is drawn beside
+        /// a node of one of its ends, or else laid out in columns on the page named <paramref name="fallbackPageName"/>.
+        /// The pages passed in are not changed. A composite with no links can come back with no pages.
+        /// </summary>
+        public static List<FlowgraphMeta> DrawLinks(Composite composite, IEnumerable<FlowgraphMeta> pages, string fallbackPageName)
+        {
+            PageRewriter rewriter = new PageRewriter(composite, pages ?? Enumerable.Empty<FlowgraphMeta>());
+            rewriter.Reconcile(Enumerable.Empty<PageHint>(), fallbackPageName);
+            return rewriter.Pages;
+        }
     }
 
     /// <summary>
@@ -179,6 +192,48 @@ namespace CATHODE.Scripting.Refactor
             }
             if (unplaced.Count != 0)
                 DrawOnFallbackPage(unplaced, fallbackPageName);
+            OrderLikeData();
+        }
+
+        /// <summary>
+        /// The editor rebuilds an entity's links from its node's connections, in their order. Where a drawn
+        /// connection replaced one in the middle of a parameter's run, it was added at the end: put each
+        /// parameter's connections back in the order the data has its links (the last one wins for a value),
+        /// in the slots that parameter already had, so nothing else on the node moves.
+        /// </summary>
+        private void OrderLikeData()
+        {
+            foreach (FlowgraphMeta page in _pages)
+            {
+                foreach (NodeMeta node in page.Nodes)
+                {
+                    if (node.ConnectionsOut.Count < 2) continue;
+                    Entity owner = _composite.GetEntityByID(node.EntityGUID);
+                    if (owner == null) continue;
+                    Dictionary<LinkKey, Queue<int>> rank = new Dictionary<LinkKey, Queue<int>>();
+                    for (int i = 0; i < owner.childLinks.Count; i++)
+                    {
+                        LinkKey key = new LinkKey(owner, owner.childLinks[i]);
+                        if (!rank.TryGetValue(key, out Queue<int> queue)) rank.Add(key, queue = new Queue<int>());
+                        queue.Enqueue(i);
+                    }
+                    List<(ConnectionMeta connection, int slot, int rank)> entries = new List<(ConnectionMeta, int, int)>();
+                    for (int i = 0; i < node.ConnectionsOut.Count; i++)
+                    {
+                        ConnectionMeta c = node.ConnectionsOut[i];
+                        LinkKey key = new LinkKey(node.EntityGUID, c.ParameterGUID, c.ConnectedEntityGUID, c.ConnectedParameterGUID);
+                        int r = rank.TryGetValue(key, out Queue<int> queue) && queue.Count != 0 ? queue.Dequeue() : int.MaxValue;
+                        entries.Add((c, i, r));
+                    }
+                    foreach (IGrouping<ShortGuid, (ConnectionMeta connection, int slot, int rank)> group in entries.GroupBy(o => o.connection.ParameterGUID))
+                    {
+                        List<int> slots = group.Select(o => o.slot).OrderBy(o => o).ToList();
+                        List<ConnectionMeta> ordered = group.OrderBy(o => o.rank).Select(o => o.connection).ToList();
+                        for (int i = 0; i < slots.Count; i++)
+                            node.ConnectionsOut[slots[i]] = ordered[i];
+                    }
+                }
+            }
         }
 
         private bool DrawFromHint(LinkKey key, Dictionary<LinkKey, Queue<PageHint>> hints)
@@ -204,7 +259,7 @@ namespace CATHODE.Scripting.Refactor
                     owner = NodeFor(page, key.Owner, key.Owner == hint.From.Owner || key.Target == hint.From.Target ? ownerAt : targetAt);
                 if (target == null)
                     target = NodeFor(page, key.Target, key.Owner == hint.From.Owner || key.Target == hint.From.Target ? targetAt : ownerAt);
-                Connect(owner, target, key);
+                Connect(page, owner, target, key);
                 return true;
             }
             return false;
@@ -218,7 +273,7 @@ namespace CATHODE.Scripting.Refactor
                 NodeMeta target = page.Nodes.FirstOrDefault(o => o.EntityGUID == key.Target);
                 if (owner != null && target != null)
                 {
-                    Connect(owner, target, key);
+                    Connect(page, owner, target, key);
                     return true;
                 }
             }
@@ -227,13 +282,13 @@ namespace CATHODE.Scripting.Refactor
                 NodeMeta owner = page.Nodes.FirstOrDefault(o => o.EntityGUID == key.Owner);
                 if (owner != null)
                 {
-                    Connect(owner, NodeFor(page, key.Target, FreeSpot(page, new Point(owner.Position.X + ColumnWidth, owner.Position.Y))), key);
+                    Connect(page, owner, NodeFor(page, key.Target, FreeSpot(page, new Point(owner.Position.X + ColumnWidth, owner.Position.Y))), key);
                     return true;
                 }
                 NodeMeta target = page.Nodes.FirstOrDefault(o => o.EntityGUID == key.Target);
                 if (target != null)
                 {
-                    Connect(NodeFor(page, key.Owner, FreeSpot(page, new Point(target.Position.X - ColumnWidth, target.Position.Y))), target, key);
+                    Connect(page, NodeFor(page, key.Owner, FreeSpot(page, new Point(target.Position.X - ColumnWidth, target.Position.Y))), target, key);
                     return true;
                 }
             }
@@ -289,7 +344,7 @@ namespace CATHODE.Scripting.Refactor
                 placed[entity] = NodeFor(page, entity, new Point(column * ColumnWidth, top + row * RowHeight));
             }
             foreach (LinkKey link in links)
-                Connect(placed[link.Owner], placed[link.Target], link);
+                Connect(page, placed[link.Owner], placed[link.Target], link);
         }
 
         private NodeMeta NodeFor(FlowgraphMeta page, ShortGuid entity, Point at)
@@ -298,6 +353,11 @@ namespace CATHODE.Scripting.Refactor
             NodeMeta existing = page.Nodes.FirstOrDefault(o => o.EntityGUID == entity);
             if (existing != null)
                 return existing;
+            return NewNode(page, entity, at);
+        }
+
+        private NodeMeta NewNode(FlowgraphMeta page, ShortGuid entity, Point at)
+        {
             NodeMeta node = new NodeMeta()
             {
                 EntityGUID = entity,
@@ -321,8 +381,11 @@ namespace CATHODE.Scripting.Refactor
             return spot;
         }
 
-        private static void Connect(NodeMeta owner, NodeMeta target, LinkKey key)
+        private void Connect(FlowgraphMeta page, NodeMeta owner, NodeMeta target, LinkKey key)
         {
+            //The same two pins can only be joined once: a link that is there twice needs a second node to go to
+            if (owner.ConnectionsOut.Any(c => c.ConnectedNodeID == target.NodeID && c.ParameterGUID == key.Param && c.ConnectedEntityGUID == key.Target && c.ConnectedParameterGUID == key.TargetParam))
+                target = NewNode(page, key.Target, new Point(target.Position.X, target.Position.Y + RowHeight / 3));
             owner.ConnectionsOut.Add(new ConnectionMeta()
             {
                 ParameterGUID = key.Param,

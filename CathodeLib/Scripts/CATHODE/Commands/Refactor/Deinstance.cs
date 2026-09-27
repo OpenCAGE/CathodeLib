@@ -77,6 +77,8 @@ namespace CATHODE.Scripting.Refactor
             public List<AliasEntity> OnInstance = new List<AliasEntity>();
             public List<(AliasEntity alias, VariableEntity pin)> OnPins = new List<(AliasEntity, VariableEntity)>();
             public bool IsParent;
+            public ResolvedPath Chain;          //One of this level's paths, and the step at which it reaches I: the composites between here and P
+            public int InstanceStep;
         }
 
         private DeinstancePlan(RefactorContext ctx, Composite parent, FunctionEntity instance)
@@ -273,6 +275,11 @@ namespace CATHODE.Scripting.Refactor
                             if (endsOnInstance || endsOnPin)
                             {
                                 OverrideLevel level = Level(path.Holder, path.Path.Take(path.Steps[step].Index).ToArray(), local);
+                                if (level.Chain == null)
+                                {
+                                    level.Chain = path;
+                                    level.InstanceStep = step;
+                                }
                                 if (endsOnInstance) level.OnInstance.Add(alias);
                                 else level.OnPins.Add((alias, (VariableEntity)path.Steps[step + 1].Entity));
                             }
@@ -528,6 +535,15 @@ namespace CATHODE.Scripting.Refactor
 
             private RefactorResult RunCore()
             {
+                //Whether each composite's pages carry its links is judged on it as it is now, before any of them change
+                if (_pageSource != null)
+                {
+                    Carries(P);
+                    Carries(C);
+                    foreach (OverrideLevel level in _plan._levels.Values)
+                        Carries(level.Holder);
+                }
+
                 _tx.Touch(P);
                 _parentOverrides.Add(I);
                 OverrideLevel parentLevel = _plan._levels.Values.FirstOrDefault(o => o.IsParent);
@@ -541,16 +557,16 @@ namespace CATHODE.Scripting.Refactor
                 PlaceCopies();
                 SpliceContentLinks();
                 SpliceParentLinks();
-                PushDownFlags(P, _parentOverrides, e => e);
+                //Aliases' values first, so the flags pushed down from I join them (an entity's flag is its own OR its parent's)
                 MergeLocalAliases();
+                RememberOwnFlags();
+                PushDownFlags(P, _parentOverrides, e => e);
                 RewriteLocalAliases();
                 RewriteThroughPaths();
                 FanOutSequences();
-                foreach (OverrideLevel level in _plan._levels.Values)
-                    if (!level.IsParent)
-                        SpreadOverrides(level);
 
-                //I goes, and anything in P that stood for it; the copies go in (the first takes I's slot)
+                //I goes, and anything in P that stood for it; the copies go in (the first takes I's slot). Done
+                //before the levels above are spread, so their stand-ins can be resolved through P as it now is.
                 RemoveFromParent(I);
                 if (parentLevel != null)
                 {
@@ -563,6 +579,10 @@ namespace CATHODE.Scripting.Refactor
                     AddToComposite(P, copy);
                     _result.PulledEntities.Add(copy);
                 }
+
+                foreach (OverrideLevel level in _plan._levels.Values)
+                    if (!level.IsParent)
+                        SpreadOverrides(level);
 
                 TakeShadowedValuesOffAliases();
 
@@ -981,10 +1001,32 @@ namespace CATHODE.Scripting.Refactor
                         //The flag is the entity's own OR its parent's: one already set stays set, whatever the link says,
                         //and a link written onto it would replace its own value rather than join it
                         Entity copy = _copies[entity];
-                        if (planar ? RefactorContext.Truthy(copy, param) : (RefactorContext.Truthy(copy, ShortGuids.delete_me) || RefactorContext.Truthy(copy, ShortGuids.deleted))) continue;
+                        if (planar ? OwnFlag(entity, copy, param) : (RefactorContext.Truthy(copy, ShortGuids.delete_me) || RefactorContext.Truthy(copy, ShortGuids.deleted))) continue;
                         AddLink(holder, standIn(copy), param, link.linkedEntityID, link.linkedParamID, from);
                     }
                 }
+            }
+
+            /// <summary>
+            /// A direct content's own value for a flag as instancing saw it, before P's aliases on it are merged in:
+            /// P's alias on [I, x] beats one of C's own on [x], which beats x's value.
+            /// </summary>
+            private bool OwnFlag(Entity content, Entity copy, ShortGuid param)
+            {
+                for (int i = _plan._localMerges.Count - 1; i >= 0; i--)
+                {
+                    (AliasEntity alias, Entity target) = _plan._localMerges[i];
+                    if (target != content) continue;
+                    Parameter set = alias.GetParameter(param);
+                    if (set != null) return RefactorContext.Truthy(set.content);
+                }
+                for (int i = _copyOrder.Count - 1; i >= 0; i--)
+                {
+                    if (!(_copyOrder[i] is AliasEntity alias) || OnlyStep(alias) != copy.shortGUID) continue;
+                    Parameter set = alias.GetParameter(param);
+                    if (set != null) return RefactorContext.Truthy(set.content);
+                }
+                return RefactorContext.Truthy(copy, param);
             }
 
             private void AddLink(Composite holder, Entity owner, ShortGuid param, ShortGuid target, ShortGuid targetParam, LinkKey from)
@@ -1019,6 +1061,7 @@ namespace CATHODE.Scripting.Refactor
                     foreach (ShortGuid param in parameters)
                     {
                         if (_pinValuesWritten.Contains((alias, param)) || alias.GetParameter(param) == null) continue;
+                        _tx.Touch(path.Holder);
                         _tx.Touch(alias);
                         alias.parameters.RemoveAll(o => o.name == param);
                     }
@@ -1045,7 +1088,8 @@ namespace CATHODE.Scripting.Refactor
                 foreach (KeyValuePair<ShortGuid, ParameterData> flag in flags)
                 {
                     bool set = RefactorContext.Truthy(flag.Value);
-                    //At P a flag that is off changes nothing; above it an alias can switch one off again, so it is always written there
+                    //At P a flag that is off changes nothing; above it an alias can switch one off again that only I set,
+                    //so it is written there - except over an entity's own flag, which no parent can switch off
                     if (!set && holder == P)
                         continue;
                     foreach (Entity entity in _plan._contents)
@@ -1061,10 +1105,26 @@ namespace CATHODE.Scripting.Refactor
                         }
                         else if (!nested)
                             continue;
+                        if (!set && _ownFlags.Contains((_copies[entity], param)))
+                            continue;
                         Entity target = standIn(_copies[entity]);
                         _tx.Touch(target);
                         RefactorContext.SetParameter(target, param, new cBool(set));
                     }
+                }
+            }
+
+            //Flags each copy has of its own (or from an alias in P merged onto it), before I's are pushed down
+            private readonly HashSet<(Entity, ShortGuid)> _ownFlags = new HashSet<(Entity, ShortGuid)>();
+            private void RememberOwnFlags()
+            {
+                foreach (Entity copy in _copyOrder)
+                {
+                    if (RefactorContext.Truthy(copy, ShortGuids.delete_me) || RefactorContext.Truthy(copy, ShortGuids.deleted))
+                        _ownFlags.Add((copy, ShortGuids.delete_me));
+                    foreach (ShortGuid flag in new[] { ShortGuids.include_in_planar_reflections, ShortGuids.disable_display, ShortGuids.delete_standard_collision, ShortGuids.delete_ballistic_collision })
+                        if (RefactorContext.Truthy(copy, flag))
+                            _ownFlags.Add((copy, flag));
                 }
             }
             #endregion
@@ -1076,11 +1136,27 @@ namespace CATHODE.Scripting.Refactor
                 foreach ((AliasEntity alias, Entity target) in _plan._localMerges)
                 {
                     Entity copy = _copies[target];
-                    MergeAliasInto(P, alias, copy, skipPosition: true);
+                    //One of C's own aliases on the same child is applied before P's: whatever P's sets, it no longer
+                    //sets, and P's links go after its links (on it, since links on an alias are appended in turn)
+                    List<AliasEntity> earlier = _copyOrder.OfType<AliasEntity>().Where(o => OnlyStep(o) == copy.shortGUID).ToList();
+                    foreach (AliasEntity copied in earlier)
+                    {
+                        foreach (Parameter parameter in alias.parameters)
+                            if (parameter.name != ShortGuids.name)
+                                copied.parameters.RemoveAll(o => o.name == parameter.name);
+                    }
+                    MergeAliasInto(P, alias, copy, skipPosition: true, linksOnto: earlier.LastOrDefault());
                 }
             }
 
-            private void MergeAliasInto(Composite holder, AliasEntity alias, Entity into, bool skipPosition)
+            /// <summary>The one entity a copied alias of C's names, read locally, when that is all its path holds.</summary>
+            private ShortGuid OnlyStep(AliasEntity alias)
+            {
+                ShortGuid[] path = alias.alias?.path?.Where(o => o != ShortGuid.Invalid).ToArray();
+                return path != null && path.Length == 1 ? path[0] : ShortGuid.Invalid;
+            }
+
+            private void MergeAliasInto(Composite holder, AliasEntity alias, Entity into, bool skipPosition, Entity linksOnto = null)
             {
                 _tx.Touch(into);
                 foreach (Parameter parameter in alias.parameters)
@@ -1091,7 +1167,15 @@ namespace CATHODE.Scripting.Refactor
                     if (_linkBecameValue.Contains((holder, into, parameter.name))) continue;
                     RefactorContext.SetParameter(into, parameter.name, RefactorContext.CloneData(parameter.content));
                 }
-                into.childLinks.AddRange(alias.childLinks);
+                //A record of the alias's that became a value was the last on its parameter, so it outlived the
+                //target's own records on it: those go, and the value is now the target's to guard against aliases
+                foreach ((Composite h, Entity o, ShortGuid param) in _linkBecameValue.ToList())
+                {
+                    if (h != holder || o != alias) continue;
+                    into.childLinks.RemoveAll(l => l.thisParamID == param);
+                    _linkBecameValue.Add((holder, into, param));
+                }
+                (linksOnto ?? into).childLinks.AddRange(alias.childLinks);
                 _mergedInto[alias] = into;
                 foreach (Entity owner in holder.GetEntities().Concat(holder == P ? _copyOrder : Enumerable.Empty<Entity>()))
                 {
@@ -1130,11 +1214,17 @@ namespace CATHODE.Scripting.Refactor
                             if (alias.GetParameter(parameter.name) == null)
                                 alias.parameters.Add(new Parameter(parameter.name, RefactorContext.CloneData(parameter.content), parameter.variant));
                         alias.childLinks = copied.childLinks.Concat(alias.childLinks).ToList();
-                        foreach (Entity copy in _copyOrder)
+                        //Anything that points at the copy - its fellow copies, and P's entities whose records into
+                        //I's pins were spliced onto it - points at the alias it became part of
+                        foreach (Entity owner in P.GetEntities().Concat(_copyOrder))
                         {
-                            if (!copy.childLinks.Any(o => o.linkedEntityID == copied.shortGUID)) continue;
-                            copy.childLinks = copy.childLinks.Select(o => o.linkedEntityID == copied.shortGUID ? new EntityConnector(alias.shortGUID, o.thisParamID, o.linkedParamID) : o).ToList();
+                            if (!owner.childLinks.Any(o => o.linkedEntityID == copied.shortGUID)) continue;
+                            _tx.Touch(owner);
+                            owner.childLinks = owner.childLinks.Select(o => o.linkedEntityID == copied.shortGUID ? new EntityConnector(alias.shortGUID, o.thisParamID, o.linkedParamID) : o).ToList();
                         }
+                        foreach (Entity merged in _mergedInto.Where(o => o.Value == copied).Select(o => o.Key).ToList())
+                            _mergedInto[merged] = alias;
+                        _mergedInto[copied] = alias;
                         _parentNodeRemap[copied.shortGUID] = alias.shortGUID;
                         _removedFromParent.Add(copied);
                     }
@@ -1170,6 +1260,7 @@ namespace CATHODE.Scripting.Refactor
                 foreach ((ResolvedPath path, int step) in _plan._throughRewrites)
                 {
                     ShortGuid[] rewritten = DropInstanceStep(path, step);
+                    _tx.Touch(path.Holder);
                     _tx.Touch(path.Owner);
                     RefactorContext.StorePath(path, rewritten);
                     if (path.Holder == C && _copies.TryGetValue(path.Owner, out Entity copy))
@@ -1181,18 +1272,23 @@ namespace CATHODE.Scripting.Refactor
                         if (local != null)
                         {
                             _originalLocalPositions[(AliasEntity)path.Owner] = local;
-                            ShortGuid[] prefix = path.Path.Take(path.Steps[step].Index).ToArray();
-                            RefactorContext.SetParameter(path.Owner, ShortGuids.position, RefactorContext.Compose(PlacementAt(path.Holder, prefix), local));
+                            RefactorContext.SetParameter(path.Owner, ShortGuids.position, RefactorContext.Compose(PlacementAt(path, step), local));
                         }
                     }
                 }
             }
 
-            /// <summary>Where I places things as seen from an alias level: an alias there on I overrides it, otherwise it is as at P.</summary>
-            private cTransform PlacementAt(Composite holder, ShortGuid[] prefix)
+            /// <summary>
+            /// Where I places things as seen from the composite holding a path through it: the outermost alias on
+            /// I at that level or any level between it and P (the outermost one wins), otherwise as at P.
+            /// </summary>
+            private cTransform PlacementAt(ResolvedPath path, int step)
             {
-                if (_plan._levels.TryGetValue(PathKey(holder, prefix), out OverrideLevel level))
+                for (int k = 0; k < step; k++)
                 {
+                    ShortGuid[] prefix = path.Path.Skip(path.Steps[k].Index).Take(path.Steps[step].Index - path.Steps[k].Index).ToArray();
+                    if (!_plan._levels.TryGetValue(PathKey(path.Steps[k].Composite, prefix), out OverrideLevel level))
+                        continue;
                     cTransform placement = null;
                     foreach (AliasEntity alias in level.OnInstance)
                         placement = RefactorContext.TransformOf(alias) ?? placement;
@@ -1200,6 +1296,29 @@ namespace CATHODE.Scripting.Refactor
                         return placement;
                 }
                 return _placement;
+            }
+
+            /// <summary>
+            /// Where x sits within C as seen from an override level: the outermost alias on [.., I, x] from that
+            /// level down to P (before its path lost the I step), otherwise its position as at P.
+            /// </summary>
+            private cTransform LocalPositionAt(OverrideLevel level, Entity contentEntity)
+            {
+                ResolvedPath chain = level.Chain;
+                if (chain != null)
+                {
+                    for (int k = 0; k < level.InstanceStep; k++)
+                    {
+                        IEnumerable<ShortGuid> prefix = chain.Path.Skip(chain.Steps[k].Index).Take(chain.Steps[level.InstanceStep].Index - chain.Steps[k].Index);
+                        if (_plan._aliasesByPath.TryGetValue(PathKey(chain.Steps[k].Composite, prefix.Concat(new[] { I.shortGUID, contentEntity.shortGUID })), out AliasEntity onChild))
+                        {
+                            cTransform local = _originalLocalPositions.TryGetValue(onChild, out cTransform original) ? original : RefactorContext.TransformOf(onChild);
+                            if (local != null)
+                                return local;
+                        }
+                    }
+                }
+                return LocalPosition(contentEntity);
             }
 
             /// <summary>A trigger sequence used as a list that lists I lists each of the copies instead, at the same time.</summary>
@@ -1245,14 +1364,18 @@ namespace CATHODE.Scripting.Refactor
             private void SpreadOverrides(OverrideLevel level)
             {
                 Composite Q = level.Holder;
-                Dictionary<Entity, AliasEntity> standIns = new Dictionary<Entity, AliasEntity>();
+                Dictionary<string, AliasEntity> standIns = new Dictionary<string, AliasEntity>();
                 Entity StandIn(Entity parentEntity)
                 {
                     parentEntity = Merged(parentEntity);
-                    if (standIns.TryGetValue(parentEntity, out AliasEntity existing))
-                        return existing;
-                    ShortGuid[] path = RefactorContext.Terminated(level.Prefix.Concat(new[] { parentEntity.shortGUID }));
+                    //An alias in P stands for what it points at: the stand-in points there too, rather than at the alias
+                    List<ShortGuid> tail = new List<ShortGuid>() { parentEntity.shortGUID };
+                    if (parentEntity is AliasEntity pointer && _ctx.Resolve(pointer.alias?.path, P, false)?.Reading == PathReading.Local)
+                        tail = pointer.alias.path.Where(o => o != ShortGuid.Invalid).ToList();
+                    ShortGuid[] path = RefactorContext.Terminated(level.Prefix.Concat(tail));
                     string key = PathKey(Q, path);
+                    if (standIns.TryGetValue(key, out AliasEntity existing))
+                        return existing;
                     AliasEntity alias = Q.aliases_dictionary.Values.FirstOrDefault(o => PathKey(Q, o.alias.path) == key);
                     if (alias == null)
                     {
@@ -1261,7 +1384,7 @@ namespace CATHODE.Scripting.Refactor
                     }
                     else
                         _tx.Touch(alias);
-                    standIns.Add(parentEntity, alias);
+                    standIns.Add(key, alias);
                     return alias;
                 }
 
@@ -1274,11 +1397,8 @@ namespace CATHODE.Scripting.Refactor
                     foreach (Entity entity in _plan._contents)
                     {
                         if (!(entity is FunctionEntity) || !_ctx.IsSpatial(entity, C)) continue;
-                        //An alias at this level on [.., I, x] (now rewritten) already says where x goes within C
-                        cTransform local = null;
-                        if (_plan._aliasesByPath.TryGetValue(PathKey(Q, level.Prefix.Concat(new[] { I.shortGUID, entity.shortGUID })), out AliasEntity onChild))
-                            local = _originalLocalPositions.TryGetValue(onChild, out cTransform original) ? original : RefactorContext.TransformOf(onChild);
-                        local = local ?? LocalPosition(entity);
+                        //An alias at this level or below on [.., I, x] (now rewritten) already says where x goes within C
+                        cTransform local = LocalPositionAt(level, entity);
                         Entity standIn = StandIn(_copies[entity]);
                         _tx.Touch(standIn);
                         RefactorContext.SetParameter(standIn, ShortGuids.position, RefactorContext.Compose(placement, local));
@@ -1436,16 +1556,26 @@ namespace CATHODE.Scripting.Refactor
             #endregion
 
             #region Pages
+            private readonly Dictionary<Composite, bool> _carries = new Dictionary<Composite, bool>();
+            private bool Carries(Composite composite)
+            {
+                if (_pageSource == null)
+                    return false;
+                if (!_carries.TryGetValue(composite, out bool carries))
+                    _carries[composite] = carries = _pageSource.PagesCarryLinks(composite);
+                return carries;
+            }
+
             private void BuildPages()
             {
                 if (_pageSource == null)
                     return;
 
                 //P: its own pages, plus C's pages (for its copies), then drawn to match P's links
-                if (_pageSource.PagesCarryLinks(P))
+                if (Carries(P))
                 {
                     PageRewriter pages = new PageRewriter(P, _pageSource.GetPages(P));
-                    List<FlowgraphMeta> contentPages = _pageSource.PagesCarryLinks(C) ? _pageSource.GetPages(C) : new List<FlowgraphMeta>();
+                    List<FlowgraphMeta> contentPages = Carries(C) ? _pageSource.GetPages(C) : new List<FlowgraphMeta>();
                     string name = _ctx.NameOf(P, I);
                     HashSet<ShortGuid> pins = new HashSet<ShortGuid>(C.variables_dictionary.Keys);
                     List<FlowgraphMeta> imported = new List<FlowgraphMeta>();
@@ -1472,14 +1602,14 @@ namespace CATHODE.Scripting.Refactor
                 //Levels above: aliases were added, removed and relinked
                 foreach (KeyValuePair<Composite, List<PageHint>> entry in _hints)
                 {
-                    if (entry.Key == P || !_pageSource.PagesCarryLinks(entry.Key)) continue;
+                    if (entry.Key == P || !Carries(entry.Key)) continue;
                     AboveLevelPages(entry.Key);
                 }
                 foreach (Composite composite in _removedNodes.Keys)
-                    if (composite != P && !_result.Pages.ContainsKey(composite) && _pageSource.PagesCarryLinks(composite))
+                    if (composite != P && !_result.Pages.ContainsKey(composite) && Carries(composite))
                         AboveLevelPages(composite);
                 foreach (OverrideLevel level in _plan._levels.Values)
-                    if (!level.IsParent && !_result.Pages.ContainsKey(level.Holder) && _pageSource.PagesCarryLinks(level.Holder))
+                    if (!level.IsParent && !_result.Pages.ContainsKey(level.Holder) && Carries(level.Holder))
                         AboveLevelPages(level.Holder);
             }
 

@@ -105,7 +105,7 @@ namespace CATHODE.Scripting.Refactor
         /// <summary>Put everything touched back the way it was before the refactor.</summary>
         public void Revert()
         {
-            Restore(_entitiesBefore, _compositesBefore, _pinsBefore, _entriesBefore);
+            Restore(_entitiesBefore, _compositesBefore, _pinsBefore, _entriesBefore, _entriesAfter);
         }
 
         /// <summary>Put everything touched back the way the refactor left it.</summary>
@@ -113,20 +113,51 @@ namespace CATHODE.Scripting.Refactor
         {
             if (!Committed)
                 throw new InvalidOperationException("A transaction has to be committed before it can be reapplied");
-            Restore(_entitiesAfter, _compositesAfter, _pinsAfter, _entriesAfter);
+            Restore(_entitiesAfter, _compositesAfter, _pinsAfter, _entriesAfter, _entriesBefore);
         }
 
-        private void Restore(Dictionary<Entity, EntityState> entities, Dictionary<Composite, CompositeContents> composites, Dictionary<ShortGuid, List<CompositePinInfoTable.PinInfo>> pins, List<Composite> entries)
+        private void Restore(Dictionary<Entity, EntityState> entities, Dictionary<Composite, CompositeContents> composites, Dictionary<ShortGuid, List<CompositePinInfoTable.PinInfo>> pins, List<Composite> entries, List<Composite> otherEntries)
         {
             if (entries != null)
             {
-                _commands.Entries.Clear();
-                _commands.Entries.AddRange(entries);
+                /* Only the composites this transaction added or removed change. Anything added to the level or
+                   taken out of it since, outside the undo history (an import, a model's composite), stays as it
+                   is. A run that failed before its after-snapshot added everything that is not in the before one. */
+                HashSet<Composite> target = new HashSet<Composite>(entries);
+                HashSet<Composite> other = otherEntries == null ? null : new HashSet<Composite>(otherEntries);
+                _commands.Entries.RemoveAll(o => !target.Contains(o) && (other == null || other.Contains(o)));
+                HashSet<Composite> live = new HashSet<Composite>(_commands.Entries);
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    if (live.Contains(entries[i]) || (other != null && other.Contains(entries[i])))
+                        continue;
+                    _commands.Entries.Insert(Math.Min(i, _commands.Entries.Count), entries[i]);
+                    live.Add(entries[i]);
+                }
             }
             foreach (Composite composite in _compositeOrder)
+            {
+                //Entities added since without an undo record (a viewer deep-select alias) are in neither snapshot: keep them
+                List<Entity> extras = Committed ? composite.GetEntities().Where(o => !_compositesBefore[composite].Holds(o) && !_compositesAfter[composite].Holds(o)).ToList() : new List<Entity>();
+                //And ones this transaction left alone that have gone since without an undo record (that alias, released) stay gone
+                List<Entity> goneSince = Committed ? _compositesBefore[composite].All().Where(o => _compositesAfter[composite].Holds(o) && composite.GetEntityByID(o.shortGUID) != o).ToList() : new List<Entity>();
                 composites[composite].Apply(composite);
+                foreach (Entity extra in extras)
+                    if (composite.GetEntityByID(extra.shortGUID) == null)
+                        CompositeContents.Add(composite, extra);
+                foreach (Entity gone in goneSince)
+                    if (composite.GetEntityByID(gone.shortGUID) == gone)
+                        composite.RemoveEntity(gone);
+            }
             foreach (Entity entity in _entityOrder)
+            {
+                //Likewise parameters the inspector added since (defaults filled in when first shown)
+                List<Parameter> extras = Committed ? entity.parameters.Where(o => !_entitiesBefore[entity].Holds(o) && !_entitiesAfter[entity].Holds(o)).ToList() : new List<Parameter>();
                 entities[entity].Apply(entity);
+                foreach (Parameter extra in extras)
+                    if (entity.GetParameter(extra.name) == null)
+                        entity.parameters.Add(extra);
+            }
             foreach (KeyValuePair<ShortGuid, List<CompositePinInfoTable.PinInfo>> row in pins)
                 _commands.Utils.ReplaceCustomPinInfos(row.Key, CopyPins(row.Value));
         }
@@ -275,6 +306,8 @@ namespace CATHODE.Scripting.Refactor
                 }
             }
 
+            public bool Holds(Parameter parameter) => _parameters.Any(o => ReferenceEquals(o.parameter, parameter));
+
             public bool SameParametersAndPaths(EntityState other)
             {
                 if (_parameters.Count != other._parameters.Count)
@@ -374,6 +407,20 @@ namespace CATHODE.Scripting.Refactor
                     _aliases = composite.aliases_dictionary.Values.ToList(),
                     _proxies = composite.proxies_dictionary.Values.ToList(),
                 };
+            }
+
+            private HashSet<Entity> _set;
+            public bool Holds(Entity entity) => (_set ?? (_set = new HashSet<Entity>(All()))).Contains(entity);
+
+            public static void Add(Composite composite, Entity entity)
+            {
+                switch (entity)
+                {
+                    case VariableEntity variable: composite.variables_dictionary.Add(variable.shortGUID, variable); break;
+                    case FunctionEntity function: composite.functions_dictionary.Add(function.shortGUID, function); break;
+                    case AliasEntity alias: composite.aliases_dictionary.Add(alias.shortGUID, alias); break;
+                    case ProxyEntity proxy: composite.proxies_dictionary.Add(proxy.shortGUID, proxy); break;
+                }
             }
 
             public IEnumerable<Entity> All()

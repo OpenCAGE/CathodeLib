@@ -46,12 +46,13 @@ namespace CATHODE.Scripting.Refactor
             Name = (name ?? "").Trim().Replace('/', '\\');
             //Keep the parent's order: it is the order instancing walks, and the new composite gets the same
             HashSet<Entity> chosen = new HashSet<Entity>(selection.Where(o => o != null));
-            Selection = parent.GetEntities().Where(o => chosen.Contains(o)).ToList();
+            Selection = parent == null ? new List<Entity>() : parent.GetEntities().Where(o => chosen.Contains(o)).ToList();
             _moving = new HashSet<Entity>(Selection);
             _movingIds = new HashSet<ShortGuid>(Selection.Select(o => o.shortGUID));
-            foreach (Entity entity in chosen)
-                if (!_moving.Contains(entity))
-                    Block("'" + _ctx.NameOf(parent, entity) + "' is not in " + RefactorContext.LeafName(parent) + ".");
+            if (parent != null)
+                foreach (Entity entity in chosen)
+                    if (!_moving.Contains(entity))
+                        Block("'" + _ctx.NameOf(parent, entity) + "' is not in " + RefactorContext.LeafName(parent) + ".");
         }
 
         /// <summary>Work out what moving <paramref name="selection"/> out of <paramref name="parent"/> into a new composite called <paramref name="name"/> would involve. Nothing is changed.</summary>
@@ -210,6 +211,15 @@ namespace CATHODE.Scripting.Refactor
                     if (target == null || inside == _moving.Contains(target)) continue;
                     if (!inside && IsZoneLike(owner))
                         Note("'" + _ctx.NameOf(Parent, owner) + "' lists '" + _ctx.NameOf(Parent, target) + "', which will be reached through the new instance: zones and environment maps apply to all of an instance, so it may cover the rest of the new composite too.");
+                    else if (inside && IsZoneLike(owner))
+                    {
+                        //From inside the new composite, what it lists is reached back out through a pin: the zone and
+                        //environment map code does not follow a pin into a trigger sequence or on up another pin
+                        if (target is TriggerSequence || target is VariableEntity)
+                            Block("The zone or environment map '" + _ctx.NameOf(Parent, owner) + "' lists '" + _ctx.NameOf(Parent, target) + "', which is not selected: from the new composite it would lose what that lists. Select it too, or leave '" + _ctx.NameOf(Parent, owner) + "' where it is.");
+                        else
+                            Note("The zone or environment map '" + _ctx.NameOf(Parent, owner) + "' lists '" + _ctx.NameOf(Parent, target) + "', which is not selected: from the new composite it only claims it if no other zone or map has already.");
+                    }
                 }
             }
         }
@@ -490,13 +500,17 @@ namespace CATHODE.Scripting.Refactor
                 Entity inside = ownedInside ? owner : target;
                 ShortGuid insideParam = ownedInside ? ownerParam : targetParam;
                 string name = PinName(_ctx.Utils.GetEntityName(P, inside) + "_" + RefactorContext.ParamName(insideParam));
-                VariableEntity pin = new VariableEntity(ShortGuidUtils.GenerateRandom(), ShortGuidUtils.Generate(name), isEvent ? DataType.FLOAT : type);
+                //ENUM_STRING is the editor's own type, never written to the level: the game knows those pins as strings
+                DataType variableType = isEvent ? DataType.FLOAT : (type == DataType.ENUM_STRING ? DataType.STRING : type);
+                VariableEntity pin = new VariableEntity(ShortGuidUtils.GenerateRandom(), ShortGuidUtils.Generate(name), variableType);
                 N.AddVariable(pin);
 
                 CompositePinInfoTable.PinInfo info = new CompositePinInfoTable.PinInfo() { VariableGUID = pin.shortGUID, PinTypeGUID = new ShortGuid((uint)kind) };
-                ParameterData current = inside.GetParameter(insideParam)?.content;
+                ParameterData current = inside.GetParameter(insideParam)?.content ?? _ctx.Utils.CreateDefaultParameterData(inside, P, insideParam);
                 if (current is cEnum enumValue)
                     info.PinEnumTypeGUID = enumValue.enumID;
+                else if (current is cEnumString enumString)
+                    info.PinEnumTypeGUID = enumString.enumID;
                 _ctx.Utils.SetPinInfo(N.shortGUID, info);
                 if (!isEvent && kind != CompositePinType.CompositeReferencePin)
                 {
@@ -559,6 +573,8 @@ namespace CATHODE.Scripting.Refactor
                     int index = path.Steps[step].Index;
                     List<ShortGuid> elements = path.Path.ToList();
                     elements.Insert(index, In.shortGUID);
+                    //The holder too, though what it holds does not change: it is how the editor knows to re-send the path
+                    _tx.Touch(path.Holder);
                     _tx.Touch(path.Owner);
                     RefactorContext.StorePath(path, elements.ToArray());
                 }
