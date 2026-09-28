@@ -23,8 +23,9 @@ namespace CATHODE
     /// Writing works the same way round: the packfile's own editing calls - adding instances, adding
     /// a box shape, importing a graph from another level - come through here to move item entries and
     /// list pointers rather than to write fixup tables, and the file is re-emitted around whatever
-    /// the payload has grown to. Everything that describes the schema is copied through untouched, so
-    /// a file that is loaded and saved unchanged comes back out byte for byte.
+    /// the payload has grown to. Everything that describes the schema is copied through untouched -
+    /// until an import adds types or hashes, when TYPE is written from the model - so a file that is
+    /// loaded and saved unchanged comes back out byte for byte.
     /// </summary>
     internal sealed class HavokTagfile
     {
@@ -42,6 +43,7 @@ namespace CATHODE
             public string Name;
             public TagType Parent;
             public int Size;
+            public int Alignment;
 
             /// <summary>Its 1-based index in the file's own type table, which PTCH groups are keyed by.</summary>
             public int Index;
@@ -53,6 +55,17 @@ namespace CATHODE
              * but copying objects between two files does: an index only means something in the file
              * it came from, so each type needs an identity both files can agree on. */
             public List<TagTemplate> Templates = new List<TagTemplate>();
+
+            /* Everything else TNA1 and TBDY say about the type, kept exactly as read so the table can
+             * be written back out when types are added to it (see IMPORTING TYPES). Nothing reads
+             * these to understand a file. */
+            public int NameIndex;                     //into TSTR
+            public bool HasBody;
+            public int ParentIndex;                   //as written - Parent drops a self-reference
+            public uint Flags;
+            public uint Format, SubType, Version, Extra, Attributes;
+            public uint MemberWordHigh;               //the bits above the member count (hkPropertyId: 3)
+            public List<uint[]> Interfaces = new List<uint[]>();    //{ type index, value }
 
             //Both walks are depth-capped: a parent pointer that misparsed into a cycle would
             //otherwise spin here forever rather than showing up as bad data
@@ -100,6 +113,11 @@ namespace CATHODE
             public string Name;
             public int Offset;
             public TagType Type;
+
+            //As written, for re-emitting the table
+            public int NameIndex;                     //into FSTR
+            public uint Flags;
+            public int TypeIndex;
         }
 
         /// <summary>
@@ -111,6 +129,7 @@ namespace CATHODE
         {
             public string Name;
             public int Value;
+            public int NameIndex;                     //into TSTR, for re-emitting the table
             public bool IsType { get { return Name != null && Name.Length != 0 && Name[0] == 't'; } }
         }
 
@@ -147,6 +166,17 @@ namespace CATHODE
         private readonly Dictionary<int, List<HavokPackfile.RigidBodyInfo>> _bodiesBySystem
             = new Dictionary<int, List<HavokPackfile.RigidBodyInfo>>();
 
+        /* The rest of the TYPE chunk, held so it can be written again once types have been appended
+         * (see IMPORTING TYPES). Until then TYPE is copied through byte for byte and none of this is
+         * consulted. The string tables are without their padding. */
+        private readonly List<string> _typeNames = new List<string>();
+        private readonly List<string> _memberNames = new List<string>();
+        private readonly List<int> _bodyOrder = new List<int>();
+        private readonly List<KeyValuePair<int, uint>> _hashes = new List<KeyValuePair<int, uint>>();
+        private byte[] _tptr = new byte[0];
+        private byte[] _tpad = new byte[0];
+        private int _originalTypeCount;
+
         /* Once this has filled a packfile in, that packfile's payload is the live copy - it grows when
          * instances are added, and reading our own stale copy would miss every edit. */
         private HavokPackfile _owner;
@@ -164,6 +194,12 @@ namespace CATHODE
             _file = file;
             _types.Clear();
             _items.Clear();
+            _typeNames.Clear();
+            _memberNames.Clear();
+            _bodyOrder.Clear();
+            _hashes.Clear();
+            _typeModelExact = null;
+            _signatures = null;
 
             Dictionary<string, int[]> chunks = new Dictionary<string, int[]>();
             Walk(chunks, 0, file.Length);
@@ -183,6 +219,7 @@ namespace CATHODE
                 ReadTypeNames(tna1[0], typeNames);
             if (chunks.TryGetValue("TBDY", out int[] tbdy))
                 ReadTypeBodies(tbdy[0], tbdy[1], memberNames);
+            ReadTypeTableRest(chunks, typeNames, memberNames);
             if (chunks.TryGetValue("ITEM", out int[] item))
                 ReadItems(item[0], item[1]);
             if (chunks.TryGetValue("PTCH", out int[] patch))
@@ -224,6 +261,7 @@ namespace CATHODE
                 TagType type = new TagType() { Index = i };
                 int nameIndex = (int)Packed(ref cursor);
                 type.Name = nameIndex >= 0 && nameIndex < names.Count ? names[nameIndex] : "";
+                type.NameIndex = nameIndex;
 
                 /* Each argument is a name and a value. The name is a plain index into the same string
                  * table the type names come from - it is NOT shifted or flagged, whatever the shape of
@@ -237,6 +275,7 @@ namespace CATHODE
                     {
                         Name = argName >= 0 && argName < names.Count ? names[argName] : "",
                         Value = argValue,
+                        NameIndex = argName,
                     });
                 }
 
@@ -257,29 +296,36 @@ namespace CATHODE
                 TagType type = TypeAt(selfIndex);
                 if (type == null) break;
 
-                TagType parent = TypeAt((int)Packed(ref cursor));
+                _bodyOrder.Add(selfIndex);
+                type.HasBody = true;
+                type.ParentIndex = (int)Packed(ref cursor);
+                TagType parent = TypeAt(type.ParentIndex);
                 type.Parent = ReferenceEquals(parent, type) ? null : parent;
                 uint flags = Packed(ref cursor);
+                type.Flags = flags;
 
-                if ((flags & 0x1) != 0) Packed(ref cursor);   //format
-                if ((flags & 0x2) != 0) Packed(ref cursor);   //sub type
-                if ((flags & 0x4) != 0) Packed(ref cursor);   //version
+                /* The sub type is a type index - the element of an array, the target of a pointer -
+                 * and equals the tT argument wherever there is one (every shipped type). */
+                if ((flags & 0x1) != 0) type.Format = Packed(ref cursor);
+                if ((flags & 0x2) != 0) type.SubType = Packed(ref cursor);
+                if ((flags & 0x4) != 0) type.Version = Packed(ref cursor);
                 if ((flags & 0x8) != 0)
                 {
                     type.Size = (int)Packed(ref cursor);
-                    Packed(ref cursor);                       //alignment
+                    type.Alignment = (int)Packed(ref cursor);
                 }
-                if ((flags & 0x10) != 0) Packed(ref cursor);  //unknown
+                if ((flags & 0x10) != 0) type.Extra = Packed(ref cursor);
 
                 if ((flags & 0x20) != 0)
                 {
-                    /* At least one type (hkPropertyId in the shipped files) carries a field here that
-                     * the flags do not announce, which makes the count read as nonsense. A member count
-                     * is always small, so step over anything that plainly is not one. */
-                    int members = (int)Packed(ref cursor);
-                    while (members > 256 && cursor < at + length)
-                        members = (int)Packed(ref cursor);
-                    if (members > 256)
+                    /* The member count shares its word with flags above bit 16 - hkPropertyId's reads
+                     * 0x30001, one member. Taking the whole word as the count used to throw the reader
+                     * off: in an animation file it lost more than half the table, including
+                     * hkaSplineCompressedAnimation. Masked, every shipped tagfile reads each type once. */
+                    uint memberWord = Packed(ref cursor);
+                    type.MemberWordHigh = memberWord >> 16;
+                    int members = (int)(memberWord & 0xFFFF);
+                    if (members > 4096)
                         return;
 
                     for (int m = 0; m < members; m++)
@@ -287,23 +333,81 @@ namespace CATHODE
                         TagMember member = new TagMember();
                         int nameIndex = (int)Packed(ref cursor);
                         member.Name = nameIndex >= 0 && nameIndex < names.Count ? names[nameIndex] : "";
-                        Packed(ref cursor);                    //member flags
+                        member.NameIndex = nameIndex;
+                        member.Flags = Packed(ref cursor);
                         member.Offset = (int)Packed(ref cursor);
-                        member.Type = TypeAt((int)Packed(ref cursor));
+                        member.TypeIndex = (int)Packed(ref cursor);
+                        member.Type = TypeAt(member.TypeIndex);
                         type.Members.Add(member);
 
                         if (cursor > at + length) return;
                     }
                 }
 
+                //An interface is a type index and (in every shipped one) the offset of its vtable
                 if ((flags & 0x40) != 0)
                 {
                     int interfaces = (int)Packed(ref cursor);
-                    for (int n = 0; n < interfaces && cursor < at + length; n++) { Packed(ref cursor); Packed(ref cursor); }
+                    for (int n = 0; n < interfaces && cursor < at + length; n++)
+                        type.Interfaces.Add(new uint[] { Packed(ref cursor), Packed(ref cursor) });
                 }
-                if ((flags & 0x80) != 0) Packed(ref cursor);  //attributes
+                if ((flags & 0x80) != 0) type.Attributes = Packed(ref cursor);
 
                 if (cursor > at + length) return;
+            }
+        }
+
+        /// <summary>
+        /// The parts of TYPE nothing needs for reading, kept so the table can be written out again:
+        /// the string tables without their padding, THSH, and TPTR/TPAD as they are.
+        /// </summary>
+        private void ReadTypeTableRest(Dictionary<string, int[]> chunks, List<string> typeNames, List<string> memberNames)
+        {
+            _originalTypeCount = _types.Count;
+            _typeNames.AddRange(typeNames);
+            _memberNames.AddRange(memberNames);
+            if (chunks.TryGetValue("TSTR", out int[] tstr)) Unpad(_typeNames, tstr[1]);
+            if (chunks.TryGetValue("FSTR", out int[] fstr)) Unpad(_memberNames, fstr[1]);
+
+            _tptr = Raw(chunks, "TPTR");
+            _tpad = Raw(chunks, "TPAD");
+
+            /* THSH - a count, then that many (type index, 32-bit little-endian hash). Every shipped
+             * file hashes exactly the types its items and PTCH groups use, and a type's hash is the
+             * same in every file that carries one. */
+            if (chunks.TryGetValue("THSH", out int[] thsh) && thsh[1] > 0)
+            {
+                int cursor = thsh[0], end = thsh[0] + thsh[1];
+                int count = (int)Packed(ref cursor);
+                for (int i = 0; i < count && cursor < end; i++)
+                {
+                    int type = (int)Packed(ref cursor);
+                    if (cursor + 4 > end) break;
+                    _hashes.Add(new KeyValuePair<int, uint>(type, BitConverter.ToUInt32(_file, cursor)));
+                    cursor += 4;
+                }
+            }
+        }
+
+        private byte[] Raw(Dictionary<string, int[]> chunks, string name)
+        {
+            if (!chunks.TryGetValue(name, out int[] at)) return new byte[0];
+            byte[] copy = new byte[at[1]];
+            Buffer.BlockCopy(_file, at[0], copy, 0, at[1]);
+            return copy;
+        }
+
+        /* A string table is padded to four bytes with zeros, and each zero reads as another empty
+         * string. Drop exactly those: the ones the table's length does not need. */
+        private static void Unpad(List<string> strings, int length)
+        {
+            int bytes = 0;
+            foreach (string s in strings) bytes += s.Length + 1;
+
+            while (strings.Count != 0 && strings[strings.Count - 1].Length == 0 && ((bytes - 1 + 3) & ~3) == length)
+            {
+                strings.RemoveAt(strings.Count - 1);
+                bytes--;
             }
         }
 
@@ -675,7 +779,10 @@ namespace CATHODE
                 {
                     int typeAt = motion.OffsetOf("type");
                     if (typeAt >= 0 && start + at + motionAt + typeAt < data.Length)
+                    {
                         info.MotionType = data[start + at + motionAt + typeAt];
+                        info.MotionTypeName = HavokPackfile.DescribeMotionType(info.MotionType);
+                    }
 
                     int inertiaAt = motion.OffsetOf("inertiaAndMassInv");
                     if (inertiaAt >= 0 && start + at + motionAt + inertiaAt + 16 <= data.Length)
@@ -684,7 +791,7 @@ namespace CATHODE
                         info.InertiaInvLocal = new Vector3(
                             BitConverter.ToSingle(data, w), BitConverter.ToSingle(data, w + 4), BitConverter.ToSingle(data, w + 8));
                         info.MassInv = BitConverter.ToSingle(data, w + 12);
-                        info.Mass = info.MassInv == 0 ? float.PositiveInfinity : 1.0f / info.MassInv;
+                        info.Mass = info.MassInv > 1e-12f ? 1.0f / info.MassInv : float.PositiveInfinity;
                     }
 
                     int gravityAt = motion.OffsetOf("gravityFactor");
@@ -692,6 +799,34 @@ namespace CATHODE
                         info.GravityFactor = Half(start + at + motionAt + gravityAt);
                 }
             }
+
+            //The rest of what the packfile reader fills in, from wherever this file puts it
+            int shapeAt = OffsetOfPath("hkpRigidBody", "collidable", "shape");
+            int shape = Follow(at, shapeAt);
+            info.ShapeClassName = shape < 0 ? "" : (ClassAt(shape) ?? "");
+
+            int frictionAt = OffsetOfPath("hkpRigidBody", "material", "friction");
+            if (frictionAt >= 0 && start + at + frictionAt + 4 <= data.Length)
+                info.Friction = BitConverter.ToSingle(data, start + at + frictionAt);
+            int restitutionAt = OffsetOfPath("hkpRigidBody", "material", "restitution");
+            if (restitutionAt >= 0 && start + at + restitutionAt + 4 <= data.Length)
+                info.Restitution = BitConverter.ToSingle(data, start + at + restitutionAt);
+            int filterAt = OffsetOfPath("hkpRigidBody", "collidable", "broadPhaseHandle", "collisionFilterInfo");
+            if (filterAt >= 0 && start + at + filterAt + 4 <= data.Length)
+                info.CollisionFilterInfo = BitConverter.ToUInt32(data, start + at + filterAt);
+
+            int radiusAt = OffsetOfPath("hkpRigidBody", "motion", "motionState", "objectRadius");
+            if (radiusAt >= 0 && start + at + radiusAt + 4 <= data.Length)
+                info.ObjectRadius = BitConverter.ToSingle(data, start + at + radiusAt);
+            int linearAt = OffsetOfPath("hkpRigidBody", "motion", "motionState", "linearDamping");
+            if (linearAt >= 0 && start + at + linearAt + 2 <= data.Length)
+                info.LinearDamping = Half(start + at + linearAt);
+            int angularAt = OffsetOfPath("hkpRigidBody", "motion", "motionState", "angularDamping");
+            if (angularAt >= 0 && start + at + angularAt + 2 <= data.Length)
+                info.AngularDamping = Half(start + at + angularAt);
+            int maxLinearAt = OffsetOfPath("hkpRigidBody", "motion", "motionState", "maxLinearVelocity");
+            if (maxLinearAt >= 0 && start + at + maxLinearAt < data.Length)
+                info.MaxLinearVelocity = data[start + at + maxLinearAt];
 
             return info;
         }
@@ -712,16 +847,38 @@ namespace CATHODE
             byte[] data = Data;
             int start = DataAt;
 
-            int proxy = 0;
+            /* A COLLISION.MAP row names its proxy by where it sits in the proxy list - the hkpListShape
+             * the first rigid body carries - not by where it sits in the file. A tagfile puts the
+             * three world hosts first, so numbering by item order put every template three past the
+             * row that means it (0 of 27,439 iOS rows bound right; 100% by the list). The hosts are
+             * not in the list, so they follow it, in item order - ballistic, spare, walkable - as the
+             * PC's own come last. */
+            Dictionary<int, int> listed = new Dictionary<int, int>();
+            List<int> children = ProxyListChildren();
+            for (int i = 0; i < children.Count; i++)
+                if (children[i] >= 0 && !listed.ContainsKey(children[i]))
+                    listed[children[i]] = i;
+            int unlisted = children.Count;
+
+            List<HavokPackfile.StaticCompoundShape> read = new List<HavokPackfile.StaticCompoundShape>();
             foreach (TagItem item in _items)
             {
-                if (item.Type == null || !item.Type.Is("hkpStaticCompoundShape")) continue;
+                if (item.Type == null || !item.IsPointer || !item.Type.Is("hkpStaticCompoundShape")) continue;
 
                 HavokPackfile.StaticCompoundShape shape = new HavokPackfile.StaticCompoundShape()
                 {
-                    ProxyIndex = proxy++,
+                    ProxyIndex = listed.TryGetValue(item.Offset, out int index) ? index : unlisted++,
                     DataOffset = (uint)item.Offset,
                 };
+
+                /* The tree's domain, as the packfile reader fills it. Left at zero, every compound looked
+                 * too small for its own mesh, and Save & Build rebuilt the tree of every template. */
+                int domainAt = Compound().Domain;
+                if (domainAt >= 0 && start + item.Offset + domainAt + 32 <= data.Length)
+                {
+                    shape.DomainMin = Vector(start + item.Offset + domainAt);
+                    shape.DomainMax = Vector(start + item.Offset + domainAt + 16);
+                }
 
                 foreach (int at in Elements(ArrayItem(item.Offset, instancesAt)))
                 {
@@ -755,8 +912,55 @@ namespace CATHODE
                     shape.AddInstance(carried);
                 }
 
-                target.StaticCompoundShapes.Add(shape);
+                read.Add(shape);
             }
+
+            target.StaticCompoundShapes.AddRange(read.OrderBy(o => o.ProxyIndex));
+        }
+
+        /// <summary>
+        /// The proxy list: the hkpListShape a rigid body carries, whose children are the per-mesh
+        /// compounds. Falls back to the first list in the file, which is the same object in every
+        /// shipped collision file. -1 when there is none - a physics file, say.
+        /// </summary>
+        public int ProxyListOffset()
+        {
+            int shapeAt = OffsetOfPath("hkpRigidBody", "collidable", "shape");
+            if (shapeAt >= 0)
+                foreach (TagItem item in _items)
+                {
+                    if (item.Type == null || !item.IsPointer || !item.Type.Is("hkpRigidBody")) continue;
+                    int shape = Follow(item.Offset, shapeAt);
+                    if (shape >= 0 && ClassAt(shape) == "hkpListShape")
+                        return shape;
+                }
+
+            TagItem first = _items.FirstOrDefault(o => o.Type != null && o.IsPointer && o.Type.Name == "hkpListShape");
+            return first == null ? -1 : first.Offset;
+        }
+
+        /// <summary>What each slot of the proxy list points at, in list order (-1 for an empty slot).</summary>
+        public List<int> ProxyListChildren()
+        {
+            List<int> found = new List<int>();
+            int list = ProxyListOffset();
+            TagType listType = Find("hkpListShape");
+            TagType childType = Find("hkpListShape::ChildInfo");
+            if (list < 0 || listType == null || childType == null || childType.Size <= 0)
+                return found;
+
+            TagItem array = ArrayItem(list, listType.OffsetOf("childInfo"));
+            int shapeAt = childType.OffsetOf("shape");
+            if (array == null || shapeAt < 0)
+                return found;
+
+            for (int i = 0; i < array.Count; i++)
+            {
+                int slot = array.Offset + i * childType.Size;
+                if (DataAt + slot + shapeAt + 8 > Data.Length) break;
+                found.Add(Follow(slot, shapeAt));
+            }
+            return found;
         }
 
         /// <summary>
@@ -821,8 +1025,8 @@ namespace CATHODE
         #region WRITING THE FILE
 
         /* Writing a tagfile is the same trick as reading one, in reverse. Nothing about the container
-         * needs re-deriving: the chunks that describe the schema are copied through byte for byte, and
-         * only the three that describe the data change - DATA itself, the item table that says where
+         * needs re-deriving: the chunks that describe the schema are copied through byte for byte (until
+         * types or hashes are added - see IMPORTING TYPES), and only the three that describe the data change - DATA itself, the item table that says where
          * each object lives, and the patch table that says which words hold pointers.
          *
          * The two things a packfile does not have to think about:
@@ -914,6 +1118,10 @@ namespace CATHODE
         /// Point an array member at <paramref name="count"/> elements starting at
         /// <paramref name="elementOffset"/>. The item the member names is what carries both, so this
         /// moves that item rather than writing anything into the array header.
+        /// <para>
+        /// Only for a word that owns its item. On a word copied from another object it moves the
+        /// other object's array - use <see cref="NewArray"/> there.
+        /// </para>
         /// </summary>
         public bool SetArray(int fieldOffset, int elementOffset, int count, int patchGroup)
         {
@@ -934,8 +1142,35 @@ namespace CATHODE
                 AddPatch(patchGroup, fieldOffset);
             }
 
+            int movedFrom = _items[index].Offset;
             _items[index].Offset = elementOffset;
             _items[index].Count = count;
+
+            /* The packfile's object list has an entry per item, and a port walks it to find where each
+             * object's bytes stop. Left at the old address, the entry before the moved array claimed
+             * the whole array - the proxy list, or hkpPhysicsData.systems - and a port from a level
+             * edited in the same session dragged every compound or system in it across. */
+            if (movedFrom != elementOffset && _owner != null && _items[index].Type != null)
+            {
+                string name = _items[index].Type.Name;
+                foreach (HavokPackfile.PackfileObject entry in _owner.Objects)
+                {
+                    if (entry.DataOffset != (uint)movedFrom || entry.ClassName != name) continue;
+                    entry.DataOffset = (uint)elementOffset;
+                    break;
+                }
+                _classAt = null;
+            }
+
+            //And its fixup, which a port follows to find the array: left at the old address, a compound
+            //rebuilt by Save & Build ported across with no instances
+            if (_owner != null)
+            {
+                HavokPackfile.GlobalFixup live = new HavokPackfile.GlobalFixup() { Src = (uint)fieldOffset, Dst = (uint)elementOffset };
+                int at = _owner.GlobalFixups.FindIndex(o => o.Src == (uint)fieldOffset);
+                if (at >= 0) _owner.GlobalFixups[at] = live;
+                else _owner.GlobalFixups.Add(live);
+            }
             return true;
         }
 
@@ -1048,20 +1283,29 @@ namespace CATHODE
             return _items.Select(o => new Item() { Word = o.Word, Offset = o.Offset, Count = o.Count }).ToList();
         }
 
-        public void AddItem(uint word, int offset, int count)
+        /// <summary>Add an item and return its index, which is what a pointer to it holds.</summary>
+        public int AddItem(uint word, int offset, int count)
         {
-            _items.Add(new TagItem()
+            TagItem added = new TagItem()
             {
                 Word = word,
                 Type = TypeAt((int)(word & 0xFFFFFF)),
                 IsPointer = (word & 0x10000000) != 0,
                 Offset = offset,
                 Count = count,
-            });
+            };
+            _items.Add(added);
 
-            if (_itemAt != null && (word & 0x10000000) != 0 && !_itemAt.ContainsKey(offset))
+            if (_itemAt != null && added.IsPointer && !_itemAt.ContainsKey(offset))
                 _itemAt[offset] = _items.Count - 1;
+            if (_classAt != null && added.Type != null && !_classAt.ContainsKey(offset))
+                _classAt[offset] = added.Type.Name;
+
+            return _items.Count - 1;
         }
+
+        /// <summary>How many items there are, so a writer can tell which ones it added.</summary>
+        public int ItemCount { get { return _items.Count; } }
 
         /// <summary>Every place holding a pointer, with the group it belongs to.</summary>
         public List<KeyValuePair<int, int>> Patches()
@@ -1209,9 +1453,286 @@ namespace CATHODE
         }
 
         /// <summary>
+        /// Where a member of an inline member sits, counted from the start of the outer object - a
+        /// rigid body's friction is <c>material.friction</c>, its shape <c>collidable.shape</c>.
+        /// -1 if any step is missing.
+        /// </summary>
+        public int OffsetOfPath(string type, params string[] path)
+        {
+            TagType step = Find(type);
+            int offset = 0;
+            foreach (string name in path)
+            {
+                TagMember member = step == null ? null : MemberOf(step, name);
+                if (member == null) return -1;
+                offset += member.Offset;
+                step = member.Type;
+            }
+            return offset;
+        }
+
+        /// <summary>A type's index in this file's table, or -1. Indices are per file: never carry one over.</summary>
+        public int TypeIndex(string type)
+        {
+            TagType found = Find(type);
+            return found == null ? -1 : found.Index;
+        }
+
+        public bool HasType(string type)
+        {
+            TagType found = Find(type);
+            return found != null && found.Size > 0;
+        }
+
+        /// <summary>How a type wants aligning in the data, as the file says (walking up to a base that says).</summary>
+        public int AlignOf(string type)
+        {
+            int depth = 0;
+            for (TagType step = Find(type); step != null && depth++ < 64; step = step.Parent)
+                if (step.Alignment > 0) return step.Alignment;
+
+            return 0;
+        }
+
+        /// <summary>
+        /// What an array or pointer member holds: the <c>tT</c> argument of its declared type -
+        /// <c>hkArray&lt;hkInt16&gt;</c> gives hkInt16. -1 if the member is not a template.
+        /// </summary>
+        public int ElementTypeOf(string type, string member)
+        {
+            TagType owner = Find(type);
+            TagMember found = owner == null ? null : MemberOf(owner, member);
+            if (found == null || found.Type == null) return -1;
+
+            foreach (TagTemplate argument in found.Type.Templates)
+                if (argument.IsType && argument.Name == "tT") return argument.Value;
+
+            return -1;
+        }
+
+        /// <summary>The ITEM word for an object of this type: the object flag and the type's index.</summary>
+        public uint ObjectWord(string type)
+        {
+            int index = TypeIndex(type);
+            return index <= 0 ? 0 : 0x10000000u | (uint)index;
+        }
+
+        /// <summary>The ITEM word for what an array member points at: the array flag and the element type.</summary>
+        public uint ArrayWord(string type, string member)
+        {
+            int element = ElementTypeOf(type, member);
+            return element <= 0 ? 0 : 0x20000000u | (uint)element;
+        }
+
+        /// <summary>The ITEM word for a string's characters, which are an array of char.</summary>
+        public uint StringWord()
+        {
+            int index = TypeIndex("char");
+            return index <= 0 ? 0 : 0x20000000u | (uint)index;
+        }
+
+        /// <summary>
+        /// Point a member at a brand new array (or string) item, never at an existing one. This is the
+        /// call for a copied object: its bytes still carry the template's item indices, and
+        /// <see cref="SetArray"/> would MOVE the template's own array to wherever the copy's goes.
+        /// An empty array is a null word with no item and no patch entry, as retail writes it.
+        /// </summary>
+        public bool NewArray(int fieldOffset, int elementOffset, int count, uint word, int patchGroup)
+        {
+            byte[] data = Data;
+            int start = DataAt;
+            if (fieldOffset < 0 || start + fieldOffset + 8 > data.Length)
+                return false;
+
+            if (count <= 0)
+            {
+                WriteIndex(data, start + fieldOffset, 0);
+                Group(patchGroup, false)?.Offsets.Remove(fieldOffset);
+                return true;
+            }
+
+            if (word == 0 || patchGroup <= 0)
+                return false;
+
+            int index = AddItem(word, elementOffset, count);
+            WriteIndex(data, start + fieldOffset, index);
+            AddPatch(patchGroup, fieldOffset);
+            return true;
+        }
+
+        /// <summary>A string member, followed to its characters. Null when the pointer is.</summary>
+        public string ReadString(int fieldOffset)
+        {
+            return Text(fieldOffset, 0);
+        }
+
+        /// <summary>
+        /// Everything an edit can change outside the data: the items (whose offsets and counts are
+        /// moved in place), the patch groups and the bodies read per system. A writer that fails half
+        /// way puts this back along with the payload, or the file keeps items and pointers into data
+        /// that no longer exists - which reloads with no physics systems at all.
+        /// </summary>
+        public object Snapshot()
+        {
+            return new TagState()
+            {
+                Items = _items.Select(o => new TagItem() { Type = o.Type, Offset = o.Offset, Count = o.Count, IsPointer = o.IsPointer, Word = o.Word }).ToList(),
+                Patches = _patches.Select(o => new TagPatchGroup() { Type = o.Type, Offsets = new HashSet<int>(o.Offsets) }).ToList(),
+                Bodies = _bodiesBySystem.ToDictionary(o => o.Key, o => new List<HavokPackfile.RigidBodyInfo>(o.Value)),
+
+                /* The type table only ever grows, and a type is never changed once it is in it, so
+                 * copies of the lists are a complete record of it. */
+                Types = new List<TagType>(_types),
+                TypeNames = new List<string>(_typeNames),
+                MemberNames = new List<string>(_memberNames),
+                BodyOrder = new List<int>(_bodyOrder),
+                Hashes = new List<KeyValuePair<int, uint>>(_hashes),
+                HashesChanged = _hashesChanged,
+                Layout = CopyLayout(_owner?.Layout, null),
+            };
+        }
+
+        public void Restore(object snapshot)
+        {
+            if (!(snapshot is TagState state))
+                return;
+
+            _items.Clear();
+            _items.AddRange(state.Items.Select(o => new TagItem() { Type = o.Type, Offset = o.Offset, Count = o.Count, IsPointer = o.IsPointer, Word = o.Word }));
+            _patches.Clear();
+            _patches.AddRange(state.Patches.Select(o => new TagPatchGroup() { Type = o.Type, Offsets = new HashSet<int>(o.Offsets) }));
+            _bodiesBySystem.Clear();
+            foreach (KeyValuePair<int, List<HavokPackfile.RigidBodyInfo>> bodies in state.Bodies)
+                _bodiesBySystem[bodies.Key] = new List<HavokPackfile.RigidBodyInfo>(bodies.Value);
+
+            if (state.Types != null && _types.Count != state.Types.Count)
+            {
+                _types.Clear();
+                _types.AddRange(state.Types);
+                _typeNames.Clear();
+                _typeNames.AddRange(state.TypeNames);
+                _memberNames.Clear();
+                _memberNames.AddRange(state.MemberNames);
+                _bodyOrder.Clear();
+                _bodyOrder.AddRange(state.BodyOrder);
+                _hashes.Clear();
+                _hashes.AddRange(state.Hashes);
+                _signatures = null;
+                _compound = null;
+                if (_owner != null && state.Layout != null)
+                    CopyLayout(state.Layout, _owner.Layout);
+            }
+
+            //Hashes can change without a type being added, so they are put back regardless
+            if (state.Hashes != null)
+            {
+                _hashes.Clear();
+                _hashes.AddRange(state.Hashes);
+                _hashesChanged = state.HashesChanged;
+            }
+
+            _itemAt = null;
+            _classAt = null;
+        }
+
+        private sealed class TagState
+        {
+            public List<TagItem> Items;
+            public List<TagPatchGroup> Patches;
+            public Dictionary<int, List<HavokPackfile.RigidBodyInfo>> Bodies;
+
+            public List<TagType> Types;
+            public List<string> TypeNames;
+            public List<string> MemberNames;
+            public List<int> BodyOrder;
+            public List<KeyValuePair<int, uint>> Hashes;
+            public bool HashesChanged;
+            public HavokPackfile.ShapeLayout Layout;
+        }
+
+        /// <summary>
+        /// Copy the packfile's shape offsets, which adding a type re-reads - every field, so one added
+        /// to the layout later is kept too. Copies into a new layout when <paramref name="to"/> is null.
+        /// </summary>
+        private static HavokPackfile.ShapeLayout CopyLayout(HavokPackfile.ShapeLayout from, HavokPackfile.ShapeLayout to)
+        {
+            if (from == null) return null;
+            to = to ?? new HavokPackfile.ShapeLayout();
+            foreach (System.Reflection.FieldInfo field in typeof(HavokPackfile.ShapeLayout).GetFields())
+                if (!field.IsStatic && !field.IsInitOnly) field.SetValue(to, field.GetValue(from));
+            return to;
+        }
+
+        /// <summary>
+        /// Forget every item and pointer, keeping the schema - for writing a file's whole object graph
+        /// from scratch against its own type table. Item 0 is the null item every file opens with.
+        /// </summary>
+        public void ResetIndex()
+        {
+            _items.Clear();
+            _items.Add(new TagItem() { Word = 0, Offset = 0, Count = 0 });
+            _patches.Clear();
+            _bodiesBySystem.Clear();
+            _itemAt = null;
+            _classAt = null;
+        }
+
+        /// <summary>
+        /// Let the packfile's own views see items added since <paramref name="firstNewItem"/> without
+        /// re-reading everything: an object entry per new item, and the pointer fixups rebuilt from
+        /// the patch table. A full re-read would replace every PhysicsSystem and compound view,
+        /// breaking whatever already holds one (PHYSICS.MAP rows, pickers, the importer itself).
+        /// </summary>
+        public void RegisterNewItems(HavokPackfile target, int firstNewItem)
+        {
+            for (int i = Math.Max(1, firstNewItem); i < _items.Count; i++)
+                if (_items[i].Type != null)
+                    target.Objects.Add(new HavokPackfile.PackfileObject()
+                    {
+                        DataOffset = (uint)_items[i].Offset,
+                        ClassName = _items[i].Type.Name,
+                        Class = Classify(_items[i].Type.Name),
+                    });
+
+            target.GlobalFixups.Clear();
+            ReadFixups(target);
+            _classAt = null;
+        }
+
+        /// <summary>
+        /// A view of a physics system appended at <paramref name="systemOffset"/>, with its bodies
+        /// read so <see cref="RigidBodies"/> answers for it like for a retail one.
+        /// </summary>
+        public HavokPackfile.PhysicsSystem AddSystemView(int systemIndex, int systemOffset)
+        {
+            TagType systemType = Find("hkpPhysicsSystem");
+            TagType worldObject = Find("hkpWorldObject");
+            if (systemType == null) return null;
+
+            _classAt = null;
+            List<HavokPackfile.RigidBodyInfo> bodies = new List<HavokPackfile.RigidBodyInfo>();
+            foreach (int body in Elements(ArrayItem(systemOffset, systemType.OffsetOf("rigidBodies"))))
+                if (body >= 0)
+                    bodies.Add(ReadRigidBody(body, worldObject));
+            _bodiesBySystem[systemIndex] = bodies;
+
+            return new HavokPackfile.PhysicsSystem()
+            {
+                SystemIndex = systemIndex,
+                DataOffset = (uint)systemOffset,
+                Name = Text(systemOffset, systemType.OffsetOf("name")),
+            };
+        }
+
+        /// <summary>
         /// Register a copy of an existing object that has already been written into the data. An object
         /// only exists as far as a tagfile is concerned if an item claims it, and any pointer inside it
         /// has to be listed again at its new address - otherwise the copy loads with null members.
+        /// <para>
+        /// The copy's pointer words still hold the template's item indices. Object pointers may share,
+        /// but an array or string item has one owner: point the copy's at fresh ones with
+        /// <see cref="NewArray"/>, never <see cref="SetArray"/>, which would move the template's.
+        /// </para>
         /// </summary>
         public bool CloneObject(uint sourceOffset, uint destOffset, int size)
         {
@@ -1231,6 +1752,8 @@ namespace CATHODE
 
             if (_itemAt != null && !_itemAt.ContainsKey((int)destOffset))
                 _itemAt[(int)destOffset] = _items.Count - 1;
+            if (_classAt != null && template.Type != null && !_classAt.ContainsKey((int)destOffset))
+                _classAt[(int)destOffset] = template.Type.Name;
 
             foreach (TagPatchGroup group in _patches)
             {
@@ -1338,7 +1861,8 @@ namespace CATHODE
 
         /// <summary>
         /// Re-emit the file around a data payload that may have grown. Every chunk that describes the
-        /// schema is copied through unchanged; DATA, ITEM and PTCH are written from what we hold.
+        /// schema is copied through unchanged unless types or hashes were added (then TYPE is written
+        /// from the model); DATA, ITEM and PTCH are written from what we hold.
         /// </summary>
         public byte[] ToBytes(byte[] payload)
         {
@@ -1371,6 +1895,10 @@ namespace CATHODE
                     case "ITEM": body = ItemBytes(); break;
                     case "PTCH": body = PatchBytes(); break;
                     default:
+                        //The type table is written out again only once types or hashes have been added to it
+                        body = TypesAdded || _hashesChanged ? TypeChunk(name) : null;
+                        if (body != null) break;
+
                         body = new byte[size - 8];
                         Buffer.BlockCopy(_file, at + 8, body, 0, body.Length);
                         break;
@@ -1428,8 +1956,9 @@ namespace CATHODE
 
         private byte[] PatchBytes()
         {
-            //Retail writes the groups in type order with each group's offsets ascending
-            List<TagPatchGroup> ordered = _patches.OrderBy(o => o.Type).ToList();
+            //Retail writes the groups in type order with each group's offsets ascending - and never an
+            //empty one, which an edit can leave behind by retiring every pointer a group held
+            List<TagPatchGroup> ordered = _patches.Where(o => o.Offsets.Count != 0).OrderBy(o => o.Type).ToList();
 
             int length = 0;
             foreach (TagPatchGroup group in ordered)
@@ -1457,18 +1986,559 @@ namespace CATHODE
 
         #endregion
 
+        #region IMPORTING TYPES
+
+        /* Each level declares only the types its own objects use, so an object copied from another
+         * level can need a type the destination has never heard of - frontend's physics declares no
+         * hkpListShape, torrens' none of airport's capsules. Those definitions are copied across from
+         * the source file, appended to our table so no existing index moves.
+         *
+         * How the TYPE chunk is laid out, measured over every shipped tagfile (6 iOS + 72 Switch level
+         * files, 11,657 animation sections, 653 skeleton-folder blobs - all hold, no exceptions):
+         *   - sub-chunks TPTR TSTR TNA1 FSTR TBDY THSH TPAD, each a whole number of 4 bytes, padded
+         *     with the fewest zeros that gets there; every varint in the smallest width that holds it
+         *   - TPTR is 8 zero bytes per TNA1 entry, the null type included: 8 * (types + 1)
+         *   - TSTR and FSTR hold each string once, and in the order the bodies first use them: walk
+         *     TBDY in its own order, taking a type's name then its argument names (TSTR), its member
+         *     names (FSTR). Nothing unused is kept
+         *   - TNA1 is types + 1, then per type its name and arguments; a type argument may name a
+         *     later index as freely as an earlier one, and so may a parent or a member
+         *   - TBDY has exactly one body per type, nearly in index order (one or two early swaps)
+         *   - a sub type (flag 0x2) and an interface's first value are type indices; the sub type
+         *     equals the tT argument wherever there is one. Flag 0x80 never occurs
+         *   - THSH hashes exactly the types the ITEM and PTCH tables use, one hash per type that is
+         *     the same in every file carrying it; TPAD is always empty
+         * Appended types follow the same rules: new indices at the end in the source's own order,
+         * their bodies after the existing ones, strings the table lacks after its existing strings,
+         * the source's hash for each one it hashes. */
+
+        //Whether writing our table back out from the model reproduces the file's own bytes; null until asked
+        private bool? _typeModelExact;
+
+        /// <summary>
+        /// True once types have been added. Until then the TYPE chunk is copied through byte for byte;
+        /// after, its sub-chunks are written from the model.
+        /// </summary>
+        public bool TypesAdded { get { return _types.Count > _originalTypeCount; } }
+
+        /// <summary>How many types this file declares.</summary>
+        public int TypeCount { get { return _types.Count; } }
+
+        private sealed class TypePlan
+        {
+            public string Refusal;
+            public int[] Map;                           //source index -> ours, -1 where we have none yet
+            public List<int> Added = new List<int>();   //source indices to append, in the order they will be
+        }
+
+        /// <summary>
+        /// Why <paramref name="sourceTypes"/> (indices in <paramref name="source"/>) could not be
+        /// brought across into this file, or null when they can - including everything they depend on.
+        /// Changes nothing.
+        /// </summary>
+        public string CanImportTypes(HavokTagfile source, IEnumerable<int> sourceTypes)
+        {
+            return Plan(source, sourceTypes).Refusal;
+        }
+
+        /// <summary>
+        /// Append to this file's type table every type in <paramref name="sourceTypes"/> that it lacks,
+        /// along with whatever those depend on - parents, member types, template arguments, sub types,
+        /// interfaces - copied from <paramref name="source"/> with every index translated. Existing
+        /// types keep their indices. Returns the translation of every source type index into ours
+        /// (-1 for those still missing, which are the ones nothing asked for).
+        /// Everything is checked before anything changes: a refusal leaves the table untouched.
+        /// </summary>
+        public int[] ImportTypes(HavokTagfile source, IEnumerable<int> sourceTypes)
+        {
+            TypePlan plan = Plan(source, sourceTypes);
+            if (plan.Refusal != null)
+                throw new InvalidOperationException(plan.Refusal);
+            if (plan.Added.Count == 0)
+                return plan.Map;
+
+            int[] map = (int[])plan.Map.Clone();
+            int next = _types.Count + 1;
+            foreach (int theirs in plan.Added)
+                map[theirs] = next++;
+
+            Dictionary<string, int> typeNameAt = FirstIndexOf(_typeNames);
+            Dictionary<string, int> memberNameAt = FirstIndexOf(_memberNames);
+            Dictionary<int, uint> hashes = new Dictionary<int, uint>();
+            foreach (KeyValuePair<int, uint> hash in source._hashes)
+                if (!hashes.ContainsKey(hash.Key)) hashes[hash.Key] = hash.Value;
+
+            //Strings are taken in body order - name, argument names, then member names - as retail does
+            List<TagType> added = new List<TagType>();
+            foreach (int theirs in plan.Added)
+            {
+                TagType from = source._types[theirs - 1];
+                TagType copy = new TagType()
+                {
+                    Index = map[theirs],
+                    Name = from.Name,
+                    NameIndex = Intern(_typeNames, typeNameAt, from.Name),
+                    HasBody = true,
+                    ParentIndex = Translate(map, from.ParentIndex),
+                    Flags = from.Flags,
+                    Format = from.Format,
+                    SubType = (from.Flags & 0x2) != 0 ? (uint)Translate(map, (int)from.SubType) : from.SubType,
+                    Version = from.Version,
+                    Size = from.Size,
+                    Alignment = from.Alignment,
+                    Extra = from.Extra,
+                    Attributes = from.Attributes,
+                    MemberWordHigh = from.MemberWordHigh,
+                };
+
+                foreach (TagTemplate argument in from.Templates)
+                    copy.Templates.Add(new TagTemplate()
+                    {
+                        Name = argument.Name,
+                        NameIndex = Intern(_typeNames, typeNameAt, argument.Name),
+                        Value = argument.IsType ? Translate(map, argument.Value) : argument.Value,
+                    });
+
+                foreach (TagMember member in from.Members)
+                    copy.Members.Add(new TagMember()
+                    {
+                        Name = member.Name,
+                        NameIndex = Intern(_memberNames, memberNameAt, member.Name),
+                        Flags = member.Flags,
+                        Offset = member.Offset,
+                        TypeIndex = Translate(map, member.TypeIndex),
+                    });
+
+                foreach (uint[] implemented in from.Interfaces)
+                    copy.Interfaces.Add(new uint[] { (uint)Translate(map, (int)implemented[0]), implemented[1] });
+
+                added.Add(copy);
+            }
+
+            //Only now that every index exists can the references be joined up
+            _types.AddRange(added);
+            foreach (TagType copy in added)
+            {
+                TagType parent = TypeAt(copy.ParentIndex);
+                copy.Parent = ReferenceEquals(parent, copy) ? null : parent;
+                foreach (TagMember member in copy.Members)
+                    member.Type = TypeAt(member.TypeIndex);
+
+                _bodyOrder.Add(copy.Index);
+            }
+            foreach (int theirs in plan.Added)
+                if (hashes.TryGetValue(theirs, out uint hash))
+                    _hashes.Add(new KeyValuePair<int, uint>(map[theirs], hash));
+
+            TypesChanged();
+            return map;
+        }
+
+        private static int Translate(int[] map, int theirs)
+        {
+            return theirs <= 0 ? theirs : map[theirs];
+        }
+
+        /* THSH holds a hash for exactly the types the ITEM and PTCH tables use - every retail tagfile
+         * (12,388 of them) - and a type's hash is the same in every file. An edit can break that from
+         * either side: a port can start using a type this file declared but never used (Switch
+         * tech_rnd_hzdlab's swinging signs bring T*<hkpConstraintMotor> into files that declare it
+         * unhashed), and a section rebuilt from a template drops the template's extracted motion or
+         * annotations while their hashes stay. Once hashes change, TYPE is written from the model. */
+        private bool _hashesChanged;
+
+        /// <summary>The types the item and patch tables use: what THSH must hash.</summary>
+        private HashSet<int> UsedTypes()
+        {
+            HashSet<int> used = new HashSet<int>();
+            for (int i = 1; i < _items.Count; i++)
+                if ((_items[i].Word & 0xFFFFFF) != 0) used.Add((int)(_items[i].Word & 0xFFFFFF));
+            foreach (TagPatchGroup group in _patches)
+                if (group.Offsets.Count != 0) used.Add(group.Type);
+            return used;
+        }
+
+        /// <summary>
+        /// Give every used type that has no hash the hash <paramref name="donor"/> carries for it,
+        /// <paramref name="donorToOurs"/> translating the donor's indices into ours (as
+        /// <see cref="MapTypesFrom"/> or <see cref="ImportTypes"/> return). Returns how many were added;
+        /// a type the donor does not hash stays as it is.
+        /// </summary>
+        public int HashUsedTypesFrom(HavokTagfile donor, int[] donorToOurs)
+        {
+            if (donor == null || donorToOurs == null || !TypeModelExact())
+                return 0;
+
+            HashSet<int> hashed = new HashSet<int>(_hashes.Select(o => o.Key));
+            HashSet<int> missing = new HashSet<int>(UsedTypes().Where(o => !hashed.Contains(o)));
+            if (missing.Count == 0)
+                return 0;
+
+            int added = 0;
+            foreach (KeyValuePair<int, uint> theirs in donor._hashes)
+            {
+                if (theirs.Key <= 0 || theirs.Key >= donorToOurs.Length) continue;
+                int ours = donorToOurs[theirs.Key];
+                if (ours <= 0 || !missing.Remove(ours)) continue;
+                _hashes.Add(new KeyValuePair<int, uint>(ours, theirs.Value));
+                added++;
+            }
+            if (added != 0)
+                _hashesChanged = true;
+            return added;
+        }
+
+        /// <summary>Drop the hashes of types nothing uses any more. Returns how many went.</summary>
+        public int DropUnusedHashes()
+        {
+            if (!TypeModelExact())
+                return 0;
+
+            HashSet<int> used = UsedTypes();
+            int removed = _hashes.RemoveAll(o => !used.Contains(o.Key));
+            if (removed != 0)
+                _hashesChanged = true;
+            return removed;
+        }
+
+        private static Dictionary<string, int> FirstIndexOf(List<string> strings)
+        {
+            Dictionary<string, int> at = new Dictionary<string, int>(strings.Count, StringComparer.Ordinal);
+            for (int i = 0; i < strings.Count; i++)
+                if (!at.ContainsKey(strings[i])) at[strings[i]] = i;
+            return at;
+        }
+
+        private static int Intern(List<string> strings, Dictionary<string, int> at, string value)
+        {
+            value = value ?? "";
+            if (at.TryGetValue(value, out int found)) return found;
+            strings.Add(value);
+            at[value] = strings.Count - 1;
+            return strings.Count - 1;
+        }
+
+        /// <summary>Everything cached off the type table, dropped after it changes.</summary>
+        private void TypesChanged()
+        {
+            _signatures = null;
+            _compound = null;
+            if (_owner != null)
+                ReadLayout(_owner.Layout);
+        }
+
+        /// <summary>
+        /// Work out which source types have to be appended, and whether they can be. The closure is
+        /// walked over everything a body names, since a table with a dangling index would not load.
+        /// </summary>
+        private TypePlan Plan(HavokTagfile source, IEnumerable<int> sourceTypes)
+        {
+            TypePlan plan = new TypePlan();
+            if (source == null || sourceTypes == null)
+            {
+                plan.Refusal = "there is no source type table to import from.";
+                return plan;
+            }
+            plan.Map = MapTypesFrom(source);
+
+            HashSet<int> needed = new HashSet<int>();
+            Stack<int> pending = new Stack<int>();
+            foreach (int theirs in sourceTypes)
+            {
+                if (theirs < 1 || theirs > source._types.Count)
+                {
+                    plan.Refusal = "the source names type " + theirs + ", which it does not declare.";
+                    return plan;
+                }
+                pending.Push(theirs);
+            }
+
+            while (pending.Count != 0)
+            {
+                int theirs = pending.Pop();
+                if (plan.Map[theirs] >= 0 || !needed.Add(theirs))
+                    continue;
+
+                TagType from = source._types[theirs - 1];
+                string problem = CannotCopy(source, from);
+                if (problem != null)
+                {
+                    plan.Refusal = "the destination has no " + source.SignatureOf(theirs) + ", and it cannot be added: " + problem;
+                    return plan;
+                }
+
+                foreach (int dependency in Dependencies(from))
+                {
+                    if (dependency == 0 || dependency == theirs) continue;
+                    if (dependency < 0 || dependency > source._types.Count)
+                    {
+                        plan.Refusal = "the destination has no " + source.SignatureOf(theirs) + ", and the source's own definition of it names type "
+                            + dependency + ", which the source does not declare.";
+                        return plan;
+                    }
+                    pending.Push(dependency);
+                }
+            }
+
+            if (needed.Count == 0)
+                return plan;
+
+            /* Only a table we can write back out exactly may be extended - otherwise the types that
+             * were already there would come out different. The same goes for the source, whose
+             * bodies are what gets copied. */
+            if (!TypeModelExact())
+                plan.Refusal = "the destination's type table could not be read completely enough to add to it.";
+            else if (!source.TypeModelExact())
+                plan.Refusal = "the source's type table could not be read completely enough to copy from it.";
+            else if (Version != source.Version)
+                plan.Refusal = "the two files were written by different Havok versions (" + source.Version + " into " + Version + ").";
+            else if (_types.Count + needed.Count >= 0xFFFFFF)
+                plan.Refusal = "the destination's type table would outgrow the 24 bits an item has for a type index.";
+            if (plan.Refusal != null)
+                return plan;
+
+            plan.Added = needed.OrderBy(o => o).ToList();
+            return plan;
+        }
+
+        private static IEnumerable<int> Dependencies(TagType type)
+        {
+            yield return type.ParentIndex;
+            foreach (TagTemplate argument in type.Templates)
+                if (argument.IsType) yield return argument.Value;
+            if ((type.Flags & 0x2) != 0) yield return (int)type.SubType;
+            foreach (TagMember member in type.Members)
+                yield return member.TypeIndex;
+            foreach (uint[] implemented in type.Interfaces)
+                yield return (int)implemented[0];
+        }
+
+        /// <summary>Why a source type's definition could not be copied faithfully, or null.</summary>
+        private static string CannotCopy(HavokTagfile source, TagType type)
+        {
+            if (!type.HasBody)
+                return "the source carries no body for it.";
+
+            //Names are copied as strings, so each has to be one the source actually holds
+            bool named = type.NameIndex >= 0 && type.NameIndex < source._typeNames.Count
+                && type.Templates.All(o => o.NameIndex >= 0 && o.NameIndex < source._typeNames.Count)
+                && type.Members.All(o => o.NameIndex >= 0 && o.NameIndex < source._memberNames.Count);
+            if (!named)
+                return "its definition names a string the source's tables do not hold.";
+
+            //0x80 (attributes) never occurs in a shipped file, so what its value refers to is unknown
+            if ((type.Flags & ~0x7Fu) != 0)
+                return "its definition uses flags 0x" + type.Flags.ToString("X") + ", which are not understood well enough to copy.";
+
+            //Every value has to fit the widths the files are measured to use (up to 28 bits)
+            const uint limit = 1u << 28;
+            if (type.Format >= limit || type.SubType >= limit || type.Version >= limit || type.Extra >= limit
+                || (uint)type.Size >= limit || (uint)type.Alignment >= limit || type.MemberWordHigh >= (limit >> 16)
+                || type.Members.Count > 0xFFFF)
+                return "its definition holds a value too large to write back.";
+            foreach (TagTemplate argument in type.Templates)
+                if ((uint)argument.Value >= limit) return "its template argument " + argument.Name + " is too large to write back.";
+            foreach (TagMember member in type.Members)
+                if (member.Flags >= limit || (uint)member.Offset >= limit) return "its member " + member.Name + " is too large to write back.";
+            foreach (uint[] implemented in type.Interfaces)
+                if (implemented[1] >= limit) return "its interface list holds a value too large to write back.";
+
+            return null;
+        }
+
+        /// <summary>
+        /// Whether the model holds everything the TYPE chunk says: writing every sub-chunk back out
+        /// from it reproduces the file's own bytes. Asked once, before the first type is added.
+        /// </summary>
+        private bool TypeModelExact()
+        {
+            if (_typeModelExact.HasValue)
+                return _typeModelExact.Value;
+            if (_file == null || TypesAdded)
+                return false;
+
+            bool exact = true;
+            int typeChunks = 0;
+            try
+            {
+                foreach (int[] child in TypeChildren())
+                {
+                    string name = Encoding.ASCII.GetString(_file, child[0] + 4, 4);
+                    byte[] written = TypeChunk(name);
+                    if (written == null || written.Length != child[1] - 8) { exact = false; break; }
+                    for (int i = 0; i < written.Length && exact; i++)
+                        if (written[i] != _file[child[0] + 8 + i]) exact = false;
+                    if (!exact) break;
+                    typeChunks++;
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                exact = false;      //a value too wide to write back
+            }
+
+            _typeModelExact = exact && typeChunks != 0;
+            return _typeModelExact.Value;
+        }
+
+        /// <summary>The chunks inside TYPE, each as { header offset, size including the header }.</summary>
+        private List<int[]> TypeChildren()
+        {
+            List<int[]> found = new List<int[]>();
+            int at = 8, end = Math.Min(_file.Length, (int)(ChunkHeader(0) & 0x3FFFFFFF));
+            while (at + 8 <= end)
+            {
+                uint header = ChunkHeader(at);
+                int size = (int)(header & 0x3FFFFFFF);
+                if (size < 8 || at + size > end) break;
+
+                if ((header & 0x40000000) == 0 && Encoding.ASCII.GetString(_file, at + 4, 4) == "TYPE")
+                {
+                    for (int child = at + 8; child + 8 <= at + size;)
+                    {
+                        int childSize = (int)(ChunkHeader(child) & 0x3FFFFFFF);
+                        if (childSize < 8 || child + childSize > at + size) break;
+                        found.Add(new int[] { child, childSize });
+                        child += childSize;
+                    }
+                }
+                at += size;
+            }
+            return found;
+        }
+
+        private uint ChunkHeader(int at)
+        {
+            return (uint)((_file[at] << 24) | (_file[at + 1] << 16) | (_file[at + 2] << 8) | _file[at + 3]);
+        }
+
+        /// <summary>
+        /// A TYPE sub-chunk's body written from the model, or null for any other chunk. Only used once
+        /// types have been added (and to prove, before that, that it would reproduce the file).
+        /// </summary>
+        private byte[] TypeChunk(string name)
+        {
+            List<byte> written = new List<byte>();
+            switch (name)
+            {
+                case "TPTR":
+                    //Room for a runtime pointer per type, null type included - zeros in every shipped file
+                    written.AddRange(_tptr);
+                    written.AddRange(new byte[8 * Math.Max(0, _types.Count - _originalTypeCount)]);
+                    return written.ToArray();
+
+                case "TSTR":
+                    return StringTable(_typeNames);
+
+                case "FSTR":
+                    return StringTable(_memberNames);
+
+                case "TNA1":
+                    Pack(written, (uint)_types.Count + 1);
+                    foreach (TagType type in _types)
+                    {
+                        Pack(written, (uint)type.NameIndex);
+                        Pack(written, (uint)type.Templates.Count);
+                        foreach (TagTemplate argument in type.Templates)
+                        {
+                            Pack(written, (uint)argument.NameIndex);
+                            Pack(written, (uint)argument.Value);
+                        }
+                    }
+                    return Padded(written);
+
+                case "TBDY":
+                    foreach (int self in _bodyOrder)
+                    {
+                        TagType type = TypeAt(self);
+                        if (type == null) continue;
+
+                        Pack(written, (uint)self);
+                        Pack(written, (uint)type.ParentIndex);
+                        Pack(written, type.Flags);
+                        if ((type.Flags & 0x1) != 0) Pack(written, type.Format);
+                        if ((type.Flags & 0x2) != 0) Pack(written, type.SubType);
+                        if ((type.Flags & 0x4) != 0) Pack(written, type.Version);
+                        if ((type.Flags & 0x8) != 0) { Pack(written, (uint)type.Size); Pack(written, (uint)type.Alignment); }
+                        if ((type.Flags & 0x10) != 0) Pack(written, type.Extra);
+                        if ((type.Flags & 0x20) != 0)
+                        {
+                            Pack(written, (uint)type.Members.Count | (type.MemberWordHigh << 16));
+                            foreach (TagMember member in type.Members)
+                            {
+                                Pack(written, (uint)member.NameIndex);
+                                Pack(written, member.Flags);
+                                Pack(written, (uint)member.Offset);
+                                Pack(written, (uint)member.TypeIndex);
+                            }
+                        }
+                        if ((type.Flags & 0x40) != 0)
+                        {
+                            Pack(written, (uint)type.Interfaces.Count);
+                            foreach (uint[] implemented in type.Interfaces) { Pack(written, implemented[0]); Pack(written, implemented[1]); }
+                        }
+                        if ((type.Flags & 0x80) != 0) Pack(written, type.Attributes);
+                    }
+                    return Padded(written);
+
+                case "THSH":
+                    Pack(written, (uint)_hashes.Count);
+                    foreach (KeyValuePair<int, uint> hash in _hashes)
+                    {
+                        Pack(written, (uint)hash.Key);
+                        written.AddRange(BitConverter.GetBytes(hash.Value));
+                    }
+                    return Padded(written);
+
+                case "TPAD":
+                    return (byte[])_tpad.Clone();
+
+                default:
+                    return null;
+            }
+        }
+
+        private static byte[] StringTable(List<string> strings)
+        {
+            List<byte> written = new List<byte>();
+            foreach (string s in strings)
+            {
+                written.AddRange(Encoding.ASCII.GetBytes(s ?? ""));
+                written.Add(0);
+            }
+            return Padded(written);
+        }
+
+        private static byte[] Padded(List<byte> written)
+        {
+            while ((written.Count & 3) != 0) written.Add(0);
+            return written.ToArray();
+        }
+
+        /// <summary>The varint <see cref="Packed"/> reads, in the smallest width that holds it, as retail writes them.</summary>
+        private static void Pack(List<byte> to, uint value)
+        {
+            if (value < 0x80) { to.Add((byte)value); return; }
+            if (value < 0x4000) { to.Add((byte)(0x80 | (value >> 8))); to.Add((byte)value); return; }
+            if (value < 0x200000) { to.Add((byte)(0xC0 | (value >> 16))); to.Add((byte)(value >> 8)); to.Add((byte)value); return; }
+            if (value < 0x10000000) { to.Add((byte)(0xE0 | (value >> 24))); to.Add((byte)(value >> 16)); to.Add((byte)(value >> 8)); to.Add((byte)value); return; }
+
+            //No shipped file needs the five byte form, so its first byte is unmeasured - never guess it
+            throw new InvalidOperationException("A Havok tagfile value of " + value + " is too large to write.");
+        }
+
+        #endregion
+
         #region SHARED
 
-        /// <summary>gravityFactor and friends are stored as half floats.</summary>
+        /// <summary>
+        /// gravityFactor, the dampings and friends are hkHalf16s - which, despite the name, are not
+        /// IEEE halves but the top sixteen bits of a float, exactly as the PC's 2012 hkHalf: 0x3F80 is
+        /// 1.0 (read as an IEEE half it came out 1.875). Every retail body's bits equal its PC twin's.
+        /// </summary>
         private float Half(int at)
         {
-            ushort bits = BitConverter.ToUInt16(Data, at);
-            int sign = (bits >> 15) & 0x1, exponent = (bits >> 10) & 0x1F, mantissa = bits & 0x3FF;
-
-            if (exponent == 0) return (sign == 1 ? -1f : 1f) * (mantissa / 1024f) * (float)Math.Pow(2, -14);
-            if (exponent == 31) return mantissa == 0 ? (sign == 1 ? float.NegativeInfinity : float.PositiveInfinity) : float.NaN;
-
-            return (sign == 1 ? -1f : 1f) * (1 + mantissa / 1024f) * (float)Math.Pow(2, exponent - 15);
+            return BitConverter.ToSingle(BitConverter.GetBytes((uint)BitConverter.ToUInt16(Data, at) << 16), 0);
         }
 
         #endregion

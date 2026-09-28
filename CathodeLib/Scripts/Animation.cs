@@ -1124,6 +1124,15 @@ namespace CathodeLib
                 Additive = additive,
             }.BuildInto(packfile);
 
+            /* A tagfile clip is a whole new item and patch table written over the template's schema.
+             * Read it back from its own bytes, so what the preview plays is exactly what a save
+             * writes rather than the writer's view of it. */
+            if (packfile.IsTagfile)
+            {
+                packfile = new HavokPackfile(packfile.ToBytes());
+                if (!packfile.Loaded) return null;
+            }
+
             string folder = Path.GetDirectoryName(template.Filepath) ?? "";
             string filename = "ANIM_CLIP_DB_SEC_" + Utilities.AnimationHashedString(clipPath) + ".BIN";
 
@@ -1136,8 +1145,9 @@ namespace CathodeLib
 
         /// <summary>
         /// Add a clip the game doesn't have. It gets a streamed section of its own in both pointer
-        /// sizes, an entry in the global index, and a line in the set's clip DB - which is the shape
-        /// 11,540 of the 11,546 one-clip sections in the game already take.
+        /// sizes (the one 64 bit tagfile section on the mobile and Switch builds), an entry in the
+        /// global index, and a line in the set's clip DB - which is the shape 11,540 of the 11,546
+        /// one-clip sections in the game already take. Nothing is changed unless all of it is built.
         ///
         /// The rig the poses are authored on need not be the one the character wears: a character
         /// clip is normally built on a shared reference rig (MALE, FEMALE) and the engine retargets
@@ -1158,20 +1168,20 @@ namespace CathodeLib
             foreach (List<HavokPackfile.SampledTransform> pose in frames)
                 if (pose == null || pose.Count != trackToBone.Count) return false;
 
-            //clip, path and label names only ever existed in the debug table
             string metaLabel = set.Name + "\\" + clipName.ToUpperInvariant();
-            AddName(clipPath, true);
-            AddName(clipName, true);
-            AddName(metaLabel, true);
 
             List<AnimClipDBSec> templates = StreamedTemplates();
             if (templates.Count == 0) return false;
 
+            /* Build every copy before touching anything, so a clip that cannot be built - or a
+             * template that refuses it - leaves the PAK and its tables exactly as they were. One copy
+             * per pointer size, since the PC ships a 32 and a 64 bit build; the mobile and Switch
+             * builds ship only the 64 bit folders, so they get one. */
             string filename = "ANIM_CLIP_DB_SEC_" + Utilities.AnimationHashedString(clipPath) + ".BIN";
-            AnimClipDBSec primary = null;
+            List<AnimClipDBSec> built = new List<AnimClipDBSec>();
+            List<byte[]> contents = new List<byte[]>();
             foreach (AnimClipDBSec template in templates)
             {
-                //one copy per pointer size, since the game ships a 32 and a 64 bit build
                 AnimClipDBSec section = BuildSection(frames, trackToBone, skeletonName, clipPath, metaLabel,
                                                      frameDuration, additive, template);
                 if (section == null) return false;
@@ -1179,9 +1189,20 @@ namespace CathodeLib
                 byte[] content = section.ToBytes();
                 if (content == null) return false;
 
-                _pak.Entries.Add(new PAK2.File { Filename = section.Filepath, Content = content });
-                Sections.Add(section);
-                if (primary == null) primary = section;
+                built.Add(section);
+                contents.Add(content);
+            }
+
+            //clip, path and label names only ever existed in the debug table
+            AddName(clipPath, true);
+            AddName(clipName, true);
+            AddName(metaLabel, true);
+
+            AnimClipDBSec primary = built[0];
+            for (int i = 0; i < built.Count; i++)
+            {
+                _pak.Entries.Add(new PAK2.File { Filename = built[i].Filepath, Content = contents[i] });
+                Sections.Add(built[i]);
             }
 
             //a section holding one clip names itself after that clip and indexes it at -1
@@ -1255,7 +1276,9 @@ namespace CathodeLib
         }
 
         /* One section per pointer size to take the packfile header and class name table from, out of
-         * the folders the game streams single clips from. */
+         * the folders the game streams single clips from. A mobile or Switch section is a tagfile
+         * carrying its own type table, and 39 of theirs were written with an interleaved-only table
+         * that has no spline class to lay a clip out with - those are passed over. */
         private List<AnimClipDBSec> StreamedTemplates()
         {
             List<AnimClipDBSec> templates = new List<AnimClipDBSec>();
@@ -1268,10 +1291,13 @@ namespace CathodeLib
 
                 bool sixtyFour = section.Havok.Header.PointerSize == 8;
                 if (sixtyFour ? has64 : has32) continue;
+                if (section.Havok.IsTagfile && !SplineEncoder.CanBuildInto(section.Havok)) continue;
                 if (sixtyFour) has64 = true; else has32 = true;
 
                 templates.Add(section);
-                if (has32 && has64) break;
+
+                //The tagfile builds ship only the 64-bit folders, so there is no 32-bit one to wait for
+                if ((has32 && has64) || section.Havok.IsTagfile) break;
             }
             return templates;
         }

@@ -350,7 +350,7 @@ namespace CathodeLib
                 () => { EnvironmentAnimations = new EnvironmentAnimations(world + "ENVIRONMENT_ANIMATION.DAT", _global.AnimationStrings_Debug); OnLoadTick?.Invoke(); },
                 () => { Lights = new Lights(world + "LIGHTS.BIN"); OnLoadTick?.Invoke(); },
                 () => { OccluderTriangleBVH = new OccluderTriangleBVH(world + "OCCLUDER_TRIANGLE_BVH.BIN"); OnLoadTick?.Invoke(); },
-                () => { PhysicsMaps = new PhysicsMaps(world + "PHYSICS.MAP", PhysicsHKX); OnLoadTick?.Invoke(); },
+                () => { PhysicsMaps = new PhysicsMaps(world + "PHYSICS.MAP", Physics); OnLoadTick?.Invoke(); },   //iOS/Switch ship only the 64-bit file
                 () => { SoundNodeNetwork = new SoundNodeNetwork(world + "SNDNODENETWORK.DAT"); OnLoadTick?.Invoke(); },
                 () => { SoundBankData = new SoundBankData(world + "SOUNDBANKDATA.DAT"); OnLoadTick?.Invoke(); },
                 () => { SoundDialogueLookups = new SoundDialogueLookups(world + "SOUNDDIALOGUELOOKUPS.DAT"); OnLoadTick?.Invoke(); },
@@ -802,7 +802,8 @@ namespace CathodeLib
             string baseWorld = Path.Combine(baseLevelFolder, "WORLD");
             string baseRenderable = Path.Combine(baseLevelFolder, "RENDERABLE");
             List<KeyValuePair<string, string>> copies = new List<KeyValuePair<string, string>>();
-            foreach (string file in new[] { "MATERIAL_MAPPINGS.PAK", "MORPH_TARGET_DB.BIN", "COLLISION.HKX", "COLLISION.HKX64", "PHYSICS.HKX", "PHYSICS.HKX64" })
+            //The Switch build gzips its (64-bit only) Havok files under a suffix of its own; missing ones are skipped
+            foreach (string file in new[] { "MATERIAL_MAPPINGS.PAK", "MORPH_TARGET_DB.BIN", "COLLISION.HKX", "COLLISION.HKX64", "PHYSICS.HKX", "PHYSICS.HKX64", "COLLISION.HKX64_SWITCH.GZ", "PHYSICS.HKX64_SWITCH.GZ" })
                 copies.Add(new KeyValuePair<string, string>(Path.Combine(baseWorld, file), "WORLD"));
             copies.Add(new KeyValuePair<string, string>(Path.Combine(baseRenderable, "GALAXY", "GALAXY.DEFINITION_BIN"), "RENDERABLE/GALAXY"));
             foreach (string file in new[] { "LEVEL_TEXTURES.DX11.PAK", "LEVEL_TEXTURE_HEADERS.DX11.BIN" })

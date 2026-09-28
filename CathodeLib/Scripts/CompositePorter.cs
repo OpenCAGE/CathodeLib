@@ -318,7 +318,7 @@ namespace CathodeLib
             HavokPackfile dst32 = Destination.CollisionHKX;
             HavokPackfile dst64 = Destination.CollisionHKX64;
 
-            HavokPackfile.StaticCompoundShape imported32 = null;
+            HavokPackfile.StaticCompoundShape imported32 = null, imported64 = null;
             if (src32 != null && dst32 != null)
                 imported32 = dst32.ImportStaticCompoundShape(src32, sourceProxy, _collisionRemap32);
             else if (src32 != null && dst32 == null)
@@ -331,10 +331,11 @@ namespace CathodeLib
                 {
                     try
                     {
-                        dst64.ImportStaticCompoundShape(src64, source64, _collisionRemap64);
+                        imported64 = dst64.ImportStaticCompoundShape(src64, source64, _collisionRemap64);
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (dst32 != null)
                     {
+                        //Beside a 32-bit file that one stays the answer; alone (iOS, Switch) this failure is the port's
                         Console.WriteLine("CompositePorter: COLLISION.HKX64 import failed: " + ex.Message);
                     }
                 }
@@ -343,8 +344,11 @@ namespace CathodeLib
                     Console.WriteLine("CompositePorter: no matching COLLISION.HKX64 compound for proxy " + sourceProxy.ProxyIndex);
                 }
             }
+            else if (src64 != null && dst32 == null)
+                Console.WriteLine("CompositePorter: destination level has no COLLISION.HKX64 - cannot import collision proxy.");
 
-            return imported32;
+            //The mobile and Switch builds ship only the 64-bit file, so its proxy is the one the row must name
+            return dst32 != null ? imported32 : imported64;
         }
 
         private void PortDynamicPhysicsSystem(ResourceReference resource)
@@ -374,7 +378,7 @@ namespace CathodeLib
             HavokPackfile dst32 = Destination.PhysicsHKX;
             HavokPackfile dst64 = Destination.PhysicsHKX64;
 
-            HavokPackfile.PhysicsSystem imported32 = null;
+            HavokPackfile.PhysicsSystem imported32 = null, imported64 = null;
             if (src32 != null && dst32 != null)
                 imported32 = dst32.ImportPhysicsSystem(src32, sourceSystem, _physicsRemap32);
             else if (src32 != null && dst32 == null)
@@ -387,9 +391,9 @@ namespace CathodeLib
                 {
                     try
                     {
-                        dst64.ImportPhysicsSystem(src64, source64, _physicsRemap64);
+                        imported64 = dst64.ImportPhysicsSystem(src64, source64, _physicsRemap64);
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (dst32 != null)
                     {
                         Console.WriteLine("CompositePorter: PHYSICS.HKX64 import failed: " + ex.Message);
                     }
@@ -399,8 +403,10 @@ namespace CathodeLib
                     Console.WriteLine("CompositePorter: no matching PHYSICS.HKX64 system for index " + sourceSystem.SystemIndex);
                 }
             }
+            else if (src64 != null && dst32 == null)
+                Console.WriteLine("CompositePorter: destination level has no PHYSICS.HKX64 - cannot import physics system.");
 
-            return imported32;
+            return dst32 != null ? imported32 : imported64;
         }
     }
 }

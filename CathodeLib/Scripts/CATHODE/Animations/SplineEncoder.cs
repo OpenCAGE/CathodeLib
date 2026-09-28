@@ -263,9 +263,20 @@ namespace CATHODE
         /// Lay the animation out into <paramref name="target"/>, which supplies the packfile header
         /// and class name table - both are the same for every animation section in the game, so any
         /// of them will do, and its pointer size decides whether a 32 or 64 bit copy comes out.
+        ///
+        /// A tagfile template (the mobile and Switch builds) keeps its type table and gets a new
+        /// object graph written against it - see <see cref="CanBuildInto"/> for which will do.
         /// </summary>
         public void BuildInto(HavokPackfile target)
         {
+            /* The mobile and Switch builds hold the same stream in a Havok 2018 tagfile, whose object
+             * graph shares nothing with a 2012 packfile's but the bytes of the stream itself. */
+            if (target.IsTagfile)
+            {
+                BuildIntoTagfile(target);
+                return;
+            }
+
             /* The 32 and 64 bit copies of a section hold the same stream; only the object graph
              * around it changes size. Follow whatever the template we were handed is. */
             int pointer = target.Header.PointerSize == 8 ? 8 : 4;
@@ -438,6 +449,268 @@ namespace CATHODE
             local.Add(new HavokPackfile.LocalFixup { Src = (uint)at, Dst = (uint)data });
             Int(payload, at + pointer, count);
             Int(payload, at + pointer + 4, unchecked((int)0x80000000) | count);
+        }
+        #endregion
+
+        #region TAGFILE
+        /* A Havok 2018 tagfile describes its own schema, so nothing here is laid out by hand: every
+         * size, offset, alignment and type index comes out of the template's type table, and only the
+         * three chunks describing the data - DATA, ITEM and PTCH - are written new. The rules are the
+         * ones Havok's own writer follows, measured over all 11,657 iOS sections and proven by
+         * re-emitting 9,739 of 9,739 retail one-clip sections byte for byte:
+         *   - item 0 is null; then container, bindings[], binding, animation, trackToBone[],
+         *     floatSlots[] (if any), skeleton name, annotationTracks[], blockOffsets[],
+         *     floatBlockOffsets[], data[], and the one track name every annotation track shares;
+         *   - the data runs container, bindings[], binding, the binding's arrays, the name, the
+         *     animation, its arrays, the track name;
+         *   - objects sit at their type's alignment, arrays at 16, strings at 2, and DATA is padded
+         *     to 16;
+         *   - a pointer is a u64 item index plus a PTCH entry under the member's declared type, and
+         *     an hkArray's m_size and m_capacityAndFlags stay 0 - the count lives on the item.
+         * The iOS and Switch animation PAKs are the same file, so one writer covers both. */
+
+        private const string ContainerType = "hkaAnimationContainer";
+        private const string BindingType = "hkaAnimationBinding";
+        private const string AnimationType = "hkaAnimation";
+        private const string SplineType = "hkaSplineCompressedAnimation";
+        private const string TrackType = "hkaAnnotationTrack";
+
+        //a tagfile pointer is an eight byte item index whatever the platform
+        private const int TagfilePointer = 8;
+
+        /// <summary>
+        /// Whether <paramref name="target"/> can have a clip laid out into it. Any packfile will do. A
+        /// tagfile needs the spline class in its type table, which 39 of the iOS streamed sections -
+        /// the interleaved-only ones - were written without.
+        /// </summary>
+        internal static bool CanBuildInto(HavokPackfile target)
+        {
+            if (target == null || !target.Loaded) return false;
+            return !target.IsTagfile || MissingTagfileType(target.Tagfile) == null;
+        }
+
+        /* The first type the writer needs that the table does not describe, or null if none is missing */
+        private static string MissingTagfileType(HavokTagfile tags)
+        {
+            foreach (string type in new[] { ContainerType, BindingType, AnimationType, SplineType, TrackType })
+                if (tags.SizeOf(type) <= 0) return type;
+            return tags.TypeIndex("char") <= 0 ? "char" : null;
+        }
+
+        /// <summary>
+        /// Everything a one-clip tagfile section says about its clip, the stream included. The
+        /// encoder fills one in from its frames; the layout test fills one in from a retail section,
+        /// which is how the writer is checked against Havok's own output.
+        /// </summary>
+        internal sealed class TagfileClip
+        {
+            public string SkeletonName = "";
+            public short[] TrackToBone = new short[0];
+            public short[] FloatSlots = new short[0];
+            public byte BlendHint;
+
+            public int Type = 3;        //SPLINE_COMPRESSED
+            public float Duration;
+            public int TransformTracks, FloatTracks;
+
+            public int FrameCount, BlockCount, MaxFramesPerBlock, MaskAndQuantizationSize, Endian;
+            public float BlockDuration, BlockInverseDuration, FrameDuration;
+            public uint[] BlockOffsets = new uint[0];
+            public uint[] FloatBlockOffsets = new uint[0];
+            public byte[] Stream = new byte[0];
+
+            /// <summary>Retail carries one per transform track, every one of them empty.</summary>
+            public int AnnotationTracks;
+        }
+
+        /* The encoder's header on a tagfile is the packfile's, value for value - the sampler reads
+         * both the same way - but with an annotation track per transform track, as all 14,975 retail
+         * clips carry. */
+        private void BuildIntoTagfile(HavokPackfile target)
+        {
+            byte[] stream = BuildStream(out List<uint> blockOffsets, out List<uint> floatBlockOffsets);
+            WriteTagfile(target, new TagfileClip
+            {
+                SkeletonName = SkeletonName ?? "",
+                TrackToBone = TrackToBone.ToArray(),
+                BlendHint = (byte)(Additive ? 1 : 0),
+                Duration = FrameCount > 1 ? (FrameCount - 1) * FrameDuration : FrameDuration,
+                TransformTracks = TrackCount,
+                FrameCount = FrameCount,
+                BlockCount = blockOffsets.Count,
+                MaxFramesPerBlock = FramesPerBlock,
+                MaskAndQuantizationSize = MaskAndQuantizationSize,
+                BlockDuration = FramesPerBlock * FrameDuration,
+                BlockInverseDuration = 1f / (FramesPerBlock * FrameDuration),
+                FrameDuration = FrameDuration,
+                BlockOffsets = blockOffsets.ToArray(),
+                FloatBlockOffsets = floatBlockOffsets.ToArray(),
+                Stream = stream,
+                AnnotationTracks = TrackCount,
+            });
+        }
+
+        /// <summary>
+        /// Replace <paramref name="target"/>'s whole object graph with one clip, keeping its schema.
+        /// Refuses a template whose type table lacks a class the clip needs, before touching it.
+        /// </summary>
+        internal static void WriteTagfile(HavokPackfile target, TagfileClip clip)
+        {
+            HavokTagfile tags = target?.Tagfile;
+            if (tags == null) throw new InvalidOperationException("The template section is not a Havok tagfile.");
+
+            string missing = MissingTagfileType(tags);
+            if (missing != null)
+                throw new InvalidOperationException("The template section's Havok type table does not describe " + missing +
+                    ", so a clip cannot be written against it. Use a streamed section holding a spline compressed clip as the template.");
+
+            //hkaAnimationContainer, and the binding its one bindings[] entry names
+            int bindings = tags.OffsetOf(ContainerType, "bindings");
+            int bindingElement = tags.ElementTypeOf(ContainerType, "bindings");
+            int skeletonName = tags.OffsetOf(BindingType, "originalSkeletonName");
+            int animationField = tags.OffsetOf(BindingType, "animation");
+            int trackToBoneField = tags.OffsetOf(BindingType, "transformTrackToBoneIndices");
+            int floatSlotsField = tags.OffsetOf(BindingType, "floatTrackToFloatSlotIndices");
+            int blendHint = tags.OffsetOf(BindingType, "blendHint");
+
+            //hkaAnimation, then what the spline class adds to it
+            int type = tags.OffsetOf(AnimationType, "type");
+            int duration = tags.OffsetOf(AnimationType, "duration");
+            int transformTracks = tags.OffsetOf(AnimationType, "numberOfTransformTracks");
+            int floatTracks = tags.OffsetOf(AnimationType, "numberOfFloatTracks");
+            int annotationsField = tags.OffsetOf(AnimationType, "annotationTracks");
+            int numFrames = tags.OffsetOf(SplineType, "numFrames");
+            int numBlocks = tags.OffsetOf(SplineType, "numBlocks");
+            int maxFrames = tags.OffsetOf(SplineType, "maxFramesPerBlock");
+            int maskSize = tags.OffsetOf(SplineType, "maskAndQuantizationSize");
+            int blockDuration = tags.OffsetOf(SplineType, "blockDuration");
+            int blockInverse = tags.OffsetOf(SplineType, "blockInverseDuration");
+            int frameDuration = tags.OffsetOf(SplineType, "frameDuration");
+            int blocksField = tags.OffsetOf(SplineType, "blockOffsets");
+            int floatBlocksField = tags.OffsetOf(SplineType, "floatBlockOffsets");
+            int streamField = tags.OffsetOf(SplineType, "data");
+            int endian = tags.OffsetOf(SplineType, "endian");
+            int trackName = tags.OffsetOf(TrackType, "trackName");
+            int trackSize = tags.SizeOf(TrackType);
+
+            int[] required = { bindings, bindingElement, skeletonName, animationField, trackToBoneField, floatSlotsField, blendHint,
+                               type, duration, transformTracks, floatTracks, annotationsField, numFrames, numBlocks, maxFrames,
+                               maskSize, blockDuration, blockInverse, frameDuration, blocksField, floatBlocksField, streamField,
+                               endian, trackName };
+            if (required.Any(x => x < 0))
+                throw new InvalidOperationException("The template section's Havok type table is missing a member the animation classes need.");
+
+            short[] trackToBone = clip.TrackToBone ?? new short[0];
+            short[] floatSlots = clip.FloatSlots ?? new short[0];
+            uint[] blockTable = clip.BlockOffsets ?? new uint[0];
+            uint[] floatTable = clip.FloatBlockOffsets ?? new uint[0];
+            byte[] stream = clip.Stream ?? new byte[0];
+            byte[] name = Encoding.ASCII.GetBytes((clip.SkeletonName ?? "") + "\0");
+            int annotationCount = Math.Max(0, clip.AnnotationTracks);
+
+            /* Claim the data in the order Havok writes it. An empty array claims nothing and gets no
+             * item: its word stays null, which is how retail writes one. */
+            int length = 0;
+            int Place(int align, int size)
+            {
+                align = Math.Max(1, align);
+                int at = (length + align - 1) / align * align;
+                length = at + size;
+                return at;
+            }
+            int container = Place(tags.AlignOf(ContainerType), tags.SizeOf(ContainerType));
+            int bindingList = Place(16, TagfilePointer);
+            int binding = Place(tags.AlignOf(BindingType), tags.SizeOf(BindingType));
+            int trackToBoneAt = trackToBone.Length != 0 ? Place(16, 2 * trackToBone.Length) : -1;
+            int floatSlotsAt = floatSlots.Length != 0 ? Place(16, 2 * floatSlots.Length) : -1;
+            int nameAt = Place(2, name.Length);
+            int animation = Place(tags.AlignOf(SplineType), tags.SizeOf(SplineType));
+            int annotationsAt = annotationCount != 0 ? Place(16, trackSize * annotationCount) : -1;
+            int blockTableAt = blockTable.Length != 0 ? Place(16, 4 * blockTable.Length) : -1;
+            int floatTableAt = floatTable.Length != 0 ? Place(16, 4 * floatTable.Length) : -1;
+            int streamAt = stream.Length != 0 ? Place(16, stream.Length) : -1;
+            int trackNameAt = annotationCount != 0 ? Place(2, 1) : -1;
+            byte[] data = new byte[(length + 15) & ~15];
+
+            /* From here the template's graph is gone. The payload goes on first, because it is the
+             * live copy the item index writes land in. */
+            tags.ResetIndex();
+            target.DataPayload = data;
+
+            int Items(uint word, int at, int count) { return count != 0 ? tags.AddItem(word, at, count) : 0; }
+            tags.AddItem(tags.ObjectWord(ContainerType), container, 1);     //the root, which nothing points at
+            int bindingListItem = tags.AddItem(tags.ArrayWord(ContainerType, "bindings"), bindingList, 1);
+            int bindingItem = tags.AddItem(tags.ObjectWord(BindingType), binding, 1);
+            int animationItem = tags.AddItem(tags.ObjectWord(SplineType), animation, 1);
+            int trackToBoneItem = Items(tags.ArrayWord(BindingType, "transformTrackToBoneIndices"), trackToBoneAt, trackToBone.Length);
+            int floatSlotsItem = Items(tags.ArrayWord(BindingType, "floatTrackToFloatSlotIndices"), floatSlotsAt, floatSlots.Length);
+            int nameItem = tags.AddItem(tags.StringWord(), nameAt, name.Length);
+            int annotationsItem = Items(tags.ArrayWord(AnimationType, "annotationTracks"), annotationsAt, annotationCount);
+            int blockTableItem = Items(tags.ArrayWord(SplineType, "blockOffsets"), blockTableAt, blockTable.Length);
+            int floatTableItem = Items(tags.ArrayWord(SplineType, "floatBlockOffsets"), floatTableAt, floatTable.Length);
+            int streamItem = Items(tags.ArrayWord(SplineType, "data"), streamAt, stream.Length);
+            int trackNameItem = annotationCount != 0 ? tags.AddItem(tags.StringWord(), trackNameAt, 1) : 0;
+
+            void Point(int field, int item, int group)
+            {
+                if (item <= 0) return;
+                if (group <= 0 || !tags.WriteIndexAt(field, item))
+                    throw new InvalidOperationException("Could not write the pointer at " + field + " into the new animation section.");
+                tags.SetPatch(group, field);
+            }
+
+            //hkaAnimationContainer: of its five arrays only bindings is used, and it holds the one binding
+            Point(container + bindings, bindingListItem, tags.PatchGroupOf(ContainerType, "bindings"));
+            //no member declares an element of a pointer array, so that pointer is filed under the element type
+            Point(bindingList, bindingItem, bindingElement);
+
+            //hkaAnimationBinding
+            Point(binding + skeletonName, nameItem, tags.PatchGroupOf(BindingType, "originalSkeletonName"));
+            Point(binding + animationField, animationItem, tags.PatchGroupOf(BindingType, "animation"));
+            Point(binding + trackToBoneField, trackToBoneItem, tags.PatchGroupOf(BindingType, "transformTrackToBoneIndices"));
+            Point(binding + floatSlotsField, floatSlotsItem, tags.PatchGroupOf(BindingType, "floatTrackToFloatSlotIndices"));
+            data[binding + blendHint] = clip.BlendHint;
+            for (int i = 0; i < trackToBone.Length; i++) BitConverter.GetBytes(trackToBone[i]).CopyTo(data, trackToBoneAt + (i * 2));
+            for (int i = 0; i < floatSlots.Length; i++) BitConverter.GetBytes(floatSlots[i]).CopyTo(data, floatSlotsAt + (i * 2));
+            name.CopyTo(data, nameAt);
+
+            //hkaSplineCompressedAnimation - the hkaAnimation base first
+            Int(data, animation + type, clip.Type);
+            Float(data, animation + duration, clip.Duration);
+            Int(data, animation + transformTracks, clip.TransformTracks);
+            Int(data, animation + floatTracks, clip.FloatTracks);
+            Point(animation + annotationsField, annotationsItem, tags.PatchGroupOf(AnimationType, "annotationTracks"));
+            Int(data, animation + numFrames, clip.FrameCount);
+            Int(data, animation + numBlocks, clip.BlockCount);
+            Int(data, animation + maxFrames, clip.MaxFramesPerBlock);
+            Int(data, animation + maskSize, clip.MaskAndQuantizationSize);
+            Float(data, animation + blockDuration, clip.BlockDuration);
+            Float(data, animation + blockInverse, clip.BlockInverseDuration);
+            Float(data, animation + frameDuration, clip.FrameDuration);
+            Point(animation + blocksField, blockTableItem, tags.PatchGroupOf(SplineType, "blockOffsets"));
+            Point(animation + floatBlocksField, floatTableItem, tags.PatchGroupOf(SplineType, "floatBlockOffsets"));
+            Point(animation + streamField, streamItem, tags.PatchGroupOf(SplineType, "data"));
+            Int(data, animation + endian, clip.Endian);
+
+            //every annotation track is empty, and all of them name the same empty string
+            int trackNameGroup = tags.PatchGroupOf(TrackType, "trackName");
+            for (int i = 0; i < annotationCount; i++)
+                Point(annotationsAt + (i * trackSize) + trackName, trackNameItem, trackNameGroup);
+
+            for (int i = 0; i < blockTable.Length; i++) BitConverter.GetBytes(blockTable[i]).CopyTo(data, blockTableAt + (i * 4));
+            for (int i = 0; i < floatTable.Length; i++) BitConverter.GetBytes(floatTable[i]).CopyTo(data, floatTableAt + (i * 4));
+            stream.CopyTo(data, Math.Max(0, streamAt));
+
+            /* A tagfile names classes and pointers through its items and PTCH, which the packfile's
+             * fixup lists only mirror - so those are rebuilt from what was just written. */
+            target.LocalFixups.Clear();
+            target.VirtualFixups.Clear();
+            tags.RereadTypedViews(target);
+
+            /* THSH hashes exactly the types a section uses. A template with extracted motion or
+             * annotation text hashes types this clip no longer has, so those go - with the usual
+             * template, whose clip has neither, nothing changes and TYPE is copied as it was. */
+            tags.DropUnusedHashes();
         }
         #endregion
     }

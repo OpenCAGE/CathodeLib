@@ -23,7 +23,8 @@ namespace CathodeLib.Havok
        holds the body where its model sits in the composite, with centreOfMass0/1 = translation + rotated COM.
        Retail names the system after its composite's path and the body after the ModelReference entity it drives
        (241 of 258 on Torrens). Nothing we know of reads either name; they are copied so a new system looks like a
-       retail one. */
+       retail one. The mobile and Switch builds ship the same systems in a Havok 2018 tagfile, which gets the same
+       objects in its own layout (see AddConvexPhysicsSystemToTagfile). */
     /// <summary>Appending new physics systems to a <see cref="HavokPackfile"/> (extension methods), and the convex shape builder they use.</summary>
     public static class PhysicsSystemWriter
     {
@@ -60,18 +61,18 @@ namespace CathodeLib.Havok
         /// <remarks>
         /// Both packfiles of a level (32 and 64-bit) need the system at the same index; call this on each with the same
         /// shape and settings and compare the results, restoring a <see cref="CollisionProxyWriter.CreateCheckpoint"/> on either side if they
-        /// disagree. Not available on the mobile/Switch tagfiles.
+        /// disagree. A mobile/Switch level has only the 64-bit file, a Havok 2018 tagfile, and gets the same system in that layout.
         /// </remarks>
         public static PhysicsSystem AddConvexPhysicsSystem(this HavokPackfile packfile, string systemName, ConvexBody shape, PhysicsBodySettings body)
         {
-            if (packfile.Tagfile != null)
-                throw new NotSupportedException("New physics systems can only be written to the PC packfiles, not a mobile/Switch tagfile.");
             if (shape == null || body == null)
                 throw new ArgumentNullException(shape == null ? nameof(shape) : nameof(body));
             if (shape.Vertices.Count < 4 || shape.Planes.Count < 4)
                 throw new ArgumentException("The convex shape has no volume.", nameof(shape));
             if (!(body.Mass > 0f) || float.IsInfinity(body.Mass))
                 throw new ArgumentException("A dynamic body needs a positive mass.", nameof(body));
+            if (packfile.Tagfile != null)
+                return AddConvexPhysicsSystemToTagfile(packfile, systemName, shape, body);
 
             PackfileObject physicsData = null;
             for (int i = 0; i < packfile.Objects.Count; i++)
@@ -128,7 +129,178 @@ namespace CathodeLib.Havok
             Array.Clear(d, bodyOff + L.BodyName, ptr);
             packfile.GlobalFixups.Add(new GlobalFixup { Src = (uint)(bodyOff + L.BodyShape), DstSectionIndex = 2, Dst = (uint)shapeOff });
             packfile.LocalFixups.Add(new LocalFixup { Src = (uint)(bodyOff + L.BodyName), Dst = (uint)bodyName });
+            WriteBodyState(d, bodyOff, L, shape, body);
 
+            // -- hkpConvexVerticesShape: no connectivity, as 3,579 of retail's 5,446
+            Buffer.BlockCopy(d, (int)shapeTemplate.DataOffset, d, shapeOff, L.ShapeSize);
+            WriteUInt32(d, shapeOff + L.ShapeUserData, 1024);      //every retail shape without connectivity carries 0x400
+            if (is64) WriteUInt32(d, shapeOff + L.ShapeUserData + 4, 0);
+            WriteShapeGeometry(d, shapeOff, verticesOff, planesOff, L, shape);
+            CollisionProxyWriter.WriteArrayHeader(d, shapeOff + L.ShapeRotatedVertices, ptr, groups);
+            CollisionProxyWriter.WriteArrayHeader(d, shapeOff + L.ShapePlaneEquations, ptr, shape.Planes.Count);
+            Array.Clear(d, shapeOff + L.ShapeConnectivity, ptr);
+            packfile.LocalFixups.Add(new LocalFixup { Src = (uint)(shapeOff + L.ShapeRotatedVertices), Dst = (uint)verticesOff });
+            packfile.LocalFixups.Add(new LocalFixup { Src = (uint)(shapeOff + L.ShapePlaneEquations), Dst = (uint)planesOff });
+
+            // -- register: objects in payload order, then the system in hkpPhysicsData.systems[]
+            AddObject(packfile, sysOff, systemTemplate, ObjectClass.PhysicsSystem);
+            AddObject(packfile, bodyOff, bodyTemplate, ObjectClass.RigidBody);
+            AddObject(packfile, shapeOff, shapeTemplate, shapeTemplate.Class);
+            packfile.AppendPhysicsSystemToPhysicsData((uint)sysOff);
+
+            //Only the new view is made: re-parsing would replace every PhysicsSystem object, and the resources and
+            //PHYSICS.MAP rows holding the old ones would be left pointing at copies no longer in the list
+            PhysicsSystem created = new PhysicsSystem
+            {
+                SystemIndex = packfile.PhysicsSystems.Count,
+                DataOffset = (uint)sysOff,
+                Name = packfile.ReadStringPtr((uint)(sysOff + L.SystemName)),
+                Object = packfile.Objects[packfile.Objects.Count - 3],
+            };
+            created.Object.ProxyIndex = created.SystemIndex;
+            packfile.PhysicsSystems.Add(created);
+
+            CheckReadBack(packfile, physicsData, L, created, body);
+            return created;
+        }
+
+        /* The same system in a Havok 2018 tagfile (the iOS and Switch PHYSICS.HKX64). Every retail body there is a
+         * bit-exact conversion of its PC twin (669 of 669 on iOS, every field the writer touches), so every rule above
+         * carries over and only the bookkeeping differs: nothing is found by address. An object, an array or a string
+         * exists only if an ITEM claims it, a pointer holds an item index, and every pointer is listed in PTCH under
+         * its member's declared type - the count of an array lives on its item, and retail leaves the hkArray's own
+         * size and capacity at zero (1,907 of 1,907). Retail's convex shapes also carry userData 0 here, not 1024.
+         *
+         * The three objects are copies of the template's, registered with CloneObject, which also copies the
+         * template's PTCH entries - but the copied bytes still hold the TEMPLATE's item indices. Every array and
+         * string word is cleared before the clone and then given a brand new item: SetArray on a copied word
+         * would move the template's own array to the copy's, leaving the retail system without its body or its
+         * vertices, and no error anywhere. Checked against retail by re-encoding all 136 template-eligible iOS
+         * systems through here (system and shape bytes identical, the body to the float rounding) and by appends
+         * reloaded with an independent type-table reader, on the three iOS files and the 36 Switch ones. Never yet
+         * loaded by the 2018 runtime itself. */
+        static PhysicsSystem AddConvexPhysicsSystemToTagfile(HavokPackfile packfile, string systemName, ConvexBody shape, PhysicsBodySettings body)
+        {
+            HavokTagfile tags = packfile.Tagfile;
+            PhysicsLayout L = PhysicsLayout.For(packfile);
+            if (L == null)
+                throw new NotSupportedException("This tagfile does not describe the physics types a new system is written with.");
+
+            PackfileObject physicsData = null;
+            for (int i = 0; i < packfile.Objects.Count; i++)
+                if (packfile.Objects[i].Class == ObjectClass.PhysicsData) { physicsData = packfile.Objects[i]; break; }
+            if (physicsData == null)
+                throw new InvalidOperationException("This tagfile has no hkpPhysicsData to register a physics system in.");
+
+            if (!FindConvexBodyTemplate(packfile, out PackfileObject systemTemplate, out PackfileObject bodyTemplate, out PackfileObject shapeTemplate))
+                throw new InvalidOperationException("This tagfile holds no one-body convex physics system to model the new one on.");
+            int sysT = (int)systemTemplate.DataOffset, bodyT = (int)bodyTemplate.DataOffset, shapeT = (int)shapeTemplate.DataOffset;
+
+            //Groups and item words come off the type table, all looked up before anything is written so a file that
+            //cannot take a system is left untouched. A body-array slot is a T*<hkpRigidBody> no member declares: its
+            //group is read off the template's own slot (91 on every iOS and Switch file, the element type's index)
+            int bodiesGroup = tags.PatchGroupOf("hkpPhysicsSystem", "rigidBodies");
+            int stringGroup = tags.PatchGroupOf("hkpPhysicsSystem", "name");
+            int shapeGroup = tags.PatchGroupOf("hkpCdBody", "shape");
+            int verticesGroup = tags.PatchGroupOf("hkpConvexVerticesShape", "rotatedVertices");
+            int planesGroup = tags.PatchGroupOf("hkpConvexVerticesShape", "planeEquations");
+            int slotGroup = -1;
+            if (tags.TryResolvePointer((uint)(sysT + L.SystemRigidBodies), out uint templateSlots, out int templateBodies) && templateBodies > 0)
+                slotGroup = tags.GroupContaining((int)templateSlots);
+            if (slotGroup <= 0)
+                slotGroup = tags.ElementTypeOf("hkpPhysicsSystem", "rigidBodies");
+            uint bodiesWord = tags.ArrayWord("hkpPhysicsSystem", "rigidBodies");
+            uint stringWord = tags.StringWord();
+            uint verticesWord = tags.ArrayWord("hkpConvexVerticesShape", "rotatedVertices");
+            uint planesWord = tags.ArrayWord("hkpConvexVerticesShape", "planeEquations");
+            if (bodiesGroup <= 0 || stringGroup <= 0 || shapeGroup <= 0 || verticesGroup <= 0 || planesGroup <= 0 || slotGroup <= 0
+                || bodiesWord == 0 || stringWord == 0 || verticesWord == 0 || planesWord == 0)
+                throw new NotSupportedException("This tagfile does not describe the pointers a new physics system is written with.");
+
+            byte[] systemNameBytes = AsciiZ(systemName);
+            byte[] bodyNameBytes = AsciiZ(body.Name);
+            int groups = (shape.Vertices.Count + 3) / 4;
+
+            //The packfile writer's order; a pointer is an 8-byte item index whatever the platform
+            int sysOff = AlignPayload(packfile.DataPayload.Length, 16);
+            int sysArray = sysOff + L.SystemSize;
+            int sysName = AlignPayload(sysArray + 8, 16);
+            int bodyOff = AlignPayload(sysName + systemNameBytes.Length, 16);
+            int bodyName = bodyOff + L.BodySize;
+            int shapeOff = AlignPayload(bodyName + bodyNameBytes.Length, 16);
+            int verticesOff = shapeOff + L.ShapeSize;
+            int planesOff = verticesOff + groups * 48;
+            int end = AlignPayload(planesOff + shape.Planes.Count * 16, 16);
+
+            byte[] grown = new byte[end];
+            Buffer.BlockCopy(packfile.DataPayload, 0, grown, 0, packfile.DataPayload.Length);
+            packfile.DataPayload = grown;
+            byte[] d = packfile.DataPayload;
+            int firstNewItem = tags.ItemCount;
+
+            // -- hkpPhysicsSystem: one body, no constraints, actions or phantoms (null words, as retail), active
+            Buffer.BlockCopy(d, sysT, d, sysOff, L.SystemSize);
+            Array.Clear(d, sysOff + L.SystemRigidBodies, 16);
+            Array.Clear(d, sysOff + L.SystemName, 8);
+            Array.Clear(d, sysOff + L.SystemConstraints, 16);
+            Array.Clear(d, sysOff + L.SystemActions, 16);
+            Array.Clear(d, sysOff + L.SystemPhantoms, 16);
+            Array.Clear(d, sysOff + L.SystemUserData, 8);
+            d[sysOff + L.SystemActive] = 1;
+            Buffer.BlockCopy(systemNameBytes, 0, d, sysName, systemNameBytes.Length);
+            if (!tags.CloneObject((uint)sysT, (uint)sysOff, L.SystemSize)
+                || !tags.NewArray(sysOff + L.SystemRigidBodies, sysArray, 1, bodiesWord, bodiesGroup)
+                || !tags.NewArray(sysOff + L.SystemName, sysName, systemNameBytes.Length, stringWord, stringGroup))
+                throw new InvalidOperationException("The new physics system could not be registered in the tagfile.");
+
+            // -- hkpRigidBody: the template's bytes, then everything that follows from this shape, mass and placement
+            Buffer.BlockCopy(d, bodyT, d, bodyOff, L.BodySize);
+            Buffer.BlockCopy(bodyNameBytes, 0, d, bodyName, bodyNameBytes.Length);
+            Array.Clear(d, bodyOff + L.BodyShape, 8);
+            Array.Clear(d, bodyOff + L.BodyName, 8);
+            if (!tags.CloneObject((uint)bodyT, (uint)bodyOff, L.BodySize)
+                || !tags.NewArray(bodyOff + L.BodyName, bodyName, bodyNameBytes.Length, stringWord, stringGroup))
+                throw new InvalidOperationException("The new rigid body could not be registered in the tagfile.");
+            WriteBodyState(d, bodyOff, L, shape, body);
+
+            // -- hkpConvexVerticesShape: no connectivity, userData 0 as on all 474 of retail's
+            Buffer.BlockCopy(d, shapeT, d, shapeOff, L.ShapeSize);
+            Array.Clear(d, shapeOff + L.ShapeRotatedVertices, 16);
+            Array.Clear(d, shapeOff + L.ShapePlaneEquations, 16);
+            Array.Clear(d, shapeOff + L.ShapeConnectivity, 8);
+            Array.Clear(d, shapeOff + L.ShapeUserData, 8);
+            WriteShapeGeometry(d, shapeOff, verticesOff, planesOff, L, shape);
+            if (!tags.CloneObject((uint)shapeT, (uint)shapeOff, L.ShapeSize)
+                || !tags.NewArray(shapeOff + L.ShapeRotatedVertices, verticesOff, groups, verticesWord, verticesGroup)
+                || !tags.NewArray(shapeOff + L.ShapePlaneEquations, planesOff, shape.Planes.Count, planesWord, planesGroup))
+                throw new InvalidOperationException("The new convex shape could not be registered in the tagfile.");
+
+            // -- the pointers between the three, then the system in hkpPhysicsData.systems[]
+            if (!tags.SetPointer(bodyOff + L.BodyShape, (uint)shapeOff, shapeGroup)
+                || !tags.SetPointer(sysArray, (uint)bodyOff, slotGroup))
+                throw new InvalidOperationException("The new physics system's pointers could not be registered in the tagfile.");
+            packfile.AppendPhysicsSystemToPhysicsData((uint)sysOff);
+
+            //The new items get their object entries and the pointer list is rebuilt from PTCH; only the new system is
+            //read. RereadTypedViews would replace every retail PhysicsSystem, as re-parsing a packfile would
+            tags.RegisterNewItems(packfile, firstNewItem);
+            PhysicsSystem created = tags.AddSystemView(packfile.PhysicsSystems.Count, sysOff);
+            if (created == null)
+                throw new InvalidOperationException("The new physics system could not be read back from the tagfile.");
+            for (int i = packfile.Objects.Count - 1; i >= 0 && created.Object == null; i--)
+                if (packfile.Objects[i].DataOffset == (uint)sysOff && packfile.Objects[i].Class == ObjectClass.PhysicsSystem)
+                    created.Object = packfile.Objects[i];
+            if (created.Object != null)
+                created.Object.ProxyIndex = created.SystemIndex;
+            packfile.PhysicsSystems.Add(created);
+
+            CheckReadBack(packfile, physicsData, L, created, body);
+            return created;
+        }
+
+        /// <summary>A new body's own values in its template's copy: what follows from the shape, the mass and the placement.</summary>
+        static void WriteBodyState(byte[] d, int bodyOff, PhysicsLayout L, ConvexBody shape, PhysicsBodySettings body)
+        {
             float r = shape.ConvexRadius;
             Vector3 grownHalf = shape.AabbHalfExtents + new Vector3(r);
             float minFull = 2f * Math.Min(grownHalf.X, Math.Min(grownHalf.Y, grownHalf.Z));
@@ -161,21 +333,17 @@ namespace CathodeLib.Havok
             WriteVector4(d, R + 176, new Vector4(1f / inertia.X, 1f / inertia.Y, 1f / inertia.Z, 1f / body.Mass));
             WriteVector4(d, R + 192, Vector4.Zero);                //linearVelocity
             WriteVector4(d, R + 208, Vector4.Zero);                //angularVelocity
+        }
 
-            // -- hkpConvexVerticesShape: no connectivity, as 3,579 of retail's 5,446
-            Buffer.BlockCopy(d, (int)shapeTemplate.DataOffset, d, shapeOff, L.ShapeSize);
-            WriteUInt32(d, shapeOff + L.ShapeUserData, 1024);      //every retail shape without connectivity carries 0x400
-            if (is64) WriteUInt32(d, shapeOff + L.ShapeUserData + 4, 0);
-            WriteSingle(d, shapeOff + L.ShapeRadius, r);
+        /// <summary>A new convex shape's own values in its template's copy, and its vertex groups and planes where they go.</summary>
+        static void WriteShapeGeometry(byte[] d, int shapeOff, int verticesOff, int planesOff, PhysicsLayout L, ConvexBody shape)
+        {
+            WriteSingle(d, shapeOff + L.ShapeRadius, shape.ConvexRadius);
             WriteVector4(d, shapeOff + L.ShapeAabbHalf, new Vector4(shape.AabbHalfExtents, 0f));
             WriteVector4(d, shapeOff + L.ShapeAabbCenter, new Vector4(shape.AabbCenter, 0f));
-            CollisionProxyWriter.WriteArrayHeader(d, shapeOff + L.ShapeRotatedVertices, ptr, groups);
             WriteUInt32(d, shapeOff + L.ShapeNumVertices, (uint)shape.Vertices.Count);
             d[shapeOff + L.ShapeUseSpuBuffer] = 0;
-            CollisionProxyWriter.WriteArrayHeader(d, shapeOff + L.ShapePlaneEquations, ptr, shape.Planes.Count);
-            Array.Clear(d, shapeOff + L.ShapeConnectivity, ptr);
-            packfile.LocalFixups.Add(new LocalFixup { Src = (uint)(shapeOff + L.ShapeRotatedVertices), Dst = (uint)verticesOff });
-            packfile.LocalFixups.Add(new LocalFixup { Src = (uint)(shapeOff + L.ShapePlaneEquations), Dst = (uint)planesOff });
+            int groups = (shape.Vertices.Count + 3) / 4;
             for (int g = 0; g < groups; g++)
             {
                 int at = verticesOff + g * 48;
@@ -189,34 +357,18 @@ namespace CathodeLib.Havok
             }
             for (int p = 0; p < shape.Planes.Count; p++)
                 WriteVector4(d, planesOff + p * 16, shape.Planes[p]);
+        }
 
-            // -- register: objects in payload order, then the system in hkpPhysicsData.systems[]
-            AddObject(packfile, sysOff, systemTemplate, ObjectClass.PhysicsSystem);
-            AddObject(packfile, bodyOff, bodyTemplate, ObjectClass.RigidBody);
-            AddObject(packfile, shapeOff, shapeTemplate, shapeTemplate.Class);
-            packfile.AppendPhysicsSystemToPhysicsData((uint)sysOff);
-
-            //Only the new view is made: re-parsing would replace every PhysicsSystem object, and the resources and
-            //PHYSICS.MAP rows holding the old ones would be left pointing at copies no longer in the list
-            PhysicsSystem created = new PhysicsSystem
-            {
-                SystemIndex = packfile.PhysicsSystems.Count,
-                DataOffset = (uint)sysOff,
-                Name = packfile.ReadStringPtr((uint)(sysOff + L.SystemName)),
-                Object = packfile.Objects[packfile.Objects.Count - 3],
-            };
-            created.Object.ProxyIndex = created.SystemIndex;
-            packfile.PhysicsSystems.Add(created);
-
-            //The readers are the first oracle: the system must list at its index with the body that went in
-            if (!packfile.TryReadPointerArray((uint)(physicsData.DataOffset + packfile.ObjectHeaderSize + (uint)ptr), out List<uint> systems)
-                || systems.Count != packfile.PhysicsSystems.Count || systems[systems.Count - 1] != (uint)sysOff)
+        /// <summary>The readers are the first oracle: the system must list at its index with the body that went in.</summary>
+        static void CheckReadBack(HavokPackfile packfile, PackfileObject physicsData, PhysicsLayout L, PhysicsSystem created, PhysicsBodySettings body)
+        {
+            if (!packfile.TryReadPointerArray(physicsData.DataOffset + (uint)L.PhysicsDataSystems, out List<uint> systems)
+                || systems.Count != packfile.PhysicsSystems.Count || systems[systems.Count - 1] != created.DataOffset)
                 throw new InvalidOperationException("The new physics system did not land last in hkpPhysicsData.systems[].");
             List<RigidBodyInfo> bodies = packfile.GetRigidBodies(created);
             if (bodies.Count != 1 || bodies[0].ShapeClassName != "hkpConvexVerticesShape" || bodies[0].Name != (body.Name ?? "")
                 || Math.Abs(bodies[0].Mass - body.Mass) > 1e-3f * body.Mass)
                 throw new InvalidOperationException("The new physics system reads back wrongly.");
-            return created;
         }
 
         static void AddObject(HavokPackfile packfile, int offset, PackfileObject template, ObjectClass cls)
@@ -255,7 +407,12 @@ namespace CathodeLib.Havok
         static bool FindConvexBodyTemplate(HavokPackfile packfile, out PackfileObject systemObject, out PackfileObject bodyObject, out PackfileObject shapeObject)
         {
             systemObject = bodyObject = shapeObject = null;
-            PhysicsLayout L = PhysicsLayout.For(packfile.Header.PointerSize == 8);
+            PhysicsLayout L = PhysicsLayout.For(packfile);
+            if (L == null)
+                return false;
+            //A tagfile has no local fixups: its strings and arrays are items too, and every pointer to one is in the
+            //global list (built from PTCH), so the same "no pointers but ours" test covers them
+            bool tagfile = packfile.Tagfile != null;
             var byOffset = new Dictionary<uint, PackfileObject>(packfile.Objects.Count);
             foreach (PackfileObject o in packfile.Objects) byOffset[o.DataOffset] = o;
             var local = new Dictionary<uint, uint>(packfile.LocalFixups.Count);
@@ -277,14 +434,14 @@ namespace CathodeLib.Havok
             foreach (PhysicsSystem system in packfile.PhysicsSystems)
             {
                 if (!byOffset.TryGetValue(system.DataOffset, out PackfileObject sys)) continue;
-                if (!packfile.TryGetRigidBodyOffsets(system, out List<uint> bodies) || bodies.Count != 1) continue;
+                if (!packfile.TryReadPointerArray(system.DataOffset + (uint)L.SystemRigidBodies, out List<uint> bodies) || bodies.Count != 1) continue;
                 uint b = bodies[0];
                 if (!byOffset.TryGetValue(b, out PackfileObject bo) || bo.ClassName != "hkpRigidBody") continue;
                 if (b + (uint)L.BodySize > (uint)packfile.DataPayload.Length) continue;
                 if (packfile.DataPayload[b + (uint)L.MotionType] != 3 || (sbyte)packfile.DataPayload[b + (uint)L.BodyQuality] != 4) continue;
                 if (!global.TryGetValue(b + (uint)L.BodyShape, out uint s) || !byOffset.TryGetValue(s, out PackfileObject so)) continue;
                 if (so.ClassName != "hkpConvexVerticesShape" || global.ContainsKey(s + (uint)L.ShapeConnectivity)) continue;
-                if (!local.TryGetValue(b + (uint)L.BodyName, out uint nameAt) || nameAt != b + (uint)L.BodySize) continue;
+                if (!tagfile && (!local.TryGetValue(b + (uint)L.BodyName, out uint nameAt) || nameAt != b + (uint)L.BodySize)) continue;
                 if (!OnlyFixupsAt(b, L.BodySize, L.BodyShape, L.BodyName)) continue;
                 if (!OnlyFixupsAt(s, L.ShapeSize, L.ShapeRotatedVertices, L.ShapePlaneEquations)) continue;
                 if (!OnlyFixupsAt(system.DataOffset, L.SystemSize, L.SystemRigidBodies, L.SystemName)) continue;
@@ -296,29 +453,105 @@ namespace CathodeLib.Havok
 
         /// <summary>
         /// Field offsets in the 2012 packfile layouts of hkpPhysicsSystem, hkpRigidBody and hkpConvexVerticesShape,
-        /// read off every retail file (the variance maps of physcensus --vary, checked field by field by physfields).
+        /// read off every retail file (the variance maps of physcensus --vary, checked field by field by physfields),
+        /// or in a tagfile's own layout, read off its type table.
         /// </summary>
         sealed class PhysicsLayout
         {
             public int SystemSize, SystemRigidBodies, SystemConstraints, SystemActions, SystemPhantoms, SystemName, SystemUserData, SystemActive;
             public int BodySize, BodyShape, BodyQuality, BodyFilterInfo, BodyAllowedPenetration, BodyName, BodyFriction, BodyRestitution, MotionState;
-            /// <summary>hkpMotion::m_type, just after the inline motion's hkReferencedObject (8 bytes on 32-bit, 16 on 64-bit).</summary>
+            /// <summary>hkpMotion::m_type, just after the inline motion's hkReferencedObject (8 bytes on 32-bit, 16 on 64-bit, 20 in a 2018 tagfile).</summary>
             public int MotionType;
             public int ShapeSize, ShapeUserData, ShapeRadius, ShapeAabbHalf, ShapeAabbCenter, ShapeRotatedVertices, ShapeNumVertices, ShapeUseSpuBuffer, ShapePlaneEquations, ShapeConnectivity;
+            /// <summary>hkpPhysicsData::m_systems: after the hkReferencedObject and the worldCinfo pointer.</summary>
+            public int PhysicsDataSystems;
 
             static readonly PhysicsLayout Packfile32 = new PhysicsLayout
             {
                 SystemSize = 80, SystemRigidBodies = 8, SystemConstraints = 20, SystemActions = 32, SystemPhantoms = 44, SystemName = 56, SystemUserData = 60, SystemActive = 64,
                 BodySize = 544, BodyShape = 16, BodyQuality = 42, BodyFilterInfo = 44, BodyAllowedPenetration = 92, BodyName = 120, BodyFriction = 140, BodyRestitution = 144, MotionState = 240, MotionType = 232,
                 ShapeSize = 112, ShapeUserData = 8, ShapeRadius = 16, ShapeAabbHalf = 32, ShapeAabbCenter = 48, ShapeRotatedVertices = 64, ShapeNumVertices = 76, ShapeUseSpuBuffer = 80, ShapePlaneEquations = 84, ShapeConnectivity = 96,
+                PhysicsDataSystems = 12,
             };
             static readonly PhysicsLayout Packfile64 = new PhysicsLayout
             {
                 SystemSize = 112, SystemRigidBodies = 16, SystemConstraints = 32, SystemActions = 48, SystemPhantoms = 64, SystemName = 80, SystemUserData = 88, SystemActive = 96,
                 BodySize = 720, BodyShape = 32, BodyQuality = 74, BodyFilterInfo = 76, BodyAllowedPenetration = 136, BodyName = 176, BodyFriction = 204, BodyRestitution = 208, MotionState = 368, MotionType = 352,
                 ShapeSize = 128, ShapeUserData = 16, ShapeRadius = 32, ShapeAabbHalf = 48, ShapeAabbCenter = 64, ShapeRotatedVertices = 80, ShapeNumVertices = 96, ShapeUseSpuBuffer = 100, ShapePlaneEquations = 104, ShapeConnectivity = 120,
+                PhysicsDataSystems = 24,
             };
             public static PhysicsLayout For(bool is64) => is64 ? Packfile64 : Packfile32;
+
+            /// <summary>The layout of this file: the packfile tables, or a tagfile's own. Null if a tagfile lacks something a new system needs.</summary>
+            public static PhysicsLayout For(HavokPackfile packfile) => packfile.Tagfile != null ? FromTagfile(packfile.Tagfile) : For(packfile.Header.PointerSize == 8);
+
+            /// <summary>
+            /// The 2018 layout, as the file's type table gives it. On every iOS and Switch physics file: system members +8
+            /// against the 2012 64-bit table (hkReferencedObject grew to 24 bytes), the body 704 bytes with its name at 184,
+            /// material at 208 and motion type at 356, and the shape's userData at 24 - the rest where 2012 has it.
+            /// Null if any type or member is missing, or if the motion state moved: the writer fills that by its
+            /// offsets inside hkMotionState, which 2018 kept.
+            /// </summary>
+            public static PhysicsLayout FromTagfile(HavokTagfile tags)
+            {
+                PhysicsLayout L = new PhysicsLayout
+                {
+                    SystemSize = tags.SizeOf("hkpPhysicsSystem"),
+                    SystemRigidBodies = tags.OffsetOf("hkpPhysicsSystem", "rigidBodies"),
+                    SystemConstraints = tags.OffsetOf("hkpPhysicsSystem", "constraints"),
+                    SystemActions = tags.OffsetOf("hkpPhysicsSystem", "actions"),
+                    SystemPhantoms = tags.OffsetOf("hkpPhysicsSystem", "phantoms"),
+                    SystemName = tags.OffsetOf("hkpPhysicsSystem", "name"),
+                    SystemUserData = tags.OffsetOf("hkpPhysicsSystem", "userData"),
+                    SystemActive = tags.OffsetOf("hkpPhysicsSystem", "active"),
+
+                    BodySize = tags.SizeOf("hkpRigidBody"),
+                    BodyShape = tags.OffsetOfPath("hkpRigidBody", "collidable", "shape"),
+                    BodyQuality = tags.OffsetOfPath("hkpRigidBody", "collidable", "broadPhaseHandle", "objectQualityType"),
+                    BodyFilterInfo = tags.OffsetOfPath("hkpRigidBody", "collidable", "broadPhaseHandle", "collisionFilterInfo"),
+                    BodyAllowedPenetration = tags.OffsetOfPath("hkpRigidBody", "collidable", "allowedPenetrationDepth"),
+                    BodyName = tags.OffsetOf("hkpRigidBody", "name"),
+                    BodyFriction = tags.OffsetOfPath("hkpRigidBody", "material", "friction"),
+                    BodyRestitution = tags.OffsetOfPath("hkpRigidBody", "material", "restitution"),
+                    MotionState = tags.OffsetOfPath("hkpRigidBody", "motion", "motionState"),
+                    MotionType = tags.OffsetOfPath("hkpRigidBody", "motion", "type"),
+
+                    ShapeSize = tags.SizeOf("hkpConvexVerticesShape"),
+                    ShapeUserData = tags.OffsetOf("hkpConvexVerticesShape", "userData"),
+                    ShapeRadius = tags.OffsetOf("hkpConvexVerticesShape", "radius"),
+                    ShapeAabbHalf = tags.OffsetOf("hkpConvexVerticesShape", "aabbHalfExtents"),
+                    ShapeAabbCenter = tags.OffsetOf("hkpConvexVerticesShape", "aabbCenter"),
+                    ShapeRotatedVertices = tags.OffsetOf("hkpConvexVerticesShape", "rotatedVertices"),
+                    ShapeNumVertices = tags.OffsetOf("hkpConvexVerticesShape", "numVertices"),
+                    ShapeUseSpuBuffer = tags.OffsetOf("hkpConvexVerticesShape", "useSpuBuffer"),
+                    ShapePlaneEquations = tags.OffsetOf("hkpConvexVerticesShape", "planeEquations"),
+                    ShapeConnectivity = tags.OffsetOf("hkpConvexVerticesShape", "connectivity"),
+
+                    PhysicsDataSystems = tags.OffsetOf("hkpPhysicsData", "systems"),
+                };
+
+                int[] found =
+                {
+                    L.SystemSize, L.SystemRigidBodies, L.SystemConstraints, L.SystemActions, L.SystemPhantoms, L.SystemName, L.SystemUserData, L.SystemActive,
+                    L.BodySize, L.BodyShape, L.BodyQuality, L.BodyFilterInfo, L.BodyAllowedPenetration, L.BodyName, L.BodyFriction, L.BodyRestitution, L.MotionState, L.MotionType,
+                    L.ShapeSize, L.ShapeUserData, L.ShapeRadius, L.ShapeAabbHalf, L.ShapeAabbCenter, L.ShapeRotatedVertices, L.ShapeNumVertices, L.ShapeUseSpuBuffer, L.ShapePlaneEquations, L.ShapeConnectivity,
+                    L.PhysicsDataSystems,
+                };
+                if (found.Any(o => o < 0) || L.SystemSize <= 0 || L.BodySize <= 0 || L.ShapeSize <= 0)
+                    return null;
+
+                int R = L.MotionState;
+                if (tags.OffsetOfPath("hkpRigidBody", "motion", "motionState", "transform") != R
+                    || tags.OffsetOfPath("hkpRigidBody", "motion", "motionState", "sweptTransform") != R + 64
+                    || tags.OffsetOfPath("hkpRigidBody", "motion", "motionState", "deltaAngle") != R + 144
+                    || tags.OffsetOfPath("hkpRigidBody", "motion", "motionState", "objectRadius") != R + 160
+                    || tags.OffsetOfPath("hkpRigidBody", "motion", "inertiaAndMassInv") != R + 176
+                    || tags.OffsetOfPath("hkpRigidBody", "motion", "linearVelocity") != R + 192
+                    || tags.OffsetOfPath("hkpRigidBody", "motion", "angularVelocity") != R + 208)
+                    return null;
+
+                return L;
+            }
         }
 
         // ------------------------------------------------------------------ the convex body

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using CATHODE;
 using static CATHODE.HavokPackfile;
@@ -7,7 +8,8 @@ using static CATHODE.HavokPackfile;
 namespace CathodeLib.Havok
 {
     /* Writing a NEW collision proxy - an hkpStaticCompoundShape over a freshly encoded hkpBvCompressedMeshShape -
-       into a 2012 packfile (COLLISION.HKX / COLLISION.HKX64), from a plain triangle list.
+       into a 2012 packfile (COLLISION.HKX / COLLISION.HKX64), or the 2018 tagfile the mobile and Switch builds
+       ship instead (see the tagfile section below), from a plain triangle list.
 
        What retail ships, measured over every PC level (59,024 proxies): a proxy is a compound whose instances are
        all hkpBvCompressedMeshShape children (never boxes, never nested compounds), 79% of them with one child at
@@ -46,8 +48,12 @@ namespace CathodeLib.Havok
                 Global = new List<GlobalFixup>(packfile.GlobalFixups),
                 Virtual = new List<VirtualFixup>(packfile.VirtualFixups),
                 Objects = new List<PackfileObject>(packfile.Objects),
+                //A tagfile edit that moves an array moves its object entry with it, in place
+                ObjectOffsets = packfile.Objects.Select(o => o.DataOffset).ToArray(),
                 Compounds = new List<StaticCompoundShape>(packfile.StaticCompoundShapes),
                 Physics = new List<PhysicsSystem>(packfile.PhysicsSystems),
+                //A tagfile keeps its items and pointer lists outside the payload, and an append moves some in place
+                Tags = packfile.Tagfile?.Snapshot(),
             };
         }
 
@@ -55,17 +61,24 @@ namespace CathodeLib.Havok
         {
             if (checkpoint == null)
                 throw new ArgumentNullException(nameof(checkpoint));
-            packfile.DataPayload = checkpoint.Payload;
-            packfile.ClassnamesData = checkpoint.Classnames;
-            packfile.LocalFixups = checkpoint.Local;
-            packfile.GlobalFixups = checkpoint.Global;
-            packfile.VirtualFixups = checkpoint.Virtual;
-            packfile.Objects = checkpoint.Objects;
+            //Copies, not the checkpoint's own storage: the next append writes into these in place, and the
+            //checkpoint has to be able to put the same state back again
+            packfile.DataPayload = (byte[])checkpoint.Payload.Clone();
+            packfile.ClassnamesData = (byte[])checkpoint.Classnames.Clone();
+            packfile.LocalFixups = new List<LocalFixup>(checkpoint.Local);
+            packfile.GlobalFixups = new List<GlobalFixup>(checkpoint.Global);
+            packfile.VirtualFixups = new List<VirtualFixup>(checkpoint.Virtual);
+            packfile.Objects = new List<PackfileObject>(checkpoint.Objects);
+            if (checkpoint.ObjectOffsets != null)
+                for (int i = 0; i < checkpoint.ObjectOffsets.Length && i < packfile.Objects.Count; i++)
+                    packfile.Objects[i].DataOffset = checkpoint.ObjectOffsets[i];
             //The views are put back rather than re-parsed: an append only adds compounds, and re-parsing would hand
             //out new objects for every compound, leaving the references others hold (a COLLISION.MAP row's
             //CollisionProxy, a picker's selection) pointing at copies no longer in the list
             packfile.StaticCompoundShapes = new List<StaticCompoundShape>(checkpoint.Compounds);
             packfile.PhysicsSystems = new List<PhysicsSystem>(checkpoint.Physics);
+            if (checkpoint.Tags != null)
+                packfile.Tagfile?.Restore(checkpoint.Tags);
         }
 
         /// <summary>
@@ -82,14 +95,15 @@ namespace CathodeLib.Havok
         /// <remarks>
         /// Both packfiles of a level (32 and 64-bit) need the proxy at the same ordinal; call this on each with the
         /// same mesh and compare the results, restoring a <see cref="CreateCheckpoint"/> on either side if they
-        /// disagree. Not available on the mobile/Switch tagfiles.
+        /// disagree. The mobile/Switch builds ship only the 64-bit file, as a 2018 tagfile; the same call writes
+        /// that, laid out from the file's own type table, and its ordinal is the proxy-list slot it is given.
         /// </remarks>
         public static StaticCompoundShape AddMeshCollisionProxy(this HavokPackfile packfile, IList<Vector3> positions, IList<int> triangles, uint userData = 0, uint filterInfo = 9)
         {
-            if (packfile.Tagfile != null)
-                throw new NotSupportedException("New collision meshes can only be written to the PC packfiles, not a mobile/Switch tagfile.");
             if (positions == null || triangles == null)
                 throw new ArgumentNullException(positions == null ? nameof(positions) : nameof(triangles));
+            if (packfile.Tagfile != null)
+                return AddMeshCollisionProxyTagfile(packfile, positions, triangles, userData, filterInfo);
 
             BuiltMesh built = MeshProxyBuilder.Build(positions, triangles);
             uint meshOffset = AppendMeshShapeObject(packfile, built, userData);
@@ -371,6 +385,427 @@ namespace CathodeLib.Havok
                 ProxyIndex = -1,
             });
             return (uint)dst;
+        }
+
+        // ------------------------------------------------------------------ the 2018 tagfile (iOS, Switch)
+
+        /* The mobile and Switch builds ship COLLISION.HKX64 as a Havok 2018 tagfile. The mesh itself did not
+           change: every iOS template mesh compared with the PC file at the same ordinal has byte-identical packed
+           and shared vertices, nodes, codec parameters, domains and runs (6,101 meshes; the only differences are
+           11 degenerate quads the 2018 export rewrote), so MeshProxyBuilder serves both. Everything around the
+           bytes did:
+             - an object only exists if an ITEM names it, and a pointer is that item's index, listed in PTCH under
+               the member's declared type - there are no fixups;
+             - an array's length is on its item; m_size and capacity stay 0, and an empty array is a null word with
+               no item and no PTCH entry;
+             - the Section record was repacked (four u32 first-indices, count bytes, a u16 leafIndex at 92) and
+               lost its shared-vertex count, which is now the gap to the next section's first shared index;
+             - the tree gained primitiveStoresIsFlatConvex, 0 in every retail mesh;
+             - the ordinal a COLLISION.MAP row stores is the proxy's slot in the hkpListShape, not its rank in the
+               file (a tagfile puts the three world hosts first).
+           Type indices are per file - frontend has no box shape and numbers the mesh types three lower - so every
+           offset, size, ITEM word and PTCH group is read off the file being written, never carried over.
+
+           One trap shapes the code: HavokTagfile.CloneObject copies the template's pointer words, item indices
+           and all, and SetArray on such a word MOVES the template's own array. So the mesh and compound get fresh
+           items of their own and every array they own is a NewArray; nothing here is cloned.
+
+           Checked by re-encoding every iOS template proxy through this path (4,451 over three levels, and four
+           Switch levels): each reads back to its own triangles within quantisation (worst 3.6 mm), every retail
+           item, byte and PTCH entry but the growing proxy list's is left as it was, and the proxy matches the one
+           it re-encodes field for field but for the key width, which follows its own sections. */
+
+        /// <summary>
+        /// The tagfile half of <see cref="AddMeshCollisionProxy"/>: the same mesh and compound, laid out as 2018
+        /// says, given items and PTCH entries, and registered in the proxy list - whose slot is the ordinal.
+        /// </summary>
+        static StaticCompoundShape AddMeshCollisionProxyTagfile(HavokPackfile packfile, IList<Vector3> positions, IList<int> triangles, uint userData, uint filterInfo)
+        {
+            HavokTagfile tags = packfile.Tagfile;
+            TagProxyLayout layout = new TagProxyLayout(tags);
+
+            //A proxy the list cannot hold has no ordinal a row could name, so refuse before writing anything
+            int list = tags.ProxyListOffset();
+            if (list < 0 || !tags.TryResolvePointer((uint)(list + layout.ListChildren), out _, out int listed))
+                throw new InvalidOperationException("This collision file has no proxy list to register a new collision mesh in.");
+
+            BuiltMesh built = MeshProxyBuilder.Build(positions, triangles);
+            int firstNewItem = tags.ItemCount;
+            uint meshOffset = AppendMeshShapeObjectTagfile(packfile, layout, built, userData);
+            uint compoundOffset = AppendCompoundShellTagfile(packfile, layout, userData, Math.Max(1, BitsOf(built.MaxKeyValue)));
+
+            //The views see the new objects without re-reading the file: a re-read would hand out new objects
+            //for every compound and system, stranding whatever holds the old ones (rows, pickers, the importer)
+            tags.RegisterNewItems(packfile, firstNewItem);
+
+            /* The ordinal is the list slot it is about to take: past the templates and past the three world
+             * hosts, which are unlisted in retail and fill the slots before it - the same padding the packfile
+             * branch gives the PC list. Once they are in, the next proxy follows straight on. */
+            int ordinal = listed;
+            for (int i = 0; i < packfile.StaticCompoundShapes.Count; i++)
+                ordinal = Math.Max(ordinal, packfile.StaticCompoundShapes[i].ProxyIndex + 1);
+            StaticCompoundShape compound = new StaticCompoundShape { ProxyIndex = ordinal, DataOffset = compoundOffset };
+            packfile.StaticCompoundShapes.Add(compound);
+
+            compound.DomainMin = new Vector4(float.MaxValue, float.MaxValue, float.MaxValue, 0f);
+            compound.DomainMax = new Vector4(float.MinValue, float.MinValue, float.MinValue, 0f);
+            compound.AddInstance(new CompoundInstance
+            {
+                Translation = new Vector4(0f, 0f, 0f, 0.5f),  //W = 0x3F000000, no flag bits: all 6,101 iOS template instances
+                Rotation = Quaternion.Identity,
+                Scale = new Vector4(1f, 1f, 1f, 0.5f),
+                FilterInfo = filterInfo,
+                ChildFilterInfoMask = 0,
+                UserData = userData,
+                ShapeDataOffset = meshOffset,
+                ShapeClassName = "hkpBvCompressedMeshShape",
+            });
+
+            //The shell's two array words are null, so the rewrite gives them items of their own - it cannot
+            //reach the template's, which is why the shell was not cloned
+            int rewriteItems = tags.ItemCount;
+            packfile.RewriteCompoundArrays(compound);
+            FitCompoundDomainToMesh(packfile, compound, built);
+            packfile.EnsureProxyListCoversCompounds(refreshTagfileFixups: false);   //re-read once, just below
+            packfile.RefreshCompoundShapeKeyBits();
+            tags.RegisterNewItems(packfile, rewriteItems);
+
+            if (!ListSlotHolds(tags, layout, list, ordinal, compoundOffset))
+                throw new InvalidOperationException("The new collision mesh did not land in proxy list slot " + ordinal + ", so no COLLISION.MAP row could name it.");
+
+            //The reader is the first oracle: what went in must come back out, triangle for triangle
+            PreviewMesh check = packfile.BuildBakeMesh(compound);
+            if (check.TriangleCount != built.PrimitiveCount)
+                throw new InvalidOperationException("The new collision mesh reads back with " + check.TriangleCount + " triangles where " + built.PrimitiveCount + " were written.");
+            return compound;
+        }
+
+        /// <summary>
+        /// hkpBvCompressedMeshShape in a tagfile: a retail mesh's header, the tree in the 2018 layout, and every
+        /// array a fresh item appended in retail's data order - top nodes, sections, primitives, shared index,
+        /// packed vertices, shared vertices, runs, then each section's nodes.
+        /// </summary>
+        static uint AppendMeshShapeObjectTagfile(HavokPackfile packfile, TagProxyLayout layout, BuiltMesh built, uint userData)
+        {
+            HavokTagfile tags = packfile.Tagfile;
+            PackfileObject template = null;
+            for (int i = 0; i < packfile.Objects.Count; i++)
+                if (packfile.Objects[i].Class == ObjectClass.BvCompressedMeshShape) { template = packfile.Objects[i]; break; }
+            uint word = template == null ? 0 : ItemWordAt(tags, template.DataOffset);
+            if (word == 0)
+                throw new InvalidOperationException("This collision file holds no hkpBvCompressedMeshShape to model the new one on.");
+
+            int sectionCount = built.Sections.Count;
+            int dst = AlignPayload(packfile.DataPayload.Length, 16);
+            int topNodesOff = AlignPayload(dst + layout.MeshSize, 16);
+            int sectionsOff = AlignPayload(topNodesOff + built.TopNodes.Count * TagProxyLayout.TopNodeSize, 16);
+            int primitivesOff = AlignPayload(sectionsOff + sectionCount * layout.SectionSize, 16);
+            int sharedIdxOff = AlignPayload(primitivesOff + built.Primitives.Count * TagProxyLayout.PrimitiveSize, 16);
+            int packedOff = AlignPayload(sharedIdxOff + built.SharedIndex.Count * 2, 16);
+            int sharedOff = AlignPayload(packedOff + built.Packed.Count * 4, 16);
+            int runsOff = AlignPayload(sharedOff + built.Shared.Count * 8, 16);
+            int cursor = AlignPayload(runsOff + sectionCount * layout.RunSize, 16);
+            int[] sectionNodesOff = new int[sectionCount];
+            for (int s = 0; s < sectionCount; s++)
+            {
+                sectionNodesOff[s] = cursor;
+                cursor = AlignPayload(cursor + built.Sections[s].Nodes.Count * TagProxyLayout.SectionNodeSize, 16);
+            }
+
+            byte[] grown = new byte[cursor];
+            Buffer.BlockCopy(packfile.DataPayload, 0, grown, 0, packfile.DataPayload.Length);
+            packfile.DataPayload = grown;
+            byte[] d = packfile.DataPayload;
+
+            //Header: the retail shape's bytes up to its tree (dispatch type, bvTreeType 3, welding 6), with the
+            //property bag and all three palettes null - as in every retail mesh, and the copy must not share them
+            Buffer.BlockCopy(d, (int)template.DataOffset, d, dst, layout.MeshTree);
+            if (layout.MeshPropertyBag >= 0)
+                Array.Clear(d, dst + layout.MeshPropertyBag, 8);
+            Array.Clear(d, dst + layout.MeshPalettes, layout.MeshTree - layout.MeshPalettes);
+            WriteUInt32(d, dst + layout.MeshUserData, userData);
+            WriteUInt32(d, dst + layout.MeshUserData + 4, 0);
+            tags.AddItem(word, dst, 1);
+
+            //The tree. primitiveStoresIsFlatConvex stays 0, and so does every m_size and capacity
+            int tree = dst + layout.MeshTree;
+            Array.Clear(d, tree, layout.TreeSize);
+            WriteVector4(d, tree + layout.TreeDomain, new Vector4(built.DomainMin, 0f));
+            WriteVector4(d, tree + layout.TreeDomain + 16, new Vector4(built.DomainMax, 0f));
+            WriteUInt32(d, tree + layout.TreeNumPrimitiveKeys, built.NumPrimitiveKeys);
+            WriteUInt32(d, tree + layout.TreeBitsPerKey, built.BitsPerKey);
+            WriteUInt32(d, tree + layout.TreeMaxKeyValue, built.MaxKeyValue);
+            NewArray(tags, tree, layout.TreeNodes, topNodesOff, built.TopNodes.Count);
+            NewArray(tags, tree, layout.TreeSections, sectionsOff, sectionCount);
+            NewArray(tags, tree, layout.TreePrimitives, primitivesOff, built.Primitives.Count);
+            NewArray(tags, tree, layout.TreeSharedIndex, sharedIdxOff, built.SharedIndex.Count);
+            NewArray(tags, tree, layout.TreePacked, packedOff, built.Packed.Count);
+            NewArray(tags, tree, layout.TreeShared, sharedOff, built.Shared.Count);
+            NewArray(tags, tree, layout.TreeRuns, runsOff, sectionCount);
+
+            for (int n = 0; n < built.TopNodes.Count; n++)
+                Buffer.BlockCopy(built.TopNodes[n], 0, d, topNodesOff + n * TagProxyLayout.TopNodeSize, TagProxyLayout.TopNodeSize);
+
+            //Sections, 2018 layout: no shared count is written - the reader takes the gap to the next section's
+            //first shared index (the last one's, to the end of the index array), which is exactly NumShared here
+            for (int s = 0; s < sectionCount; s++)
+            {
+                BuiltSection sec = built.Sections[s];
+                int rec = sectionsOff + s * layout.SectionSize;
+                WriteVector4(d, rec + layout.SectionDomain, new Vector4(sec.DomainMin, 0f));
+                WriteVector4(d, rec + layout.SectionDomain + 16, new Vector4(sec.DomainMax, 0f));
+                int codec = rec + layout.SectionCodecParms;
+                WriteSingle(d, codec, sec.CodecBase.X);
+                WriteSingle(d, codec + 4, sec.CodecBase.Y);
+                WriteSingle(d, codec + 8, sec.CodecBase.Z);
+                WriteSingle(d, codec + 12, sec.CodecScale.X);
+                WriteSingle(d, codec + 16, sec.CodecScale.Y);
+                WriteSingle(d, codec + 20, sec.CodecScale.Z);
+                WriteUInt32(d, rec + layout.SectionFirstPacked, (uint)sec.FirstPacked);
+                WriteUInt32(d, rec + layout.SectionFirstShared, (uint)sec.FirstSharedIndex);
+                WriteUInt32(d, rec + layout.SectionFirstPrimitive, (uint)sec.FirstPrimitive);
+                WriteUInt32(d, rec + layout.SectionFirstRun, (uint)s);   //one data run per section
+                d[rec + layout.SectionNumPacked] = (byte)sec.NumPacked;
+                d[rec + layout.SectionNumPrimitives] = (byte)sec.NumPrimitives;
+                d[rec + layout.SectionNumRuns] = 1;
+                d[rec + layout.SectionLeafIndex] = (byte)(sec.LeafIndex & 0xFF);
+                d[rec + layout.SectionLeafIndex + 1] = (byte)(sec.LeafIndex >> 8);
+                //page, layerData, flags: 0, as all 7,107 retail sections
+                NewArray(tags, rec, layout.SectionNodes, sectionNodesOff[s], sec.Nodes.Count);
+                for (int n = 0; n < sec.Nodes.Count; n++)
+                    Buffer.BlockCopy(sec.Nodes[n], 0, d, sectionNodesOff[s] + n * TagProxyLayout.SectionNodeSize, TagProxyLayout.SectionNodeSize);
+            }
+
+            for (int p = 0; p < built.Primitives.Count; p++)
+                Buffer.BlockCopy(built.Primitives[p], 0, d, primitivesOff + p * TagProxyLayout.PrimitiveSize, TagProxyLayout.PrimitiveSize);
+            for (int i = 0; i < built.SharedIndex.Count; i++)
+            {
+                d[sharedIdxOff + i * 2] = (byte)(built.SharedIndex[i] & 0xFF);
+                d[sharedIdxOff + i * 2 + 1] = (byte)(built.SharedIndex[i] >> 8);
+            }
+            for (int i = 0; i < built.Packed.Count; i++)
+                WriteUInt32(d, packedOff + i * 4, built.Packed[i]);
+            for (int i = 0; i < built.Shared.Count; i++)
+            {
+                WriteUInt32(d, sharedOff + i * 8, (uint)(built.Shared[i] & 0xFFFFFFFFul));
+                WriteUInt32(d, sharedOff + i * 8 + 4, (uint)(built.Shared[i] >> 32));
+            }
+            for (int s = 0; s < sectionCount; s++)
+                d[runsOff + s * layout.RunSize + layout.RunCount] = (byte)built.Sections[s].NumPrimitives;   //value and index 0
+            return (uint)dst;
+        }
+
+        /// <summary>
+        /// hkpStaticCompoundShape in a tagfile, with no instances yet: a retail one-mesh template's header with
+        /// everything from its instance array on cleared (instances, extra infos, the disabled-key table and the
+        /// tree - null or zero in all 4,451 iOS templates), its own userData and key width, and its own item.
+        /// </summary>
+        static uint AppendCompoundShellTagfile(HavokPackfile packfile, TagProxyLayout layout, uint userData, int numBitsForChildShapeKey)
+        {
+            HavokTagfile tags = packfile.Tagfile;
+            StaticCompoundShape template = null;
+            StaticCompoundShape primary = packfile.WorldHostPrimary, secondary = packfile.WorldHostSecondary;
+            uint word = 0;
+            for (int i = 0; i < packfile.StaticCompoundShapes.Count && template == null; i++)
+            {
+                StaticCompoundShape c = packfile.StaticCompoundShapes[i];
+                if (c == primary || c == secondary || c.Instances.Count != 1)
+                    continue;
+                if (!string.Equals(c.Instances[0].ShapeClassName, "hkpBvCompressedMeshShape", StringComparison.Ordinal))
+                    continue;
+                word = ItemWordAt(tags, c.DataOffset);
+                if (word != 0)
+                    template = c;
+            }
+            if (template == null)
+                throw new InvalidOperationException("This collision file holds no one-mesh template compound to model the new one on.");
+
+            int dst = AlignPayload(packfile.DataPayload.Length, 16);
+            byte[] grown = new byte[dst + layout.CompoundSize];
+            Buffer.BlockCopy(packfile.DataPayload, 0, grown, 0, packfile.DataPayload.Length);
+            packfile.DataPayload = grown;
+            byte[] d = packfile.DataPayload;
+            Buffer.BlockCopy(d, (int)template.DataOffset, d, dst, layout.CompoundSize);
+
+            if (layout.CompoundPropertyBag >= 0)
+                Array.Clear(d, dst + layout.CompoundPropertyBag, 8);
+            Array.Clear(d, dst + layout.CompoundArrays, layout.CompoundSize - layout.CompoundArrays);
+            WriteUInt32(d, dst + layout.CompoundUserData, userData);
+            WriteUInt32(d, dst + layout.CompoundUserData + 4, 0);
+            d[dst + layout.CompoundBits] = (byte)numBitsForChildShapeKey;
+            tags.AddItem(word, dst, 1);
+            return (uint)dst;
+        }
+
+        /// <summary>
+        /// Retail's one-mesh proxy: the compound's domain is its mesh's, and its single tree node spans all of
+        /// it (xyz 00, FF on a flat axis) - 4,436 of 4,451 iOS templates within 1e-6 m, the rest by float ULPs.
+        /// The rewrite pads the domain by a centimetre, which suits a tree over placed instances; a template sits
+        /// at the identity, where the pad is only a difference from what the game ships.
+        /// </summary>
+        static void FitCompoundDomainToMesh(HavokPackfile packfile, StaticCompoundShape compound, BuiltMesh built)
+        {
+            HavokTagfile.CompoundLayout layout = packfile.Tagfile.Compound();
+            if (!packfile.Tagfile.TryResolvePointer(compound.DataOffset + (uint)layout.Nodes, out uint root, out int nodeCount) || nodeCount != 1)
+                return;
+
+            Vector4 min = new Vector4(built.DomainMin, 0f), max = new Vector4(built.DomainMax, 0f);
+            compound.DomainMin = min;
+            compound.DomainMax = max;
+            byte[] d = packfile.DataPayload;
+            WriteVector4(d, (int)compound.DataOffset + layout.Domain, min);
+            WriteVector4(d, (int)compound.DataOffset + layout.Domain + 16, max);
+            d[root] = EncodeCodec3Axis(min.X, max.X, min.X, max.X);
+            d[root + 1] = EncodeCodec3Axis(min.Y, max.Y, min.Y, max.Y);
+            d[root + 2] = EncodeCodec3Axis(min.Z, max.Z, min.Z, max.Z);
+        }
+
+        /// <summary>Whether proxy list slot <paramref name="slot"/> names the object at <paramref name="compound"/>.</summary>
+        static bool ListSlotHolds(HavokTagfile tags, TagProxyLayout layout, int list, int slot, uint compound)
+        {
+            if (!tags.TryResolvePointer((uint)(list + layout.ListChildren), out uint children, out int count) || slot < 0 || slot >= count)
+                return false;
+            return tags.TryResolvePointer(children + (uint)(slot * layout.ListChildSize + layout.ListChildShape), out uint named, out _) && named == compound;
+        }
+
+        /// <summary>The ITEM word of the object at an offset, exactly as the file spells it; 0 if no item claims it.</summary>
+        static uint ItemWordAt(HavokTagfile tags, uint offset)
+        {
+            int index = tags.IndexOfObjectAt((int)offset);
+            List<HavokTagfile.Item> items = tags.Items();
+            return index > 0 && index < items.Count ? items[index].Word : 0;
+        }
+
+        static void NewArray(HavokTagfile tags, int owner, TagArrayMember member, int elements, int count)
+        {
+            if (!tags.NewArray(owner + member.Offset, elements, count, member.Word, member.Group))
+                throw new InvalidOperationException("Could not give the new collision mesh its " + member.Name + " array.");
+        }
+
+        /// <summary>An hkArray member: where it sits, the ITEM word its elements take, and the PTCH group its word is listed under.</summary>
+        struct TagArrayMember
+        {
+            public string Name;
+            public int Offset;
+            public uint Word;
+            public int Group;
+
+            public static TagArrayMember Of(HavokTagfile tags, string type, string member)
+            {
+                TagArrayMember found = new TagArrayMember
+                {
+                    Name = member,
+                    Offset = tags.OffsetOf(type, member),
+                    Word = tags.ArrayWord(type, member),
+                    Group = tags.PatchGroupOf(type, member),
+                };
+                if (found.Offset < 0 || found.Word == 0 || found.Group <= 0)
+                    throw new NotSupportedException("This collision file's " + type + " has no " + member + " array the writer recognises.");
+                return found;
+            }
+        }
+
+        /// <summary>
+        /// Everything the tagfile writer places, read off the file's own type table. A file lacking any of it
+        /// is refused rather than written from a guess.
+        /// </summary>
+        sealed class TagProxyLayout
+        {
+            const string Mesh = "hkpBvCompressedMeshShape";
+            const string Tree = "hkpBvCompressedMeshShapeTree";
+            const string Section = "hkcdStaticMeshTree::Section";
+            const string Run = "hkpBvCompressedMeshShapeTree::PrimitiveDataRun";
+            const string Compound = "hkpStaticCompoundShape";
+
+            /// <summary>What MeshProxyBuilder emits per element; checked against the file's own codec and primitive sizes.</summary>
+            public const int TopNodeSize = 5, SectionNodeSize = 4, PrimitiveSize = 4;
+
+            public readonly int MeshSize, MeshTree, MeshUserData, MeshPropertyBag, MeshPalettes;
+            public readonly int TreeSize, TreeDomain, TreeNumPrimitiveKeys, TreeBitsPerKey, TreeMaxKeyValue;
+            public readonly TagArrayMember TreeNodes, TreeSections, TreePrimitives, TreeSharedIndex, TreePacked, TreeShared, TreeRuns;
+            public readonly int SectionSize, SectionDomain, SectionCodecParms, SectionFirstPacked, SectionFirstShared, SectionFirstPrimitive,
+                SectionFirstRun, SectionNumPacked, SectionNumPrimitives, SectionNumRuns, SectionLeafIndex;
+            public readonly TagArrayMember SectionNodes;
+            public readonly int RunSize, RunCount;
+            public readonly int CompoundSize, CompoundUserData, CompoundPropertyBag, CompoundBits, CompoundArrays;
+            public readonly int ListChildren, ListChildSize, ListChildShape;
+
+            public TagProxyLayout(HavokTagfile tags)
+            {
+                if (tags.SizeOf("hkcdCompressedAabbCodecs::Aabb5BytesCodec") != TopNodeSize
+                    || tags.SizeOf("hkcdCompressedAabbCodecs::Aabb4BytesCodec") != SectionNodeSize
+                    || tags.SizeOf("hkcdStaticMeshTree::Primitive") != PrimitiveSize)
+                    throw new NotSupportedException("This collision file's mesh tree codecs are not the ones the writer encodes.");
+
+                MeshSize = Size(tags, Mesh);
+                MeshTree = Member(tags, Mesh, "tree");
+                MeshUserData = Member(tags, Mesh, "userData");
+                MeshPropertyBag = tags.OffsetOf(Mesh, "propertyBag");
+                MeshPalettes = Math.Min(Member(tags, Mesh, "collisionFilterInfoPalette"),
+                    Math.Min(Member(tags, Mesh, "userDataPalette"), Member(tags, Mesh, "userStringPalette")));
+
+                TreeSize = Size(tags, Tree);
+                TreeDomain = Member(tags, Tree, "domain");
+                TreeNumPrimitiveKeys = Member(tags, Tree, "numPrimitiveKeys");
+                TreeBitsPerKey = Member(tags, Tree, "bitsPerKey");
+                TreeMaxKeyValue = Member(tags, Tree, "maxKeyValue");
+                TreeNodes = TagArrayMember.Of(tags, Tree, "nodes");
+                TreeSections = TagArrayMember.Of(tags, Tree, "sections");
+                TreePrimitives = TagArrayMember.Of(tags, Tree, "primitives");
+                TreeSharedIndex = TagArrayMember.Of(tags, Tree, "sharedVerticesIndex");
+                TreePacked = TagArrayMember.Of(tags, Tree, "packedVertices");
+                TreeShared = TagArrayMember.Of(tags, Tree, "sharedVertices");
+                TreeRuns = TagArrayMember.Of(tags, Tree, "primitiveDataRuns");
+
+                SectionSize = Size(tags, Section);
+                SectionDomain = Member(tags, Section, "domain");
+                SectionCodecParms = Member(tags, Section, "codecParms");
+                SectionFirstPacked = Member(tags, Section, "firstPackedVertexIndex");
+                SectionFirstShared = Member(tags, Section, "firstSharedVertexIndex");
+                SectionFirstPrimitive = Member(tags, Section, "firstPrimitiveIndex");
+                SectionFirstRun = Member(tags, Section, "firstDataRunIndex");
+                SectionNumPacked = Member(tags, Section, "numPackedVertices");
+                SectionNumPrimitives = Member(tags, Section, "numPrimitives");
+                SectionNumRuns = Member(tags, Section, "numDataRuns");
+                SectionLeafIndex = Member(tags, Section, "leafIndex");
+                SectionNodes = TagArrayMember.Of(tags, Section, "nodes");
+
+                RunSize = Size(tags, Run);
+                RunCount = Member(tags, Run, "count");
+
+                CompoundSize = Size(tags, Compound);
+                CompoundUserData = Member(tags, Compound, "userData");
+                CompoundPropertyBag = tags.OffsetOf(Compound, "propertyBag");
+                CompoundBits = Member(tags, Compound, "numBitsForChildShapeKey");
+                CompoundArrays = Math.Min(Member(tags, Compound, "instances"), Member(tags, Compound, "tree"));
+                foreach (string cleared in new[] { "instanceExtraInfos", "disabledLargeShapeKeyTable" })
+                {
+                    int at = tags.OffsetOf(Compound, cleared);
+                    if (at >= 0) CompoundArrays = Math.Min(CompoundArrays, at);
+                }
+                if (CompoundBits >= CompoundArrays || CompoundUserData >= CompoundArrays)
+                    throw new NotSupportedException("This collision file's hkpStaticCompoundShape is not laid out as the writer expects.");
+
+                ListChildren = Member(tags, "hkpListShape", "childInfo");
+                ListChildSize = Size(tags, "hkpListShape::ChildInfo");
+                ListChildShape = Member(tags, "hkpListShape::ChildInfo", "shape");
+            }
+
+            static int Size(HavokTagfile tags, string type)
+            {
+                int size = tags.SizeOf(type);
+                if (size <= 0)
+                    throw new NotSupportedException("This collision file declares no " + type + ".");
+                return size;
+            }
+
+            static int Member(HavokTagfile tags, string type, string member)
+            {
+                int at = tags.OffsetOf(type, member);
+                if (at < 0)
+                    throw new NotSupportedException("This collision file's " + type + " has no " + member + ".");
+                return at;
+            }
         }
 
         // ------------------------------------------------------------------ the mesh tree
@@ -733,5 +1168,7 @@ namespace CathodeLib.Havok
         internal List<PackfileObject> Objects;
         internal List<StaticCompoundShape> Compounds;
         internal List<PhysicsSystem> Physics;
+        internal object Tags;
+        internal uint[] ObjectOffsets;
     }
 }

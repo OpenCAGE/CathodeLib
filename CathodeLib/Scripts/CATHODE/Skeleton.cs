@@ -67,7 +67,11 @@ namespace CATHODE
         private byte[] _havok = new byte[0];
         private HavokPackfile _packfile;
         private uint _poseOffset, _parentsOffset, _bonesOffset;
-        private uint _boneStride, _pointerSize;
+        private uint _boneStride, _pointerSize, _lockOffset;
+
+        /* Whether the offsets above were found. A skeleton whose arrays could not be located is
+         * written back exactly as it was loaded rather than patched blind. */
+        private bool _patchable;
 
         /* Every table lists its entries in its own order, kept so a save comes back out byte identical */
         private List<int> _nameSlots = new List<int>();
@@ -323,7 +327,11 @@ namespace CATHODE
 
             //The mobile and Switch builds wrap the same skeleton in a Havok tagfile instead
             if (_packfile.IsTagfile)
-                return _packfile.Tagfile.ReadSkeleton(this);
+            {
+                if (!_packfile.Tagfile.ReadSkeleton(this)) return false;
+                _patchable = LocateTagfileArrays();
+                return true;
+            }
 
             HavokPackfile.PackfileObject skeleton = _packfile.Objects.FirstOrDefault(o => o.ClassName == "hkaSkeleton");
             if (skeleton == null) return false;
@@ -334,6 +342,8 @@ namespace CATHODE
             uint header = _pointerSize == 8 ? 16u : 8u;
             uint array = _pointerSize + 8;
             _boneStride = _pointerSize == 8 ? 16u : 8u;
+            _lockOffset = _pointerSize;
+            _patchable = true;
 
             uint nameField = skeleton.DataOffset + header;
             _parentsOffset = nameField + _pointerSize;
@@ -371,6 +381,85 @@ namespace CATHODE
             return true;
         }
 
+        /* The same three arrays in a tagfile: items the skeleton's members name by index, inside a
+         * DATA chunk that sits wherever the chunk tree puts it. Before this the offsets were left at
+         * zero, and a save wrote parent indices and poses over the TAG0 header - every one of the
+         * 376 iOS skeletons failed to load again after a plain load and save. The answer is only
+         * kept if patching there writes back exactly the bytes that were just read. */
+        private bool LocateTagfileArrays()
+        {
+            HavokTagfile tags = _packfile.Tagfile;
+            int data = TagfileDataStart(_havok, 0, _havok.Length);
+            int skeletonType = tags.TypeIndex("hkaSkeleton");
+            if (data < 0 || skeletonType <= 0) return false;
+
+            int root = -1;
+            List<HavokTagfile.Item> items = tags.Items();
+            for (int i = 1; i < items.Count && root < 0; i++)
+                if ((items[i].Word & 0x10000000) != 0 && (items[i].Word & 0xFFFFFF) == skeletonType)
+                    root = items[i].Offset;
+            if (root < 0) return false;
+
+            if (!TagfileArray(tags, root, "parentIndices", out int parents)) return false;
+            if (!TagfileArray(tags, root, "bones", out int bones)) return false;
+            if (!TagfileArray(tags, root, "referencePose", out int pose)) return false;
+
+            int stride = tags.SizeOf("hkaBone");
+            int lockAt = tags.OffsetOf("hkaBone", "lockTranslation");
+            if (stride <= 0 || lockAt < 0) return false;
+
+            _pointerSize = 8;
+            _boneStride = (uint)stride;
+            _lockOffset = (uint)lockAt;
+            _parentsOffset = (uint)(data + parents);
+            _bonesOffset = (uint)(data + bones);
+            _poseOffset = (uint)(data + pose);
+
+            byte[] original = _havok;
+            _havok = (byte[])original.Clone();
+            try
+            {
+                PatchHavok();
+                return _havok.SequenceEqual(original);
+            }
+            catch (IndexOutOfRangeException) { return false; }
+            catch (ArgumentException) { return false; }
+            finally
+            {
+                _havok = original;
+            }
+        }
+
+        private static bool TagfileArray(HavokTagfile tags, int owner, string member, out int offset)
+        {
+            offset = -1;
+            int field = tags.OffsetOf("hkaSkeleton", member);
+            return field >= 0 && tags.TryGetItem(tags.ReadIndex(owner + field), out offset, out int count) && count > 0;
+        }
+
+        /* Where a tagfile's DATA chunk starts. A chunk is a big-endian size-and-flags word and a name;
+         * 0x40000000 marks one holding data rather than more chunks, and the size counts the header. */
+        private static int TagfileDataStart(byte[] file, int start, int end)
+        {
+            for (int at = start; at + 8 <= end;)
+            {
+                uint header = (uint)((file[at] << 24) | (file[at + 1] << 16) | (file[at + 2] << 8) | file[at + 3]);
+                int size = (int)(header & 0x3FFFFFFF);
+                if (size < 8 || at + size > end) return -1;
+
+                if ((header & 0x40000000) == 0)
+                {
+                    int inner = TagfileDataStart(file, at + 8, at + size);
+                    if (inner >= 0) return inner;
+                }
+                else if (file[at + 4] == 'D' && file[at + 5] == 'A' && file[at + 6] == 'T' && file[at + 7] == 'A')
+                    return at + 8;
+
+                at += size;
+            }
+            return -1;
+        }
+
         private static Vector4 ReadVector4(byte[] data, int offset)
         {
             return new Vector4(BitConverter.ToSingle(data, offset), BitConverter.ToSingle(data, offset + 4),
@@ -392,7 +481,7 @@ namespace CATHODE
         {
             if (_havok.Length == 0) return null;
 
-            PatchHavok();
+            if (_patchable) PatchHavok();
 
             using (MemoryStream stream = new MemoryStream())
             using (BinaryWriter writer = new BinaryWriter(stream))
@@ -433,7 +522,7 @@ namespace CATHODE
             {
                 Bone bone = Bones[i];
                 WriteInt16(_parentsOffset + (uint)(i * 2), (short)bone.ParentIndex);
-                _havok[_bonesOffset + (i * _boneStride) + _pointerSize] = (byte)(bone.LockTranslation ? 1 : 0);
+                _havok[_bonesOffset + (i * _boneStride) + _lockOffset] = (byte)(bone.LockTranslation ? 1 : 0);
 
                 uint p = _poseOffset + (uint)(i * 48);
                 WriteVector4(p, bone.Translation);

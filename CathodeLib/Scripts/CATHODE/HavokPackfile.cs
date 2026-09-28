@@ -392,6 +392,9 @@ namespace CATHODE
             //Each body where its motion state holds it (translation @R+48, rotation0 @R+96, R = 240 / 368), so a
             //system of several bodies - a pair of doors, a trolley and its wheels - previews assembled
             uint motionState = Header.PointerSize == 8 ? 368u : 240u;
+            int tagMotionState = Tagfile == null ? -1 : Tagfile.OffsetOfPath("hkpRigidBody", "motion", "motionState");
+            if (tagMotionState > 0)
+                motionState = (uint)tagMotionState;   //368 in 2018 as well; the transform inside it did not move
             for (int b = 0; b < bodyOffsets.Count && mesh.ShapeCount < PreviewShapeCap; b++)
             {
                 uint shapeField = bodyOffsets[b] + collidableShapeField;
@@ -401,7 +404,7 @@ namespace CATHODE
                 Vector3 translation = Vector3.Zero;
                 Quaternion rotation = Quaternion.Identity;
                 uint state = bodyOffsets[b] + motionState;
-                if (Tagfile == null && state + 112 <= (uint)DataPayload.Length)
+                if ((Tagfile == null || tagMotionState > 0) && state + 112 <= (uint)DataPayload.Length)
                 {
                     Vector4 t = ReadVector4(DataPayload, (int)state + 48);
                     Vector4 q = ReadVector4(DataPayload, (int)state + 96);
@@ -500,15 +503,19 @@ namespace CATHODE
             bodyOffsets = null;
             if (system == null)
                 return false;
-            // rigidBodies hkArray: +16 on 64-bit, +8 on 32-bit (hkReferencedObject packing).
-            uint rigidBodiesField = system.DataOffset + (Header.PointerSize == 8 ? 16u : 8u);
+            // rigidBodies hkArray: +16 on 64-bit, +8 on 32-bit (hkReferencedObject packing); a tagfile says
+            // where (+24 in 2018, whose hkReferencedObject is 24 bytes - +16 there reads the property bag).
+            int tagField = Tagfile == null ? -1 : Tagfile.OffsetOf("hkpPhysicsSystem", "rigidBodies");
+            if (Tagfile != null && tagField < 0)
+                return false;
+            uint rigidBodiesField = system.DataOffset + (Tagfile != null ? (uint)tagField : Header.PointerSize == 8 ? 16u : 8u);
             return TryReadPointerArray(rigidBodiesField, out bodyOffsets);
         }
 
         /// <summary>A 2012 hkHalf: the top sixteen bits of a float (0x3F80 is 1).</summary>
         float HalfFloat2012(uint at) => BitConverter.ToSingle(BitConverter.GetBytes((uint)BitConverter.ToUInt16(DataPayload, (int)at) << 16), 0);
 
-        static string DescribeMotionType(byte motionType)
+        internal static string DescribeMotionType(byte motionType)
         {
             switch (motionType)
             {
@@ -708,6 +715,18 @@ namespace CATHODE
                         out int firstSharedIdx, out int numShared,
                         out int firstPrim, out int numPrim))
                     continue;
+
+                /* 2018 dropped the per-section shared count: a section's shared vertices run up to the
+                 * next section's first one, and the last section's to the end of the index array. Read
+                 * as none, every triangle touching a shared vertex went missing (43,778 on hab_airport). */
+                if (Tagfile != null)
+                {
+                    int nextFirst = sharedIdxCount;
+                    uint nextSec = sectionsOff + (uint)((s + 1) * SectionStride);
+                    if (s + 1 < sectionCount && nextSec + 80 <= (uint)DataPayload.Length)
+                        nextFirst = (int)BitConverter.ToUInt32(DataPayload, (int)nextSec + 76);
+                    numShared = Math.Max(0, nextFirst - firstSharedIdx);
+                }
 
                 if (numPacked <= 0 || numPrim <= 0)
                     continue;
@@ -930,7 +949,7 @@ namespace CATHODE
                 firstPrim = (int)BitConverter.ToUInt32(DataPayload, sec + 80);
                 numPacked = DataPayload[sec + 88];
                 numPrim = DataPayload[sec + 89];
-                numShared = 0;
+                numShared = 0;   //not stored in 2018 - the caller derives it from the next section
                 return true;
             }
 
@@ -2321,7 +2340,10 @@ namespace CATHODE
         PackfileObject FindProxyListShape()
         {
             if (Tagfile != null)
-                return null;
+            {
+                int list = Tagfile.ProxyListOffset();
+                return list < 0 ? null : Objects.FirstOrDefault(o => o.DataOffset == (uint)list && o.Class == ObjectClass.ListShape);
+            }
 
             Dictionary<uint, PackfileObject> byOffset = new Dictionary<uint, PackfileObject>();
             for (int i = 0; i < Objects.Count; i++)
@@ -2358,9 +2380,21 @@ namespace CATHODE
         /// </summary>
         public void EnsureProxyListCoversCompounds()
         {
+            EnsureProxyListCoversCompounds(true);
+        }
+
+        /// <param name="refreshTagfileFixups">False when the caller re-reads the fixups itself straight after.</param>
+        internal void EnsureProxyListCoversCompounds(bool refreshTagfileFixups)
+        {
             PackfileObject list = FindProxyListShape();
             if (list == null)
                 return;
+
+            if (Tagfile != null)
+            {
+                EnsureTagfileProxyListCoversCompounds(list.DataOffset, refreshTagfileFixups);
+                return;
+            }
 
             int ptrSize = Header.PointerSize;
             int stride = ListChildEntryStride;
@@ -2443,6 +2477,141 @@ namespace CATHODE
             }
         }
 
+        /* Room left after the tagfile proxy list the last time it moved. Every proxy added appends its
+         * mesh after the list, so without headroom each add moves the whole list again and leaves a
+         * dead copy behind - 38 KB a proxy on bsp_torrens. Only a hint: it is re-checked against the
+         * list's own item before use, so a checkpoint restore that undid the move just moves it again. */
+        uint _tagProxyListArray;
+        int _tagProxyListCapacity;
+        const int TagProxyListHeadroom = 64;
+
+        /// <summary>
+        /// The tagfile half of <see cref="EnsureProxyListCoversCompounds"/>. The list's children are an
+        /// array item, so growing it means moving that item; each slot is a shape pointer filed in PTCH,
+        /// and every other ChildInfo field stays zero as retail leaves them. Slots past the templates
+        /// take the hosts and then whatever was imported, the same padding the packfile branch writes,
+        /// so every compound's ordinal is its list index. The list's own AABB grows to keep covering
+        /// its template children, as retail's does exactly.
+        /// </summary>
+        void EnsureTagfileProxyListCoversCompounds(uint list, bool refreshFixups)
+        {
+            HavokTagfile t = Tagfile;
+            int childField = t.OffsetOf("hkpListShape", "childInfo");
+            int stride = t.SizeOf("hkpListShape::ChildInfo");
+            int shapeAt = t.OffsetOf("hkpListShape::ChildInfo", "shape");
+            int fieldGroup = t.PatchGroupOf("hkpListShape", "childInfo");
+            int slotGroup = t.PatchGroupOf("hkpListShape::ChildInfo", "shape");
+            if (childField < 0 || stride <= 0 || shapeAt < 0 || fieldGroup <= 0 || slotGroup <= 0)
+                return;
+
+            uint field = list + (uint)childField;
+            if (!t.TryResolvePointer(field, out uint oldArray, out int existing))
+                return;
+
+            int wanted = 0;
+            for (int i = 0; i < StaticCompoundShapes.Count; i++)
+                wanted = Math.Max(wanted, StaticCompoundShapes[i].ProxyIndex + 1);
+            if (wanted <= existing)
+                return;
+
+            uint array;
+            bool reserved = existing > 0 && oldArray == _tagProxyListArray && wanted <= _tagProxyListCapacity
+                && _tagProxyListArray + (long)_tagProxyListCapacity * stride <= DataPayload.Length;
+            if (reserved)
+                array = oldArray;
+            else
+            {
+                int capacity = wanted + TagProxyListHeadroom;
+                bool atEnd = existing > 0 && oldArray + (long)existing * stride == DataPayload.Length && (oldArray & 15) == 0;
+                array = atEnd ? oldArray : (uint)AlignPayload(DataPayload.Length, 16);
+
+                byte[] grown = new byte[array + capacity * stride];
+                Buffer.BlockCopy(DataPayload, 0, grown, 0, Math.Min(DataPayload.Length, grown.Length));
+                if (!atEnd && existing > 0)
+                {
+                    //Move the old slots across, pointers and all, and retire the words they came from
+                    Buffer.BlockCopy(DataPayload, (int)oldArray, grown, (int)array, existing * stride);
+                    for (int i = 0; i < existing; i++)
+                    {
+                        int from = (int)oldArray + i * stride + shapeAt;
+                        int to = (int)array + i * stride + shapeAt;
+                        bool held = BitConverter.ToUInt64(grown, from) != 0;
+                        t.ClearPointer(from, slotGroup);
+                        if (held)
+                            t.SetPatch(slotGroup, to);
+                    }
+                    Array.Clear(grown, (int)oldArray, existing * stride);
+                }
+                DataPayload = grown;
+
+                _tagProxyListArray = array;
+                _tagProxyListCapacity = capacity;
+            }
+
+            //The new slots, zero but for the shape
+            Array.Clear(DataPayload, (int)array + existing * stride, (wanted - existing) * stride);
+            List<StaticCompoundShape> added = new List<StaticCompoundShape>();
+            for (int i = existing; i < wanted; i++)
+            {
+                StaticCompoundShape compound = GetCompound(i);
+                if (compound == null)
+                    continue;
+                t.SetPointer((int)array + i * stride + shapeAt, compound.DataOffset, slotGroup);
+                added.Add(compound);
+            }
+            t.SetArray((int)field, (int)array, wanted, fieldGroup);
+
+            GrowTagfileListAabb(list, added);
+
+            //The slots moved and new ones were filed, so the fixups the readers and a later port walk are re-read
+            if (refreshFixups)
+                t.RegisterNewItems(this, t.ItemCount);
+        }
+
+        /// <summary>Widen the proxy list's AABB over new template children (hosts and the empty spare excluded).</summary>
+        void GrowTagfileListAabb(uint list, List<StaticCompoundShape> added)
+        {
+            HavokTagfile t = Tagfile;
+            int halfAt = t.OffsetOf("hkpListShape", "aabbHalfExtents");
+            int centreAt = t.OffsetOf("hkpListShape", "aabbCenter");
+            int domainAt = t.Compound().Domain;
+            if (halfAt < 0 || centreAt < 0 || domainAt < 0 || list + centreAt + 16 > DataPayload.Length)
+                return;
+
+            Vector4 half = ReadVector4(DataPayload, (int)list + halfAt);
+            Vector4 centre = ReadVector4(DataPayload, (int)list + centreAt);
+            Vector3 min = new Vector3(centre.X - half.X, centre.Y - half.Y, centre.Z - half.Z);
+            Vector3 max = new Vector3(centre.X + half.X, centre.Y + half.Y, centre.Z + half.Z);
+            bool grew = false;
+
+            foreach (StaticCompoundShape compound in added)
+            {
+                //A host places other compounds; the list only ever enumerates templates
+                if (compound.Instances.Any(o => o.ShapeClassName == "hkpStaticCompoundShape"))
+                    continue;
+                int at = (int)compound.DataOffset + domainAt;
+                if (compound.Instances.Count == 0 || at + 32 > DataPayload.Length)
+                    continue;
+
+                Vector4 lo = ReadVector4(DataPayload, at);
+                Vector4 hi = ReadVector4(DataPayload, at + 16);
+                Vector3 l = new Vector3(lo.X, lo.Y, lo.Z), h = new Vector3(hi.X, hi.Y, hi.Z);
+                if (!IsFinite(l) || !IsFinite(h) || l.X > h.X || l.Y > h.Y || l.Z > h.Z
+                    || Math.Max(l.Length(), h.Length()) > 1e7f)
+                    continue;
+
+                min = Vector3.Min(min, l);
+                max = Vector3.Max(max, h);
+                grew = true;
+            }
+            if (!grew)
+                return;
+
+            Vector3 newHalf = (max - min) * 0.5f, newCentre = (max + min) * 0.5f;
+            WriteVector4(DataPayload, (int)list + halfAt, new Vector4(newHalf, half.W));
+            WriteVector4(DataPayload, (int)list + centreAt, new Vector4(newCentre, centre.W));
+        }
+
         /// <summary>
         /// Resize every compound's child shape key field to fit what it now holds.
         /// <para>
@@ -2457,11 +2626,14 @@ namespace CATHODE
         /// </summary>
         public void RefreshCompoundShapeKeyBits()
         {
-            if (Tagfile != null)
-                return;
-
             int ptrSize = Header.PointerSize;
             int bitsField = (ptrSize == 8 ? 0x38 : 0x20) - 8;
+
+            //2018 keeps it at the same 48, and retail's hosts follow the same rule (6 of 6 on iOS)
+            if (Tagfile != null)
+                bitsField = Tagfile.OffsetOf("hkpStaticCompoundShape", "numBitsForChildShapeKey");
+            if (bitsField < 0)
+                return;
 
             Dictionary<uint, StaticCompoundShape> byOffset = new Dictionary<uint, StaticCompoundShape>();
             for (int i = 0; i < StaticCompoundShapes.Count; i++)
@@ -2603,13 +2775,30 @@ namespace CATHODE
         List<StaticCompoundShape> CompoundsOwnedByRigidBodies()
         {
             List<StaticCompoundShape> owned = new List<StaticCompoundShape>();
-            if (Tagfile != null)
-                return owned;
 
             Dictionary<uint, StaticCompoundShape> compoundByOffset = new Dictionary<uint, StaticCompoundShape>();
             for (int i = 0; i < StaticCompoundShapes.Count; i++)
                 if (StaticCompoundShapes[i] != null)
                     compoundByOffset[StaticCompoundShapes[i].DataOffset] = StaticCompoundShapes[i];
+
+            /* A tagfile's bodies name their shape by item index at collidable.shape. The same three
+             * hosts come out, first in the file rather than last - and Frontend's, one instance each,
+             * are found at all, where the instance-count fallback below rejects them. */
+            if (Tagfile != null)
+            {
+                int shapeAt = Tagfile.OffsetOfPath("hkpRigidBody", "collidable", "shape");
+                if (shapeAt < 0)
+                    return owned;
+                foreach (PackfileObject body in Objects
+                    .Where(o => o != null && o.Class == ObjectClass.RigidBody)
+                    .OrderBy(o => o.DataOffset))
+                {
+                    if (Tagfile.TryResolvePointer(body.DataOffset + (uint)shapeAt, out uint shape, out _) && shape != 0
+                        && compoundByOffset.TryGetValue(shape, out StaticCompoundShape host))
+                        owned.Add(host);
+                }
+                return owned;
+            }
 
             List<PackfileObject> bodies = Objects
                 .Where(o => o != null && string.Equals(o.ClassName, "hkpRigidBody", StringComparison.Ordinal))
@@ -2707,7 +2896,9 @@ namespace CATHODE
 
         /// <summary>
         /// Copy the object subgraph rooted at <paramref name="sourceRootOffset"/> into this packfile.
-        /// Returns the new root data offset.
+        /// Returns the new root data offset. On a tagfile the typed views (objects, compounds, systems)
+        /// do not show the copy until they are rebuilt, as <see cref="ImportStaticCompoundShape"/> and
+        /// <see cref="ImportPhysicsSystem"/> do.
         /// </summary>
         public uint ImportObjectGraph(HavokPackfile source, uint sourceRootOffset, Dictionary<uint, uint> remapCache = null)
         {
@@ -2778,6 +2969,14 @@ namespace CATHODE
 
             if (pieces.Count == 0)
                 throw new InvalidOperationException("Nothing to copy from source Havok graph.");
+
+            //A tagfile graph whose types cannot come across is refused before anything here changes
+            if (Tagfile != null)
+            {
+                string refusal = CheckTagfileImport(source, srcToDst, out _);
+                if (refusal != null)
+                    throw new InvalidOperationException(refusal);
+            }
 
             byte[] grown = new byte[writeAt];
             Buffer.BlockCopy(DataPayload, 0, grown, 0, DataPayload.Length);
@@ -2882,6 +3081,14 @@ namespace CATHODE
                 return i >= 0 ? i : ~i - 1;
             }
             var bounds = new HashSet<uint>(starts);
+
+            //A tagfile says exactly where every object and array starts - its items - and says it
+            //correctly after an edit has moved an array, which a stale object list would not
+            if (source.Tagfile != null)
+                foreach (HavokTagfile.Item item in source.Tagfile.Items())
+                    if (item.Word != 0)
+                        bounds.Add((uint)item.Offset);
+
             for (int l = 0; l < source.LocalFixups.Count; l++)
             {
                 LocalFixup lf = source.LocalFixups[l];
@@ -3312,37 +3519,21 @@ namespace CATHODE
         /// </summary>
         void ImportTagfileItems(HavokPackfile source, Dictionary<uint, uint> srcToDst)
         {
-            /* The two files number their types differently - each level declares only the types it
-             * uses - so every type index that comes across has to be translated into ours. */
-            int[] types = Tagfile.MapTypesFrom(source.Tagfile);
             List<HavokTagfile.Item> items = source.Tagfile.Items();
             List<KeyValuePair<int, int>> patches = source.Tagfile.Patches();
 
             /* Check every type this graph needs before registering any of it. Half an import is worse
              * than none: the objects would be claimed but their pointers never listed. */
-            for (int i = 1; i < items.Count; i++)
-            {
-                if (!srcToDst.ContainsKey((uint)items[i].Offset))
-                    continue;
+            string refusal = CheckTagfileImport(source, srcToDst, out List<int> missing);
+            if (refusal != null)
+                throw new InvalidOperationException(refusal);
 
-                int theirs = (int)(items[i].Word & 0xFFFFFF);
-                if (theirs < 1 || theirs >= types.Length || types[theirs] < 0)
-                {
-                    throw new InvalidOperationException(
-                        "Cannot import this Havok object: the destination has no "
-                        + source.Tagfile.SignatureOf(theirs) + ".");
-                }
-            }
-            foreach (KeyValuePair<int, int> patch in patches)
-            {
-                if (srcToDst.ContainsKey((uint)patch.Value)
-                    && (patch.Key < 1 || patch.Key >= types.Length || types[patch.Key] < 0))
-                {
-                    throw new InvalidOperationException(
-                        "Cannot import this Havok object: the destination has no "
-                        + source.Tagfile.SignatureOf(patch.Key) + " to hold one of its pointers.");
-                }
-            }
+            /* The two files number their types differently - each level declares only the types it
+             * uses - so every type index that comes across has to be translated into ours. One we do
+             * not declare at all is copied across from the source first, with everything it needs. */
+            int[] types = missing.Count == 0
+                ? Tagfile.MapTypesFrom(source.Tagfile)
+                : Tagfile.ImportTypes(source.Tagfile, missing);
 
             //Items first, so the pointers below can be pointed at them
             for (int i = 1; i < items.Count; i++)
@@ -3386,6 +3577,55 @@ namespace CATHODE
                 Tagfile.WriteIndexAt((int)moved, ours);
                 Tagfile.SetPatch(group, (int)moved);
             }
+
+            /* THSH hashes exactly the types in use, and this may be the first use of a type we only
+             * declared - T*<hkpConstraintMotor> comes along with Switch tech_rnd_hzdlab's swinging
+             * signs. The source uses it, so the source has its hash. And an appended type the source
+             * happened to hash but nothing here uses carries none. */
+            Tagfile.HashUsedTypesFrom(source.Tagfile, types);
+            Tagfile.DropUnusedHashes();
+        }
+
+        /// <summary>
+        /// Whether a tagfile graph can come across: every item's type and every pointer's declared
+        /// type either exists here or can be added from the source. Returns why not, or null - with
+        /// the source types that will have to be added. Changes nothing, so it can run before the
+        /// payload grows and a refusal leaves the destination exactly as it was.
+        /// </summary>
+        string CheckTagfileImport(HavokPackfile source, Dictionary<uint, uint> srcToDst, out List<int> missing)
+        {
+            missing = new List<int>();
+            int[] types = Tagfile.MapTypesFrom(source.Tagfile);
+            HashSet<int> needed = new HashSet<int>();
+
+            List<HavokTagfile.Item> items = source.Tagfile.Items();
+            for (int i = 1; i < items.Count; i++)
+            {
+                if (!srcToDst.ContainsKey((uint)items[i].Offset))
+                    continue;
+
+                int theirs = (int)(items[i].Word & 0xFFFFFF);
+                if (theirs < 1 || theirs >= types.Length)
+                    return "Cannot import this Havok object: the source names type " + theirs + " for one of its objects, which it does not declare.";
+                if (types[theirs] < 0 && needed.Add(theirs))
+                    missing.Add(theirs);
+            }
+            foreach (KeyValuePair<int, int> patch in source.Tagfile.Patches())
+            {
+                if (!srcToDst.ContainsKey((uint)patch.Value))
+                    continue;
+
+                if (patch.Key < 1 || patch.Key >= types.Length)
+                    return "Cannot import this Havok object: the source files one of its pointers under type " + patch.Key + ", which it does not declare.";
+                if (types[patch.Key] < 0 && needed.Add(patch.Key))
+                    missing.Add(patch.Key);
+            }
+
+            if (missing.Count == 0)
+                return null;
+
+            string why = Tagfile.CanImportTypes(source.Tagfile, missing);
+            return why == null ? null : "Cannot import this Havok object: " + why;
         }
 
         internal void AppendPhysicsSystemToPhysicsData(uint systemDataOffset)
@@ -3501,9 +3741,16 @@ namespace CATHODE
             if (slotGroup <= 0)
                 throw new InvalidOperationException("The tagfile has no existing physics system pointers to follow.");
 
-            //Retire the slots the old array used, so the patch table does not keep growing
+            //Retire the slots the old array used, so the patch table does not keep growing - and clear
+            //them, so no stale item index or fixup is left in bytes nothing claims any more
             for (int n = 0; n < oldCount; n++)
                 Tagfile.ClearPointer((int)(oldArray + (uint)(n * 8)), slotGroup);
+            if (oldCount > 0 && oldArray + (uint)(oldCount * 8) <= (uint)DataPayload.Length)
+            {
+                Array.Clear(DataPayload, (int)oldArray, oldCount * 8);
+                uint oldEnd = oldArray + (uint)(oldCount * 8);
+                GlobalFixups.RemoveAll(o => o.Src >= oldArray && o.Src < oldEnd);
+            }
 
             int at = AlignPayload(DataPayload.Length, 16);
             byte[] grown = new byte[at + systems.Count * 8];
@@ -5179,6 +5426,10 @@ namespace CATHODE
 
         internal string ReadStringPtr(uint stringPtrFieldOffset)
         {
+            //A tagfile string is an item of chars the word names by index, not a local fixup
+            if (Tagfile != null)
+                return Tagfile.ReadString((int)stringPtrFieldOffset);
+
             for (int f = 0; f < LocalFixups.Count; f++)
             {
                 if (LocalFixups[f].Src != stringPtrFieldOffset)
@@ -5390,8 +5641,31 @@ namespace CATHODE
                 newInstancesOff = (int)oldInstancesOff;
                 newNodesOff = (int)oldNodesOff;
             }
+            /* The same on a tagfile, where the storage an array word names is its item's offset and
+             * count. Without it every Save & Build grew iOS bsp_torrens' collision file by 336 KB. What
+             * the old arrays held past their new ends belongs to no item any more, so it is cleared. */
+            else if (Tagfile != null
+                && TryGetTagfileArrayRegion(instancesField, instanceStride, out uint tagInstancesOff, out int tagInstancesBytes)
+                && TryGetTagfileArrayRegion(treeField, 6, out uint tagNodesOff, out int tagNodesBytes)
+                && instancesBytes <= tagInstancesBytes
+                && nodesBytes <= tagNodesBytes)
+            {
+                newInstancesOff = (int)tagInstancesOff;
+                newNodesOff = (int)tagNodesOff;
+                Array.Clear(DataPayload, newInstancesOff + instancesBytes, tagInstancesBytes - instancesBytes);
+                Array.Clear(DataPayload, newNodesOff + nodesBytes, tagNodesBytes - nodesBytes);
+            }
             else
             {
+                //Arrays that are about to move out belong to no item afterwards: clear them, as retail has no stale bytes
+                if (Tagfile != null)
+                {
+                    if (TryGetTagfileArrayRegion(instancesField, instanceStride, out uint staleInstances, out int staleInstancesBytes))
+                        Array.Clear(DataPayload, (int)staleInstances, staleInstancesBytes);
+                    if (TryGetTagfileArrayRegion(treeField, 6, out uint staleNodes, out int staleNodesBytes))
+                        Array.Clear(DataPayload, (int)staleNodes, staleNodesBytes);
+                }
+
                 newInstancesOff = AlignPayload(DataPayload.Length, 16);
                 newNodesOff = AlignPayload(newInstancesOff + Math.Max(instancesBytes, 0), 16);
                 int newPayloadLen = newNodesOff + nodesAligned;
@@ -5463,6 +5737,20 @@ namespace CATHODE
             // Domain AABB in embedded tree header (leave as-is if empty — still valid bounds).
             WriteVector4(DataPayload, (int)domainOffset, compound.DomainMin);
             WriteVector4(DataPayload, (int)domainOffset + 16, compound.DomainMax);
+        }
+
+        /// <summary>Where a tagfile array word's storage is: its item's offset, and count times the stride.</summary>
+        bool TryGetTagfileArrayRegion(uint arrayField, int stride, out uint dataOffset, out int byteCount)
+        {
+            dataOffset = 0;
+            byteCount = 0;
+            if (!Tagfile.TryResolvePointer(arrayField, out uint at, out int count) || at == 0 || count <= 0)
+                return false;
+            if ((long)at + (long)count * stride > DataPayload.Length)
+                return false;
+            dataOffset = at;
+            byteCount = count * stride;
+            return true;
         }
 
         /// <summary>
