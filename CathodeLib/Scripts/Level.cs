@@ -156,6 +156,11 @@ namespace CathodeLib
         private bool _patched = false;
 
         /// <summary>
+        /// The DATA folder of the install this level is in: the level's own path up to the DATA/ENV/ its <see cref="Name"/> follows.
+        /// </summary>
+        public string PathToData => _filepath.Substring(0, _filepath.IndexOf("DATA/ENV/")) + "DATA";
+
+        /// <summary>
         /// The script file <see cref="Load"/> will read for this level, resolved without loading anything:
         /// the PAK where one ships, else the BIN (gzipped on builds that compress their level data).
         /// </summary>
@@ -382,7 +387,7 @@ namespace CathodeLib
             ReloadStateResources();
             OnLoadTick?.Invoke();
 
-            string pathDATA = _filepath.Replace('\\', '/').Split(new string[] { "/DATA/ENV" }, StringSplitOptions.None)[0] + "/DATA";
+            string pathDATA = PathToData;
             Strings = new Dictionary<string, Dictionary<string, TextDB>>();
             if (File.Exists(pathDATA + "/LEVEL_TEXT_DATABASES.XML"))
             {
@@ -534,6 +539,8 @@ namespace CathodeLib
             RenderableElements.Save(); OnSaveTick?.Invoke();
             RefreshEnvironmentMapIndexing();
             Movers.Save(); OnSaveTick?.Invoke();
+
+            BehaviorTreeDB.Regenerate(BehaviorTreeDB.ReadRequirements(PathToData));
 
             Parallel.Invoke(
                 () => { PathBarrierResources.Save(); OnSaveTick?.Invoke(); },
@@ -716,9 +723,10 @@ namespace CathodeLib
         ///
         /// Most of a level's files can be written from nothing by their parsers, and are. A few hold
         /// authored data that is the same on every shipped level and that nothing can regenerate - the
-        /// sound bank, event and dialogue tables, the behaviour tree database, the material mapping
-        /// table, the galaxy, the morph target name table - and the Havok collision and physics files are
-        /// scaffolds every level's rigid bodies are built on. Those are copied from <paramref name="baseLevel"/>,
+        /// sound bank, event and dialogue tables, the material mapping table, the galaxy, the morph target
+        /// name table - and the Havok collision and physics files are scaffolds every level's rigid bodies
+        /// are built on. Those are copied from <paramref name="baseLevel"/>, along with the behaviour tree
+        /// database (which saving regenerates from the character configs, keeping the base's order),
         /// which must already be loaded. FRONTEND is the natural base: its Havok files are the smallest
         /// the game ships (one instance per world host, which the format needs), and every table it
         /// carries is the campaign variant.
@@ -778,7 +786,9 @@ namespace CathodeLib
         /// (models want its name table), GALAXY.DEFINITION_BIN (its parser cannot write from a
         /// never-loaded state), and the two DX11 stubs. The sound, behaviour-tree and galaxy-items
         /// tables a runnable level copies as well are left out: they are dead weight in a level that
-        /// exists to carry composites somewhere else, and their parsers write an empty one on save.
+        /// exists to carry composites somewhere else, and their parsers write an empty one on save (the
+        /// behaviour tree list is generated on save where the folder sits in an install with character
+        /// configs, and stays empty otherwise).
         /// The folder is a retail-style one (RENDERABLE and WORLD beneath it); the level's global is
         /// passed separately, since a folder has no idea which install it belongs to.
         /// </summary>
