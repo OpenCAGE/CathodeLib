@@ -100,6 +100,14 @@ namespace CathodeLib.Radiosity
             /// <summary>Coarse occupancy of the unit UV square, used to compute UvCoverage.</summary>
             internal bool[] UvGrid;
 
+            /// <summary>
+            /// Raw (unwrapped) bounds of this instance's lightmap UVs, for
+            /// <see cref="TryRectFromUvConvention"/>. Retail's compiler wrote each chart into its
+            /// rect with texel centres at (i + 0.5) / (w - 0.5), so the chart's extent along U is
+            /// (w - 1) / (w - 0.5) and the rect size is recoverable from the mesh alone.
+            /// </summary>
+            public float UvMinU = float.MaxValue, UvMaxU = float.MinValue, UvMinV = float.MaxValue, UvMaxV = float.MinValue;
+
             public Vector3 BoundsMin = new Vector3(float.MaxValue);
             public Vector3 BoundsMax = new Vector3(float.MinValue);
 
@@ -143,6 +151,9 @@ namespace CathodeLib.Radiosity
 
         /// <summary>Three vertex indices per triangle.</summary>
         public int[] Tris = Array.Empty<int>();
+
+        /// <summary>Per triangle: its material alpha-tests or alpha-blends (see-through between opaque texels).</summary>
+        public bool[] TriSeeThrough = Array.Empty<bool>();
 
         /// <summary>World-space vertex normals, one per vertex.</summary>
         public Vector3[] Normals = Array.Empty<Vector3>();
@@ -304,6 +315,7 @@ namespace CathodeLib.Radiosity
             var uvs = new List<Vector2>();
             var diffuseUvs = new List<Vector2>();
             var tris = new List<int>();
+            var triSeeThrough = new List<bool>();
             var triInstance = new List<int>();
             var triMaterial = new List<int>();
             var triMoverSlot = new List<int>();
@@ -437,6 +449,7 @@ namespace CathodeLib.Radiosity
                     if (mesh.Vertices.Count == 0 || mesh.Indices.Count < 3)
                         continue;
 
+                    bool seeThrough = IsSeeThroughMaterial(element);
                     int materialSlot = geo.MaterialSampler.Register(element.Material);
                     Vector3 albedo = geo.MaterialSampler.Mean(materialSlot);
                     Vector3 emissive = ResolveEmissive(mover, element, settings);
@@ -464,7 +477,7 @@ namespace CathodeLib.Radiosity
                         normals.Add(len > 1e-6f ? n / len : Vector3.UnitY);
 
                         uvs.Add(lightmapChannel >= 0 ? mesh.UVs[lightmapChannel][v] * uvScale : Vector2.Zero);
-                        diffuseUvs.Add(hasDiffuseUVs ? mesh.UVs[0][v] * (1.0f / 16.0f) : Vector2.Zero);
+                        diffuseUvs.Add(hasDiffuseUVs ? mesh.UVs[0][v] * (settings.DiffuseUvToMeshScale ? 1.0f : 1.0f / 16.0f) : Vector2.Zero);   // x1 = the S16_2N x16 uv ToMesh returns (see DiffuseUvToMeshScale)
 
                         geo.BoundsMin = Vector3.Min(geo.BoundsMin, world);
                         geo.BoundsMax = Vector3.Max(geo.BoundsMax, world);
@@ -507,6 +520,7 @@ namespace CathodeLib.Radiosity
                         triMoverSlot.Add(moverSlot);
                         triAlbedo.Add(albedo);
                         triEmissive.Add(emissive);
+                        triSeeThrough.Add(seeThrough);
                         contributedGeometry = true;
                     }
                     elementsTaken++;
@@ -525,6 +539,7 @@ namespace CathodeLib.Radiosity
 
             geo.Verts = verts.ToArray();
             geo.Tris = tris.ToArray();
+            geo.TriSeeThrough = triSeeThrough.ToArray();
             geo.Normals = normals.ToArray();
             geo.LightmapUVs = uvs.ToArray();
             geo.DiffuseUVs = diffuseUvs.ToArray();
@@ -675,6 +690,15 @@ namespace CathodeLib.Radiosity
             if (instance.UvGrid == null)
                 instance.UvGrid = new bool[UvGridSize * UvGridSize];
 
+            foreach (int vi in new[] { i0, i1, i2 })
+            {
+                Vector2 raw = uvs[vi];
+                if (raw.X < instance.UvMinU) instance.UvMinU = raw.X;
+                if (raw.X > instance.UvMaxU) instance.UvMaxU = raw.X;
+                if (raw.Y < instance.UvMinV) instance.UvMinV = raw.Y;
+                if (raw.Y > instance.UvMaxV) instance.UvMaxV = raw.Y;
+            }
+
             Vector2 a = Wrap(uvs[i0]), b = Wrap(uvs[i1]), c = Wrap(uvs[i2]);
             int minX = (int)(Math.Min(a.X, Math.Min(b.X, c.X)) * UvGridSize);
             int maxX = (int)(Math.Max(a.X, Math.Max(b.X, c.X)) * UvGridSize);
@@ -721,6 +745,53 @@ namespace CathodeLib.Radiosity
                 int cx = Math.Max(0, Math.Min(UvGridSize - 1, (int)((a.X + b.X + c.X) / 3.0f * UvGridSize)));
                 int cy = Math.Max(0, Math.Min(UvGridSize - 1, (int)((a.Y + b.Y + c.Y) / 3.0f * UvGridSize)));
                 instance.UvGrid[cy * UvGridSize + cx] = true;
+            }
+        }
+
+        /// <summary>
+        /// Retail's rect size for geometry that still carries retail's lightmap UVs, read off the
+        /// mesh alone.
+        /// </summary>
+        /// <remarks>
+        /// <para>Measured 16 Sep 2026 over the 30,494 retail-baked islands of the ten challenge
+        /// maps: the extent of an island's lightmap UVs along U is <c>(w - 1) / (w - 0.5)</c>
+        /// where <c>w</c> is the rect width retail shipped in MODEL_PARAMS (which stores
+        /// <c>w - 0.5</c>, the same denominator), and likewise V against the height - exact on
+        /// 95.1% of islands and within one texel on 99.2%; the misses are islands whose movers do
+        /// not span their model's whole chart, which under-reads. CA's compiler chose the rect and
+        /// then wrote the chart into it with texel centres at <c>(i + 0.5) / (w - 0.5)</c>, so the
+        /// choice is baked into every shipped mesh. It is what RADIOSITY_LEVEL.BIN's "adjusted UV
+        /// bounds" (which do not ship) recorded, and it is why the area formula could never match:
+        /// retail's rects were never a function of area.</para>
+        /// <para>Only geometry authored through that compiler carries the convention. An imported
+        /// mesh whose chart fills the unit square, or was laid out by another tool, fails the
+        /// consistency test below and keeps the area formula. The rule is exact for the reason
+        /// Matt asked for parity "even if only in the models we rebake": every retail model keeps
+        /// retail's own probe density, wherever it is placed.</para>
+        /// </remarks>
+        public static bool TryRectFromUvConvention(Instance instance, out int width, out int height)
+        {
+            width = height = 0;
+            if (instance == null || instance.UvMaxU < instance.UvMinU || instance.UvMaxV < instance.UvMinV)
+                return false;
+            if (!Solve(instance.UvMaxU - instance.UvMinU, out width)) return false;
+            if (!Solve(instance.UvMaxV - instance.UvMinV, out height)) return false;
+            return true;
+
+            // extent e = (w - 1) / (w - 0.5)  =>  w = (1 - 0.5 e) / (1 - e). The chart's far edge
+            // sits at exactly 1.0 and the near one at 0.5 / (w - 0.5), so a chart that was not
+            // written by the compiler (or one clipped to a partial island) lands between integers.
+            static bool Solve(float extent, out int size)
+            {
+                size = 0;
+                if (!(extent > 0.55f) || extent >= 0.992f)      // below w=2 or beyond w=64
+                    return false;
+                double w = (1.0 - 0.5 * extent) / (1.0 - extent);
+                int rounded = (int)Math.Round(w);
+                if (rounded < 2 || rounded > 64 || Math.Abs(w - rounded) > 0.2)
+                    return false;
+                size = rounded;
+                return true;
             }
         }
 
@@ -894,6 +965,38 @@ namespace CathodeLib.Radiosity
             Vector3 direction = delta / distance;
             var ray = new Ray(from + direction * slack, direction, 0.0f, distance - slack * 2.0f);
             return !bvh.Occluded(ref ray);
+        }
+
+        /// <summary>
+        /// <see cref="Visible"/> against the RENDER meshes (never the collision occluder set), with a plain epsilon at each end,
+        /// optionally softened: the line counts as visible when the centre ray or any of <paramref name="softRays"/> rays, both
+        /// ends jittered up to <paramref name="jitter"/> metres across the line, is unblocked. The jitter is seeded from the
+        /// endpoints so a bake is deterministic. This is the cut's "soft render" test (27-28 Sep: on Solace it scores 10.5
+        /// where collision occluders score 11.5).
+        /// </summary>
+        public bool VisibleRenderSoft(Vector3 from, Vector3 to, float epsilon, int softRays, float jitter)
+        {
+            bool Clear(Vector3 a, Vector3 b)
+            {
+                Vector3 delta = b - a; float distance = delta.Length();
+                if (distance <= epsilon * 2.0f) return true;
+                Vector3 direction = delta / distance;
+                var ray = new Ray(a + direction * epsilon, direction, 0.0f, distance - epsilon * 2.0f);
+                return !Bvh.Occluded(ref ray);
+            }
+            if (Clear(from, to)) return true;
+            Vector3 d = to - from; float len = d.Length(); if (len < 1e-3f) return true; d /= len;
+            Vector3 t1 = Vector3.Normalize(Vector3.Cross(d, Math.Abs(d.Y) < 0.9f ? Vector3.UnitY : Vector3.UnitX)), t2 = Vector3.Cross(d, t1);
+            uint Q(float v) => unchecked((uint)(int)Math.Round(v * 1024.0f));
+            uint s = unchecked(Q(from.X) * 73856093u ^ Q(from.Y) * 19349663u ^ Q(from.Z) * 83492791u ^ Q(to.X) * 2654435761u ^ Q(to.Y) * 40503u ^ Q(to.Z) * 97u);
+            if (s == 0) s = 0x9E3779B9u;
+            float Next() { s ^= s << 13; s ^= s >> 17; s ^= s << 5; return (s & 0xFFFFFF) / (float)0x800000 - 1f; }
+            for (int i = 0; i < softRays; i++)
+            {
+                float u1 = Next(), v1 = Next(), u2 = Next(), v2 = Next();
+                if (Clear(from + (t1 * u1 + t2 * v1) * jitter, to + (t1 * u2 + t2 * v2) * jitter)) return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -1087,6 +1190,8 @@ namespace CathodeLib.Radiosity
             if (settings.SkipNonRendered && mover.CullFlags.HasFlag(Movers.CullFlag.NO_RENDER))
                 return false;
             if (settings.StaticGeometryOnly && mover.Flags != null && !mover.Flags.Stationary)
+                return false;
+            if (settings.SkipInvisibleMovers && mover.Flags != null && !mover.Flags.Visible)
                 return false;
 
             switch (mover.GetRenderableType())
@@ -1371,6 +1476,19 @@ namespace CathodeLib.Radiosity
             if (shader == null || shader.Ubershader != SHADER_LIST.CA_ENVIRONMENT)
                 return false;
             return (shader.UbershaderFeatureFlags & (1L << (int)CA_ENVIRONMENT.FEATURES.EMISSIVE)) != 0;
+        }
+
+        /// <summary>Does this element's material alpha-test or alpha-blend (a grate, fence, mesh panel or decal that light
+        /// passes through between its opaque texels)? CA_ENVIRONMENT ALPHA_TEST / FORCE_TO_ALPHA / USE_ALPHA_AS_BLENDFACTOR.</summary>
+        private static bool IsSeeThroughMaterial(RenderableElements.Element element)
+        {
+            Shaders.Shader shader = element?.Material?.Shader;
+            if (shader == null || shader.Ubershader != SHADER_LIST.CA_ENVIRONMENT)
+                return false;
+            long f = shader.UbershaderFeatureFlags;
+            return (f & (1L << (int)CA_ENVIRONMENT.FEATURES.ALPHA_TEST)) != 0 ||
+                   (f & (1L << (int)CA_ENVIRONMENT.FEATURES.FORCE_TO_ALPHA)) != 0 ||
+                   (f & (1L << (int)CA_ENVIRONMENT.FEATURES.USE_ALPHA_AS_BLENDFACTOR)) != 0;
         }
 
         /// <summary>Diagnostic-visible form of <see cref="IsEmissiveMaterial"/> for external tooling.</summary>

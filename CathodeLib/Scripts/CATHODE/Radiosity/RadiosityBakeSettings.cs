@@ -81,6 +81,16 @@ namespace CathodeLib.Radiosity
         public bool PatchRetailRuntime = true;
 
         /// <summary>
+        /// Full regenerations bake with the validated configuration (<see cref="WithValidatedFullBakeProfile"/>): the
+        /// settings it lists are overridden, every other setting keeps this object's value. Full regenerations run on new
+        /// levels, on levels with missing or wiped radiosity, on levels we regenerated before, and on every level when
+        /// <see cref="PatchRetailRuntime"/> is off (which assumes an unedited retail level - see the profile's remarks).
+        /// The delta path (<see cref="RadiosityPatcher"/>) is unaffected. Turn this off to bake a full regeneration with
+        /// exactly the values set here (the parity harness does, to test one setting at a time).
+        /// </summary>
+        public bool UseValidatedFullBakeProfile = true;
+
+        /// <summary>
         /// Pristine MODEL_PARAMS lightmap transforms (first 16 bytes of RENDER_CONSTANTS), keyed
         /// by the mover's resource GUID pair packed as (composite &lt;&lt; 32 | resource). Harvested
         /// by the caller BEFORE instancing and written back by <see cref="RadiosityPatcher"/>:
@@ -561,6 +571,131 @@ namespace CathodeLib.Radiosity
         /// retail's 17, weight-sum mean 2878 against 4019), which is the dark bar down that panel.
         /// </remarks>
         public bool RepointZeroInfluenceTexels = true;
+
+        /// <summary>
+        /// Write, at every input probe's slot of the mangle map, the (B, A) address of the atlas
+        /// texel the probe sits on - the address the engine feeds the lightmap back through
+        /// (probe radiance = albedo x lightmap(B, A) + injected light). Decoded 18 Sep 2026 from
+        /// retail Solace / ChallengeMap4 / SCI_Hub, where 100% of live probes resolve to a surface
+        /// probe 0.30 m (p50) from themselves. Before this we wrote (255, 63) everywhere and no
+        /// probe of ours ever received a bounce: ablating retail's emissive light table leaves
+        /// 97% of Solace's look, ablating its albedo removes it.
+        /// </summary>
+        public bool WriteInputProbeFeedbackAddress = true;
+
+        /// <summary>
+        /// Choose each input probe's feedback texel by facing rather than by election: the nearest
+        /// surface texel whose normal agrees with the probe's (dot > 0.3) and which has the probe
+        /// in front of its plane, within <see cref="FeedbackTexelFacingMaxDistance"/>; only when no
+        /// such texel exists does the probe fall back to the plain nearest surface texel. Retail's
+        /// probes sit ON their texel, so the lightmap value fed back is that of the surface the
+        /// probe represents; the election rule feeds half of ours from whatever surface happens to
+        /// be nearest, a wall for a floor probe in a corner. Experimental (19 Sep 2026).
+        /// </summary>
+        /// <remarks>
+        /// A/B on the final build (Solace, ChallengeMap5/7/9/16): the fallback share fell from 52% to 15%
+        /// of probes and the five-level mean went 12.25 / 11.88 (two captures of the default) to 12.11
+        /// (facing) / 11.92 (facing + visible) - inside capture noise. Left off.
+        /// </remarks>
+        public bool FeedbackTexelFacing = false;
+        public float FeedbackTexelFacingMaxDistance = 1.5f;
+        /// <summary>With <see cref="FeedbackTexelFacing"/>: the chosen texel must also be visible from the probe (nearest visible of the eight nearest facing candidates).</summary>
+        public bool FeedbackTexelVisible = false;
+
+        /// <summary>
+        /// A probe whose chosen feedback texel lies farther than this keeps the "no feedback" sentinel
+        /// (255, 63) instead of bouncing an unrelated surface's lightmap. Retail's feedback texels sit
+        /// 0.30 m (p50) / 0.56 m (p90) from their probe; without a cap the appended probe slices of a
+        /// delta bake (no lightmapped rects, only donor texels) fed their probes from texels 13.6 m away
+        /// on average (ChallengeMap3 room test, 23 Sep 2026). 0 disables the cap.
+        /// DEFAULT OFF (23 Sep evening): the sentinel is NOT inert in the engine - its uv reads outside the
+        /// probe range and retail's all-sentinel ablation LIT rooms (luma 42-48); the cap left 7-132 live
+        /// probes per level on it and confounded every A/B built with alt42-alt48. Retail never ships a
+        /// sentinel on a live probe.
+        /// </summary>
+        public float FeedbackMaxDistance = 0f;
+
+        /// <summary>
+        /// Where retail ships several light slices for one entity chained through SiblingIndex
+        /// (one per emissive state), emit the same chain - each state with its own colour, scale,
+        /// sample count and flux, on the samples we placed - instead of one merged always-on slice.
+        /// Needs retail priors; the engine plays the state the entity is in at runtime.
+        /// </summary>
+        public bool EmitRetailSiblingChains = true;
+
+        /// <summary>
+        /// Store input-probe normals in retail's byte order (z, y, x). False restores the (x, y, z)
+        /// order written before 18 Sep 2026, for A/B only.
+        /// </summary>
+        public bool InputProbeNormalsZYX = true;
+
+        /// <summary>
+        /// Stacked-chart rasterisation: when several movers of one island cover the same texel with
+        /// near-parallel surfaces (nested skins), the FRONT-most one along the shared normal wins the
+        /// texel instead of the first triangle rasterised. Decoded 18 Sep 2026 on Solace's Anesidora
+        /// core (island 1880): retail's texels sit on the visible inner liner; first-come put ours on
+        /// the hull 0.6-5 m behind it and the room rendered at 0.1-0.5x.
+        /// </summary>
+        /// <remarks>Measured 18 Sep 2026 in its within-mover form (any later parallel triangle of the same island, same
+        /// mover or not): re-claims ~8000 texels on Solace and wins on every level A/B'd - ChallengeMap9 13.14 -> 12.50,
+        /// Solace 14.02 -> 13.41, ChallengeMap1 15.26 -> 14.38, ChallengeMap5 14.94 -> 13.88. The cross-mover-only form
+        /// regressed ChallengeMap9 (14.83). It does NOT move island 1880 (retail's records there are off-mesh).</remarks>
+        public bool PreferFrontmostSkin = true;
+        public float PreferFrontmostSkinMaxDepth = 3.0f;
+
+        /// <summary>
+        /// Sideways bound for the frontmost-skin re-claim: the new surface point must lie within
+        /// max(this, advance) of the current texel measured in the texel's plane. Without it a wall
+        /// texel on SCI_Hub was taken over by an end panel 5 m away (cam21 34.2 rmse; 20.2 with the rule
+        /// off) and lamp samples moved onto the wrong surface (deep dive, 23 Sep 2026). 0 = unbounded.
+        /// </summary>
+        public float PreferFrontmostSkinMaxLateral = 0f;
+
+        /// <summary>
+        /// Scale the influence solve so the per-probe members-weighted summed gain has this median
+        /// (then apply InfluenceGainCap). Retail: p50 0.64-0.78, cap 0.957, every level.
+        /// </summary>
+        public float InfluenceGainMedianTarget = 0f;
+
+        /// <summary>
+        /// Lift the stored input-probe / surface-probe positions off the mesh along their normals (m).
+        /// Retail's input probes sit ~3 cm in front of the surface and its surface-probe records ~8 cm
+        /// (measured 18 Sep 2026 against our on-mesh texel centres); ours sat exactly on it, where a
+        /// runtime depth test against the geometry that owns them is a coin toss.
+        /// </summary>
+        public float InputProbeLift = 0.03f;
+        public float SurfaceProbeLift = 0.08f;
+
+        /// <summary>Split the probe trees at the highest power of two below the node count, as retail does (root 9553 -> 8192 | 1361), instead of the median.</summary>
+        public bool ProbeTreePowerOfTwoSplit = true;
+
+        /// <summary>One texel cluster per input probe (its home texel) instead of one per live texel - retail's singleton level; frees slots for the hierarchy. Decoded 18 Sep 2026.</summary>
+        public bool TexelClustersOnlyAtProbes = false;
+
+        /// <summary>Member cap per rung of CoarseClusterRungs (nearest to the bucket centroid kept). Retail's largest patch has 128 members; a 16 m rung otherwise makes patches of 600+. 0 = uncapped.</summary>
+        public int CoarseClusterRungMaxMembers = 0;
+        /// <summary>Split-not-truncate cap for explicit rungs: a bucket with more members is k-d median-split until every piece is under it, each piece a patch of its own. Retail's largest patch: 128. 0 = off.</summary>
+        public int CoarseClusterRungSplitMax = 0;
+
+        /// <summary>
+        /// Build the coarse clusters as retail's NESTED ladder: k-d median splits over the input
+        /// probes, every node with KdMin..KdMax members becoming a patch (largest first into the
+        /// free slots), instead of the spatial rungs. Retail: W 1,2,3-4,5-8,9-16,17-32,33-64 per
+        /// probe, 99% nested. Decoded 18 Sep 2026.
+        /// </summary>
+        public bool CoarseClusterKdHierarchy = false;
+        public int CoarseClusterKdMinMembers = 4;
+        public int CoarseClusterKdMaxMembers = 64;
+
+        /// <summary>
+        /// Place a count-matched emitter's samples nearest its centroid first and, when its own
+        /// texels and the 0.64 m neighbourhood cannot supply retail's sample count, search
+        /// <see cref="EmitterTopUpReach"/> metres for distinct probes. Solace's Anesidora core
+        /// assemblies (79 retail samples within 1 m) got 41 samples spread over 6 m and lost 43%
+        /// of their flux to the 191 per-sample cap.
+        /// </summary>
+        public bool EmitterSamplesNearCentroid = true;
+        public float EmitterTopUpReach = 2.5f;
 
         /// <summary>
         /// Emit surface lights for emissive movers whose emissive triangles never entered the
@@ -1486,6 +1621,249 @@ namespace CathodeLib.Radiosity
         public bool PerModelRectSizes = false;
 
         /// <summary>
+        /// Size an island's atlas rect from the retail lightmap-UV convention its mesh carries
+        /// (see <see cref="RadiosityGeometry.TryRectFromUvConvention"/>), falling back to the area
+        /// formula only for geometry that does not carry it. Exact for 95% of retail islands, so a
+        /// rebaked retail model keeps retail's probe density and the emitter mass its rooms were
+        /// balanced for; new content is sized as before.
+        /// </summary>
+        public bool RectsFromUvConvention = false;
+
+        /// <summary>
+        /// Make each slice's influence graph feed-forward after the solve - see
+        /// <c>RadiosityBaker.BreakReciprocalInfluences</c>. 0 = off; 1 = remove the weaker side of
+        /// every reciprocal pair; 2 = halve it. Ours is ~60% reciprocal; whether retail is was NOT
+        /// established (the first reading was a layout artefact) - this is a stability experiment.
+        /// </summary>
+        public int BreakReciprocalInfluences = 0;
+
+        /// <summary>
+        /// Upper bound on a surface probe's summed influence gain under the engine's own decode (see
+        /// <c>RadiosityBaker.InfluenceGainOf</c>); 0 = off. Retail's compiler holds every probe under
+        /// 0.97 (p99 0.83-0.88); our solve reached 2.96, and probes past 1.0 are local amplifiers in
+        /// the runtime relaxation - the ChallengeMap7 whiteout. 0.95 is retail's envelope.
+        /// </summary>
+        public double InfluenceGainCap = 0.0;
+
+        /// <summary>
+        /// Multiplier on every influence gain before the cap (a log-domain byte shift). Retail's
+        /// per-probe median gain is 0.24-0.32 against our 0.19-0.24 on ChallengeMap7; 1.3 brings the
+        /// median level and the cap takes the tail.
+        /// </summary>
+        public double InfluenceGainScale = 1.0;
+
+        /// <summary>
+        /// Apply <see cref="InfluenceGainScale"/> and <see cref="InfluenceGainCap"/> to the cross-slice
+        /// fixup rows too. The fixup pass writes the raw distance/facing byte, so with this off a
+        /// boundary probe carries its capped in-slice row plus up to
+        /// <see cref="MaxCrossSliceFixupsPerProbe"/> unscaled, uncapped links and can sit above the cap.
+        /// </summary>
+        public bool CrossSliceFixupsHonourGainEnvelope = false;
+
+        /// <summary>
+        /// Run the delta path's exp-mass calibration on the engine's exact weight decode (+11.28 bytes
+        /// = x2, see <c>RadiosityBaker.InfluenceGainOf</c>) instead of the 2^(w/32) it was written
+        /// against. Off until validated on a delta fixture: with the old curve a 2x mass mismatch
+        /// asked for +32 bytes, which the engine reads as x7.2.
+        /// </summary>
+        public bool DeltaExpMassExactDecode = false;
+
+        /// <summary>
+        /// Write the scatter list as cluster MEMBERSHIP - one entry per cluster naming the input
+        /// probe it carries - which is how the engine reads it (it sums the listed members into the
+        /// cluster). See <c>RadiosityBaker.BuildScatterListMembership</c>. Off, the older lists name
+        /// each cluster ~4.6 times and every cluster carries that many probes' radiance as one.
+        /// </summary>
+        public bool ScatterAsMembership = false;
+
+        /// <summary>
+        /// With <see cref="ScatterAsMembership"/>: extra clusters (nearest, within 1.5 m) each
+        /// light-carrying input probe is also made a member of, so a light's energy enters that
+        /// many more clusters. Retail's hierarchy gives every probe ~6 memberships and a room's
+        /// brightness tracks light energy x memberships; on single-texel clusters a light probe has
+        /// 1-3.
+        /// </summary>
+        public int LightProbeExtraMemberships = 0;
+
+        /// <summary>
+        /// With <see cref="ScatterAsMembership"/>: input probes per cluster - the bound probe plus the
+        /// nearest others within a metre. The engine sums members, so k probes' radiance rides one
+        /// gain; <see cref="InfluenceGainCap"/> bounds sum(gain x k) so the per-probe energy envelope holds.
+        /// Retail reads about two members per unit of gain. 1 = one probe per texel.
+        /// </summary>
+        public int ScatterMembersPerCluster = 1;
+
+        /// <summary>
+        /// With <see cref="ScatterAsMembership"/>: also build COARSE clusters - patches of input probes
+        /// bucketed on a <see cref="CoarseClusterSpacing"/> grid and by facing, each carried in a free
+        /// cluster slot with W = member count - and offer them to the influence solve as area-weighted
+        /// candidates out to twice the single-texel reach. Retail's first rung of hierarchy: a light on
+        /// one probe then reaches every probe that reads any patch containing it, which is how retail
+        /// lights a room evenly from two strips where we glow locally and fall to black.
+        /// </summary>
+        public bool HierarchicalClusters = false;
+
+        /// <summary>Grid cell (m) that groups input probes into a coarse cluster. Retail's big patches read as 2-4 m.</summary>
+        public float CoarseClusterSpacing = 2.0f;
+
+        /// <summary>Fewest probes a bucket needs to become a coarse cluster.</summary>
+        public int CoarseClusterMinMembers = 3;
+
+        /// <summary>Most probes one coarse cluster may carry (nearest the centroid kept); 0 = unlimited. Patches of 16 diverged on ChallengeMap5.</summary>
+        public int CoarseClusterMaxMembers = 6;
+
+        /// <summary>
+        /// Take coarse-cluster slots from the dead atlas texels whose 16x16 tile (256x64 cluster-texture
+        /// layout) lies inside the slice's InputProbeTiles list before any outside it. A patch in a slot
+        /// outside it saturated CM5/CM11 with nothing reading it (17 Sep 2026): the engine clears the
+        /// cluster texture per input-probe tile, so a texel past the last tile integrates forever. A
+        /// bucket with no inside slot is dropped.
+        /// </summary>
+        public bool CoarseClusterSlotsInsideProbeTiles = true;
+
+        /// <summary>
+        /// Extend the slice's input-probe tile list to the whole 256x64 probe texture before placing
+        /// coarse clusters, so every dead atlas texel is inside the region the engine clears per frame
+        /// (see <see cref="CoarseClusterSlotsInsideProbeTiles"/>) and slots are never scarce. Padded
+        /// tiles hold no probes. Experimental (17 Sep 2026).
+        /// </summary>
+        public bool CoarseClusterPadProbeTiles = false;
+
+        /// <summary>
+        /// The lost-emitter rescue (movers outside the bake geometry that a retail prior says were
+        /// lit) skips movers whose MVR Visible flag is off. ChallengeMap16 (17 Sep 2026): 40 invisible
+        /// decal template quads took a real fixture's prior through the loose resource_id lookup and
+        /// carried 1.4x the level's light table; retail lit only the visible one.
+        /// </summary>
+        public bool LostEmittersMustBeVisible = false;
+
+        /// <summary>
+        /// A retail prior found by the LOOSE lookup (resource_id alone, see DeltaLoosePriors) may not
+        /// create a light for a mover whose own emissive resolves to zero; only the entity's own prior
+        /// can. ChallengeMap16 (17 Sep 2026): 40 plain grey-metal parts sharing a resource_id with one
+        /// lit 750 m2 assembly each received its 23-sample light - 1.4x the level's light table.
+        /// </summary>
+        public bool LoosePriorsNeedEmissive = false;
+
+        /// <summary>
+        /// Leave movers whose MVR Visible flag is off out of the bake geometry entirely (occluders,
+        /// texels and emitters). Levels carry state-variant movers at identical transforms with one
+        /// variant hidden; retail's bake shows no sign of the hidden ones. Experimental (17 Sep 2026).
+        /// </summary>
+        public bool SkipInvisibleMovers = false;
+
+        /// <summary>
+        /// Second rung of coarse clusters: cell size in metres (0 = off; must exceed
+        /// <see cref="CoarseClusterSpacing"/>), with its own member bounds. Retail's memberships climb
+        /// W1 -> W2 (0.4 m) -> W4 (0.7 m) -> W12 (3.7 m) -> W90; a 2 m rung alone cannot carry a light
+        /// across a room.
+        /// </summary>
+        public float CoarseClusterSpacing2 = 0f;
+        public int CoarseClusterMinMembers2 = 6;
+        public int CoarseClusterMaxMembers2 = 0;
+
+        /// <summary>
+        /// Explicit ladder of coarse-cluster cell sizes in metres ("1,2,4,8"); when set it replaces
+        /// CoarseClusterSpacing/CoarseClusterSpacing2. Rungs are built largest first (slots), each with
+        /// CoarseClusterMinMembers and no member cap. Retail's probes sit in up to 8 patches of
+        /// doubling size and a room gathers from ~1000 distinct patches (Solace corridor) where two
+        /// rungs give ~350.
+        /// </summary>
+        public string CoarseClusterRungs = "";
+
+        /// <summary>
+        /// Coarse patches with more than this many members are offered to the influence solve from
+        /// further away: reach = 2 x MaxInfluenceDistance x sqrt(W / this). 0 = flat 2x reach.
+        /// </summary>
+        public float CoarseClusterReachRefW = 0f;
+
+        /// <summary>
+        /// Multiplier on a coarse patch's form-factor RANK when the influence solve picks a probe's 32
+        /// links (the written byte is unchanged). Retail spends ~2/3 of a corridor probe's links on
+        /// patches; with 1.0 we spend ~1/3 and long corridors lit from one end render black.
+        /// </summary>
+        public float CoarseCandidateRankBoost = 1.0f;
+
+        /// <summary>
+        /// Minimum distance at which a coarse patch may be gathered, in metres per sqrt(members):
+        /// a patch is admitted only when d >= k * sqrt(W). Retail reads big patches only from far
+        /// away (the patch's angular size stays roughly constant: median link distance 2.2 m at W=1,
+        /// 9 m at W=64, so k ~ 1.1); we read W >= 32 patches at 5-6 m, where they take 27% of the
+        /// gather, mostly through walls (analyst finding, 23 Sep 2026). 0 = off.
+        /// </summary>
+        public float CoarseMinDistancePerSqrtW = 0f;
+
+        /// <summary>
+        /// Measure a fine influence candidate's geometry (distance, emitter facing, visibility) to the
+        /// input probe the cluster carries rather than to the texel centre. With one member per cluster
+        /// (ScatterMembersPerCluster 1) a texel-cluster radiates its bound probe's radiance, which sits
+        /// ~0.45 m away and can face another surface; retail's singleton clusters sit exactly on their
+        /// probe (analyst finding, 23 Sep 2026). Also writes the probe's lifted position into
+        /// ClusterPositions. Experimental.
+        /// </summary>
+        public bool ClusterGeometryFromMemberProbe = false;
+
+        /// <summary>
+        /// Weight each kept influence link by how much of it is visible: the link's decoded GAIN is
+        /// scaled by 2^(a * (v - 1)) (applied in the byte's log domain, 11.28 bytes per doubling), v = fraction of 1 + SoftVisibilityRays jittered rays between the two
+        /// patches that get through. Retail's link law carries +0.51 log2 per unit of visibility;
+        /// ours carries +0.03 because our test is pass/fail (analyst finding, 23 Sep 2026). The
+        /// per-probe median gain normalisation restores the overall level. 0 = off; ~0.5 = retail.
+        /// </summary>
+        public float SoftVisibilityWeightExponent = 0f;
+
+        /// <summary>
+        /// Count each cluster's REAL scatter members (after orphan homing, re-homing and coarse
+        /// memberships) when applying the per-probe gain envelope and its median target, instead of
+        /// assuming ScatterMembersPerCluster for every texel cluster. 22-28% of k=1 texel clusters carry
+        /// more than one member once orphan probes are homed onto them; the envelope never counted
+        /// those, which is what let the coarse min-distance rule white out (deep dive, 23 Sep 2026).
+        /// </summary>
+        public bool GainEnvelopeTrueMembers = false;
+
+        /// <summary>
+        /// Hard cap, in metres from the emitter centre, on where an emitter's light samples may go -
+        /// applied even while the sampler is still short of its wanted count. The count-matching passes
+        /// otherwise keep taking the next-nearest input probe however far it is: 52 of BSP_Torrens'
+        /// theatre panels' 73 samples sat in a vent shaft 20-30 m away (deep dive, 23 Sep 2026). 0 = off.
+        /// </summary>
+        public float EmitterSampleMaxDistance = 0f;
+
+        /// <summary>
+        /// Restrict the LightColourProbeAlbedo stamp to EMISSIVE triangles/texels of a prior-carrying mover
+        /// instead of the whole mover. Retail never stores light colour as albedo (23 Sep decode). An early
+        /// A/B suggested the stamp compensated something near fixtures, but that run was confounded by the
+        /// FeedbackMaxDistance sentinel; clean reruns found the stamp render-neutral except on BSP_Torrens,
+        /// so this variant was never measured cleanly. Default off.
+        /// </summary>
+        public bool LightColourProbeAlbedoEmissiveOnly = false;
+
+        /// <summary>
+        /// Sample the diffuse map at the mesh UV as ToMesh returns it (S16_2N x16, 0..1 on a whole-panel
+        /// texture) instead of that value / 16. The /16 made the sampler read only the top-left 1/16 x 1/16
+        /// corner of every diffuse map - invisible on tiling textures, but on whole-panel light, screen and
+        /// swatch textures it is the dark border (0.03-0.06 where CA's own compiler samples 0.28-0.39).
+        /// Verified against CA's RADIOSITY_ALBEDO_SAMPLES.BIN (raof) on 12+4 levels, r 0.92-0.96
+        /// (23 Sep 2026). Ship with InputProbeAlbedoFootprint: the per-point value alone overshoots.
+        /// </summary>
+        public bool DiffuseUvToMeshScale = false;
+
+        /// <summary>
+        /// Store each input probe's albedo as the AREA-weighted mean of the sampled albedo within this
+        /// radius (all surfaces, any orientation), as CA's compiler does (retail probe vs the mean of CA's
+        /// own samples within 0.25-0.3 m: p50 7-12/255, no bias). 0 = the probe's own point value.
+        /// </summary>
+        public float InputProbeAlbedoFootprint = 0f;
+
+        /// <summary>
+        /// Normalise InfluenceGainScale by the predicted mean number of cluster memberships per input
+        /// probe: effective scale = InfluenceGainScale x this / meanMemberships. Delivered energy is
+        /// memberships x gain, so without it a level with slots for every ladder rung renders brighter
+        /// than a slot-starved one (SCI_Hub 1.06x -> 1.30x with the 1/2/4/8 m ladder). 0 = off.
+        /// </summary>
+        public float GainMembershipReference = 0f;
+
+        /// <summary>
         /// Rigid translation applied to duplicated content, used to match each copied mover to
         /// its TRUE retail twin when looking up light priors (position minus this offset).
         /// Zero disables offset-aware matching.
@@ -1599,6 +1977,10 @@ namespace CathodeLib.Radiosity
         /// level) goes rmse 24.93 -> 19.05 and fitted intercept -28.7 -> -17.0; ChallengeMap4
         /// (already at parity) is unchanged within noise (12.05 -> 12.06, fit identical). Helps
         /// where luminous fixtures dominate, costs nothing where they do not.</para>
+        /// <para>The mechanism above was later REFUTED (23 Sep 2026 albedo decode, 13 levels): retail does not store
+        /// light colour as albedo. Turning the stamp off is render-neutral on 12 of 13 levels (+0.05 overall, two
+        /// captures), but BSP_Torrens is about 0.6 worse on both captures, so the stamp stays on; false is a
+        /// file-parity option. (An earlier CM7 / Solace / CM1 cost was the FeedbackMaxDistance sentinel confound.)</para>
         /// </remarks>
         public bool LightColourProbeAlbedo = true;
 
@@ -1887,6 +2269,266 @@ namespace CathodeLib.Radiosity
 
         /// <summary>Run the per-slice solve across all cores.</summary>
         public bool Parallel = true;
+
+        /// <summary>
+        /// Rebuild the cluster stage and every influence link as retail structures them, after the slice is
+        /// finished (RadiosityBaker.RebuildLinksAsHierarchicalCut): clusters become a k-d tree over the slice's
+        /// input probes (leaves = the probes, nested patches up to <see cref="HierarchicalCutMaxMembers"/>
+        /// members, scatter = membership), and each surface probe's links a DISJOINT cut through that tree -
+        /// retail never counts an input probe twice across one probe's links and never links a patch inside
+        /// another (decoded 23 Sep 2026: 100.0% / 0.00% on ChallengeMap5; ours 72% once, 6.3% nested pairs).
+        /// Bytes follow the law fitted to retail's links (R2 0.77-0.80, stable across level sets). With
+        /// <see cref="HierarchicalCutRetailRules"/> the cut follows retail's decoded opening rules instead
+        /// (RadiosityBaker.RebuildLinksRetailCut) - the configuration <see cref="WithValidatedFullBakeProfile"/> uses.
+        /// </summary>
+        /// <remarks>
+        /// ChallengeMap5 (keep splice onto a byte-identical final bake, stable cameras): 12.64 -> 10.17 with
+        /// visibility off, the same as grafting retail's own links onto our clusters (10.21 / 10.27); with a
+        /// static-geometry visibility test it covered half the members retail does and rendered darker (13.31).
+        /// </remarks>
+        public bool HierarchicalCutLinks = false;
+        /// <summary>A patch whose rms extent over distance exceeds this is opened into its two halves.</summary>
+        public float HierarchicalCutThreshold = 0.45f;
+        /// <summary>Largest patch (members); retail's is 128, and it keeps a probe's memberships at eight.</summary>
+        public int HierarchicalCutMaxMembers = 128;
+        public float HierarchicalCutMaxDistance = 20.0f;
+        /// <summary>Members-weighted per-probe gain: slice median target (retail p50 0.74) and per-probe cap.</summary>
+        public float HierarchicalCutGainMedian = 0.74f;
+        public float HierarchicalCutGainCap = 0.957f;
+        /// <summary>Test each linked node for line of sight. Off by default: see the remarks on HierarchicalCutLinks.</summary>
+        public bool HierarchicalCutVisibility = false;
+        /// <summary>Under budget, patches are opened down to this extent/distance.</summary>
+        public float HierarchicalCutRefineMin = 0.02f;
+        /// <summary>Re-point each cross-slice fixup at the coarsest patch of the neighbouring slice's tree still under the opening
+        /// threshold at its distance (retail's fixups read patches of 1-128 members), weighted by the in-slice byte law.</summary>
+        public bool HierarchicalCutFixupPatches = false;
+        /// <summary>Build the patch tree per dominant-normal class (six) so no patch mixes facings.</summary>
+        public bool HierarchicalCutNormalClasses = false;
+        /// <summary>Above 0, build the patch tree bottom-up as retail does instead of as a k-d tree (the value is an on/off
+        /// switch; the count is not used): one global greedy merge of the cheapest adjacent pair, cost = rms radius of the union
+        /// x (1 + MergeNormalWeight x (1 - normal dot)), truncated to its lowest 8 levels. Pairs whose normals dot at or below
+        /// MergeNormalGate never merge.</summary>
+        public int HierarchicalCutMergeRounds = 0;
+        /// <summary>Order the rebuilt scatter list by input probe (retail 95%, ours 100%) rather than by cluster.</summary>
+        public bool HierarchicalCutScatterByProbe = true;
+        /// <summary>Use RebuildLinksRetailCut (joint cross-slice cut, validity peeling, nearest-first refinement to 32, pruned
+        /// clusters) instead of the threshold cut.</summary>
+        public bool HierarchicalCutRetailRules = false;
+        /// <summary>Allocate cluster slots tile by tile and pad the input-probe tile list only as far as the slots reach
+        /// (instead of to all 64 tiles).</summary>
+        public bool HierarchicalCutTileMajorSlots = true;
+        /// <summary>
+        /// Leave the slice's input-probe tile list exactly as the bake wrote it, even where cluster slots fall outside it.
+        /// Padding it to all 64 tiles darkened every rebuilt cluster stage in the game (24 Sep 2026: retail's own links on a
+        /// rebuilt tree, Solace stable 14.52 padded vs 10.72 with the original 38/47/18 tiles) - the engine appears to
+        /// update a bounded number of tiles per frame, so extra tiles slow the solve at capture time.
+        /// </summary>
+        public bool HierarchicalCutKeepTiles = true;
+        /// <summary>
+        /// Scale each retail-cut link's gain by the fraction of its sampled members that pass the validity test (facing and,
+        /// when visibility is on, visible): byte += weight x log2(v) / (22.61/255). 0 = off. Retail's bytes sit 4-8 below
+        /// the smooth law on links our ray calls occluded - a penalty, not a filter.
+        /// </summary>
+        public float HierarchicalCutVisibilityWeight = 0.0f;
+        /// <summary>With visibility on: build the cut on facing validity alone and use the ray only for the byte penalty
+        /// (HierarchicalCutVisibilityWeight x log2 of the linked patch's seen fraction), on the final links only.</summary>
+        public bool HierarchicalCutVisibilityPenaltyOnly = false;
+        /// <summary>
+        /// Balanced priority cut: keep the top 32 frontier nodes by W(1+cosE)/d^3 and open the highest-priority node only
+        /// while all its children stay in the top 32 (so every link ends at about the same priority, far roots dropped).
+        /// Retail's links follow this profile exactly (single probes at ~2.2 m, 32-63 member patches at ~7 m); the plain
+        /// refinement only opens while fewer than 32 links exist, so with many roots in range it never refines.
+        /// </summary>
+        public bool HierarchicalCutBalanced = false;
+        /// <summary>
+        /// Ray gather for the retail cut (0 = off): cast this many cosine-weighted rays from each surface probe against the
+        /// render meshes; each hit links the facing input probe it landed on, climbed up the tree while the patch extent
+        /// stays within HierarchicalCutRayFootprint x its distance; nested picks fold into the coarser one. Visible by
+        /// construction and, like retail, leaves much of the near field unlinked (retail: 4 of 7 facing input probes
+        /// within 1 m are in no link; a tree cut covers all of them).
+        /// </summary>
+        public int HierarchicalCutRays = 0;
+        /// <summary>
+        /// Hybrid visibility (0 = off; needs a visibility test): each probe keeps its no-visibility cut unless more than this
+        /// fraction of its W/d^2 weight sits on links whose sampled members mostly fail the ray - a probe beside a wall with
+        /// a lit room behind it - and only those probes are re-cut with visibility. Aims at Solace's leak without the
+        /// blotchiness visibility brings to open levels.
+        /// </summary>
+        public float HierarchicalCutHybridLeak = 0.0f;
+        /// <summary>
+        /// Retail cut receiver test: a member is rejected when it lies more than this (as a cosine) behind the receiving
+        /// probe's plane. 0.1 is the tested default; retail's own single-probe links put 23% of members behind the plane and
+        /// 13% below -0.2 (recessed lamps above a ceiling are behind every ceiling probe's plane).
+        /// </summary>
+        public float HierarchicalCutReceiverTolerance = 0.1f;
+        /// <summary>Distance floor (m) for the byte law only (0 = off): links nearer than this get the byte of a link at
+        /// this distance. For cuts with many near single-probe links (balanced, ray gather), whose law bytes at ~1 m put
+        /// most of a probe's gain on the adjacent surfaces.</summary>
+        public float HierarchicalCutByteNearFloor = 0.0f;
+        /// <summary>Scale on log2(distance) inside the retail byte law (1 = the fitted law). Above 1 the gain falls off faster
+        /// with distance, so a probe's light comes more from nearby surfaces (more in-room contrast); the median envelope
+        /// keeps the overall level.</summary>
+        public float HierarchicalCutByteDistanceScale = 1.0f;
+        /// <summary>After the retail cut is trimmed to 32 links, open the highest-priority patch this many times (children
+        /// replace it; the weakest links drop to keep 32) - a partial step toward retail's finer near field. 0 = off.</summary>
+        public int HierarchicalCutForcedOpenings = 0;
+        /// <summary>Which patch a forced opening opens: 0 = highest priority W(1+cosE)/d^3 (nearest), 1 = largest predicted gain
+        /// (gain x W), 2 = largest angular size (extent / distance).</summary>
+        public int HierarchicalCutForcedOpenCriterion = 0;
+        /// <summary>Patch-level visibility in the retail cut (needs a visibility function): 0 = off (member sampling as
+        /// before), 1 = a patch whose centre (+ 5 cm along its normal) is hidden from the receiver is DROPPED whole, 2 = it is
+        /// opened into its children instead (a hidden leaf drops). Members are then tested for facing only. Retail covers only
+        /// ~40% of the facing input probes within 4 m, in whole regions, not interleaved (25 Sep 2026 visoracle).</summary>
+        public int HierarchicalCutCentroidVisibility = 0;
+        /// <summary>Visibility ray endpoints in the retail cut: the receiver is lifted this far along its normal, a member input
+        /// probe this far along its own (both 0.02 m before 25 Sep 2026).</summary>
+        public float HierarchicalCutVisReceiverOffset = 0.02f, HierarchicalCutVisMemberOffset = 0.02f;
+        /// <summary>Receivers the mangle map gives no normal (about half) take the nearest input probe's normal (within 0.5 m)
+        /// for the cut's facing tests, bytes and visibility rays.</summary>
+        public bool HierarchicalCutReceiverNormalFallback = false;
+        /// <summary>Split test: build the retail cut's tree from the clusters already in the runtime (retail's, nested by
+        /// membership) instead of the greedy merge.</summary>
+        public bool HierarchicalCutUseFileTree = false;
+        /// <summary>Merge-time visibility in the retail cut's greedy tree: when the segment between two candidate clusters'
+        /// targets (centroid + 0.05 m along the mean normal) hits geometry, the merge cost is multiplied by this (0 = off).
+        /// Aimed at clusters that straddle a thin wall with the same facing on both sides (floors, ceilings).</summary>
+        public float HierarchicalCutMergeVisibilityPenalty = 0;
+        /// <summary>How far the merge-visibility ray's endpoints are lifted off the clusters along their mean normals.</summary>
+        public float HierarchicalCutMergeVisibilityLift = 0.05f;
+        /// <summary>Receivers link only their own slice's clusters (no new cross-slice links). Our joint cut puts ~7% of its
+        /// coverage in other slices where retail puts ~1.5% (Solace covcmp).</summary>
+        public bool HierarchicalCutOwnSliceOnly = false;
+        /// <summary>With a visibility test: links to members closer than this (metres) skip the test and always count. Clutter
+        /// makes short rays fail falsely, while the leaks through walls come from long links (27 Sep: SALVAGEMODE2 cam4 and
+        /// Solace's corridors take light from patches 4-16 m away). 0 = test every link.</summary>
+        public float HierarchicalCutVisMinDistance = 0;
+        /// <summary>Upper bound for <see cref="HierarchicalCutHybridLeak"/>: a probe is re-cut with visibility only while its occluded
+        /// share of gain is BELOW this. A probe whose links nearly all test occluded is usually enclosed by clutter, and cutting it
+        /// with visibility starves it (27 Sep: TECH_MUTHRCORE cam18 21 -> 6 luma, retail 23). 0 = no upper bound.</summary>
+        public double HierarchicalCutHybridLeakMax = 0;
+        /// <summary>The cut's visibility test traces the RENDER meshes instead of the collision occluders, and is softened: a link
+        /// counts as visible when its centre ray or any of <see cref="HierarchicalCutSoftVisRays"/> rays with both ends jittered
+        /// up to <see cref="HierarchicalCutSoftVisJitter"/> metres is clear (deterministic per endpoint pair). 28 Sep, harness:
+        /// Solace 11.49 (collision) -> 10.55 (soft render). On, it gives the cut a visibility test even with
+        /// <see cref="HierarchicalCutVisibility"/> off (as the hybrid and distance-gated modes need). Off = the collision-occluder centre ray.</summary>
+        public bool HierarchicalCutSoftRenderVisibility = false;
+        public int HierarchicalCutSoftVisRays = 3;
+        public float HierarchicalCutSoftVisJitter = 0.22f;
+        /// <summary>After the bake, entities retail lights get retail's own light items, moved onto our nearest input probe that
+        /// faces the same way within <see cref="RetailLightPlacementRadius"/> (retail light PLACEMENT prior; the light priors
+        /// already carry retail's counts, colours and energies). Full rebakes of UNEDITED retail levels only
+        /// (<see cref="PatchRetailRuntime"/> off): items are matched to entities, not positions, so on an edited level a
+        /// moved lamp keeps retail's light at its old place and a deleted one keeps shining - edited retail levels belong on
+        /// the delta path. The bake skips it when the radiosity being replaced is our own earlier output (see
+        /// <see cref="CATHODE.RadiosityRuntime.FullyRegenerated"/>), where it would freeze the old light table the same way.</summary>
+        public bool UseRetailLightPlacement = false;
+        public float RetailLightPlacementRadius = 1.0f;
+        /// <summary>AddUnbakedEmitterLights samples an emitter at the nearest input probes to its EMISSIVE centroid instead of
+        /// its transform origin (a panel assembly's pivot can sit metres from its glowing faces).</summary>
+        public bool UnbakedEmitterAtEmissiveCentroid = false;
+        public float HierarchicalCutRayFootprint = 0.35f;
+        public float HierarchicalCutRayAttributeRadius = 0.5f;
+        public float HierarchicalCutMergeNormalWeight = 2.0f;
+        public float HierarchicalCutMergeNormalGate = -2.0f;
+
+        /// <summary>
+        /// A copy of these settings with the validated full-bake configuration applied: the configuration that scored best
+        /// in the Sep 2026 parity campaign (in-baker full rebakes of pristine retail levels, mean RMSE over stable screenshot
+        /// cameras against retail's own captures). The bake applies it to full regenerations when
+        /// <see cref="UseValidatedFullBakeProfile"/> is on. Only the settings assigned below are overridden.
+        /// <list type="bullet">
+        /// <item>Always: the light-table and link settings below (unit light scale, the influence gain envelope,
+        /// cluster-membership scatter, coarse clusters, UV-convention rects) and the retail-rule hierarchical cut with
+        /// 8 forced openings. 13 DLC / small levels 11.73 -> 10.14, 29 campaign levels 12.95 -> 10.68.</item>
+        /// <item>Only when <paramref name="replacingRetail"/> (the bake replaces the level's shipped bake): retail light
+        /// placement and the hybrid render-visibility cut as well. 13 small levels 10.14 -> 9.59, 12 big maps 11.58 -> 10.85.
+        /// Placement moves the shipped bake's own light items, so it needs one: over our own earlier output it would
+        /// freeze the old light table. The hybrid was only validated together with placement; without it the hybrid gained
+        /// little (10.14 -> 10.00, one level 1.9 worse) for about twice the bake time.</item>
+        /// </list>
+        /// </summary>
+        /// <remarks>
+        /// <para>Retail light priors (<see cref="UseRetailLightPriors"/>) are also used only when replacingRetail. Over our
+        /// own earlier output they fed each save's light table into the next: on a regenerated ChallengeMap4 the total
+        /// light energy moved +5% then +9% over three saves (the pre-port 0.8 light scale moved it -16% then -10%). Without
+        /// them every save of a regenerated level derives its lights the way its first save did.</para>
+        /// <para>The replacingRetail half assumes the level is unedited (placement matches light items to entities, not
+        /// positions); OpenCAGE never reaches it, because with <see cref="PatchRetailRuntime"/> on a retail level takes the
+        /// delta path.</para>
+        /// <para>The measured bakes also restricted lightmapping to the resources in the unedited level's
+        /// RADIOSITY_INSTANCE_MAP (<see cref="RetailMappedResources"/>, snapshotted before instancing). The profile does not
+        /// set it - it is level data, and it would strip lightmaps from added content - so a caller fully rebaking an
+        /// unedited retail level must set it to reproduce the quoted numbers exactly.</para>
+        /// </remarks>
+        public RadiosityBakeSettings WithValidatedFullBakeProfile(bool replacingRetail)
+        {
+            RadiosityBakeSettings s = (RadiosityBakeSettings)MemberwiseClone();
+
+            //Light table and link envelope (retail priors only from a shipped bake - see remarks)
+            s.UseRetailLightPriors = replacingRetail;
+            s.SurfaceLightWeightScale = 1.0f;
+            s.InfluenceGainCap = 0.957;
+            s.InfluenceGainScale = 1.0;
+            s.InfluenceGainMedianTarget = 0.70f;
+            s.ScatterAsMembership = true;
+            s.ScatterMembersPerCluster = 1;
+            s.CrossSliceFixupsHonourGainEnvelope = true;
+            s.RectsFromUvConvention = true;
+            s.LostEmittersMustBeVisible = true;
+            s.LoosePriorsNeedEmissive = true;
+            s.HierarchicalClusters = true;
+            s.CoarseClusterSpacing = 2.0f;
+            s.CoarseClusterMinMembers = 3;
+            s.CoarseClusterMaxMembers = 64;
+            s.CoarseClusterSlotsInsideProbeTiles = true;
+            s.CoarseClusterRungs = "2,4,8,16";
+
+            //Links: the retail-rule hierarchical cut with forced openings
+            s.HierarchicalCutLinks = true;
+            s.HierarchicalCutRetailRules = true;
+            s.HierarchicalCutTileMajorSlots = true;
+            s.HierarchicalCutThreshold = 0.45f;
+            s.HierarchicalCutVisibility = false;
+            s.HierarchicalCutGainMedian = 0.74f;
+            s.HierarchicalCutMaxMembers = 128;
+            s.HierarchicalCutGainCap = 0.957f;
+            s.HierarchicalCutMaxDistance = 24.0f;
+            s.HierarchicalCutFixupPatches = false;
+            s.HierarchicalCutNormalClasses = false;
+            s.HierarchicalCutMergeRounds = 1;
+            s.HierarchicalCutMergeNormalWeight = 4.0f;
+            s.HierarchicalCutMergeNormalGate = -2.0f;
+            s.HierarchicalCutScatterByProbe = true;
+            s.HierarchicalCutVisibilityWeight = 0.0f;
+            s.HierarchicalCutVisibilityPenaltyOnly = false;
+            s.HierarchicalCutBalanced = false;
+            s.HierarchicalCutRays = 0;
+            s.HierarchicalCutRayFootprint = 0.35f;
+            s.HierarchicalCutRayAttributeRadius = 0.5f;
+            s.HierarchicalCutReceiverTolerance = 0.1f;
+            s.HierarchicalCutByteNearFloor = 2.0f;
+            s.HierarchicalCutByteDistanceScale = 1.0f;
+            s.HierarchicalCutForcedOpenings = 8;
+            s.HierarchicalCutForcedOpenCriterion = 0;
+            s.HierarchicalCutCentroidVisibility = 0;
+            s.HierarchicalCutReceiverNormalFallback = false;
+            s.HierarchicalCutUseFileTree = false;
+            s.HierarchicalCutMergeVisibilityPenalty = 0;
+            s.HierarchicalCutOwnSliceOnly = false;
+            s.HierarchicalCutVisMinDistance = 0;
+
+            //Over a retail bake: retail light placement and the hybrid render-visibility cut
+            s.UseRetailLightPlacement = replacingRetail;
+            s.RetailLightPlacementRadius = 1.0f;
+            s.HierarchicalCutSoftRenderVisibility = replacingRetail;
+            s.HierarchicalCutSoftVisRays = 3;
+            s.HierarchicalCutSoftVisJitter = 0.22f;
+            s.HierarchicalCutHybridLeak = replacingRetail ? 0.2f : 0.0f;
+            s.HierarchicalCutHybridLeakMax = replacingRetail ? 0.9 : 0.0;
+            s.HierarchicalCutVisReceiverOffset = replacingRetail ? 0.15f : 0.02f;
+            s.HierarchicalCutVisMemberOffset = replacingRetail ? 0.15f : 0.02f;
+            return s;
+        }
 
         public static RadiosityBakeSettings CreateDefault() => new RadiosityBakeSettings();
     }

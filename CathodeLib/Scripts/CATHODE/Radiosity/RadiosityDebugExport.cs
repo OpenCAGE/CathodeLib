@@ -80,7 +80,7 @@ namespace CathodeLib.Radiosity
                 inputAlbedo.Add(a?.B ?? 0); inputAlbedo.Add(a?.G ?? 0); inputAlbedo.Add(a?.R ?? 0);
 
                 ColourRGBA8 n = i < slice.InputProbeNormals.Count ? slice.InputProbeNormals[i] : null;
-                inputNormal.Add(n?.R ?? 128); inputNormal.Add(n?.G ?? 128); inputNormal.Add(n?.B ?? 128);
+                inputNormal.Add(n?.B ?? 128); inputNormal.Add(n?.G ?? 128); inputNormal.Add(n?.R ?? 128);   // stored (z, y, x) - export as x, y, z
             }
 
             // ---- surface probes: the receivers -------------------------------------------------
