@@ -74,7 +74,11 @@ namespace CATHODE
         {
             _compressed = _filepath != null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
 
-            using (BinaryReader reader = new BinaryReader(_compressed ? Utilities.GZIPDecompress(stream) : stream))
+            MemoryStream data = _compressed ? Utilities.GZIPDecompress(stream) : stream;
+            if (data.Length == 0)
+                return false;
+
+            using (BinaryReader reader = new BinaryReader(data))
             {
                 reader.BaseStream.Position += 8;
 

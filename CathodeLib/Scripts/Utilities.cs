@@ -466,7 +466,16 @@ namespace CathodeLib
             string renderable = root + "/RENDERABLE/";
             if (Directory.Exists(renderable))
             {
-                File.WriteAllBytes(renderable + "RADIOSITY_RUNTIME.BIN", new byte[0]);
+                string compressed = renderable + "RADIOSITY_RUNTIME.BIN.GZ";
+                if (File.Exists(compressed))
+                {
+                    File.WriteAllBytes(compressed, new byte[0]);
+                    GZIPCompress(compressed);
+                }
+                else
+                {
+                    File.WriteAllBytes(renderable + "RADIOSITY_RUNTIME.BIN", new byte[0]);
+                }
                 File.Delete(renderable + "RADIOSITY_INSTANCE_MAP.TXT");
                 File.Delete(RadiosityRuntime.GetOwnershipMarkerPath(renderable + "RADIOSITY_RUNTIME.BIN"));
                 File.Delete(RadiosityRuntime.GetOwnershipMarkerPath(renderable + "RADIOSITY_RUNTIME.BIN.GZ"));
