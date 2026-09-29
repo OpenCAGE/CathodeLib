@@ -52,15 +52,31 @@ namespace CATHODE
                 return _byNormalisedName.TryGetValue(normalisedName, out found) ? found : null;
             }
 
+            //Compared without making the normalised string: a level load asks this for hundreds of textures it
+            //doesn't have yet, and each miss used to allocate a copy of every name in the table
             foreach (TEX4 entry in Entries)
             {
-                if (entry != null && NormaliseTextureName(entry.Name) == normalisedName)
+                if (entry != null && MatchesNormalisedName(entry.Name, normalisedName))
                 {
                     RebuildNameIndex();
                     return entry;
                 }
             }
             return null;
+        }
+
+        private static bool MatchesNormalisedName(string name, string normalisedName)
+        {
+            name = name ?? "";
+            if (name.Length != normalisedName.Length)
+                return false;
+            for (int i = 0; i < name.Length; i++)
+            {
+                char c = name[i] == '/' ? '\\' : char.ToUpperInvariant(name[i]);
+                if (c != normalisedName[i])
+                    return false;
+            }
+            return true;
         }
 
         private void RebuildNameIndex()
@@ -458,7 +474,20 @@ namespace CATHODE
         {
             if (texture == null)
                 return null;
+            if (PortMemo != null && PortMemo.TryGetValue(texture, out object imported))
+                return (TEX4)imported;
+            TEX4 result = ImportEntryCore(texture, overwriteExisting);
+            if (PortMemo != null && result != null && !PortMemo.TryGetValue(texture, out _))
+                PortMemo.Add(texture, result);
+            return result;
+        }
 
+        /// <summary>While a port runs, what each source texture has already been imported as (see <see cref="Models.PortMemo"/>) -
+        /// with overwriting on, each repeat compared the texture's bytes with the copy the first one left.</summary>
+        internal System.Runtime.CompilerServices.ConditionalWeakTable<object, object> PortMemo;
+
+        private TEX4 ImportEntryCore(TEX4 texture, bool overwriteExisting)
+        {
             string normalisedName = NormaliseTextureName(texture.Name);
             TEX4 existingByName = FindByNormalisedName(normalisedName);
             if (existingByName != null && !overwriteExisting)
@@ -489,6 +518,14 @@ namespace CATHODE
 
             TEX4 newTexture = texture.Copy();
             Entries.Add(newTexture);
+            //Kept in step rather than rebuilt: the count moving made the next import rebuild the whole index, and a level
+            //load imports its global textures one after another (quadratic in the table's size)
+            if (_byNormalisedName != null && _byNormalisedNameCount == Entries.Count - 1)
+            {
+                if (!_byNormalisedName.ContainsKey(normalisedName))
+                    _byNormalisedName[normalisedName] = newTexture;
+                _byNormalisedNameCount = Entries.Count;
+            }
             return newTexture;
         }
 

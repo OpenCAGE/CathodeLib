@@ -803,7 +803,30 @@ namespace CATHODE
         {
             if (model == null)
                 return null;
+            if (PortMemo != null && PortMemo.TryGetValue(model, out object imported))
+                return (CS2)imported;
+            CS2 result = ImportEntryCore(model, overwriteExisting);
+            if (PortMemo != null && result != null && !PortMemo.TryGetValue(model, out _))
+                PortMemo.Add(model, result);
+            return result;
+        }
 
+        /// <summary>
+        /// While a <see cref="CathodeLib.CompositePorter"/> port runs: what each source model has already been imported as.
+        /// </summary>
+        /// <remarks>
+        /// With overwriting on (an export's scratch level is ported that way) every renderable that points at a model
+        /// imported the whole model again - a deep copy per instance, submesh data and all, only to be compared with what
+        /// the first one left and thrown away. Exporting a 73,000-function section took three minutes, and a larger one
+        /// took OpenCAGE to 61 GB. Within one port the same source object always imports as the same result, so the first
+        /// answer stands; the memo is dropped when the port ends, so a later port sees any later edit. Weakly keyed: many
+        /// keys are the porter's own throwaway deep copies (a copied composite's or model's materials), which must not be
+        /// kept alive - with their texture data - until the port ends.
+        /// </remarks>
+        internal System.Runtime.CompilerServices.ConditionalWeakTable<object, object> PortMemo;
+
+        private CS2 ImportEntryCore(CS2 model, bool overwriteExisting)
+        {
             CS2 existingByName = Entries.FirstOrDefault(o => o.Name == model.Name);
             if (existingByName != null && !overwriteExisting)
                 return existingByName;
@@ -911,7 +934,9 @@ namespace CATHODE
             into.VertexScale = from.VertexScale;
             into.VertexCount = from.VertexCount;
             into.IndexCount = from.IndexCount;
-            into.Bones = from.Bones;
+            //A list of its own: `from` belongs to the copy ImportEntry throws away, and ~Submesh clears its Bones - shared,
+            //the overwritten model lost its bone list whenever the GC got round to finalising the copy
+            into.Bones = from.Bones == null ? null : new List<int>(from.Bones);
             into.Data = from.Data;
         }
         #endregion

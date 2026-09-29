@@ -2932,12 +2932,7 @@ namespace CATHODE
                 PackfileObject obj = source.Objects[i];
                 if (!objectOffsets.Contains(obj.DataOffset))
                     continue;
-                uint end = (uint)source.DataPayload.Length;
-                for (int s = 0; s < sortedSrcObjects.Count; s++)
-                {
-                    if (sortedSrcObjects[s] > obj.DataOffset && sortedSrcObjects[s] < end)
-                        end = sortedSrcObjects[s];
-                }
+                uint end = NextBoundary(sortedSrcObjects, obj.DataOffset, (uint)source.DataPayload.Length);
                 objectRanges.Add((obj.DataOffset, end, obj));
             }
             objectRanges.Sort((a, b) => a.Start.CompareTo(b.Start));
@@ -3074,6 +3069,43 @@ namespace CATHODE
         /// </summary>
         static List<uint> ObjectRangeBoundaries(HavokPackfile source)
         {
+            if (source.CacheRangeBoundaries && source._cachedRangeBoundaries != null)
+                return source._cachedRangeBoundaries;
+            List<uint> boundaries = ComputeObjectRangeBoundaries(source);
+            if (source.CacheRangeBoundaries)
+                source._cachedRangeBoundaries = boundaries;
+            return boundaries;
+        }
+
+        /// <summary>
+        /// Set by a port on the packfiles it reads from, for as long as it runs: nothing writes to those then, and their
+        /// boundaries were worked out over the whole file twice for every compound and system a port imported.
+        /// </summary>
+        internal bool CacheRangeBoundaries
+        {
+            get => _cacheRangeBoundaries;
+            set { _cacheRangeBoundaries = value; _cachedRangeBoundaries = null; }
+        }
+        private bool _cacheRangeBoundaries;
+        private List<uint> _cachedRangeBoundaries;
+
+        /* The first boundary after an offset, or the payload's end if none comes before it: what a scan of the sorted
+           list for the smallest boundary above the offset found, by binary search - a port scanned the whole list once
+           for every object it copied, and once more for every array it walked. */
+        static uint NextBoundary(List<uint> sorted, uint offset, uint payloadEnd)
+        {
+            int lo = 0, hi = sorted.Count;
+            while (lo < hi)
+            {
+                int mid = (lo + hi) >> 1;
+                if (sorted[mid] <= offset) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo < sorted.Count && sorted[lo] < payloadEnd ? sorted[lo] : payloadEnd;
+        }
+
+        static List<uint> ComputeObjectRangeBoundaries(HavokPackfile source)
+        {
             List<uint> starts = source.Objects.Select(o => o.DataOffset).Distinct().OrderBy(o => o).ToList();
             int OwnerOf(uint at)
             {
@@ -3113,16 +3145,7 @@ namespace CATHODE
                 objectsByOffset[source.Objects[i].DataOffset] = source.Objects[i];
 
             List<uint> sorted = ObjectRangeBoundaries(source);
-            uint ObjectEnd(uint off)
-            {
-                uint end = (uint)source.DataPayload.Length;
-                for (int i = 0; i < sorted.Count; i++)
-                {
-                    if (sorted[i] > off && sorted[i] < end)
-                        end = sorted[i];
-                }
-                return end;
-            }
+            uint ObjectEnd(uint off) => NextBoundary(sorted, off, (uint)source.DataPayload.Length);
             //An array's bytes stop where the next object or another object's storage starts: a guessed length
             //or a probe window must not run on into, say, the proxy list's pointers to every compound
             uint Clamp(uint arrayStart, uint arrayEnd) => Math.Min(arrayEnd, ObjectEnd(arrayStart));

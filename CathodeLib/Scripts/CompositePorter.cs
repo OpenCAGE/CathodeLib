@@ -117,8 +117,11 @@ namespace CathodeLib
         public void Port(Composite composite)
         {
             if (composite == null) throw new ArgumentNullException(nameof(composite));
-            PortRecursive(composite);
-            ApplyProxyIndexRemap();
+            using (new ImportMemoScope(Source, Destination))
+            {
+                PortRecursive(composite);
+                ApplyProxyIndexRemap();
+            }
         }
 
         /// <summary>
@@ -126,12 +129,64 @@ namespace CathodeLib
         /// </summary>
         public void PortAll()
         {
-            foreach (Composite composite in Source.Commands.Entries.ToList())
+            using (new ImportMemoScope(Source, Destination))
             {
-                if (composite != null)
-                    PortRecursive(composite);
+                foreach (Composite composite in Source.Commands.Entries.ToList())
+                {
+                    if (composite != null)
+                        PortRecursive(composite);
+                }
+                ApplyProxyIndexRemap();
             }
-            ApplyProxyIndexRemap();
+        }
+
+        /* One port's worth of memo on the destination's model, material and texture tables (see Models.PortMemo): a
+           source object imported once is not imported again. The source's Havok files keep their object boundaries for
+           the port too (see HavokPackfile.CacheRangeBoundaries) - a port only ever reads them. Only what this scope
+           switched on is switched off. */
+        private sealed class ImportMemoScope : IDisposable
+        {
+            private readonly Models _models;
+            private readonly Materials _materials;
+            private readonly Textures _textures;
+            private readonly List<HavokPackfile> _havok = new List<HavokPackfile>();
+
+            public ImportMemoScope(Level source, Level destination)
+            {
+                foreach (HavokPackfile file in new[] { source.CollisionHKX, source.CollisionHKX64, source.PhysicsHKX, source.PhysicsHKX64 })
+                {
+                    if (file != null && !file.CacheRangeBoundaries && !_havok.Contains(file))
+                    {
+                        file.CacheRangeBoundaries = true;
+                        _havok.Add(file);
+                    }
+                }
+
+                if (destination.Models != null && destination.Models.PortMemo == null)
+                {
+                    _models = destination.Models;
+                    _models.PortMemo = new System.Runtime.CompilerServices.ConditionalWeakTable<object, object>();
+                }
+                if (destination.Materials != null && destination.Materials.PortMemo == null)
+                {
+                    _materials = destination.Materials;
+                    _materials.PortMemo = new System.Runtime.CompilerServices.ConditionalWeakTable<object, object>();
+                }
+                if (destination.Textures != null && destination.Textures.PortMemo == null)
+                {
+                    _textures = destination.Textures;
+                    _textures.PortMemo = new System.Runtime.CompilerServices.ConditionalWeakTable<object, object>();
+                }
+            }
+
+            public void Dispose()
+            {
+                foreach (HavokPackfile file in _havok)
+                    file.CacheRangeBoundaries = false;
+                if (_models != null) _models.PortMemo = null;
+                if (_materials != null) _materials.PortMemo = null;
+                if (_textures != null) _textures.PortMemo = null;
+            }
         }
 
         private void ApplyProxyIndexRemap()
@@ -278,10 +333,12 @@ namespace CathodeLib
                     case ResourceType.COLLISION_MAPPING:
                         PortCollisionMapping(resourceRefs[i]);
                         CollisionMappingsPorted++;
+                        CollectIfHavokGarbageGrew();
                         break;
                     case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
                         PortDynamicPhysicsSystem(resourceRefs[i]);
                         PhysicsSystemsPorted++;
+                        CollectIfHavokGarbageGrew();
                         break;
                     case ResourceType.TRAVERSAL_SEGMENT:
                     case ResourceType.NAV_MESH_BARRIER_RESOURCE:
@@ -295,6 +352,28 @@ namespace CathodeLib
                 }
                 OnProgress?.Invoke();
             }
+        }
+
+        /* Each Havok import grows the destination's payload into a new array, whole: a large-object-heap allocation the
+           size of the file so far, once per collision mapping and physics system ported. The GC let that garbage run far
+           ahead of the live data - exporting SCI_HospitalUpper's UpperDeck_SectionA (428,000 functions) took OpenCAGE from
+           7.5 GB to 19.5 GB in half a minute and, unguarded, to 61 GB and the whole machine's commit limit. A full
+           collection once the managed heap has grown 2 GB since the last one keeps it to the live data plus that. */
+        private long _heapAtLastCollect = -1;
+        private const long HavokGarbageAllowance = 2L << 30;
+
+        private void CollectIfHavokGarbageGrew()
+        {
+            long now = GC.GetTotalMemory(false);
+            if (_heapAtLastCollect < 0)
+            {
+                _heapAtLastCollect = now;
+                return;
+            }
+            if (now - _heapAtLastCollect < HavokGarbageAllowance)
+                return;
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true);
+            _heapAtLastCollect = GC.GetTotalMemory(false);
         }
 
         private void PortCollisionMapping(ResourceReference resource)

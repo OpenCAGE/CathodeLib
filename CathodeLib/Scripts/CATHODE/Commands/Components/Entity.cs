@@ -133,7 +133,14 @@ namespace CATHODE.Scripting.Internal
         }
         public Parameter GetParameter(ShortGuid id)
         {
-            return parameters.FirstOrDefault(o => o.name == id);
+            //A loop, not FirstOrDefault: the lambda's closure, delegate and enumerator were three allocations per call, and
+            //this is asked for every entity of a level to populate the viewport (a third of a GB a minute in a stress run)
+            for (int i = 0; i < parameters.Count; i++)
+            {
+                if (parameters[i].name == id)
+                    return parameters[i];
+            }
+            return null;
         }
 
         /// <summary>

@@ -343,7 +343,48 @@ namespace CATHODE
         }
         public Composite GetComposite(ShortGuid id)
         {
-            return Entries.FirstOrDefault(o => o != null && o.shortGUID == id);
+            List<Composite> entries = Entries;
+            Dictionary<ShortGuid, int> index = _compositeIndex;
+            if (index != null && index.TryGetValue(id, out int at) && at < entries.Count)
+            {
+                Composite candidate = entries[at];
+                if (candidate != null && candidate.shortGUID == id)
+                    return candidate;
+            }
+
+            Composite found = null;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                Composite composite = entries[i];
+                if (composite != null && composite.shortGUID == id)
+                {
+                    found = composite;
+                    break;
+                }
+            }
+            //The index did not know one that is there: something was added, removed or reordered since it was built
+            if (found != null)
+                RebuildCompositeIndex(entries);
+            return found;
+        }
+
+        /* Where each composite sits in Entries, for GetComposite(ShortGuid). The scan it replaced ran for every composite
+           instance a caller met - once per instance entity in a viewport populate, or a walk of the tree - over thousands of
+           composites each time. Entries is a public list anyone may change, so a position is checked before it is trusted
+           and whatever the index cannot answer falls back to the scan. It is replaced whole, never changed in place, so a
+           reader on another thread always has a complete one. */
+        private Dictionary<ShortGuid, int> _compositeIndex;
+
+        private void RebuildCompositeIndex(List<Composite> entries)
+        {
+            Dictionary<ShortGuid, int> index = new Dictionary<ShortGuid, int>(entries.Count);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                Composite composite = entries[i];
+                if (composite != null && !index.ContainsKey(composite.shortGUID))
+                    index[composite.shortGUID] = i;
+            }
+            _compositeIndex = index;
         }
 
         /// <summary>

@@ -456,7 +456,19 @@ namespace CATHODE
         {
             if (material == null)
                 return null;
+            if (PortMemo != null && PortMemo.TryGetValue(material, out object imported))
+                return (Material)imported;
+            Material result = ImportEntryCore(material, overwriteExisting);
+            if (PortMemo != null && result != null && !PortMemo.TryGetValue(material, out _))
+                PortMemo.Add(material, result);
+            return result;
+        }
 
+        /// <summary>While a port runs, what each source material has already been imported as (see <see cref="Models.PortMemo"/>).</summary>
+        internal System.Runtime.CompilerServices.ConditionalWeakTable<object, object> PortMemo;
+
+        private Material ImportEntryCore(Material material, bool overwriteExisting)
+        {
             Material newMaterial = material.Copy();
 
             for (int i = 0; i < newMaterial.TextureReferences.Count; i++)
