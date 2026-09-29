@@ -926,16 +926,15 @@ namespace CathodeLib.Radiosity
             }
 
             // What this bake replaces: the level's shipped bake, or nothing / our own earlier output. Retail light placement
-            // moves the shipped bake's own light items, so it only runs over one; the profile's hybrid visibility cut was only
-            // validated together with it.
+            // moves the shipped bake's own light items, so it only runs over one.
             bool replacingRetail = level.RadiosityRuntime != null && level.RadiosityRuntime.Slices != null &&
                                    level.RadiosityRuntime.Slices.Count > 0 && !level.RadiosityRuntime.FullyRegenerated;
             if (settings.UseValidatedFullBakeProfile)
             {
                 settings = settings.WithValidatedFullBakeProfile(replacingRetail);
                 log?.Invoke("Radiosity: full bake with the validated profile" + (replacingRetail
-                    ? " (replacing the shipped bake: retail light placement and hybrid visibility on)"
-                    : " (no shipped bake to replace: retail light placement and hybrid visibility off)"));
+                    ? " (replacing the shipped bake: retail light placement on)"
+                    : " (no shipped bake to replace: retail light placement off)"));
             }
 
             // Instancing has just rebuilt the resource table, and the collector drops any mover whose

@@ -2440,11 +2440,14 @@ namespace CathodeLib.Radiosity
         /// <item>Always: the light-table and link settings below (unit light scale, the influence gain envelope,
         /// cluster-membership scatter, coarse clusters, UV-convention rects) and the retail-rule hierarchical cut with
         /// 8 forced openings. 13 DLC / small levels 11.73 -> 10.14, 29 campaign levels 12.95 -> 10.68.</item>
+        /// <item>Always: the hybrid render-visibility cut (a probe is re-cut with a soft render-mesh visibility test when
+        /// 20-90% of its link gain tests occluded). On regenerated levels, which have no retail data to use, it scores 13
+        /// small levels 10.37 -> 10.00 and 14 big maps 11.47 -> 10.81 (better on 8 and 12 of them). The cost is bake
+        /// time: those bakes take about 2.2x as long.</item>
         /// <item>Only when <paramref name="replacingRetail"/> (the bake replaces the level's shipped bake): retail light
-        /// placement and the hybrid render-visibility cut as well. 13 small levels 10.14 -> 9.59, 12 big maps 11.58 -> 10.85.
-        /// Placement moves the shipped bake's own light items, so it needs one: over our own earlier output it would
-        /// freeze the old light table. The hybrid was only validated together with placement; without it the hybrid gained
-        /// little (10.14 -> 10.00, one level 1.9 worse) for about twice the bake time.</item>
+        /// placement as well. With the hybrid, 13 small levels 10.14 -> 9.59 and 14 big maps 11.38 -> 10.71. Placement
+        /// moves the shipped bake's own light items, so it needs one: over our own earlier output it would freeze the old
+        /// light table.</item>
         /// </list>
         /// </summary>
         /// <remarks>
@@ -2517,16 +2520,18 @@ namespace CathodeLib.Radiosity
             s.HierarchicalCutOwnSliceOnly = false;
             s.HierarchicalCutVisMinDistance = 0;
 
-            //Over a retail bake: retail light placement and the hybrid render-visibility cut
-            s.UseRetailLightPlacement = replacingRetail;
-            s.RetailLightPlacementRadius = 1.0f;
-            s.HierarchicalCutSoftRenderVisibility = replacingRetail;
+            //The hybrid render-visibility cut
+            s.HierarchicalCutSoftRenderVisibility = true;
             s.HierarchicalCutSoftVisRays = 3;
             s.HierarchicalCutSoftVisJitter = 0.22f;
-            s.HierarchicalCutHybridLeak = replacingRetail ? 0.2f : 0.0f;
-            s.HierarchicalCutHybridLeakMax = replacingRetail ? 0.9 : 0.0;
-            s.HierarchicalCutVisReceiverOffset = replacingRetail ? 0.15f : 0.02f;
-            s.HierarchicalCutVisMemberOffset = replacingRetail ? 0.15f : 0.02f;
+            s.HierarchicalCutHybridLeak = 0.2f;
+            s.HierarchicalCutHybridLeakMax = 0.9;
+            s.HierarchicalCutVisReceiverOffset = 0.15f;
+            s.HierarchicalCutVisMemberOffset = 0.15f;
+
+            //Over a retail bake: retail light placement
+            s.UseRetailLightPlacement = replacingRetail;
+            s.RetailLightPlacementRadius = 1.0f;
             return s;
         }
 
