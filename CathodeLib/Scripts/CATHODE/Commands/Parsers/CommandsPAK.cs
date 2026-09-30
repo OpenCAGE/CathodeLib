@@ -516,7 +516,9 @@ namespace CATHODE.Scripting.Internal.Parsers
             }
         }
 
-        public static void Write(ShortGuid[] EntryPoints, List<Composite> Entries, out byte[] content, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
+        /// <param name="leadingPadding">Zero bytes written ahead of the file, which every offset then counts. Writing the same
+        /// content twice with different paddings shows which words are offsets (see Commands.WriteLiveLinkImage).</param>
+        public static void Write(ShortGuid[] EntryPoints, List<Composite> Entries, out byte[] content, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds, int leadingPadding = 0)
         {
             ShortGuid SHORTGUID_resource = ShortGuidUtils.Generate("resource");
 
@@ -602,6 +604,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                 using (BinaryWriter writer = new BinaryWriter(stream))
                 {
                     writer.BaseStream.SetLength(0);
+                    if (leadingPadding > 0)
+                        writer.Write(new byte[leadingPadding]);
 
                     //Write entry points
                     for (int i = 0; i < 3; i++)
@@ -1100,8 +1104,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                     int compositeOffsetPos = (int)writer.BaseStream.Position;
                     Utilities.Write<int>(writer, compositeOffsets);
 
-                    //Rewrite header info with correct offsets 
-                    writer.BaseStream.Position = 12;
+                    //Rewrite header info with correct offsets
+                    writer.BaseStream.Position = 12 + leadingPadding;
                     writer.Write(parameterOffsetPos / 4);
                     writer.Write(parameters.Count);
                     writer.Write(compositeOffsetPos / 4);

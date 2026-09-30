@@ -310,6 +310,73 @@ namespace CATHODE
                 writer.Write(content);
             }
         }
+
+        /// <summary>
+        /// One composite and the parameters it uses, written as a standalone COMMANDS.PAK image - the layout the game holds
+        /// in memory - for patching that composite into a running game (live link). Offsets in the image count from its
+        /// start, in 4-byte words, as they do from the start of a real COMMANDS.PAK; relocations lists the index (in words)
+        /// of every word that is such an offset, so the image can be rebased wherever it lands. String offsets keep their
+        /// high bit set.
+        /// </summary>
+        public byte[] WriteLiveLinkImage(Composite composite, out List<int> relocations)
+        {
+            List<Composite> single = new List<Composite>() { composite };
+            ShortGuid[] entryPoints = _entryPoints ?? new ShortGuid[3];
+
+            //Links get new random ids every time a flowgraph is compiled, which would make every image of the same content
+            //different (and so re-sent and re-applied): in the image each link's id comes from what it joins instead. The
+            //composite's own ids are put back afterwards.
+            List<(Entity, List<EntityConnector>)> linkIds = new List<(Entity, List<EntityConnector>)>();
+            byte[] image, shifted;
+            try
+            {
+                foreach (Entity entity in composite.GetEntities())
+                {
+                    if (entity.childLinks.Count == 0)
+                        continue;
+                    linkIds.Add((entity, entity.childLinks));
+                    List<EntityConnector> stable = new List<EntityConnector>(entity.childLinks.Count);
+                    Dictionary<uint, int> seen = new Dictionary<uint, int>();
+                    foreach (EntityConnector link in entity.childLinks)
+                    {
+                        uint id = 2166136261;
+                        foreach (uint word in new uint[] { entity.shortGUID.AsUInt32, link.thisParamID.AsUInt32, link.linkedEntityID.AsUInt32, link.linkedParamID.AsUInt32 })
+                            id = (id ^ word) * 16777619;
+                        seen.TryGetValue(id, out int repeat); //the same link twice still gets two ids
+                        seen[id] = repeat + 1;
+                        EntityConnector copy = link;
+                        copy.ID = new ShortGuid((id ^ (uint)repeat) * 16777619);
+                        stable.Add(copy);
+                    }
+                    entity.childLinks = stable;
+                }
+
+                //The same content written twice, the second one word later: the words that differ are the offsets. A word
+                //that differs by anything but one word means the writer is not deterministic, and no relocation can be trusted.
+                CommandsPAK.Write(entryPoints, single, out image, _envAnims, _colMaps, _reds, 0);
+                CommandsPAK.Write(entryPoints, single, out shifted, _envAnims, _colMaps, _reds, 4);
+            }
+            finally
+            {
+                foreach ((Entity entity, List<EntityConnector> links) in linkIds)
+                    entity.childLinks = links;
+            }
+            if (image.Length % 4 != 0 || shifted.Length != image.Length + 4)
+                throw new InvalidDataException("The live link image of " + composite.name + " did not write consistently (" + image.Length + " / " + shifted.Length + " bytes)");
+
+            relocations = new List<int>();
+            for (int i = 0; i < image.Length / 4; i++)
+            {
+                uint word = BitConverter.ToUInt32(image, i * 4);
+                uint shiftedWord = BitConverter.ToUInt32(shifted, 4 + i * 4);
+                if (word == shiftedWord)
+                    continue;
+                if (shiftedWord != word + 1)
+                    throw new InvalidDataException("The live link image of " + composite.name + " did not write consistently at word " + i);
+                relocations.Add(i);
+            }
+            return image;
+        }
         #endregion
 
         #region ACCESSORS
