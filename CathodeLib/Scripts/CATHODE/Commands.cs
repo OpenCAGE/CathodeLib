@@ -362,7 +362,7 @@ namespace CATHODE
                     entity.childLinks = links;
             }
             if (image.Length % 4 != 0 || shifted.Length != image.Length + 4)
-                throw new InvalidDataException("The live link image of " + composite.name + " did not write consistently (" + image.Length + " / " + shifted.Length + " bytes)");
+                throw new InvalidDataException("The Live Link image of " + composite.name + " did not write consistently (" + image.Length + " / " + shifted.Length + " bytes)");
 
             relocations = new List<int>();
             for (int i = 0; i < image.Length / 4; i++)
@@ -372,7 +372,7 @@ namespace CATHODE
                 if (word == shiftedWord)
                     continue;
                 if (shiftedWord != word + 1)
-                    throw new InvalidDataException("The live link image of " + composite.name + " did not write consistently at word " + i);
+                    throw new InvalidDataException("The Live Link image of " + composite.name + " did not write consistently at word " + i);
                 relocations.Add(i);
             }
             return image;
